@@ -1,82 +1,60 @@
 {
-  "name": "handy-cli",
-  "description": "A new CLI generated with oclif",
-  "version": "0.0.0",
+  "name": "happy-cli",
+  "version": "0.1.0",
+  "description": "Claude Code session sharing CLI",
   "author": "Kirill Dubovitskiy",
-  "bin": {
-    "handy-cli": "./bin/run.js"
-  },
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/bra1ndump/handy-cli",
   "bugs": "https://github.com/bra1ndump/handy-cli/issues",
+  "repository": "bra1ndump/handy-cli",
+  "bin": {
+    "happy": "./bin/happy"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    "require": {
+      "types": "./dist/index.d.cts",
+      "default": "./dist/index.cjs"
+    },
+    "import": {
+      "types": "./dist/index.d.mts",
+      "default": "./dist/index.mjs"
+    }
+  },
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "pkgroll",
+    "prepublishOnly": "yarn build && yarn test",
+    "dev": "yarn build && ./bin/happy"
+  },
   "dependencies": {
-    "@oclif/core": "4.4.1",
-    "@oclif/plugin-help": "^6",
+    "@types/qrcode-terminal": "^0.12.2",
     "axios": "^1.10.0",
     "chalk": "^5.4.1",
     "dotenv": "^17.2.0",
     "qrcode-terminal": "^0.12.0",
     "socket.io-client": "^4.8.1",
-    "tweetnacl": "^1.0.3"
+    "tweetnacl": "^1.0.3",
+    "zod": "^4.0.5"
   },
   "devDependencies": {
     "@eslint/compat": "^1",
-    "@oclif/prettier-config": "^0.2.1",
-    "@oclif/test": "^4",
-    "@types/mocha": "^10",
     "@types/node": "^18",
-    "@types/qrcode-terminal": "^0.12.2",
     "eslint": "^9",
-    "eslint-config-oclif": "^6",
     "eslint-config-prettier": "^10",
-    "mocha": "^10",
-    "oclif": "^4",
+    "pkgroll": "^2.14.2",
     "shx": "^0.3.3",
     "ts-node": "^10",
+    "tsx": "^4.20.3",
     "typescript": "^5",
     "vitest": "^3.2.4"
-  },
-  "engines": {
-    "node": ">=18.0.0"
-  },
-  "files": [
-    "./bin",
-    "./dist",
-    "./oclif.manifest.json"
-  ],
-  "homepage": "https://github.com/bra1ndump/handy-cli",
-  "keywords": [
-    "oclif"
-  ],
-  "license": "MIT",
-  "main": "dist/index.js",
-  "type": "module",
-  "oclif": {
-    "bin": "handy-cli",
-    "dirname": "handy-cli",
-    "commands": "./dist/commands",
-    "plugins": [
-      "@oclif/plugin-help"
-    ],
-    "topicSeparator": " "
-  },
-  "repository": "bra1ndump/handy-cli",
-  "imports": {
-    "#auth/*": "./dist/auth/*.js",
-    "#claude/*": "./dist/claude/*.js",
-    "#commands/*": "./dist/commands/*.js",
-    "#handlers/*": "./dist/handlers/*.js",
-    "#session/*": "./dist/session/*.js",
-    "#socket/*": "./dist/socket/*.js",
-    "#utils/*": "./dist/utils/*.js"
-  },
-  "scripts": {
-    "build": "shx rm -rf dist && tsc -b",
-    "lint": "eslint",
-    "postpack": "shx rm -f oclif.manifest.json",
-    "posttest": "npm run lint",
-    "prepack": "oclif manifest && oclif readme",
-    "test": "npm run build && vitest run",
-    "test:watch": "vitest",
-    "version": "oclif readme && git add README.md"
-  },
-  "types": "dist/index.d.ts"
+  }
 }

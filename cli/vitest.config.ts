@@ -20,13 +20,7 @@ export default defineConfig({
     },
     resolve: {
         alias: {
-            '#auth': resolve('./src/auth'),
-            '#claude': resolve('./src/claude'),
-            '#commands': resolve('./src/commands'),
-            '#handlers': resolve('./src/handlers'),
-            '#session': resolve('./src/session'),
-            '#socket': resolve('./src/socket'),
-            '#utils': resolve('./src/utils'),
+            '@': resolve('./src'),
         },
     },
 })
