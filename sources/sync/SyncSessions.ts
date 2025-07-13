@@ -6,6 +6,7 @@ import {
     SessionUpdateSchema,
     SourceMessage,
 } from '@/sync/types';
+import { SyncSession } from './SyncSession';
 
 const API_ENDPOINT = 'https://handy-api.korshakov.org';
 
@@ -120,6 +121,12 @@ class SyncSessions {
                 // Fetch sessions again if we don't have this session
                 this.fetchSessions();
             }
+            
+            // Forward to session instance if it exists
+            const sessionInstance = this.sessionInstances.get(updateData.body.sid);
+            if (sessionInstance) {
+                sessionInstance.handleUpdate(updateData);
+            }
         } else if (updateData.body.t ==='new-session') {
             this.fetchSessions(); // Just fetch sessions again
         }
@@ -150,6 +157,26 @@ class SyncSessions {
 
     getLoadedState(): boolean {
         return this.isLoaded;
+    }
+
+    //
+    // Session Management
+    //
+    
+    private sessionInstances = new Map<string, SyncSession>(); // Store SyncSession instances
+
+    getSession(sessionId: string): SyncSession {
+        if (!this.encryption) {
+            throw new Error('SyncSessions not initialized');
+        }
+        
+        let session = this.sessionInstances.get(sessionId);
+        if (!session) {
+            session = new SyncSession(sessionId, this.encryption);
+            session.start();
+            this.sessionInstances.set(sessionId, session);
+        }
+        return session;
     }
 }
 

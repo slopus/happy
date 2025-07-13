@@ -7,6 +7,8 @@ export function encrypt(data: any, secret: Uint8Array): Uint8Array {
     const nonce = getRandomBytes(tweetnacl.secretbox.nonceLength);
     const encrypted = tweetnacl.secretbox(new TextEncoder().encode(JSON.stringify(data)), nonce, secret);
     const result = new Uint8Array(nonce.length + encrypted.length);
+    result.set(nonce);
+    result.set(encrypted, nonce.length);
     return result;
 }
 
@@ -34,6 +36,7 @@ export class MessageEncryption {
     }
 
     decryptMessage(encryptedMessage: SourceMessage | null | undefined): Message | null {
+        console.log('decryptMessage', encryptedMessage);
         if (!encryptedMessage) {
             return null;
         }
