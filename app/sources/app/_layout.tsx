@@ -72,14 +72,21 @@ export default function RootLayout() {
 
   return (
     <AuthProvider initialCredentials={initState.credentials}>
-      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+      <ThemeProvider value={DefaultTheme}>
         <Stack
           initialRouteName='index'
           screenOptions={{
             headerShadowVisible: false,
             contentStyle: {
               backgroundColor: 'white',
-            }
+            },
+            headerStyle: {
+              backgroundColor: 'white',
+            },
+            headerTintColor: '#000',
+            headerTitleStyle: {
+              color: '#000',
+            },
           }}
         >
           <Stack.Screen
