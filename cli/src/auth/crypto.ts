@@ -33,29 +33,8 @@ export function encodeBase64Url(buffer: Uint8Array): string {
 }
 
 /**
- * Decode a base64 string to Uint8Array
- */
-export function decodeBase64(base64: string): Uint8Array {
-  return new Uint8Array(Buffer.from(base64, 'base64'))
-}
-
-/**
  * Generate secure random bytes
  */
 export function getRandomBytes(size: number): Uint8Array {
   return new Uint8Array(randomBytes(size))
-}
-
-/**
- * Convert a hex string to Uint8Array
- */
-export function hexToUint8Array(hex: string): Uint8Array {
-  return new Uint8Array(Buffer.from(hex, 'hex'))
-}
-
-/**
- * Convert a Uint8Array to hex string
- */
-export function uint8ArrayToHex(buffer: Uint8Array): string {
-  return Buffer.from(buffer).toString('hex')
 }

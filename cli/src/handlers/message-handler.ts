@@ -16,33 +16,57 @@
  * - Prepared for future encryption support
  */
 
-import { ClaudeSession } from '#claude/session'
+import { Claude, ClaudeOptions } from '#claude/claude'
 import { ClaudeResponse } from '#claude/types'
 import { SessionService } from '#session/service'
 import { SocketClient } from '#socket/client'
-import { TextInputMessage, Update } from '#socket/types'
+import { SessionMessageContent, TextInputMessage, Update } from '#socket/types'
 import { logger } from '#utils/logger'
 import { EventEmitter } from 'node:events'
 
+export interface MessageHandlerOptions {
+  claudeOptions?: Partial<ClaudeOptions>
+  sessionId: string
+  sessionService: SessionService
+  socketClient: SocketClient
+  workingDirectory: string
+}
+
 // eslint-disable-next-line unicorn/prefer-event-target
 export class MessageHandler extends EventEmitter {
-  private claudeSession: ClaudeSession
+  private claude: Claude
+  private claudeOptions: Partial<ClaudeOptions>
   private sessionId: string
   private sessionService: SessionService
   private socketClient: SocketClient
+  private workingDirectory: string
   
-  constructor(
-    socketClient: SocketClient, 
-    claudeSession: ClaudeSession,
-    sessionService: SessionService,
-    sessionId: string
-  ) {
+  constructor(options: MessageHandlerOptions) {
     super()
-    this.socketClient = socketClient
-    this.claudeSession = claudeSession
-    this.sessionService = sessionService
-    this.sessionId = sessionId
+    this.socketClient = options.socketClient
+    this.claude = new Claude()
+    this.sessionService = options.sessionService
+    this.sessionId = options.sessionId
+    this.workingDirectory = options.workingDirectory
+    this.claudeOptions = options.claudeOptions || {}
     this.setupHandlers()
+  }
+  
+  /**
+   * Handle initial command directly (for startup)
+   */
+  handleInitialCommand(command: string): void {
+    logger.info('Handling initial command:', command)
+    
+    // Run Claude command
+    this.claude.runClaudeCodeTurn(
+      command,
+      undefined, // No session ID for initial command
+      {
+        workingDirectory: this.workingDirectory,
+        ...this.claudeOptions
+      }
+    )
   }
   
   /**
@@ -58,16 +82,14 @@ export class MessageHandler extends EventEmitter {
    */
   stop(): void {
     logger.info('Message handler stopped')
-    if (this.claudeSession.isRunning()) {
-      this.claudeSession.kill()
-    }
+    this.claude.kill()
   }
   
   /**
    * Handle Claude responses
    */
   private async handleClaudeResponse(response: ClaudeResponse): Promise<void> {
-    logger.debug('Claude response:', response)
+    logger.info('Claude response:', JSON.stringify(response, null, 2))
     
     try {
       // Send the response to the server session
@@ -90,21 +112,22 @@ export class MessageHandler extends EventEmitter {
   private handleTextInput(message: TextInputMessage): void {
     logger.info('Received text input:', message.content)
     
-    // Forward to Claude
-    if (this.claudeSession.isRunning()) {
-      // If Claude is running, send as input
-      this.claudeSession.sendInput(message.content)
-    } else {
-      // If Claude is not running, start a new command
-      this.claudeSession.execute(message.content)
-    }
+    // Run Claude command (kills any existing process automatically)
+    this.claude.runClaudeCodeTurn(
+      message.content,
+      undefined, // No session resuming for now
+      {
+        workingDirectory: this.workingDirectory,
+        ...this.claudeOptions
+      }
+    )
   }
   
   /**
    * Handle update messages from the server
    */
   private handleUpdate(update: Update): void {
-    logger.debug('Received update:', update)
+    logger.debug('Received update:', JSON.stringify(update, null, 2))
     
     // Check if this is a new message for our session
     if (update.content.t === 'new-message') {
@@ -117,8 +140,27 @@ export class MessageHandler extends EventEmitter {
       }
       
       try {
+        // Log the raw content structure for debugging
+        logger.debug('Raw content (c):', JSON.stringify(c))
+        logger.debug('Content type:', typeof c)
+        
+        // Check if content is already a string or needs extraction
+        let encryptedContent: string
+        if (typeof c === 'string') {
+          // Direct string content
+          encryptedContent = c
+        } else if (typeof c === 'object' && c !== null && 'c' in c && typeof (c as SessionMessageContent).c === 'string') {
+          // Nested structure: { c: 'base64string', t: 'encrypted' }
+          logger.debug('Extracting from nested structure')
+          encryptedContent = (c as SessionMessageContent).c
+        } else {
+          logger.error('Invalid content structure:', c)
+          return
+        }
+        
         // Decrypt the content
-        const decryptedContent = this.sessionService.decryptContent(c)
+        const decryptedContent = this.sessionService.decryptContent(encryptedContent)
+        logger.debug('Decrypted content:', decryptedContent)
         
         // Type guard for the decrypted content
         if (typeof decryptedContent === 'object' && 
@@ -129,6 +171,10 @@ export class MessageHandler extends EventEmitter {
           // Handle the message based on type
           if (message.type === 'text-input') {
             this.handleTextInput(decryptedContent as TextInputMessage)
+          } else if (message.type === 'claude-response') {
+            // This is our own claude-response being echoed back from the server
+            // We can safely ignore it or log it for debugging
+            logger.debug('Received claude-response echo from server:', message)
           } else {
             logger.warn('Unknown message type:', message.type)
           }
@@ -151,25 +197,25 @@ export class MessageHandler extends EventEmitter {
     })
     
     // Handle Claude responses
-    this.claudeSession.on('response', (response: ClaudeResponse) => {
+    this.claude.on('response', (response: ClaudeResponse) => {
       this.handleClaudeResponse(response)
     })
     
     // Handle Claude output (non-JSON)
-    this.claudeSession.on('output', (output: string) => {
+    this.claude.on('output', (output: string) => {
       logger.debug('Claude output:', output)
       // For now, we'll log non-JSON output
       // In the future, we might want to send this to the client
     })
     
     // Handle Claude errors
-    this.claudeSession.on('error', (error: string) => {
+    this.claude.on('error', (error: string) => {
       logger.error('Claude error:', error)
       this.emit('error', error)
     })
     
     // Handle Claude exit
-    this.claudeSession.on('exit', (exitInfo) => {
+    this.claude.on('exit', (exitInfo) => {
       logger.info('Claude exited:', exitInfo)
       this.emit('claudeExit', exitInfo)
     })

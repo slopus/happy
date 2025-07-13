@@ -19,7 +19,6 @@
  */
 
 import { authGetToken, generateHandyUrl, getOrCreateSecretKey } from '#auth/auth'
-import { ClaudeSession } from '#claude/session'
 import { MessageHandler } from '#handlers/message-handler'
 import { SessionService } from '#session/service'
 import { SocketClient } from '#socket/client'
@@ -44,17 +43,20 @@ static flags = {
       options: ['sonnet', 'opus', 'haiku'],
     }),
     'permission-mode': Flags.string({
-      default: 'default',
+      default: 'auto',
       description: 'Permission mode for Claude',
       options: ['plan', 'auto', 'default'],
     }),
     'skip-permissions': Flags.boolean({
-      default: false,
+      default: true,
       description: 'Skip permission prompts (dangerous)',
     }),
+    'test-session': Flags.string({
+      description: 'Use a specific session ID for testing (internal use)',
+      hidden: true,
+    }),
   }
-private claudeSession?: ClaudeSession
-  private messageHandler?: MessageHandler
+private messageHandler?: MessageHandler
   private sessionId?: string
   private sessionService?: SessionService
   private socketClient?: SocketClient
@@ -101,18 +103,21 @@ private claudeSession?: ClaudeSession
       this.sessionId = session.id
       logger.info(`Session created: ${this.sessionId}`)
       
-      // Step 4: Initialize Claude session
-      logger.info(`Initializing Claude session in: ${workingDirectory}`)
+      // Step 4: Initialize Claude
+      logger.info(`Initializing Claude in: ${workingDirectory}`)
       
-      this.claudeSession = new ClaudeSession(workingDirectory)
-      
-      // Step 5: Set up message handler with session ID
-      this.messageHandler = new MessageHandler(
-        this.socketClient, 
-        this.claudeSession, 
-        this.sessionService, 
-        this.sessionId
-      )
+      // Step 4: Set up message handler with session ID
+      this.messageHandler = new MessageHandler({
+        claudeOptions: {
+          model: flags.model,
+          permissionMode: flags['permission-mode'] as 'auto' | 'default' | 'plan',
+          skipPermissions: flags['skip-permissions']
+        },
+        sessionId: this.sessionId,
+        sessionService: this.sessionService,
+        socketClient: this.socketClient,
+        workingDirectory
+      })
       this.messageHandler.start()
       
       // Set up event handlers for logging
@@ -134,15 +139,13 @@ private claudeSession?: ClaudeSession
       logger.info('Permission mode:', flags['permission-mode'])
       logger.info('Skip permissions:', flags['skip-permissions'])
       
-      // Start with a command to list files, similar to claudecodeui
-      const initialCommand = 'Use the LS tool to list files in the current directory and tell me the first 5 files or folders you see.'
+      // Start with a command to show current working directory to ensure we
+      // are in the correct project
+      const initialCommand = 'Show current working directory'
       logger.info('Sending initial command to Claude:', initialCommand)
       
-      this.claudeSession.startNewSession(initialCommand, {
-        model: flags.model,
-        permissionMode: flags['permission-mode'] as 'auto' | 'default' | 'plan',
-        skipPermissions: flags['skip-permissions'],
-      })
+      // Send the initial command through the message handler to ensure it's properly captured
+      this.messageHandler.handleInitialCommand(initialCommand)
       
       // Set up graceful shutdown
       this.setupShutdownHandlers()
@@ -164,10 +167,6 @@ private claudeSession?: ClaudeSession
       this.messageHandler.stop()
     }
     
-    if (this.claudeSession) {
-      this.claudeSession.kill()
-    }
-    
     if (this.socketClient) {
       this.socketClient.disconnect()
     }
@@ -181,6 +180,8 @@ private claudeSession?: ClaudeSession
   private shutdown(): void {
     logger.info('Shutting down...')
     this.cleanup()
+    
+    // Use OCLIF's exit method for proper shutdown
     this.exit(0)
   }
 }

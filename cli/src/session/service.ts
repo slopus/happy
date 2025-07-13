@@ -2,7 +2,7 @@
  * Session service for managing handy-server sessions
  */
 
-import type { CreateSessionResponse, MessageContent, SendMessageResponse } from '#session/types'
+import type { CreateSessionResponse, GetMessagesResponse, MessageContent, SendMessageResponse } from '#session/types'
 
 import { logger } from '#utils/logger'
 import axios from 'axios'
@@ -51,6 +51,29 @@ export class SessionService {
     }
   }
   
+  /**
+   * Get messages from a session
+   */
+  async getMessages(sessionId: string): Promise<GetMessagesResponse> {
+    try {
+      const response = await axios.get<GetMessagesResponse>(
+        `${this.serverUrl}/v1/sessions/${sessionId}/messages`,
+        {
+          headers: {
+            'Authorization': `Bearer ${this.authToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      )
+      
+      logger.debug(`Retrieved ${response.data.messages.length} messages from session ${sessionId}`)
+      return response.data
+    } catch (error) {
+      logger.error('Failed to get messages:', error)
+      throw new Error(`Failed to get messages: ${error instanceof Error ? error.message : 'Unknown error'}`)
+    }
+  }
+
   /**
    * Send a message to a session
    * Note: In real implementation, we'd encrypt the content before sending

@@ -5,7 +5,7 @@
  * send commands, and receive responses.
  */
 
-import { ClaudeSession } from '#claude/session'
+import { Claude } from '#claude/claude'
 import { ClaudeResponse } from '#claude/types'
 import { logger } from '#utils/logger'
 import { expect } from 'chai'
@@ -15,7 +15,7 @@ import { resolve } from 'node:path'
 describe('Claude CLI Integration', function() {
   this.timeout(60_000) // 60 second timeout for Claude operations
   
-  let session: ClaudeSession
+  let claude: Claude
   const playgroundPath = resolve('./claude-cli-playground-project')
   
   before(() => {
@@ -26,15 +26,13 @@ describe('Claude CLI Integration', function() {
   })
   
   beforeEach(() => {
-    // Create a new session for each test
-    session = new ClaudeSession(playgroundPath)
+    // Create a new Claude instance for each test
+    claude = new Claude()
   })
   
   afterEach(() => {
-    // Clean up session
-    if (session.isRunning()) {
-      session.kill()
-    }
+    // Clean up Claude process
+    claude.kill()
   })
   
   it('should execute ls command and list files in playground directory', (done) => {
@@ -42,17 +40,19 @@ describe('Claude CLI Integration', function() {
     let hasListedFiles = false
     let sessionId: string | undefined
     let testCompleted = false
+    let hasSeenToolUse = false
+    let hasSeenToolResult = false
     
     // Set a timeout to prevent infinite hanging
     const timeout = setTimeout(() => {
       if (!testCompleted) {
         testCompleted = true
-        session.kill()
+        claude.kill()
         done(new Error('Test timeout: Claude did not respond within expected time'))
       }
-    }, 30_000) // 30 second timeout
+    }, 15_000) // 15 second timeout
     
-    session.on('response', (response: ClaudeResponse) => {
+    claude.on('response', (response: ClaudeResponse) => {
       responses.push(response)
       logger.info('Response type:', response.type, 'Session ID:', response.session_id)
       
@@ -62,20 +62,36 @@ describe('Claude CLI Integration', function() {
         logger.info('Captured session ID:', sessionId)
       }
       
-      // Check various response types for file listing
-      if (response.type === 'assistant' || response.type === 'assistant_message') {
-        const content = JSON.stringify(response).toLowerCase()
-        // Check for expected files
-        if (content.includes('hello-world.js') || 
-            content.includes('readme.md') || 
-            content.includes('package.json') ||
-            content.includes('src')) {
-          hasListedFiles = true
+      // Check for tool use and tool results based on actual Claude output
+      if (response.type === 'assistant' && response.data) {
+        const content = JSON.stringify(response.data).toLowerCase()
+        if (content.includes('tool_use') || content.includes('ls')) {
+          hasSeenToolUse = true
+          logger.info('Detected tool use in assistant response')
         }
       }
       
-      // End test when we get result (like in simple-spawn.test.ts)
-      if ((response.type === 'result' || response.type === 'completion' || response.type === 'error') && !testCompleted) {
+      if (response.type === 'user' && response.data) {
+        const content = JSON.stringify(response.data).toLowerCase()
+        if (content.includes('tool_result') || content.includes('hello-world.js')) {
+          hasSeenToolResult = true
+          hasListedFiles = true
+          logger.info('Detected tool result with file listing')
+        }
+      }
+      
+      // Check various response types for file listing
+      if (response.type === 'assistant' || response.type === 'user' || response.type === 'claude-response') {
+        const content = JSON.stringify(response).toLowerCase()
+        // Check for expected files in playground
+        if (content.includes('hello-world.js')) {
+          hasListedFiles = true
+          logger.info('Found hello-world.js in response')
+        }
+      }
+      
+      // Complete test when we have seen both tool use and tool result
+      if (hasSeenToolUse && hasSeenToolResult && hasListedFiles && sessionId && !testCompleted) {
         testCompleted = true
         clearTimeout(timeout)
         expect(sessionId).to.be.a('string')
@@ -86,7 +102,7 @@ describe('Claude CLI Integration', function() {
       }
     })
     
-    session.on('error', (error) => {
+    claude.on('error', (error: string) => {
       if (!testCompleted) {
         testCompleted = true
         clearTimeout(timeout)
@@ -94,7 +110,7 @@ describe('Claude CLI Integration', function() {
       }
     })
     
-    session.on('processError', (error) => {
+    claude.on('processError', (error: Error) => {
       if (!testCompleted) {
         testCompleted = true
         clearTimeout(timeout)
@@ -104,14 +120,15 @@ describe('Claude CLI Integration', function() {
       }
     })
     
-    session.on('exit', (exitInfo) => {
+    claude.on('exit', (exitInfo: { code: null | number, signal: null | string }) => {
       if (!testCompleted) {
         testCompleted = true
         clearTimeout(timeout)
-        // If we got here without completing the test properly, it means we didn't get a result
-        // Check if we at least got a session ID and some responses
-        if (sessionId && responses.length > 0) {
-          // Process exited but we got some responses - this might be normal
+        logger.info(`Claude process exited with code ${exitInfo.code} and signal ${exitInfo.signal}`)
+        
+        // Check if we got the expected responses even though process exited
+        if (sessionId && responses.length > 0 && (hasListedFiles || hasSeenToolResult)) {
+          // Process exited but we got expected responses - this is normal
           expect(sessionId).to.be.a('string')
           expect(responses).to.have.length.greaterThan(0)
           done()
@@ -122,8 +139,16 @@ describe('Claude CLI Integration', function() {
       }
     })
     
-    // Start session with ls command
-    session.startNewSession('Please run `ls -la` and tell me what files you see in this directory.')
+    // Start Claude with ls command  
+    claude.runClaudeCodeTurn(
+      'Use the LS tool to list files in the current directory and tell me the first 5 files or folders you see.',
+      undefined,
+      {
+        model: 'sonnet',
+        permissionMode: 'default',
+        workingDirectory: playgroundPath
+      }
+    )
   })
   
 })
