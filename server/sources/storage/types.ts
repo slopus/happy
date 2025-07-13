@@ -12,6 +12,12 @@ declare global {
             sid: string;
             mid: string;
             c: SessionMessageContent;
+        } | {
+            t: 'new-session';
+            id: string;
+            seq: number;
+            createdAt: number;
+            updatedAt: number;
         };
     }
 }
