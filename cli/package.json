@@ -10,7 +10,13 @@
   "dependencies": {
     "@oclif/core": "4.4.1",
     "@oclif/plugin-help": "^6",
-    "@oclif/plugin-plugins": "^5"
+    "@oclif/plugin-plugins": "^5",
+    "axios": "^1.10.0",
+    "chalk": "^5.4.1",
+    "dotenv": "^17.2.0",
+    "qrcode-terminal": "^0.12.0",
+    "socket.io-client": "^4.8.1",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@eslint/compat": "^1",
@@ -19,6 +25,7 @@
     "@types/chai": "^4",
     "@types/mocha": "^10",
     "@types/node": "^18",
+    "@types/qrcode-terminal": "^0.12.2",
     "chai": "^4",
     "eslint": "^9",
     "eslint-config-oclif": "^6",
@@ -60,13 +67,22 @@
     }
   },
   "repository": "bra1ndump/handy-cli",
+  "imports": {
+    "#auth/*": "./dist/auth/*.js",
+    "#claude/*": "./dist/claude/*.js",
+    "#commands/*": "./dist/commands/*.js",
+    "#handlers/*": "./dist/handlers/*.js",
+    "#session/*": "./dist/session/*.js",
+    "#socket/*": "./dist/socket/*.js",
+    "#utils/*": "./dist/utils/*.js"
+  },
   "scripts": {
     "build": "shx rm -rf dist && tsc -b",
     "lint": "eslint",
     "postpack": "shx rm -f oclif.manifest.json",
     "posttest": "npm run lint",
     "prepack": "oclif manifest && oclif readme",
-    "test": "mocha --forbid-only \"test/**/*.test.ts\"",
+    "test": "mocha --forbid-only \"src/**/*.test.ts\"",
     "version": "oclif readme && git add README.md"
   },
   "types": "dist/index.d.ts"
