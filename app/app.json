@@ -2,7 +2,8 @@
   "expo": {
     "name": "Happy",
     "slug": "happy",
-    "version": "1.0.0",
+    "version": "1.0.1",
+    "runtimeVersion": "1.0.0",
     "orientation": "portrait",
     "icon": "./sources/assets/images/icon.png",
     "scheme": "handy",
@@ -45,7 +46,6 @@
         "expo-channel-name": "production"
       }
     },
-    "runtimeVersion": "1.0.0",
     "experiments": {
       "typedRoutes": true
     },
