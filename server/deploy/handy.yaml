@@ -1,0 +1,68 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: handy-server
+spec:
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  replicas: 1
+  selector:
+    matchLabels:
+      app: handy-server
+  template:
+    metadata:
+      labels:
+        app: handy-server
+    spec:
+      containers:
+      - name: handy
+        image: docker.korshakov.com/handy-server:{version}
+        ports:
+        - containerPort: 3001
+        env:
+        - name: NODE_ENV
+          value: production
+        envFrom:
+        - secretRef:
+            name: handy-secrets
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: handy-server-pdb
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: handy-server
+---
+apiVersion: external-secrets.io/v1beta1
+kind: ExternalSecret
+metadata:
+  name: handy-server-secrets
+spec:
+  refreshInterval: 1h
+  secretStoreRef:
+    name: vault-backend
+    kind: SecretStore
+  target:
+    name: handy-server-secrets
+    creationPolicy: Owner
+  dataFrom:
+    - extract:
+        key: /handy-database
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: handy-server
+spec:
+  selector:
+    app: handy-server
+  ports:
+  - port: 3000
+    targetPort: 3005
+  type: ClusterIP
