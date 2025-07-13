@@ -22,7 +22,7 @@ export interface SessionMessageContent {
  * Update body for new messages
  */
 export interface UpdateBody {
-  c: string   // The encrypted content from the message
+  c: SessionMessageContent | string   // The encrypted content (nested object or string)
   mid: string // Message ID
   sid: string // Session ID
   t: 'new-message'
