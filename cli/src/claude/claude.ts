@@ -17,7 +17,7 @@
  * - Simple event-based API for responses
  */
 
-import { logger } from '#utils/logger'
+import { logger } from '@/ui/logger'
 import { ChildProcess, spawn } from 'node:child_process'
 import { EventEmitter } from 'node:events'
 
@@ -70,7 +70,7 @@ export class Claude extends EventEmitter {
     }
     
     // Build command arguments (no session resuming for now)
-    const args = this.buildArgs(command, undefined, options)
+    const args = this.buildArgs(command, sessionId, options)
     
     logger.info('Spawning Claude CLI with args:', args)
     
@@ -132,6 +132,7 @@ export class Claude extends EventEmitter {
     const args = [
       '--print', command,
       '--output-format', 'stream-json',
+      '--input-format', 'stream-json',
       '--verbose'
     ]
     

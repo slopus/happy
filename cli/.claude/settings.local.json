@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(yarn build)",
+      "Bash(yarn remove:*)",
+      "Bash(yarn test)",
+      "Bash(mkdir:*)",
+      "Bash(mv:*)",
+      "Bash(true)",
+      "Bash(find:*)",
+      "Bash(rmdir:*)",
+      "Bash(grep:*)",
+      "Bash(node:*)",
+      "Bash(yarn add:*)",
+      "Bash(rm:*)",
+      "Bash(./bin/happy:*)",
+      "Bash(npx tsc:*)"
+    ],
+    "deny": []
+  }
+}
