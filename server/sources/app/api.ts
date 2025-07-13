@@ -346,7 +346,11 @@ export async function startApi() {
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
     await app.listen({ port, host: '0.0.0.0' });
 
-    // Socket IO
+    // Socket IO - Create after server is listening
+    if (!app.server) {
+        throw new Error('Fastify server not available');
+    }
+    
     const io = new Server(app.server, {
         cors: {
             origin: "*",
@@ -354,21 +358,45 @@ export async function startApi() {
             credentials: true,
             allowedHeaders: ["*"]
         },
-        transports: ['websocket'],
+        transports: ['websocket', 'polling'],
         pingTimeout: 45000,
         pingInterval: 15000,
         path: '/v1/updates',
         allowUpgrades: true,
         upgradeTimeout: 10000,
-        connectTimeout: 20000
+        connectTimeout: 20000,
+        serveClient: false // Don't serve the client files
     });
+    
+    // Debug WebSocket upgrade
     app.server.on('upgrade', (request, socket, head) => {
         log({ module: 'api' }, `WebSocket upgrade request received for URL: ${request.url}`);
+        log({ module: 'api' }, `Headers: ${JSON.stringify(request.headers)}`);
     });
+
+    // Debug Socket.IO engine
+    io.engine.on('connection_error', (err: any) => {
+        log({ module: 'websocket' }, `Connection error: ${err.req}, ${err.code}, ${err.message}, ${err.context}`);
+    });
+
+    // More debugging
+    io.engine.on('initial_headers', (headers: any, req: any) => {
+        log({ module: 'websocket' }, `Initial headers for ${req.url}`);
+    });
+
+    io.engine.on('connection', (socket: any) => {
+        log({ module: 'websocket' }, `Engine level connection from ${socket.remoteAddress}`);
+    });
+
+    // Log Socket.IO initialization
+    log({ module: 'websocket' }, `Socket.IO server initialized on path: /v1/updates`);
+    log({ module: 'websocket' }, `Server listening on http://localhost:${port}`);
+    
     // Track connected users
     const userSockets = new Map<string, Set<Socket>>();
 
     io.on("connection", async (socket) => {
+        log({ module: 'websocket' }, `New connection attempt from socket: ${socket.id}`);
         const token = socket.handshake.auth.token as string;
 
         if (!token) {
