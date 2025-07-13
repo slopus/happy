@@ -98,18 +98,20 @@ class SessionsEngine {
     }
 
     private handleUpdate(update: unknown) {
+        console.log('handleUpdate', update);
         const validatedUpdate = SessionUpdateSchema.safeParse(update);
         if (!validatedUpdate.success) {
+            console.log('Invalid update received:', validatedUpdate.error);
             console.error('Invalid update received:', update);
             return;
         }
         const updateData = validatedUpdate.data;
 
-        if (updateData.content.t === 'new-message') {
-            const session = this.sessions.get(updateData.content.sid);
+        if (updateData.body.t === 'new-message') {
+            const session = this.sessions.get(updateData.body.sid);
             if (session) {
                 // Update session with new message
-                const decryptedContent: MessageContent | null = updateData.content.c.t === 'encrypted' ? this.decryptContent(updateData.content.c.c) : null;
+                const decryptedContent: MessageContent | null = updateData.body.c.t === 'encrypted' ? this.decryptContent(updateData.body.c.c) : null;
 
                 session.lastMessage = decryptedContent;
                 session.updatedAt = updateData.createdAt;
@@ -122,6 +124,8 @@ class SessionsEngine {
                 // Fetch sessions again if we don't have this session
                 this.fetchSessions();
             }
+        } else if (updateData.body.t ==='new-session') {
+            this.fetchSessions(); // Just fetch sessions again
         }
     }
 
@@ -161,76 +165,6 @@ class SessionsEngine {
 
     getLoadedState(): boolean {
         return this.isLoaded;
-    }
-
-    async createSession(tag: string): Promise<Session | null> {
-        if (!this.credentials) return null;
-
-        try {
-            const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${this.credentials.token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ tag })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to create session: ${response.status}`);
-            }
-
-            const data = await response.json();
-            const session: Session = {
-                id: data.id,
-                seq: data.seq,
-                createdAt: data.createdAt,
-                updatedAt: data.updatedAt,
-                lastMessage: data.lastMessage && data.lastMessage.content.t === 'encrypted' ? this.decryptContent(data.lastMessage.content.c) : null
-            };
-
-            this.sessions.set(session.id, session);
-            this.sortSessions();
-            this.notifyListeners();
-
-            return session;
-        } catch (error) {
-            console.error('Failed to create session:', error);
-            return null;
-        }
-    }
-
-    async sendMessage(sessionId: string, content: MessageContent): Promise<boolean> {
-        if (!this.credentials || !this.encryption) return false;
-
-        try {
-            const encryptedContent = this.encryption.encrypt(content);
-
-            const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/messages`, {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${this.credentials.token}`,
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                    content: {
-                        t: 'encrypted',
-                        c: encryptedContent
-                    }
-                })
-            });
-
-            return response.ok;
-        } catch (error) {
-            console.error('Failed to send message:', error);
-            return false;
-        }
-    }
-
-    // Helper methods for common message types
-    async sendTextMessage(sessionId: string, text: string, type: 'human' | 'assistant' = 'human'): Promise<boolean> {
-        const content: MessageContent = { type, content: { type: 'text', text } };
-        return this.sendMessage(sessionId, content);
     }
 
     getSessions(): Session[] {
