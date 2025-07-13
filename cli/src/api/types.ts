@@ -1,42 +1,41 @@
-/**
- * Socket message types for handy-cli
- * 
- * This module defines TypeScript interfaces for socket communication with the handy server.
- * These types mirror the server's message format for type-safe communication.
- * 
- * Key design decisions:
- * - All messages are strongly typed to prevent runtime errors
- * - Message content is encrypted using the session's encryption key
- * - Types match the server's Prisma JSON types exactly
- */
+import { z } from 'zod'
 
 /**
  * Base message content structure for encrypted messages
  */
-export interface SessionMessageContent {
-  c: string // Base64 encoded encrypted content
-  t: 'encrypted'
-}
+export const SessionMessageContentSchema = z.object({
+  c: z.string(), // Base64 encoded encrypted content
+  t: z.literal('encrypted')
+})
+
+export type SessionMessageContent = z.infer<typeof SessionMessageContentSchema>
 
 /**
  * Update body for new messages
  */
-export interface UpdateBody {
-  c: SessionMessageContent
-  mid: string // Message ID
-  sid: string // Session ID
-  t: 'new-message'
-}
+export const UpdateBodySchema = z.object({
+  message: z.object({
+    id: z.string(),
+    seq: z.number(),
+    content: SessionMessageContentSchema
+  }),
+  sid: z.string(), // Session ID
+  t: z.literal('new-message')
+})
+
+export type UpdateBody = z.infer<typeof UpdateBodySchema>
 
 /**
  * Update event from server
  */
-export interface Update {
-  id: string
-  seq: number
-  body: UpdateBody
-  createdAt: number
-}
+export const UpdateSchema = z.object({
+  id: z.string(),
+  seq: z.number(),
+  body: UpdateBodySchema,
+  createdAt: z.number()
+})
+
+export type Update = z.infer<typeof UpdateSchema>
 
 /**
  * Socket events from server to client
@@ -55,48 +54,60 @@ export interface ClientToServerEvents {
 /**
  * Session information
  */
-export interface Session {
-  createdAt: number
-  id: string
-  seq: number
-  updatedAt: number
-}
+export const SessionSchema = z.object({
+  createdAt: z.number(),
+  id: z.string(),
+  seq: z.number(),
+  updatedAt: z.number()
+})
+
+export type Session = z.infer<typeof SessionSchema>
 
 /**
  * Session message from API
  */
-export interface SessionMessage {
-  content: SessionMessageContent
-  createdAt: number
-  id: string
-  seq: number
-  updatedAt: number
-}
+export const SessionMessageSchema = z.object({
+  content: SessionMessageContentSchema,
+  createdAt: z.number(),
+  id: z.string(),
+  seq: z.number(),
+  updatedAt: z.number()
+})
+
+export type SessionMessage = z.infer<typeof SessionMessageSchema>
 
 /**
  * API response types
  */
-export interface CreateSessionResponse {
-  session: {
-    id: string
-    tag: string
-    seq: number
-    createdAt: number
-    updatedAt: number
-  }
-}
+export const CreateSessionResponseSchema = z.object({
+  session: z.object({
+    id: z.string(),
+    tag: z.string(),
+    seq: z.number(),
+    createdAt: z.number(),
+    updatedAt: z.number()
+  })
+})
 
-export type UserMessage = {
-  role: 'user',
-  body: {
-    type: 'text',
-    text: string
-  }
-}
+export type CreateSessionResponse = z.infer<typeof CreateSessionResponseSchema>
 
-export type AgentMessage = {
-  role: 'agent',
-  body: any
-}
+export const UserMessageSchema = z.object({
+  role: z.literal('user'),
+  content: z.object({
+    type: z.literal('text'),
+    text: z.string()
+  })
+})
 
-export type MessageContent = UserMessage | AgentMessage;
+export type UserMessage = z.infer<typeof UserMessageSchema>
+
+export const AgentMessageSchema = z.object({
+  role: z.literal('agent'),
+  content: z.any()
+})
+
+export type AgentMessage = z.infer<typeof AgentMessageSchema>
+
+export const MessageContentSchema = z.union([UserMessageSchema, AgentMessageSchema])
+
+export type MessageContent = z.infer<typeof MessageContentSchema>
