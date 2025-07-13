@@ -97,10 +97,7 @@ export class ApiSessionClient extends EventEmitter {
     const encrypted = encodeBase64(encrypt(content, this.secret));
     this.socket.emit('message', {
       sid: this.sessionId,
-      message: {
-        c: encrypted,
-        t: 'encrypted'
-      }
+      message: encrypted
     });
   }
 
