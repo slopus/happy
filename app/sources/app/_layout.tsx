@@ -26,12 +26,12 @@ SplashScreen.setOptions({
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  initialRouteName: 'home',
+  initialRouteName: 'index',
 };
 
 function HeaderRight() {
   const router = useRouter();
-  
+
   return (
     <Pressable
       onPress={() => router.push('/about')}
@@ -74,6 +74,7 @@ export default function RootLayout() {
     <AuthProvider initialCredentials={initState.credentials}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack
+          initialRouteName='index'
           screenOptions={{
             headerShadowVisible: false,
             contentStyle: {
@@ -82,7 +83,7 @@ export default function RootLayout() {
           }}
         >
           <Stack.Screen
-            name="home"
+            name="index"
             options={{
               headerShown: true,
               headerTitle: 'Happy Coder',

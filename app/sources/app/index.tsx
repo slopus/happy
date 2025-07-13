@@ -7,6 +7,8 @@ import * as React from 'react';
 import { decodeBase64, encodeBase64 } from "@/auth/base64";
 import { authGetToken } from "@/auth/authGetToken";
 import { useSessions } from "@/sync/useSessions";
+import { useUpdates } from "@/hooks/useUpdates";
+import { UpdateBanner } from "@/components/UpdateBanner";
 
 export default function Home() {
     const auth = useAuth();
@@ -20,6 +22,7 @@ export default function Home() {
 
 function Authenticated() {
     const { sessions, isLoaded } = useSessions();
+    const { updateAvailable, reloadApp } = useUpdates();
 
     if (!isLoaded) {
         return (
@@ -29,17 +32,19 @@ function Authenticated() {
         )
     }
 
-    if (sessions.length === 0) {
-        return (
-            <View style={{ flexGrow: 1, flexBasis: 0, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
-                <Text>No sessions</Text>
-            </View>
-        )
-    }
-
     return (
-        <View style={{ flexGrow: 1, flexBasis: 0, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
-            <Text>TODO</Text>
+        <View style={{ flex: 1 }}>
+            {updateAvailable && <UpdateBanner onReload={reloadApp} />}
+
+            {sessions.length === 0 ? (
+                <View style={{ flexGrow: 1, flexBasis: 0, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+                    <Text>No sessions</Text>
+                </View>
+            ) : (
+                <View style={{ flexGrow: 1, flexBasis: 0, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+                    <Text>TODO</Text>
+                </View>
+            )}
         </View>
     )
 }
