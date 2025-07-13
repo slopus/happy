@@ -368,30 +368,6 @@ export async function startApi() {
         serveClient: false // Don't serve the client files
     });
     
-    // Debug WebSocket upgrade
-    app.server.on('upgrade', (request, socket, head) => {
-        log({ module: 'api' }, `WebSocket upgrade request received for URL: ${request.url}`);
-        log({ module: 'api' }, `Headers: ${JSON.stringify(request.headers)}`);
-    });
-
-    // Debug Socket.IO engine
-    io.engine.on('connection_error', (err: any) => {
-        log({ module: 'websocket' }, `Connection error: ${err.req}, ${err.code}, ${err.message}, ${err.context}`);
-    });
-
-    // More debugging
-    io.engine.on('initial_headers', (headers: any, req: any) => {
-        log({ module: 'websocket' }, `Initial headers for ${req.url}`);
-    });
-
-    io.engine.on('connection', (socket: any) => {
-        log({ module: 'websocket' }, `Engine level connection from ${socket.remoteAddress}`);
-    });
-
-    // Log Socket.IO initialization
-    log({ module: 'websocket' }, `Socket.IO server initialized on path: /v1/updates`);
-    log({ module: 'websocket' }, `Server listening on http://localhost:${port}`);
-    
     // Track connected users
     const userSockets = new Map<string, Set<Socket>>();
 
