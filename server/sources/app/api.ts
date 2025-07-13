@@ -124,6 +124,7 @@ export async function startApi() {
             take: 150,
             select: {
                 id: true,
+                tag: true,
                 seq: true,
                 createdAt: true,
                 updatedAt: true
@@ -133,10 +134,55 @@ export async function startApi() {
         return reply.send({
             sessions: sessions.map((v) => ({
                 id: v.id,
+                tag: v.tag,
                 seq: v.seq,
                 createdAt: v.createdAt.getTime(),
                 updatedAt: v.updatedAt.getTime()
             }))
+        });
+    });
+
+    // Create or load session by tag
+    typed.post('/v1/sessions', {
+        schema: {
+            body: z.object({
+                tag: z.string()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.user.id;
+        const { tag } = request.body;
+
+        const session = await db.session.upsert({
+            where: {
+                accountId_tag: {
+                    accountId: userId,
+                    tag: tag
+                }
+            },
+            update: {},
+            create: {
+                accountId: userId,
+                tag: tag
+            },
+            select: {
+                id: true,
+                tag: true,
+                seq: true,
+                createdAt: true,
+                updatedAt: true
+            }
+        });
+
+        return reply.send({
+            session: {
+                id: session.id,
+                tag: session.tag,
+                seq: session.seq,
+                createdAt: session.createdAt.getTime(),
+                updatedAt: session.updatedAt.getTime()
+            }
         });
     });
 
@@ -311,7 +357,7 @@ export async function startApi() {
         transports: ['websocket'],
         pingTimeout: 45000,
         pingInterval: 15000,
-        path: '/session/stream/',
+        path: '/v1/updates',
         allowUpgrades: true,
         upgradeTimeout: 10000,
         connectTimeout: 20000
