@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
+import { initializeSync, disconnectSync } from '@/sync/syncInit';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -13,6 +14,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children, initialCredentials }: { children: ReactNode; initialCredentials: AuthCredentials | null }) {
     const [isAuthenticated, setIsAuthenticated] = useState(!!initialCredentials);
     const [credentials, setCredentials] = useState<AuthCredentials | null>(initialCredentials);
+
+    useEffect(() => {
+        if (credentials) {
+            initializeSync(credentials);
+        } else {
+            disconnectSync();
+        }
+    }, [credentials]);
 
     const login = async (token: string, secret: string) => {
         const newCredentials: AuthCredentials = { token, secret };
