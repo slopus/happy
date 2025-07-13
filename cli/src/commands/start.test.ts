@@ -9,12 +9,11 @@ import { authGetToken, getOrCreateSecretKey } from '#auth/auth'
 import { SessionService } from '#session/service'
 import { SocketClient } from '#socket/client'
 import { getConfig } from '#utils/config'
-import { expect } from 'chai'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { ChildProcess, execSync, spawn } from 'node:child_process'
 import { join } from 'node:path'
 
-describe('CLI bin/dev.js Integration <-> server <-> mocked client', function() {
-  this.timeout(30_000) // 30 second timeout for integration tests
+describe('CLI bin/dev.js Integration <-> server <-> mocked client', () => {
   
   let cliProcess: ChildProcess | null = null
   const projectRoot = process.cwd()
@@ -39,7 +38,7 @@ describe('CLI bin/dev.js Integration <-> server <-> mocked client', function() {
     }
   })
 
-  it('Sanity check: should show version with --version flag', (done) => {
+  it('Sanity check: should show version with --version flag', async () => {
     const outputs: string[] = []
     let processExited = false
     
@@ -53,30 +52,33 @@ describe('CLI bin/dev.js Integration <-> server <-> mocked client', function() {
       outputs.push(data.toString())
     })
     
-    cliProcess.on('exit', (code, _signal) => {
-      processExited = true
+    // Create a promise that resolves when process exits
+    await new Promise<void>((resolve, reject) => {
+      cliProcess!.on('exit', (code, _signal) => {
+        processExited = true
+        
+        // Should exit successfully
+        expect(code).toBe(0)
+        
+        // Should show version
+        const output = outputs.join('')
+        expect(output).toMatch(/\d+\.\d+\.\d+/) // Matches semantic version
+        
+        resolve()
+      })
       
-      // Should exit successfully
-      expect(code).to.equal(0)
+      cliProcess!.on('error', (error) => {
+        reject(error)
+      })
       
-      // Should show version
-      const output = outputs.join('')
-      expect(output).to.match(/\d+\.\d+\.\d+/) // Matches semantic version
-      
-      done()
+      // Set a timeout in case process doesn't exit
+      setTimeout(() => {
+        if (!processExited) {
+          cliProcess?.kill('SIGTERM')
+          reject(new Error('CLI process did not exit within timeout'))
+        }
+      }, 5000)
     })
-    
-    cliProcess.on('error', (error) => {
-      done(error)
-    })
-    
-    // Set a timeout in case process doesn't exit
-    setTimeout(() => {
-      if (!processExited) {
-        cliProcess?.kill('SIGTERM')
-        done(new Error('CLI process did not exit within timeout'))
-      }
-    }, 5000)
   })
   
   /**
@@ -347,5 +349,5 @@ describe('CLI bin/dev.js Integration <-> server <-> mocked client', function() {
     }
     
     return testResult
-  })
+  }, 30_000)
 })

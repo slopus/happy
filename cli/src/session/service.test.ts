@@ -7,7 +7,7 @@
 
 import { authGetToken, getOrCreateSecretKey } from '#auth/auth'
 import { getConfig } from '#utils/config'
-import { expect } from 'chai'
+import { describe, it, expect, beforeAll } from 'vitest'
 
 import type { CreateSessionResponse, GetMessagesResponse, SendMessageResponse } from './types.js'
 
@@ -17,7 +17,7 @@ describe('SessionService', () => {
   let sessionService: SessionService
   let authToken: string
   
-  before(async () => {
+  beforeAll(async () => {
     // Get auth token for tests
     const config = getConfig()
     const secret = await getOrCreateSecretKey()
@@ -32,13 +32,13 @@ describe('SessionService', () => {
     const tag = `test-session-${Date.now()}`
     const sessionResponse: CreateSessionResponse = await sessionService.createSession(tag)
     
-    expect(sessionResponse).to.be.an('object')
-    expect(sessionResponse.session).to.be.an('object')
-    expect(sessionResponse.session.id).to.be.a('string')
-    expect(sessionResponse.session.tag).to.equal(tag)
-    expect(sessionResponse.session.seq).to.be.a('number')
-    expect(sessionResponse.session.createdAt).to.be.a('number')
-    expect(sessionResponse.session.updatedAt).to.be.a('number')
+    expect(sessionResponse).toBeTypeOf('object')
+    expect(sessionResponse.session).toBeTypeOf('object')
+    expect(sessionResponse.session.id).toBeTypeOf('string')
+    expect(sessionResponse.session.tag).toBe(tag)
+    expect(sessionResponse.session.seq).toBeTypeOf('number')
+    expect(sessionResponse.session.createdAt).toBeTypeOf('number')
+    expect(sessionResponse.session.updatedAt).toBeTypeOf('number')
     
     const sessionId = sessionResponse.session.id
     
@@ -50,35 +50,35 @@ describe('SessionService', () => {
     
     const sendResponse: SendMessageResponse = await sessionService.sendMessage(sessionId, messageContent)
     
-    expect(sendResponse).to.be.an('object')
-    expect(sendResponse.message).to.be.an('object')
-    expect(sendResponse.message.id).to.be.a('string')
-    expect(sendResponse.message.seq).to.be.a('number')
-    expect(sendResponse.message.content).to.be.an('object')
-    expect(sendResponse.message.content.c).to.be.a('string')
-    expect(sendResponse.message.content.t).to.equal('encrypted')
-    expect(sendResponse.message.createdAt).to.be.a('number')
-    expect(sendResponse.message.updatedAt).to.be.a('number')
+    expect(sendResponse).toBeTypeOf('object')
+    expect(sendResponse.message).toBeTypeOf('object')
+    expect(sendResponse.message.id).toBeTypeOf('string')
+    expect(sendResponse.message.seq).toBeTypeOf('number')
+    expect(sendResponse.message.content).toBeTypeOf('object')
+    expect(sendResponse.message.content.c).toBeTypeOf('string')
+    expect(sendResponse.message.content.t).toBe('encrypted')
+    expect(sendResponse.message.createdAt).toBeTypeOf('number')
+    expect(sendResponse.message.updatedAt).toBeTypeOf('number')
     
     // 3. Read messages from the session
     const getResponse: GetMessagesResponse = await sessionService.getMessages(sessionId)
     
-    expect(getResponse).to.be.an('object')
-    expect(getResponse.messages).to.be.an('array')
-    expect(getResponse.messages.length).to.be.greaterThan(0)
+    expect(getResponse).toBeTypeOf('object')
+    expect(Array.isArray(getResponse.messages)).toBe(true)
+    expect(getResponse.messages.length).toBeGreaterThan(0)
     
     // Find our message (should be the first one since it's ordered by createdAt desc)
     const retrievedMessage = getResponse.messages[0]
-    expect(retrievedMessage).to.be.an('object')
-    expect(retrievedMessage.id).to.equal(sendResponse.message.id)
-    expect(retrievedMessage.seq).to.equal(sendResponse.message.seq)
-    expect(retrievedMessage.content).to.be.an('object')
-    expect(retrievedMessage.content.c).to.equal(sendResponse.message.content.c)
-    expect(retrievedMessage.content.t).to.equal('encrypted')
+    expect(retrievedMessage).toBeTypeOf('object')
+    expect(retrievedMessage.id).toBe(sendResponse.message.id)
+    expect(retrievedMessage.seq).toBe(sendResponse.message.seq)
+    expect(retrievedMessage.content).toBeTypeOf('object')
+    expect(retrievedMessage.content.c).toBe(sendResponse.message.content.c)
+    expect(retrievedMessage.content.t).toBe('encrypted')
     
     // 4. Decrypt the retrieved message and verify it matches what we sent
     const decryptedContent = sessionService.decryptContent(retrievedMessage.content.c)
-    expect(decryptedContent).to.deep.equal(messageContent)
+    expect(decryptedContent).toEqual(messageContent)
     
     console.log('✅ Complete workflow test passed:')
     console.log(`  - Created session: ${sessionId}`)

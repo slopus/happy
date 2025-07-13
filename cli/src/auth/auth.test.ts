@@ -7,7 +7,7 @@
 
 import { getConfig } from '#utils/config'
 import { getSecretKeyPath } from '#utils/paths'
-import { expect } from 'chai'
+import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { existsSync, unlinkSync } from 'node:fs'
 
 import { authChallenge, authGetToken, generateHandyUrl, getOrCreateSecretKey } from './auth.js'
@@ -34,16 +34,16 @@ describe('Authentication', () => {
     it('should create a new secret key if none exists', async () => {
       const secret = await getOrCreateSecretKey()
       
-      expect(secret).to.be.an.instanceOf(Uint8Array)
-      expect(secret.length).to.equal(32)
-      expect(existsSync(keyPath)).to.equal(true)
+      expect(secret).toBeInstanceOf(Uint8Array)
+      expect(secret.length).toBe(32)
+      expect(existsSync(keyPath)).toBe(true)
     })
     
     it('should return the same key on subsequent calls', async () => {
       const secret1 = await getOrCreateSecretKey()
       const secret2 = await getOrCreateSecretKey()
       
-      expect(encodeBase64(secret1)).to.equal(encodeBase64(secret2))
+      expect(encodeBase64(secret1)).toBe(encodeBase64(secret2))
     })
   })
   
@@ -52,14 +52,14 @@ describe('Authentication', () => {
       const secret = await getOrCreateSecretKey()
       const { challenge, publicKey, signature } = authChallenge(secret)
       
-      expect(challenge).to.be.instanceOf(Uint8Array)
-      expect(challenge.length).to.equal(32)
+      expect(challenge).toBeInstanceOf(Uint8Array)
+      expect(challenge.length).toBe(32)
       
-      expect(signature).to.be.instanceOf(Uint8Array)
-      expect(signature.length).to.equal(64)
+      expect(signature).toBeInstanceOf(Uint8Array)
+      expect(signature.length).toBe(64)
       
-      expect(publicKey).to.be.instanceOf(Uint8Array)
-      expect(publicKey.length).to.equal(32)
+      expect(publicKey).toBeInstanceOf(Uint8Array)
+      expect(publicKey.length).toBe(32)
     })
   })
   
@@ -70,8 +70,8 @@ describe('Authentication', () => {
       
       const token = await authGetToken(config.serverUrl, secret)
       
-      expect(token).to.be.a('string')
-      expect(token.length).to.be.greaterThan(0)
+      expect(token).toBeTypeOf('string')
+      expect(token.length).toBeGreaterThan(0)
     })
     
     it('should get valid tokens for the same public key', async () => {
@@ -82,8 +82,8 @@ describe('Authentication', () => {
       const token2 = await authGetToken(config.serverUrl, secret)
       
       // Both should be valid JWT tokens (format: header.payload.signature)
-      expect(token1.split('.')).to.have.lengthOf(3)
-      expect(token2.split('.')).to.have.lengthOf(3)
+      expect(token1.split('.')).toHaveLength(3)
+      expect(token2.split('.')).toHaveLength(3)
     })
   })
   
@@ -92,8 +92,8 @@ describe('Authentication', () => {
       const secret = await getOrCreateSecretKey()
       const url = generateHandyUrl(secret)
       
-      expect(url).to.be.a('string')
-      expect(url).to.match(/^handy:\/\/[A-Za-z0-9_-]+$/)
+      expect(url).toBeTypeOf('string')
+      expect(url).toMatch(/^handy:\/\/[A-Za-z0-9_-]+$/)
     })
     
     it('should generate URLs that do not contain base64 padding or unsafe characters', async () => {
@@ -104,12 +104,12 @@ describe('Authentication', () => {
       const base64urlPart = url.slice('handy://'.length)
       
       // Base64url should not contain +, /, or = characters
-      expect(base64urlPart).to.not.include('+')
-      expect(base64urlPart).to.not.include('/')
-      expect(base64urlPart).to.not.include('=')
+      expect(base64urlPart).not.toContain('+')
+      expect(base64urlPart).not.toContain('/')
+      expect(base64urlPart).not.toContain('=')
       
       // Should be base64url safe characters only
-      expect(base64urlPart).to.match(/^[A-Za-z0-9_-]+$/)
+      expect(base64urlPart).toMatch(/^[A-Za-z0-9_-]+$/)
     })
     
     it('should generate consistent URLs for the same secret', async () => {
@@ -117,7 +117,7 @@ describe('Authentication', () => {
       const url1 = generateHandyUrl(secret)
       const url2 = generateHandyUrl(secret)
       
-      expect(url1).to.equal(url2)
+      expect(url1).toBe(url2)
     })
   })
 })
