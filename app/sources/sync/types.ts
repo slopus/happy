@@ -88,8 +88,16 @@ export const UpdateNewMessageSchema = z.object({
     }),
 });
 
+export const UpdateNewSessionSchema = z.object({
+    t: z.literal('new-session'),
+    id: z.string(), // Session ID
+    createdAt: z.number(),
+    updatedAt: z.number(),
+});
+
 export const UpdateSchema = z.discriminatedUnion('t', [
     UpdateNewMessageSchema,
+    UpdateNewSessionSchema
 ]);
 
 export type UpdateNewMessage = z.infer<typeof UpdateNewMessageSchema>;
@@ -102,7 +110,7 @@ export type Update = z.infer<typeof UpdateSchema>;
 export const SessionUpdateSchema = z.object({
     id: z.string(),
     seq: z.number(),
-    content: UpdateSchema,
+    body: UpdateSchema,
     createdAt: z.number(),
 });
 

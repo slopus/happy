@@ -20,9 +20,6 @@ export function useSessions() {
     return {
         sessions,
         isLoaded,
-        createSession: sessionsEngine.createSession.bind(sessionsEngine),
-        sendMessage: sessionsEngine.sendMessage.bind(sessionsEngine),
-        sendTextMessage: sessionsEngine.sendTextMessage.bind(sessionsEngine),
         getSession: sessionsEngine.getSession.bind(sessionsEngine),
         getSessionMessages: sessionsEngine.getSessionMessages.bind(sessionsEngine)
     };
