@@ -11,6 +11,7 @@ import { useUpdates } from "@/hooks/useUpdates";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
 import { Session } from "@/sync/types";
+import { useRouter } from "expo-router";
 
 export default function Home() {
     const auth = useAuth();
@@ -135,6 +136,7 @@ function Authenticated() {
 
 function NotAuthenticated() {
     const auth = useAuth();
+    const router = useRouter();
     const [isLoading, setIsLoading] = React.useState(false);
 
     React.useEffect(() => {
@@ -144,22 +146,7 @@ function NotAuthenticated() {
                 await CameraView.dismissScanner();
                 try {
                     const tail = event.data.slice('handy://'.length);
-
-                    // Read secret
-                    console.log(tail);
-                    const secret = decodeBase64(tail, 'base64url');
-                    console.log(secret);
-                    if (secret.length !== 32) {
-                        throw new Error('Invalid secret');
-                    }
-
-                    // Exchange secret for token
-                    const token = await authGetToken(secret);
-                    console.log(token);
-
-                    if (token && secret) {
-                        await auth.login(token, encodeBase64(secret, 'base64url'));
-                    }
+                    await processAuthCode(tail);
                 } catch (e) {
                     console.error(e);
                     Alert.alert('Error', 'Failed to login', [{ text: 'OK' }]);
@@ -173,6 +160,23 @@ function NotAuthenticated() {
         };
     }, [auth]);
 
+    const processAuthCode = async (code: string) => {
+        console.log(code);
+        const secret = decodeBase64(code, 'base64url');
+        console.log(secret);
+        if (secret.length !== 32) {
+            throw new Error('Invalid secret');
+        }
+
+        // Exchange secret for token
+        const token = await authGetToken(secret);
+        console.log(token);
+
+        if (token && secret) {
+            await auth.login(token, encodeBase64(secret, 'base64url'));
+        }
+    };
+
     const openCamera = async () => {
         await CameraView.launchScanner({
             barcodeTypes: ['qr']
@@ -185,12 +189,17 @@ function NotAuthenticated() {
             <Text style={{ textAlign: 'center', fontSize: 24, marginBottom: 32, marginHorizontal: 32 }}>
                 Scan the QR code from your terminal to login
             </Text>
-            <View style={{ maxWidth: 200, width: '100%' }}>
+            <View style={{ maxWidth: 200, width: '100%', marginBottom: 16 }}>
                 <RoundButton
-                    loading={isLoading ? true : undefined}
+                    loading={isLoading}
                     title="Open Camera"
                     action={openCamera} />
             </View>
+            <RoundButton
+                title="Enter Code Manually"
+                onPress={() => router.push('/manual-entry')}
+                display="inverted" />
         </View>
     )
 }
+
