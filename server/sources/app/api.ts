@@ -24,7 +24,7 @@ export async function startApi() {
     log('Starting API...');
     const tokenGenerator = await privacyKit.createPersistentTokenGenerator({
         service: 'handy',
-        seed: process.env.SEED || 'handy'
+        seed: process.env.HANDY_MASTER_SECRET!
     });
     const tokenVerifier = await privacyKit.createPersistentTokenVerifier({
         service: 'handy',

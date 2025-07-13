@@ -54,6 +54,8 @@ spec:
   dataFrom:
     - extract:
         key: /handy-db
+    - extract:
+        key: /handy-master
 ---
 apiVersion: v1
 kind: Service
