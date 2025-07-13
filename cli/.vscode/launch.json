@@ -1,0 +1,93 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "node",
+      "request": "attach",
+      "name": "Attach",
+      "port": 9229,
+      "skipFiles": [
+        "<node_internals>/**"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Execute Command",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--loader",
+        "ts-node/esm",
+        "--no-warnings=ExperimentalWarning"
+      ],
+      "program": "${workspaceFolder}/bin/dev.js",
+      "args": [
+        "hello",
+        "world"
+      ]
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run All Tests",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "test"
+      ],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "NODE_OPTIONS": "--loader=ts-node/esm --no-warnings=ExperimentalWarning"
+      },
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run Current Test File",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--loader",
+        "ts-node/esm",
+        "--no-warnings=ExperimentalWarning"
+      ],
+      "program": "${workspaceFolder}/node_modules/.bin/mocha",
+      "args": [
+        "--forbid-only",
+        "${file}"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Debug Hello Command",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "runtimeExecutable": "node",
+      "runtimeArgs": [
+        "--loader",
+        "ts-node/esm",
+        "--no-warnings=ExperimentalWarning"
+      ],
+      "program": "${workspaceFolder}/bin/dev.js",
+      "args": [
+        "hello",
+        "friend",
+        "--from",
+        "debugger"
+      ],
+      "console": "integratedTerminal"
+    }
+  ]
+}

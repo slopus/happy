@@ -1,0 +1,56 @@
+# test
+name: version, tag and github release
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+      - name: Check if version already exists
+        id: version-check
+        run: |
+          package_version=$(node -p "require('./package.json').version")
+          exists=$(gh api repos/${{ github.repository }}/releases/tags/v$package_version >/dev/null 2>&1 && echo "true" || echo "")
+
+          if [ -n "$exists" ];
+          then
+            echo "Version v$package_version already exists"
+            echo "::warning file=package.json,line=1::Version v$package_version already exists - no release will be created. If you want to create a new release, please update the version in package.json and push again."
+            echo "skipped=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version v$package_version does not exist. Creating release..."
+            echo "skipped=false" >> $GITHUB_OUTPUT
+            echo "tag=v$package_version" >> $GITHUB_OUTPUT
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      - name: Setup git
+        if: ${{ steps.version-check.outputs.skipped == 'false' }}
+        run: |
+          git config --global user.email ${{ secrets.GH_EMAIL }}
+          git config --global user.name ${{ secrets.GH_USERNAME }}
+      - name: Generate oclif README
+        if: ${{ steps.version-check.outputs.skipped == 'false' }}
+        id: oclif-readme
+        run: |
+          npm install
+          npm exec oclif readme
+          if [ -n "$(git status --porcelain)" ]; then
+            git add .
+            git commit -am "chore: update README.md"
+            git push -u origin ${{ github.ref_name }}
+          fi
+      - name: Create Github Release
+        uses: ncipollo/release-action@2c591bcc8ecdcd2db72b97d6147f871fcd833ba5
+        if: ${{ steps.version-check.outputs.skipped == 'false' }}
+        with:
+          name: ${{ steps.version-check.outputs.tag }}
+          tag: ${{ steps.version-check.outputs.tag }}
+          commit: ${{ github.ref_name }}
+          token: ${{ secrets.GH_TOKEN }}
+          skipIfReleaseExists: true
