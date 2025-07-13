@@ -18,5 +18,4 @@ pnpm-lock.yaml
 
 # Secret key
 .handy-claude-code.key
-
-
+.claude/settings.local.json
