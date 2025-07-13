@@ -372,6 +372,7 @@ export async function startApi() {
         const token = socket.handshake.auth.token as string;
 
         if (!token) {
+            log({ module: 'websocket' }, `No token provided`);
             socket.emit('error', { message: 'Missing authentication token' });
             socket.disconnect();
             return;
@@ -379,10 +380,13 @@ export async function startApi() {
 
         const verified = await tokenVerifier.verify(token);
         if (!verified) {
+            log({ module: 'websocket' }, `Invalid token provided`);
             socket.emit('error', { message: 'Invalid authentication token' });
             socket.disconnect();
             return;
         }
+
+        log({ module: 'websocket' }, `Token verified: ${verified.user}`);
 
         const userId = verified.user as string;
 
