@@ -37,3 +37,4 @@ yarn-error.*
 *.tsbuildinfo
 
 .claude/settings.local.json
+.plan
