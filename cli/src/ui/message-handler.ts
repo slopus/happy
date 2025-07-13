@@ -16,12 +16,12 @@
  * - Prepared for future encryption support
  */
 
-import { Claude, ClaudeOptions } from '#claude/claude'
-import { ClaudeResponse } from '#claude/types'
-import { SessionService } from '#session/service'
-import { SocketClient } from '#socket/client'
-import { SessionMessageContent, TextInputMessage, Update } from '#socket/types'
-import { logger } from '#utils/logger'
+import { Claude, ClaudeOptions } from '@/claude/claude'
+import { ClaudeResponse } from '@/claude/types'
+import { SessionService } from '@/api/api'
+import { SocketClient } from '@/api/apiSession'
+import { SessionMessageContent, TextInputMessage, Update } from '@/api/types'
+import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 
 export interface MessageHandlerOptions {
@@ -96,13 +96,13 @@ export class MessageHandler extends EventEmitter {
       await this.sessionService.sendMessage(this.sessionId, {
         data: response,
         type: 'claude-response'
-      })
+      });
       
       // Emit for local handling
-      this.emit('claudeResponse', response)
+      this.emit('claudeResponse', response);
     } catch (error) {
-      logger.error('Failed to send Claude response to server:', error)
-      this.emit('error', error)
+      logger.error('Failed to send Claude response to server:', error);
+      this.emit('error', error);
     }
   }
   
@@ -215,7 +215,7 @@ export class MessageHandler extends EventEmitter {
     })
     
     // Handle Claude exit
-    this.claude.on('exit', (exitInfo) => {
+    this.claude.on('exit', (exitInfo: { code: number | null; signal: string | null }) => {
       logger.info('Claude exited:', exitInfo)
       this.emit('claudeExit', exitInfo)
     })

@@ -22,7 +22,7 @@ export interface SessionMessageContent {
  * Update body for new messages
  */
 export interface UpdateBody {
-  c: SessionMessageContent | string   // The encrypted content (nested object or string)
+  c: SessionMessageContent
   mid: string // Message ID
   sid: string // Session ID
   t: 'new-message'
@@ -32,35 +32,24 @@ export interface UpdateBody {
  * Update event from server
  */
 export interface Update {
-  content: UpdateBody
-  createdAt: number
   id: string
   seq: number
+  body: UpdateBody
+  createdAt: number
 }
 
 /**
  * Socket events from server to client
  */
 export interface ServerToClientEvents {
-  auth: (data: { success: boolean; user: string }) => void
-  error: (data: { message: string }) => void
   update: (data: Update) => void
 }
 
 /**
  * Socket events from client to server
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface ClientToServerEvents {
-  // Currently no client-to-server events defined in the server
-}
-
-/**
- * Client message types that we'll handle locally
- */
-export interface TextInputMessage {
-  content: string
-  type: 'text-input'
+  message: (data: { sid: string, message: any }) => void
 }
 
 /**
@@ -83,3 +72,31 @@ export interface SessionMessage {
   seq: number
   updatedAt: number
 }
+
+/**
+ * API response types
+ */
+export interface CreateSessionResponse {
+  session: {
+    id: string
+    tag: string
+    seq: number
+    createdAt: number
+    updatedAt: number
+  }
+}
+
+export type UserMessage = {
+  role: 'user',
+  body: {
+    type: 'text',
+    text: string
+  }
+}
+
+export type AgentMessage = {
+  role: 'agent',
+  body: any
+}
+
+export type MessageContent = UserMessage | AgentMessage;
