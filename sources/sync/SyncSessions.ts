@@ -1,24 +1,22 @@
-import { syncEngine } from '@/sync/SyncEngine';
+import { syncSocket } from '@/sync/SyncSocket';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { MessageEncryption } from '@/sync/encryption';
 import {
     Session,
-    EncryptedMessage,
-    DecryptedMessage,
-    MessageContent,
-    MessageContentSchema,
     SessionUpdateSchema,
+    SourceMessage,
 } from '@/sync/types';
 
 const API_ENDPOINT = 'https://handy-api.korshakov.org';
 
 type SessionsListener = (sessions: Session[], isLoaded: boolean) => void;
 
-class SessionsEngine {
+class SyncSessions {
+
     private sessions: Map<string, Session> = new Map();
     private listeners: Set<SessionsListener> = new Set();
-    private credentials: AuthCredentials | null = null;
-    private encryption: MessageEncryption | null = null;
+    private credentials!: AuthCredentials;
+    private encryption!: MessageEncryption;
     private isLoaded = false;
     private wasConnected = false;
 
@@ -55,7 +53,7 @@ class SessionsEngine {
                 seq: number;
                 createdAt: number;
                 updatedAt: number;
-                lastMessage: EncryptedMessage | null;
+                lastMessage: SourceMessage | null;
             }>;
 
             // Process and decrypt sessions
@@ -63,7 +61,7 @@ class SessionsEngine {
             for (const session of sessions) {
                 const processedSession: Session = {
                     ...session,
-                    lastMessage: session.lastMessage ? session.lastMessage.content.t === 'encrypted' ? this.decryptContent(session.lastMessage.content.c) : null : null
+                    lastMessage: this.encryption.decryptMessage(session.lastMessage)
                 };
                 this.sessions.set(session.id, processedSession);
             }
@@ -79,10 +77,10 @@ class SessionsEngine {
 
     private subscribeToUpdates() {
         // Subscribe to message updates
-        syncEngine.onMessage('update', this.handleUpdate.bind(this));
+        syncSocket.onMessage('update', this.handleUpdate.bind(this));
 
         // Subscribe to connection state changes
-        syncEngine.addListener((state) => {
+        syncSocket.addListener((state) => {
             if (state.isConnected && state.connectionStatus === 'connected') {
                 // Refresh sessions when socket reconnects (not on initial connection)
                 if (this.wasConnected) {
@@ -111,9 +109,7 @@ class SessionsEngine {
             const session = this.sessions.get(updateData.body.sid);
             if (session) {
                 // Update session with new message
-                const decryptedContent: MessageContent | null = updateData.body.c.t === 'encrypted' ? this.decryptContent(updateData.body.c.c) : null;
-
-                session.lastMessage = decryptedContent;
+                session.lastMessage = this.encryption.decryptMessage(updateData.body.message);
                 session.updatedAt = updateData.createdAt;
                 session.seq = updateData.seq;
 
@@ -127,21 +123,6 @@ class SessionsEngine {
         } else if (updateData.body.t ==='new-session') {
             this.fetchSessions(); // Just fetch sessions again
         }
-    }
-
-    private decryptContent(encryptedContent: string): MessageContent | null {
-        if (!this.encryption) return null;
-
-        const decrypted = this.encryption.decrypt(encryptedContent);
-        if (!decrypted) return null;
-
-        let result = MessageContentSchema.safeParse(decrypted);
-        if (!result.success) {
-            console.error('Invalid content received:', decrypted);
-            return null;
-        }
-
-        return result.data;
     }
 
     private sortSessions() {
@@ -163,60 +144,14 @@ class SessionsEngine {
         return () => this.listeners.delete(listener);
     }
 
-    getLoadedState(): boolean {
-        return this.isLoaded;
-    }
-
     getSessions(): Session[] {
         return Array.from(this.sessions.values());
     }
 
-    getSession(id: string): Session | undefined {
-        return this.sessions.get(id);
-    }
-
-    async getSessionMessages(sessionId: string): Promise<DecryptedMessage[]> {
-        if (!this.credentials) return [];
-
-        try {
-            const response = await fetch(`${API_ENDPOINT}/v1/sessions/${sessionId}/messages`, {
-                headers: {
-                    'Authorization': `Bearer ${this.credentials.token}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to fetch messages: ${response.status}`);
-            }
-
-            const data = await response.json();
-            const messages = data.messages as EncryptedMessage[];
-
-            // Decrypt all messages
-            return messages.map(msg => {
-                return {
-                    id: msg.id,
-                    seq: msg.seq,
-                    content: msg.content.t === 'encrypted' ? this.decryptContent(msg.content.c) : null,
-                    createdAt: msg.createdAt
-                };
-            });
-        } catch (error) {
-            console.error('Failed to fetch session messages:', error);
-            return [];
-        }
-    }
-
-    clear() {
-        this.sessions.clear();
-        this.listeners.clear();
-        this.credentials = null;
-        this.encryption = null;
-        this.isLoaded = false;
-        this.wasConnected = false;
+    getLoadedState(): boolean {
+        return this.isLoaded;
     }
 }
 
 // Global singleton instance
-export const sessionsEngine = new SessionsEngine();
+export const syncSessions = new SyncSessions();

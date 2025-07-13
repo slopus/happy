@@ -1,5 +1,5 @@
-import { syncEngine } from '@/sync/SyncEngine';
-import { sessionsEngine } from '@/sync/SessionsEngine';
+import { syncSocket } from '@/sync/SyncSocket';
+import { syncSessions } from '@/sync/SyncSessions';
 import { AuthCredentials } from '@/auth/tokenStorage';
 
 const SYNC_ENDPOINT = 'https://handy-api.korshakov.org';
@@ -8,25 +8,18 @@ let isInitialized = false;
 
 export async function initializeSync(credentials: AuthCredentials) {
     if (isInitialized) {
-        console.warn('Sync already initialized, updating token');
-        syncEngine.updateToken(credentials.token);
+        console.warn('Sync already initialized: ignoring');
         return;
     }
 
     // Initialize socket connection
-    syncEngine.initialize({
+    syncSocket.initialize({
         endpoint: SYNC_ENDPOINT,
         token: credentials.token
     });
 
     // Initialize sessions engine
-    await sessionsEngine.initialize(credentials);
+    await syncSessions.initialize(credentials);
 
     isInitialized = true;
-}
-
-export function disconnectSync() {
-    syncEngine.disconnect();
-    sessionsEngine.clear();
-    isInitialized = false;
 }

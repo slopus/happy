@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
-import { initializeSync, disconnectSync } from '@/sync/syncInit';
+import { initializeSync } from '@/sync/syncInit';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -18,8 +18,6 @@ export function AuthProvider({ children, initialCredentials }: { children: React
     useEffect(() => {
         if (credentials) {
             initializeSync(credentials);
-        } else {
-            disconnectSync();
         }
     }, [credentials]);
 
