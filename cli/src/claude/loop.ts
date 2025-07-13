@@ -9,9 +9,8 @@
  */
 
 import { ApiSessionClient } from "@/api/apiSession";
-import { Claude } from "./claude";
 import { UserMessage } from "@/api/types";
-import { logger } from "@/ui/logger";
+import { claude } from "./claude";
 
 export function startClaudeLoop(opts: {
     path: string
@@ -20,140 +19,66 @@ export function startClaudeLoop(opts: {
 }, session: ApiSessionClient) {
 
     let exiting = false;
-    let sessionId: string | undefined;
-    
-    // Message queue and processing state
     const messageQueue: UserMessage[] = [];
     let messageResolve: (() => void) | null = null;
-    
-    // Create claude instance
-    const claude = new Claude();
-    
-    // We'll set up event handlers per-turn inside the loop
-    
-    // Handle incoming messages
-    session.onUserMessage((message) => {
-        messageQueue.push(message);
-        // Wake up the loop if it's waiting
-        if (messageResolve) {
-            messageResolve();
-            messageResolve = null;
-        }
-    });
-    
-    // Main processing loop
-    const promise = (async () => {
-        while (!exiting) {
-            // Wait for messages if queue is empty
-            if (messageQueue.length === 0) {
-                await new Promise<void>((resolve) => {
-                    messageResolve = resolve;
-                    // Check again in case message arrived before we set resolver
-                    if (messageQueue.length > 0) {
-                        resolve();
-                        messageResolve = null;
-                    }
-                });
+    let sessionId: string | undefined;
+    let promise = (async () => {
+
+        // Handle incoming messages
+        session.onUserMessage((message) => {
+            messageQueue.push(message);
+            // Wake up the loop if it's waiting
+            if (messageResolve) {
+                messageResolve();
+                messageResolve = null;
             }
-            
-            // Exit check after waiting
-            if (exiting) break;
-            
-            // Batch collection: wait a short time to collect multiple messages
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            // Process all accumulated messages
+        });
+
+        while (!exiting) {
             if (messageQueue.length > 0) {
-                // Get all messages and clear queue
-                const messages = messageQueue.splice(0, messageQueue.length);
-                
-                // Combine all messages into one
-                const combinedText = messages
-                    .map(msg => msg.content.text)
-                    .join('\n\n');
-                
-                logger.info(`Processing ${messages.length} message(s)`);
-                
-                try {
-                    // Process with Claude
-                    await new Promise<void>((resolve, reject) => {
-                        let hasExited = false;
-                        
-                        // Set up response handler for this turn
-                        const handleResponse = (response: any) => {
-                            logger.debug('Claude response:', response);
-                            
-                            // Capture session ID for subsequent runs
-                            if (response.session_id) {
-                                sessionId = response.session_id;
+                const message = messageQueue.shift();
+                if (message) {
+                    for await (const output of claude({
+                        command: message.content.text,
+                        workingDirectory: opts.path,
+                        model: opts.model,
+                        permissionMode: opts.permissionMode,
+                    })) {
+
+                        // Handle exit
+                        if (output.type === 'exit') {
+                            if (output.code !== 0 || output.code === undefined) {
+                                session.sendMessage({
+                                    content: {
+                                        type: 'error',
+                                        error: output.error,
+                                        code: output.code,
+                                    },
+                                    role: 'assistant',
+                                });
                             }
-                            
-                            // Send response back to session
-                            session.sendMessage(response);
-                        };
-                        
-                        const handleExit = () => {
-                            if (!hasExited) {
-                                hasExited = true;
-                                // Clean up listeners
-                                claude.off('response', handleResponse);
-                                claude.off('error', handleError);
-                                claude.off('processError', handleProcessError);
-                                claude.off('exit', handleExit);
-                                resolve();
-                            }
-                        };
-                        
-                        const handleError = (error: string) => {
-                            logger.error('Claude error:', error);
+                            break;
+                        }
+
+                        // Handle JSON output
+                        if (output.type === 'json') {
                             session.sendMessage({
-                                type: 'error',
-                                error: error
+                                content: {
+                                    type: 'output',
+                                    data: output.data
+                                },
+                                role: 'assistant',
                             });
-                        };
-                        
-                        const handleProcessError = (error: Error) => {
-                            if (!hasExited) {
-                                hasExited = true;
-                                // Clean up listeners
-                                claude.off('response', handleResponse);
-                                claude.off('error', handleError);
-                                claude.off('processError', handleProcessError);
-                                claude.off('exit', handleExit);
-                                reject(error);
-                            }
-                        };
-                        
-                        // Set up listeners for this turn
-                        claude.on('response', handleResponse);
-                        claude.on('error', handleError);
-                        claude.on('processError', handleProcessError);
-                        claude.on('exit', handleExit);
-                        
-                        // Run Claude with combined input
-                        claude.runClaudeCodeTurn(
-                            combinedText,
-                            sessionId,
-                            {
-                                workingDirectory: opts.path,
-                                model: opts.model,
-                                permissionMode: opts.permissionMode || 'auto',
-                            }
-                        );
-                    });
-                    
-                } catch (error) {
-                    logger.error('Error processing messages:', error);
-                    session.sendMessage({
-                        type: 'error',
-                        error: error instanceof Error ? error.message : 'Unknown error'
-                    });
+                        }
+                    }
                 }
             }
+
+            // Wait for next message
+            await new Promise<void>((resolve) => {
+                messageResolve = resolve;
+            });
         }
-        
-        // Cleanup
-        claude.kill();
     })();
 
     return async () => {
