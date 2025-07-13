@@ -42,18 +42,18 @@ spec:
 apiVersion: external-secrets.io/v1beta1
 kind: ExternalSecret
 metadata:
-  name: handy-server-secrets
+  name: handy-secrets
 spec:
   refreshInterval: 1h
   secretStoreRef:
     name: vault-backend
     kind: SecretStore
   target:
-    name: handy-server-secrets
+    name: handy-secrets
     creationPolicy: Owner
   dataFrom:
     - extract:
-        key: /handy-database
+        key: /handy-db
 ---
 apiVersion: v1
 kind: Service
