@@ -2,11 +2,14 @@ import { Text, View, ScrollView, Pressable, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import { RoundButton } from '@/components/RoundButton';
+import { useAuth } from '@/auth/AuthContext';
 
 export default function AboutModal() {
     const router = useRouter();
     const appVersion = Constants.expoConfig?.version || '1.0.0';
     const jsVersion = Platform.Version;
+    const auth = useAuth();
 
     return (
         <View style={{ flex: 1, backgroundColor: 'white' }}>
@@ -40,9 +43,15 @@ export default function AboutModal() {
                 <View style={{ marginBottom: 24 }}>
                     <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>About</Text>
                     <Text style={{ fontSize: 16, lineHeight: 24, color: '#333' }}>
-                        Third-party mobile client for Claude Code. Access your coding assistant on the go with full encryption and real-time sync.
+                        Third-party mobile client for Claude Code. Access your coding assistant on the go with end-to-end encryption and real-time sync.
                     </Text>
                 </View>
+
+                {auth.isAuthenticated && (
+                    <View style={{ marginBottom: 24, alignSelf: 'flex-start' }}>
+                        <RoundButton title="Logout" onPress={() => auth.logout()} />
+                    </View>
+                )}
 
                 <View style={{ marginBottom: 24 }}>
                     <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>Features</Text>

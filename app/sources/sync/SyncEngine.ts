@@ -1,4 +1,5 @@
 import { io, Socket } from 'socket.io-client';
+import { TokenStorage } from '@/auth/tokenStorage';
 
 export interface SyncEngineConfig {
     endpoint: string;
@@ -48,6 +49,10 @@ class SyncEngine {
     onMessage(event: string, handler: (data: any) => void) {
         this.messageHandlers.set(event, handler);
         return () => this.messageHandlers.delete(event);
+    }
+
+    offMessage(event: string, handler: (data: any) => void) {
+        this.messageHandlers.delete(event);
     }
 
     connect() {
@@ -152,6 +157,28 @@ class SyncEngine {
                 this.connect();
             }
         }
+    }
+
+    async request(path: string, options?: RequestInit): Promise<Response> {
+        if (!this.config) {
+            throw new Error('SyncEngine not initialized');
+        }
+
+        const credentials = await TokenStorage.getCredentials();
+        if (!credentials) {
+            throw new Error('No authentication credentials');
+        }
+
+        const url = `${this.config.endpoint}${path}`;
+        const headers = {
+            'Authorization': `Bearer ${credentials.token}`,
+            ...options?.headers
+        };
+
+        return fetch(url, {
+            ...options,
+            headers
+        });
     }
 }
 
