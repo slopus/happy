@@ -1,218 +1,184 @@
-/**
- * Simplified Claude CLI integration
- * 
- * This module provides a simple interface to spawn Claude CLI for each command.
- * Each command runs in its own process and exits when complete.
- * 
- * Key responsibilities:
- * - Spawn Claude CLI with appropriate arguments
- * - Track session ID across command invocations
- * - Parse and emit Claude responses
- * - Handle process lifecycle for each command
- * 
- * Design decisions:
- * - One process per command (no stdin interaction)
- * - Session ID persisted in memory only
- * - Kill any existing process before starting new one
- * - Simple event-based API for responses
- */
-
+import { spawn } from 'node:child_process'
 import { logger } from '@/ui/logger'
-import { ChildProcess, spawn } from 'node:child_process'
-import { EventEmitter } from 'node:events'
+import { claudePath } from './claudePath'
 
-import { ClaudeResponse } from './types.js'
-
-export interface ClaudeOptions {
+export interface ClaudeProcessOptions {
+  command: string  // Natural language prompt for Claude
+  sessionId?: string
+  workingDirectory: string
   model?: string
   permissionMode?: 'auto' | 'default' | 'plan'
   skipPermissions?: boolean
-  workingDirectory: string
 }
 
+export interface ClaudeOutput {
+  type: 'json' | 'text' | 'error' | 'exit'
+  data?: any
+  error?: string
+  code?: number | null
+  signal?: string | null
+}
 
-// eslint-disable-next-line unicorn/prefer-event-target
-export class Claude extends EventEmitter {
-  private currentProcess?: ChildProcess
-  private currentSessionId?: string
+/**
+ * Launch Claude process and yield output lines
+ */
+export async function* claude(options: ClaudeProcessOptions): AsyncGenerator<ClaudeOutput> {
+  const args = buildArgs(options)
+  const path = claudePath();
   
-  /**
-   * Get the current session ID
-   */
-  getSessionId(): string | undefined {
-    return this.currentSessionId
-  }
+  logger.info('Spawning Claude CLI with args:', args)
   
-  /**
-   * Kill the current process if running
-   */
-  kill(): void {
-    if (this.currentProcess && !this.currentProcess.killed) {
-      logger.info('Killing Claude process')
-      this.currentProcess.kill()
-      this.currentProcess = undefined
-    }
-  }
+  const process = spawn(path, args, {
+    cwd: options.workingDirectory,
+    stdio: ['pipe', 'pipe', 'pipe'],
+    shell: false
+  })
   
-  /**
-   * Run a single Claude command
-   * Kills any existing process and spawns a new one
-   */
-  async runClaudeCodeTurn(
-    command: string, 
-    sessionId: string | undefined,
-    options: ClaudeOptions
-  ): Promise<void> {
-    // Kill any existing process - wait for it to exit
-    if (this.currentProcess && !this.currentProcess.killed) {
-      logger.info('Killing existing Claude process')
-      await this.killAndWait()
-    }
+  // Close stdin immediately (we don't send input)
+  process.stdin?.end()
+  
+  // Set up output processing
+  let outputBuffer = ''
+  let stderrBuffer = ''
+  let processExited = false
+  
+  // Create a queue for outputs
+  const outputQueue: ClaudeOutput[] = []
+  let outputResolve: (() => void) | null = null
+  
+  // Handle stdout
+  process.stdout?.on('data', (data: Buffer) => {
+    outputBuffer += data.toString()
     
-    // Build command arguments (no session resuming for now)
-    const args = this.buildArgs(command, sessionId, options)
+    // Process complete lines
+    const lines = outputBuffer.split('\n')
+    outputBuffer = lines.pop() || ''
     
-    logger.info('Spawning Claude CLI with args:', args)
-    
-    // Spawn the process
-    this.currentProcess = spawn('claude', args, {
-      cwd: options.workingDirectory,
-      stdio: ['pipe', 'pipe', 'pipe']
-    })
-    
-    // Close stdin immediately (we don't send input)
-    this.currentProcess.stdin?.end()
-    
-    // Handle stdout (JSON responses)
-    let outputBuffer = ''
-    this.currentProcess.stdout?.on('data', (data: Buffer) => {
-      outputBuffer += data.toString()
-      
-      // Process complete lines
-      const lines = outputBuffer.split('\n')
-      outputBuffer = lines.pop() || ''
-      
-      for (const line of lines) {
-        if (line.trim()) {
-          this.processOutput(line)
+    for (const line of lines) {
+      if (line.trim()) {
+        try {
+          const json = JSON.parse(line)
+          outputQueue.push({ type: 'json', data: json })
+        } catch {
+          outputQueue.push({ type: 'text', data: line })
+        }
+        
+        if (outputResolve) {
+          outputResolve()
+          outputResolve = null
         }
       }
-    })
-    
-    // Handle stderr
-    this.currentProcess.stderr?.on('data', (data: Buffer) => {
-      const error = data.toString()
-      logger.error('Claude stderr:', error)
-      this.emit('error', error)
-    })
-    
-    // Handle process exit
-    this.currentProcess.on('exit', (code, signal) => {
-      logger.info(`Claude process exited with code ${code} and signal ${signal}`)
-      this.emit('exit', { code, signal })
-      this.currentProcess = undefined
-    })
-    
-    // Handle process errors
-    this.currentProcess.on('error', (error) => {
-      logger.error('Claude process error:', error)
-      this.emit('processError', error)
-      this.currentProcess = undefined
-    })
-  }
-  
-  /**
-   * Build command line arguments for Claude
-   */
-  private buildArgs(
-    command: string,
-    sessionId: string | undefined,
-    options: ClaudeOptions
-  ): string[] {
-    const args = [
-      '--print', command,
-      '--output-format', 'stream-json',
-      '--input-format', 'stream-json',
-      '--verbose'
-    ]
-    
-    // Add model
-    if (options.model) {
-      args.push('--model', options.model)
     }
+  })
+  
+  // Handle stderr  
+  process.stderr?.on('data', (data: Buffer) => {
+    stderrBuffer += data.toString()
+    const lines = stderrBuffer.split('\n')
+    stderrBuffer = lines.pop() || ''
     
-    // Add permission mode
-    if (options.permissionMode) {
-      const modeMap = {
-        'auto': 'acceptEdits',
-        'default': 'default',
-        'plan': 'bypassPermissions'
+    for (const line of lines) {
+      if (line.trim()) {
+        outputQueue.push({ type: 'error', error: line })
+        if (outputResolve) {
+          outputResolve()
+          outputResolve = null
+        }
       }
-      args.push('--permission-mode', modeMap[options.permissionMode])
+    }
+  })
+  
+  // Handle process exit
+  process.on('exit', (code, signal) => {
+    processExited = true
+    outputQueue.push({ type: 'exit', code, signal })
+    if (outputResolve) {
+      outputResolve()
+      outputResolve = null
+    }
+  })
+  
+  // Handle process error
+  process.on('error', (error) => {
+    outputQueue.push({ type: 'error', error: error.message })
+    // Mark as exited since process won't emit exit after error
+    processExited = true
+    if (outputResolve) {
+      outputResolve()
+      outputResolve = null
+    }
+  })
+  
+  // Yield outputs as they come
+  while (!processExited || outputQueue.length > 0) {
+    if (outputQueue.length === 0) {
+      // Wait for more output
+      await new Promise<void>((resolve) => {
+        outputResolve = resolve
+        // Check again in case output arrived
+        if (outputQueue.length > 0 || processExited) {
+          resolve()
+          outputResolve = null
+        }
+      })
     }
     
-    // Add skip permissions flag
-    if (options.skipPermissions) {
-      args.push('--dangerously-skip-permissions')
+    // Yield all queued outputs
+    while (outputQueue.length > 0) {
+      const output = outputQueue.shift()!
+      yield output
     }
-    
-    // Add session resume if we have a session ID
-    if (sessionId) {
-      args.push('--resume', sessionId)
-    }
-    
-    return args
   }
   
-  /**
-   * Kill the current process and wait for it to exit
-   */
-  private async killAndWait(): Promise<void> {
-    if (!this.currentProcess || this.currentProcess.killed) {
-      return
-    }
-    
-    return new Promise((resolve) => {
-      const process = this.currentProcess!
-      
-      // Set up exit handler
-      const exitHandler = () => {
-        this.currentProcess = undefined
-        resolve()
-      }
-      
-      process.once('exit', exitHandler)
-      
-      // Kill the process
-      process.kill()
-      
-      // Set a timeout in case the process doesn't exit
-      setTimeout(() => {
-        process.removeListener('exit', exitHandler)
-        this.currentProcess = undefined
-        resolve()
-      }, 1000) // 1 second timeout
-    })
-  }
-  
-  /**
-   * Process a line of output from Claude
-   */
-  private processOutput(line: string): void {
+  // Process any remaining output in buffers
+  if (outputBuffer.trim()) {
     try {
-      const response = JSON.parse(line) as ClaudeResponse
-      
-      // Capture session ID from responses
-      if (response.session_id) {
-        this.currentSessionId = response.session_id
-        logger.info('Session ID updated:', this.currentSessionId)
-      }
-      
-      // Emit the parsed response
-      this.emit('response', response)
+      const json = JSON.parse(outputBuffer)
+      yield { type: 'json', data: json }
     } catch {
-      // Not JSON, emit as regular output
-      this.emit('output', line)
+      yield { type: 'text', data: outputBuffer }
     }
   }
+  
+  if (stderrBuffer.trim()) {
+    yield { type: 'error', error: stderrBuffer }
+  }
+}
+
+/**
+ * Build command line arguments for Claude
+ */
+function buildArgs(options: ClaudeProcessOptions): string[] {
+  const args = [
+    '--print', options.command,
+    '--output-format', 'stream-json',
+    '--verbose'
+  ]
+  
+  // Add model
+  if (options.model) {
+    args.push('--model', options.model)
+  }
+  
+  // Add permission mode
+  if (options.permissionMode) {
+    const modeMap = {
+      'auto': 'acceptEdits',
+      'default': 'default',
+      'plan': 'bypassPermissions'
+    }
+    args.push('--permission-mode', modeMap[options.permissionMode])
+  }
+  
+  // Add skip permissions flag
+  if (options.skipPermissions) {
+    args.push('--dangerously-skip-permissions')
+  }
+  
+  // Add session resume if we have a session ID
+  if (options.sessionId) {
+    args.push('--resume', options.sessionId)
+  }
+  
+  return args
 }
