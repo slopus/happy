@@ -388,12 +388,6 @@ export async function startApi() {
                 return;
             }
 
-            // Create encrypted message
-            const msgContent: PrismaJson.SessionMessageContent = {
-                t: 'encrypted',
-                c: message
-            };
-
             // Start transaction to ensure consistency
             const result = await db.$transaction(async (tx) => {
 
@@ -427,7 +421,7 @@ export async function startApi() {
                     data: {
                         sessionId: sid,
                         seq: msgSeq,
-                        content: msgContent
+                        content: message
                     }
                 });
 
@@ -438,7 +432,7 @@ export async function startApi() {
                     message: {
                         id: msg.id,
                         seq: msg.seq,
-                        content: msgContent,
+                        content: message,
                         createdAt: msg.createdAt.getTime(),
                         updatedAt: msg.updatedAt.getTime()
                     }
