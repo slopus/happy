@@ -87,9 +87,9 @@ android {
     buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdk rootProject.ext.compileSdkVersion
 
-    namespace 'com.ex3ndr.handy'
+    namespace 'com.ex3ndr.happy'
     defaultConfig {
-        applicationId 'com.ex3ndr.handy'
+        applicationId 'com.ex3ndr.happy'
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

@@ -15,9 +15,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-               BuildableName = "HandyCoder.app"
-               BlueprintName = "HandyCoder"
-               ReferencedContainer = "container:HandyCoder.xcodeproj">
+               BuildableName = "Happy.app"
+               BlueprintName = "Happy"
+               ReferencedContainer = "container:Happy.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "00E356ED1AD99517003FC87E"
-               BuildableName = "HandyCoderTests.xctest"
-               BlueprintName = "HandyCoderTests"
-               ReferencedContainer = "container:HandyCoder.xcodeproj">
+               BuildableName = "HappyTests.xctest"
+               BlueprintName = "HappyTests"
+               ReferencedContainer = "container:Happy.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -55,9 +55,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-            BuildableName = "HandyCoder.app"
-            BlueprintName = "HandyCoder"
-            ReferencedContainer = "container:HandyCoder.xcodeproj">
+            BuildableName = "Happy.app"
+            BlueprintName = "Happy"
+            ReferencedContainer = "container:Happy.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -72,9 +72,9 @@
          <BuildableReference
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
-            BuildableName = "HandyCoder.app"
-            BlueprintName = "HandyCoder"
-            ReferencedContainer = "container:HandyCoder.xcodeproj">
+            BuildableName = "Happy.app"
+            BlueprintName = "Happy"
+            ReferencedContainer = "container:Happy.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

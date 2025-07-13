@@ -7,29 +7,29 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		00FC511083AAFAD0545E6450 /* libPods-Happy.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 58FBEB96B3271D2C3773AE4F /* libPods-Happy.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		3E917C16CD21FFE4FE508608 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 092CCBFFEA78A5DF2EBBD65F /* ExpoModulesProvider.swift */; };
-		784C4348A57B3E3C13D882F8 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 64F74ED70BC14599564918C6 /* PrivacyInfo.xcprivacy */; };
+		549255F6E664E6E3FD57FA04 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = CB802A9C94ACC5AFC99CFDD2 /* ExpoModulesProvider.swift */; };
+		AAF4B216B57C05025E05D7D6 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 08E46818CE997C3E352BB3D0 /* PrivacyInfo.xcprivacy */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
-		FF4D39D709E9B26C0619FC38 /* libPods-HandyCoder.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 178C8EFBF3AABA6796144622 /* libPods-HandyCoder.a */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
-		092CCBFFEA78A5DF2EBBD65F /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-HandyCoder/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		13B07F961A680F5B00A75B9A /* HandyCoder.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HandyCoder.app; sourceTree = BUILT_PRODUCTS_DIR; };
-		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = HandyCoder/Images.xcassets; sourceTree = "<group>"; };
-		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = HandyCoder/Info.plist; sourceTree = "<group>"; };
-		178C8EFBF3AABA6796144622 /* libPods-HandyCoder.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-HandyCoder.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		64F74ED70BC14599564918C6 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = HandyCoder/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = HandyCoder/SplashScreen.storyboard; sourceTree = "<group>"; };
+		08E46818CE997C3E352BB3D0 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = Happy/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		13B07F961A680F5B00A75B9A /* Happy.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Happy.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = Happy/Images.xcassets; sourceTree = "<group>"; };
+		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = Happy/Info.plist; sourceTree = "<group>"; };
+		58FBEB96B3271D2C3773AE4F /* libPods-Happy.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Happy.a"; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = Happy/SplashScreen.storyboard; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		C2D0F2BE4DECD541590B7412 /* Pods-HandyCoder.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HandyCoder.release.xcconfig"; path = "Target Support Files/Pods-HandyCoder/Pods-HandyCoder.release.xcconfig"; sourceTree = "<group>"; };
-		D2AE5B1BD78D092FE95733DE /* Pods-HandyCoder.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HandyCoder.debug.xcconfig"; path = "Target Support Files/Pods-HandyCoder/Pods-HandyCoder.debug.xcconfig"; sourceTree = "<group>"; };
+		CB802A9C94ACC5AFC99CFDD2 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-Happy/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
-		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = HandyCoder/AppDelegate.swift; sourceTree = "<group>"; };
-		F11748442D0722820044C1D9 /* HandyCoder-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "HandyCoder-Bridging-Header.h"; path = "HandyCoder/HandyCoder-Bridging-Header.h"; sourceTree = "<group>"; };
+		EF3C9007F3437CB14E54DB7C /* Pods-Happy.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Happy.release.xcconfig"; path = "Target Support Files/Pods-Happy/Pods-Happy.release.xcconfig"; sourceTree = "<group>"; };
+		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = Happy/AppDelegate.swift; sourceTree = "<group>"; };
+		F11748442D0722820044C1D9 /* Happy-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Happy-Bridging-Header.h"; path = "Happy/Happy-Bridging-Header.h"; sourceTree = "<group>"; };
+		F16B53E82FBEB7F17D050B39 /* Pods-Happy.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Happy.debug.xcconfig"; path = "Target Support Files/Pods-Happy/Pods-Happy.debug.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -37,40 +37,40 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				FF4D39D709E9B26C0619FC38 /* libPods-HandyCoder.a in Frameworks */,
+				00FC511083AAFAD0545E6450 /* libPods-Happy.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		13B07FAE1A68108700A75B9A /* HandyCoder */ = {
+		13B07FAE1A68108700A75B9A /* Happy */ = {
 			isa = PBXGroup;
 			children = (
 				F11748412D0307B40044C1D9 /* AppDelegate.swift */,
-				F11748442D0722820044C1D9 /* HandyCoder-Bridging-Header.h */,
+				F11748442D0722820044C1D9 /* Happy-Bridging-Header.h */,
 				BB2F792B24A3F905000567C9 /* Supporting */,
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				64F74ED70BC14599564918C6 /* PrivacyInfo.xcprivacy */,
+				08E46818CE997C3E352BB3D0 /* PrivacyInfo.xcprivacy */,
 			);
-			name = HandyCoder;
+			name = Happy;
 			sourceTree = "<group>";
 		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				178C8EFBF3AABA6796144622 /* libPods-HandyCoder.a */,
+				58FBEB96B3271D2C3773AE4F /* libPods-Happy.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
 		};
-		65F9A9F6574A3199344FA3C2 /* ExpoModulesProviders */ = {
+		6CF6E465F7870BC07085F779 /* ExpoModulesProviders */ = {
 			isa = PBXGroup;
 			children = (
-				DBA9E6659F8D397C3EC65666 /* HandyCoder */,
+				AB529945A012FA3501C3F2DD /* Happy */,
 			);
 			name = ExpoModulesProviders;
 			sourceTree = "<group>";
@@ -85,12 +85,12 @@
 		83CBB9F61A601CBA00E9B192 = {
 			isa = PBXGroup;
 			children = (
-				13B07FAE1A68108700A75B9A /* HandyCoder */,
+				13B07FAE1A68108700A75B9A /* Happy */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				BC435BAD5E68B17FE9D08879 /* Pods */,
-				65F9A9F6574A3199344FA3C2 /* ExpoModulesProviders */,
+				844684637EA3225040F931DD /* Pods */,
+				6CF6E465F7870BC07085F779 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -100,9 +100,26 @@
 		83CBBA001A601CBA00E9B192 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				13B07F961A680F5B00A75B9A /* HandyCoder.app */,
+				13B07F961A680F5B00A75B9A /* Happy.app */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		844684637EA3225040F931DD /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				F16B53E82FBEB7F17D050B39 /* Pods-Happy.debug.xcconfig */,
+				EF3C9007F3437CB14E54DB7C /* Pods-Happy.release.xcconfig */,
+			);
+			path = Pods;
+			sourceTree = "<group>";
+		};
+		AB529945A012FA3501C3F2DD /* Happy */ = {
+			isa = PBXGroup;
+			children = (
+				CB802A9C94ACC5AFC99CFDD2 /* ExpoModulesProvider.swift */,
+			);
+			name = Happy;
 			sourceTree = "<group>";
 		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
@@ -111,49 +128,32 @@
 				BB2F792C24A3F905000567C9 /* Expo.plist */,
 			);
 			name = Supporting;
-			path = HandyCoder/Supporting;
-			sourceTree = "<group>";
-		};
-		BC435BAD5E68B17FE9D08879 /* Pods */ = {
-			isa = PBXGroup;
-			children = (
-				D2AE5B1BD78D092FE95733DE /* Pods-HandyCoder.debug.xcconfig */,
-				C2D0F2BE4DECD541590B7412 /* Pods-HandyCoder.release.xcconfig */,
-			);
-			path = Pods;
-			sourceTree = "<group>";
-		};
-		DBA9E6659F8D397C3EC65666 /* HandyCoder */ = {
-			isa = PBXGroup;
-			children = (
-				092CCBFFEA78A5DF2EBBD65F /* ExpoModulesProvider.swift */,
-			);
-			name = HandyCoder;
+			path = Happy/Supporting;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		13B07F861A680F5B00A75B9A /* HandyCoder */ = {
+		13B07F861A680F5B00A75B9A /* Happy */ = {
 			isa = PBXNativeTarget;
-			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "HandyCoder" */;
+			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "Happy" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				F7958E568E04B938C726FD0D /* [Expo] Configure project */,
+				2869EDA53444DCA3066C4F99 /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				62CC1CC446CEF38AA5EB0D86 /* [CP] Embed Pods Frameworks */,
+				8088293C6F945C00F8200E7E /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
 			dependencies = (
 			);
-			name = HandyCoder;
-			productName = HandyCoder;
-			productReference = 13B07F961A680F5B00A75B9A /* HandyCoder.app */;
+			name = Happy;
+			productName = Happy;
+			productReference = 13B07F961A680F5B00A75B9A /* Happy.app */;
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
@@ -169,7 +169,7 @@
 					};
 				};
 			};
-			buildConfigurationList = 83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "HandyCoder" */;
+			buildConfigurationList = 83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "Happy" */;
 			compatibilityVersion = "Xcode 3.2";
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -182,7 +182,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
-				13B07F861A680F5B00A75B9A /* HandyCoder */,
+				13B07F861A680F5B00A75B9A /* Happy */,
 			);
 		};
 /* End PBXProject section */
@@ -195,7 +195,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				784C4348A57B3E3C13D882F8 /* PrivacyInfo.xcprivacy in Resources */,
+				AAF4B216B57C05025E05D7D6 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -232,30 +232,31 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
-				"$(DERIVED_FILE_DIR)/Pods-HandyCoder-checkManifestLockResult.txt",
+				"$(DERIVED_FILE_DIR)/Pods-Happy-checkManifestLockResult.txt",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
 		};
-		62CC1CC446CEF38AA5EB0D86 /* [CP] Embed Pods Frameworks */ = {
+		2869EDA53444DCA3066C4F99 /* [Expo] Configure project */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-HandyCoder/Pods-HandyCoder-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
+			inputFileListPaths = (
 			);
-			name = "[CP] Embed Pods Frameworks";
+			inputPaths = (
+			);
+			name = "[Expo] Configure project";
+			outputFileListPaths = (
+			);
 			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HandyCoder/Pods-HandyCoder-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
+			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-Happy/expo-configure-project.sh\"\n";
 		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -263,7 +264,7 @@
 			files = (
 			);
 			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-HandyCoder/Pods-HandyCoder-resources.sh",
+				"${PODS_ROOT}/Target Support Files/Pods-Happy/Pods-Happy-resources.sh",
 				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/EXConstants.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/EXConstants/ExpoConstants_privacy.bundle",
 				"${PODS_CONFIGURATION_BUILD_DIR}/ExpoFileSystem/ExpoFileSystem_privacy.bundle",
@@ -288,27 +289,26 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HandyCoder/Pods-HandyCoder-resources.sh\"\n";
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Happy/Pods-Happy-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
-		F7958E568E04B938C726FD0D /* [Expo] Configure project */ = {
+		8088293C6F945C00F8200E7E /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
-			inputFileListPaths = (
-			);
 			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-Happy/Pods-Happy-frameworks.sh",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
 			);
-			name = "[Expo] Configure project";
-			outputFileListPaths = (
-			);
+			name = "[CP] Embed Pods Frameworks";
 			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-HandyCoder/expo-configure-project.sh\"\n";
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-Happy/Pods-Happy-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -318,7 +318,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				3E917C16CD21FFE4FE508608 /* ExpoModulesProvider.swift in Sources */,
+				549255F6E664E6E3FD57FA04 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -327,11 +327,11 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = D2AE5B1BD78D092FE95733DE /* Pods-HandyCoder.debug.xcconfig */;
+			baseConfigurationReference = F16B53E82FBEB7F17D050B39 /* Pods-Happy.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = HandyCoder/HandyCoder.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Happy/Happy.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 466DQWDR8C;
 				ENABLE_BITCODE = NO;
@@ -339,7 +339,7 @@
 					"$(inherited)",
 					"FB_SONARKIT_ENABLED=1",
 				);
-				INFOPLIST_FILE = HandyCoder/Info.plist;
+				INFOPLIST_FILE = Happy/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -352,9 +352,9 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
-				PRODUCT_BUNDLE_IDENTIFIER = com.ex3ndr.handy;
-				PRODUCT_NAME = HandyCoder;
-				SWIFT_OBJC_BRIDGING_HEADER = "HandyCoder/HandyCoder-Bridging-Header.h";
+				PRODUCT_BUNDLE_IDENTIFIER = com.ex3ndr.happy;
+				PRODUCT_NAME = "Happy";
+				SWIFT_OBJC_BRIDGING_HEADER = "Happy/Happy-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -364,14 +364,14 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = C2D0F2BE4DECD541590B7412 /* Pods-HandyCoder.release.xcconfig */;
+			baseConfigurationReference = EF3C9007F3437CB14E54DB7C /* Pods-Happy.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
-				CODE_SIGN_ENTITLEMENTS = HandyCoder/HandyCoder.entitlements;
+				CODE_SIGN_ENTITLEMENTS = Happy/Happy.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 466DQWDR8C;
-				INFOPLIST_FILE = HandyCoder/Info.plist;
+				INFOPLIST_FILE = Happy/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -384,9 +384,9 @@
 					"-lc++",
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
-				PRODUCT_BUNDLE_IDENTIFIER = com.ex3ndr.handy;
-				PRODUCT_NAME = HandyCoder;
-				SWIFT_OBJC_BRIDGING_HEADER = "HandyCoder/HandyCoder-Bridging-Header.h";
+				PRODUCT_BUNDLE_IDENTIFIER = com.ex3ndr.happy;
+				PRODUCT_NAME = "Happy";
+				SWIFT_OBJC_BRIDGING_HEADER = "Happy/Happy-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
 				VERSIONING_SYSTEM = "apple-generic";
@@ -514,7 +514,7 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "HandyCoder" */ = {
+		13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "Happy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
@@ -523,7 +523,7 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "HandyCoder" */ = {
+		83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject "Happy" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,

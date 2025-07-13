@@ -9,15 +9,14 @@ import * as React from 'react';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider } from '@/auth/AuthContext';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
+import { Pressable } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 
 export {
   // Catch any errors thrown by the Layout component.
   ErrorBoundary,
 } from 'expo-router';
-
-export const unstable_settings = {
-  initialRouteName: 'home',
-};
 
 // Configure splash screen
 SplashScreen.setOptions({
@@ -25,6 +24,23 @@ SplashScreen.setOptions({
   duration: 300,
 })
 SplashScreen.preventAutoHideAsync();
+
+export const unstable_settings = {
+  initialRouteName: 'home',
+};
+
+function HeaderRight() {
+  const router = useRouter();
+  
+  return (
+    <Pressable
+      onPress={() => router.push('/about')}
+      hitSlop={10}
+    >
+      <Ionicons name="information-circle-outline" size={24} color="#000" />
+    </Pressable>
+  );
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -58,7 +74,6 @@ export default function RootLayout() {
     <AuthProvider initialCredentials={initState.credentials}>
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack
-          initialRouteName='home'
           screenOptions={{
             headerShadowVisible: false,
             contentStyle: {
@@ -70,7 +85,15 @@ export default function RootLayout() {
             name="home"
             options={{
               headerShown: true,
-              headerTitle: 'Handy Coder',
+              headerTitle: 'Happy Coder',
+              headerRight: () => <HeaderRight />,
+            }}
+          />
+          <Stack.Screen
+            name="about"
+            options={{
+              presentation: 'modal',
+              headerShown: false,
             }}
           />
         </Stack>

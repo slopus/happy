@@ -1,4 +1,4 @@
-package com.ex3ndr.handy
+package com.ex3ndr.happy
 import expo.modules.splashscreen.SplashScreenManager
 
 import android.os.Build

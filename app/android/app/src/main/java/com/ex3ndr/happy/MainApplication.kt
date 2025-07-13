@@ -1,4 +1,4 @@
-package com.ex3ndr.handy
+package com.ex3ndr.happy
 
 import android.app.Application
 import android.content.res.Configuration
