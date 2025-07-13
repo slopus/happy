@@ -435,8 +435,13 @@ export async function startApi() {
                 const updContent: PrismaJson.UpdateBody = {
                     t: 'new-message',
                     sid: sid,
-                    mid: msg.id,
-                    c: msgContent
+                    message: {
+                        id: msg.id,
+                        seq: msg.seq,
+                        content: msgContent,
+                        createdAt: msg.createdAt.getTime(),
+                        updatedAt: msg.updatedAt.getTime()
+                    }
                 };
 
                 const update = await tx.update.create({
