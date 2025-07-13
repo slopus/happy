@@ -70,7 +70,7 @@ export class Claude extends EventEmitter {
     }
     
     // Build command arguments (no session resuming for now)
-    const args = this.buildArgs(command, undefined, options)
+    const args = this.buildArgs(command, sessionId, options)
     
     logger.info('Spawning Claude CLI with args:', args)
     
