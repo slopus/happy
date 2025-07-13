@@ -10,8 +10,13 @@ declare global {
         type UpdateBody = {
             t: 'new-message';
             sid: string;
-            mid: string;
-            c: SessionMessageContent;
+            message: {
+                id: string;
+                seq: number;
+                content: SessionMessageContent;
+                createdAt: number;
+                updatedAt: number;
+            }
         } | {
             t: 'new-session';
             id: string;
