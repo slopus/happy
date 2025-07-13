@@ -1,0 +1,91 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+generator json {
+    provider = "prisma-json-types-generator"
+}
+
+datasource db {
+    provider = "postgresql"
+    url      = env("DATABASE_URL")
+}
+
+//
+// Account
+//
+
+model Account {
+    id        String    @id @default(cuid())
+    publicKey String    @unique
+    seq       Int       @default(0)
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    Session   Session[]
+    Update    Update[]
+}
+
+//
+// Sessions
+//
+
+model Session {
+    id        String           @id @default(cuid())
+    accountId String
+    account   Account          @relation(fields: [accountId], references: [id])
+    seq       Int              @default(0)
+    createdAt DateTime         @default(now())
+    updatedAt DateTime         @updatedAt
+    messages  SessionMessage[]
+}
+
+model SessionMessage {
+    id        String   @id @default(cuid())
+    sessionId String
+    session   Session  @relation(fields: [sessionId], references: [id])
+    seq       Int
+    /// [SessionMessageContent]
+    content   Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+model Update {
+    id        String   @id @default(cuid())
+    accountId String
+    account   Account  @relation(fields: [accountId], references: [id])
+    seq       Int
+    /// [UpdateBody]
+    content   Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
+
+//
+// Utility
+//
+
+model GlobalLock {
+    key       String   @id @default(cuid())
+    value     String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+    expiresAt DateTime
+}
+
+model RepeatKey {
+    key       String   @id
+    value     String
+    createdAt DateTime @default(now())
+    expiresAt DateTime
+}
+
+model SimpleCache {
+    key       String   @id
+    value     String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+}
