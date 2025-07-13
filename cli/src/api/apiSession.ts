@@ -1,7 +1,7 @@
 import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
-import { ClientToServerEvents, MessageContent, ServerToClientEvents, Update, UserMessage } from './types'
+import { ClientToServerEvents, MessageContent, ServerToClientEvents, Update, UserMessage, UserMessageSchema } from './types'
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 
 export class ApiSessionClient extends EventEmitter {
@@ -9,6 +9,9 @@ export class ApiSessionClient extends EventEmitter {
   private readonly secret: Uint8Array;
   private readonly sessionId: string;
   private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
+  private receivedMessages = new Set<string>();
+  private pendingMessages: UserMessage[] = [];
+  private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
 
   constructor(token: string, secret: Uint8Array, sessionId: string) {
     super()
@@ -52,26 +55,34 @@ export class ApiSessionClient extends EventEmitter {
 
     // Server events
     this.socket.on('update', (data: Update) => {
-      logger.debug('Received update:', data);
+      if (data.body.t === 'new-message' && data.body.message.content.t === 'encrypted') {
+        const body = decrypt(decodeBase64(data.body.message.content.c), this.secret);
+        const result = UserMessageSchema.safeParse(body);
+        if (result.success) {
+          if (!this.receivedMessages.has(data.body.message.id)) {
+            this.receivedMessages.add(data.body.message.id);
+            if (this.pendingMessageCallback) {
+              this.pendingMessageCallback(result.data);
+            } else {
+              this.pendingMessages.push(result.data);
+            }
+          }
+        }
+      }
     });
 
     //
     // Connect (after short delay to give a time to add handlers)
     //
 
-    setTimeout(() => this.socket.connect(), 100);
+    this.socket.connect();
   }
 
-  onMessage(callback: (data: UserMessage) => void) {
-    this.socket.on('update', (data: Update) => {
-      logger.debug('Received update:', data);
-      if (data.body.t === 'new-message' && data.body.c.t === 'encrypted') {
-        const body = decrypt(decodeBase64(data.body.c.c), this.secret);
-        if (body.role === 'user') {
-          callback(body);
-        }
-      }
-    });
+  onUserMessage(callback: (data: UserMessage) => void) {
+    this.pendingMessageCallback = callback;
+    while (this.pendingMessages.length > 0) {
+      callback(this.pendingMessages.shift()!);
+    }
   }
 
   /**
@@ -81,7 +92,7 @@ export class ApiSessionClient extends EventEmitter {
   sendMessage(body: any) {
     let content: MessageContent = {
       role: 'agent',
-      body
+      content: body
     };
     const encrypted = encodeBase64(encrypt(content, this.secret));
     this.socket.emit('message', {
@@ -91,5 +102,9 @@ export class ApiSessionClient extends EventEmitter {
         t: 'encrypted'
       }
     });
+  }
+
+  async close() {
+    this.socket.close();
   }
 }

@@ -4,6 +4,7 @@ import { logger } from '@/ui/logger';
 import { displayQRCode } from '@/ui/qrcode';
 import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { startClaudeLoop } from '@/claude/loop';
 
 export interface StartOptions {
   model?: string
@@ -38,30 +39,21 @@ export async function start(options: StartOptions = {}): Promise<void> {
   // Create realtime session
   const session = api.session(response.session.id);
 
-  // // Create message handler
-  // const messageHandler = new MessageHandler({
-  //   sessionId: session.id,
-  //   sessionService,
-  //   socketClient,
-  //   workingDirectory,
-  //   claudeOptions: {
-  //     model: options.model,
-  //     permissionMode: options.permissionMode,
-  //   },
-  // })
+  // Create claude loop
+  const loopDestroy = startClaudeLoop({ path: workingDirectory }, session);
 
   // Handle graceful shutdown
-  const shutdown = () => {
+  const shutdown = async () => {
     logger.info('Shutting down...')
-    // messageHandler.destroy()
-    // socketClient.disconnect()
+    await loopDestroy();
+    await session.close();
     process.exit(0);
   };
-
   process.on('SIGINT', shutdown);
   process.on('SIGTERM', shutdown);
 
-  logger.info('Handy CLI is running. Press Ctrl+C to stop.');
+  // Started!
+  logger.info('Happy CLI is running. Press Ctrl+C to stop.');
 
   // Keep process alive
   await new Promise(() => {
