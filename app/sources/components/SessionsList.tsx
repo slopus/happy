@@ -77,11 +77,11 @@ export function SessionsList({ sessions }: SessionsListProps) {
 
         const session = item.session!;
         const lastMessage = session.lastMessage;
-        const lastMessageText = lastMessage?.content.text || '';
+        const lastMessageText = JSON.stringify(lastMessage);
         const messagePreview = lastMessageText.length > 50 
             ? lastMessageText.substring(0, 50) + '...' 
             : lastMessageText;
-        const isFromAssistant = lastMessage?.type === 'assistant';
+        const isFromAssistant = lastMessage?.content?.role === 'agent';
 
         return (
             <Pressable

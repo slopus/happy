@@ -7,6 +7,7 @@ import { z } from 'zod';
 // Human content schema
 export const HumanContentSchema = z.object({
     role: z.literal('user'),
+    localKey: z.string(),
     content: z.object({
         type: z.literal('text'),
         text: z.string(),

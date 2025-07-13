@@ -19,6 +19,7 @@
     "@legendapp/list": "^1.1.4",
     "@react-navigation/native": "^7.1.6",
     "@stablelib/base64": "^2.0.1",
+    "@types/uuid": "^10.0.0",
     "axios": "^1.10.0",
     "expo": "~53.0.17",
     "expo-camera": "~16.1.10",
@@ -45,6 +46,7 @@
     "socket.io-client": "^4.8.1",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1",
+    "uuid": "^11.1.0",
     "zod": "^4.0.5"
   },
   "devDependencies": {
