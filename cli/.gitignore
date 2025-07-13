@@ -12,4 +12,11 @@ oclif.manifest.json
 yarn.lock
 pnpm-lock.yaml
 
+# Environment variables
+.env
+.env.local
+
+# Secret key
+.handy-claude-code.key
+
 

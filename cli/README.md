@@ -1,18 +1,35 @@
-handy-cli
-=================
+# handy-cli
 
-A new CLI generated with oclif
-
+CLI tool for connecting Claude Code sessions to the handy server for remote access.
 
 [![oclif](https://img.shields.io/badge/cli-oclif-brightgreen.svg)](https://oclif.io)
-[![Version](https://img.shields.io/npm/v/handy-cli.svg)](https://npmjs.org/package/handy-cli)
-[![Downloads/week](https://img.shields.io/npm/dw/handy-cli.svg)](https://npmjs.org/package/handy-cli)
 
 
 <!-- toc -->
 * [Usage](#usage)
 * [Commands](#commands)
 <!-- tocstop -->
+
+## Overview
+
+handy-cli bridges Claude Code sessions with the handy server, allowing remote access to Claude Code from mobile/web clients. It authenticates with the server, establishes a WebSocket connection, and proxies messages between Claude CLI and connected clients.
+
+## Installation
+
+```bash
+npm install
+npm run build
+```
+
+## Configuration
+
+Create a `.env` file with:
+
+```
+HANDY_SERVER_URL=https://handy-api.korshakov.org
+HANDY_SOCKET_PATH=/v1/updates
+```
+
 # Usage
 <!-- usage -->
 ```sh-session
@@ -29,19 +46,30 @@ USAGE
 <!-- usagestop -->
 # Commands
 <!-- commands -->
-* [`handy-cli hello PERSON`](#handy-cli-hello-person)
-* [`handy-cli hello world`](#handy-cli-hello-world)
-* [`handy-cli help [COMMAND]`](#handy-cli-help-command)
-* [`handy-cli plugins`](#handy-cli-plugins)
-* [`handy-cli plugins add PLUGIN`](#handy-cli-plugins-add-plugin)
-* [`handy-cli plugins:inspect PLUGIN...`](#handy-cli-pluginsinspect-plugin)
-* [`handy-cli plugins install PLUGIN`](#handy-cli-plugins-install-plugin)
-* [`handy-cli plugins link PATH`](#handy-cli-plugins-link-path)
-* [`handy-cli plugins remove [PLUGIN]`](#handy-cli-plugins-remove-plugin)
-* [`handy-cli plugins reset`](#handy-cli-plugins-reset)
-* [`handy-cli plugins uninstall [PLUGIN]`](#handy-cli-plugins-uninstall-plugin)
-* [`handy-cli plugins unlink [PLUGIN]`](#handy-cli-plugins-unlink-plugin)
-* [`handy-cli plugins update`](#handy-cli-plugins-update)
+- [handy-cli](#handy-cli)
+  - [Overview](#overview)
+  - [Installation](#installation)
+  - [Configuration](#configuration)
+- [Usage](#usage)
+- [Commands](#commands)
+  - [`handy-cli hello PERSON`](#handy-cli-hello-person)
+  - [`handy-cli hello world`](#handy-cli-hello-world)
+  - [`handy-cli help [COMMAND]`](#handy-cli-help-command)
+  - [`handy-cli plugins`](#handy-cli-plugins)
+  - [`handy-cli plugins add PLUGIN`](#handy-cli-plugins-add-plugin)
+  - [`handy-cli plugins:inspect PLUGIN...`](#handy-cli-pluginsinspect-plugin)
+  - [`handy-cli plugins install PLUGIN`](#handy-cli-plugins-install-plugin)
+  - [`handy-cli plugins link PATH`](#handy-cli-plugins-link-path)
+  - [`handy-cli plugins remove [PLUGIN]`](#handy-cli-plugins-remove-plugin)
+  - [`handy-cli plugins reset`](#handy-cli-plugins-reset)
+  - [`handy-cli plugins uninstall [PLUGIN]`](#handy-cli-plugins-uninstall-plugin)
+  - [`handy-cli plugins unlink [PLUGIN]`](#handy-cli-plugins-unlink-plugin)
+  - [`handy-cli plugins update`](#handy-cli-plugins-update)
+  - [Architecture](#architecture)
+  - [Project Structure](#project-structure)
+  - [Current Status](#current-status)
+  - [Development](#development)
+  - [Key Design Decisions](#key-design-decisions)
 
 ## `handy-cli hello PERSON`
 
@@ -395,3 +423,57 @@ DESCRIPTION
 
 _See code: [@oclif/plugin-plugins](https://github.com/oclif/plugin-plugins/blob/v5.4.44/src/commands/plugins/update.ts)_
 <!-- commandsstop -->
+
+## Architecture
+
+- **Authentication**: Uses tweetnacl for public key authentication with the handy server
+- **Socket Communication**: Socket.IO client for real-time bidirectional messaging  
+- **Claude Integration**: Spawns Claude CLI with `--output-format stream-json` for structured output
+- **Message Handling**: Routes messages between socket server and Claude process
+
+## Project Structure
+
+```
+src/
+├── auth/          # Authentication modules (key generation, auth flow)
+├── socket/        # Socket.IO client and message types
+├── claude/        # Claude CLI spawning and session management
+├── handlers/      # Message routing between socket and Claude
+├── utils/         # Utilities (config, logger, paths)
+└── commands/      # CLI commands (start)
+```
+
+## Current Status
+
+- ✅ Authentication with handy server works
+- ✅ Claude CLI process spawning implemented  
+- ✅ Message routing architecture complete
+- ❌ WebSocket connection fails (server returns 502 error)
+
+## Development
+
+Run tests:
+
+```bash
+npm test
+```
+
+Build:
+
+```bash
+npm run build
+```
+
+Run locally:
+
+```bash
+./bin/run.js start
+```
+
+## Key Design Decisions
+
+1. **No mocking in tests** - All tests use real server APIs as requested
+2. **Strong typing** - Full TypeScript with strict types for all messages
+3. **Session persistence** - Claude session IDs tracked for resumption
+4. **Event-driven architecture** - Loose coupling between components
+5. **Graceful shutdown** - Proper cleanup on SIGINT/SIGTERM
