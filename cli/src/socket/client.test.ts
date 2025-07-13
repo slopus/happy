@@ -7,7 +7,7 @@
 
 import { authGetToken, getOrCreateSecretKey } from '#auth/auth'
 import { getConfig } from '#utils/config'
-import { expect } from 'chai'
+import { describe, it, expect, beforeAll, afterEach } from 'vitest'
 
 import { SocketClient } from './client.js'
 
@@ -15,7 +15,7 @@ describe('SocketClient', () => {
   let client: null | SocketClient = null
   let authToken: string
   
-  before(async () => {
+  beforeAll(async () => {
     // Get auth token for tests
     const config = getConfig()
     const secret = await getOrCreateSecretKey()
@@ -45,8 +45,8 @@ describe('SocketClient', () => {
       // Wait for authentication
       const user = await client.waitForAuth()
       
-      expect(user).to.be.a('string')
-      expect(client.getIsConnected()).to.equal(true)
+      expect(user).toBeTypeOf('string')
+      expect(client.getIsConnected()).toBe(true)
     })
     
     it('should emit error with invalid auth token', async () => {
@@ -63,15 +63,15 @@ describe('SocketClient', () => {
       // Should reject with auth error
       try {
         await client.waitForAuth()
-        expect.fail('Should have thrown auth error')
+        throw new Error('Should have thrown auth error')
       } catch (error) {
-        expect((error as Error).message).to.include('Authentication')
+        expect((error as Error).message).toContain('Authentication')
       }
-    })
+    }, 10_000)
   })
   
   describe('events', () => {
-    it('should emit connected event on successful connection', (done) => {
+    it('should emit connected event on successful connection', async () => {
       const config = getConfig()
       
       client = new SocketClient({
@@ -80,12 +80,15 @@ describe('SocketClient', () => {
         socketPath: config.socketPath
       })
       
-      client.once('connected', () => {
-        expect(client!.getIsConnected()).to.equal(true)
-        done()
+      const connectedPromise = new Promise<void>((resolve) => {
+        client!.once('connected', () => {
+          expect(client!.getIsConnected()).toBe(true)
+          resolve()
+        })
       })
       
       client.connect()
+      await connectedPromise
     })
   })
 })
