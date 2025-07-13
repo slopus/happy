@@ -16,7 +16,10 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.ex3ndr.happy"
+      "bundleIdentifier": "com.ex3ndr.happy",
+      "config": {
+        "usesNonExemptEncryption": true
+      }
     },
     "android": {
       "adaptiveIcon": {
