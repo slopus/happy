@@ -43,7 +43,8 @@
     "react-native-web": "~0.20.0",
     "socket.io-client": "^4.8.1",
     "tweetnacl": "^1.0.3",
-    "tweetnacl-util": "^0.15.1"
+    "tweetnacl-util": "^0.15.1",
+    "zod": "^4.0.5"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

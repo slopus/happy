@@ -1,12 +1,13 @@
 import { syncEngine } from '@/sync/SyncEngine';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { MessageEncryption } from '@/sync/encryption';
-import { 
-    Session, 
-    EncryptedMessage, 
-    DecryptedMessage, 
-    SessionUpdate, 
-    MessageContent
+import {
+    Session,
+    EncryptedMessage,
+    DecryptedMessage,
+    MessageContent,
+    MessageContentSchema,
+    SessionUpdateSchema,
 } from '@/sync/types';
 
 const API_ENDPOINT = 'https://handy-api.korshakov.org';
@@ -18,21 +19,18 @@ class SessionsEngine {
     private listeners: Set<SessionsListener> = new Set();
     private credentials: AuthCredentials | null = null;
     private encryption: MessageEncryption | null = null;
-    private isInitialized = false;
     private isLoaded = false;
     private wasConnected = false;
 
     async initialize(credentials: AuthCredentials) {
         this.credentials = credentials;
         this.encryption = new MessageEncryption(credentials.secret);
-        
+
         // Fetch initial sessions
         await this.fetchSessions();
-        
+
         // Subscribe to updates
         this.subscribeToUpdates();
-        
-        this.isInitialized = true;
     }
 
     private async fetchSessions() {
@@ -65,7 +63,7 @@ class SessionsEngine {
             for (const session of sessions) {
                 const processedSession: Session = {
                     ...session,
-                    lastMessage: session.lastMessage ? this.decryptMessage(session.lastMessage) : null
+                    lastMessage: session.lastMessage ? session.lastMessage.content.t === 'encrypted' ? this.decryptContent(session.lastMessage.content.c) : null : null
                 };
                 this.sessions.set(session.id, processedSession);
             }
@@ -82,7 +80,7 @@ class SessionsEngine {
     private subscribeToUpdates() {
         // Subscribe to message updates
         syncEngine.onMessage('update', this.handleUpdate.bind(this));
-        
+
         // Subscribe to connection state changes
         syncEngine.addListener((state) => {
             if (state.isConnected && state.connectionStatus === 'connected') {
@@ -99,21 +97,23 @@ class SessionsEngine {
         });
     }
 
-    private handleUpdate(update: SessionUpdate) {
-        if (update.content.t === 'new-message') {
-            const session = this.sessions.get(update.content.sid);
+    private handleUpdate(update: unknown) {
+        const validatedUpdate = SessionUpdateSchema.safeParse(update);
+        if (!validatedUpdate.success) {
+            console.error('Invalid update received:', update);
+            return;
+        }
+        const updateData = validatedUpdate.data;
+
+        if (updateData.content.t === 'new-message') {
+            const session = this.sessions.get(updateData.content.sid);
             if (session) {
                 // Update session with new message
-                const decryptedMessage: DecryptedMessage = {
-                    id: update.content.mid,
-                    seq: update.seq,
-                    content: this.decryptContent(update.content.c),
-                    createdAt: update.createdAt
-                };
+                const decryptedContent: MessageContent | null = updateData.content.c.t === 'encrypted' ? this.decryptContent(updateData.content.c.c) : null;
 
-                session.lastMessage = decryptedMessage;
-                session.updatedAt = update.createdAt;
-                session.seq = update.seq;
+                session.lastMessage = decryptedContent;
+                session.updatedAt = updateData.createdAt;
+                session.seq = updateData.seq;
 
                 // Re-sort sessions by updatedAt
                 this.sortSessions();
@@ -125,98 +125,25 @@ class SessionsEngine {
         }
     }
 
-    private decryptMessage(message: EncryptedMessage): DecryptedMessage {
-        return {
-            id: message.id,
-            seq: message.seq,
-            content: this.decryptContent(message.content.c),
-            createdAt: message.createdAt
-        };
-    }
-
     private decryptContent(encryptedContent: string): MessageContent | null {
         if (!this.encryption) return null;
 
         const decrypted = this.encryption.decrypt(encryptedContent);
         if (!decrypted) return null;
 
-        try {
-            const content = decrypted as MessageContent;
-            // Validate the content structure
-            if (this.isValidMessageContent(content)) {
-                return content;
-            }
-            return null;
-        } catch (error) {
-            console.error('Failed to parse decrypted content:', error);
+        let result = MessageContentSchema.safeParse(decrypted);
+        if (!result.success) {
+            console.error('Invalid content received:', decrypted);
             return null;
         }
-    }
 
-    private isValidMessageContent(content: any): content is MessageContent {
-        if (!content || typeof content !== 'object') return false;
-        
-        // Check base structure
-        if (!content.type || !content.content || typeof content.content !== 'object') return false;
-        
-        // Validate based on type
-        if (content.type === 'human') {
-            return this.isValidHumanContent(content.content);
-        } else if (content.type === 'assistant') {
-            return this.isValidAssistantContent(content.content);
-        }
-        
-        return false;
-    }
-
-    private isValidHumanContent(content: any): boolean {
-        if (!content.type) return false;
-        
-        switch (content.type) {
-            case 'text':
-                return typeof content.text === 'string';
-            case 'image':
-                return content.image && 
-                       typeof content.image.url === 'string' && 
-                       typeof content.image.mimeType === 'string';
-            case 'file':
-                return content.file && 
-                       typeof content.file.name === 'string' &&
-                       typeof content.file.url === 'string' &&
-                       typeof content.file.mimeType === 'string' &&
-                       typeof content.file.size === 'number';
-            default:
-                return false;
-        }
-    }
-
-    private isValidAssistantContent(content: any): boolean {
-        if (!content.type) return false;
-        
-        switch (content.type) {
-            case 'text':
-                return typeof content.text === 'string';
-            case 'code':
-                return typeof content.language === 'string' && 
-                       typeof content.code === 'string';
-            case 'tool_call':
-                return typeof content.tool === 'string' && 
-                       typeof content.arguments === 'object';
-            case 'tool_result':
-                return typeof content.tool === 'string';
-            case 'thinking':
-                return typeof content.thought === 'string';
-            case 'error':
-                return typeof content.error === 'string';
-            default:
-                return false;
-        }
+        return result.data;
     }
 
     private sortSessions() {
         const sortedEntries = Array.from(this.sessions.entries())
             .sort(([, a], [, b]) => b.updatedAt - a.updatedAt);
-        
+
         this.sessions = new Map(sortedEntries);
     }
 
@@ -256,11 +183,10 @@ class SessionsEngine {
             const data = await response.json();
             const session: Session = {
                 id: data.id,
-                tag: data.tag,
                 seq: data.seq,
                 createdAt: data.createdAt,
                 updatedAt: data.updatedAt,
-                lastMessage: null
+                lastMessage: data.lastMessage && data.lastMessage.content.t === 'encrypted' ? this.decryptContent(data.lastMessage.content.c) : null
             };
 
             this.sessions.set(session.id, session);
@@ -302,8 +228,8 @@ class SessionsEngine {
     }
 
     // Helper methods for common message types
-    async sendTextMessage(sessionId: string, text: string): Promise<boolean> {
-        const content: MessageContent = { type: 'human', content: { type: 'text', text } };
+    async sendTextMessage(sessionId: string, text: string, type: 'human' | 'assistant' = 'human'): Promise<boolean> {
+        const content: MessageContent = { type, content: { type: 'text', text } };
         return this.sendMessage(sessionId, content);
     }
 
@@ -334,7 +260,14 @@ class SessionsEngine {
             const messages = data.messages as EncryptedMessage[];
 
             // Decrypt all messages
-            return messages.map(msg => this.decryptMessage(msg));
+            return messages.map(msg => {
+                return {
+                    id: msg.id,
+                    seq: msg.seq,
+                    content: msg.content.t === 'encrypted' ? this.decryptContent(msg.content.c) : null,
+                    createdAt: msg.createdAt
+                };
+            });
         } catch (error) {
             console.error('Failed to fetch session messages:', error);
             return [];
@@ -346,7 +279,6 @@ class SessionsEngine {
         this.listeners.clear();
         this.credentials = null;
         this.encryption = null;
-        this.isInitialized = false;
         this.isLoaded = false;
         this.wasConnected = false;
     }
