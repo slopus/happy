@@ -63,11 +63,8 @@ export function startClaudeLoop(opts: {
                         // Handle JSON output
                         if (output.type === 'json') {
                             session.sendMessage({
-                                content: {
-                                    type: 'output',
-                                    data: output.data
-                                },
-                                role: 'assistant',
+                                data: output.data,
+                                type: 'output',
                             });
                         }
                     }
