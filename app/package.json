@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
+    "@legendapp/list": "^1.1.4",
     "@react-navigation/native": "^7.1.6",
     "@stablelib/base64": "^2.0.1",
     "axios": "^1.10.0",

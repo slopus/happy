@@ -1358,6 +1358,13 @@
     "@jridgewell/resolve-uri" "^3.1.0"
     "@jridgewell/sourcemap-codec" "^1.4.14"
 
+"@legendapp/list@^1.1.4":
+  version "1.1.4"
+  resolved "https://registry.yarnpkg.com/@legendapp/list/-/list-1.1.4.tgz#2d8f6ade038735ab1ca79fd493366ec464331eb8"
+  integrity sha512-Q+eLlMilmV2F8/orcR+0XFq543Up3V06WXqG/lpGqowo5reSXsjVCo7dQWNpvU+1+stb87SeAHw9k130DKa+iw==
+  dependencies:
+    use-sync-external-store "^1.5.0"
+
 "@pkgjs/parseargs@^0.11.0":
   version "0.11.0"
   resolved "https://registry.yarnpkg.com/@pkgjs/parseargs/-/parseargs-0.11.0.tgz#a77ea742fab25775145434eb1d2328cf5013ac33"
