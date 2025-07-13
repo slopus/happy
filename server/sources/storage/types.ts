@@ -11,7 +11,7 @@ declare global {
             t: 'new-message';
             sid: string;
             mid: string;
-            c: string; // The encrypted content from the message
+            c: SessionMessageContent;
         };
     }
 }

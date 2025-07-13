@@ -127,7 +127,17 @@ export async function startApi() {
                 tag: true,
                 seq: true,
                 createdAt: true,
-                updatedAt: true
+                updatedAt: true,
+                messages: {
+                    orderBy: { seq: 'desc' },
+                    take: 1,
+                    select: {
+                        id: true,
+                        seq: true,
+                        content: true,
+                        createdAt: true
+                    }
+                }
             }
         });
 
@@ -137,7 +147,13 @@ export async function startApi() {
                 tag: v.tag,
                 seq: v.seq,
                 createdAt: v.createdAt.getTime(),
-                updatedAt: v.updatedAt.getTime()
+                updatedAt: v.updatedAt.getTime(),
+                lastMessage: v.messages[0] ? {
+                    id: v.messages[0].id,
+                    seq: v.messages[0].seq,
+                    content: v.messages[0].content,
+                    createdAt: v.messages[0].createdAt.getTime()
+                } : null
             }))
         });
     });
@@ -295,7 +311,7 @@ export async function startApi() {
                 t: 'new-message',
                 sid: sid,
                 mid: msg.id,
-                c: request.body.c
+                c: msgContent
             };
 
             const update = await tx.update.create({
