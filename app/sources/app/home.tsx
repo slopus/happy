@@ -1,11 +1,12 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
 import { Ionicons } from '@expo/vector-icons';
-import { Alert, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Text, View } from "react-native";
 import { CameraView } from 'expo-camera';
 import * as React from 'react';
 import { decodeBase64, encodeBase64 } from "@/auth/base64";
 import { authGetToken } from "@/auth/authGetToken";
+import { useSessions } from "@/sync/useSessions";
 
 export default function Home() {
     const auth = useAuth();
@@ -18,9 +19,27 @@ export default function Home() {
 }
 
 function Authenticated() {
+    const { sessions, isLoaded } = useSessions();
+
+    if (!isLoaded) {
+        return (
+            <View style={{ flexGrow: 1, flexBasis: 0, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+                <ActivityIndicator size="small" color="#000000" />
+            </View>
+        )
+    }
+
+    if (sessions.length === 0) {
+        return (
+            <View style={{ flexGrow: 1, flexBasis: 0, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+                <Text>No sessions</Text>
+            </View>
+        )
+    }
+
     return (
-        <View>
-            <Text>Authenticated</Text>
+        <View style={{ flexGrow: 1, flexBasis: 0, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+            <Text>TODO</Text>
         </View>
     )
 }

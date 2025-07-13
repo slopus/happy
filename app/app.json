@@ -14,14 +14,16 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.ex3ndr.handy"
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./sources/assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.ex3ndr.handy"
     },
     "web": {
       "bundler": "metro",
