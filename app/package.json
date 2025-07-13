@@ -15,10 +15,15 @@
   "dependencies": {
     "@expo/vector-icons": "^14.1.0",
     "@react-navigation/native": "^7.1.6",
+    "@stablelib/base64": "^2.0.1",
+    "axios": "^1.10.0",
     "expo": "~53.0.17",
+    "expo-camera": "~16.1.10",
+    "expo-crypto": "~14.1.5",
     "expo-font": "~13.3.2",
     "expo-linking": "~7.1.7",
-    "expo-router": "~5.1.3",
+    "expo-router": "^5.1.3",
+    "expo-secure-store": "^14.2.3",
     "expo-splash-screen": "~0.30.10",
     "expo-status-bar": "~2.2.3",
     "expo-system-ui": "~5.0.10",
@@ -29,7 +34,9 @@
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
-    "react-native-web": "~0.20.0"
+    "react-native-typography": "^1.4.1",
+    "react-native-web": "~0.20.0",
+    "tweetnacl": "^1.0.3"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",

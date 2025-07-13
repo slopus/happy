@@ -1,12 +1,14 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
+import * as Fonts from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
 import 'react-native-reanimated';
+import * as React from 'react';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { AuthProvider } from '@/auth/AuthContext';
+import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -14,46 +16,65 @@ export {
 } from 'expo-router';
 
 export const unstable_settings = {
-  // Ensure that reloading on `/modal` keeps a back button present.
-  initialRouteName: '(tabs)',
+  initialRouteName: 'home',
 };
 
-// Prevent the splash screen from auto-hiding before asset loading is complete.
+// Configure splash screen
+SplashScreen.setOptions({
+  fade: true,
+  duration: 300,
+})
 SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const [loaded, error] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-    ...FontAwesome.font,
-  });
+  const colorScheme = useColorScheme();
 
-  // Expo Router uses Error Boundaries to catch errors in the navigation tree.
-  useEffect(() => {
-    if (error) throw error;
-  }, [error]);
+  // Load app
+  const [initState, setInitState] = React.useState<{ credentials: AuthCredentials | null } | null>(null);
+  React.useEffect(() => {
+    (async () => {
+      await Fonts.loadAsync({
+        SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+        ...FontAwesome.font,
+      });
+      const credentials = await TokenStorage.getCredentials();
+      setInitState({ credentials });
+    })();
+  }, []);
 
-  useEffect(() => {
-    if (loaded) {
-      SplashScreen.hideAsync();
+  React.useEffect(() => {
+    if (initState) {
+      setTimeout(() => {
+        SplashScreen.hideAsync();
+      }, 100);
     }
-  }, [loaded]);
+  }, [initState]);
 
-  if (!loaded) {
+  if (!initState) {
     return null;
   }
 
-  return <RootLayoutNav />;
-}
-
-function RootLayoutNav() {
-  const colorScheme = useColorScheme();
-
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="modal" options={{ presentation: 'modal' }} />
-      </Stack>
-    </ThemeProvider>
+    <AuthProvider initialCredentials={initState.credentials}>
+      <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+        <Stack
+          initialRouteName='home'
+          screenOptions={{
+            headerShadowVisible: false,
+            contentStyle: {
+              backgroundColor: 'white',
+            }
+          }}
+        >
+          <Stack.Screen
+            name="home"
+            options={{
+              headerShown: true,
+              headerTitle: 'Handy Coder',
+            }}
+          />
+        </Stack>
+      </ThemeProvider>
+    </AuthProvider>
   );
 }
