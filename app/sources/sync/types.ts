@@ -6,7 +6,7 @@ import { z } from 'zod';
 
 // Human content schema
 export const HumanContentSchema = z.object({
-    type: z.literal('human'),
+    role: z.literal('user'),
     content: z.object({
         type: z.literal('text'),
         text: z.string(),
@@ -15,15 +15,12 @@ export const HumanContentSchema = z.object({
 
 // Assistant content schema
 export const AssistantContentSchema = z.object({
-    type: z.literal('assistant'),
-    content: z.object({
-        type: z.literal('text'),
-        text: z.string(),
-    }),
+    role: z.literal('agent'),
+    content: z.any()
 });
 
 // Message content schema (union)
-export const MessageContentSchema = z.discriminatedUnion('type', [
+export const MessageContentSchema = z.discriminatedUnion('role', [
     HumanContentSchema,
     AssistantContentSchema,
 ]);
@@ -42,14 +39,14 @@ export interface Session {
     seq: number,
     createdAt: number,
     updatedAt: number,
-    lastMessage: MessageContent | null,
+    lastMessage: Message | null,
 }
 
 //
 // Encrypted message
 //
 
-export const EncryptedMessageSchema = z.object({
+export const SourceMessageSchema = z.object({
     id: z.string(),
     seq: z.number(),
     content: z.object({
@@ -59,20 +56,20 @@ export const EncryptedMessageSchema = z.object({
     createdAt: z.number(),
 });
 
-export type EncryptedMessage = z.infer<typeof EncryptedMessageSchema>;
+export type SourceMessage = z.infer<typeof SourceMessageSchema>;
 
 //
 // Decrypted message
 //
 
-export const DecryptedMessageSchema = z.object({
+export const MessageSchema = z.object({
     id: z.string(),
     seq: z.number(),
     content: MessageContentSchema.nullable(), // null if decryption failed
     createdAt: z.number(),
 });
 
-export type DecryptedMessage = z.infer<typeof DecryptedMessageSchema>;
+export type Message = z.infer<typeof MessageSchema>;
 
 //
 // Updates
@@ -81,11 +78,7 @@ export type DecryptedMessage = z.infer<typeof DecryptedMessageSchema>;
 export const UpdateNewMessageSchema = z.object({
     t: z.literal('new-message'),
     sid: z.string(), // Session ID
-    mid: z.string(), // Message ID
-    c: z.object({
-        t: z.literal('encrypted'),
-        c: z.string(), // Base64 encoded encrypted content
-    }),
+    message: SourceMessageSchema
 });
 
 export const UpdateNewSessionSchema = z.object({

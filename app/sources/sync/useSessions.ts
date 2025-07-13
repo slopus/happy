@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
-import { sessionsEngine } from '@/sync/SessionsEngine';
+import { syncSessions } from '@/sync/SyncSessions';
 import { Session } from '@/sync/types';
 
 export function useSessions() {
-    const [sessions, setSessions] = useState<Session[]>(sessionsEngine.getSessions());
-    const [isLoaded, setIsLoaded] = useState<boolean>(sessionsEngine.getLoadedState());
+    const [sessions, setSessions] = useState<Session[]>(syncSessions.getSessions());
+    const [isLoaded, setIsLoaded] = useState<boolean>(syncSessions.getLoadedState());
 
     useEffect(() => {
-        const unsubscribe = sessionsEngine.addListener((updatedSessions, loaded) => {
+        const unsubscribe = syncSessions.addListener((updatedSessions, loaded) => {
             setSessions(updatedSessions);
             setIsLoaded(loaded);
         });
@@ -17,10 +17,5 @@ export function useSessions() {
         }
     }, []);
 
-    return {
-        sessions,
-        isLoaded,
-        getSession: sessionsEngine.getSession.bind(sessionsEngine),
-        getSessionMessages: sessionsEngine.getSessionMessages.bind(sessionsEngine)
-    };
+    return [sessions, isLoaded] as const;
 }

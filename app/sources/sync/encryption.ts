@@ -1,8 +1,9 @@
 import { getRandomBytes } from 'expo-crypto';
 import * as tweetnacl from 'tweetnacl';
 import { decodeBase64, encodeBase64 } from '@/auth/base64';
+import { Message, MessageContent, MessageContentSchema, SourceMessage } from './types';
 
-export function encrypt(data: any, secret: Uint8Array): Uint8Array { 
+export function encrypt(data: any, secret: Uint8Array): Uint8Array {
     const nonce = getRandomBytes(tweetnacl.secretbox.nonceLength);
     const encrypted = tweetnacl.secretbox(new TextEncoder().encode(JSON.stringify(data)), nonce, secret);
     const result = new Uint8Array(nonce.length + encrypted.length);
@@ -25,14 +26,44 @@ export class MessageEncryption {
     constructor(secretKeyBase64url: string) {
         // Decode the secret key from base64url
         this.secretKey = decodeBase64(secretKeyBase64url, 'base64url');
-        
+
         // Ensure the key is the correct length for secretbox (32 bytes)
         if (this.secretKey.length !== tweetnacl.secretbox.keyLength) {
             throw new Error(`Invalid secret key length: ${this.secretKey.length}, expected ${tweetnacl.secretbox.keyLength}`);
         }
     }
 
-    encrypt(data: any): string {
+    decryptMessage(encryptedMessage: SourceMessage | null | undefined): Message | null {
+        if (!encryptedMessage) {
+            return null;
+        }
+        if (encryptedMessage.content.t === 'encrypted') {
+            const decrypted = this.decrypt(encryptedMessage.content.c);
+            if (!decrypted) {
+                return {
+                    id: encryptedMessage.id,
+                    seq: encryptedMessage.seq,
+                    content: null,
+                    createdAt: encryptedMessage.createdAt,
+                }
+            }
+            return {
+                id: encryptedMessage.id,
+                seq: encryptedMessage.seq,
+                content: decrypted,
+                createdAt: encryptedMessage.createdAt,
+            }
+        } else {
+            return {
+                id: encryptedMessage.id,
+                seq: encryptedMessage.seq,
+                content: null,
+                createdAt: encryptedMessage.createdAt,
+            }
+        }
+    }
+
+    encrypt(data: MessageContent): string {
         try {
             const encrypted = encrypt(data, this.secretKey);
             return encodeBase64(encrypted, 'base64');
@@ -42,10 +73,18 @@ export class MessageEncryption {
         }
     }
 
-    decrypt(encryptedContent: string): any | null {
+    decrypt(encryptedContent: string): MessageContent | null {
         try {
             const encryptedData = decodeBase64(encryptedContent, 'base64');
-            return decrypt(encryptedData, this.secretKey);
+            const decrypted = decrypt(encryptedData, this.secretKey);
+            if (!decrypted) {
+                return null;
+            }
+            const parsed = MessageContentSchema.safeParse(decrypted);
+            if (!parsed.success) {
+                return null;
+            }
+            return parsed.data;
         } catch (error) {
             console.error('Decryption failed:', error);
             return null;

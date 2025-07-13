@@ -95,6 +95,7 @@ export default function RootLayout() {
               headerShown: true,
               headerTitle: 'Happy Coder',
               headerRight: () => <HeaderRight />,
+              headerBackTitle: 'Home'
             }}
           />
           <Stack.Screen
@@ -109,6 +110,12 @@ export default function RootLayout() {
             options={{
               presentation: 'modal',
               headerShown: false,
+            }}
+          />
+          <Stack.Screen
+            name="[session]"
+            options={{
+                
             }}
           />
         </Stack>
