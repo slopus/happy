@@ -23,6 +23,11 @@ export async function start(options: StartOptions = {}): Promise<void> {
   logger.info('Secret key loaded');
 
   // Authenticate with server
+  // I experienced this authGetToken step took more than 10 seconds on my
+  // laptop, and I was not sure if it was working. So I wanted to tell people
+  // that an RPC over the internet is happening so they are ok with waiting
+  // longer.
+  logger.info('Contacting handy server...');
   const token = await authGetToken(secret);
   logger.info('Authenticated with handy server');
 
