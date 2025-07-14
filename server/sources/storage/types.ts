@@ -22,6 +22,8 @@ declare global {
             id: string;
             seq: number;
             metadata: string;
+            active: boolean;
+            activeAt: number;
             createdAt: number;
             updatedAt: number;
         };
