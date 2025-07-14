@@ -5,6 +5,7 @@ import { displayQRCode } from '@/ui/qrcode';
 import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startClaudeLoop } from '@/claude/loop';
+import os from 'node:os';
 
 export interface StartOptions {
   model?: string
@@ -29,7 +30,7 @@ export async function start(options: StartOptions = {}): Promise<void> {
   const api = new ApiClient(token, secret);
 
   // Create a new session
-  const response = await api.getOrCreateSession(sessionTag);
+  const response = await api.getOrCreateSession({ tag: sessionTag, metadata: { path: workingDirectory, host: os.hostname() } });
   logger.info(`Session created: ${response.session.id}`);
 
   // Generate and display QR code
