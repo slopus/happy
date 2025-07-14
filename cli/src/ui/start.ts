@@ -1,10 +1,12 @@
+import { basename } from 'node:path';
+import { randomUUID } from 'node:crypto';
+
 import { authGetToken, generateAppUrl, getOrCreateSecretKey } from '@/api/auth';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { displayQRCode } from '@/ui/qrcode';
-import { basename } from 'node:path';
-import { randomUUID } from 'node:crypto';
 import { startClaudeLoop } from '@/claude/loop';
+import { encodeBase64Url } from '@/api/encryption';
 import os from 'node:os';
 
 export interface StartOptions {
@@ -41,6 +43,10 @@ export async function start(options: StartOptions = {}): Promise<void> {
   // Generate and display QR code
   const handyUrl = generateAppUrl(secret);
   displayQRCode(handyUrl);
+  
+  // Display secret for manual entry
+  const secretBase64Url = encodeBase64Url(secret);
+  logger.info(`Or manually configure with a secret code: ${secretBase64Url}`);
 
   // Create realtime session
   const session = api.session(response.session.id);
