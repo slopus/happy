@@ -49,6 +49,9 @@ export interface ServerToClientEvents {
  */
 export interface ClientToServerEvents {
   message: (data: { sid: string, message: any }) => void
+  'session-alive': (data: { sid: string, time: number }) => void
+  'session-end': (data: { sid: string, time: number }) => void,
+  'ping': () => void
 }
 
 /**

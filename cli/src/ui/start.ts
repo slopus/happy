@@ -43,11 +43,30 @@ export async function start(options: StartOptions = {}): Promise<void> {
   // Create claude loop
   const loopDestroy = startClaudeLoop({ path: workingDirectory }, session);
 
+  // Set up periodic ping to keep connection alive
+  const pingInterval = setInterval(() => {
+    session.keepAlive();
+  }, 15000); // Ping every 15 seconds
+
   // Handle graceful shutdown
   const shutdown = async () => {
     logger.info('Shutting down...')
+    
+    // Stop ping interval
+    clearInterval(pingInterval);
+    
+    // Stop claude loop
     await loopDestroy();
+    
+    // Send session death message
+    session.sendSessionDeath();
+    
+    // Wait for socket to flush
+    await session.flush();
+    
+    // Close session
     await session.close();
+    
     process.exit(0);
   };
   process.on('SIGINT', shutdown);
