@@ -101,6 +101,37 @@ export class ApiSessionClient extends EventEmitter {
     });
   }
 
+  /**
+   * Send a ping message to keep the connection alive
+   */
+  keepAlive() {
+    this.socket.volatile.emit('session-alive', { sid: this.sessionId, time: Date.now() });
+  }
+
+  /**
+   * Send session death message
+   */
+  sendSessionDeath() {
+    this.socket.emit('session-end', { sid: this.sessionId, time: Date.now() });
+  }
+
+  /**
+   * Wait for socket buffer to flush
+   */
+  async flush(): Promise<void> {
+    if (!this.socket.connected) {
+      return;
+    }
+    return new Promise((resolve) => {
+      this.socket.emitWithAck('ping', () => {
+        resolve();
+      });
+      setTimeout(() => {
+        resolve();
+      }, 10000);
+    });
+  }
+
   async close() {
     this.socket.close();
   }
