@@ -1,12 +1,14 @@
-import { authGetToken, generateAppUrl, getOrCreateSecretKey } from '@/api/auth';
+import { authGetToken, generateAppUrl } from '@/api/auth';
+import { readSettings, writeSettings, readPrivateKey, writePrivateKey } from '@/persistence';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { displayQRCode } from '@/ui/qrcode';
 import { basename } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, randomBytes } from 'node:crypto';
 import { startClaudeLoop } from '@/claude/loop';
 import os from 'node:os';
 import { startPermissionServer } from '@/claude/mcp/startPermissionServer';
+import chalk from 'chalk';
 
 export interface StartOptions {
   model?: string
@@ -17,10 +19,32 @@ export async function start(options: StartOptions = {}): Promise<void> {
   const workingDirectory = process.cwd();
   const projectName = basename(workingDirectory);
   const sessionTag = randomUUID();
-  logger.info(`Starting happy session for project: ${projectName}`);
+  
+  // Check onboarding
+  const settings = await readSettings();
+  const needsOnboarding = !settings || !settings.onboardingCompleted;
+  
+  if (needsOnboarding) {
+    // Show onboarding
+    logger.info('\n' + chalk.bold.green('🎉 Welcome to Happy CLI!'));
+    logger.info('\nHappy is an open-source, end-to-end encrypted wrapper around Claude Code');
+    logger.info('that allows you to start a regular Claude terminal session with the `happy` command.\n');
+    
+    if (process.platform === 'darwin') {
+      logger.info(chalk.yellow('💡 Tip for macOS users:'));
+      logger.info('   Install Amphetamine to prevent your Mac from sleeping during sessions:');
+      logger.info('   https://apps.apple.com/us/app/amphetamine/id937984704?mt=12\n');
+      logger.info('   You can even close your laptop completely while running Amphetamine');
+      logger.info('   and connect through hotspot to your phone for coding on the go!\n');
+    }
+  }
 
   // Get or create secret key
-  const secret = await getOrCreateSecretKey();
+  let secret = await readPrivateKey();
+  if (!secret) {
+    secret = new Uint8Array(randomBytes(32));
+    await writePrivateKey(secret);
+  }
   logger.info('Secret key loaded');
 
   // Authenticate with server
@@ -34,9 +58,19 @@ export async function start(options: StartOptions = {}): Promise<void> {
   const response = await api.getOrCreateSession({ tag: sessionTag, metadata: { path: workingDirectory, host: os.hostname() } });
   logger.info(`Session created: ${response.session.id}`);
 
-  // Generate and display QR code
-  const handyUrl = generateAppUrl(secret);
-  displayQRCode(handyUrl);
+  // Show QR code during onboarding
+  if (needsOnboarding) {
+    const handyUrl = generateAppUrl(secret);
+    displayQRCode(handyUrl);
+    
+    logger.info('\n' + chalk.bold('Press Enter to continue...'));
+    await new Promise<void>((resolve) => {
+      process.stdin.once('data', () => resolve());
+    });
+    
+    // Save onboarding completed
+    await writeSettings({ onboardingCompleted: true });
+  }
 
   // Create realtime session
   const session = api.session(response.session.id);
@@ -115,7 +149,7 @@ export async function start(options: StartOptions = {}): Promise<void> {
   process.on('SIGTERM', shutdown);
 
   // Started!
-  logger.info('Happy CLI is running. Press Ctrl+C to stop.');
+  logger.info('Happy CLI is starting...');
 
   // Keep process alive
   await new Promise(() => {
