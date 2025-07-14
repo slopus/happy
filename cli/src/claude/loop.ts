@@ -10,7 +10,8 @@
 
 import { ApiSessionClient } from "@/api/apiSession";
 import { UserMessage } from "@/api/types";
-import { claude } from "./claude";
+// import { claude } from "./claude";
+import { claude } from "./claudeSdk"; // Use SDK version instead
 
 export function startClaudeLoop(opts: {
     path: string
