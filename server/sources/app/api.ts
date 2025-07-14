@@ -160,13 +160,14 @@ export async function startApi() {
     typed.post('/v1/sessions', {
         schema: {
             body: z.object({
-                tag: z.string()
+                tag: z.string(),
+                metadata: z.string()
             })
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
         const userId = request.user.id;
-        const { tag } = request.body;
+        const { tag, metadata } = request.body;
 
         const session = await db.session.findFirst({
             where: {
@@ -179,6 +180,7 @@ export async function startApi() {
                 session: {
                     id: session.id,
                     seq: session.seq,
+                    metadata: session.metadata,
                     createdAt: session.createdAt.getTime(),
                     updatedAt: session.updatedAt.getTime()
                 }
@@ -201,7 +203,8 @@ export async function startApi() {
                 const session = await tx.session.create({
                     data: {
                         accountId: userId,
-                        tag: tag
+                        tag: tag,
+                        metadata: metadata
                     }
                 });
 
@@ -210,6 +213,7 @@ export async function startApi() {
                     t: 'new-session',
                     id: session.id,
                     seq: session.seq,
+                    metadata: metadata,
                     createdAt: session.createdAt.getTime(),
                     updatedAt: session.updatedAt.getTime()
                 };
@@ -238,6 +242,7 @@ export async function startApi() {
                 session: {
                     id: result.session.id,
                     seq: result.session.seq,
+                    metadata: result.session.metadata,
                     createdAt: result.session.createdAt.getTime(),
                     updatedAt: result.session.updatedAt.getTime()
                 }
