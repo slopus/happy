@@ -24,7 +24,7 @@ function UserMessageView(props: { message: HumanContent }) {
 
     if (props.message.content.type === 'text') {
         return (
-            <View style={{ backgroundColor: 'black', padding: 16, borderRadius: 16, marginBottom: 16, alignSelf: 'flex-end' }}>
+            <View style={{ backgroundColor: '#f0eee6', paddingHorizontal: 12, paddingVertical: 0, borderRadius: 12, marginBottom: 12, alignSelf: 'flex-end' }}>
                 <MarkdownView markdown={props.message.content.text} />
             </View>
         )
@@ -36,7 +36,7 @@ function UserMessageView(props: { message: HumanContent }) {
 function AgentMessageView(props: { message: ReducedMessage }) {
     if (props.message.content.type === 'text') {
         return (
-            <View style={{ backgroundColor: 'white', padding: 16, borderRadius: 16, marginBottom: 16, alignSelf: 'flex-start' }}>
+            <View style={{ backgroundColor: 'white', paddingHorizontal: 4, borderRadius: 16, marginBottom: 16, alignSelf: 'flex-start' }}>
                 <MarkdownView markdown={props.message.content.text} />
             </View>
         )
