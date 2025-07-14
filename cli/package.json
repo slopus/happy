@@ -33,13 +33,15 @@
     "test:watch": "vitest",
     "build": "pkgroll",
     "prepublishOnly": "yarn build && yarn test",
-    "dev": "yarn build && ./bin/happy"
+    "dev": "yarn build && DEBUG=1 ./bin/happy"
   },
   "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.51",
+    "@modelcontextprotocol/sdk": "^1.15.1",
     "@types/qrcode-terminal": "^0.12.2",
     "axios": "^1.10.0",
     "chalk": "^5.4.1",
-    "dotenv": "^17.2.0",
+    "node-pty": "^1.0.0",
     "qrcode-terminal": "^0.12.0",
     "socket.io-client": "^4.8.1",
     "tweetnacl": "^1.0.3",
