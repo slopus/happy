@@ -10,7 +10,7 @@ export interface SyncMessage {
     content: HumanContent | ReducedMessage | null;
 }
 
-interface SyncSessionState {
+export interface SyncSessionState {
     messages: SyncMessage[];
     isLoading: boolean;
 }

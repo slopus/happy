@@ -1,6 +1,6 @@
 import { ReducedMessage } from '@/sync/reducer';
 import { SyncMessage } from '@/sync/SyncSession';
-import { AssistantContent, HumanContent } from '@/sync/types';
+import { HumanContent } from '@/sync/types';
 import * as React from 'react';
 import { View, Text } from 'react-native';
 import { MarkdownView } from './markdown/MarkdownView';
@@ -10,7 +10,7 @@ export const MessageView = (props: { message: SyncMessage }) => {
         <View
             style={{
                 paddingHorizontal: 16,
-                paddingVertical: 8
+                paddingVertical: 4
             }}
         >
             {props.message.content && props.message.content.role === 'user' && <UserMessageView message={props.message.content} />}
@@ -24,8 +24,8 @@ function UserMessageView(props: { message: HumanContent }) {
 
     if (props.message.content.type === 'text') {
         return (
-            <View style={{ backgroundColor: 'black', padding: 16, borderRadius: 16, marginBottom: 16, alignSelf: 'flex-end' }}>
-                <MarkdownView markdown={props.message.content.text} />
+            <View style={{ backgroundColor: 'black', padding: 16, borderRadius: 16, alignSelf: 'flex-end' }}>
+                <Text style={{ color: 'white', fontSize: 16 }}>{props.message.content.text}</Text>
             </View>
         )
     }
@@ -36,20 +36,20 @@ function UserMessageView(props: { message: HumanContent }) {
 function AgentMessageView(props: { message: ReducedMessage }) {
     if (props.message.content.type === 'text') {
         return (
-            <View style={{ backgroundColor: 'white', padding: 16, borderRadius: 16, marginBottom: 16, alignSelf: 'flex-start' }}>
+            <View style={{ backgroundColor: 'white', borderRadius: 16, alignSelf: 'flex-start' }}>
                 <MarkdownView markdown={props.message.content.text} />
             </View>
         )
     }
     if (props.message.content.type === 'tool') {
         return (
-            <View style={{ paddingHorizontal: 16 }}>
+            <View>
                 {props.message.content.tools.map((tool) => (
                     <View>
-                        <Text style={{ color: 'black', opacity: 0.9 }}>{tool.name}</Text>
+                        <Text style={{ color: 'black', opacity: 0.9 }}>{tool.name} ({JSON.stringify(tool.arguments)})</Text>
                         {tool.children.map((child) => (
                             <View style={{ paddingLeft: 16 }}>
-                                <Text style={{ color: 'black', opacity: 0.9 }}>{child.name}</Text>
+                                <Text style={{ color: 'black', opacity: 0.9 }}>{child.name} ({JSON.stringify(tool.arguments)})</Text>
                             </View>
                         ))}
                     </View>

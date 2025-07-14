@@ -218,7 +218,7 @@ class SyncSocket {
 
         // Message handling
         this.socket.onAny((event, data) => {
-            console.log('SyncSocket: Message received', event, data);
+            // console.log('SyncSocket: Message received', event, data);
             const handler = this.messageHandlers.get(event);
             if (handler) {
                 handler(data);

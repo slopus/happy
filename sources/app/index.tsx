@@ -85,7 +85,6 @@ function NotAuthenticated() {
 
         // Exchange secret for token
         const token = await authGetToken(secret);
-        console.log(token);
 
         if (token && secret) {
             await auth.login(token, encodeBase64(secret, 'base64url'));

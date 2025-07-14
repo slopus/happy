@@ -6,6 +6,7 @@ export type ToolCallTree = {
     name: string;
     messageId: string;
     state: 'running' | 'completed' | 'error';
+    arguments: any;
     parentId: string | null;
     children: ToolCallTree[];
 }
@@ -18,6 +19,7 @@ export type ReducerState = {
 export type ToolCall = {
     name: string;
     state: 'running' | 'completed' | 'error';
+    arguments: any;
     children: ToolCall[];
 }
 
@@ -49,6 +51,7 @@ function normalizeToolCalls(toolCalls: ToolCallTree[]): ToolCall[] {
     return toolCalls.map(t => ({
         name: t.name,
         state: t.state,
+        arguments: t.arguments,
         children: normalizeToolCalls(t.children)
     }));
 }
@@ -66,7 +69,7 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
             continue;
         }
         const content = m.content.content.data as OutputData;
-        
+
         // Process assistant messages for tool_use
         if (content.type === 'assistant' && content.message.content && content.message.content.length > 0) {
             for (let c of content.message.content) {
@@ -87,6 +90,7 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
                                 messageId: parentTool.messageId, // Use parent's message ID
                                 state: 'running' as const,
                                 parentId: content.parent_tool_use_id,
+                                arguments: c.input,
                                 children: []
                             }
                             parentTool.children.push(newTool);
@@ -100,6 +104,7 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
                                 messageId: mid, // This is the root message ID
                                 state: 'running' as const,
                                 parentId: null,
+                                arguments: c.input,
                                 children: []
                             }
                             state.toolCalls.set(c.id, newTool);
@@ -110,7 +115,7 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
                 }
             }
         }
-        
+
         // Process user messages for tool_result
         if (content.type === 'user' && content.message.content && content.message.content.length > 0) {
             for (let c of content.message.content) {
@@ -125,7 +130,7 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
                     } else {
                         existing.state = 'completed';
                     }
-                    
+
                     // Mark the message containing this tool as changed
                     changed.add(existing.messageId);
                 }

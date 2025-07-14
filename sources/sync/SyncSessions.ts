@@ -5,8 +5,11 @@ import {
     Session,
     SessionUpdateSchema,
     SourceMessage,
+    Metadata,
+    EphemeralUpdateSchema,
 } from '@/sync/types';
 import { SyncSession } from './SyncSession';
+import { backoff } from './time';
 
 const API_ENDPOINT = 'https://handy-api.korshakov.org';
 
@@ -35,7 +38,8 @@ class SyncSessions {
     private async fetchSessions() {
         if (!this.credentials) return;
 
-        try {
+        backoff(async () => {
+
             const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
                 headers: {
                     'Authorization': `Bearer ${this.credentials.token}`,
@@ -52,6 +56,9 @@ class SyncSessions {
                 id: string;
                 tag: string;
                 seq: number;
+                metadata: string;
+                active: boolean;
+                activeAt: number;
                 createdAt: number;
                 updatedAt: number;
                 lastMessage: SourceMessage | null;
@@ -62,23 +69,24 @@ class SyncSessions {
             for (const session of sessions) {
                 const processedSession: Session = {
                     ...session,
+                    thinking: false,
+                    thinkingAt: 0,
+                    metadata: this.encryption.decryptMetadata(session.metadata),
                     lastMessage: this.encryption.decryptMessage(session.lastMessage)
                 };
                 this.sessions.set(session.id, processedSession);
             }
 
+            // On loaded
             this.isLoaded = true;
             this.notifyListeners();
-        } catch (error) {
-            console.error('Failed to fetch sessions:', error);
-            this.isLoaded = true; // Set to true even on error to indicate loading attempt completed
-            this.notifyListeners();
-        }
+        });
     }
 
     private subscribeToUpdates() {
         // Subscribe to message updates
         syncSocket.onMessage('update', this.handleUpdate.bind(this));
+        syncSocket.onMessage('ephemeral', this.handleEphemeralUpdate.bind(this));
 
         // Subscribe to connection state changes
         syncSocket.addListener((state) => {
@@ -121,14 +129,35 @@ class SyncSessions {
                 // Fetch sessions again if we don't have this session
                 this.fetchSessions();
             }
-            
+
             // Forward to session instance if it exists
             const sessionInstance = this.sessionInstances.get(updateData.body.sid);
             if (sessionInstance) {
                 sessionInstance.handleUpdate(updateData);
             }
-        } else if (updateData.body.t ==='new-session') {
+        } else if (updateData.body.t === 'new-session') {
             this.fetchSessions(); // Just fetch sessions again
+        }
+    }
+
+    private handleEphemeralUpdate(update: unknown) {
+        const validatedUpdate = EphemeralUpdateSchema.safeParse(update);
+        if (!validatedUpdate.success) {
+            console.log('Invalid ephemeral update received:', validatedUpdate.error);
+            console.error('Invalid ephemeral update received:', update);
+            return;
+        }
+        const updateData = validatedUpdate.data;
+        const session = this.sessions.get(updateData.id);
+        if (session) {
+            this.sessions.set(updateData.id, {
+                ...session,
+                active: updateData.active,
+                activeAt: updateData.activeAt,
+                thinking: updateData.thinking,
+                thinkingAt: updateData.thinking ? updateData.activeAt : 0,
+            });
+            this.notifyListeners();
         }
     }
 
@@ -162,14 +191,14 @@ class SyncSessions {
     //
     // Session Management
     //
-    
+
     private sessionInstances = new Map<string, SyncSession>(); // Store SyncSession instances
 
     getSession(sessionId: string): SyncSession {
         if (!this.encryption) {
             throw new Error('SyncSessions not initialized');
         }
-        
+
         let session = this.sessionInstances.get(sessionId);
         if (!session) {
             session = new SyncSession(sessionId, this.encryption);
