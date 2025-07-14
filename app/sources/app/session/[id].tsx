@@ -3,7 +3,8 @@ import { syncSessions } from "@/sync/SyncSessions";
 import { useSyncSession } from "@/sync/useSyncSession";
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";
-import { ScrollView, TextInput, View } from "react-native";
+import { Button, ScrollView, TextInput, View } from "react-native";
+import * as Clipboard from 'expo-clipboard';
 
 export default function Session() {
     const route = useRoute();
@@ -14,8 +15,11 @@ export default function Session() {
 
     return (
         <View style={{ flex: 1, paddingBottom: 48 }}>
+            <Button title="Copy" onPress={() => {
+                Clipboard.setStringAsync(JSON.stringify(session.messages));
+            }} />
             <ScrollView style={{ flex: 1, padding: 16 }}>
-                {session.messages.map((message) => (
+                {[...session.messages].reverse().map((message) => (
                     <View key={message.id}>
                         <Text>{JSON.stringify(message)}</Text>
                     </View>

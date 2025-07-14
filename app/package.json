@@ -23,6 +23,7 @@
     "axios": "^1.10.0",
     "expo": "~53.0.17",
     "expo-camera": "~16.1.10",
+    "expo-clipboard": "~7.1.5",
     "expo-constants": "^17.1.7",
     "expo-crypto": "^14.1.5",
     "expo-font": "~13.3.2",
