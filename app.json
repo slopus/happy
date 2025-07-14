@@ -18,7 +18,7 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.ex3ndr.happy",
       "config": {
-        "usesNonExemptEncryption": true
+        "usesNonExemptEncryption": false
       }
     },
     "android": {
