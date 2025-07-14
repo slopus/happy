@@ -22,6 +22,8 @@
     "inlineSources": true,
     "experimentalDecorators": true,
     "strictPropertyInitialization": true,
+    "skipLibCheck": true,
+    "noEmit": true,
     "typeRoots": [
       "./node_modules/@types"
     ],
