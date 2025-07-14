@@ -127,6 +127,8 @@ export async function startApi() {
                 seq: true,
                 createdAt: true,
                 updatedAt: true,
+                active: true,
+                lastActiveAt: true,
                 messages: {
                     orderBy: { seq: 'desc' },
                     take: 1,
@@ -146,6 +148,8 @@ export async function startApi() {
                 seq: v.seq,
                 createdAt: v.createdAt.getTime(),
                 updatedAt: v.updatedAt.getTime(),
+                active: v.active,
+                activeAt: v.lastActiveAt.getTime(),
                 lastMessage: v.messages[0] ? {
                     id: v.messages[0].id,
                     seq: v.messages[0].seq,
@@ -181,6 +185,8 @@ export async function startApi() {
                     id: session.id,
                     seq: session.seq,
                     metadata: session.metadata,
+                    active: session.active,
+                    activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
                     updatedAt: session.updatedAt.getTime()
                 }
@@ -214,6 +220,8 @@ export async function startApi() {
                     id: session.id,
                     seq: session.seq,
                     metadata: metadata,
+                    active: session.active,
+                    activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
                     updatedAt: session.updatedAt.getTime()
                 };
@@ -243,6 +251,8 @@ export async function startApi() {
                     id: result.session.id,
                     seq: result.session.seq,
                     metadata: result.session.metadata,
+                    active: result.session.active,
+                    activeAt: result.session.lastActiveAt.getTime(),
                     createdAt: result.session.createdAt.getTime(),
                     updatedAt: result.session.updatedAt.getTime()
                 }
@@ -368,6 +378,17 @@ export async function startApi() {
             }
         };
         pubsub.on('update', updateHandler);
+        const updateEphemeralHandler = (accountId: string, update: { type: 'activity', id: string, active: boolean, activeAt: number }) => {
+            if (accountId === userId) {
+                socket.emit('ephemeral', {
+                    type: update.type,
+                    id: update.id,
+                    active: update.active,
+                    activeAt: update.activeAt
+                });
+            }
+        };
+        pubsub.on('update-ephemeral', updateEphemeralHandler);
 
         socket.on('disconnect', () => {
             // Clean up
@@ -379,7 +400,80 @@ export async function startApi() {
                 }
             }
             pubsub.off('update', updateHandler);
+            pubsub.off('update-ephemeral', updateEphemeralHandler);
             log({ module: 'websocket' }, `User disconnected: ${userId}`);
+        });
+
+        socket.on('session-alive', async (data: any) => {
+            const { sid, time } = data;
+            let t = time;
+            if (typeof t !== 'number') {
+                return;
+            }
+            if (t > Date.now()) {
+                t = Date.now();
+            }
+            if (t < Date.now() - 1000 * 60 * 10) { // Ignore if time is in the past 10 minutes
+                return;
+            }
+
+            // Resolve session
+            const session = await db.session.findUnique({
+                where: { id: sid, accountId: userId }
+            });
+            if (!session) {
+                return;
+            }
+
+            // Update last active at
+            await db.session.update({
+                where: { id: sid },
+                data: { lastActiveAt: new Date(t), active: true }
+            });
+
+            // Emit update to connected sockets
+            pubsub.emit('update-ephemeral', userId, {
+                type: 'activity',
+                id: sid,
+                active: true,
+                activeAt: t
+            });
+        });
+
+        socket.on('session-end', async (data: any) => {
+            const { sid, time } = data;
+            let t = time;
+            if (typeof t !== 'number') {
+                return;
+            }
+            if (t > Date.now()) {
+                t = Date.now();
+            }
+            if (t < Date.now() - 1000 * 60 * 10) { // Ignore if time is in the past 10 minutes
+                return;
+            }
+
+            // Resolve session
+            const session = await db.session.findUnique({
+                where: { id: sid, accountId: userId }
+            });
+            if (!session) {
+                return;
+            }
+
+            // Update last active at
+            await db.session.update({
+                where: { id: sid },
+                data: { lastActiveAt: new Date(t), active: false }
+            });
+
+            // Emit update to connected sockets
+            pubsub.emit('update-ephemeral', userId, {
+                type: 'activity',
+                id: sid,
+                active: false,
+                activeAt: t
+            });
         });
 
         socket.on('message', async (data: any) => {

@@ -33,15 +33,17 @@ model Account {
 //
 
 model Session {
-    id        String           @id @default(cuid())
-    tag       String
-    accountId String
-    account   Account          @relation(fields: [accountId], references: [id])
-    metadata  String
-    seq       Int              @default(0)
-    createdAt DateTime         @default(now())
-    updatedAt DateTime         @updatedAt
-    messages  SessionMessage[]
+    id           String           @id @default(cuid())
+    tag          String
+    accountId    String
+    account      Account          @relation(fields: [accountId], references: [id])
+    metadata     String
+    seq          Int              @default(0)
+    active       Boolean          @default(true)
+    lastActiveAt DateTime         @default(now())
+    createdAt    DateTime         @default(now())
+    updatedAt    DateTime         @updatedAt
+    messages     SessionMessage[]
 
     @@unique([accountId, tag])
 }

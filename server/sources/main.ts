@@ -2,6 +2,7 @@ import { startApi } from "@/app/api";
 import { log } from "@/utils/log";
 import { awaitShutdown } from "@/utils/shutdown";
 import { db } from './storage/db';
+import { startTimeout } from "./app/timeout";
 
 async function main() {
 
@@ -11,6 +12,7 @@ async function main() {
 
     await db.$connect();
     await startApi();
+    startTimeout();
 
     //
     // Ready
