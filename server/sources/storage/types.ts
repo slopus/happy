@@ -21,6 +21,7 @@ declare global {
             t: 'new-session';
             id: string;
             seq: number;
+            metadata: string;
             createdAt: number;
             updatedAt: number;
         };
