@@ -36,7 +36,6 @@ export class MessageEncryption {
     }
 
     decryptMessage(encryptedMessage: SourceMessage | null | undefined): Message | null {
-        console.log('decryptMessage', encryptedMessage);
         if (!encryptedMessage) {
             return null;
         }

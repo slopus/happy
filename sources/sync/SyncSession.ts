@@ -1,12 +1,13 @@
 import { syncSocket } from './SyncSocket';
-import { MessageContent, SourceMessage, SessionUpdate } from './types';
+import { MessageContent, SourceMessage, SessionUpdate, HumanContent } from './types';
 import { MessageEncryption } from './encryption';
 import { randomUUID } from 'expo-crypto';
+import { applyMessages, createReducer, ReducedMessage, ReducerState } from './reducer';
 
 export interface SyncMessage {
     id: string; // Local ID
     serverId?: string; // Server ID when delivered
-    content: MessageContent | null;
+    content: HumanContent | ReducedMessage | null;
 }
 
 interface SyncSessionState {
@@ -22,7 +23,7 @@ export class SyncSession {
     private messages: SyncMessage[] = [];
     private listeners = new Set<SyncSessionListener>();
     private isLoading = false;
-    private localToServerMap = new Map<string, string>(); // localId -> serverId
+    private reducer: ReducerState = createReducer();
 
     constructor(sessionId: string, encryption: MessageEncryption) {
         this.sessionId = sessionId;
@@ -137,25 +138,23 @@ export class SyncSession {
             const existingIndex = this.messages.findIndex(m => m.id === localKey);
             if (existingIndex !== -1) {
                 this.messages[existingIndex] = { ...this.messages[existingIndex], serverId: decrypted.id };
-                this.localToServerMap.set(this.messages[existingIndex].id, decrypted.id);
             } else {
                 this.messages.push({ id: localKey, content: decrypted.content, serverId: decrypted.id });
-                this.localToServerMap.set(localKey, decrypted.id);
             }
         } else {
 
             //
-            // Check if this message is from backend
+            // Apply reducer to the message
             //
 
-            const existingIndex = this.messages.findIndex(m => m.serverId === decrypted.id);
-            if (existingIndex !== -1) {
-                this.messages[existingIndex] = { ...this.messages[existingIndex], serverId: decrypted.id };
-                this.localToServerMap.set(this.messages[existingIndex].id, decrypted.id);
-            } else {
-                const localId = randomUUID();
-                this.messages.push({ id: localId, content: decrypted.content, serverId: decrypted.id });
-                this.localToServerMap.set(localId, decrypted.id);
+            let reduced = applyMessages(this.reducer, [decrypted]);
+            for (let r of reduced) {
+                const existingIndex = this.messages.findIndex(m => m.id === r.id);
+                if (existingIndex !== -1) {
+                    this.messages[existingIndex] = { ...this.messages[existingIndex], content: r };
+                } else {
+                    this.messages.push({ id: r.id, content: r });
+                }
             }
         }
     }

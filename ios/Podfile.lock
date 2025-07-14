@@ -41,6 +41,8 @@ PODS:
     - ExpoModulesCore
     - ZXingObjC/OneD
     - ZXingObjC/PDF417
+  - ExpoClipboard (7.1.5):
+    - ExpoModulesCore
   - ExpoCrypto (14.1.5):
     - ExpoModulesCore
   - ExpoFileSystem (18.1.11):
@@ -2090,6 +2092,7 @@ DEPENDENCIES:
   - Expo (from `../node_modules/expo`)
   - ExpoAsset (from `../node_modules/expo-asset/ios`)
   - ExpoCamera (from `../node_modules/expo-camera/ios`)
+  - ExpoClipboard (from `../node_modules/expo-clipboard/ios`)
   - ExpoCrypto (from `../node_modules/expo-crypto/ios`)
   - ExpoFileSystem (from `../node_modules/expo-file-system/ios`)
   - ExpoFont (from `../node_modules/expo-font/ios`)
@@ -2204,6 +2207,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-asset/ios"
   ExpoCamera:
     :path: "../node_modules/expo-camera/ios"
+  ExpoClipboard:
+    :path: "../node_modules/expo-clipboard/ios"
   ExpoCrypto:
     :path: "../node_modules/expo-crypto/ios"
   ExpoFileSystem:
@@ -2388,6 +2393,7 @@ SPEC CHECKSUMS:
   Expo: cd501e0be567d779626d89da336c8103bbcb74de
   ExpoAsset: ef06e880126c375f580d4923fdd1cdf4ee6ee7d6
   ExpoCamera: 7edf99216d92e40b991d4e7ed69eba9527c94cda
+  ExpoClipboard: 436f6de6971f14eb75ae160e076d9cb3b19eb795
   ExpoCrypto: a9f1d75baeea6ef8b03c1660621585196c382e85
   ExpoFileSystem: 7f92f7be2f5c5ed40a7c9efc8fa30821181d9d63
   ExpoFont: cf508bc2e6b70871e05386d71cab927c8524cc8e
