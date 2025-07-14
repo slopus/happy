@@ -1,13 +1,13 @@
 # Happy
 
-Start a `claude` code and control it from your mobile device on the go in a native mobile app.
+Code on the go controlling claude code from your mobile device.
 
-Free. Open source. Code on the go.
+Free. Open source. Code anywhere.
 
 ## Installation
 
 ```bash
-npm install -g happy-coder-cli
+npm install -g happy-coder
 ```
 
 ## Usage
