@@ -71,7 +71,7 @@ export class SyncSession {
             try {
                 const response = await syncSocket.request(`/v1/sessions/${this.sessionId}/messages`);
                 const data = await response.json();
-                for (const msg of data.messages as SourceMessage[]) {
+                for (const msg of [...data.messages as SourceMessage[]].reverse()) {
                     this.handleNewMessage(msg);
                 }
                 this.isLoading = false;
