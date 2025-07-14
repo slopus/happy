@@ -12,6 +12,9 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
 import { useRouter } from "expo-router";
 
+
+console.log('NativeWind version:', require('nativewind/package.json').version);
+
 export default function Home() {
     const auth = useAuth();
     if (!auth.isAuthenticated) {
@@ -28,22 +31,29 @@ function Authenticated() {
 
     if (!isLoaded) {
         return (
-            <View style={{ flexGrow: 1, flexBasis: 0, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+            <View className="flex-1 items-center justify-center mb-8">
                 <ActivityIndicator size="small" color="#000000" />
             </View>
         )
     }
 
     return (
-        <View style={{ flex: 1 }}>
+        <View className="flex-1">
             {updateAvailable && <UpdateBanner onReload={reloadApp} />}
 
             {sessions.length === 0 ? (
-                <View style={{ flexGrow: 1, flexBasis: 0, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+                <View className="flex-1 items-center justify-center mb-8">
                     <Text>No sessions</Text>
                 </View>
             ) : (
-                <SessionsList sessions={sessions} />
+                <>
+                    <SessionsList sessions={sessions} />
+                    <View className="bg-red-500 p-4 mx-4 mb-4 rounded-lg hack">
+                        <Text className="text-white text-center font-bold">
+                            🎉 NativeWind is working! This is styled with Tailwind classes.
+                        </Text>
+                    </View>
+                </>
             )}
         </View>
     )
@@ -98,12 +108,12 @@ function NotAuthenticated() {
     }
 
     return (
-        <View style={{ flexGrow: 1, flexBasis: 0, alignItems: 'center', justifyContent: 'center' }}>
-            <Ionicons name="qr-code-outline" size={120} color="#000" style={{ marginBottom: 32 }} />
-            <Text style={{ textAlign: 'center', fontSize: 24, marginBottom: 32, marginHorizontal: 32 }}>
+        <View className="flex-1 items-center justify-center">
+            <Ionicons name="qr-code-outline" size={120} color="#000" className="mb-8" />
+            <Text className="text-center text-2xl mb-8 mx-8">
                 Scan the QR code from your terminal to login
             </Text>
-            <View style={{ maxWidth: 200, width: '100%', marginBottom: 16 }}>
+            <View className="max-w-[200px] w-full mb-4">
                 <RoundButton
                     loading={isLoading}
                     title="Open Camera"

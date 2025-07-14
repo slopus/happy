@@ -29,40 +29,11 @@ export const ChatInput = React.memo((props: {
     }, [props.loading, props.value, props.onSend]);
 
     return (
-        <View
-            style={[{
-                backgroundColor: '#F2F2F2',
-                borderRadius: 24,
-                flexDirection: 'row',
-                minHeight: 48,
-                alignSelf: 'stretch'
-            }]}
-        >
-
+        <View className="bg-gray-200 rounded-3xl flex-row min-h-12 self-stretch">
             <TextareaAutosize
                 minRows={1}
                 maxRows={3}
-                style={{
-                    flexBasis: 0,
-                    flexGrow: 1,
-                    borderTopLeftRadius: 24,
-                    borderBottomLeftRadius: 24,
-                    overflow: 'hidden',
-                    // minHeight: 22 + (12 + 12),
-                    // maxHeight: 22 * 3 + (12 + 12),
-                    marginTop: '12px',
-                    marginBottom: '12px',
-                    paddingLeft: '18px',
-                    paddingRight: '16px',
-                    fontSize: '17px',
-                    lineHeight: '22px',
-                    fontWeight: '400',
-                    color: 'black',
-                    backgroundColor: 'transparent',
-                    border: 'none',
-                    resize: 'none',
-                    // textAlignVertical: 'top'
-                }}
+                className="flex-1 rounded-tl-3xl rounded-bl-3xl overflow-hidden my-3 pl-[18px] pr-4 text-[17px] leading-[22px] font-normal text-black bg-transparent border-none resize-none"
                 placeholder={props.placeholder}
                 // placeholderTextColor={theme.input.placeholder}
                 autoCapitalize="sentences"
@@ -80,16 +51,7 @@ export const ChatInput = React.memo((props: {
             // onKeyPress={handleKeyPress}
             />
             <Pressable
-                style={{
-                    width: 32,
-                    height: 32,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: 'white',
-                    borderRadius: 24,
-                    alignSelf: 'flex-start',
-                    margin: 8
-                }}
+                className="w-8 h-8 items-center justify-center bg-white rounded-3xl self-start m-2"
                 onPress={handlePress}
             >
                 {props.loading && <ActivityIndicator color="black" size="small" />}

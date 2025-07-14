@@ -30,32 +30,10 @@ export const ChatInput = React.memo((props: {
     }, [props.loading, props.value, props.onSend]);
 
     return (
-        <View
-            style={[{
-                backgroundColor: '#F2F2F2',
-                borderRadius: 24,
-                flexDirection: 'row',
-                minHeight: 48,
-                alignSelf: 'stretch'
-            }]}
-        >
+        <View className="bg-gray-200 rounded-3xl flex-row min-h-12 self-stretch">
             <TextInput
+                className="flex-1 rounded-tl-3xl rounded-bl-3xl overflow-hidden min-h-[46px] max-h-[90px] pt-3 pb-3 pl-[18px] pr-4 flex-grow text-[17px] leading-[22px] font-normal text-black"
                 style={{
-                    flex: 1,
-                    borderTopLeftRadius: 24,
-                    borderBottomLeftRadius: 24,
-                    overflow: 'hidden',
-                    minHeight: 22 + (12 + 12),
-                    maxHeight: 22 * 3 + (12 + 12),
-                    paddingTop: 12,
-                    paddingBottom: 12,
-                    paddingLeft: 18,
-                    paddingRight: 16,
-                    flexGrow: 1,
-                    fontSize: 17,
-                    lineHeight: 22,
-                    fontWeight: '400',
-                    color: 'black',
                     textAlignVertical: 'top'
                 }}
                 placeholder={props.placeholder}
@@ -73,16 +51,7 @@ export const ChatInput = React.memo((props: {
                 submitBehavior="newline"
             />
             <Pressable
-                style={{
-                    width: 32,
-                    height: 32,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    backgroundColor: 'white',
-                    borderRadius: 24,
-                    alignSelf: 'flex-start',
-                    margin: 8
-                }}
+                className="w-8 h-8 items-center justify-center bg-white rounded-3xl self-start m-2"
                 onPress={handlePress}
             >
                 {props.loading && <ActivityIndicator color="black" size="small" />}
