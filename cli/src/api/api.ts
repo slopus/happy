@@ -2,6 +2,7 @@ import axios from 'axios'
 import { logger } from '@/ui/logger'
 import type { CreateSessionResponse } from '@/api/types'
 import { ApiSessionClient } from './apiSession';
+import { encodeBase64, encrypt } from './encryption';
 
 export class ApiClient {
   private readonly token: string;
@@ -15,11 +16,11 @@ export class ApiClient {
   /**
    * Create a new session or load existing one with the given tag
    */
-  async getOrCreateSession(tag: string): Promise<CreateSessionResponse> {
+  async getOrCreateSession(opts: { tag: string, metadata: { path: string, host: string } }): Promise<CreateSessionResponse> {
     try {
       const response = await axios.post<CreateSessionResponse>(
         `https://handy-api.korshakov.org/v1/sessions`,
-        { tag },
+        { tag: opts.tag, metadata: encodeBase64(encrypt(opts.metadata, this.secret)) },
         {
           headers: {
             'Authorization': `Bearer ${this.token}`,
@@ -28,7 +29,7 @@ export class ApiClient {
         }
       )
 
-      logger.info(`Session created/loaded: ${response.data.session.id} (tag: ${tag})`)
+      logger.info(`Session created/loaded: ${response.data.session.id} (tag: ${opts.tag})`)
       return response.data;
     } catch (error) {
       logger.error('Failed to get or create session:', error);
@@ -41,7 +42,7 @@ export class ApiClient {
    * @param id - Session ID
    * @returns Session client
    */
-  session(id:string): ApiSessionClient {
+  session(id: string): ApiSessionClient {
     return new ApiSessionClient(this.token, this.secret, id);
   }
 }

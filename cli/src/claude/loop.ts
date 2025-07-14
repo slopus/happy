@@ -43,6 +43,7 @@ export function startClaudeLoop(opts: {
                         workingDirectory: opts.path,
                         model: opts.model,
                         permissionMode: opts.permissionMode,
+                        sessionId: sessionId,
                     })) {
 
                         // Handle exit
@@ -66,6 +67,11 @@ export function startClaudeLoop(opts: {
                                 data: output.data,
                                 type: 'output',
                             });
+                        }
+
+                        // Handle system messages
+                        if (output.type === 'json' && output.data.type === 'system' && output.data.subtype === 'init') {
+                            sessionId = output.data.sessionId;
                         }
                     }
                 }
