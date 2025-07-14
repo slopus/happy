@@ -15,6 +15,8 @@ export interface ClaudeProcessOptions {
   model?: string
   permissionMode?: 'auto' | 'default' | 'plan'
   skipPermissions?: boolean
+  mcpServers?: Record<string, any>
+  permissionPromptToolName?: string
 }
 
 export interface ClaudeOutput {
@@ -36,7 +38,10 @@ export async function* claude(options: ClaudeProcessOptions): AsyncGenerator<Cla
       model: options.model,
       permissionMode: mapPermissionMode(options.permissionMode),
       resume: options.sessionId,
-      // Add other options as needed
+      // Add MCP servers if provided
+      mcpServers: options.mcpServers,
+      // Add permission prompt tool name if provided
+      permissionPromptToolName: options.permissionPromptToolName,
     }
     
     // Create abort controller for cancellation
