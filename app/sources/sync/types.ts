@@ -40,7 +40,12 @@ export interface Session {
     seq: number,
     createdAt: number,
     updatedAt: number,
+    active: boolean,
+    activeAt: number,
+    metadata: Metadata | null,
     lastMessage: Message | null,
+    thinking: boolean,
+    thinkingAt: number,
 }
 
 //
@@ -109,3 +114,28 @@ export const SessionUpdateSchema = z.object({
 });
 
 export type SessionUpdate = z.infer<typeof SessionUpdateSchema>;
+
+//
+// Ephemeral update
+//
+
+export const EphemeralUpdateSchema = z.object({
+    type: z.literal('activity'),
+    id: z.string(),
+    active: z.boolean(),
+    activeAt: z.number(),
+    thinking: z.boolean(),
+});
+
+export type EphemeralUpdate = z.infer<typeof EphemeralUpdateSchema>;
+
+//
+// Metadata
+//
+
+export const MetadataSchema = z.object({
+    path: z.string(),
+    host: z.string(),
+});
+
+export type Metadata = z.infer<typeof MetadataSchema>;

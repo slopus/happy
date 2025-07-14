@@ -1,7 +1,7 @@
 import { getRandomBytes } from 'expo-crypto';
 import * as tweetnacl from 'tweetnacl';
 import { decodeBase64, encodeBase64 } from '@/auth/base64';
-import { Message, MessageContent, MessageContentSchema, SourceMessage } from './types';
+import { Message, MessageContent, MessageContentSchema, Metadata, MetadataSchema, SourceMessage } from './types';
 
 export function encrypt(data: any, secret: Uint8Array): Uint8Array {
     const nonce = getRandomBytes(tweetnacl.secretbox.nonceLength);
@@ -33,6 +33,19 @@ export class MessageEncryption {
         if (this.secretKey.length !== tweetnacl.secretbox.keyLength) {
             throw new Error(`Invalid secret key length: ${this.secretKey.length}, expected ${tweetnacl.secretbox.keyLength}`);
         }
+    }
+
+    decryptMetadata(encryptedMetadata: string): Metadata | null {
+        const encryptedData = decodeBase64(encryptedMetadata, 'base64');
+        const decrypted = decrypt(encryptedData, this.secretKey);
+        if (!decrypted) {
+            return null;
+        }
+        const parsed = MetadataSchema.safeParse(decrypted);
+        if (!parsed.success) {
+            return null;
+        }
+        return parsed.data;
     }
 
     decryptMessage(encryptedMessage: SourceMessage | null | undefined): Message | null {

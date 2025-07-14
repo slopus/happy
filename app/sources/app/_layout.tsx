@@ -95,7 +95,7 @@ export default function RootLayout() {
               name="index"
               options={{
                 headerShown: true,
-                headerTitle: 'Happy Coder',
+                headerTitle: 'Happy',
                 headerRight: () => <HeaderRight />
               }}
             />
