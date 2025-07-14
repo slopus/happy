@@ -20,7 +20,7 @@ export function startTimeout() {
                     where: { id: session.id },
                     data: { active: false }
                 });
-                pubsub.emit('update-ephemeral', {
+                pubsub.emit('update-ephemeral', session.accountId, {
                     type: 'activity',
                     id: session.id,
                     active: false,
