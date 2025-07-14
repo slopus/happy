@@ -382,12 +382,7 @@ export async function startApi() {
         pubsub.on('update', updateHandler);
         const updateEphemeralHandler = (accountId: string, update: { type: 'activity', id: string, active: boolean, activeAt: number, thinking: boolean }) => {
             if (accountId === userId) {
-                socket.emit('ephemeral', {
-                    type: update.type,
-                    id: update.id,
-                    active: update.active,
-                    activeAt: update.activeAt
-                });
+                socket.emit('ephemeral', update);
             }
         };
         pubsub.on('update-ephemeral', updateEphemeralHandler);
