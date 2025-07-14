@@ -143,3 +143,76 @@ When receiving a tool_result with `is_error: true` and permission message:
 - WebFetch
 - TodoWrite
 - WebSearch
+
+## Figuring out which permissions to provide
+
+--append-system-prompt 'If 
+
+
+Native claude cli will stop after tool_use - it will have a stop_reason: "tool_use", because it does not have permissions, but it seems 
+
+```bash
+cd /Users/kirilldubovitskiy/projects/handy-cli/explore-claude-cli/v3-claude-self-exploration/toy-project-3-tool-approve
+
+# Given there is no tool allowlist for now in this project, when we attempt to run 
+# certain not by default blessed tools
+#
+# Example allowlist
+#
+# In: .claude/settings.local.json 
+#
+# "permissions": {
+#   "allow": [
+#     "Bash(npm install:*)",
+#     "Bash(mkdir:*)",
+#     "Bash(npm run build:*)",
+#     "Bash(npm test:*)",
+# ....
+
+
+# Will still attempt & not stop on tool_use, but will return error, and try fallbacks
+claude --print --output-format stream-json --verbose 'run bash ls - do not try running LS tool itself, actually run bash'
+
+# This will not restirct the tools it seems, only allow
+claude --print --output-format stream-json --allowedTools 'Read' --verbose 'run bash ls - do not try running LS tool itself, actually run bash'
+
+
+# Will hide Bash tool alltogher
+claude --print --output-format stream-json --disallowedTools 'Bash' --verbose 'run bash ls - do not try running LS tool itself, actually run bash'
+
+# Likely claude simply does not provide the API to set 'stop_on_tools' - tools to stop on
+# It stops after every tool use internally, but for --print mode, it does not
+
+# Lets try streaming
+claude --print --output-format stream-json --input-format stream-json --verbose 'run bash ls - do not try running LS tool itself, actually run bash'
+
+```
+
+Text from the assistant:
+I need permission to use the Bash tool. Please grant permission when prompted, or run with `--allowedTools Bash` flag.
+
+
+But we are not getting any structured request fot tool permission. I think this is potentially a dynamic tool claude injects into the assistant.
+We can hack around this, since I don't think we can register new tools with claude.
+
+Lets inject with a --append-system-prompt:
+
+"""
+If you hit a permission error, please respond with text message with a single text message following the failed due to permissions tool invocation.
+
+You can stop replying after this message, we will be prompting the user for permission, and updating permissions before we continue.
+
+<permission-request>
+  <name>Bash</name>
+  <invocation>ls -la</invocation>
+  <invocation-broad>ls: *</invocation-broad>
+  <invocation-description>List files in the current directory with details</invocation-description>
+</permission-request>
+
+
+
+
+
+
+
+
