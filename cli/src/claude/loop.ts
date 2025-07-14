@@ -16,7 +16,9 @@ import { claude } from "./claudeSdk"; // Use SDK version instead
 export function startClaudeLoop(opts: {
     path: string
     model?: string
-    permissionMode?: 'auto' | 'default' | 'plan',
+    permissionMode?: 'auto' | 'default' | 'plan'
+    mcpServers?: Record<string, any>
+    permissionPromptToolName?: string
     onThinking?: (thinking: boolean) => void
 }, session: ApiSessionClient) {
 
@@ -46,6 +48,8 @@ export function startClaudeLoop(opts: {
                         workingDirectory: opts.path,
                         model: opts.model,
                         permissionMode: opts.permissionMode,
+                        mcpServers: opts.mcpServers,
+                        permissionPromptToolName: opts.permissionPromptToolName,
                         sessionId: sessionId,
                     })) {
 

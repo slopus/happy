@@ -6,6 +6,7 @@ import { basename } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { startClaudeLoop } from '@/claude/loop';
 import os from 'node:os';
+import { startPermissionServer } from '@/claude/mcp/startPermissionServer';
 
 export interface StartOptions {
   model?: string
@@ -40,12 +41,46 @@ export async function start(options: StartOptions = {}): Promise<void> {
   // Create realtime session
   const session = api.session(response.session.id);
 
+  // Start MCP permission server
+  const permissionServer = await startPermissionServer((request) => {
+    logger.info('Permission request:', request);
+    // Send permission request to remote client
+    session.sendMessage({
+      type: 'permission-request',
+      data: request
+    });
+  });
+  logger.info(`MCP permission server started on port ${permissionServer.port}`);
+  
+  // Handle permission responses from remote client
+  session.on('message', (message: any) => {
+    if (message.type === 'permission-response') {
+      logger.info('Permission response from client:', message.data);
+      permissionServer.respondToPermission(message.data);
+    }
+  });
+
+  // Create MCP configuration
+  const mcpServers = {
+    'permission-server': {
+      type: 'http' as const,
+      url: permissionServer.url,
+    },
+  };
+
   // Create claude loop
   let thinking = false;
-  const loopDestroy = startClaudeLoop({ path: workingDirectory, onThinking: (t) => {
-    thinking = t;
-    session.keepAlive(t);
-  } }, session);
+  const loopDestroy = startClaudeLoop({ 
+    path: workingDirectory, 
+    model: options.model,
+    permissionMode: options.permissionMode,
+    mcpServers,
+    permissionPromptToolName: permissionServer.toolName,
+    onThinking: (t) => {
+      thinking = t;
+      session.keepAlive(t);
+    } 
+  }, session);
 
   // Set up periodic ping to keep connection alive
   const pingInterval = setInterval(() => {
@@ -61,6 +96,9 @@ export async function start(options: StartOptions = {}): Promise<void> {
     
     // Stop claude loop
     await loopDestroy();
+    
+    // Stop MCP permission server
+    await permissionServer.stop();
     
     // Send session death message
     session.sendSessionDeath();
