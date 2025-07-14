@@ -49,7 +49,7 @@ export interface ServerToClientEvents {
  */
 export interface ClientToServerEvents {
   message: (data: { sid: string, message: any }) => void
-  'session-alive': (data: { sid: string, time: number }) => void
+  'session-alive': (data: { sid: string, time: number, thinking: boolean }) => void
   'session-end': (data: { sid: string, time: number }) => void,
   'ping': () => void
 }

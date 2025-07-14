@@ -104,8 +104,8 @@ export class ApiSessionClient extends EventEmitter {
   /**
    * Send a ping message to keep the connection alive
    */
-  keepAlive() {
-    this.socket.volatile.emit('session-alive', { sid: this.sessionId, time: Date.now() });
+  keepAlive(thinking: boolean) {
+    this.socket.volatile.emit('session-alive', { sid: this.sessionId, time: Date.now(), thinking });
   }
 
   /**

@@ -15,7 +15,8 @@ import { claude } from "./claude";
 export function startClaudeLoop(opts: {
     path: string
     model?: string
-    permissionMode?: 'auto' | 'default' | 'plan'
+    permissionMode?: 'auto' | 'default' | 'plan',
+    onThinking?: (thinking: boolean) => void
 }, session: ApiSessionClient) {
 
     let exiting = false;
@@ -38,6 +39,7 @@ export function startClaudeLoop(opts: {
             if (messageQueue.length > 0) {
                 const message = messageQueue.shift();
                 if (message) {
+                    opts.onThinking?.(true);
                     for await (const output of claude({
                         command: message.content.text,
                         workingDirectory: opts.path,
@@ -74,6 +76,7 @@ export function startClaudeLoop(opts: {
                             sessionId = output.data.sessionId;
                         }
                     }
+                    opts.onThinking?.(false);
                 }
             }
 
