@@ -127,6 +127,7 @@ export async function startApi() {
                 seq: true,
                 createdAt: true,
                 updatedAt: true,
+                metadata: true,
                 active: true,
                 lastActiveAt: true,
                 messages: {
@@ -150,6 +151,7 @@ export async function startApi() {
                 updatedAt: v.updatedAt.getTime(),
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
+                metadata: v.metadata,
                 lastMessage: v.messages[0] ? {
                     id: v.messages[0].id,
                     seq: v.messages[0].seq,
