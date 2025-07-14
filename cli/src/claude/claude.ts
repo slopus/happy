@@ -25,9 +25,7 @@ export interface ClaudeOutput {
 export async function* claude(options: ClaudeProcessOptions): AsyncGenerator<ClaudeOutput> {
   const args = buildArgs(options)
   const path = claudePath();
-  
-  logger.info('Spawning Claude CLI with args:', args)
-  
+    
   const process = spawn(path, args, {
     cwd: options.workingDirectory,
     stdio: ['pipe', 'pipe', 'pipe'],

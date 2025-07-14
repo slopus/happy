@@ -41,11 +41,15 @@ export async function start(options: StartOptions = {}): Promise<void> {
   const session = api.session(response.session.id);
 
   // Create claude loop
-  const loopDestroy = startClaudeLoop({ path: workingDirectory }, session);
+  let thinking = false;
+  const loopDestroy = startClaudeLoop({ path: workingDirectory, onThinking: (t) => {
+    thinking = t;
+    session.keepAlive(t);
+  } }, session);
 
   // Set up periodic ping to keep connection alive
   const pingInterval = setInterval(() => {
-    session.keepAlive();
+    session.keepAlive(thinking);
   }, 15000); // Ping every 15 seconds
 
   // Handle graceful shutdown
