@@ -68,13 +68,31 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
                 props.style])}
             onPress={doAction}
         >
-            <View style={{ height: size.height - 2, alignItems: 'center', justifyContent: 'center', minWidth: 64, paddingHorizontal: 16 }}>
+            <View 
+                className="items-center justify-center min-w-16 px-4"
+                style={{ 
+                    height: size.height - 2 
+                }}
+            >
                 {doLoading && (
-                    <View style={{ position: 'absolute', left: 0, right: 0, bottom: 0, top: 0, alignItems: 'center', justifyContent: 'center' }}>
+                    <View className="absolute inset-0 items-center justify-center">
                         <ActivityIndicator color={display.textColor} size='small' />
                     </View>
                 )}
-                <Text style={[iOSUIKit.title3, { marginTop: size.pad, opacity: doLoading ? 0 : 1, color: display.textColor, fontSize: size.fontSize, fontWeight: '600', includeFontPadding: false }]} numberOfLines={1}>{props.title}</Text>
+                <Text 
+                    className="font-semibold"
+                    style={[iOSUIKit.title3, { 
+                        marginTop: size.pad, 
+                        opacity: doLoading ? 0 : 1, 
+                        color: display.textColor, 
+                        fontSize: size.fontSize, 
+                        fontWeight: '600', 
+                        includeFontPadding: false 
+                    }]} 
+                    numberOfLines={1}
+                >
+                    {props.title}
+                </Text>
             </View>
         </Pressable>
     )

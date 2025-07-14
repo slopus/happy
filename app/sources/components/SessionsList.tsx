@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Session } from '@/sync/types';
@@ -59,10 +59,10 @@ export function SessionsList({ sessions }: SessionsListProps) {
         if (item.type === 'header') {
             const isActive = item.title === 'Active Sessions';
             return (
-                <View style={styles.sectionHeader}>
-                    <View style={styles.sectionTitleContainer}>
-                        {isActive && <View style={styles.activeIndicator} />}
-                        <Text style={styles.sectionTitle}>{item.title}</Text>
+                <View className="px-4 py-2 bg-gray-100">
+                    <View className="flex-row items-center">
+                        {isActive && <View className="w-2 h-2 rounded-full bg-green-500 mr-2" />}
+                        <Text className="text-sm font-semibold text-gray-500 uppercase">{item.title}</Text>
                     </View>
                 </View>
             );
@@ -70,8 +70,8 @@ export function SessionsList({ sessions }: SessionsListProps) {
 
         if (item.type === 'empty') {
             return (
-                <View style={styles.emptySection}>
-                    <Text style={styles.emptySectionText}>{item.title}</Text>
+                <View className="px-4 py-8 items-center">
+                    <Text className="text-sm text-gray-400 italic">{item.title}</Text>
                 </View>
             );
         }
@@ -90,46 +90,44 @@ export function SessionsList({ sessions }: SessionsListProps) {
 
         return (
             <Pressable
-                style={({ pressed }) => [
-                    styles.sessionItem,
-                    pressed && styles.sessionItemPressed
-                ]}
+                style={({ pressed }) => pressed ? { backgroundColor: '#f5f5f5' } : {}}
+                className="flex-row items-center px-4 py-3 bg-white"
                 onPress={() => router.push(`/session/${session.id}` as any)}
             >
-                <View style={styles.sessionIcon}>
+                <View className="w-10 h-10 rounded-full bg-gray-100 items-center justify-center mr-3">
                     <Ionicons name="chatbox-outline" size={24} color="#666" />
-                    <View style={{ position: 'absolute', top: 0, right: 0, backgroundColor: online ? '#34C759' : 'transparent', width: 10, height: 10, borderRadius: 5 }} />
+                    <View className={`absolute top-0 right-0 w-2.5 h-2.5 rounded-full ${online ? 'bg-green-500' : 'bg-transparent'}`} />
                 </View>
-                <View style={styles.sessionContent}>
-                    <View style={styles.sessionHeader}>
-                        <Text style={styles.sessionTitle} numberOfLines={1}>
+                <View className="flex-1">
+                    <View className="flex-row justify-between items-center mb-0.5">
+                        <Text className="text-base font-semibold text-black flex-1 mr-2" numberOfLines={1}>
                             {sessionName}
                         </Text>
-                        <Text style={styles.lastSeenText}>
+                        <Text className="text-xs text-gray-400">
                             {lastSeenText}
                         </Text>
                     </View>
                     {lastMessage ? (
-                        <View style={styles.messagePreviewContainer}>
-                            <Text style={[styles.senderLabel, isFromAssistant ? styles.assistantLabel : styles.humanLabel]}>
+                        <View className="flex-row items-center">
+                            <Text className={`text-sm font-semibold ${isFromAssistant ? 'text-blue-500' : 'text-green-500'}`}>
                                 {isFromAssistant ? 'Claude' : 'You'}:
                             </Text>
 
                             {thinking && (
-                                <Text style={styles.thinkingLabel}>
+                                <Text className="text-sm text-blue-500 flex-1">
                                     {' thinking...'}
                                 </Text>
                             )}
 
                             {!thinking && (
-                                <Text style={styles.sessionPreview} numberOfLines={1}>
+                                <Text className="text-sm text-gray-500 flex-1" numberOfLines={1}>
                                     {' ' + messagePreview}
                                 </Text>
                             )}
 
                         </View>
                     ) : (
-                        <Text style={styles.sessionPreview}>No messages yet</Text>
+                        <Text className="text-sm text-gray-500">No messages yet</Text>
                     )}
                 </View>
             </Pressable>
@@ -146,116 +144,10 @@ export function SessionsList({ sessions }: SessionsListProps) {
                     item.type === 'empty' ? `empty-${index}` :
                         `session-${item.session!.id}`
             }
-            contentContainerStyle={styles.listContent}
+            contentContainerStyle={{ paddingBottom: 20 }}
             ItemSeparatorComponent={({ leadingItem }) =>
-                leadingItem.type === 'item' ? <View style={styles.separator} /> : null
+                leadingItem.type === 'item' ? <View className="h-px bg-gray-300 ml-17" /> : null
             }
         />
     );
 }
-
-const styles = StyleSheet.create({
-    listContent: {
-        paddingBottom: 20,
-    },
-    sectionHeader: {
-        paddingHorizontal: 16,
-        paddingVertical: 8,
-        backgroundColor: '#f8f8f8',
-    },
-    sectionTitleContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    sectionTitle: {
-        fontSize: 14,
-        fontWeight: '600',
-        color: '#666',
-        textTransform: 'uppercase',
-    },
-    activeIndicator: {
-        width: 8,
-        height: 8,
-        borderRadius: 4,
-        backgroundColor: '#34C759',
-        marginRight: 8,
-    },
-    sessionItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        backgroundColor: 'white',
-    },
-    sessionItemPressed: {
-        backgroundColor: '#f5f5f5',
-    },
-    sessionIcon: {
-        width: 40,
-        height: 40,
-        borderRadius: 20,
-        backgroundColor: '#f0f0f0',
-        alignItems: 'center',
-        justifyContent: 'center',
-        marginRight: 12,
-    },
-    sessionContent: {
-        flex: 1,
-    },
-    sessionHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        marginBottom: 2,
-    },
-    sessionTitle: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: '#000',
-        flex: 1,
-        marginRight: 8,
-    },
-    lastSeenText: {
-        fontSize: 12,
-        color: '#999',
-    },
-    sessionPreview: {
-        fontSize: 14,
-        color: '#666',
-        flex: 1,
-    },
-    thinkingLabel: {
-        fontSize: 14,
-        color: '#007AFF',
-        flex: 1,
-    },
-    messagePreviewContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-    },
-    senderLabel: {
-        fontSize: 14,
-        fontWeight: '600',
-    },
-    assistantLabel: {
-        color: '#007AFF',
-    },
-    humanLabel: {
-        color: '#34C759',
-    },
-    separator: {
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: '#e0e0e0',
-        marginLeft: 68,
-    },
-    emptySection: {
-        paddingHorizontal: 16,
-        paddingVertical: 32,
-        alignItems: 'center',
-    },
-    emptySectionText: {
-        fontSize: 14,
-        color: '#999',
-        fontStyle: 'italic',
-    },
-});
