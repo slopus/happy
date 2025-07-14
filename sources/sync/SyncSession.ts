@@ -49,7 +49,7 @@ export class SyncSession {
 
     getState(): SyncSessionState {
         return {
-            messages: [...this.messages],
+            messages: [...this.messages].reverse(),
             isLoading: this.isLoading
         };
     }
