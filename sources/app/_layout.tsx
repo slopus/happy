@@ -12,6 +12,7 @@ import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 import { Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import { KeyboardProvider } from "react-native-keyboard-controller";
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -71,55 +72,57 @@ export default function RootLayout() {
   }
 
   return (
-    <AuthProvider initialCredentials={initState.credentials}>
-      <ThemeProvider value={DefaultTheme}>
-        <Stack
-          initialRouteName='index'
-          screenOptions={{
-            headerShadowVisible: false,
-            contentStyle: {
-              backgroundColor: 'white',
-            },
-            headerStyle: {
-              backgroundColor: 'white',
-            },
-            headerTintColor: '#000',
-            headerTitleStyle: {
-              color: '#000',
-            },
-          }}
-        >
-          <Stack.Screen
-            name="index"
-            options={{
-              headerShown: true,
-              headerTitle: 'Happy Coder',
-              headerRight: () => <HeaderRight />,
-              headerBackTitle: 'Home'
+    <KeyboardProvider>
+      <AuthProvider initialCredentials={initState.credentials}>
+        <ThemeProvider value={DefaultTheme}>
+          <Stack
+            initialRouteName='index'
+            screenOptions={{
+              headerShadowVisible: false,
+              contentStyle: {
+                backgroundColor: 'white',
+              },
+              headerStyle: {
+                backgroundColor: 'white',
+              },
+              headerTintColor: '#000',
+              headerTitleStyle: {
+                color: '#000',
+              },
             }}
-          />
-          <Stack.Screen
-            name="about"
-            options={{
-              presentation: 'modal',
-              headerShown: false,
-            }}
-          />
-          <Stack.Screen
-            name="manual-entry"
-            options={{
-              presentation: 'modal',
-              headerShown: false,
-            }}
-          />
-          <Stack.Screen
-            name="session/[id]"
-            options={{
-              headerTitle: 'Session'
-            }}
-          />
-        </Stack>
-      </ThemeProvider>
-    </AuthProvider>
+          >
+            <Stack.Screen
+              name="index"
+              options={{
+                headerShown: true,
+                headerTitle: 'Happy Coder',
+                headerRight: () => <HeaderRight />,
+                headerBackTitle: 'Home'
+              }}
+            />
+            <Stack.Screen
+              name="about"
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="manual-entry"
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+              }}
+            />
+            <Stack.Screen
+              name="session/[id]"
+              options={{
+                headerTitle: 'Session'
+              }}
+            />
+          </Stack>
+        </ThemeProvider>
+      </AuthProvider>
+    </KeyboardProvider>
   );
 }
