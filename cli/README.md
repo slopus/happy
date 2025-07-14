@@ -1,11 +1,13 @@
-# happy-cli
+# Happy
 
-Claude Code session sharing CLI
+Start a `claude` code and control it from your mobile device on the go in a native mobile app.
+
+Free. Open source. Code on the go.
 
 ## Installation
 
 ```bash
-npm install -g happy-cli
+npm install -g happy-coder-cli
 ```
 
 ## Usage
@@ -29,7 +31,7 @@ This will:
 ## Requirements
 
 - Node.js >= 18.0.0
-- Claude CLI installed (`claude` command available in PATH)
+- Claude CLI installed & logged in (`claude` command available in PATH)
 
 ## License
 
