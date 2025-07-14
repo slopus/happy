@@ -24,7 +24,8 @@ export function startTimeout() {
                     type: 'activity',
                     id: session.id,
                     active: false,
-                    activeAt: session.lastActiveAt.getTime()
+                    activeAt: session.lastActiveAt.getTime(),
+                    thinking: false
                 });
             }
 

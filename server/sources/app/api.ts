@@ -380,7 +380,7 @@ export async function startApi() {
             }
         };
         pubsub.on('update', updateHandler);
-        const updateEphemeralHandler = (accountId: string, update: { type: 'activity', id: string, active: boolean, activeAt: number }) => {
+        const updateEphemeralHandler = (accountId: string, update: { type: 'activity', id: string, active: boolean, activeAt: number, thinking: boolean }) => {
             if (accountId === userId) {
                 socket.emit('ephemeral', {
                     type: update.type,
@@ -407,7 +407,7 @@ export async function startApi() {
         });
 
         socket.on('session-alive', async (data: any) => {
-            const { sid, time } = data;
+            const { sid, time, thinking } = data;
             let t = time;
             if (typeof t !== 'number') {
                 return;
@@ -438,7 +438,8 @@ export async function startApi() {
                 type: 'activity',
                 id: sid,
                 active: true,
-                activeAt: t
+                activeAt: t,
+                thinking
             });
         });
 
@@ -474,7 +475,8 @@ export async function startApi() {
                 type: 'activity',
                 id: sid,
                 active: false,
-                activeAt: t
+                activeAt: t,
+                thinking: false
             });
         });
 

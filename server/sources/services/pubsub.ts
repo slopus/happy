@@ -3,7 +3,7 @@ import { Update } from '@prisma/client';
 
 export interface PubSubEvents {
     'update': (accountId: string, update: Update) => void;
-    'update-ephemeral': (accountId: string, update: { type: 'activity', id: string, active: boolean, activeAt: number }) => void;
+    'update-ephemeral': (accountId: string, update: { type: 'activity', id: string, active: boolean, activeAt: number, thinking: boolean }) => void;
 }
 
 class PubSubService extends EventEmitter {
