@@ -44,6 +44,7 @@
     "react-native-screens": "~4.11.1",
     "react-native-typography": "^1.4.1",
     "react-native-web": "~0.20.0",
+    "react-textarea-autosize": "^8.5.9",
     "socket.io-client": "^4.8.1",
     "tweetnacl": "^1.0.3",
     "tweetnacl-util": "^0.15.1",

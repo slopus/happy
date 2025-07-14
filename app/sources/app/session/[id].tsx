@@ -6,6 +6,7 @@ import { FlatList, TextInput, View } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
+import { ChatInput } from "@/components/ChatInput";
 
 export default function Session() {
     const safeArea = useSafeAreaInsets();
@@ -25,17 +26,20 @@ export default function Session() {
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => <MessageView message={item} />}
                 ListFooterComponent={() => <View style={{ height: 100 }} />}
-                ListHeaderComponent={() => <View style={{ height: 32 }} />}
+                ListHeaderComponent={() => <View style={{ height: 8 }} />}
             />
-            <TextInput
-                style={{ height: 40, borderColor: 'gray', borderWidth: 1, marginBottom: 16, marginHorizontal: 16 }}
-                value={message}
-                onChangeText={setMessage}
-                onSubmitEditing={() => {
-                    syncSessions.getSession(sessionId).sendMessage(message);
-                    setMessage('');
-                }}
-            />
+            <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+                <ChatInput
+                    placeholder="Type a message..."
+                    value={message}
+                    onChangeText={setMessage}
+                    onSend={() => {
+                        syncSessions.getSession(sessionId).sendMessage(message);
+                        setMessage('');
+                    }}
+                    loading={false}
+                />
+            </View>
         </KeyboardAvoidingView>
     )
 }
