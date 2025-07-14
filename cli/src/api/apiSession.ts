@@ -57,16 +57,21 @@ export class ApiSessionClient extends EventEmitter {
     this.socket.on('update', (data: Update) => {
       if (data.body.t === 'new-message' && data.body.message.content.t === 'encrypted') {
         const body = decrypt(decodeBase64(data.body.message.content.c), this.secret);
-        const result = UserMessageSchema.safeParse(body);
-        if (result.success) {
+        
+        // Try to parse as user message first
+        const userResult = UserMessageSchema.safeParse(body);
+        if (userResult.success) {
           if (!this.receivedMessages.has(data.body.message.id)) {
             this.receivedMessages.add(data.body.message.id);
             if (this.pendingMessageCallback) {
-              this.pendingMessageCallback(result.data);
+              this.pendingMessageCallback(userResult.data);
             } else {
-              this.pendingMessages.push(result.data);
+              this.pendingMessages.push(userResult.data);
             }
           }
+        } else {
+          // If not a user message, it might be a permission response or other message type
+          this.emit('message', body);
         }
       }
     });
@@ -104,8 +109,8 @@ export class ApiSessionClient extends EventEmitter {
   /**
    * Send a ping message to keep the connection alive
    */
-  keepAlive() {
-    this.socket.volatile.emit('session-alive', { sid: this.sessionId, time: Date.now() });
+  keepAlive(thinking: boolean) {
+    this.socket.volatile.emit('session-alive', { sid: this.sessionId, time: Date.now(), thinking });
   }
 
   /**
