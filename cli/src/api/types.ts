@@ -158,7 +158,9 @@ export const UserMessageSchema = z.object({
   content: z.object({
     type: z.literal('text'),
     text: z.string()
-  })
+  }),
+  localKey: z.string().optional(), // Mobile messages include this
+  sentFrom: z.enum(['mobile', 'cli']).optional() // Source identifier
 })
 
 export type UserMessage = z.infer<typeof UserMessageSchema>
@@ -191,6 +193,7 @@ export type Metadata = {
 
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
+  thinking?: boolean | null | undefined
   requests?: {
     [id: string]: {
       tool: string,

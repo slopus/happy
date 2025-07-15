@@ -44,6 +44,10 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     logger.debug('[LOOP] Current interactiveProcess:', interactiveProcess ? 'exists' : 'null')
     
     mode = 'interactive'
+    session.updateAgentState((currentState) => ({
+        ...currentState,
+        controlledByUser: false  // CLI is controlling in interactive mode
+    }))
 
     let startWatcher = async () => {
       watcherAbortController = new AbortController()
@@ -56,14 +60,27 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
         }
 
         if (event.rawMessage) {
-          // Send to remote as passive observer
-          // BUG: This might not be sending all events
-          session.sendMessage({
-            data: event.rawMessage,
-            type: 'output',
-            // TODO: Use a differnt type
-            // type: 'output-passive-observer',
-          })
+          // Transform interactive mode messages to match mobile format
+          if (event.type === 'user' && event.rawMessage.message) {
+            // Send user messages in the same format as mobile client
+            // This is a hack to bridge the format difference between interactive and remote modes
+            const userMessage: UserMessage = {
+              role: 'user',
+              localKey: event.rawMessage.uuid, // Use Claude's UUID as localKey
+              sentFrom: 'cli', // Identify this as coming from CLI
+              content: {
+                type: 'text',
+                text: event.rawMessage.message.content
+              }
+            };
+            session.sendMessage(userMessage);
+          } else if (event.type === 'assistant') {
+            // Send assistant messages as-is for passive observation
+            session.sendMessage({
+              data: event.rawMessage,
+              type: 'output',
+            });
+          }
         }
       }
     }
@@ -135,6 +152,10 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     
     // TODO: Check if terminal is still doing stuff - let it stabilize before switching
     mode = 'remote'
+    session.updateAgentState((currentState) => ({
+        ...currentState,
+        controlledByUser: true  // User is controlling via mobile in remote mode
+    }))
     // Kill interactive process
     if (interactiveProcess) {
       logger.debug('[LOOP] Killing interactive process')
