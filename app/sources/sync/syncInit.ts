@@ -1,6 +1,7 @@
 import { syncSocket } from '@/sync/SyncSocket';
 import { syncSessions } from '@/sync/SyncSessions';
 import { AuthCredentials } from '@/auth/tokenStorage';
+import { MessageEncryption } from './encryption';
 
 const SYNC_ENDPOINT = 'https://handy-api.korshakov.org';
 
@@ -16,7 +17,7 @@ export async function initializeSync(credentials: AuthCredentials) {
     syncSocket.initialize({
         endpoint: SYNC_ENDPOINT,
         token: credentials.token
-    });
+    }, new MessageEncryption(credentials.secret));
 
     // Initialize sessions engine
     await syncSessions.initialize(credentials);

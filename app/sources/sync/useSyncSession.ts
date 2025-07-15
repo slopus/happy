@@ -8,6 +8,7 @@ interface UseSyncSessionState {
     session: Session;
     messages: SyncMessage[];
     isLoading: boolean;
+    abort: () => Promise<void>;
 }
 
 export function useSyncSession(sessionId: string): UseSyncSessionState {
@@ -21,6 +22,6 @@ export function useSyncSession(sessionId: string): UseSyncSessionState {
             session.removeListener(setState);
         };
     }, [sessionId]);
-    const result = React.useMemo(() => ({ session: session1, messages: state.messages, isLoading: state.isLoading }), [session1, state]);
+    const result = React.useMemo(() => ({ session: session1, messages: state.messages, isLoading: state.isLoading, abort: session.abort }), [session1, state]);
     return result;
 }

@@ -1,5 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { TokenStorage } from '@/auth/tokenStorage';
+import { encrypt, MessageEncryption } from './encryption';
+import { decodeBase64 } from '@/auth/base64';
 
 //
 // Types
@@ -26,12 +28,13 @@ class SyncSocket {
     // State
     private socket: Socket | null = null;
     private config: SyncSocketConfig | null = null;
+    private encryption: MessageEncryption | null = null;
     private state: SyncSocketState = {
         isConnected: false,
         connectionStatus: 'disconnected',
         lastError: null
     };
-    
+
     // Listeners
     private listeners: Set<SyncSocketListener> = new Set();
     private messageHandlers: Map<string, (data: any) => void> = new Map();
@@ -39,16 +42,17 @@ class SyncSocket {
     //
     // Initialization
     //
-    
-    initialize(config: SyncSocketConfig) {
+
+    initialize(config: SyncSocketConfig, encryption: MessageEncryption) {
         this.config = config;
+        this.encryption = encryption;
         this.connect();
     }
 
     //
     // Connection Management
     //
-    
+
     connect() {
         if (!this.config || this.socket) {
             return;
@@ -123,12 +127,22 @@ class SyncSocket {
         this.messageHandlers.delete(event);
     }
 
+    async rpc<R, A>(sessionId: string, method: string, params: A): Promise<R> {
+        const result = await this.socket!.emitWithAck('rpc-call', {
+            method: `${sessionId}:${method}`,
+            params: this.encryption!.encryptRaw(params)
+        });
+        if (result.ok) {
+            return this.encryption?.decryptRaw(result.result) as R;
+        }
+        throw new Error('RPC call failed');
+    }
+
     send(event: string, data: any) {
         if (!this.socket || !this.state.isConnected) {
             console.warn('SyncSocket: Cannot send message, not connected');
             return false;
         }
-        
         this.socket.emit(event, data);
         return true;
     }
@@ -166,7 +180,7 @@ class SyncSocket {
     updateToken(newToken: string) {
         if (this.config && this.config.token !== newToken) {
             this.config.token = newToken;
-            
+
             if (this.socket) {
                 this.disconnect();
                 this.connect();

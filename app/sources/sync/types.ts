@@ -43,6 +43,7 @@ export interface Session {
     active: boolean,
     activeAt: number,
     metadata: Metadata | null,
+    agentState: AgentState | null,
     lastMessage: Message | null,
     thinking: boolean,
     thinkingAt: number,
@@ -139,3 +140,9 @@ export const MetadataSchema = z.object({
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
+
+export const AgentStateSchema = z.object({
+    
+});
+
+export type AgentState = z.infer<typeof AgentStateSchema>;

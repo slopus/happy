@@ -2,7 +2,7 @@ import { syncSessions } from "@/sync/SyncSessions";
 import { useSyncSession } from "@/sync/useSyncSession";
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";
-import { FlatList, Text, TextInput, View, StyleSheet, Pressable } from "react-native";
+import { FlatList, Text, TextInput, View, StyleSheet, Pressable, Button } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
@@ -46,6 +46,7 @@ export default function Session() {
                     ListFooterComponent={() => <View style={{ height: 100 }} />}
                     ListHeaderComponent={() => <View style={{ height: 8 }} />}
                 />
+                <Button title="Abort" onPress={() => session.abort()} />
                 <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
                     <ChatInput
                         placeholder="Type a message..."
