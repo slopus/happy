@@ -176,9 +176,25 @@ export type MessageContent = z.infer<typeof MessageContentSchema>
 
 export type Metadata = {
   path: string,
-  host: string
+  host: string,
+  name?: string,
+  usage?: {
+    [model: string]: {
+      input?: number,
+      input_cache?: number,
+      output?: number,
+      output_reasoning?: number,
+      usd?: number
+    }
+  },
 };
 
 export type AgentState = {
-
+  controlledByUser?: boolean | null | undefined
+  requests?: {
+    [id: string]: {
+      tool: string,
+      arguments: any
+    }
+  }
 }
