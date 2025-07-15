@@ -42,11 +42,11 @@ export default function Session() {
                     data={session.messages}
                     inverted={true}
                     keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => <MessageView message={item} />}
+                    renderItem={({ item }) => <MessageView message={item} metadata={session.session.metadata} />}
                     ListFooterComponent={() => <View style={{ height: 100 }} />}
                     ListHeaderComponent={() => <View style={{ height: 8 }} />}
                 />
-                <Button title="Abort" onPress={() => session.abort()} />
+                {/* <Button title="Abort" onPress={() => session.abort()} /> */}
                 <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
                     <ChatInput
                         placeholder="Type a message..."

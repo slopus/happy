@@ -138,7 +138,7 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
         }
     }
 
-    // console.log(JSON.stringify(Array.from(state.toolCalls.values()), null, 2));
+    console.log(JSON.stringify(Array.from(state.toolCalls.values()), null, 2));
 
     //
     // Load text messages
