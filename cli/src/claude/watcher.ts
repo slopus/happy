@@ -68,8 +68,7 @@ export async function* watchMostRecentSession(
       }
     } catch (err: any) {
       if (err.name !== 'AbortError') {
-        logger.error('Directory watcher error:', err)
-        throw err
+        logger.debug('[ERROR] Directory watcher unexpected error:', err)
       }
       logger.debug('Directory watcher aborted')
     }
@@ -83,6 +82,7 @@ export async function* watchMostRecentSession(
   }
 
   logger.debug(`Got session file path: ${newSessionFilePath}, now starting file watcher`)
+
   yield* watchSessionFile(newSessionFilePath, abortController)
 }
 
@@ -116,7 +116,8 @@ async function* watchSessionFile(
         for await (const line of rl) {
           try {
             const data = JSON.parse(line)
-            logger.debug(`New message from session file: ${data.type}`)
+            logger.debug(`New message from watched session file: ${data.type}`)
+            logger.debugLargeJson('Message:', data)
             yield { message: data }
           } catch {
             logger.debug('Skipping invalid JSON line')
@@ -139,7 +140,7 @@ async function* watchSessionFile(
     }
   } catch (err: any) {
     if (err.name !== 'AbortError') {
-      logger.error('File watcher error:', err)
+      logger.debug('[ERROR] File watcher error:', err)
       throw err
     }
     logger.debug('File watcher aborted')

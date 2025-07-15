@@ -56,7 +56,7 @@ export async function* claude(options: ClaudeProcessOptions): AsyncGenerator<Cla
     
     // Process SDK messages
     for await (const message of response) {
-      logger.debug('SDK message:', message)
+      logger.debugLargeJson('[CLAUDE SDK] Message:', message)
       
       // Convert SDK messages to our output format
       switch (message.type) {
@@ -96,7 +96,7 @@ export async function* claude(options: ClaudeProcessOptions): AsyncGenerator<Cla
     }
     
   } catch (error) {
-    logger.error('Claude SDK error:', error)
+    logger.debug('[CLAUDE SDK] [ERROR] SDK error:', error)
     yield { type: 'error', error: error instanceof Error ? error.message : String(error) }
     yield { type: 'exit', code: 1, signal: null }
   }

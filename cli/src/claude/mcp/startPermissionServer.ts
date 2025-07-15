@@ -71,7 +71,7 @@ export async function startPermissionServer(
     req.on('end', async () => {
       try {
         const request = JSON.parse(body)
-        logger.info('[MCP] Request:', request.method, request.params?.name || '')
+        logger.debug('[MCP] Request:', request.method, request.params?.name || '')
         
         // Handle different request types
         if (request.method === 'tools/list') {
@@ -164,7 +164,7 @@ export async function startPermissionServer(
           }))
         }
       } catch (error) {
-        logger.error('[MCP] Request error:', error)
+        logger.debug('[MCP] [ERROR] Request error:', error)
         res.writeHead(500, { 'Content-Type': 'application/json' })
         res.end(JSON.stringify({
           jsonrpc: '2.0',
@@ -204,7 +204,7 @@ export async function startPermissionServer(
     })
     
     server.on('error', (error) => {
-      logger.error('[MCP] Server error:', error)
+      logger.debug('[MCP] [ERROR] Server error:', error)
       reject(error)
     })
   })
@@ -216,11 +216,11 @@ export async function startPermissionServer(
     toolName: 'mcp__permission-server__request_permission',
     
     async stop() {
-      logger.info('[MCP] Stopping HTTP server...')
+      logger.debug('[MCP] Stopping HTTP server...')
       
       return new Promise<void>((resolve) => {
         server.close(() => {
-          logger.info('[MCP] HTTP server stopped')
+          logger.debug('[MCP] HTTP server stopped')
           resolve()
         })
       })
@@ -245,9 +245,9 @@ export async function startPermissionServer(
           ],
           isError: false, // Always false - Claude will parse the JSON to determine error state
         })
-        logger.info(`[MCP] Permission response for ${response.id}: ${response.approved}`)
+        logger.debug(`[MCP] Permission response for ${response.id}: ${response.approved}`)
       } else {
-        logger.warn(`[MCP] No pending request found for ${response.id}`)
+        logger.debug(`[MCP] No pending request found for ${response.id}`)
       }
     }
   }
