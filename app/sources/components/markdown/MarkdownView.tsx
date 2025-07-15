@@ -6,7 +6,7 @@ import { ScrollView, StyleSheet, Text, View } from 'react-native';
 export const MarkdownView = React.memo((props: { markdown: string }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
     return (
-        <View>
+        <View className="list-none">
             {blocks.map((block, index) => {
                 if (block.type === 'text') {
                     return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} />;
@@ -39,9 +39,9 @@ function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: Markdow
 
 function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean }) {
     return (
-        <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
+        <View className="list-none" style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text style={[style.text, style.list]} key={index}>• <RenderSpans spans={item} /></Text>
+                <Text className="list-none" style={[style.text, style.list]} key={index}>• <RenderSpans spans={item} /></Text>
             ))}
         </View>
     );

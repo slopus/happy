@@ -67,58 +67,37 @@ export default function ManualEntryModal() {
 
     return (
         <KeyboardAvoidingView 
-            style={{ flex: 1, backgroundColor: 'white' }}
+            className="flex-1 bg-white"
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
             {/* Header with close button */}
-            <View style={{
-                flexDirection: 'row',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                paddingHorizontal: 8,
-                paddingTop: 10,
-                paddingBottom: 8,
-            }}>
-                <View style={{ width: 40 }} />
-                <Text style={{ fontSize: 18, fontWeight: '600' }}>Manual Entry</Text>
+            <View className="flex-row items-center justify-between px-2 pt-2.5 pb-2">
+                <View className="w-10" />
+                <Text className="text-lg font-semibold">Manual Entry</Text>
                 <Pressable
                     onPress={() => router.back()}
-                    style={{ padding: 8 }}
+                    className="p-2"
                 >
                     <Ionicons name="close" size={24} color="#000" />
                 </Pressable>
             </View>
 
             {/* Main content */}
-            <View style={{ 
-                flex: 1, 
-                paddingHorizontal: 24,
-                paddingTop: 40,
-                justifyContent: 'flex-start'
-            }}>
+            <View className="flex-1 px-6 pt-10 justify-start">
                 {/* Icon and title */}
-                <View style={{ alignItems: 'center', marginBottom: 40 }}>
-                    <View style={{
-                        backgroundColor: '#f8f9fa',
-                        borderRadius: 40,
-                        padding: 20,
-                    }}>
+                <View className="items-center mb-10">
+                    <View className="bg-gray-50 rounded-full p-5">
                         <Ionicons name="key" size={48} color="#007AFF" />
                     </View>
                 </View>
 
                 {/* Input field */}
-                <View style={{ marginBottom: 32 }}>
+                <View className="mb-8">
                     <TextInput
+                        className={`border-2 ${manualCode.length > 0 ? 'border-blue-500' : 'border-gray-300'} rounded-xl p-3 text-base bg-gray-50`}
                         style={{
-                            borderWidth: 2,
-                            borderColor: manualCode.length > 0 ? '#007AFF' : '#e1e4e8',
-                            borderRadius: 12,
-                            padding: 12,
-                            fontSize: 16,
                             minHeight: 120,
                             textAlignVertical: 'top',
-                            backgroundColor: '#fafbfc',
                             fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
                         }}
                         placeholder="Paste your authentication code here..."
@@ -133,50 +112,26 @@ export default function ManualEntryModal() {
                         autoFocus={true}
                     />
                     {isLoading && (
-                        <View style={{ 
-                            position: 'absolute', 
-                            top: 0, 
-                            left: 0, 
-                            right: 0, 
-                            bottom: 0, 
-                            backgroundColor: 'rgba(255, 255, 255, 0.8)',
-                            borderRadius: 12,
-                            alignItems: 'center', 
-                            justifyContent: 'center' 
-                        }}>
+                        <View className="absolute inset-0 bg-white/80 rounded-xl items-center justify-center">
                             <ActivityIndicator size="large" color="#007AFF" />
                         </View>
                     )}
-                    <Text style={{ 
-                        fontSize: 16, 
-                        color: '#666', 
-                        textAlign: 'left',
-                        lineHeight: 22,
-                        paddingHorizontal: 12,
-                        paddingTop: 8,
-                    }}>
+                    <Text className="text-base text-gray-600 text-left leading-6 px-3 pt-2">
                         Copy the code that appears below the QR code when you run <Text style={{ fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', fontWeight: '600' }}>happy-coder</Text> in your terminal
                     </Text>
                 </View>
 
                 {/* Help button */}
-                <View style={{ paddingBottom: 32 }}>
+                <View className="pb-8">
                     <Pressable
                         onPress={openYouTubeVideo}
                         style={({ pressed }) => ({
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            padding: 12,
-                            borderRadius: 8,
                             backgroundColor: pressed ? '#f0f0f0' : 'transparent',
                         })}
+                        className="flex-row items-center p-3 rounded-lg"
                     >
                         <Ionicons name="play-circle" size={20} color="#007AFF" style={{ marginRight: 8 }} />
-                        <Text style={{ 
-                            fontSize: 16, 
-                            color: '#007AFF',
-                            fontWeight: '600'
-                        }}>
+                        <Text className="text-base text-blue-500 font-semibold">
                             Show me how to get this code
                         </Text>
                     </Pressable>

@@ -21,6 +21,7 @@ export default function Session() {
     const online = isSessionOnline(session.session);
     const lastSeenText = formatLastSeen(session.session.active, session.session.activeAt);
     const thinking = session.session.thinking && session.session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
+
     return (
         <>
             <Stack.Screen
