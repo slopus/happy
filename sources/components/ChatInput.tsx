@@ -51,7 +51,7 @@ export const ChatInput = React.memo((props: {
                 submitBehavior="newline"
             />
             <Pressable
-                className="w-8 h-8 items-center justify-center bg-white rounded-3xl self-start m-2"
+                className="w-9 h-9 items-center justify-center bg-white rounded-3xl self-start m-2"
                 onPress={handlePress}
             >
                 {props.loading && <ActivityIndicator color="black" size="small" />}
