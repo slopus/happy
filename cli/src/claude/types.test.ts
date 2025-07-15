@@ -6,6 +6,7 @@ describe('Claude message type extraction', () => {
     it('extracts sessionId from camelCase format', () => {
       const message = {
         sessionId: 'test-session-123',
+        session_id: 'test-session-123',
         type: 'user',
         content: 'hello'
       }
