@@ -178,4 +178,12 @@ export class SyncSession {
     onVisible() {
         this.loadMessages();
     }
+
+    //
+    // RPC
+    //
+
+    abort = async () => {
+        await syncSocket.rpc(this.sessionId, 'abort', {});
+    }
 }

@@ -31,39 +31,8 @@ class SyncSessions {
         // Fetch initial sessions
         await this.fetchSessions();
 
-        // @nobody added this for testing the rendering logic. This can be
-        // removed after I get the session loading working.
-        // Add dummy session unconditionally
-        this.addDummySession();
-
         // Subscribe to updates
         this.subscribeToUpdates();
-    }
-
-    private addDummySession() {
-        const dummySession: Session = {
-            id: 'dummy',
-            seq: 1,
-            createdAt: Date.now() - 86400000, // 24 hours ago
-            updatedAt: Date.now() - 3600000, // 1 hour ago
-            lastMessage: {
-                id: 'dummy-message-1',
-                seq: 1,
-                content: {
-                    role: 'user',
-                    localKey: 'dummy-local-key',
-                    content: {
-                        type: 'text',
-                        text: 'This is a dummy session for testing purposes'
-                    }
-                },
-                createdAt: Date.now() - 3600000
-            }
-        };
-
-        this.sessions.set('dummy', dummySession);
-        this.sortSessions();
-        this.notifyListeners();
     }
 
     private async fetchSessions() {
@@ -88,6 +57,7 @@ class SyncSessions {
                 tag: string;
                 seq: number;
                 metadata: string;
+                agentState: string | null;
                 active: boolean;
                 activeAt: number;
                 createdAt: number;
@@ -103,6 +73,7 @@ class SyncSessions {
                     thinking: false,
                     thinkingAt: 0,
                     metadata: this.encryption.decryptMetadata(session.metadata),
+                    agentState: this.encryption.decryptAgentState(session.agentState),
                     lastMessage: this.encryption.decryptMessage(session.lastMessage)
                 };
                 this.sessions.set(session.id, processedSession);

@@ -1,7 +1,7 @@
 import { getRandomBytes } from 'expo-crypto';
 import * as tweetnacl from 'tweetnacl';
 import { decodeBase64, encodeBase64 } from '@/auth/base64';
-import { Message, MessageContent, MessageContentSchema, Metadata, MetadataSchema, SourceMessage } from './types';
+import { AgentState, AgentStateSchema, Message, MessageContent, MessageContentSchema, Metadata, MetadataSchema, SourceMessage } from './types';
 
 export function encrypt(data: any, secret: Uint8Array): Uint8Array {
     const nonce = getRandomBytes(tweetnacl.secretbox.nonceLength);
@@ -44,6 +44,22 @@ export class MessageEncryption {
         const parsed = MetadataSchema.safeParse(decrypted);
         if (!parsed.success) {
             return null;
+        }
+        return parsed.data;
+    }
+
+    decryptAgentState(encryptedAgentState: string | null | undefined): AgentState {
+        if (!encryptedAgentState) {
+            return {};
+        }
+        const encryptedData = decodeBase64(encryptedAgentState, 'base64');
+        const decrypted = decrypt(encryptedData, this.secretKey);
+        if (!decrypted) {
+            return {};
+        }
+        const parsed = AgentStateSchema.safeParse(decrypted);
+        if (!parsed.success) {
+            return {};
         }
         return parsed.data;
     }
@@ -102,6 +118,30 @@ export class MessageEncryption {
             return parsed.data;
         } catch (error) {
             console.error('Decryption failed:', error);
+            return null;
+        }
+    }
+
+
+    encryptRaw(data: any): string {
+        try {
+            const encrypted = encrypt(data, this.secretKey);
+            return encodeBase64(encrypted, 'base64');
+        } catch (error) {
+            console.error('Encryption failed:', error);
+            throw error;
+        }
+    }
+
+    decryptRaw(encryptedContent: string): any | null {
+        try {
+            const encryptedData = decodeBase64(encryptedContent, 'base64');
+            const decrypted = decrypt(encryptedData, this.secretKey);
+            if (!decrypted) {
+                return null;
+            }
+            return decrypted;
+        } catch (error) {
             return null;
         }
     }
