@@ -1,4 +1,4 @@
-import { Text, View, ScrollView, Pressable, Platform } from 'react-native';
+import { Text, View, ScrollView, Pressable, Platform, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -35,8 +35,8 @@ export default function AboutModal() {
 
             <ScrollView style={{ flex: 1, padding: 16, paddingTop: 32 }}>
                 <View style={{ alignItems: 'center', marginBottom: 32 }}>
-                    <Ionicons name="code-slash" size={64} color="#000" style={{ marginBottom: 16 }} />
-                    <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>Happy Coder</Text>
+                    <Image source={require('../assets/images/logo.png')} style={{ width: 180, height: 180, borderRadius: 90, borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.0)' }} />
+                    <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>Happy</Text>
                     <Text style={{ fontSize: 16, color: '#666' }}>Version {appVersion}</Text>
                 </View>
 
