@@ -13,6 +13,7 @@ import { Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import '../global.css';
 
 export {
   // Catch any errors thrown by the Layout component.
