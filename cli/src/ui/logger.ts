@@ -109,6 +109,7 @@ class Logger {
         // NOTE: We should not fall back in production because we might disturb the claude session
         // Only ever write to our stdout when in remote mode
         if (process.env.DEBUG) {
+          console.log('This message only visible in DEBUG mode, not in production')
           console.error('Failed to resolve log file path:', error)
           console.log(prefix, message, ...args)
         }

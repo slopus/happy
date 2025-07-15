@@ -13,6 +13,8 @@ import { spawnInteractiveClaude } from "./interactive"
 import { watchMostRecentSession } from "./watcher"
 import { logger } from "@/ui/logger"
 import chalk from "chalk"
+import { parseClaudeSdkMessage, parseClaudePersistedMessage } from "./types"
+
 
 interface LoopOptions {
   path: string
@@ -26,27 +28,46 @@ interface LoopOptions {
 export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
   let mode: 'interactive' | 'remote' = 'interactive'
   let exiting = false
-  let currentSessionId: string | undefined
+  let currentClaudeSessionId: string | undefined
   let interactiveProcess: ReturnType<typeof spawnInteractiveClaude> | null = null
   let watcherAbortController: AbortController | null = null
 
   // Message queue for remote messages
   const messageQueue: UserMessage[] = []
   let messageResolve: (() => void) | null = null
-  let abortController: AbortController | null = null
 
   // Start interactive mode
   const startInteractive = () => {
     logger.debug('[LOOP] startInteractive called')
     logger.debug('[LOOP] Current mode:', mode)
-    logger.debug('[LOOP] Current sessionId:', currentSessionId)
+    logger.debug('[LOOP] Current sessionId:', currentClaudeSessionId)
     logger.debug('[LOOP] Current interactiveProcess:', interactiveProcess ? 'exists' : 'null')
     
     mode = 'interactive'
-    
-    // Clear screen
-    logger.debug('[LOOP] Clearing screen with console.clear()')
-    console.clear()
+
+    let startWatcher = async () => {
+      watcherAbortController = new AbortController()
+
+      for await (const event of watchMostRecentSession(opts.path, watcherAbortController)) {
+        if (event.sessionId) {
+          logger.debug(`[LOOP] New session detected from watcher: ${event.sessionId}`)
+          currentClaudeSessionId = event.sessionId
+          logger.debug('[LOOP] Updated currentSessionId to:', currentClaudeSessionId)
+        }
+
+        if (event.rawMessage) {
+          // Send to remote as passive observer
+          // BUG: This might not be sending all events
+          session.sendMessage({
+            data: event.rawMessage,
+            type: 'output',
+            // TODO: Use a differnt type
+            // type: 'output-passive-observer',
+          })
+        }
+      }
+    }
+    void startWatcher()
     
     // Show interactive UI
     logger.info(chalk.bold.blue('📱 Happy CLI - Interactive Mode'))
@@ -58,10 +79,10 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     logger.info('Your session is accessible from your mobile app\n')
 
     // Spawn Claude
-    logger.debug(`[LOOP] About to spawn interactive Claude process (sessionId: ${currentSessionId})`)
+    logger.debug(`[LOOP] About to spawn interactive Claude process (sessionId: ${currentClaudeSessionId})`)
     interactiveProcess = spawnInteractiveClaude({
       workingDirectory: opts.path,
-      sessionId: currentSessionId,
+      sessionId: currentClaudeSessionId,
       model: opts.model,
       permissionMode: opts.permissionMode
     })
@@ -125,24 +146,27 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     }
     
     // Clear and show remote UI
-    logger.debug('[LOOP] Clearing screen for remote mode')
-    console.clear()
+    // logger.debug('[LOOP] Clearing screen for remote mode')
+    // console.clear()
     logger.info(chalk.bold.green('📱 Happy CLI - Remote Control Mode'))
     logger.info(chalk.gray('─'.repeat(50)))
     logger.info('\nYour session is being controlled from the mobile app.')
     logger.info('\n' + chalk.yellow('Press any key to return to interactive mode...'))
+    process.stdout.write('\n> ')
+    // Show cursor explicitly
+    process.stdout.write('\x1b[?25h')
     logger.debug('[LOOP] Remote UI displayed')
   }
 
   session.addHandler('abort', () => {
-    abortController?.abort()
+    watcherAbortController?.abort()
   });
 
   // Process remote message with SDK
   const processRemoteMessage = async (message: UserMessage) => {
     logger.debug('Processing remote message:', message.content.text)
     opts.onThinking?.(true)
-    abortController = new AbortController()
+    watcherAbortController = new AbortController()
     for await (const output of claude({
       command: message.content.text,
       workingDirectory: opts.path,
@@ -150,19 +174,16 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
       permissionMode: opts.permissionMode,
       mcpServers: opts.mcpServers,
       permissionPromptToolName: opts.permissionPromptToolName,
-      sessionId: currentSessionId,
-      abort: abortController,
+      sessionId: currentClaudeSessionId,
+      abort: watcherAbortController,
     })) {
       // Handle exit
       if (output.type === 'exit') {
         if (output.code !== 0 || output.code === undefined) {
           session.sendMessage({
-            content: {
-              type: 'error',
-              error: output.error,
-              code: output.code,
-            },
-            role: 'assistant',
+            type: 'error',
+            error: output.error,
+            code: output.code,
           })
         }
         break
@@ -170,16 +191,18 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
 
       // Handle JSON output
       if (output.type === 'json') {
+        logger.debugLargeJson('[LOOP] Sending message through socket:', output.data)
         session.sendMessage({
           data: output.data,
           type: 'output',
         })
 
         // Update session ID
-        if (output.data.type === 'system' && output.data.subtype === 'init') {
-          currentSessionId = output.data.sessionId || output.data.session_id
-          logger.debug(`[LOOP] Updated session ID from SDK: ${currentSessionId}`)
-          logger.debug('[LOOP] Full init data:', output.data)
+        const claudeSdkMessage = parseClaudeSdkMessage(output.data)
+        if (claudeSdkMessage) {
+          currentClaudeSessionId = claudeSdkMessage.sessionId
+          logger.debug(`[LOOP] Updated session ID from SDK: ${currentClaudeSessionId}`)
+          logger.debugLargeJson('[LOOP] Full init data:', output.data)
         }
       }
     }
@@ -189,34 +212,6 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
 
   // Main control flow
   const run = async () => {
-    // Set up file watcher
-    watcherAbortController = new AbortController()
-    const watcherPromise = (async () => {
-      for await (const event of watchMostRecentSession(opts.path, watcherAbortController)) {
-        if (event.sessionId) {
-          logger.debug(`[LOOP] New session detected from watcher: ${event.sessionId}`)
-          currentSessionId = event.sessionId
-          logger.debug('[LOOP] Updated currentSessionId to:', currentSessionId)
-        }
-
-        if (event.message) {
-          // Send to remote as passive observer
-          session.sendMessage({
-            data: event.message,
-            type: 'output',
-            // TODO: Use a differnt type
-            // type: 'output-passive-observer',
-          })
-
-          // Update session ID if needed
-          if (event.message.type === 'system' && event.message.subtype === 'init') {
-            currentSessionId = event.message.sessionId || event.message.session_id
-            logger.debug('[LOOP] Updated sessionId from watcher init message:', currentSessionId)
-          }
-        }
-      }
-    })()
-
     // Handle incoming remote messages
     session.onUserMessage((message) => {
       logger.debug('Received remote message, adding to queue')
@@ -241,6 +236,16 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     process.stdin.resume()
     logger.debug('[LOOP] stdin set to raw mode and resumed')
     
+    // Handle stdin errors gracefully
+    process.stdin.on('error', (err) => {
+      logger.debug('[LOOP] stdin error:', err)
+      if (err.code === 'EIO') {
+        // Terminal was closed, exit gracefully
+        cleanup()
+        process.exit(0)
+      }
+    })
+    
     process.stdin.on('data', async (data) => {
       // NOTE: Extremetly verbose log, disabling
       // logger.debug('[PTY] stdin data received, length:', data.length)
@@ -249,6 +254,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
       if (data.toString() === '\u0003') {
         logger.debug('[PTY] Ctrl+C detected')
         cleanup()
+        process.exit(0)
         return
       }
       
@@ -257,7 +263,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
         // logger.debug('[PTY] Forwarding data to interactive process')
         interactiveProcess.write(data)
       } else if (mode === 'remote') {
-        // Switch back to interactive
+        // Any key switches back to interactive
         logger.debug('[LOOP] Key pressed in remote mode, switching back to interactive')
         startInteractive()
       } else {
@@ -265,6 +271,19 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
       }
     })
 
+    // Handle process termination signals
+    process.on('SIGINT', () => {
+      logger.debug('[LOOP] SIGINT received')
+      cleanup()
+      process.exit(0)
+    })
+    
+    process.on('SIGTERM', () => {
+      logger.debug('[LOOP] SIGTERM received')
+      cleanup()
+      process.exit(0)
+    })
+    
     // Start with interactive mode
     logger.debug('[LOOP] Initial startup - launching interactive mode')
     startInteractive()
@@ -284,9 +303,6 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
         })
       }
     }
-
-    // Wait for watcher to finish
-    await watcherPromise
   }
 
   // Cleanup function
@@ -314,6 +330,10 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     
     logger.debug('[LOOP] Setting stdin raw mode to false')
     process.stdin.setRawMode(false)
+    process.stdin.pause()
+    
+    // Restore cursor visibility
+    process.stdout.write('\x1b[?25h')
   }
 
   // Start the loop

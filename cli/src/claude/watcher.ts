@@ -12,11 +12,12 @@ import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { createInterface } from 'node:readline'
 import { logger } from '@/ui/logger'
+import { ClaudeMessage, parseClaudePersistedMessage } from './types'
 
 export async function* watchMostRecentSession(
   workingDirectory: string,
   abortController: AbortController
-): AsyncGenerator<{ sessionId?: string, message?: any }> {
+): AsyncGenerator<ClaudeMessage> {
   const projectName = resolve(workingDirectory).replace(/\//g, '-')
   const projectDir = join(homedir(), '.claude', 'projects', projectName)
   logger.debug(`Starting session watcher for project: ${projectName}`)
@@ -89,7 +90,7 @@ export async function* watchMostRecentSession(
 async function* watchSessionFile(
   filePath: string,
   abortController: AbortController
-): AsyncGenerator<{ message: any }> {
+): AsyncGenerator<ClaudeMessage> {
   logger.debug(`Watching session file: ${filePath}`)
   let position = 0
   
@@ -115,10 +116,14 @@ async function* watchSessionFile(
         
         for await (const line of rl) {
           try {
-            const data = JSON.parse(line)
-            logger.debug(`New message from watched session file: ${data.type}`)
-            logger.debugLargeJson('Message:', data)
-            yield { message: data }
+            const message = parseClaudePersistedMessage(JSON.parse(line))
+            if (message) {
+              logger.debug(`[WATCHER] New message from watched session file: ${message.type}`)
+              logger.debugLargeJson('[WATCHER] Message:', message)
+              yield message
+            } else {
+              logger.debug('[ERROR] Skipping invalid JSON line')
+            }
           } catch {
             logger.debug('Skipping invalid JSON line')
             // Ignore invalid JSON
