@@ -28,7 +28,7 @@ export default function Session() {
                     headerTitle: () => (
                         <View style={{ flexDirection: 'column', alignItems: 'center', alignContent: 'center' }}>
                             <Text style={{ fontSize: 20, fontWeight: '600' }}>{getSessionName(session.session)}</Text>
-                            <Text style={{ color: thinking ? '#007AFF' : (online ? '#34C759' : '#999') }}>{thinking ? 'thinking' : (online ? 'online' : lastSeenText)}</Text>
+                            <Text style={{ color: (online ? '#34C759' : '#999') }}>{(online ? 'online' : lastSeenText)}</Text>
                         </View>
                     )
                 }}
@@ -47,6 +47,24 @@ export default function Session() {
                     ListHeaderComponent={() => <View style={{ height: 8 }} />}
                 />
                 {/* <Button title="Abort" onPress={() => session.abort()} /> */}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', height: 32, paddingHorizontal: 24 }}>
+                    {!online && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Ionicons name="information-circle-outline" size={16} color="#666" />
+                            <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>Session disconnected</Text>
+                        </View>
+                    )}
+                    {online && thinking && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>Thinking...</Text>
+                        </View>
+                    )}
+                    {online && !thinking && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>Awaiting command.</Text>
+                        </View>
+                    )}
+                </View>
                 <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
                     <ChatInput
                         placeholder="Type a message..."
@@ -60,7 +78,7 @@ export default function Session() {
                     />
                 </View>
             </KeyboardAvoidingView>
-
+            {/* 
             {!online && !overlayDismissed && (
                 <Pressable
                     style={styles.offlineOverlay}
@@ -83,7 +101,7 @@ export default function Session() {
                         </Text>
                     </View>
                 </Pressable>
-            )}
+            )} */}
         </>
     )
 }
