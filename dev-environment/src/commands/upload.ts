@@ -67,8 +67,9 @@ export const uploadCommand = new Command('upload')
       // Create API client (token would need to be passed or loaded from config)
       logger.info(`File exists: ${filepath}`);
 
-      if (extname(filepath) !== '.jsonl') {
-        logger.error(`File must be a .jsonl file: ${filepath}`);
+      const fileExt = extname(filepath);
+      if (fileExt !== '.jsonl' && fileExt !== '.json') {
+        logger.error(`File must be a .jsonl or .json file: ${filepath}`);
         process.exit(1);
       }
 
@@ -139,40 +140,72 @@ export const uploadCommand = new Command('upload')
 
       // Read and process JSONL file
       const fileContent = readFileSync(filepath, 'utf8');
-      const lines = fileContent.trim().split('\n');
-
-      logger.info(`Processing ${lines.length} messages from ${filepath}`);
-
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.trim()) {
-          try {
-            const message = JSON.parse(line);
-            
-            // Interactive mode: prompt before sending
-            if (options.interactive) {
-              const preview = line.substring(0, 100) + (line.length > 100 ? '...' : '');
-              logger.info(`Message ${i + 1}/${lines.length}: ${preview}`);
-              
-              const shouldSend = await promptUser('Send this message?');
-              if (!shouldSend) {
-                logger.info('Skipping message');
-                continue;
-              }
+      
+      let messages: any[];
+      
+      if (fileExt === '.jsonl') {
+        // Process JSONL file (existing behavior)
+        const lines = fileContent.trim().split('\n');
+        messages = [];
+        
+        for (const line of lines) {
+          if (line.trim()) {
+            try {
+              const message = JSON.parse(line);
+              messages.push(message);
+            } catch (error) {
+              logger.error(`Failed to parse JSONL line: ${line}`, error);
+              process.exit(1);
             }
-            
-            session.sendMessage(message);
-            logger.debug(`Sent message ${i + 1}/${lines.length}: ${line.substring(0, 100)}${line.length > 100 ? '...' : ''}`);
-            
-            // Apply delay if specified (but not after the last message)
-            if (delaySeconds > 0 && i < lines.length - 1) {
-              logger.info(`Waiting ${delaySeconds} seconds before next message...`);
-              await delay(delaySeconds);
-            }
-            
-          } catch (error) {
-            logger.error(`Failed to parse line: ${line}`, error);
           }
+        }
+      } else {
+        // Process JSON file (expected to be an array)
+        try {
+          const parsed = JSON.parse(fileContent);
+          if (!Array.isArray(parsed)) {
+            logger.error('JSON file must contain an array of messages');
+            process.exit(1);
+          }
+          messages = parsed;
+        } catch (error) {
+          logger.error('Failed to parse JSON file:', error);
+          process.exit(1);
+        }
+      }
+
+      logger.info(`Processing ${messages.length} messages from ${filepath}`);
+
+      for (let i = 0; i < messages.length; i++) {
+        const message = messages[i];
+        
+        try {
+          // Interactive mode: prompt before sending
+          if (options.interactive) {
+            const preview = JSON.stringify(message).substring(0, 100) + (JSON.stringify(message).length > 100 ? '...' : '');
+            logger.info(`Message ${i + 1}/${messages.length}: ${preview}`);
+            
+            const shouldSend = await promptUser('Send this message?');
+            if (!shouldSend) {
+              logger.info('Skipping message');
+              continue;
+            }
+          }
+          
+          session.sendMessage({
+              data: message,
+              type: 'output',
+          });
+          logger.debug(`Sent message ${i + 1}/${messages.length}: ${JSON.stringify(message).substring(0, 100)}${JSON.stringify(message).length > 100 ? '...' : ''}`);
+          
+          // Apply delay if specified (but not after the last message)
+          if (delaySeconds > 0 && i < messages.length - 1) {
+            logger.info(`Waiting ${delaySeconds} seconds before next message...`);
+            await delay(delaySeconds);
+          }
+          
+        } catch (error) {
+          logger.error(`Failed to send message ${i + 1}:`, error);
         }
       }
 
