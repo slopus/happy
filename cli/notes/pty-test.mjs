@@ -47,7 +47,10 @@ process.stdin.on('data', (data) => {
     currentProcess.childProcess.write(data);
   } else if (mode === 'echo') {
     if (data.toString() === '\r' || data.toString() === '\n') {
-      process.stdout.write('\n> ');
+      process.stdout.write('\r\n> ');
+    } else if (data[0] === 127 || data[0] === 8) {
+      // Handle backspace
+      process.stdout.write('\b \b');
     } else {
       process.stdout.write(data);
     }
@@ -195,7 +198,9 @@ function switchToEcho() {
   console.log('=== ECHO MODE (10 seconds) ===');
   console.log('Type anything, it will echo here.');
   console.log('Claude is not running in this mode.\n');
-  console.log('> ');
+  process.stdout.write('> ');
+  // Show cursor explicitly
+  process.stdout.write('\x1b[?25h');
   log('[SWITCH] Echo mode activated');
 }
 

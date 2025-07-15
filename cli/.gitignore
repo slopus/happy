@@ -16,9 +16,7 @@ pnpm-lock.yaml
 .env
 .env.local
 
-# Secret key
-.handy-claude-code.key
+# Claude code session level settings
 .claude/settings.local.json
 
-# For dbugging tty where we can't see any logs while in interactive mode
-debug.log
+**/*.log

@@ -67,7 +67,7 @@ export class ApiSessionClient extends EventEmitter {
                 const handler = this.rpcHandlers.get(method);
                 
                 if (!handler) {
-                    logger.error('RPC method not found', { method });
+                    logger.debug('[SOCKET] [RPC] [ERROR] method not found', { method });
                     const errorResponse = { error: 'Method not found' };
                     const encryptedError = encodeBase64(encrypt(errorResponse, this.secret));
                     callback(encryptedError);
@@ -84,7 +84,7 @@ export class ApiSessionClient extends EventEmitter {
                 const encryptedResponse = encodeBase64(encrypt(result, this.secret));
                 callback(encryptedResponse);
             } catch (error) {
-                logger.error('Error handling RPC request', { error });
+                logger.debug('[SOCKET] [RPC] [ERROR] Error handling RPC request', { error });
                 const errorResponse = { error: error instanceof Error ? error.message : 'Unknown error' };
                 const encryptedError = encodeBase64(encrypt(errorResponse, this.secret));
                 callback(encryptedError);
@@ -92,11 +92,11 @@ export class ApiSessionClient extends EventEmitter {
         })
 
         this.socket.on('disconnect', (reason) => {
-            logger.warn('Socket disconnected:', reason);
+            logger.debug('[API] Socket disconnected:', reason);
         })
 
         this.socket.on('connect_error', (error) => {
-            logger.error('Socket connection error:', error.message);
+            logger.debug('[API] Socket connection error:', error.message);
         })
 
         // Server events
@@ -150,6 +150,7 @@ export class ApiSessionClient extends EventEmitter {
      * @param body - Message body
      */
     sendMessage(body: any) {
+        logger.debugLargeJson('[SOCKET] Sending message through socket:', body)
         let content: MessageContent = {
             role: 'agent',
             content: body

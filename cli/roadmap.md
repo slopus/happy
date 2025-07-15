@@ -25,6 +25,10 @@
 - Fix bug with 
 - [later] Test it works on linux, windows, lower node version
 
+Conversation continuity
+- Some things will not expect as you would want such as /clear ing the conversation, or forking (press 2 escape on empty input)
+- We might want to be better at switching between sessions for full compatibility with claude
+
 MCP
 - Permissions
   - I think we should reuse the format from .claude/settings.local.json, so interactive & our checking will be similar

@@ -33,6 +33,8 @@ export interface ClaudeOutput {
  */
 export async function* claude(options: ClaudeProcessOptions): AsyncGenerator<ClaudeOutput> {
   try {
+    logger.debug('[CLAUDE SDK] Starting SDK with options:', options)
+
     // Prepare SDK options
     const sdkOptions: Options = {
       cwd: options.workingDirectory,
@@ -52,8 +54,7 @@ export async function* claude(options: ClaudeProcessOptions): AsyncGenerator<Cla
       options: sdkOptions
     })
     
-    let sessionId: string | undefined
-    
+
     // Process SDK messages
     for await (const message of response) {
       logger.debugLargeJson('[CLAUDE SDK] Message:', message)
@@ -62,7 +63,6 @@ export async function* claude(options: ClaudeProcessOptions): AsyncGenerator<Cla
       switch (message.type) {
         case 'system':
           if (message.subtype === 'init') {
-            sessionId = message.session_id
             // Yield system init as JSON
             yield { type: 'json', data: message }
           }
