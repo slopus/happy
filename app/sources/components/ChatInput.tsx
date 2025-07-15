@@ -32,7 +32,7 @@ export const ChatInput = React.memo((props: {
     return (
         <View className="bg-gray-200 rounded-3xl flex-row min-h-12 self-stretch">
             <TextInput
-                className="flex-1 rounded-tl-3xl rounded-bl-3xl overflow-hidden min-h-[46px] max-h-[90px] pt-3 pb-3 pl-[18px] pr-4 flex-grow text-[17px] leading-[22px] font-normal text-black"
+                className="flex-1 rounded-3xl overflow-hidden min-h-[44px] max-h-[90px] pt-3 pb-3 pl-[18px] pr-4 flex-grow text-[17px] leading-[22px] font-normal text-black"
                 style={{
                     textAlignVertical: 'top'
                 }}
@@ -51,7 +51,7 @@ export const ChatInput = React.memo((props: {
                 submitBehavior="newline"
             />
             <Pressable
-                className="w-9 h-9 items-center justify-center bg-white rounded-3xl self-start m-2"
+                className="w-8 h-8 items-center justify-center bg-white rounded-3xl self-start m-2"
                 onPress={handlePress}
             >
                 {props.loading && <ActivityIndicator color="black" size="small" />}
