@@ -25,13 +25,28 @@ export const UpdateBodySchema = z.object({
 
 export type UpdateBody = z.infer<typeof UpdateBodySchema>
 
+export const UpdateSessionBodySchema = z.object({
+  t: z.literal('update-session'),
+  sid: z.string(),
+  metadata: z.object({
+    version: z.number(),
+    metadata: z.string()
+  }).nullish(),
+  agentState: z.object({
+    version: z.number(),
+    agentState: z.string()
+  }).nullish()
+})
+
+export type UpdateSessionBody = z.infer<typeof UpdateSessionBodySchema>
+
 /**
  * Update event from server
  */
 export const UpdateSchema = z.object({
   id: z.string(),
   seq: z.number(),
-  body: UpdateBodySchema,
+  body: z.union([UpdateBodySchema, UpdateSessionBodySchema]),
   createdAt: z.number()
 })
 
@@ -51,6 +66,28 @@ export interface ClientToServerEvents {
   message: (data: { sid: string, message: any }) => void
   'session-alive': (data: { sid: string, time: number, thinking: boolean }) => void
   'session-end': (data: { sid: string, time: number }) => void,
+  'update-metadata': (data: { sid: string, expectedVersion: number, metadata: string }, cb: (answer: {
+    result: 'error'
+  } | {
+    result: 'version-mismatch'
+    version: number,
+    metadata: string
+  } | {
+    result: 'success',
+    version: number,
+    metadata: string
+  }) => void) => void,
+  'update-agent': (data: { sid: string, expectedVersion: number, agentState: string | null }, cb: (answer: {
+    result: 'error'
+  } | {
+    result: 'version-mismatch'
+    version: number,
+    agentState: string | null
+  } | {
+    result: 'success',
+    version: number,
+    agentState: string | null
+  }) => void) => void,
   'ping': () => void
 }
 
@@ -61,7 +98,11 @@ export const SessionSchema = z.object({
   createdAt: z.number(),
   id: z.string(),
   seq: z.number(),
-  updatedAt: z.number()
+  updatedAt: z.number(),
+  metadata: z.any(),
+  metadataVersion: z.number(),
+  agentState: z.any().nullable(),
+  agentStateVersion: z.number()
 })
 
 export type Session = z.infer<typeof SessionSchema>
@@ -88,7 +129,11 @@ export const CreateSessionResponseSchema = z.object({
     tag: z.string(),
     seq: z.number(),
     createdAt: z.number(),
-    updatedAt: z.number()
+    updatedAt: z.number(),
+    metadata: z.string(),
+    metadataVersion: z.number(),
+    agentState: z.string().nullable(),
+    agentStateVersion: z.number()
   })
 })
 
@@ -114,3 +159,12 @@ export type AgentMessage = z.infer<typeof AgentMessageSchema>
 export const MessageContentSchema = z.union([UserMessageSchema, AgentMessageSchema])
 
 export type MessageContent = z.infer<typeof MessageContentSchema>
+
+export type Metadata = {
+  path: string,
+  host: string
+};
+
+export type AgentState = {
+
+}

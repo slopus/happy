@@ -1,8 +1,8 @@
 import axios from 'axios'
 import { logger } from '@/ui/logger'
-import type { CreateSessionResponse } from '@/api/types'
+import type { AgentState, CreateSessionResponse, Metadata, Session } from '@/api/types'
 import { ApiSessionClient } from './apiSession';
-import { encodeBase64, encrypt } from './encryption';
+import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 
 export class ApiClient {
   private readonly token: string;
@@ -16,11 +16,15 @@ export class ApiClient {
   /**
    * Create a new session or load existing one with the given tag
    */
-  async getOrCreateSession(opts: { tag: string, metadata: { path: string, host: string } }): Promise<CreateSessionResponse> {
+  async getOrCreateSession(opts: { tag: string, metadata: Metadata, state: AgentState | null }): Promise<Session> {
     try {
       const response = await axios.post<CreateSessionResponse>(
         `https://handy-api.korshakov.org/v1/sessions`,
-        { tag: opts.tag, metadata: encodeBase64(encrypt(opts.metadata, this.secret)) },
+        {
+          tag: opts.tag,
+          metadata: encodeBase64(encrypt(opts.metadata, this.secret)),
+          agentState: opts.state ? encodeBase64(encrypt(opts.state, this.secret)) : null
+        },
         {
           headers: {
             'Authorization': `Bearer ${this.token}`,
@@ -30,7 +34,18 @@ export class ApiClient {
       )
 
       logger.info(`Session created/loaded: ${response.data.session.id} (tag: ${opts.tag})`)
-      return response.data;
+      let raw = response.data.session;
+      let session: Session = {
+        id: raw.id,
+        createdAt: raw.createdAt,
+        updatedAt: raw.updatedAt,
+        seq: raw.seq,
+        metadata: decrypt(decodeBase64(raw.metadata), this.secret),
+        metadataVersion: raw.metadataVersion,
+        agentState: raw.agentState ? decrypt(decodeBase64(raw.agentState), this.secret) : null,
+        agentStateVersion: raw.agentStateVersion
+      }
+      return session;
     } catch (error) {
       logger.error('Failed to get or create session:', error);
       throw new Error(`Failed to get or create session: ${error instanceof Error ? error.message : 'Unknown error'}`);
@@ -42,7 +57,7 @@ export class ApiClient {
    * @param id - Session ID
    * @returns Session client
    */
-  session(id: string): ApiSessionClient {
-    return new ApiSessionClient(this.token, this.secret, id);
+  session(session: Session): ApiSessionClient {
+    return new ApiSessionClient(this.token, this.secret, session);
   }
 }
