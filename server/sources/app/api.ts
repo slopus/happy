@@ -128,6 +128,9 @@ export async function startApi() {
                 createdAt: true,
                 updatedAt: true,
                 metadata: true,
+                metadataVersion: true,
+                agentState: true,
+                agentStateVersion: true,
                 active: true,
                 lastActiveAt: true,
                 messages: {
@@ -152,6 +155,9 @@ export async function startApi() {
                 active: v.active,
                 activeAt: v.lastActiveAt.getTime(),
                 metadata: v.metadata,
+                metadataVersion: v.metadataVersion,
+                agentState: v.agentState,
+                agentStateVersion: v.agentStateVersion,
                 lastMessage: v.messages[0] ? {
                     id: v.messages[0].id,
                     seq: v.messages[0].seq,
@@ -167,7 +173,8 @@ export async function startApi() {
         schema: {
             body: z.object({
                 tag: z.string(),
-                metadata: z.string()
+                metadata: z.string(),
+                agentState: z.string().nullish()
             })
         },
         preHandler: app.authenticate
@@ -187,6 +194,9 @@ export async function startApi() {
                     id: session.id,
                     seq: session.seq,
                     metadata: session.metadata,
+                    metadataVersion: session.metadataVersion,
+                    agentState: session.agentState,
+                    agentStateVersion: session.agentStateVersion,
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
@@ -221,7 +231,10 @@ export async function startApi() {
                     t: 'new-session',
                     id: session.id,
                     seq: session.seq,
-                    metadata: metadata,
+                    metadata: session.metadata,
+                    metadataVersion: session.metadataVersion,
+                    agentState: session.agentState,
+                    agentStateVersion: session.agentStateVersion,
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
@@ -253,6 +266,9 @@ export async function startApi() {
                     id: result.session.id,
                     seq: result.session.seq,
                     metadata: result.session.metadata,
+                    metadataVersion: result.session.metadataVersion,
+                    agentState: result.session.agentState,
+                    agentStateVersion: result.session.agentStateVersion,
                     active: result.session.active,
                     activeAt: result.session.lastActiveAt.getTime(),
                     createdAt: result.session.createdAt.getTime(),
@@ -573,6 +589,91 @@ export async function startApi() {
 
             // Emit update to connected sockets
             pubsub.emit('update', userId, result.update);
+        });
+
+        socket.on('update-metadata', async (data: any, callback: (response: any) => void) => {
+            const { sid, metadata, expectedVersion } = data;
+
+            // Validate input
+            if (!sid || typeof metadata !== 'string' || typeof expectedVersion !== 'number') {
+                if (callback) {
+                    callback({ result: 'error' });
+                }
+                return;
+            }
+
+            // Start transaction to ensure consistency
+            const result = await db.$transaction(async (tx) => {
+                // Verify session belongs to user and lock it
+                const session = await tx.session.findFirst({
+                    where: {
+                        id: sid,
+                        accountId: userId
+                    }
+                });
+                const user = await tx.account.findUnique({
+                    where: { id: userId }
+                });
+                if (!user || !session) {
+                    callback({ result: 'error' });
+                    return null;
+                }
+
+                // Check version
+                if (session.metadataVersion !== expectedVersion) {
+                    callback({ result: 'version-mismatch', version: session.metadataVersion, metadata: session.metadata });
+                    return null;
+                }
+
+                // Get next sequence number
+                const updSeq = user.seq + 1;
+                const newMetadataVersion = session.metadataVersion + 1;
+
+                // Update session metadata
+                await tx.session.update({
+                    where: { id: sid },
+                    data: {
+                        metadata: metadata,
+                        metadataVersion: newMetadataVersion
+                    }
+                });
+
+                // Create update
+                const updContent: PrismaJson.UpdateBody = {
+                    t: 'update-session',
+                    id: sid,
+                    metadata: {
+                        value: metadata,
+                        version: newMetadataVersion
+                    }
+                };
+
+                const update = await tx.update.create({
+                    data: {
+                        accountId: userId,
+                        seq: updSeq,
+                        content: updContent
+                    }
+                });
+
+                // Update user sequence
+                await tx.account.update({
+                    where: { id: userId },
+                    data: { seq: updSeq }
+                });
+
+                return { update, newMetadataVersion };
+            });
+            if (!result) {
+                return;
+            }
+
+            // Emit update to connected sockets
+            pubsub.emit('update', userId, result.update);
+
+            // Send success response with new version via callback
+            callback({ success: true, metadataVersion: result.newMetadataVersion, metadata: metadata });
+
         });
 
         socket.emit('auth', { success: true, user: userId });
