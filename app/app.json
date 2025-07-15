@@ -3,7 +3,7 @@
     "name": "Happy",
     "slug": "happy",
     "version": "1.0.2",
-    "runtimeVersion": "2",
+    "runtimeVersion": "3",
     "orientation": "portrait",
     "icon": "./sources/assets/images/icon.png",
     "scheme": "handy",

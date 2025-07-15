@@ -9,7 +9,7 @@ import * as React from 'react';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider } from '@/auth/AuthContext';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
-import { Pressable } from 'react-native';
+import { Image, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -39,7 +39,7 @@ function HeaderRight() {
       onPress={() => router.push('/about')}
       hitSlop={10}
     >
-      <Ionicons name="information-circle-outline" size={24} color="#000" />
+      <Image source={require('../assets/images/icon.png')} style={{ width: 32, height: 32, borderRadius: 16, borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.2)' }} />
     </Pressable>
   );
 }
