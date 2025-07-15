@@ -47,7 +47,7 @@ export class ApiClient {
       }
       return session;
     } catch (error) {
-      logger.error('Failed to get or create session:', error);
+      logger.debug('[API] [ERROR] Failed to get or create session:', error);
       throw new Error(`Failed to get or create session: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

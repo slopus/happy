@@ -7,11 +7,13 @@
 
 import * as pty from 'node-pty'
 import { claudePath } from './claudePath'
+import { logger } from '@/ui/logger'
 
 interface InteractiveChildClaude {
   write: (data: any) => void
   kill: () => void
   waitForExit: () => Promise<number>
+  resize: (cols: number, rows: number) => void
 }
 
 export function spawnInteractiveClaude(options: {
@@ -35,6 +37,8 @@ export function spawnInteractiveClaude(options: {
   }
 
   // Create PTY process
+  logger.debug('[PTY] Creating PTY process with args:', args)
+
   const ptyProcess = pty.spawn(claudePath(), args, {
     name: 'xterm-256color',
     cols: process.stdout.columns,
@@ -42,6 +46,7 @@ export function spawnInteractiveClaude(options: {
     cwd: options.workingDirectory,
     env: process.env
   })
+  logger.debug('[PTY] PTY process created, pid:', (ptyProcess as any).pid)
 
   // Handle output - direct to stdout
   ptyProcess.onData((data: string) => {
@@ -50,6 +55,7 @@ export function spawnInteractiveClaude(options: {
 
   // Handle resize
   const resizeHandler = () => {
+    logger.debug('[PTY] SIGWINCH received, resizing to:', { cols: process.stdout.columns, rows: process.stdout.rows })
     ptyProcess.resize(process.stdout.columns, process.stdout.rows)
   }
   process.on('SIGWINCH', resizeHandler)
@@ -57,17 +63,28 @@ export function spawnInteractiveClaude(options: {
   // Create exit promise
   const exitPromise = new Promise<number>((resolve) => {
     ptyProcess.onExit((exitCode) => {
+      logger.debug('[PTY] PTY process exited with code:', exitCode.exitCode)
+      logger.debug('[PTY] Removing SIGWINCH handler')
       process.removeListener('SIGWINCH', resizeHandler)
       resolve(exitCode.exitCode)
     })
   })
 
   return {
-    write: (data) => ptyProcess.write(data),
+    write: (data) => {
+      // NOTE: Extremetly verbose log, disable
+      // logger.debug('[PTY] Writing data to PTY, length:', data.length)
+      ptyProcess.write(data)
+    },
     kill: () => {
+      logger.debug('[PTY] Kill called')
       process.removeListener('SIGWINCH', resizeHandler)
       ptyProcess.kill()
     },
-    waitForExit: () => exitPromise
+    waitForExit: () => exitPromise,
+    resize: (cols: number, rows: number) => {
+      logger.debug('[PTY] Manual resize called:', { cols, rows })
+      ptyProcess.resize(cols, rows)
+    }
   }
 }

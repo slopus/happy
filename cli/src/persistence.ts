@@ -10,6 +10,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 const handyDir = join(homedir(), '.handy')
+const logsDir = join(handyDir, 'logs')
 const settingsFile = join(handyDir, 'settings.json')
 const privateKeyFile = join(handyDir, 'access.key')
 
@@ -61,4 +62,24 @@ export async function writePrivateKey(key: Uint8Array): Promise<void> {
   }
   const keyBase64 = Buffer.from(key).toString('base64')
   await writeFile(privateKeyFile, keyBase64, 'utf8')
+}
+
+export async function getSessionLogPath(): Promise<string> {
+  if (!existsSync(logsDir)) {
+    await mkdir(logsDir, { recursive: true })
+  }
+  
+  // Create timestamp in local time, filename-safe format
+  const now = new Date()
+  const timestamp = now.toLocaleString('sv-SE', { 
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    year: 'numeric',
+    month: '2-digit', 
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).replace(/[: ]/g, '-').replace(/,/g, '')
+  
+  return join(logsDir, `${timestamp}.log`)
 }
