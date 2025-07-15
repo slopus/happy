@@ -17,6 +17,7 @@ export interface ClaudeProcessOptions {
   skipPermissions?: boolean
   mcpServers?: Record<string, any>
   permissionPromptToolName?: string
+  abort: AbortController
 }
 
 export interface ClaudeOutput {
@@ -43,14 +44,11 @@ export async function* claude(options: ClaudeProcessOptions): AsyncGenerator<Cla
       // Add permission prompt tool name if provided
       permissionPromptToolName: options.permissionPromptToolName,
     }
-    
-    // Create abort controller for cancellation
-    const abortController = new AbortController()
-    
+
     // Query Claude
     const response = query({
       prompt: options.command,
-      abortController,
+      abortController: options.abort,
       options: sdkOptions
     })
     

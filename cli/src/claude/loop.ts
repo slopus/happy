@@ -33,17 +33,18 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
   // Message queue for remote messages
   const messageQueue: UserMessage[] = []
   let messageResolve: (() => void) | null = null
-  
+  let abortController: AbortController | null = null
+
   // Start interactive mode
   const startInteractive = () => {
     logger.debug('Starting interactive mode')
     mode = 'interactive'
-    
+
     // Clear and show interactive UI
     console.clear()
     logger.info(chalk.bold.blue('📱 Happy CLI - Interactive Mode'))
     logger.info('Your session is accessible from your mobile app\n')
-    
+
     // Spawn Claude
     logger.debug(`Spawning interactive Claude process (sessionId: ${currentSessionId})`)
     interactiveProcess = spawnInteractiveClaude({
@@ -52,7 +53,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
       model: opts.model,
       permissionMode: opts.permissionMode
     })
-    
+
     // Handle exit in background
     interactiveProcess.waitForExit().then((code) => {
       if (!exiting) {
@@ -67,14 +68,14 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     logger.debug('Switching from interactive to remote mode')
     // TODO: Check if terminal is still doing stuff - let it stabilize before switching
     mode = 'remote'
-    
+
     // Kill interactive process
     if (interactiveProcess) {
       logger.debug('Killing interactive process')
       interactiveProcess.kill()
       interactiveProcess = null
     }
-    
+
     // Show remote UI
     console.clear()
     logger.info(chalk.bold.green('📱 Happy CLI - Remote Control Mode'))
@@ -83,11 +84,15 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     logger.info('\n' + chalk.yellow('Press any key to return to interactive mode...'))
   }
 
+  session.addHandler('abort', () => {
+    abortController?.abort()
+  });
+
   // Process remote message with SDK
   const processRemoteMessage = async (message: UserMessage) => {
     logger.debug('Processing remote message:', message.content.text)
     opts.onThinking?.(true)
-    
+    abortController = new AbortController()
     for await (const output of claude({
       command: message.content.text,
       workingDirectory: opts.path,
@@ -96,6 +101,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
       mcpServers: opts.mcpServers,
       permissionPromptToolName: opts.permissionPromptToolName,
       sessionId: currentSessionId,
+      abort: abortController,
     })) {
       // Handle exit
       if (output.type === 'exit') {
@@ -118,7 +124,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
           data: output.data,
           type: 'output',
         })
-        
+
         // Update session ID
         if (output.data.type === 'system' && output.data.subtype === 'init') {
           currentSessionId = output.data.sessionId
@@ -126,7 +132,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
         }
       }
     }
-    
+
     opts.onThinking?.(false)
   }
 
@@ -140,7 +146,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
           logger.debug(`New session detected: ${event.sessionId}`)
           currentSessionId = event.sessionId
         }
-        
+
         if (event.message) {
           // Send to remote as passive observer
           session.sendMessage({
@@ -149,7 +155,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
             // TODO: Use a differnt type
             // type: 'output-passive-observer',
           })
-          
+
           // Update session ID if needed
           if (event.message.type === 'system' && event.message.subtype === 'init') {
             currentSessionId = event.message.sessionId
@@ -162,12 +168,12 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     session.onUserMessage((message) => {
       logger.debug('Received remote message, adding to queue')
       messageQueue.push(message)
-      
+
       // If in interactive mode, switch to remote
       if (mode === 'interactive') {
         requestSwitchToRemote()
       }
-      
+
       // Wake up the message processing loop
       if (messageResolve) {
         logger.debug('Waking up message processing loop')
@@ -185,7 +191,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
         cleanup()
         return
       }
-      
+
       if (mode === 'interactive' && interactiveProcess) {
         // Forward to Claude
         interactiveProcess.write(data)
@@ -215,7 +221,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
         })
       }
     }
-    
+
     // Wait for watcher to finish
     await watcherPromise
   }
@@ -224,20 +230,20 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
   const cleanup = () => {
     logger.debug('Starting cleanup process')
     exiting = true
-    
+
     if (interactiveProcess) {
       interactiveProcess.kill()
     }
-    
+
     if (watcherAbortController) {
       watcherAbortController.abort()
     }
-    
+
     // Wake up the loop if it's waiting
     if (messageResolve) {
       messageResolve()
     }
-    
+
     process.stdin.setRawMode(false)
   }
 
