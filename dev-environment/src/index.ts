@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 import { Command } from 'commander';
-import { recentCommand } from './commands/recent.js';
-import { uploadCommand } from './commands/upload.js';
+import { recentCommand } from './commands/recent';
+import { uploadCommand } from './commands/upload';
+import { generateKeyCommand } from './commands/generate-key';
 
 const program = new Command();
 
@@ -12,5 +13,6 @@ program
 
 program.addCommand(recentCommand);
 program.addCommand(uploadCommand);
+program.addCommand(generateKeyCommand);
 
 program.parse(process.argv);
