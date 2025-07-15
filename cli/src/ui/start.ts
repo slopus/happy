@@ -120,6 +120,10 @@ export async function start(options: StartOptions = {}): Promise<void> {
         onThinking: (t) => {
             thinking = t;
             session.keepAlive(t);
+            session.updateAgentState((currentState) => ({
+                ...currentState,
+                thinking: t
+            }));
         }
     }, session);
 

@@ -18,6 +18,7 @@ export class ApiSessionClient extends EventEmitter {
     private agentStateVersion: number;
     private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
     private receivedMessages = new Set<string>();
+    private sentLocalKeys = new Set<string>();
     private pendingMessages: UserMessage[] = [];
     private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
     private rpcHandlers: RpcHandlerMap = new Map();
@@ -104,10 +105,16 @@ export class ApiSessionClient extends EventEmitter {
             if (data.body.t === 'new-message' && data.body.message.content.t === 'encrypted') {
                 const body = decrypt(decodeBase64(data.body.message.content.c), this.secret);
 
+                logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
+
                 // Try to parse as user message first
                 const userResult = UserMessageSchema.safeParse(body);
                 if (userResult.success) {
-                    if (!this.receivedMessages.has(data.body.message.id)) {
+                    // Only process user messages we didn't send ourselves
+                    const localKey = (body as any).localKey;
+                    if (localKey && this.sentLocalKeys.has(localKey)) {
+                        logger.debug(`[SOCKET] Ignoring echo of our own message with localKey: ${localKey}`);
+                    } else if (!this.receivedMessages.has(data.body.message.id)) {
                         this.receivedMessages.add(data.body.message.id);
                         if (this.pendingMessageCallback) {
                             this.pendingMessageCallback(userResult.data);
@@ -147,14 +154,28 @@ export class ApiSessionClient extends EventEmitter {
 
     /**
      * Send message to session
-     * @param body - Message body
+     * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
     sendMessage(body: any) {
         logger.debugLargeJson('[SOCKET] Sending message through socket:', body)
-        let content: MessageContent = {
-            role: 'agent',
-            content: body
-        };
+        let content: MessageContent;
+        
+        // Check if body is already a MessageContent (has role property)
+        if (body.role === 'user' || body.role === 'agent') {
+            content = body;
+            // Track localKey if this is a user message we're sending
+            if (body.role === 'user' && body.localKey) {
+                this.sentLocalKeys.add(body.localKey);
+                logger.debug(`[SOCKET] Tracking sent localKey: ${body.localKey}`);
+            }
+        } else {
+            // Legacy behavior: wrap as agent message
+            content = {
+                role: 'agent',
+                content: body
+            };
+        }
+        
         const encrypted = encodeBase64(encrypt(content, this.secret));
         this.socket.emit('message', {
             sid: this.sessionId,
