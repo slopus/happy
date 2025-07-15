@@ -44,6 +44,7 @@
     "react-native-reanimated": "~3.17.4",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
+    "react-native-svg": "^15.12.0",
     "react-native-typography": "^1.4.1",
     "react-native-web": "~0.20.0",
     "react-textarea-autosize": "^8.5.9",

@@ -10,6 +10,7 @@ import { ChatInput } from "@/components/ChatInput";
 import { Stack } from "expo-router";
 import { formatLastSeen, getSessionName, isSessionOnline } from "@/utils/sessionUtils";
 import { Ionicons } from '@expo/vector-icons';
+import { Avatar } from "@/components/Avatar";
 
 export default function Session() {
     const safeArea = useSafeAreaInsets();
@@ -17,7 +18,6 @@ export default function Session() {
     const sessionId = (route.params! as any).id as string;
     const session = useSyncSession(sessionId);
     const [message, setMessage] = useState('');
-    const [overlayDismissed, setOverlayDismissed] = useState(false);
     const online = isSessionOnline(session.session);
     const lastSeenText = formatLastSeen(session.session.active, session.session.activeAt);
     const thinking = session.session.thinking && session.session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
@@ -31,7 +31,14 @@ export default function Session() {
                             <Text style={{ fontSize: 20, fontWeight: '600' }}>{getSessionName(session.session)}</Text>
                             <Text style={{ color: (online ? '#34C759' : '#999') }}>{(online ? 'online' : lastSeenText)}</Text>
                         </View>
-                    )
+                    ),
+                    headerRight(props) {
+                        return (
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <Avatar id={sessionId} size={32} monochrome={!online} />
+                            </View>
+                        )
+                    },
                 }}
             />
             <KeyboardAvoidingView
