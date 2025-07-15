@@ -12,9 +12,6 @@ import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
 import { useRouter } from "expo-router";
 
-
-console.log('NativeWind version:', require('nativewind/package.json').version);
-
 export default function Home() {
     const auth = useAuth();
     if (!auth.isAuthenticated) {
@@ -46,14 +43,7 @@ function Authenticated() {
                     <Text>No sessions</Text>
                 </View>
             ) : (
-                <>
-                    <SessionsList sessions={sessions} />
-                    <View className="bg-red-500 p-4 mx-4 mb-4 rounded-lg hack">
-                        <Text className="text-white text-center font-bold">
-                            🎉 NativeWind is working! This is styled with Tailwind classes.
-                        </Text>
-                    </View>
-                </>
+                <SessionsList sessions={sessions} />
             )}
         </View>
     )
@@ -117,12 +107,14 @@ function NotAuthenticated() {
                 <RoundButton
                     loading={isLoading}
                     title="Open Camera"
-                    action={openCamera} />
+                    action={openCamera}
+                    />
             </View>
             <RoundButton
                 title="Enter Code Manually"
                 onPress={() => router.push('/manual-entry')}
-                display="inverted" />
+                display="inverted"
+                />
         </View>
     )
 }

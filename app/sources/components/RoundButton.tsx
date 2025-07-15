@@ -69,9 +69,10 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
             onPress={doAction}
         >
             <View 
-                className="items-center justify-center min-w-16 px-4"
+                className="items-center justify-center min-w-16 px-4 rounded-full"
                 style={{ 
-                    height: size.height - 2 
+                    height: size.height - 2,
+                    backgroundColor: display.backgroundColor,
                 }}
             >
                 {doLoading && (
