@@ -22,10 +22,24 @@ declare global {
             id: string;
             seq: number;
             metadata: string;
+            metadataVersion: number;
+            agentState: string | null;
+            agentStateVersion: number;
             active: boolean;
             activeAt: number;
             createdAt: number;
             updatedAt: number;
+        } | {
+            t: 'update-session'
+            id: string;
+            metadata?: {
+                value: string;
+                version: number;
+            } | null | undefined
+            agentState?: {
+                value: string;
+                version: number;
+            } | null | undefined
         };
     }
 }
