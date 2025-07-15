@@ -5,6 +5,9 @@ import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToCli
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
 
+type RpcHandler<T = any, R = any> = (data: T) => R | Promise<R>;
+type RpcHandlerMap = Map<string, RpcHandler>;
+
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string;
     private readonly secret: Uint8Array;
@@ -17,6 +20,7 @@ export class ApiSessionClient extends EventEmitter {
     private receivedMessages = new Set<string>();
     private pendingMessages: UserMessage[] = [];
     private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
+    private rpcHandlers: RpcHandlerMap = new Map();
 
     constructor(token: string, secret: Uint8Array, session: Session) {
         super()
@@ -52,6 +56,39 @@ export class ApiSessionClient extends EventEmitter {
 
         this.socket.on('connect', () => {
             logger.info('Socket connected successfully');
+            // Re-register all RPC handlers on reconnection
+            this.reregisterHandlers();
+        })
+        
+        // Set up global RPC request handler
+        this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
+            try {
+                const method = data.method;
+                const handler = this.rpcHandlers.get(method);
+                
+                if (!handler) {
+                    logger.error('RPC method not found', { method });
+                    const errorResponse = { error: 'Method not found' };
+                    const encryptedError = encodeBase64(encrypt(errorResponse, this.secret));
+                    callback(encryptedError);
+                    return;
+                }
+                
+                // Decrypt the incoming params
+                const decryptedParams = decrypt(decodeBase64(data.params), this.secret);
+                
+                // Call the handler
+                const result = await handler(decryptedParams);
+                
+                // Encrypt and return the response
+                const encryptedResponse = encodeBase64(encrypt(result, this.secret));
+                callback(encryptedResponse);
+            } catch (error) {
+                logger.error('Error handling RPC request', { error });
+                const errorResponse = { error: error instanceof Error ? error.message : 'Unknown error' };
+                const encryptedError = encodeBase64(encrypt(errorResponse, this.secret));
+                callback(encryptedError);
+            }
         })
 
         this.socket.on('disconnect', (reason) => {
@@ -185,6 +222,39 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
+     * Add a custom RPC handler for a specific method with encrypted arguments and responses
+     * @param method - The method name to handle
+     * @param handler - The handler function to call when the method is invoked
+     */
+    addHandler<T = any, R = any>(method: string, handler: RpcHandler<T, R>): void {
+        // Prefix method with session ID to ensure isolation between sessions
+        const prefixedMethod = `${this.sessionId}:${method}`;
+        
+        // Store the handler
+        this.rpcHandlers.set(prefixedMethod, handler);
+        
+        // Register the method with the server
+        this.socket.emit('rpc-register', { method: prefixedMethod });
+        
+        logger.debug('Registered RPC handler', { method, prefixedMethod });
+    }
+    
+    /**
+     * Re-register all RPC handlers after reconnection
+     */
+    private reregisterHandlers(): void {
+        logger.debug('Re-registering RPC handlers after reconnection', { 
+            totalMethods: this.rpcHandlers.size 
+        });
+        
+        // Re-register all methods with the server
+        for (const [prefixedMethod] of this.rpcHandlers) {
+            this.socket.emit('rpc-register', { method: prefixedMethod });
+            logger.debug('Re-registered method', { prefixedMethod });
+        }
+    }
+
+    /**
      * Wait for socket buffer to flush
      */
     async flush(): Promise<void> {
@@ -192,7 +262,7 @@ export class ApiSessionClient extends EventEmitter {
             return;
         }
         return new Promise((resolve) => {
-            this.socket.emitWithAck('ping', () => {
+            this.socket.emit('ping', () => {
                 resolve();
             });
             setTimeout(() => {
