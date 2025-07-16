@@ -1,4 +1,4 @@
-import { Session } from '@/sync/types';
+import { Session } from '@/sync/storageTypes';
 
 /**
  * Extracts a display name from a session's metadata path.

@@ -6,11 +6,11 @@ import { CameraView } from 'expo-camera';
 import * as React from 'react';
 import { decodeBase64, encodeBase64 } from "@/auth/base64";
 import { authGetToken } from "@/auth/authGetToken";
-import { useSyncEngine } from "@/sync/useSyncEngine";
 import { useUpdates } from "@/hooks/useUpdates";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
 import { useRouter } from "expo-router";
+import { useSessions } from "@/sync/storage";
 
 export default function Home() {
     const auth = useAuth();
@@ -23,10 +23,10 @@ export default function Home() {
 }
 
 function Authenticated() {
-    const [sessions, isLoaded] = useSyncEngine();
+    const { active, inactive, loaded } = useSessions();
     const { updateAvailable, reloadApp } = useUpdates();
 
-    if (!isLoaded) {
+    if (!loaded) {
         return (
             <View className="flex-1 items-center justify-center mb-8">
                 <ActivityIndicator size="small" color="#000000" />
@@ -38,12 +38,12 @@ function Authenticated() {
         <View className="flex-1">
             {updateAvailable && <UpdateBanner onReload={reloadApp} />}
 
-            {sessions.length === 0 ? (
+            {active.length === 0 && inactive.length === 0 ? (
                 <View className="flex-1 items-center justify-center mb-8">
                     <Text>No sessions</Text>
                 </View>
             ) : (
-                <SessionsList sessions={sessions} />
+                <SessionsList sessions={[...active, ...inactive]} />
             )}
         </View>
     )
@@ -108,13 +108,13 @@ function NotAuthenticated() {
                     loading={isLoading}
                     title="Open Camera"
                     action={openCamera}
-                    />
+                />
             </View>
             <RoundButton
                 title="Enter Code Manually"
                 onPress={() => router.push('/manual-entry')}
                 display="inverted"
-                />
+            />
         </View>
     )
 }

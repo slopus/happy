@@ -1,9 +1,7 @@
 import * as React from 'react';
-import { syncSessions } from "@/sync/SyncEngine";
-import { useRemoteClaudeCodeSession } from "@/sync/useRemoteClaudeCodeSession";
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";
-import { FlatList, Text, TextInput, View, StyleSheet, Pressable, Button } from "react-native";
+import { FlatList, Text, View, StyleSheet } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
@@ -12,20 +10,23 @@ import { Stack, useRouter } from "expo-router";
 import { formatLastSeen, getSessionName, isSessionOnline } from "@/utils/sessionUtils";
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from "@/components/Avatar";
+import { useSession, useSessionMessages } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 
 export default function Session() {
     const safeArea = useSafeAreaInsets();
     const route = useRoute();
     const router = useRouter();
     const sessionId = (route.params! as any).id as string;
-    const session = useRemoteClaudeCodeSession(sessionId);
+    const session = useSession(sessionId)!;
+    const { messages, isLoaded } = useSessionMessages(sessionId);
     const [message, setMessage] = useState('');
-    const online = isSessionOnline(session.session);
-    const lastSeenText = formatLastSeen(session.session.active, session.session.activeAt);
-    const thinking = session.session.thinking && session.session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
-    console.warn(session.session.agentState);
+    const online = isSessionOnline(session);
+    const lastSeenText = formatLastSeen(session.active, session.activeAt);
+    const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
+    console.warn(session.agentState);
     const permissionRequest = React.useMemo(() => {
-        let requests = session.session.agentState?.requests;
+        let requests = session.agentState?.requests;
         if (!requests) {
             return null;
         }
@@ -33,7 +34,10 @@ export default function Session() {
             return null;
         }
         return { id: Object.keys(requests)[0], call: requests[Object.keys(requests)[0]] };
-    }, [session.session.agentState]);
+    }, [session.agentState]);
+    React.useEffect(() => {
+        sync.onSessionVisible(sessionId);
+    }, [sessionId]);
 
     return (
         <>
@@ -41,7 +45,7 @@ export default function Session() {
                 options={{
                     headerTitle: () => (
                         <View style={{ flexDirection: 'column', alignItems: 'center', alignContent: 'center' }}>
-                            <Text style={{ fontSize: 20, fontWeight: '600' }}>{getSessionName(session.session)}</Text>
+                            <Text style={{ fontSize: 20, fontWeight: '600' }}>{getSessionName(session)}</Text>
                             <Text style={{ color: (online ? '#34C759' : '#999') }}>{(online ? 'online' : lastSeenText)}</Text>
                         </View>
                     ),
@@ -60,13 +64,13 @@ export default function Session() {
                 style={{ flex: 1, paddingBottom: safeArea.bottom }}
             >
                 <FlatList
-                    data={session.messages}
+                    data={messages}
                     inverted={true}
                     keyExtractor={(item) => item.id}
                     renderItem={({ item }) => (
                         <MessageView 
                             message={item} 
-                            metadata={session.session.metadata}
+                            metadata={session.metadata}
                             onPress={() => router.push(`/session/${sessionId}/message/${item.id}`)}
                         />
                     )}
@@ -103,7 +107,7 @@ export default function Session() {
                         value={message}
                         onChangeText={setMessage}
                         onSend={() => {
-                            syncSessions.getSession(sessionId).sendMessage(message);
+                            sync.sendMessage(sessionId, message);
                             setMessage('');
                         }}
                         loading={false}

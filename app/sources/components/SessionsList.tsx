@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Session } from '@/sync/types';
+import { Session } from '@/sync/storageTypes';
 import { LegendList } from '@legendapp/list';
 import { getSessionName, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';

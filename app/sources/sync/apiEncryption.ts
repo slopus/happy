@@ -1,7 +1,8 @@
 import { getRandomBytes } from 'expo-crypto';
 import * as tweetnacl from 'tweetnacl';
 import { decodeBase64, encodeBase64 } from '@/auth/base64';
-import { AgentState, AgentStateSchema, Message, MessageContent, MessageContentSchema, Metadata, MetadataSchema, SourceMessage } from './types';
+import { AgentState, AgentStateSchema, DecryptedMessage, MessageContent, MessageContentSchema, Metadata, MetadataSchema } from './storageTypes';
+import { ApiMessage } from './apiTypes';
 
 export function encrypt(data: any, secret: Uint8Array): Uint8Array {
     const nonce = getRandomBytes(tweetnacl.secretbox.nonceLength);
@@ -22,7 +23,7 @@ export function decrypt(data: Uint8Array, secret: Uint8Array): any | null {
     return JSON.parse(new TextDecoder().decode(decrypted));
 }
 
-export class MessageEncryption {
+export class ApiEncryption {
     private secretKey: Uint8Array;
 
     constructor(secretKeyBase64url: string) {
@@ -64,7 +65,7 @@ export class MessageEncryption {
         return parsed.data;
     }
 
-    decryptMessage(encryptedMessage: SourceMessage | null | undefined): Message | null {
+    decryptMessage(encryptedMessage: ApiMessage | null | undefined): DecryptedMessage | null {
         if (!encryptedMessage) {
             return null;
         }

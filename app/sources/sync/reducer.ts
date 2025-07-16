@@ -1,5 +1,6 @@
 import { randomUUID } from "expo-crypto";
-import { OutputData } from "./claudeTypes";
+import { ClaudeOutputData } from "./reducerTypes";
+import { DecryptedMessage, Message, ToolCall } from "./storageTypes";
 
 export type ToolCallTree = {
     id: string;
@@ -13,26 +14,7 @@ export type ToolCallTree = {
 
 export type ReducerState = {
     toolCalls: Map<string, ToolCallTree>;
-    messages: Map<string, { text: string, tools: ToolCallTree[] }>; // TODO: Copy and normalize
-};
-
-export type ToolCall = {
-    name: string;
-    state: 'running' | 'completed' | 'error';
-    arguments: any;
-    children: ToolCall[];
-}
-
-export type ReducedMessage = {
-    id: string;
-    role: 'agent';
-    content: {
-        type: 'text';
-        text: string;
-    } | {
-        type: 'tool';
-        tools: ToolCall[];
-    }
+    messages: Map<string, { createdAt: number, text: string, tools: ToolCallTree[] }>; // TODO: Copy and normalize
 };
 
 export function createReducer(): ReducerState {
@@ -56,11 +38,11 @@ function normalizeToolCalls(toolCalls: ToolCallTree[]): ToolCall[] {
     }));
 }
 
-export function applyMessages(state: ReducerState, messages: { id: string, content: any }[]): ReducedMessage[] {
+export function reducer(state: ReducerState, messages: DecryptedMessage[]): Message[] {
     console.log('🔄 applyMessages called with', messages.length, 'messages');
     console.log('📨 Input messages:', messages.map(m => ({ id: m.id, type: m.content?.content?.type, contentType: m.content?.content?.data?.type })));
-    
-    let newMessages: ReducedMessage[] = [];
+
+    let newMessages: Message[] = [];
 
     //
     // Load tool calls
@@ -68,31 +50,37 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
 
     let changed = new Set<string>();
     for (let m of messages) {
+        if (!m.content) {
+            continue;
+        }
+        if (m.content.role !== 'agent') {
+            continue;
+        }
         console.log(`🔍 Processing message ${m.id}, content.content.type:`, m.content.content.type);
-        
+
         if (m.content.content.type !== 'output') {
             console.log(`⏭️  Skipping message ${m.id} - not output type`);
             continue;
         }
-        const content = m.content.content.data as OutputData;
+        const content = m.content.content.data as ClaudeOutputData;
         console.log(`📋 Message ${m.id} content type:`, content.type);
 
         // Process assistant messages for tool_use
         if (content.type === 'assistant' && content.message.content && content.message.content.length > 0) {
             console.log(`🤖 Processing assistant message ${m.id} with ${content.message.content.length} content blocks`);
-            
+
             for (let c of content.message.content) {
                 console.log(`📦 Content block type:`, c.type);
 
                 // Started tools
                 if (c.type === 'tool_use') {
                     console.log(`🛠️  Found tool_use:`, c.id, c.name);
-                    
+
                     let existing = state.toolCalls.get(c.id);
                     if (!existing) {
                         if (content.parent_tool_use_id) {
                             console.log(`👶 Creating child tool ${c.id} under parent ${content.parent_tool_use_id}`);
-                            
+
                             let parentTool = state.toolCalls.get(content.parent_tool_use_id);
                             if (!parentTool) { // Should not happen
                                 console.warn('❌ Parent tool not found', content.parent_tool_use_id);
@@ -113,7 +101,7 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
                             console.log(`✅ Created child tool ${c.id}, marked message ${parentTool.messageId} as changed`);
                         } else {
                             console.log(`🌱 Creating root tool ${c.id}`);
-                            
+
                             let mid = allocateId();
                             let newTool = {
                                 id: c.id,
@@ -125,7 +113,7 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
                                 children: []
                             }
                             state.toolCalls.set(c.id, newTool);
-                            state.messages.set(mid, { text: '', tools: [newTool] });
+                            state.messages.set(mid, { createdAt: m.createdAt, text: '', tools: [newTool] });
                             changed.add(mid);
                             console.log(`✅ Created root tool ${c.id} with message ID ${mid}, marked as changed`);
                         }
@@ -139,13 +127,13 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
         // Process user messages for tool_result
         if (content.type === 'user' && content.message.content && content.message.content.length > 0) {
             console.log(`👤 Processing user message ${m.id} with ${content.message.content.length} content blocks`);
-            
+
             for (let c of content.message.content) {
                 console.log(`📦 User content block type:`, c.type);
-                
+
                 if (c.type === 'tool_result') {
                     console.log(`🔧 Found tool_result for tool:`, c.tool_use_id);
-                    
+
                     let existing = state.toolCalls.get(c.tool_use_id);
                     if (!existing || existing.state !== 'running') { // Should not happen
                         console.warn('❌ Tool not running', c.tool_use_id, existing?.state);
@@ -175,21 +163,27 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
 
     console.log('📝 Processing text messages...');
     for (let m of messages) {
-        if (m.content.content.type !== 'output') {
+        if (!m.content) {
             continue;
         }
-        const content = m.content.content.data as OutputData;
+        if (m.content.role !== 'agent') {
+            continue;
+        }
+        if (m.content.content.type !== 'text') {
+            continue;
+        }
+        const content = m.content.content.data as ClaudeOutputData;
         if (content.type === 'assistant') {
             console.log(`🤖 Checking assistant message ${m.id} for text content`);
-            
+
             if (content.message.content && content.message.content.length > 0) {
                 for (let c of content.message.content) {
                     if (c.type === 'text') {
                         console.log(`📄 Found text content in message ${m.id}:`, c.text.substring(0, 50) + '...');
-                        
+
                         let existing = state.messages.get(m.id);
                         if (!existing) {
-                            existing = { text: '', tools: [] };
+                            existing = { createdAt: m.createdAt, text: '', tools: [] };
                             state.messages.set(m.id, existing);
                             console.log(`🆕 Created new message entry for ${m.id}`);
                         }
@@ -218,6 +212,7 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
                 newMessages.push({
                     role: 'agent',
                     id,
+                    createdAt: existing.createdAt,
                     content: {
                         type: 'tool',
                         tools: normalizeToolCalls(existing.tools)
@@ -228,6 +223,7 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
                 newMessages.push({
                     role: 'agent',
                     id,
+                    createdAt: existing.createdAt,
                     content: {
                         type: 'text',
                         text: existing.text
@@ -238,9 +234,9 @@ export function applyMessages(state: ReducerState, messages: { id: string, conte
             console.warn(`⚠️  Changed message ${id} not found in state.messages`);
         }
     }
-    
+
     console.log('🎯 Returning', newMessages.length, 'processed messages');
     console.log('📤 Output messages:', newMessages.map(m => ({ id: m.id, type: m.content.type, hasContent: m.content.type === 'text' ? !!m.content.text : m.content.tools.length })));
-    
+
     return newMessages;
 }

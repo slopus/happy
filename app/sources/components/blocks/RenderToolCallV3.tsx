@@ -1,5 +1,5 @@
-import { type ToolCall } from '@/sync/reducer';
-import { Metadata } from '@/sync/types';
+import { type ToolCall } from '@/sync/storageTypes';
+import { Metadata } from '@/sync/storageTypes';
 import { resolvePath } from '@/utils/pathUtils';
 import * as React from 'react';
 import { View, Text, TouchableOpacity, Animated } from 'react-native';

@@ -1,6 +1,4 @@
-import { ReducedMessage } from '@/sync/reducer';
-import { SyncMessage } from '@/sync/RemoteClaudeCodeSession';
-import { HumanContent, Metadata } from '@/sync/types';
+import { AssistantContent, Message, MessageContent, Metadata, ToolCall, UserContent } from '@/sync/storageTypes';
 import * as React from 'react';
 import { View, Text, Pressable} from 'react-native';
 import { MarkdownView } from './markdown/MarkdownView';
@@ -10,7 +8,7 @@ import { fakeTool } from './blocks/data-for-nested-toolcall';
 
 
 
-export const MessageView = (props: { message: SyncMessage, metadata: Metadata | null, onPress?: () => void }) => {
+export const MessageView = (props: { message: Message, metadata: Metadata | null, onPress?: () => void }) => {
     console.log(props.message);
     
     const content = (
@@ -27,8 +25,8 @@ export const MessageView = (props: { message: SyncMessage, metadata: Metadata | 
             )}
             */}
             <View style={{ flexDirection: 'column', flexGrow: 1, flexBasis: 0 }}>
-                {props.message.content && props.message.content.role === 'user' && <UserMessageView message={props.message.content} metadata={props.metadata} />}
-                {props.message.content && props.message.content.role === 'agent' && <AgentMessageView message={props.message.content} metadata={props.metadata} />}
+                {props.message.content && props.message.role === 'user' && <UserMessageView message={props.message} metadata={props.metadata} />}
+                {props.message.content && props.message.role === 'agent' && <AgentMessageView message={props.message} metadata={props.metadata} />}
                 {!props.message.content && <UnknownMessageView />}
             </View>
         </View>
@@ -54,7 +52,7 @@ export const MessageView = (props: { message: SyncMessage, metadata: Metadata | 
     return content;
 }
 
-function UserMessageView(props: { message: HumanContent, metadata: Metadata | null }) {
+function UserMessageView(props: { message: UserContent, metadata: Metadata | null }) {
 
     if (props.message.content.type === 'text') {
         return (
@@ -67,7 +65,7 @@ function UserMessageView(props: { message: HumanContent, metadata: Metadata | nu
     return <UnknownMessageView />;
 }
 
-function AgentMessageView(props: { message: ReducedMessage, metadata: Metadata | null }) {
+function AgentMessageView(props: { message: AssistantContent, metadata: Metadata | null }) {
     if (props.message.content.type === 'text') {
         return (
             <View style={{ borderRadius: 16, alignSelf: 'flex-start', flexGrow: 1, flexBasis: 0, flexDirection: 'column', marginTop: -12, marginBottom: -12, paddingRight: 16 }}>
@@ -86,7 +84,7 @@ function AgentMessageView(props: { message: ReducedMessage, metadata: Metadata |
                 {/*
                 <RenderToolV3 tool={fakeTool} metadata={props.metadata} />
                 */}
-                {props.message.content.tools.map((tool) => (
+                {props.message.content.tools.map((tool: ToolCall) => (
                     <View>
                         <RenderToolV3 tool={tool} metadata={props.metadata} />
                         {/*
