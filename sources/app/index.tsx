@@ -6,7 +6,7 @@ import { CameraView } from 'expo-camera';
 import * as React from 'react';
 import { decodeBase64, encodeBase64 } from "@/auth/base64";
 import { authGetToken } from "@/auth/authGetToken";
-import { useSessions } from "@/sync/useSessions";
+import { useSyncEngine } from "@/sync/useSyncEngine";
 import { useUpdates } from "@/hooks/useUpdates";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
@@ -23,7 +23,7 @@ export default function Home() {
 }
 
 function Authenticated() {
-    const [sessions, isLoaded] = useSessions();
+    const [sessions, isLoaded] = useSyncEngine();
     const { updateAvailable, reloadApp } = useUpdates();
 
     if (!isLoaded) {

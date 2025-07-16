@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
-import { syncSessions } from '@/sync/SyncSessions';
+import { syncSessions } from '@/sync/SyncEngine';
 import { Session } from '@/sync/types';
 
-export function useSessions() {
+export function useSyncEngine() {
     const [sessions, setSessions] = useState<Session[]>(syncSessions.getSessions());
     const [isLoaded, setIsLoaded] = useState<boolean>(syncSessions.getLoadedState());
 
