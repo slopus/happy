@@ -1,4 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 const AUTH_KEY = 'auth_credentials';
 
@@ -12,6 +13,9 @@ export interface AuthCredentials {
 
 export const TokenStorage = {
     async getCredentials(): Promise<AuthCredentials | null> {
+        if (Platform.OS === 'web') {
+            return localStorage.getItem(AUTH_KEY) ? JSON.parse(localStorage.getItem(AUTH_KEY)!) as AuthCredentials : null;
+        }
         try {
             const stored = await SecureStore.getItemAsync(AUTH_KEY);
             if (!stored) return null;
@@ -24,6 +28,10 @@ export const TokenStorage = {
     },
 
     async setCredentials(credentials: AuthCredentials): Promise<boolean> {
+        if (Platform.OS === 'web') {
+            localStorage.setItem(AUTH_KEY, JSON.stringify(credentials));
+            return true;
+        }
         try {
             const json = JSON.stringify(credentials);
             await SecureStore.setItemAsync(AUTH_KEY, json);
@@ -36,6 +44,10 @@ export const TokenStorage = {
     },
 
     async removeCredentials(): Promise<boolean> {
+        if (Platform.OS === 'web') {    
+            localStorage.removeItem(AUTH_KEY);
+            return true;
+        }
         try {
             await SecureStore.deleteItemAsync(AUTH_KEY);
             credentialsCache = null; // Clear cache

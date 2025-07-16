@@ -114,30 +114,6 @@ export default function Session() {
                     />
                 </View>
             </KeyboardAvoidingView>
-            {/* 
-            {!online && !overlayDismissed && (
-                <Pressable
-                    style={styles.offlineOverlay}
-                    onPress={() => setOverlayDismissed(true)}
-                >
-                    <View style={styles.offlineCard}>
-                        <Pressable
-                            style={styles.closeButton}
-                            onPress={() => setOverlayDismissed(true)}
-                        >
-                            <Ionicons name="close" size={24} color="#666" />
-                        </Pressable>
-                        <Ionicons name="information-circle-outline" size={48} color="#666" />
-                        <Text style={styles.offlineTitle}>Session Probably Ended</Text>
-                        <Text style={styles.offlineMessage}>
-                            This session was last active {formatLastSeen(false, session.session.activeAt)}.
-                        </Text>
-                        <Text style={styles.offlineHint}>
-                            The CLI might have been closed or disconnected.
-                        </Text>
-                    </View>
-                </Pressable>
-            )} */}
         </>
     )
 }

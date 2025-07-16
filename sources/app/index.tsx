@@ -43,7 +43,7 @@ function Authenticated() {
                     <Text>No sessions</Text>
                 </View>
             ) : (
-                <SessionsList sessions={[...active, ...inactive]} />
+                <SessionsList active={active} inactive={inactive} />
             )}
         </View>
     )
@@ -55,24 +55,26 @@ function NotAuthenticated() {
     const [isLoading, setIsLoading] = React.useState(false);
 
     React.useEffect(() => {
-        const subscription = CameraView.onModernBarcodeScanned(async (event) => {
-            if (event.data.startsWith('handy://')) {
-                setIsLoading(true);
-                await CameraView.dismissScanner();
-                try {
-                    const tail = event.data.slice('handy://'.length);
-                    await processAuthCode(tail);
-                } catch (e) {
-                    console.error(e);
-                    Alert.alert('Error', 'Failed to login', [{ text: 'OK' }]);
-                } finally {
-                    setIsLoading(false);
+        if (CameraView.isModernBarcodeScannerAvailable) {
+            const subscription = CameraView.onModernBarcodeScanned(async (event) => {
+                if (event.data.startsWith('handy://')) {
+                    setIsLoading(true);
+                    await CameraView.dismissScanner();
+                    try {
+                        const tail = event.data.slice('handy://'.length);
+                        await processAuthCode(tail);
+                    } catch (e) {
+                        console.error(e);
+                        Alert.alert('Error', 'Failed to login', [{ text: 'OK' }]);
+                    } finally {
+                        setIsLoading(false);
+                    }
                 }
-            }
-        });
-        return () => {
-            subscription.remove();
-        };
+            });
+            return () => {
+                subscription.remove();
+            };
+        }
     }, [auth]);
 
     const processAuthCode = async (code: string) => {
