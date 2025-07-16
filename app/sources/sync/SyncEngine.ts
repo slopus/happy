@@ -8,7 +8,7 @@ import {
     Metadata,
     EphemeralUpdateSchema,
 } from '@/sync/types';
-import { SyncSession } from './SyncSession';
+import { RemoteClaudeCodeSession } from './RemoteClaudeCodeSession';
 import { backoff } from './time';
 
 const API_ENDPOINT = 'https://handy-api.korshakov.org';
@@ -194,16 +194,16 @@ class SyncSessions {
     // Session Management
     //
 
-    private sessionInstances = new Map<string, SyncSession>(); // Store SyncSession instances
+    private sessionInstances = new Map<string, RemoteClaudeCodeSession>(); // Store SyncSession instances
 
-    getSession(sessionId: string): SyncSession {
+    getSession(sessionId: string): RemoteClaudeCodeSession {
         if (!this.encryption) {
             throw new Error('SyncSessions not initialized');
         }
 
         let session = this.sessionInstances.get(sessionId);
         if (!session) {
-            session = new SyncSession(sessionId, this.encryption);
+            session = new RemoteClaudeCodeSession(sessionId, this.encryption);
             session.start();
             this.sessionInstances.set(sessionId, session);
         }

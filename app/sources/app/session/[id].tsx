@@ -1,6 +1,6 @@
 import * as React from 'react';
-import { syncSessions } from "@/sync/SyncSessions";
-import { useSyncSession } from "@/sync/useSyncSession";
+import { syncSessions } from "@/sync/SyncEngine";
+import { useRemoteClaudeCodeSession } from "@/sync/useRemoteClaudeCodeSession";
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";
 import { FlatList, Text, TextInput, View, StyleSheet, Pressable, Button } from "react-native";
@@ -8,7 +8,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
 import { ChatInput } from "@/components/ChatInput";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { formatLastSeen, getSessionName, isSessionOnline } from "@/utils/sessionUtils";
 import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from "@/components/Avatar";
@@ -16,8 +16,9 @@ import { Avatar } from "@/components/Avatar";
 export default function Session() {
     const safeArea = useSafeAreaInsets();
     const route = useRoute();
+    const router = useRouter();
     const sessionId = (route.params! as any).id as string;
-    const session = useSyncSession(sessionId);
+    const session = useRemoteClaudeCodeSession(sessionId);
     const [message, setMessage] = useState('');
     const online = isSessionOnline(session.session);
     const lastSeenText = formatLastSeen(session.session.active, session.session.activeAt);
@@ -62,7 +63,13 @@ export default function Session() {
                     data={session.messages}
                     inverted={true}
                     keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => <MessageView message={item} metadata={session.session.metadata} />}
+                    renderItem={({ item }) => (
+                        <MessageView 
+                            message={item} 
+                            metadata={session.session.metadata}
+                            onPress={() => router.push(`/session/${sessionId}/message/${item.id}`)}
+                        />
+                    )}
                     ListFooterComponent={() => <View style={{ height: 100 }} />}
                     ListHeaderComponent={() => <View style={{ height: 8 }} />}
                 />

@@ -4,6 +4,8 @@ import { MessageEncryption } from './encryption';
 import { randomUUID } from 'expo-crypto';
 import { applyMessages, createReducer, ReducedMessage, ReducerState } from './reducer';
 
+type LocalID = string;
+
 export interface SyncMessage {
     id: string; // Local ID
     serverId?: string; // Server ID when delivered
@@ -17,7 +19,32 @@ export interface SyncSessionState {
 
 type SyncSessionListener = (state: SyncSessionState) => void;
 
-export class SyncSession {
+/**
+ * RemoteClaudeCodeSession is your view into what's happening on a remote
+ * computer running Claude Code.
+ * 
+ * Claude Code uses a list of events (called a "session") with a session ID. This class
+ * represents a logical interactive session that may span multiple concrete sessions
+ * under the hood. The server just forwards the raw Claude Code event log - all
+ * transformation logic happens here.
+ * 
+ * Key architectural detail: The server stores events encrypted and knows very little
+ * about them. This class instance is the first place Claude Code events are
+ * processed by this app - we decrypt them and are now at basically the same
+ * starting point as if you just `file.readSync` the .jsonl session file from
+ * the local computer. Performs bookkeeping to minimize rerenders.
+ * 
+ * Transformation requirements (why we do this work):
+ * - Operations list screen: Transform "started X" + "finished X" events into single
+ *   UI elements showing current operation status. Handle parallel operations with
+ *   different completion times, reactive to individual list items changing.
+ * - Message detail screen: Random access to individual messages by ID, reactive
+ *   to changes in that specific message only.
+ * - TODO list state: Aggregate TODO update events into current TODO state rather
+ *   than showing every "crossed off item Y" event in the message stream.
+ * - More use cases coming, all handled by this class
+ */
+export class RemoteClaudeCodeSession {
     private sessionId: string;
     private encryption: MessageEncryption;
     private messages: SyncMessage[] = [];

@@ -1,8 +1,8 @@
 import { ReducedMessage } from '@/sync/reducer';
-import { SyncMessage } from '@/sync/SyncSession';
+import { SyncMessage } from '@/sync/RemoteClaudeCodeSession';
 import { HumanContent, Metadata } from '@/sync/types';
 import * as React from 'react';
-import { View, Text} from 'react-native';
+import { View, Text, Pressable} from 'react-native';
 import { MarkdownView } from './markdown/MarkdownView';
 import { RenderToolV3 } from './blocks/RenderToolCallV3';
 import { fakeTool } from './blocks/data-for-nested-toolcall';
@@ -10,9 +10,10 @@ import { fakeTool } from './blocks/data-for-nested-toolcall';
 
 
 
-export const MessageView = (props: { message: SyncMessage, metadata: Metadata | null }) => {
+export const MessageView = (props: { message: SyncMessage, metadata: Metadata | null, onPress?: () => void }) => {
     console.log(props.message);
-    return (
+    
+    const content = (
         <View
             style={{
                 paddingHorizontal: 16,
@@ -31,7 +32,26 @@ export const MessageView = (props: { message: SyncMessage, metadata: Metadata | 
                 {!props.message.content && <UnknownMessageView />}
             </View>
         </View>
-    )
+    );
+
+    // If onPress is provided, wrap in Pressable
+    if (props.onPress) {
+        return (
+            <Pressable
+                onPress={props.onPress}
+                style={({ pressed }) => ({
+                    opacity: pressed ? 0.7 : 1,
+                    backgroundColor: pressed ? '#f3f4f6' : 'transparent',
+                    borderRadius: 8,
+                    marginHorizontal: 8,
+                })}
+            >
+                {content}
+            </Pressable>
+        );
+    }
+
+    return content;
 }
 
 function UserMessageView(props: { message: HumanContent, metadata: Metadata | null }) {
