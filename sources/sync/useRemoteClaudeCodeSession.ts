@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { syncSessions } from './SyncEngine';
+import { syncEngine } from './SyncEngine';
 import { SyncMessage, SyncSessionState } from './RemoteClaudeCodeSession';
 import * as React from 'react';
 import { Session } from './types';
@@ -12,9 +12,9 @@ interface UseSyncSessionState {
 }
 
 export function useRemoteClaudeCodeSession(sessionId: string): UseSyncSessionState {
-    const allSessions = syncSessions.getSessions();
+    const allSessions = syncEngine.getSessions();
     let session1 = allSessions.find(s => s.id === sessionId)!;
-    const session = React.useMemo(() => syncSessions.getSession(sessionId), [sessionId]);
+    const session = React.useMemo(() => syncEngine.getSession(sessionId), [sessionId]);
     const [state, setState] = useState<SyncSessionState>(session.getState());
     useEffect(() => {
         session.addListener(setState);
