@@ -1,4 +1,4 @@
-import { syncSessions } from "@/sync/SyncSessions";
+import { syncSessions } from "@/sync/SyncEngine";
 import { useSyncSession } from "@/sync/useSyncSession";
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";

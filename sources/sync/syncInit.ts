@@ -1,5 +1,5 @@
 import { syncSocket } from '@/sync/SyncSocket';
-import { syncSessions } from '@/sync/SyncSessions';
+import { syncSessions } from '@/sync/SyncEngine';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { MessageEncryption } from './encryption';
 

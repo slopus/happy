@@ -1,5 +1,5 @@
 import { ReducedMessage } from '@/sync/reducer';
-import { SyncMessage } from '@/sync/SyncSession';
+import { SyncMessage } from '@/sync/RemoteClaudeCodeSession';
 import { HumanContent, Metadata } from '@/sync/types';
 import * as React from 'react';
 import { View, Text} from 'react-native';
