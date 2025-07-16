@@ -46,7 +46,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     mode = 'interactive'
     session.updateAgentState((currentState) => ({
         ...currentState,
-        controlledByUser: false  // CLI is controlling in interactive mode
+        controlledByUser: true  // CLI is controlling in interactive mode
     }))
 
     let startWatcher = async () => {
@@ -154,7 +154,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     mode = 'remote'
     session.updateAgentState((currentState) => ({
         ...currentState,
-        controlledByUser: true  // User is controlling via mobile in remote mode
+        controlledByUser: false  // User is controlling via mobile in remote mode
     }))
     // Kill interactive process
     if (interactiveProcess) {
