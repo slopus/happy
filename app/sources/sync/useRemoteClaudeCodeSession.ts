@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { syncSessions } from './SyncSessions';
-import { SyncMessage, SyncSessionState } from './SyncSession';
+import { syncSessions } from './SyncEngine';
+import { SyncMessage, SyncSessionState } from './RemoteClaudeCodeSession';
 import * as React from 'react';
 import { Session } from './types';
 
