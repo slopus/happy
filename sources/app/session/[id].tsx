@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { syncSessions } from "@/sync/SyncSessions";
 import { useSyncSession } from "@/sync/useSyncSession";
 import { useRoute } from "@react-navigation/native";
@@ -21,6 +22,17 @@ export default function Session() {
     const online = isSessionOnline(session.session);
     const lastSeenText = formatLastSeen(session.session.active, session.session.activeAt);
     const thinking = session.session.thinking && session.session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
+    console.warn(session.session.agentState);
+    const permissionRequest = React.useMemo(() => {
+        let requests = session.session.agentState?.requests;
+        if (!requests) {
+            return null;
+        }
+        if (Object.keys(requests).length === 0) {
+            return null;
+        }
+        return { id: Object.keys(requests)[0], call: requests[Object.keys(requests)[0]] };
+    }, [session.session.agentState]);
 
     return (
         <>
@@ -54,6 +66,11 @@ export default function Session() {
                     ListFooterComponent={() => <View style={{ height: 100 }} />}
                     ListHeaderComponent={() => <View style={{ height: 8 }} />}
                 />
+                {permissionRequest && (
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', height: 32, paddingHorizontal: 24 }}>
+                        <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>Permission request</Text>
+                    </View>
+                )}
                 {/* <Button title="Abort" onPress={() => session.abort()} /> */}
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', height: 32, paddingHorizontal: 24 }}>
                     {!online && (
