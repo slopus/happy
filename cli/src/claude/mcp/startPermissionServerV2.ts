@@ -4,6 +4,7 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { randomUUID } from "node:crypto";
 import { AddressInfo } from "node:net";
 import { z } from "zod";
+import { logger } from "@/ui/logger";
 
 export async function startPermissionServerV2(handler: (req: { name: string, arguments: any }) => Promise<{ approved: boolean, reason?: string }>) {
 
@@ -17,7 +18,7 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
         description: "A server that allows you to request permissions from the user",
     });
 
-    mcp.registerTool('permission', {
+    mcp.registerTool('ask_permission', {
         description: 'Request permission to execute a tool',
         title: 'Request Permission',
         inputSchema: {
@@ -56,7 +57,7 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
 
             await transport.handleRequest(req, res);
         } catch (error) {
-            console.error("Error handling request:", error);
+            logger.debug("Error handling request:", error);
             if (!res.headersSent) {
                 res.writeHead(500).end();
             }
@@ -72,6 +73,6 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
 
     return {
         url: baseUrl.toString(),
-        toolName: 'permission'
+        toolName: 'ask_permission'
     }
 }
