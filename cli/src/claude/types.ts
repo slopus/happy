@@ -44,7 +44,7 @@ export const PersisstedMessageSchema = z.object({
   sessionId: z.string(),
   type: z.string(),
   subtype: z.string().optional(),
-}).loose()
+})
 
 export type InteractiveMessage = z.infer<typeof PersisstedMessageSchema>
 
@@ -53,7 +53,7 @@ export const SDKMessageSchema = z.object({
   session_id: z.string().optional(),
   type: z.string(),
   subtype: z.string().optional(),
-}).loose()
+});
 
 export type SDKMessage = z.infer<typeof SDKMessageSchema>
 

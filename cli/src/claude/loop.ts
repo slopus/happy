@@ -260,7 +260,7 @@ export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
     // Handle stdin errors gracefully
     process.stdin.on('error', (err) => {
       logger.debug('[LOOP] stdin error:', err)
-      if (err.code === 'EIO') {
+      if ((err as any).code === 'EIO') {
         // Terminal was closed, exit gracefully
         cleanup()
         process.exit(0)

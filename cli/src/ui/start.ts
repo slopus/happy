@@ -7,10 +7,10 @@ import { basename } from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { startClaudeLoop } from '@/claude/loop';
 import os from 'node:os';
-import { startPermissionServer } from '@/claude/mcp/startPermissionServer';
 import chalk from 'chalk';
 import { encodeBase64Url } from '@/api/encryption';
 import { AgentState, Metadata } from '@/api/types';
+import { startPermissionServerV2 } from '@/claude/mcp/startPermissionServerV2';
 
 export interface StartOptions {
     model?: string
@@ -83,31 +83,31 @@ export async function start(options: StartOptions = {}): Promise<void> {
     const session = api.session(response);
 
     // Start MCP permission server
-    const permissionServer = await startPermissionServer((request) => {
-        logger.info('Permission request:', request);
-        // Send permission request to remote client
-        session.sendMessage({
-            type: 'permission-request',
-            data: request
-        });
+    let requests = new Map<string, (response: { approved: boolean, reason?: string }) => void>();
+    const permissionServer = await startPermissionServerV2((request) => {
+        const id = randomUUID();
+        let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => { requests.set(id, resolve); });
+        logger.info('Permission request' + id + ' ' + JSON.stringify(request));
+        session.updateAgentState((currentState) => ({
+            ...currentState,
+            requests: {
+                ...currentState.requests,
+                [id]: {
+                    tool: request.name,
+                    arguments: request.arguments,
+                }
+            }
+        }));
+        return promise;
     });
-    logger.info(`MCP permission server started on port ${permissionServer.port}`);
-
-    // Handle permission responses from remote client
-    session.on('message', (message: any) => {
-        if (message.type === 'permission-response') {
-            logger.info('Permission response from client:', message.data);
-            permissionServer.respondToPermission(message.data);
+    session.addHandler<{ id: string, approved: boolean, reason?: string }, void>('permission', (message) => {
+        logger.info('Permission response' + JSON.stringify(message));
+        const id = message.id;
+        const resolve = requests.get(id);
+        if (resolve) {
+            resolve({ approved: message.approved, reason: message.reason });
         }
     });
-
-    // Create MCP configuration
-    const mcpServers = {
-        'permission-server': {
-            type: 'http' as const,
-            url: permissionServer.url,
-        },
-    };
 
     // Create claude loop
     let thinking = false;
@@ -115,15 +115,16 @@ export async function start(options: StartOptions = {}): Promise<void> {
         path: workingDirectory,
         model: options.model,
         permissionMode: options.permissionMode,
-        mcpServers,
-        permissionPromptToolName: permissionServer.toolName,
+        mcpServers: {
+            'permission': {
+                type: 'http' as const,
+                url: permissionServer.url,
+            }
+        },
+        permissionPromptToolName: 'mcp__permission__' + permissionServer.toolName,
         onThinking: (t) => {
             thinking = t;
             session.keepAlive(t);
-            session.updateAgentState((currentState) => ({
-                ...currentState,
-                thinking: t
-            }));
         }
     }, session);
 
@@ -141,9 +142,6 @@ export async function start(options: StartOptions = {}): Promise<void> {
 
         // Stop claude loop
         await loopDestroy();
-
-        // Stop MCP permission server
-        await permissionServer.stop();
 
         // Send session death message
         session.sendSessionDeath();
