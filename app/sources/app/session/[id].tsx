@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { syncSessions } from "@/sync/SyncEngine";
+import { syncEngine } from "@/sync/SyncEngine";
 import { useRemoteClaudeCodeSession } from "@/sync/useRemoteClaudeCodeSession";
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";
@@ -103,7 +103,7 @@ export default function Session() {
                         value={message}
                         onChangeText={setMessage}
                         onSend={() => {
-                            syncSessions.getSession(sessionId).sendMessage(message);
+                            syncEngine.getSession(sessionId).sendMessage(message);
                             setMessage('');
                         }}
                         loading={false}

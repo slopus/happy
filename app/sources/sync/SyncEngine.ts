@@ -15,7 +15,7 @@ const API_ENDPOINT = 'https://handy-api.korshakov.org';
 
 type SessionsListener = (sessions: Session[], isLoaded: boolean) => void;
 
-class SyncSessions {
+class SyncEngine {
 
     private sessions: Map<string, Session> = new Map();
     private listeners: Set<SessionsListener> = new Set();
@@ -212,4 +212,4 @@ class SyncSessions {
 }
 
 // Global singleton instance
-export const syncSessions = new SyncSessions();
+export const syncEngine = new SyncEngine();

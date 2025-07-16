@@ -1,5 +1,5 @@
 import { syncSocket } from '@/sync/SyncSocket';
-import { syncSessions } from '@/sync/SyncEngine';
+import { syncEngine } from '@/sync/SyncEngine';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { MessageEncryption } from './encryption';
 
@@ -20,7 +20,7 @@ export async function initializeSync(credentials: AuthCredentials) {
     }, new MessageEncryption(credentials.secret));
 
     // Initialize sessions engine
-    await syncSessions.initialize(credentials);
+    await syncEngine.initialize(credentials);
 
     isInitialized = true;
 }
