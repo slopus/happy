@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 import { initializeSync } from '@/sync/syncInit';
+import * as Updates from 'expo-updates';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -34,8 +35,10 @@ export function AuthProvider({ children, initialCredentials }: { children: React
 
     const logout = async () => {
         await TokenStorage.removeCredentials();
-        setCredentials(null);
-        setIsAuthenticated(false);
+        await Updates.reloadAsync();
+        while (true) {
+            await new Promise(resolve => setTimeout(resolve, 1000));
+        }
     };
 
     return (
