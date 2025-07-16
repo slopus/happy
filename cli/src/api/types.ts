@@ -84,7 +84,7 @@ export interface ClientToServerEvents {
     version: number,
     metadata: string
   }) => void) => void,
-  'update-agent': (data: { sid: string, expectedVersion: number, agentState: string | null }, cb: (answer: {
+  'update-state': (data: { sid: string, expectedVersion: number, agentState: string | null }, cb: (answer: {
     result: 'error'
   } | {
     result: 'version-mismatch'
