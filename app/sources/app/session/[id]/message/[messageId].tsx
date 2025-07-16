@@ -69,14 +69,6 @@ export default function MessageModal() {
                     </View>
                 </View>
 
-                {/* Message Content */}
-                <View style={{ flex: 1, paddingTop: 8 }}>
-                    <MessageView
-                        message={message}
-                        metadata={session?.metadata ?? null}
-                    />
-                </View>
-
                 {/* Debug Information (Optional) */}
                 <View style={{
                     margin: 16,

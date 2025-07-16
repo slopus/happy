@@ -4,14 +4,15 @@ import { View, Text, Pressable} from 'react-native';
 import { MarkdownView } from './markdown/MarkdownView';
 import { RenderToolV3 } from './blocks/RenderToolCallV3';
 import { fakeTool } from './blocks/data-for-nested-toolcall';
+import { CompactToolCallBlock } from './blocks/RenderToolCallV4';
 // import { RenderToolV1 } from './blocks/RenderToolCallV1';
 
 
 
-export const MessageView = (props: { message: Message, metadata: Metadata | null, onPress?: () => void }) => {
+export const MessageView = (props: { message: Message, metadata: Metadata | null, sessionId: string}) => {
     console.log(props.message);
     
-    const content = (
+    return (
         <View
             style={{
                 paddingHorizontal: 16,
@@ -26,30 +27,11 @@ export const MessageView = (props: { message: Message, metadata: Metadata | null
             */}
             <View style={{ flexDirection: 'column', flexGrow: 1, flexBasis: 0 }}>
                 {props.message.content && props.message.role === 'user' && <UserMessageView message={props.message} metadata={props.metadata} />}
-                {props.message.content && props.message.role === 'agent' && <AgentMessageView message={props.message} metadata={props.metadata} />}
+                {props.message.content && props.message.role === 'agent' && <AgentMessageView message={props.message} metadata={props.metadata} messageId={props.message.id} sessionId={props.sessionId} />}
                 {!props.message.content && <UnknownMessageView />}
             </View>
         </View>
     );
-
-    // If onPress is provided, wrap in Pressable
-    if (props.onPress) {
-        return (
-            <Pressable
-                onPress={props.onPress}
-                style={({ pressed }) => ({
-                    opacity: pressed ? 0.7 : 1,
-                    backgroundColor: pressed ? '#f3f4f6' : 'transparent',
-                    borderRadius: 8,
-                    marginHorizontal: 8,
-                })}
-            >
-                {content}
-            </Pressable>
-        );
-    }
-
-    return content;
 }
 
 function UserMessageView(props: { message: UserContent, metadata: Metadata | null }) {
@@ -65,7 +47,12 @@ function UserMessageView(props: { message: UserContent, metadata: Metadata | nul
     return <UnknownMessageView />;
 }
 
-function AgentMessageView(props: { message: AssistantContent, metadata: Metadata | null }) {
+// I dont know why steve narrowed the type to just AssistantContent here, but I
+// need know the messageId and sessionId to navigate to open the details modals.
+// So I quickly hacked around this narrow type by adding messageId and sessionId
+// to the props.
+// Once I understand what the intention behind the types are, I will refactor this.
+function AgentMessageView(props: { message: AssistantContent, metadata: Metadata | null, messageId: string, sessionId: string }) {
     if (props.message.content.type === 'text') {
         return (
             <View style={{ borderRadius: 16, alignSelf: 'flex-start', flexGrow: 1, flexBasis: 0, flexDirection: 'column', marginTop: -12, marginBottom: -12, paddingRight: 16 }}>
@@ -88,6 +75,7 @@ function AgentMessageView(props: { message: AssistantContent, metadata: Metadata
                     <View>
                         <RenderToolV3 tool={tool} metadata={props.metadata} />
                         {/*
+                        <CompactToolCallBlock tool={tool} metadata={props.metadata} sessionId={props.sessionId} messageId={props.messageId} />
                         {tool.children.length <= 3 && (
                             <View style={{ paddingLeft: 16 }}>
                                 {tool.children.map((child) => (
