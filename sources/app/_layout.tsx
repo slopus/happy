@@ -121,6 +121,13 @@ export default function RootLayout() {
                 headerBackTitle: 'Home'
               }}
             />
+            <Stack.Screen
+              name="session/[id]/message/[messageId]"
+              options={{
+                presentation: 'modal',
+                headerShown: false,
+              }}
+            />
           </Stack>
         </ThemeProvider>
       </AuthProvider>

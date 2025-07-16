@@ -4,7 +4,7 @@ import { MessageEncryption } from './encryption';
 import { randomUUID } from 'expo-crypto';
 import { applyMessages, createReducer, ReducedMessage, ReducerState } from './reducer';
 
-
+type LocalID = string;
 
 export interface SyncMessage {
     id: string; // Local ID
