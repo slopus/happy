@@ -11,7 +11,7 @@ interface UseSyncSessionState {
     abort: () => Promise<void>;
 }
 
-export function useSyncSession(sessionId: string): UseSyncSessionState {
+export function useRemoteClaudeCodeSession(sessionId: string): UseSyncSessionState {
     const allSessions = syncSessions.getSessions();
     let session1 = allSessions.find(s => s.id === sessionId)!;
     const session = React.useMemo(() => syncSessions.getSession(sessionId), [sessionId]);
@@ -24,4 +24,12 @@ export function useSyncSession(sessionId: string): UseSyncSessionState {
     }, [sessionId]);
     const result = React.useMemo(() => ({ session: session1, messages: state.messages, isLoading: state.isLoading, abort: session.abort }), [session1, state]);
     return result;
+}
+
+export function useOneMessage(sessionId: string, messageId: string): SyncMessage | null {
+    // NOTE: This is inefficient - subscribes to ALL messages even when only interested in one.
+    // Could be optimized by maintaining a map of messageId -> Set<listener> to only notify
+    // components that care about specific messages, but keeping it simple for now.
+    const { messages } = useRemoteClaudeCodeSession(sessionId);
+    return messages.find(m => m.id === messageId) || null;
 }
