@@ -193,7 +193,6 @@ export type Metadata = {
 
 export type AgentState = {
   controlledByUser?: boolean | null | undefined
-  thinking?: boolean | null | undefined
   requests?: {
     [id: string]: {
       tool: string,
