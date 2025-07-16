@@ -29,8 +29,7 @@ export const storage = create<StorageState>()((set) => {
         sessionsActive: [],
         sessionsInactive: [],
         sessionMessages: {},
-        applySessions: (sessions: Session[]) => set((state) => {
-            console.log('🔄 applySessions called with', sessions.length, 'sessions');
+        applySessions: (sessions: Session[]) => set((state) => {            
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
 
@@ -80,14 +79,13 @@ export const storage = create<StorageState>()((set) => {
             };
         }),
         applyLoaded: () => set((state) => {
-            console.log('🔄 applyLoaded called');
-            return {
+            const result = {
                 ...state,
                 sessionsLoaded: true,
-            }
+            };
+            return result;
         }),
         applyMessages: (sessionId: string, messages: DecryptedMessage[]) => set((state) => {
-            console.log('🔄 applyMessages called with', messages.length, 'messages');
             // Resolve session messages state
             const existingSession = state.sessionMessages[sessionId] || {
                 messages: [],
@@ -136,10 +134,11 @@ export const storage = create<StorageState>()((set) => {
             };
         }),
         applyMessagesLoaded: (sessionId: string) => set((state) => {
-            console.log('🔄 applyMessagesLoaded called with', sessionId);
             const existingSession = state.sessionMessages[sessionId];
+            let result;
+            
             if (!existingSession) {
-                return {
+                result = {
                     ...state,
                     sessionMessages: {
                         ...state.sessionMessages,
@@ -151,18 +150,20 @@ export const storage = create<StorageState>()((set) => {
                         }
                     }
                 };
+            } else {
+                result = {
+                    ...state,
+                    sessionMessages: {
+                        ...state.sessionMessages,
+                        [sessionId]: {
+                            ...existingSession,
+                            isLoaded: true
+                        }
+                    }
+                };
             }
 
-            return {
-                ...state,
-                sessionMessages: {
-                    ...state.sessionMessages,
-                    [sessionId]: {
-                        ...existingSession,
-                        isLoaded: true
-                    }
-                }
-            };
+            return result;
         })
     }
 });

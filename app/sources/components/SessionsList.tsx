@@ -8,7 +8,8 @@ import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface SessionsListProps {
-    sessions: Session[];
+    active: Session[];
+    inactive: Session[];
 }
 
 interface SessionListItem {
@@ -18,45 +19,45 @@ interface SessionListItem {
     last: boolean;
 }
 
-export function SessionsList({ sessions }: SessionsListProps) {
+export function SessionsList({ active, inactive }: SessionsListProps) {
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
 
     // Create flat list data with headers
     const listData = React.useMemo(() => {
         const data: SessionListItem[] = [];
-        const activeSessions: Session[] = [];
-        const offlineSessions: Session[] = [];
-
-        // Split sessions into active and offline
-        sessions.forEach(session => {
-            if (isSessionOnline(session)) {
-                activeSessions.push(session);
-            } else {
-                offlineSessions.push(session);
-            }
-        });
-
-        // Sort both arrays by updatedAt (most recent first)
-        activeSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-        offlineSessions.sort((a, b) => b.updatedAt - a.updatedAt);
 
         // Add active sessions section (always show header)
         data.push({ type: 'header', title: 'Active Sessions', last: false });
-        if (activeSessions.length > 0) {
-            activeSessions.forEach((session, index) => data.push({ type: 'item', session, last: index === activeSessions.length - 1 }));
+        if (active.length > 0) {
+            active.forEach((session, index) => data.push({ type: 'item', session, last: index === active.length - 1 }));
         } else {
             data.push({ type: 'empty', title: 'No active sessions', last: false });
         }
 
         // Add offline sessions
-        if (offlineSessions.length > 0) {
+        if (inactive.length > 0) {
             data.push({ type: 'header', title: 'Offline Sessions', last: false });
-            offlineSessions.forEach((session, index) => data.push({ type: 'item', session, last: index === offlineSessions.length - 1 }));
+            inactive.forEach((session, index) => data.push({ type: 'item', session, last: index === inactive.length - 1 }));
         }
 
         return data;
-    }, [sessions]);
+    }, [active, inactive]);
+
+    // Memoize keyExtractor
+    const keyExtractor = React.useCallback((item: SessionListItem, index: number) => {
+        if (item.type === 'header') return `header-${item.title}`;
+        if (item.type === 'empty') return `empty-${index}`;
+        return `session-${item.session!.id}`;
+    }, []);
+
+    // Memoize ItemSeparatorComponent
+    const ItemSeparatorComponent = React.useCallback(({ leadingItem }: { leadingItem: SessionListItem }) => {
+        if (leadingItem.type === 'item' && !leadingItem.last) {
+            return <View style={{ height: 1, backgroundColor: 'black', opacity: 0.05, marginLeft: 16 }} />;
+        }
+        return null;
+    }, []);
 
     const renderItem = ({ item }: { item: SessionListItem }) => {
         if (item.type === 'header') {
@@ -138,15 +139,9 @@ export function SessionsList({ sessions }: SessionsListProps) {
             data={listData}
             renderItem={renderItem}
             estimatedItemSize={68}
-            keyExtractor={(item, index) =>
-                item.type === 'header' ? `header-${item.title}` :
-                    item.type === 'empty' ? `empty-${index}` :
-                        `session-${item.session!.id}`
-            }
+            keyExtractor={keyExtractor}
             contentContainerStyle={{ paddingBottom: safeArea.bottom + 16 }}
-            ItemSeparatorComponent={({ leadingItem }) =>
-                leadingItem.type === 'item' && !leadingItem.last ? <View style={{ height: 1, backgroundColor: 'black', opacity: 0.05, marginLeft: 16 }} /> : null
-            }
+            ItemSeparatorComponent={ItemSeparatorComponent}
         />
     );
 }
