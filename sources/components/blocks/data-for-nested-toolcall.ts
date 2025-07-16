@@ -1,4 +1,4 @@
-import { type ToolCall } from '@/sync/reducer';
+import { type ToolCall } from '@/sync/storageTypes';
 
 // Fake tool call object with nested children for testing the design.
 export const fakeTool: ToolCall = {

@@ -1,7 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { TokenStorage } from '@/auth/tokenStorage';
-import { encrypt, MessageEncryption } from './encryption';
-import { decodeBase64 } from '@/auth/base64';
+import { ApiEncryption } from './apiEncryption';
 
 //
 // Types
@@ -24,11 +23,12 @@ export type SyncSocketListener = (state: SyncSocketState) => void;
 // Main Class
 //
 
-class SyncSocket {
+class ApiSocket {
+    
     // State
     private socket: Socket | null = null;
     private config: SyncSocketConfig | null = null;
-    private encryption: MessageEncryption | null = null;
+    private encryption: ApiEncryption | null = null;
     private state: SyncSocketState = {
         isConnected: false,
         connectionStatus: 'disconnected',
@@ -43,7 +43,7 @@ class SyncSocket {
     // Initialization
     //
 
-    initialize(config: SyncSocketConfig, encryption: MessageEncryption) {
+    initialize(config: SyncSocketConfig, encryption: ApiEncryption) {
         this.config = config;
         this.encryption = encryption;
         this.connect();
@@ -245,4 +245,4 @@ class SyncSocket {
 // Singleton Export
 //
 
-export const syncSocket = new SyncSocket();
+export const apiSocket = new ApiSocket();

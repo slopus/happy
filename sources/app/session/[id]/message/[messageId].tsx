@@ -1,20 +1,17 @@
-import { useOneMessage, useRemoteClaudeCodeSession } from "@/sync/useRemoteClaudeCodeSession";
+
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { View, Text, ScrollView, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
 import { Ionicons } from '@expo/vector-icons';
+import { useMessage, useSession, useSessionMessages } from "@/sync/storage";
 
 export default function MessageModal() {
     const { id: sessionId, messageId } = useLocalSearchParams<{ id: string; messageId: string }>();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
-    // TODO refactor how information is passed around such that we don't need to
-    // get information about the session metadata object just to show the
-    // message. I'm thinking that each message object should contain all the
-    // information required to renderitself at all times.
-    const session = useRemoteClaudeCodeSession(sessionId!);
-    const message = useOneMessage(sessionId!, messageId!);
+    const session = useSession(sessionId!);
+    const message = useMessage(sessionId!, messageId!);
 
     if (message === null) {
         return (
@@ -52,12 +49,12 @@ export default function MessageModal() {
                     )
                 }}
             />
-            
+
             <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: safeArea.bottom + 20 }}>
                 {/* Message Header */}
-                <View style={{ 
-                    backgroundColor: '#f8f9fa', 
-                    paddingHorizontal: 16, 
+                <View style={{
+                    backgroundColor: '#f8f9fa',
+                    paddingHorizontal: 16,
                     paddingVertical: 12,
                     borderBottomWidth: 1,
                     borderBottomColor: '#e0e0e0'
@@ -67,24 +64,24 @@ export default function MessageModal() {
                             Message ID: {messageId}
                         </Text>
                         <Text style={{ fontSize: 12, color: '#666' }}>
-                            {message.content?.role === 'user' ? 'User' : 'Assistant'}
+                            {message.role === 'user' ? 'User' : 'Assistant'}
                         </Text>
                     </View>
                 </View>
 
                 {/* Message Content */}
                 <View style={{ flex: 1, paddingTop: 8 }}>
-                    <MessageView 
-                        message={message} 
-                        metadata={session.session.metadata} 
+                    <MessageView
+                        message={message}
+                        metadata={session?.metadata ?? null}
                     />
                 </View>
-                
+
                 {/* Debug Information (Optional) */}
-                <View style={{ 
-                    margin: 16, 
-                    padding: 12, 
-                    backgroundColor: '#f8f9fa', 
+                <View style={{
+                    margin: 16,
+                    padding: 12,
+                    backgroundColor: '#f8f9fa',
                     borderRadius: 8,
                     borderWidth: 1,
                     borderColor: '#e0e0e0'
@@ -95,14 +92,14 @@ export default function MessageModal() {
                     <Text style={{ fontSize: 12, color: '#666', fontFamily: 'monospace' }}>
                         Local ID: {message.id}
                     </Text>
-                    {message.serverId && (
+                    {/* {message.id && (
                         <Text style={{ fontSize: 12, color: '#666', fontFamily: 'monospace' }}>
                             Server ID: {message.serverId}
                         </Text>
-                    )}
-                    {message.content && (
+                    )} */}
+                    {message.role && (
                         <Text style={{ fontSize: 12, color: '#666', fontFamily: 'monospace' }}>
-                            Role: {message.content.role}
+                            Role: {message.role}
                         </Text>
                     )}
                     {message.content && 'type' in message.content && (

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
-import { initializeSync } from '@/sync/syncInit';
+import { syncInit } from '@/sync/sync';
 import * as Updates from 'expo-updates';
 
 interface AuthContextType {
@@ -18,7 +18,7 @@ export function AuthProvider({ children, initialCredentials }: { children: React
 
     useEffect(() => {
         if (credentials) {
-            initializeSync(credentials);
+            syncInit(credentials);
         }
     }, [credentials]);
 
