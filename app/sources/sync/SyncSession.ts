@@ -78,6 +78,7 @@ export class SyncSession {
                 this.notifyListeners();
                 break;
             } catch (error) {
+                console.error(error);
                 console.error('Failed to load messages, retrying....');
                 await new Promise(resolve => setTimeout(resolve, 5000));
                 continue;
@@ -185,5 +186,13 @@ export class SyncSession {
 
     abort = async () => {
         await syncSocket.rpc(this.sessionId, 'abort', {});
+    }
+
+    allow = async (id: string) => {
+        await syncSocket.rpc(this.sessionId, 'permission', { id, approved: true });
+    }
+
+    deny = async (id: string) => {
+        await syncSocket.rpc(this.sessionId, 'permission', { id, approved: false });
     }
 }

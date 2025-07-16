@@ -95,9 +95,23 @@ export const UpdateNewSessionSchema = z.object({
     updatedAt: z.number(),
 });
 
+export const UpdatSessionStateSchema = z.object({
+    t: z.literal('update-session'),
+    id: z.string(),
+    agentState: z.object({
+        version: z.number(),
+        value: z.string()
+    }).nullish(),
+    metadata: z.object({
+        version: z.number(),
+        value: z.string()
+    }).nullish(),
+});
+
 export const UpdateSchema = z.discriminatedUnion('t', [
     UpdateNewMessageSchema,
-    UpdateNewSessionSchema
+    UpdateNewSessionSchema,
+    UpdatSessionStateSchema
 ]);
 
 export type UpdateNewMessage = z.infer<typeof UpdateNewMessageSchema>;
@@ -142,7 +156,11 @@ export const MetadataSchema = z.object({
 export type Metadata = z.infer<typeof MetadataSchema>;
 
 export const AgentStateSchema = z.object({
-    
+    controlledByUser: z.boolean().nullish(),
+    requests: z.record(z.string(), z.object({
+        tool: z.string(),
+        arguments: z.any(),
+    })).nullish(),
 });
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
