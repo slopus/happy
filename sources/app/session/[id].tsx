@@ -71,7 +71,7 @@ export default function Session() {
                         <MessageView 
                             message={item} 
                             metadata={session.metadata}
-                            onPress={() => router.push(`/session/${sessionId}/message/${item.id}`)}
+                            sessionId={sessionId}
                         />
                     )}
                     ListFooterComponent={() => <View style={{ height: 100 }} />}
