@@ -28,14 +28,20 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
         if (waiter) {
             waiter({
                 type: 'user',
-                message: message,
+                message: {
+                    role: 'user',
+                    content: message,
+                },
                 parent_tool_use_id: null,
                 session_id: '',
             });
         } else {
             this.queue.push({
                 type: 'user',
-                message: message,
+                message: {
+                    role: 'user',
+                    content: message,
+                },
                 parent_tool_use_id: null,
                 session_id: '',
             });

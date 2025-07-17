@@ -37,6 +37,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.51",
+    "@anthropic-ai/sdk": "^0.56.0",
     "@modelcontextprotocol/sdk": "^1.15.1",
     "@types/qrcode-terminal": "^0.12.2",
     "axios": "^1.10.0",
