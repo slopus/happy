@@ -52,6 +52,7 @@ export async function start(options: StartOptions = {}): Promise<void> {
     // Authenticate with server
     const token = await authGetToken(secret);
     logger.info('Authenticated with handy server');
+    logger.info('Logs at: ' + await logger.logFilePathPromise);
 
     // Create session service
     const api = new ApiClient(token, secret);

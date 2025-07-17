@@ -5,6 +5,8 @@ import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { mkdirSync } from "node:fs";
 import { watch } from "node:fs";
+import { logger } from "@/ui/logger";
+import { claudeCheckSession } from "./claudeCheckSession";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -19,13 +21,13 @@ export async function claudeLocal(opts: {
     const projectName = resolve(opts.path).replace(/\//g, '-')
     const projectDir = join(homedir(), '.claude', 'projects', projectName);
     mkdirSync(projectDir, { recursive: true });
-    console.log('projectDir', projectDir);
     const watcher = watch(projectDir);
     let resolvedSessionId: string | null = null;
     const detectedIdsRandomUUID = new Set<string>();
     const detectedIdsFileSystem = new Set<string>();
     watcher.on('change', (event, filename) => {
         if (typeof filename === 'string' && filename.toLowerCase().endsWith('.jsonl')) {
+            logger.debug('change', event, filename);
             const sessionId = filename.replace('.jsonl', '');
             if (detectedIdsFileSystem.has(sessionId)) {
                 return;
@@ -45,14 +47,20 @@ export async function claudeLocal(opts: {
         }
     });
 
+    // Check if session is valid
+    let startFrom = opts.sessionId;
+    if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
+        startFrom = null;
+    }
+
     // Spawn the process
     try {
         // Start the interactive process
         process.stdin.pause();
         await new Promise<void>((r, reject) => {
             const args: string[] = []
-            if (opts.sessionId) {
-                args.push('--resume', opts.sessionId)
+            if (startFrom) {
+                args.push('--resume', startFrom)
             }
             const child = spawn('node', [resolve(join(__dirname, '../scripts/interactiveLaunch.cjs')), ...args], {
                 stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
@@ -68,6 +76,7 @@ export async function claudeLocal(opts: {
                 });
 
                 rl.on('line', (line) => {
+                    logger.debug('line', line);
                     const sessionMatch = line.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i);
                     if (sessionMatch) {
                         detectedIdsRandomUUID.add(sessionMatch[0]);
@@ -87,7 +96,7 @@ export async function claudeLocal(opts: {
                     console.error('Error reading from fd 3:', err);
                 });
             }
-            child.on('error', (error) => {  
+            child.on('error', (error) => {
                 // Ignore
             });
             child.on('exit', (code, signal) => {
@@ -106,6 +115,10 @@ export async function claudeLocal(opts: {
         watcher.close();
         process.stdin.resume();
     }
+
+    //
+    // Double check that session is correct
+    //
 
     return resolvedSessionId;
 }
