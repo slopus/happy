@@ -247,11 +247,11 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     /**
-     * Add a custom RPC handler for a specific method with encrypted arguments and responses
+     * Set a custom RPC handler for a specific method with encrypted arguments and responses
      * @param method - The method name to handle
      * @param handler - The handler function to call when the method is invoked
      */
-    addHandler<T = any, R = any>(method: string, handler: RpcHandler<T, R>): void {
+    setHandler<T = any, R = any>(method: string, handler: RpcHandler<T, R>): void {
         // Prefix method with session ID to ensure isolation between sessions
         const prefixedMethod = `${this.sessionId}:${method}`;
         

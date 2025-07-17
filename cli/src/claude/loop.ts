@@ -9,77 +9,99 @@ interface LoopOptions {
     permissionMode?: 'auto' | 'default' | 'plan'
     mcpServers?: Record<string, any>
     permissionPromptToolName?: string
-    onThinking?: (thinking: boolean) => void
+    onThinking?: (thinking: boolean) => void,
+    session: ApiSessionClient
 }
 
-export function startClaudeLoop(opts: LoopOptions, session: ApiSessionClient) {
+export async function loop(opts: LoopOptions) {
     let exited = false;
     let abortController: AbortController | null = null;
     let mode: 'interactive' | 'remote' = 'interactive' as 'interactive' | 'remote';
     let queue = new MessageQueue();
-    session.onUserMessage((message) => {
-        queue.push(message.content.text);
-    });
-    let promise = (async () => {
-        let sessionId: string | null = null;
-        while (!exited) {
+    let sessionId: string | null = null;
+    let onMessage: (() => void) | null = null;
 
-            // Start local mode
-            if (mode === 'interactive') {
-                let abortedOutside = false;
-                const interactiveAbortController = new AbortController();
-                abortController = interactiveAbortController;
-                session.addHandler('switch', () => {
+    // Handle user messages
+    opts.session.onUserMessage((message) => {
+        queue.push(message.content.text);
+        if (onMessage) {
+            onMessage();
+        }
+    });
+
+    while (!exited) {
+
+        // Switch to remote mode if there are messages in queue
+        if (queue.size() > 0) {
+            mode = 'remote';
+            continue;
+        }
+
+        // Start local mode
+        if (mode === 'interactive') {
+            let abortedOutside = false;
+            const interactiveAbortController = new AbortController();
+            abortController = interactiveAbortController;
+            opts.session.setHandler('switch', () => {
+                if (!interactiveAbortController.signal.aborted) {
                     abortedOutside = true;
                     mode = 'remote';
                     interactiveAbortController.abort();
-                });
-                await claudeLocal({
-                    path: opts.path,
-                    sessionId: null,
-                    onSessionFound: (id) => {
-                        sessionId = id;
-                    },
-                    abort: interactiveAbortController.signal,
-                });
-                if (!abortedOutside) {
-                    return;
                 }
-                if (mode !== 'interactive' && !exited) {
-                    console.log('Switching to remote mode...');
+            });
+            onMessage = () => {
+                if (!interactiveAbortController.signal.aborted) {
+                    abortedOutside = true;
+                    mode = 'remote';
+                    interactiveAbortController.abort();
                 }
+                onMessage = null;
+            };
+            await claudeLocal({
+                path: opts.path,
+                sessionId: null,
+                onSessionFound: (id) => {
+                    sessionId = id;
+                },
+                abort: interactiveAbortController.signal,
+            });
+            onMessage = null;
+            if (!abortedOutside) {
+                return;
             }
-
-            // Start remote mode
-            if (mode === 'remote') {
-                const remoteAbortController = new AbortController();
-                abortController = remoteAbortController;
-                session.addHandler('abort', () => {
-                    remoteAbortController.abort();
-                });
-                process.stdin.once('data', () => {
-                    mode = 'interactive';
-                    remoteAbortController.abort();
-                });
-                await claudeRemote({
-                    abort: remoteAbortController.signal,
-                    sessionId: sessionId,
-                    path: opts.path,
-                    onSessionFound: (id) => {
-                        sessionId = id;
-                    },
-                    messages: queue,
-                });
-                if (mode !== 'remote' && !exited) {
-                    console.log('Switching to interactive mode...');
-                }
+            if (mode !== 'interactive' && !exited) {
+                console.log('Switching to remote mode...');
             }
         }
-    })();
 
-    return async () => {
-        exited = true;
-        abortController?.abort();
-        await promise
+        // Start remote mode
+        if (mode === 'remote') {
+            console.log('Starting ' + sessionId);
+            const remoteAbortController = new AbortController();
+            abortController = remoteAbortController;
+            opts.session.setHandler('abort', () => {
+                if (!remoteAbortController.signal.aborted) {
+                    remoteAbortController.abort();
+                }
+            });
+            process.stdin.once('data', () => {
+                if (!remoteAbortController.signal.aborted) {
+                    mode = 'interactive';
+                    remoteAbortController.abort();
+                }
+            });
+            await claudeRemote({
+                abort: remoteAbortController.signal,
+                sessionId: sessionId,
+                path: opts.path,
+                onSessionFound: (id) => {
+                    sessionId = id;
+                },
+                messages: queue,
+            });
+            if (mode !== 'remote' && !exited) {
+                console.log('Switching to interactive mode...');
+            }
+        }
     }
 }

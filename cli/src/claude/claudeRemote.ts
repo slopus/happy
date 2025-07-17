@@ -1,4 +1,5 @@
-import { query, type Options, SDKUserMessage } from '@anthropic-ai/claude-code'
+import { query, type Options, type SDKUserMessage, type SDKMessage } from '@anthropic-ai/claude-code'
+import { formatClaudeMessage, printDivider } from '@/ui/messageFormatter'
 
 export async function claudeRemote(opts: {
     abort: AbortSignal,
@@ -28,11 +29,15 @@ export async function claudeRemote(opts: {
         abortController: abortController,
         options: sdkOptions
     });
+    printDivider();
     for await (const message of response) {
-        if (message.type === 'system') {
-            if (message.subtype === 'init') {
-                opts.onSessionFound(message.session_id);
-            }
+        // Always format and display the message
+        formatClaudeMessage(message);
+        
+        // Handle special system messages
+        if (message.type === 'system' && message.subtype === 'init') {
+            opts.onSessionFound(message.session_id);
         }
     }
+    printDivider();
 }

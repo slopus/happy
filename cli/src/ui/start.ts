@@ -5,7 +5,7 @@ import { logger } from '@/ui/logger';
 import { displayQRCode } from '@/ui/qrcode';
 import { basename } from 'node:path';
 import { randomUUID, randomBytes } from 'node:crypto';
-import { startClaudeLoop } from '@/claude/loop';
+import { loop } from '@/claude/loop';
 import os from 'node:os';
 import chalk from 'chalk';
 import { encodeBase64Url } from '@/api/encryption';
@@ -100,7 +100,7 @@ export async function start(options: StartOptions = {}): Promise<void> {
         }));
         return promise;
     });
-    session.addHandler<{ id: string, approved: boolean, reason?: string }, void>('permission', (message) => {
+    session.setHandler<{ id: string, approved: boolean, reason?: string }, void>('permission', (message) => {
         logger.info('Permission response' + JSON.stringify(message));
         const id = message.id;
         const resolve = requests.get(id);
@@ -117,9 +117,15 @@ export async function start(options: StartOptions = {}): Promise<void> {
         });
     });
 
-    // Create claude loop
+    // Session keep alive
     let thinking = false;
-    const loopDestroy = startClaudeLoop({
+    const pingInterval = setInterval(() => {
+        session.keepAlive(thinking);
+    }, 15000); // Ping every 15 seconds
+
+
+    // Create claude loop
+    await loop({
         path: workingDirectory,
         model: options.model,
         permissionMode: options.permissionMode,
@@ -133,43 +139,27 @@ export async function start(options: StartOptions = {}): Promise<void> {
         onThinking: (t) => {
             thinking = t;
             session.keepAlive(t);
-        }
-    }, session);
-
-    // Set up periodic ping to keep connection alive
-    const pingInterval = setInterval(() => {
-        session.keepAlive(thinking);
-    }, 15000); // Ping every 15 seconds
+        },
+        session
+    });
 
     // Handle graceful shutdown
-    const shutdown = async () => {
-        logger.info('Shutting down...')
+    logger.info('Shutting down...')
 
-        // Stop ping interval
-        clearInterval(pingInterval);
+    // Stop ping interval
+    clearInterval(pingInterval);
 
-        // Stop claude loop
-        await loopDestroy();
+    // Send session death message
+    session.sendSessionDeath();
 
-        // Send session death message
-        session.sendSessionDeath();
+    // Wait for socket to flush
+    logger.info('Waiting for socket to flush...');
+    await session.flush();
 
-        // Wait for socket to flush
-        await session.flush();
+    // Close session
+    logger.info('Closing session...');
+    await session.close();
 
-        // Close session
-        await session.close();
-
-        process.exit(0);
-    };
-    process.on('SIGINT', shutdown);
-    process.on('SIGTERM', shutdown);
-
-    // Started!
-    logger.info('Happy CLI is starting...');
-
-    // Keep process alive
-    await new Promise(() => {
-        // This promise never resolves, keeping the process running
-    });
+    // Exit
+    process.exit(0);
 }

@@ -87,14 +87,15 @@ export async function claudeLocal(opts: {
                     console.error('Error reading from fd 3:', err);
                 });
             }
-
-            child.on('error', (error) => {
-                console.log('error', error);
-                reject(error);
+            child.on('error', (error) => {  
+                // Ignore
             });
             child.on('exit', (code, signal) => {
                 console.log('exit', code, signal);
-                if (signal) {
+                if (signal === 'SIGTERM' && opts.abort.aborted) {
+                    // Normal termination due to abort signal
+                    r();
+                } else if (signal) {
                     reject(new Error(`Process terminated with signal: ${signal}`));
                 } else {
                     r();
