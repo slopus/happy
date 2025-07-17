@@ -72,26 +72,7 @@ function AgentMessageView(props: { message: AssistantContent, metadata: Metadata
                 <RenderToolV3 tool={fakeTool} metadata={props.metadata} />
                 */}
                 {props.message.content.tools.map((tool: ToolCall) => (
-                    <View>
-                        <RenderToolV4 tool={tool} sessionId={props.sessionId} messageId={props.messageId} />
-                        {/*
-                        <RenderToolV3 tool={tool} metadata={props.metadata} />
-                        {tool.children.length <= 3 && (
-                            <View style={{ paddingLeft: 16 }}>
-                                {tool.children.map((child) => (
-                                    <RenderTool tool={child} metadata={props.metadata} />
-                                ))}
-                            </View>
-                        )}
-                        {tool.children.length > 3 && (
-                            <View style={{ paddingLeft: 16 }}>
-                                <RenderTool tool={tool.children[tool.children.length - 2]} metadata={props.metadata} />
-                                <RenderTool tool={tool.children[tool.children.length - 1]} metadata={props.metadata} />
-                                <Text style={{ color: 'black', opacity: 0.9 }}> + {tool.children.length - 2} more</Text>
-                            </View>
-                        )}
-                        */}
-                    </View>
+                    <RenderToolV4 tool={tool} sessionId={props.sessionId} messageId={props.messageId} />
                 ))}
             </View>
         )
