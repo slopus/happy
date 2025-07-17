@@ -1,5 +1,7 @@
 import { query, type Options, type SDKUserMessage, type SDKMessage } from '@anthropic-ai/claude-code'
 import { formatClaudeMessage, printDivider } from '@/ui/messageFormatter'
+import { claudeCheckSession } from './claudeCheckSession';
+import { logger } from '@/ui/logger';
 
 export async function claudeRemote(opts: {
     abort: AbortSignal,
@@ -11,10 +13,16 @@ export async function claudeRemote(opts: {
     messages: AsyncIterable<SDKUserMessage>
 }) {
 
+    // Check if session is valid
+    let startFrom = opts.sessionId;
+    if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
+        startFrom = null;
+    }
+
     // Prepare SDK options
     const sdkOptions: Options = {
         cwd: opts.path,
-        resume: opts.sessionId ?? undefined,
+        resume: startFrom ?? undefined,
         mcpServers: opts.mcpServers,
         permissionPromptToolName: opts.permissionPromptToolName,
     }
@@ -33,7 +41,7 @@ export async function claudeRemote(opts: {
     for await (const message of response) {
         // Always format and display the message
         formatClaudeMessage(message);
-        
+
         // Handle special system messages
         if (message.type === 'system' && message.subtype === 'init') {
             opts.onSessionFound(message.session_id);

@@ -84,21 +84,32 @@ export async function loop(opts: LoopOptions) {
                     remoteAbortController.abort();
                 }
             });
-            process.stdin.once('data', () => {
+            const abortHandler = () => {
+                console.log('abortHandler');
                 if (!remoteAbortController.signal.aborted) {
+                    console.log('aborting');
                     mode = 'interactive';
                     remoteAbortController.abort();
                 }
-            });
-            await claudeRemote({
-                abort: remoteAbortController.signal,
-                sessionId: sessionId,
-                path: opts.path,
-                onSessionFound: (id) => {
-                    sessionId = id;
-                },
-                messages: queue,
-            });
+                process.stdin.setRawMode(false);
+            };
+            process.stdin.resume();
+            process.stdin.setRawMode(true);
+            process.stdin.setEncoding("utf8");
+            process.stdin.on('data', abortHandler);
+            try {
+                await claudeRemote({
+                    abort: remoteAbortController.signal,
+                    sessionId: sessionId,
+                    path: opts.path,
+                    onSessionFound: (id) => {
+                        sessionId = id;
+                    },
+                    messages: queue,
+                });
+            } finally {
+                process.stdin.off('data', abortHandler);
+            }
             if (mode !== 'remote' && !exited) {
                 console.log('Switching to interactive mode...');
             }
