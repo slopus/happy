@@ -85,9 +85,7 @@ export async function loop(opts: LoopOptions) {
                 }
             });
             const abortHandler = () => {
-                console.log('abortHandler');
                 if (!remoteAbortController.signal.aborted) {
-                    console.log('aborting');
                     mode = 'interactive';
                     remoteAbortController.abort();
                 }
