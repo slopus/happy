@@ -6,6 +6,7 @@ import { z } from "zod";
 
 export const UserContentSchema = z.object({
     role: z.literal('user'),
+    localId: z.string().nullish(),
     content: z.object({
         type: z.literal('text'),
         text: z.string(),
@@ -98,6 +99,7 @@ export type Message = {
     id: string;
     role: 'user';
     createdAt: number;
+    localId: string | null;
     content: {
         type: 'text';
         text: string;

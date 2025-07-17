@@ -74,6 +74,7 @@ class Sync {
             seq: null,
             content: {
                 role: 'user',
+                localId: localId,
                 content: {
                     type: 'text',
                     text

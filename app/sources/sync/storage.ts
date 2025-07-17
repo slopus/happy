@@ -94,14 +94,33 @@ export const storage = create<StorageState>()((set) => {
                 isLoaded: false
             };
 
+            // Build a set of existing local IDs for quick lookup
+            const existingLocalIds = new Set<string>();
+            Object.values(existingSession.messagesMap).forEach(msg => {
+                if (msg.role === 'user' && msg.localId) {
+                    existingLocalIds.add(msg.localId);
+                }
+            });
+
+            // Filter out messages with duplicate local IDs
+            const newMessages = messages.filter(m => {
+                // If message has a localId and it already exists, skip it
+                if (m.content?.role === 'user' && m.content.localId && existingLocalIds.has(m.content.localId)) {
+                    console.log(`Skipping duplicate message with localId: ${m.content.localId}`);
+                    return false;
+                }
+                return true;
+            });
+
             // Reduce messages
-            const processedMessages = reducer(existingSession.reducerState, messages);
-            for (let m of messages) {
+            const processedMessages = reducer(existingSession.reducerState, newMessages);
+            for (let m of newMessages) {
                 if (m.content?.role === 'user') {
                     processedMessages.push({
                         id: m.id,
                         createdAt: m.createdAt,
                         role: 'user',
+                        localId: m.content.localId ?? null,
                         content: {
                             type: 'text',
                             text: m.content.content.text
