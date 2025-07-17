@@ -25,10 +25,10 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
             tool_name: z.string().describe('The tool that needs permission'),
             input: z.any().describe('The arguments for the tool'),
         },
-        outputSchema: {
-            approved: z.boolean().describe('Whether the tool was approved'),
-            reason: z.string().describe('The reason for the approval or denial'),
-        },
+        // outputSchema: {
+        //     approved: z.boolean().describe('Whether the tool was approved'),
+        //     reason: z.string().describe('The reason for the approval or denial'),
+        // },
     }, async (args) => {
         const response = await handler({ name: args.tool_name, arguments: args.input });
         const result = response.approved
