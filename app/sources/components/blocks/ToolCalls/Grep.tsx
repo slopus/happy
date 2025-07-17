@@ -31,7 +31,7 @@ export type GrepToolCall = Omit<ToolCall, 'name'> & { name: 'Grep' };
 export function GrepCompactView({ tool, sessionId, messageId }: { tool: GrepToolCall, sessionId: string, messageId: string }) {
   const router = useRouter();
 
-  // Defensive: check for common grep arguments
+  // TODO write a zod parser for this schema
   const query = tool.arguments?.query || tool.arguments?.pattern;
   const filePath = tool.arguments?.file_path || tool.arguments?.files || tool.arguments?.path;
   const directory = tool.arguments?.directory || tool.arguments?.dir;

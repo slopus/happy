@@ -10,17 +10,15 @@ export function SingleLineToolSummaryBlock({ children, sessionId, messageId }: {
   return (
     <Pressable
       onPress={() => router.push(`/session/${sessionId}/message/${messageId}`)}
-      className="border border-gray-300 rounded-lg bg-white overflow-hidden flex-row items-center justify-between px-3 py-3 active:scale-95 active:opacity-70"
+      className="border-2 border-transparent active:border-neutral-200 active:bg-neutral-50 rounded-lg bg-white flex-row items-center justify-between px-3 py-2 border-transparent"
     >
       {children}
 
-      <View className="flex-row items-center">
-        <Ionicons 
-          name="chevron-forward" 
-          size={12} 
-          color="#6b7280"
-        />
-      </View>
+      <Ionicons 
+        name="chevron-forward" 
+        size={12} 
+        color="#6b7280"
+      />
     </Pressable>
   );
 } 
