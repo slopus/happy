@@ -1,9 +1,18 @@
 import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { type ToolCall } from "@/sync/storageTypes";
+import { SingleLineToolSummaryBlock as SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
+
+export function BashCompactView({ tool, sessionId, messageId }: { tool: ToolCall, sessionId: string, messageId: string }) {
+  return (
+    <SingleLineToolSummaryBlock sessionId={sessionId} messageId={messageId}>
+      <BashCompactViewInner tool={tool} />
+    </SingleLineToolSummaryBlock>
+  );
+}
 
 // Compact view for display in session list (1-2 lines max)
-export const BashCompactView = ({ tool }: { tool: ToolCall }) => {
+export function BashCompactViewInner({ tool }: { tool: ToolCall }) {
   const command = tool.arguments?.command;
   
   if (!command) {
