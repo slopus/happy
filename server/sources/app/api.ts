@@ -426,7 +426,7 @@ export async function startApi() {
                         methodsToRemove.push(method);
                     }
                 }
-                
+
                 if (methodsToRemove.length > 0) {
                     log({ module: 'websocket-rpc' }, `Cleaning up RPC methods on disconnect for socket ${socket.id}: ${methodsToRemove.join(', ')}`);
                     methodsToRemove.forEach(method => userRpcMap.delete(method));
@@ -829,7 +829,7 @@ export async function startApi() {
             if (userRpcMap && userRpcMap.get(method) === socket) {
                 userRpcMap.delete(method);
                 log({ module: 'websocket-rpc' }, `RPC method unregistered: ${method} from socket ${socket.id} (user: ${userId})`);
-                
+
                 if (userRpcMap.size === 0) {
                     rpcListeners.delete(userId);
                     log({ module: 'websocket-rpc' }, `All RPC methods unregistered for user ${userId}`);
@@ -920,7 +920,7 @@ export async function startApi() {
                 const duration = Date.now() - startTime;
                 const errorMsg = error instanceof Error ? error.message : 'RPC call failed';
                 log({ module: 'websocket-rpc' }, `RPC call failed: ${method} - ${errorMsg} (${duration}ms)`);
-                
+
                 // Timeout or error occurred
                 if (callback) {
                     callback({
@@ -929,6 +929,10 @@ export async function startApi() {
                     });
                 }
             }
+        });
+
+        socket.on('ping', async (callback: (response: any) => void) => {
+            callback({});
         });
 
         socket.emit('auth', { success: true, user: userId });
