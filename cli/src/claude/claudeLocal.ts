@@ -1,0 +1,110 @@
+import { spawn } from "node:child_process";
+import { resolve, join, dirname } from "node:path";
+import { createInterface } from "node:readline";
+import { fileURLToPath } from "node:url";
+import { homedir } from "node:os";
+import { mkdirSync } from "node:fs";
+import { watch } from "node:fs";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+export async function claudeLocal(opts: {
+    abort: AbortSignal,
+    sessionId: string | null,
+    path: string,
+    onSessionFound: (id: string) => void
+}) {
+
+    // Start a watcher for to detect the session id
+    const projectName = resolve(opts.path).replace(/\//g, '-')
+    const projectDir = join(homedir(), '.claude', 'projects', projectName);
+    mkdirSync(projectDir, { recursive: true });
+    console.log('projectDir', projectDir);
+    const watcher = watch(projectDir);
+    let resolvedSessionId: string | null = null;
+    const detectedIdsRandomUUID = new Set<string>();
+    const detectedIdsFileSystem = new Set<string>();
+    watcher.on('change', (event, filename) => {
+        if (typeof filename === 'string' && filename.toLowerCase().endsWith('.jsonl')) {
+            const sessionId = filename.replace('.jsonl', '');
+            if (detectedIdsFileSystem.has(sessionId)) {
+                return;
+            }
+            detectedIdsFileSystem.add(sessionId);
+
+            // Try to match
+            if (resolvedSessionId) {
+                return;
+            }
+
+            // Try to match with random UUID
+            if (detectedIdsRandomUUID.has(sessionId)) {
+                resolvedSessionId = sessionId;
+                opts.onSessionFound(sessionId);
+            }
+        }
+    });
+
+    // Spawn the process
+    try {
+        // Start the interactive process
+        process.stdin.pause();
+        await new Promise<void>((r, reject) => {
+            const args: string[] = []
+            if (opts.sessionId) {
+                args.push('--resume', opts.sessionId)
+            }
+            const child = spawn('node', [resolve(join(__dirname, '../scripts/interactiveLaunch.cjs')), ...args], {
+                stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
+                signal: opts.abort,
+                cwd: opts.path,
+            });
+
+            // Listen to the custom fd (fd 3) line by line
+            if (child.stdio[3]) {
+                const rl = createInterface({
+                    input: child.stdio[3] as any,
+                    crlfDelay: Infinity
+                });
+
+                rl.on('line', (line) => {
+                    const sessionMatch = line.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i);
+                    if (sessionMatch) {
+                        detectedIdsRandomUUID.add(sessionMatch[0]);
+
+                        if (resolvedSessionId) {
+                            return;
+                        }
+
+                        if (detectedIdsFileSystem.has(sessionMatch[0])) {
+                            resolvedSessionId = sessionMatch[0];
+                            opts.onSessionFound(sessionMatch[0]);
+                        }
+                    }
+                });
+
+                rl.on('error', (err) => {
+                    console.error('Error reading from fd 3:', err);
+                });
+            }
+
+            child.on('error', (error) => {
+                console.log('error', error);
+                reject(error);
+            });
+            child.on('exit', (code, signal) => {
+                console.log('exit', code, signal);
+                if (signal) {
+                    reject(new Error(`Process terminated with signal: ${signal}`));
+                } else {
+                    r();
+                }
+            });
+        });
+    } finally {
+        watcher.close();
+        process.stdin.resume();
+    }
+
+    return resolvedSessionId;
+}
