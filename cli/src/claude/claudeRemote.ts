@@ -1,7 +1,6 @@
 import { query, type Options, type SDKUserMessage, type SDKMessage, AbortError } from '@anthropic-ai/claude-code'
 import { formatClaudeMessage, printDivider } from '@/ui/messageFormatter'
 import { claudeCheckSession } from './claudeCheckSession';
-import { logger } from '@/ui/logger';
 
 export async function claudeRemote(opts: {
     abort: AbortSignal,
