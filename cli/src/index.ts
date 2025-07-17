@@ -34,7 +34,7 @@ if (subcommand === 'clean') {
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
-    
+
     if (arg === '-h' || arg === '--help') {
       showHelp = true
     } else if (arg === '-v' || arg === '--version') {
@@ -94,7 +94,7 @@ ${chalk.bold('Examples:')}
  */
 async function cleanKey(): Promise<void> {
   const handyDir = join(homedir(), '.handy')
-  
+
   // Check if handy directory exists
   if (!existsSync(handyDir)) {
     console.log(chalk.yellow('No happy data directory found at:'), handyDir)
@@ -103,7 +103,7 @@ async function cleanKey(): Promise<void> {
 
   console.log(chalk.blue('Found happy data directory at:'), handyDir)
   console.log(chalk.yellow('⚠️  This will remove all authentication data and require reconnecting your phone.'))
-  
+
   // Ask for confirmation
   const rl = createInterface({
     input: process.stdin,
