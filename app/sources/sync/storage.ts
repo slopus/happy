@@ -1,8 +1,15 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { DecryptedMessage, Session, Message } from "./storageTypes";
+import { DecryptedMessage, Session, Message as Message } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer";
 
+// Mentally I'm going to call this a "RemoteClaudeCodeSession". This is all of
+// the state we need to render the UI for a specific session. Note to self, this
+// Message type is not one of those objects you find in the `.jsonl` files
+// (~/.claude/projects/${projectId}/${sessionId}.jsonl).
+// Instead Message is an aggregation of several of these log lines. It
+// represents the current UI state. The list of messages is the list of UI
+// elements we are showing in a ListView screen.
 interface SessionMessages {
     messages: Message[];
     messagesMap: Record<string, Message>;
