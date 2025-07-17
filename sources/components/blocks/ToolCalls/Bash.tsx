@@ -3,7 +3,9 @@ import { View, Text, ScrollView } from 'react-native';
 import { type ToolCall } from "@/sync/storageTypes";
 import { SingleLineToolSummaryBlock as SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
 
-export function BashCompactView({ tool, sessionId, messageId }: { tool: ToolCall, sessionId: string, messageId: string }) {
+export type BashToolCall = Omit<ToolCall, 'name'> & { name: 'Bash' };
+
+export function BashCompactView({ tool, sessionId, messageId }: { tool: BashToolCall, sessionId: string, messageId: string }) {
   return (
     <SingleLineToolSummaryBlock sessionId={sessionId} messageId={messageId}>
       <BashCompactViewInner tool={tool} />

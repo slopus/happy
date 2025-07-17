@@ -4,7 +4,7 @@ import { type ToolCall } from "@/sync/storageTypes";
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
 
-type EditToolCall = Omit<ToolCall, 'name'> & { name: 'Edit' };
+export type EditToolCall = Omit<ToolCall, 'name'> & { name: 'Edit' };
 
 // Zod schema for Edit tool arguments
 const EditArgumentsSchema = z.object({
