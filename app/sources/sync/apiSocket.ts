@@ -63,7 +63,8 @@ class ApiSocket {
         this.socket = io(this.config.endpoint, {
             path: '/v1/updates',
             auth: {
-                token: this.config.token
+                token: this.config.token,
+                clientType: 'user-scoped' as const
             },
             transports: ['websocket'],
             reconnection: true,
