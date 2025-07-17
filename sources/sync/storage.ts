@@ -102,18 +102,30 @@ export const storage = create<StorageState>()((set) => {
             };
 
             // Build a set of existing local IDs for quick lookup
-            const existingLocalIds = new Set<string>();
+            const existingUserMessageLocalIds = new Set<string>();
+            const existingAgentMessageIds = new Set<string>();
             Object.values(existingSession.messagesMap).forEach(msg => {
                 if (msg.role === 'user' && msg.localId) {
-                    existingLocalIds.add(msg.localId);
+                    existingUserMessageLocalIds.add(msg.localId);
+                }
+                if (msg.role === 'agent' && msg.id) {
+                    existingAgentMessageIds.add(msg.id);
                 }
             });
 
             // Filter out messages with duplicate local IDs
             const newMessages = messages.filter(m => {
                 // If message has a localId and it already exists, skip it
-                if (m.content?.role === 'user' && m.content.localId && existingLocalIds.has(m.content.localId)) {
-                    console.log(`Skipping duplicate message with localId: ${m.content.localId}`);
+                if (m.content?.role === 'user' && m.content.localId 
+                    && existingUserMessageLocalIds.has(m.content.localId)
+                ) {
+                    console.log(`Skipping duplicate user message with localId: ${m.content.localId}`);
+                    return false;
+                }
+                if (m.content?.role === 'agent' && m.content?.id 
+                    && existingAgentMessageIds.has(m.content.id)
+                ) {
+                    console.log(`Skipping duplicate agent message with id: ${m.id}`);
                     return false;
                 }
                 return true;
