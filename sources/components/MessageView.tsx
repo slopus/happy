@@ -4,7 +4,7 @@ import { View, Text, Pressable} from 'react-native';
 import { MarkdownView } from './markdown/MarkdownView';
 import { RenderToolV3 } from './blocks/RenderToolCallV3';
 import { fakeTool } from './blocks/data-for-nested-toolcall';
-import { CompactToolCallBlock } from './blocks/RenderToolCallV4';
+import { RenderToolV4 as RenderToolV4 } from './blocks/RenderToolCallV4';
 // import { RenderToolV1 } from './blocks/RenderToolCallV1';
 
 
@@ -73,9 +73,9 @@ function AgentMessageView(props: { message: AssistantContent, metadata: Metadata
                 */}
                 {props.message.content.tools.map((tool: ToolCall) => (
                     <View>
-                        <RenderToolV3 tool={tool} metadata={props.metadata} />
+                        <RenderToolV4 tool={tool} sessionId={props.sessionId} messageId={props.messageId} />
                         {/*
-                        <CompactToolCallBlock tool={tool} metadata={props.metadata} sessionId={props.sessionId} messageId={props.messageId} />
+                        <RenderToolV3 tool={tool} metadata={props.metadata} />
                         {tool.children.length <= 3 && (
                             <View style={{ paddingLeft: 16 }}>
                                 {tool.children.map((child) => (
