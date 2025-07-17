@@ -100,7 +100,6 @@ export async function claudeLocal(opts: {
                 // Ignore
             });
             child.on('exit', (code, signal) => {
-                console.log('exit', code, signal);
                 if (signal === 'SIGTERM' && opts.abort.aborted) {
                     // Normal termination due to abort signal
                     r();
