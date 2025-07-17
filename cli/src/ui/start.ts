@@ -26,20 +26,20 @@ export async function start(options: StartOptions = {}): Promise<void> {
     const settings = await readSettings();
     const needsOnboarding = !settings || !settings.onboardingCompleted;
 
-    if (needsOnboarding) {
-        // Show onboarding
-        logger.info('\n' + chalk.bold.green('🎉 Welcome to Happy CLI!'));
-        logger.info('\nHappy is an open-source, end-to-end encrypted wrapper around Claude Code');
-        logger.info('that allows you to start a regular Claude terminal session with the `happy` command.\n');
+    // if (needsOnboarding) {
+    // Show onboarding
+    logger.info('\n' + chalk.bold.green('🎉 Welcome to Happy CLI!'));
+    logger.info('\nHappy is an open-source, end-to-end encrypted wrapper around Claude Code');
+    logger.info('that allows you to start a regular Claude terminal session with the `happy` command.\n');
 
-        if (process.platform === 'darwin') {
-            logger.info(chalk.yellow('💡 Tip for macOS users:'));
-            logger.info('   Install Amphetamine to prevent your Mac from sleeping during sessions:');
-            logger.info('   https://apps.apple.com/us/app/amphetamine/id937984704?mt=12\n');
-            logger.info('   You can even close your laptop completely while running Amphetamine');
-            logger.info('   and connect through hotspot to your phone for coding on the go!\n');
-        }
+    if (process.platform === 'darwin') {
+        logger.info(chalk.yellow('💡 Tip for macOS users:'));
+        logger.info('   Install Amphetamine to prevent your Mac from sleeping during sessions:');
+        logger.info('   https://apps.apple.com/us/app/amphetamine/id937984704?mt=12\n');
+        logger.info('   You can even close your laptop completely while running Amphetamine');
+        logger.info('   and connect through hotspot to your phone for coding on the go!\n');
     }
+    // }
 
     // Get or create secret key
     let secret = await readPrivateKey();
@@ -63,21 +63,21 @@ export async function start(options: StartOptions = {}): Promise<void> {
     logger.info(`Session created: ${response.id}`);
 
     // Show QR code during onboarding
-    if (needsOnboarding) {
-        const handyUrl = generateAppUrl(secret);
-        displayQRCode(handyUrl);
-        // Display secret for manual entry
-        const secretBase64Url = encodeBase64Url(secret);
-        logger.info(`Or manually enter this code: ${secretBase64Url}`);
+    // if (needsOnboarding) {
+    const handyUrl = generateAppUrl(secret);
+    displayQRCode(handyUrl);
+    // Display secret for manual entry
+    const secretBase64Url = encodeBase64Url(secret);
+    logger.info(`Or manually enter this code: ${secretBase64Url}`);
 
-        logger.info('\n' + chalk.bold('Press Enter to continue...'));
-        await new Promise<void>((resolve) => {
-            process.stdin.once('data', () => resolve());
-        });
+    logger.info('\n' + chalk.bold('Press Enter to continue...'));
+    await new Promise<void>((resolve) => {
+        process.stdin.once('data', () => resolve());
+    });
 
-        // Save onboarding completed
-        await writeSettings({ onboardingCompleted: true });
-    }
+    // Save onboarding completed
+    await writeSettings({ onboardingCompleted: true });
+    // }
 
     // Create realtime session
     const session = api.session(response);
@@ -107,6 +107,14 @@ export async function start(options: StartOptions = {}): Promise<void> {
         if (resolve) {
             resolve({ approved: message.approved, reason: message.reason });
         }
+        session.updateAgentState((currentState) => {
+            let r = { ...currentState.requests };
+            delete r[id];
+            return ({
+                ...currentState,
+                requests: r,
+            });
+        });
     });
 
     // Create claude loop
