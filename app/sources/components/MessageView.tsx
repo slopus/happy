@@ -7,8 +7,6 @@ import { fakeTool } from './blocks/data-for-nested-toolcall';
 import { RenderToolV4 as RenderToolV4 } from './blocks/RenderToolCallV4';
 // import { RenderToolV1 } from './blocks/RenderToolCallV1';
 
-
-
 export const MessageView = (props: { message: Message, metadata: Metadata | null, sessionId: string}) => {
     console.log(props.message);
     
