@@ -7,7 +7,7 @@ import { DecryptedMessage, MessageContent, Session } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { randomUUID } from 'expo-crypto';
 
-const API_ENDPOINT = 'https://handy-api.korshakov.org';
+export const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
 class Sync {
 
@@ -202,6 +202,7 @@ class Sync {
             storage.getState().applyMessages(updateData.body.sid, [decryptedMessage]);
 
             // Ping session
+            // NOTE: @kirill Might fetch all messages again?
             this.onSessionVisible(updateData.body.sid);
 
         } else if (updateData.body.t === 'new-session') {
