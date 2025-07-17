@@ -2,3 +2,6 @@ node_modules
 .env
 dist
 .pgdata
+
+.env.local
+.env

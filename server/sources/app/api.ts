@@ -7,7 +7,22 @@ import * as privacyKit from "privacy-kit";
 import * as tweetnacl from "tweetnacl";
 import { db } from "@/storage/db";
 import { Account, Update } from "@prisma/client";
-import { pubsub } from "@/services/pubsub";
+
+// Connection metadata types
+interface SessionScopedConnection {
+    connectionType: 'session-scoped';
+    socket: Socket;
+    userId: string;
+    sessionId: string;
+}
+
+interface UserScopedConnection {
+    connectionType: 'user-scoped';
+    socket: Socket;
+    userId: string;
+}
+
+type ClientConnection = SessionScopedConnection | UserScopedConnection;
 
 declare module 'fastify' {
     interface FastifyRequest {
@@ -17,6 +32,7 @@ declare module 'fastify' {
         authenticate: any;
     }
 }
+
 
 export async function startApi() {
 
@@ -76,6 +92,42 @@ export async function startApi() {
             return reply.code(401).send({ error: 'Authentication failed' });
         }
     });
+
+    // Send session update to all relevant connections
+    let emitUpdateToInterestedClients = ({event, userId, sessionId, payload, skipSenderConnection}: {
+        event: string,
+        userId: string,
+        sessionId: string,
+        payload: any,
+        skipSenderConnection?: ClientConnection
+    }) => {
+        const connections = userIdToClientConnections.get(userId);
+        if (!connections) {
+            log({ module: 'websocket', level: 'warn' }, `No connections found for user ${userId}`);
+            return;
+        }
+
+        for (const connection of connections) {
+            // Skip message echo
+            if (skipSenderConnection && connection === skipSenderConnection) {
+                continue;
+            }
+
+            // Send to all user-scoped connections - we already matched user
+            if (connection.connectionType === 'user-scoped') {
+                log({ module: 'websocket' }, `Sending ${event} to user-scoped connection ${connection.socket.id}`);
+                connection.socket.emit(event, payload);
+            }
+
+            // Send to all session-scoped connections, only that match sessionId
+            if (connection.connectionType === 'session-scoped' 
+                && connection.sessionId === sessionId
+            ) {
+                log({ module: 'websocket' }, `Sending ${event} to session-scoped connection ${connection.socket.id}`);
+                connection.socket.emit(event, payload);
+            }
+        }
+    }
 
     // Auth schema
     const authSchema = z.object({
@@ -259,7 +311,17 @@ export async function startApi() {
             });
 
             // Emit update to connected sockets
-            pubsub.emit('update', userId, result.update);
+            emitUpdateToInterestedClients({
+                event: 'update',
+                userId,
+                sessionId: result.session.id,
+                payload: {
+                    id: result.update.id,
+                    seq: result.update.seq,
+                    body: result.update.content,
+                    createdAt: result.update.createdAt.getTime()
+                }
+            });
 
             return reply.send({
                 session: {
@@ -352,19 +414,30 @@ export async function startApi() {
         serveClient: false // Don't serve the client files
     });
 
-    // Track connected users
-    const userSockets = new Map<string, Set<Socket>>();
+    // Track connections by scope type
+    const userIdToClientConnections = new Map<string, Set<ClientConnection>>();
 
-    // Track RPC listeners: Map<userId, Map<rpcName, Socket>>
+    // Track RPC listeners: Map<userId, Map<rpcMethodWithSessionPrefix, Socket>>
+    // Only session-scoped clients (CLI) register handlers, only user-scoped clients (mobile) call them
     const rpcListeners = new Map<string, Map<string, Socket>>();
 
     io.on("connection", async (socket) => {
         log({ module: 'websocket' }, `New connection attempt from socket: ${socket.id}`);
         const token = socket.handshake.auth.token as string;
+        const clientType = socket.handshake.auth.clientType as 'session-scoped' | 'user-scoped' | undefined;
+        const sessionId = socket.handshake.auth.sessionId as string | undefined;
 
         if (!token) {
             log({ module: 'websocket' }, `No token provided`);
             socket.emit('error', { message: 'Missing authentication token' });
+            socket.disconnect();
+            return;
+        }
+
+        // Validate session-scoped clients have sessionId
+        if (clientType === 'session-scoped' && !sessionId) {
+            log({ module: 'websocket' }, `Session-scoped client missing sessionId`);
+            socket.emit('error', { message: 'Session ID required for session-scoped clients' });
             socket.disconnect();
             return;
         }
@@ -377,42 +450,38 @@ export async function startApi() {
             return;
         }
 
-        log({ module: 'websocket' }, `Token verified: ${verified.user}`);
-
         const userId = verified.user as string;
+        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}`);
 
-        // Track socket for user
-        if (!userSockets.has(userId)) {
-            userSockets.set(userId, new Set());
+        // Store connection based on type
+        const metadata = { clientType: clientType || 'user-scoped', sessionId };
+        let connection: ClientConnection;
+        if (metadata.clientType === 'session-scoped' && sessionId) {
+            connection = {
+                connectionType: 'session-scoped',
+                socket,
+                userId,
+                sessionId
+            };
+        } else {
+            connection = {
+                connectionType: 'user-scoped',
+                socket,
+                userId
+            };
         }
-        userSockets.get(userId)!.add(socket);
-
-        // Subscribe to updates for this user
-        const updateHandler = (accountId: string, update: Update) => {
-            if (accountId === userId) {
-                socket.emit('update', {
-                    id: update.id,
-                    seq: update.seq,
-                    body: update.content,
-                    createdAt: update.createdAt.getTime()
-                });
-            }
-        };
-        pubsub.on('update', updateHandler);
-        const updateEphemeralHandler = (accountId: string, update: { type: 'activity', id: string, active: boolean, activeAt: number, thinking: boolean }) => {
-            if (accountId === userId) {
-                socket.emit('ephemeral', update);
-            }
-        };
-        pubsub.on('update-ephemeral', updateEphemeralHandler);
+        if (!userIdToClientConnections.has(userId)) {
+            userIdToClientConnections.set(userId, new Set());
+        }
+        userIdToClientConnections.get(userId)!.add(connection);
 
         socket.on('disconnect', () => {
-            // Clean up
-            const sockets = userSockets.get(userId);
-            if (sockets) {
-                sockets.delete(socket);
-                if (sockets.size === 0) {
-                    userSockets.delete(userId);
+            // Cleanup
+            const connections = userIdToClientConnections.get(userId);
+            if (connections) {
+                connections.delete(connection);
+                if (connections.size === 0) {
+                    userIdToClientConnections.delete(userId);
                 }
             }
 
@@ -438,8 +507,6 @@ export async function startApi() {
                 }
             }
 
-            pubsub.off('update', updateHandler);
-            pubsub.off('update-ephemeral', updateEphemeralHandler);
             log({ module: 'websocket' }, `User disconnected: ${userId}`);
         });
 
@@ -471,12 +538,17 @@ export async function startApi() {
             });
 
             // Emit update to connected sockets
-            pubsub.emit('update-ephemeral', userId, {
-                type: 'activity',
-                id: sid,
-                active: true,
-                activeAt: t,
-                thinking
+            emitUpdateToInterestedClients({
+                event: 'ephemeral',
+                userId,
+                sessionId: sid,
+                payload: {
+                    type: 'activity',
+                    id: sid,
+                    active: true,
+                    activeAt: t,
+                    thinking
+                }
             });
         });
 
@@ -508,17 +580,24 @@ export async function startApi() {
             });
 
             // Emit update to connected sockets
-            pubsub.emit('update-ephemeral', userId, {
-                type: 'activity',
-                id: sid,
-                active: false,
-                activeAt: t,
-                thinking: false
+            emitUpdateToInterestedClients({
+                event: 'ephemeral',
+                userId,
+                sessionId: sid,
+                payload: {
+                    type: 'activity',
+                    id: sid,
+                    active: false,
+                    activeAt: t,
+                    thinking: false
+                }
             });
         });
 
         socket.on('message', async (data: any) => {
             const { sid, message } = data;
+
+            log({ module: 'websocket' }, `Received message from socket ${socket.id}: ${sid} ${message.length} bytes`);
 
             // Resolve session
             const session = await db.session.findUnique({
@@ -613,8 +692,19 @@ export async function startApi() {
 
             if (!result) return;
 
-            // Emit update to connected sockets
-            pubsub.emit('update', userId, result.update);
+            // Emit update to relevant clients
+            emitUpdateToInterestedClients({
+                event: 'update',
+                userId,
+                sessionId: sid,
+                payload: {
+                    id: result.update.id,
+                    seq: result.update.seq,
+                    body: result.update.content,
+                    createdAt: result.update.createdAt.getTime()
+                },
+                skipSenderConnection: connection
+            });
         });
 
         socket.on('update-metadata', async (data: any, callback: (response: any) => void) => {
@@ -695,7 +785,12 @@ export async function startApi() {
             }
 
             // Emit update to connected sockets
-            pubsub.emit('update', userId, result.update);
+            emitUpdateToInterestedClients({
+                event: 'update',
+                userId,
+                sessionId: sid,
+                payload: result.update
+            });
 
             // Send success response with new version via callback
             callback({ result: 'success', version: result.newMetadataVersion, metadata: metadata });
@@ -780,7 +875,17 @@ export async function startApi() {
             }
 
             // Emit update to connected sockets
-            pubsub.emit('update', userId, result.update);
+            emitUpdateToInterestedClients({
+                event: 'update',
+                userId,
+                sessionId: sid,
+                payload: {
+                    id: result.update.id,
+                    seq: result.update.seq,
+                    body: result.update.content,
+                    createdAt: result.update.createdAt.getTime()
+                }
+            });
 
             // Send success response with new version via callback
             callback({ result: 'success', version: result.newAgentStateVersion, agentState: agentState });
