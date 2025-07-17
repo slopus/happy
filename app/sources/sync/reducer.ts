@@ -185,13 +185,14 @@ export function reducer(state: ReducerState, messages: DecryptedMessage[]): Mess
                         console.log(`📄 Found text content in message ${m.id}:`, c.text.substring(0, 50) + '...');
 
                         let existing = state.messages.get(m.id);
-                        if (existing) {
-                            console.log(`Text messages from assistant are not streaming, skipping`);
-                        } else {
-                            state.messages.set(m.id, { createdAt: m.createdAt, text: c.text, tools: [] });
-                            changed.add(m.id);
-                            console.log(`✅ Added text to message ${m.id}, marked as changed`);
+                        if (!existing) {
+                            existing = { createdAt: m.createdAt, text: '', tools: [] };
+                            state.messages.set(m.id, existing);
+                            console.log(`🆕 Created new message entry for ${m.id}`);
                         }
+                        existing.text += c.text;
+                        changed.add(m.id);
+                        console.log(`✅ Added text to message ${m.id}, marked as changed`);
                     }
                 }
             } else {

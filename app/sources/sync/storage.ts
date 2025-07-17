@@ -122,8 +122,8 @@ export const storage = create<StorageState>()((set) => {
                     console.log(`Skipping duplicate user message with localId: ${m.content.localId}`);
                     return false;
                 }
-                if (m.content?.role === 'agent' && m.content?.id 
-                    && existingAgentMessageIds.has(m.content.id)
+                if (m.content?.role === 'agent' && m.id 
+                    && existingAgentMessageIds.has(m.id)
                 ) {
                     console.log(`Skipping duplicate agent message with id: ${m.id}`);
                     return false;
