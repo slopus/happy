@@ -2,9 +2,9 @@
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { View, Text, ScrollView, Pressable } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { MessageView } from "@/components/MessageView";
 import { Ionicons } from '@expo/vector-icons';
 import { useMessage, useSession, useSessionMessages } from "@/sync/storage";
+import { EditDetailedView, type EditToolCall } from "@/components/blocks/ToolCalls/Edit";
 
 export default function MessageModal() {
     const { id: sessionId, messageId } = useLocalSearchParams<{ id: string; messageId: string }>();
@@ -37,11 +37,20 @@ export default function MessageModal() {
         );
     }
 
+    // Check if message contains Edit ToolCalls
+    const editToolCalls = message.content && 
+        message.content.type === 'tool' && 
+        message.content.tools ? 
+        message.content.tools.filter(tool => tool.name === 'Edit') as EditToolCall[] : 
+        [];
+
+    const hasEditTools = editToolCalls.length > 0;
+
     return (
         <View style={{ flex: 1, backgroundColor: 'white' }}>
             <Stack.Screen
                 options={{
-                    title: "Message Details",
+                    title: hasEditTools ? "Edit Details" : "Message Details",
                     headerLeft: () => (
                         <Pressable onPress={() => router.back()} hitSlop={10}>
                             <Ionicons name="close" size={24} color="#000" />
@@ -50,57 +59,69 @@ export default function MessageModal() {
                 }}
             />
 
-            <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: safeArea.bottom + 20 }}>
-                {/* Message Header */}
-                <View style={{
-                    backgroundColor: '#f8f9fa',
-                    paddingHorizontal: 16,
-                    paddingVertical: 12,
-                    borderBottomWidth: 1,
-                    borderBottomColor: '#e0e0e0'
-                }}>
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Text style={{ fontSize: 12, color: '#666' }}>
-                            Message ID: {messageId}
-                        </Text>
-                        <Text style={{ fontSize: 12, color: '#666' }}>
-                            {message.role === 'user' ? 'User' : 'Assistant'}
-                        </Text>
+            {hasEditTools ? (
+                // Render Edit detailed views
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: safeArea.bottom + 20 }}>
+                    {editToolCalls.map((tool, index) => (
+                        <View key={index} style={{ marginBottom: index < editToolCalls.length - 1 ? 20 : 0 }}>
+                            <EditDetailedView tool={tool} />
+                        </View>
+                    ))}
+                </ScrollView>
+            ) : (
+                // Render default message details view
+                <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: safeArea.bottom + 20 }}>
+                    {/* Message Header */}
+                    <View style={{
+                        backgroundColor: '#f8f9fa',
+                        paddingHorizontal: 16,
+                        paddingVertical: 12,
+                        borderBottomWidth: 1,
+                        borderBottomColor: '#e0e0e0'
+                    }}>
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <Text style={{ fontSize: 12, color: '#666' }}>
+                                Message ID: {messageId}
+                            </Text>
+                            <Text style={{ fontSize: 12, color: '#666' }}>
+                                {message.role === 'user' ? 'User' : 'Assistant'}
+                            </Text>
+                        </View>
                     </View>
-                </View>
 
-                {/* Debug Information (Optional) */}
-                <View style={{
-                    margin: 16,
-                    padding: 12,
-                    backgroundColor: '#f8f9fa',
-                    borderRadius: 8,
-                    borderWidth: 1,
-                    borderColor: '#e0e0e0'
-                }}>
-                    <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 8, color: '#666' }}>
-                        Message Details
-                    </Text>
-                    <Text style={{ fontSize: 12, color: '#666', fontFamily: 'monospace' }}>
-                        Local ID: {message.id}
-                    </Text>
-                    {/* {message.id && (
-                        <Text style={{ fontSize: 12, color: '#666', fontFamily: 'monospace' }}>
-                            Server ID: {message.serverId}
+                    {/* Debug Information (Optional) */}
+                    <View style={{
+                        margin: 16,
+                        padding: 12,
+                        backgroundColor: '#f8f9fa',
+                        borderRadius: 8,
+                        borderWidth: 1,
+                        borderColor: '#e0e0e0'
+                    }}>
+                        <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 8, color: '#666' }}>
+                            Message Details
                         </Text>
-                    )} */}
-                    {message.role && (
                         <Text style={{ fontSize: 12, color: '#666', fontFamily: 'monospace' }}>
-                            Role: {message.role}
+                            Local ID: {message.id}
                         </Text>
-                    )}
-                    {message.content && 'type' in message.content && (
-                        <Text style={{ fontSize: 12, color: '#666', fontFamily: 'monospace' }}>
-                            Content Type: {String((message.content as any).type)}
-                        </Text>
-                    )}
-                </View>
-            </ScrollView>
+                        {/* {message.id && (
+                            <Text style={{ fontSize: 12, color: '#666', fontFamily: 'monospace' }}>
+                                Server ID: {message.serverId}
+                            </Text>
+                        )} */}
+                        {message.role && (
+                            <Text style={{ fontSize: 12, color: '#666', fontFamily: 'monospace' }}>
+                                Role: {message.role}
+                            </Text>
+                        )}
+                        {message.content && 'type' in message.content && (
+                            <Text style={{ fontSize: 12, color: '#666', fontFamily: 'monospace' }}>
+                                Content Type: {String((message.content as any).type)}
+                            </Text>
+                        )}
+                    </View>
+                </ScrollView>
+            )}
         </View>
     );
 } 
