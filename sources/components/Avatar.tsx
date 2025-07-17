@@ -54,7 +54,7 @@ interface AvatarProps {
 const colors = ['#0a0310', '#49007e', '#ff005b', '#ff7d10', '#ffb238'];
 const grayscaleColors = ['#070707', '#242424', '#575757', '#979797', '#bbbbbb'];
 
-export function Avatar(props: AvatarProps) {
+export const Avatar = React.memo((props: AvatarProps) => {
     const { id, square, size = 48, monochrome } = props;
     const defaultColors = monochrome ? grayscaleColors : colors;
     const pixelColors = React.useMemo(() => generateColors(id, defaultColors), [id, defaultColors]);
@@ -107,4 +107,4 @@ export function Avatar(props: AvatarProps) {
             </Group>
         </Canvas>
     );
-}
+});

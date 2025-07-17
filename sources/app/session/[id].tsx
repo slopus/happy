@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";
-import { FlatList, Text, View, StyleSheet } from "react-native";
+import { FlatList, Text, View, StyleSheet, Button } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
@@ -78,8 +78,14 @@ export default function Session() {
                     ListHeaderComponent={() => <View style={{ height: 8 }} />}
                 />
                 {permissionRequest && (
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', height: 32, paddingHorizontal: 24 }}>
+                    <View style={{ flexDirection: 'column', justifyContent: 'space-between', height: 128, paddingHorizontal: 24 }}>
                         <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>Permission request</Text>
+                        <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>{permissionRequest.call.tool}</Text>
+                        <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>{JSON.stringify(permissionRequest.call.arguments)}</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <Button title="Deny" onPress={() => sync.deny(sessionId, permissionRequest.id)} />
+                            <Button title="Allow" onPress={() => sync.allow(sessionId, permissionRequest.id)} />
+                        </View>
                     </View>
                 )}
                 {/* <Button title="Abort" onPress={() => session.abort()} /> */}
