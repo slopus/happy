@@ -4,34 +4,6 @@ import { z } from "zod";
 // these types bottom up. Jump to the send to see the one schema to parse the
 // entire claude code log file
 
-const UserMessageContentSchema = z.union([
-  z.object({
-    type: z.literal("text"),
-    text: z.string(),
-  }),
-  z.object({
-    type: z.literal("tool_use"),
-  }),
-  z.object({
-    type: z.literal("tool_result"),
-    tool_use_id: z.string(),
-    content: z.union([
-      z.string(),
-      z.array(z.unknown()),
-      z.record(z.string(), z.unknown()),
-    ]),
-    is_error: z.boolean().optional(),
-  }),
-]);
-
-const AssistantMessageContentSchema = z.union([
-  z.object({
-    type: z.literal("thinking"),
-    thinking: z.string(),
-    // There is a signature string field that I don't currently have a use for
-  }),
-]);
-
 // Usage statistics for assistant messages
 export const UsageSchema = z.object({
   input_tokens: z.number().int().nonnegative(),
@@ -40,28 +12,6 @@ export const UsageSchema = z.object({
   output_tokens: z.number().int().nonnegative(),
   service_tier: z.string().optional(),
 });
-
-const ClaudeMessageSchema = z.union([
-  z.object({
-    role: z.literal("user"),
-    content: z.array(UserMessageContentSchema),
-  }),
-  z.object({
-    role: z.literal("assistant"),
-    model: z.string(),
-    stop_reason: z.string().nullable().optional(),
-    stop_sequence: z.string().nullable().optional(),
-    usage: z.record(z.string(), z.unknown()).optional(),
-    content: z.array(
-      z.union([
-        z.object({
-          type: z.literal("text"),
-          text: z.string(),
-        }),
-      ])
-    ),
-  }),
-]);
 
 // Text content block
 const TextContentSchema = z.object({
