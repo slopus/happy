@@ -3,14 +3,17 @@ import { logger } from '@/ui/logger'
 import type { AgentState, CreateSessionResponse, Metadata, Session } from '@/api/types'
 import { ApiSessionClient } from './apiSession';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
+import { PushNotificationClient } from './pushNotifications';
 
 export class ApiClient {
   private readonly token: string;
   private readonly secret: Uint8Array;
+  private readonly pushClient: PushNotificationClient;
 
   constructor(token: string, secret: Uint8Array) {
     this.token = token
     this.secret = secret
+    this.pushClient = new PushNotificationClient(token)
   }
 
   /**
@@ -59,5 +62,13 @@ export class ApiClient {
    */
   session(session: Session): ApiSessionClient {
     return new ApiSessionClient(this.token, this.secret, session);
+  }
+
+  /**
+   * Get push notification client
+   * @returns Push notification client
+   */
+  push(): PushNotificationClient {
+    return this.pushClient;
   }
 }

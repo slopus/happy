@@ -85,10 +85,29 @@ export async function start(options: StartOptions = {}): Promise<void> {
 
     // Start MCP permission server
     let requests = new Map<string, (response: { approved: boolean, reason?: string }) => void>();
-    const permissionServer = await startPermissionServerV2((request) => {
+    const permissionServer = await startPermissionServerV2(async (request) => {
         const id = randomUUID();
         let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => { requests.set(id, resolve); });
         logger.info('Permission request' + id + ' ' + JSON.stringify(request));
+        
+        // Send push notification for permission request
+        try {
+            const pushClient = api.push();
+            await pushClient.sendToAllDevices(
+                'Permission Request',
+                `Claude wants to use ${request.name}`,
+                {
+                    sessionId: response.id,
+                    requestId: id,
+                    tool: request.name,
+                    type: 'permission_request'
+                }
+            );
+            logger.info('Push notification sent for permission request');
+        } catch (error) {
+            logger.debug('Failed to send push notification:', error);
+        }
+        
         session.updateAgentState((currentState) => ({
             ...currentState,
             requests: {

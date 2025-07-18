@@ -100,6 +100,8 @@ export async function loop(opts: LoopOptions) {
                     abort: remoteAbortController.signal,
                     sessionId: sessionId,
                     path: opts.path,
+                    mcpServers: opts.mcpServers,
+                    permissionPromptToolName: opts.permissionPromptToolName,
                     onSessionFound: (id) => {
                         sessionId = id;
                     },
