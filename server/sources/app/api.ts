@@ -192,6 +192,7 @@ export async function startApi() {
                         id: true,
                         seq: true,
                         content: true,
+                        localId: true,
                         createdAt: true
                     }
                 }
@@ -213,6 +214,7 @@ export async function startApi() {
                 lastMessage: v.messages[0] ? {
                     id: v.messages[0].id,
                     seq: v.messages[0].seq,
+                    localId: v.messages[0].localId,
                     content: v.messages[0].content,
                     createdAt: v.messages[0].createdAt.getTime()
                 } : null
@@ -371,6 +373,7 @@ export async function startApi() {
             select: {
                 id: true,
                 seq: true,
+                localId: true,
                 content: true,
                 createdAt: true,
                 updatedAt: true
@@ -382,6 +385,7 @@ export async function startApi() {
                 id: v.id,
                 seq: v.seq,
                 content: v.content,
+                localId: v.localId,
                 createdAt: v.createdAt.getTime(),
                 updatedAt: v.updatedAt.getTime()
             }))
@@ -667,6 +671,7 @@ export async function startApi() {
                         id: msg.id,
                         seq: msg.seq,
                         content: msgContent,
+                        localId: useLocalId,
                         createdAt: msg.createdAt.getTime(),
                         updatedAt: msg.updatedAt.getTime()
                     }
@@ -703,7 +708,7 @@ export async function startApi() {
             if (!result) {
                 return;
             }
-            
+
             // Emit update to relevant clients
             if (result.update) {
                 emitUpdateToInterestedClients({
