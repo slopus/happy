@@ -1,10 +1,13 @@
 import chalk from 'chalk';
 import type { SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@anthropic-ai/claude-code';
+import { logger } from './logger';
 
 /**
  * Formats Claude SDK messages for terminal display
  */
 export function formatClaudeMessage(message: SDKMessage): void {
+    logger.debugLargeJson('[CLAUDE] Message from non interactive & remote mode:', message)
+
     switch (message.type) {
         case 'system': {
             const sysMsg = message as SDKSystemMessage;

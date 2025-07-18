@@ -17,37 +17,70 @@ export interface StartOptions {
     permissionMode?: 'auto' | 'default' | 'plan'
 }
 
+export async function getSecret(): Promise<Uint8Array> {
+    let secret = await readPrivateKey();
+    if (!secret) {
+        secret = new Uint8Array(randomBytes(32));
+        await writePrivateKey(secret);
+    }
+    return secret;
+}
+
+export async function showOnboarding({ optional }: { optional?: boolean } = {}): Promise<void> {
+    const settings = await readSettings();
+    const goneThroughOnboarding = settings && settings.onboardingCompleted;
+    
+    if (optional && goneThroughOnboarding) {
+        logger.debug('Onboarding already completed, skipping');
+        return;
+    }
+
+    const secret = await getSecret();
+
+    logger.info(`
+${chalk.bold.green('🎉 Welcome to Happy CLI!')}
+
+Happy is an open-source, end-to-end encrypted wrapper around Claude Code
+that allows you to start a regular Claude terminal session with the \`happy\` command.
+`);
+
+    if (process.platform === 'darwin') {
+        logger.info(`
+${chalk.yellow('💡 Tip for macOS users:')}
+   Install Amphetamine to prevent your Mac from sleeping during sessions:
+   https://apps.apple.com/us/app/amphetamine/id937984704?mt=12
+
+   You can even close your laptop completely while running Amphetamine
+   and connect through hotspot to your phone for coding on the go!
+`);
+    }
+
+    const handyUrl = generateAppUrl(secret);
+    displayQRCode(handyUrl);
+    // Display secret for manual entry
+    const secretBase64Url = encodeBase64Url(secret);
+    logger.info(`Or manually enter this code: ${secretBase64Url}`);
+
+    logger.info(`
+${chalk.bold('Press Enter to continue...')}`);
+    await new Promise<void>((resolve) => {
+        process.stdin.once('data', () => resolve());
+    });
+
+    // Save onboarding completed
+    await writeSettings({ onboardingCompleted: true });
+}
+
 export async function start(options: StartOptions = {}): Promise<void> {
     const workingDirectory = process.cwd();
     const projectName = basename(workingDirectory);
     const sessionTag = randomUUID();
 
     // Check onboarding
-    const settings = await readSettings();
-    const needsOnboarding = !settings || !settings.onboardingCompleted;
-
-    // if (needsOnboarding) {
-    // Show onboarding
-    logger.info('\n' + chalk.bold.green('🎉 Welcome to Happy CLI!'));
-    logger.info('\nHappy is an open-source, end-to-end encrypted wrapper around Claude Code');
-    logger.info('that allows you to start a regular Claude terminal session with the `happy` command.\n');
-
-    if (process.platform === 'darwin') {
-        logger.info(chalk.yellow('💡 Tip for macOS users:'));
-        logger.info('   Install Amphetamine to prevent your Mac from sleeping during sessions:');
-        logger.info('   https://apps.apple.com/us/app/amphetamine/id937984704?mt=12\n');
-        logger.info('   You can even close your laptop completely while running Amphetamine');
-        logger.info('   and connect through hotspot to your phone for coding on the go!\n');
-    }
-    // }
+    showOnboarding({ optional: true })
 
     // Get or create secret key
-    let secret = await readPrivateKey();
-    if (!secret) {
-        secret = new Uint8Array(randomBytes(32));
-        await writePrivateKey(secret);
-    }
-    logger.info('Secret key loaded');
+    let secret = await getSecret();
 
     // Authenticate with server
     const token = await authGetToken(secret);
@@ -62,23 +95,6 @@ export async function start(options: StartOptions = {}): Promise<void> {
     let metadata: Metadata = { path: workingDirectory, host: os.hostname() };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.info(`Session created: ${response.id}`);
-
-    // Show QR code during onboarding
-    // if (needsOnboarding) {
-    const handyUrl = generateAppUrl(secret);
-    displayQRCode(handyUrl);
-    // Display secret for manual entry
-    const secretBase64Url = encodeBase64Url(secret);
-    logger.info(`Or manually enter this code: ${secretBase64Url}`);
-
-    logger.info('\n' + chalk.bold('Press Enter to continue...'));
-    await new Promise<void>((resolve) => {
-        process.stdin.once('data', () => resolve());
-    });
-
-    // Save onboarding completed
-    await writeSettings({ onboardingCompleted: true });
-    // }
 
     // Create realtime session
     const session = api.session(response);

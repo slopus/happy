@@ -1,102 +1,119 @@
 /**
- * Types for Claude Code
- * 
- * Spawn options
- * Message type definitions for Claude messages
- * 
- * We parse messages from two sources:
- * 1. Interactive session files (camelCase) - from watcher/file system
- * 2. Claude SDK responses (snake_case) - from SDK direct calls
- * 
- * We only extract fields we care about (sessionId, type, etc.)
- * The full message content is passed through to the client
+ * COPIED FROM https://github.com/ex3ndr/handy/blob/main/sources/sync/claude-code-schema.ts
+ * EDIT IN SYNC WITH ORIGINAL
  */
 
-import type { ChildProcess } from 'node:child_process'
-import { z } from 'zod'
-import { logger } from '@/ui/logger'
+import { z } from "zod";
 
-/**
- * Claude CLI spawn options
- */
-export interface ClaudeSpawnOptions {
-  allowedTools?: string[]
-  disallowedTools?: string[]
-  model?: string
-  permissionMode?: 'auto' | 'default' | 'plan'
-  sessionId?: string
-  skipPermissions?: boolean
-  workingDirectory: string
-}
+// Alright, bear with me here, because we are using constants, we have to define
+// these types bottom up. Jump to the send to see the one schema to parse the
+// entire claude code log file
 
-/**
- * Claude process state
- */
-export interface ClaudeProcess {
-  isRunning: boolean
-  process: ChildProcess
-  sessionId?: string
-}
-
-// Format of each line in ~/.claude/projects/<project-name>/<session-id>.jsonl
-// For parsing session files
-export const PersisstedMessageSchema = z.object({
-  sessionId: z.string(),
-  type: z.string(),
-  subtype: z.string().optional(),
-})
-
-export type InteractiveMessage = z.infer<typeof PersisstedMessageSchema>
-
-// Non-interactive sdk messages claude code will emit these to stdout
-export const SDKMessageSchema = z.object({
-  session_id: z.string().optional(),
-  type: z.string(),
-  subtype: z.string().optional(),
+// Usage statistics for assistant messages
+export const UsageSchema = z.object({
+  input_tokens: z.number().int().nonnegative(),
+  cache_creation_input_tokens: z.number().int().nonnegative().optional(),
+  cache_read_input_tokens: z.number().int().nonnegative().optional(),
+  output_tokens: z.number().int().nonnegative(),
+  service_tier: z.string().optional(),
 });
 
-export type SDKMessage = z.infer<typeof SDKMessageSchema>
+// Text content block
+const TextContentSchema = z.object({
+  type: z.literal("text"),
+  text: z.string(),
+});
 
-// Unified message info we extract
-export interface ClaudeMessage {
-  sessionId?: string
-  type: string
-  rawMessage: any
-}
+// Thinking content block
+const ThinkingContentSchema = z.object({
+  type: z.literal("thinking"),
+  thinking: z.string(),
+  signature: z.string(),
+});
 
-export function parseClaudePersistedMessage(message: any): ClaudeMessage | undefined {
-  const result = PersisstedMessageSchema.safeParse(message)
-  if (!result.success) {
-    logger.debug('[ERROR] Failed to parse interactive message:', result.error)
-    logger.debugLargeJson('[ERROR] Message:', message)
-    return undefined
-  }
-  
-  return {
-    sessionId: result.data.sessionId,
-    type: result.data.type,
-    rawMessage: {
-      ...message,
-      // Lets patch the message with another type of id just in case
-      session_id: result.data.sessionId,
-    }
-  }
-}
+// Tool use content block
+const ToolUseContentSchema = z.object({
+  type: z.literal("tool_use"),
+  id: z.string(),
+  name: z.string(),
+  input: z.unknown(), // Tool-specific input parameters
+});
 
-export function parseClaudeSdkMessage(message: any): ClaudeMessage | undefined {
-  const result = SDKMessageSchema.safeParse(message)
-  if (!result.success) {
-    logger.debug('[ERROR] Failed to parse SDK message:', result.error)
-    return undefined
-  }
-  
-  return {
-    sessionId: result.data.session_id,
-    type: result.data.type,
-    rawMessage: {
-      ...message,
-      // Lets patch the message with another type of id just in case
-      session_id: result.data.session_id,
-    }
-  }
-}
+// Tool result content block (in user messages)
+const ToolResultContentSchema = z.object({
+  tool_use_id: z.string(),
+  type: z.literal("tool_result"),
+  content: z.string(),
+  is_error: z.boolean().optional(),
+});
+
+// Union of all content types
+const ContentSchema = z.union([
+  TextContentSchema,
+  ThinkingContentSchema,
+  ToolUseContentSchema,
+  ToolResultContentSchema,
+]);
+
+// User message structure
+const UserMessageSchema = z.object({
+  role: z.literal("user"),
+  content: z.union([
+    z.string(), // Simple string content
+    z.array(ToolResultContentSchema), // Tool result content
+  ]),
+});
+
+// Assistant message structure
+const AssistantMessageSchema = z.object({
+  id: z.string(),
+  type: z.literal("message"),
+  role: z.literal("assistant"),
+  model: z.string(),
+  content: z.array(ContentSchema),
+  stop_reason: z.string().nullable(),
+  stop_sequence: z.string().nullable(),
+  usage: UsageSchema,
+});
+
+// Base schema for all conversation entries
+const BaseEntrySchema = z.object({
+  //parentUuid: z.string().nullable(),
+  //isSidechain: z.boolean(),
+  //userType: z.string(),
+  cwd: z.string(),
+  sessionId: z.string(),
+  version: z.string(),
+  uuid: z.string(),
+  timestamp: z.string().datetime(),
+  parent_tool_use_id: z.string().nullable().optional(),
+});
+
+export const UserMessageEntrySchema = z.object({
+  type: z.literal("user"),
+  message: UserMessageSchema,
+  isMeta: z.boolean().optional(),
+  toolUseResult: z.unknown().optional(), // Present when user responds to tool use
+})
+
+export const AssistantMessageEntrySchema = z.object({
+  type: z.literal("assistant"),
+  message: AssistantMessageSchema,
+  requestId: z.string(),
+})
+
+export const RawJSONLinesSchema = z.intersection(
+  BaseEntrySchema,
+  z.discriminatedUnion("type", [
+    // User message entry
+    UserMessageEntrySchema,
+
+    // Assistant message entry
+    AssistantMessageEntrySchema,
+  ])
+);
+
+
+export type RawJSONLines = z.infer<typeof RawJSONLinesSchema>
+export type UserMessageEntry = z.infer<typeof UserMessageEntrySchema>
+export type AssistantMessageEntry = z.infer<typeof AssistantMessageEntrySchema>

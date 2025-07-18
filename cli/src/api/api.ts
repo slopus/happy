@@ -4,6 +4,7 @@ import type { AgentState, CreateSessionResponse, Metadata, Session } from '@/api
 import { ApiSessionClient } from './apiSession';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { PushNotificationClient } from './pushNotifications';
+import { configuration } from '@/configuration';
 
 export class ApiClient {
   private readonly token: string;
@@ -22,7 +23,7 @@ export class ApiClient {
   async getOrCreateSession(opts: { tag: string, metadata: Metadata, state: AgentState | null }): Promise<Session> {
     try {
       const response = await axios.post<CreateSessionResponse>(
-        `https://handy-api.korshakov.org/v1/sessions`,
+        `${configuration.serverUrl}/v1/sessions`,
         {
           tag: opts.tag,
           metadata: encodeBase64(encrypt(opts.metadata, this.secret)),

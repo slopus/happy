@@ -37,6 +37,31 @@ MCP
 - Implement conversation naming
   - I wonder if the server can initiate an llm call on its own accord?
 
+
+Next for the cli
+
+- Make sure socket connection stays alive 
+
+Blocking
+- Permission checking [steve]
+  - use mcp 
+  - see if it has a timeout or we can block forever (ideally)
+  - copy cc system (deterministic splitting, prefix checking, injection detection, prefix whitelist suggest)
+  - use cc settings local file & format for compatibility  
+  - figure out extra path permissions
+
+- CLI dies if server disconnects :D
+
+- Need to make agent state work. Most important state - permissions
+- Try logging out of Claude and see how to handle that case
+- Make sure to use Claude from our package. Kill other Claudes
+- Make sure interruption of remote controlled session works
+
+### Nice to have
+- UX final touches - onboarding make sure terminal, add session icons or something catchy
+- See if I can simplify / get rid of a likely race condition in pty related code
+- Pass --local-installation to setup .happy folder locally and avoid clashing with global installation
+
 # Distribution
 
 - Post on hacker news

@@ -4,6 +4,8 @@ import { io, Socket } from 'socket.io-client'
 import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema } from './types'
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
+import { configuration } from '@/configuration';
+import { ClaudeSessionMessage, RawJSONLines } from '@/claude/types';
 
 type RpcHandler<T = any, R = any> = (data: T) => R | Promise<R>;
 type RpcHandlerMap = Map<string, RpcHandler>;
@@ -17,8 +19,6 @@ export class ApiSessionClient extends EventEmitter {
     private agentState: AgentState | null;
     private agentStateVersion: number;
     private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
-    private receivedMessages = new Set<string>();
-    private sentLocalKeys = new Set<string>();
     private pendingMessages: UserMessage[] = [];
     private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
     private rpcHandlers: RpcHandlerMap = new Map();
@@ -37,9 +37,11 @@ export class ApiSessionClient extends EventEmitter {
         // Create socket
         //
 
-        this.socket = io('https://handy-api.korshakov.org', {
+        this.socket = io(configuration.serverUrl, {
             auth: {
-                token: this.token
+                token: this.token,
+                clientType: 'session-scoped' as const,
+                sessionId: this.sessionId
             },
             path: '/v1/updates',
             reconnection: true,
@@ -110,17 +112,11 @@ export class ApiSessionClient extends EventEmitter {
                 // Try to parse as user message first
                 const userResult = UserMessageSchema.safeParse(body);
                 if (userResult.success) {
-                    // Only process user messages we didn't send ourselves
-                    const localKey = (body as any).localKey;
-                    if (localKey && this.sentLocalKeys.has(localKey)) {
-                        logger.debug(`[SOCKET] Ignoring echo of our own message with localKey: ${localKey}`);
-                    } else if (!this.receivedMessages.has(data.body.message.id)) {
-                        this.receivedMessages.add(data.body.message.id);
-                        if (this.pendingMessageCallback) {
-                            this.pendingMessageCallback(userResult.data);
-                        } else {
-                            this.pendingMessages.push(userResult.data);
-                        }
+                    // Server already filtered to only our session
+                    if (this.pendingMessageCallback) {
+                        this.pendingMessageCallback(userResult.data);
+                    } else {
+                        this.pendingMessages.push(userResult.data);
                     }
                 } else {
                     // If not a user message, it might be a permission response or other message type
@@ -156,25 +152,36 @@ export class ApiSessionClient extends EventEmitter {
      * Send message to session
      * @param body - Message body (can be MessageContent or raw content for agent messages)
      */
-    sendMessage(body: any) {
-        logger.debugLargeJson('[SOCKET] Sending message through socket:', body)
+    sendClaudeSessionMessage(body: RawJSONLines) {
         let content: MessageContent;
         
         // Check if body is already a MessageContent (has role property)
-        if (body.role === 'user' || body.role === 'agent') {
-            content = body;
-            // Track localKey if this is a user message we're sending
-            if (body.role === 'user' && body.localKey) {
-                this.sentLocalKeys.add(body.localKey);
-                logger.debug(`[SOCKET] Tracking sent localKey: ${body.localKey}`);
+        if (body.type === 'user') {
+            if (typeof body.message.content === 'string') {
+                content = {
+                    role: 'user',
+                    content: {
+                        type: 'text',
+                        text: body.message.content
+                    }
+                }
+            } else {
+                logger.debug('[ERROR] Unexpected user message type', body.message)
+                return
             }
         } else {
             // Legacy behavior: wrap as agent message
+            // Wrap Claude messages in the expected format
             content = {
                 role: 'agent',
-                content: body
+                content: {
+                    type: 'output',
+                    data: body  // This wraps the entire Claude message
+                }
             };
         }
+
+        logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
         
         const encrypted = encodeBase64(encrypt(content, this.secret));
         this.socket.emit('message', {

@@ -14,9 +14,12 @@ pnpm-lock.yaml
 
 # Environment variables
 .env
-.env.local
+.env*.local
 
 # Claude code session level settings
 .claude/settings.local.json
+
+# Local installation
+.happy/
 
 **/*.log
