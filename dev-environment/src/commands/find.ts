@@ -2,7 +2,7 @@ import { Command } from 'commander';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import { RawJSONLinesSchema } from '@/claude-code-schema.js';
+import { RawJSONLinesSchema } from 'slopus/lib';
 
 /**
  * Find Command - Tool Usage Analysis

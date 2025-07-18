@@ -6,11 +6,11 @@ import * as os from 'os';
 import * as readline from 'node:readline';
 import { randomUUID } from 'crypto';
 import { Logger } from '@/ui/logger.js';
-import { ApiClient } from '@/api/api.js';
+import { ApiClient } from 'slopus/lib';
 import { authGetToken } from '@/api/auth.js';
 import { decodeBase64Url } from '@/api/encryption.js';
 
-const logger = new Logger('console');
+const logger = new Logger(new Promise(resolve => resolve('console')));
 
 async function loadSecret(keyBase64?: string): Promise<Uint8Array> {
   if (keyBase64) {
@@ -24,7 +24,7 @@ async function loadSecret(keyBase64?: string): Promise<Uint8Array> {
     return new Uint8Array(Buffer.from(keyBase64, 'base64'));
   }
 
-  logger.error('No secret key found. Please provide a key using --key or ensure ~/.handy/access.key exists.');
+  logger.info('No secret key found. Please provide a key using --key or ensure ~/.handy/access.key exists.');
   process.exit(1);
 }
 
@@ -61,7 +61,7 @@ interface UploadOptions {
 export async function uploadFile(filepath: string, options: UploadOptions = {}): Promise<void> {
   // Validate file exists and is a .jsonl file
   if (!existsSync(filepath)) {
-    logger.error(`File does not exist: ${filepath}`);
+    logger.info(`File does not exist: ${filepath}`);
     throw new Error(`File does not exist: ${filepath}`);
   }
   // Create API client (token would need to be passed or loaded from config)
@@ -69,14 +69,14 @@ export async function uploadFile(filepath: string, options: UploadOptions = {}):
 
   const fileExt = extname(filepath);
   if (fileExt !== '.jsonl' && fileExt !== '.json') {
-    logger.error(`File must be a .jsonl or .json file: ${filepath}`);
+    logger.info(`File must be a .jsonl or .json file: ${filepath}`);
     throw new Error(`File must be a .jsonl or .json file: ${filepath}`);
   }
 
   // Parse delay option
   const delaySeconds = parseFloat(options.delay || '0');
   if (isNaN(delaySeconds) || delaySeconds < 0) {
-    logger.error('Delay must be a non-negative number');
+    logger.info('Delay must be a non-negative number');
     throw new Error('Delay must be a non-negative number');
   }
 
@@ -101,12 +101,13 @@ export async function uploadFile(filepath: string, options: UploadOptions = {}):
   // Create a new session
   const response = await api.getOrCreateSession({ 
     tag: sessionTag, 
-    metadata: { path: workingDirectory, host: os.hostname() } 
+    metadata: { path: workingDirectory, host: os.hostname() },
+    state: null
   });
-  logger.info(`Session created: ${response.session.id}`);
+  logger.info(`Session created: ${response.id}`);
 
   // Create realtime session
-  const session = api.session(response.session.id);
+  const session = api.session(response);
   
   let thinking = false;
 
@@ -149,7 +150,7 @@ export async function uploadFile(filepath: string, options: UploadOptions = {}):
             const message = JSON.parse(line);
             messages.push(message);
           } catch (error) {
-            logger.error(`Failed to parse JSONL line: ${line}`, error);
+            logger.info(`Failed to parse JSONL line: ${line}`, error);
             throw new Error(`Failed to parse JSONL line: ${line}`);
           }
         }
@@ -159,12 +160,12 @@ export async function uploadFile(filepath: string, options: UploadOptions = {}):
       try {
         const parsed = JSON.parse(fileContent);
         if (!Array.isArray(parsed)) {
-          logger.error('JSON file must contain an array of messages');
+          logger.info('JSON file must contain an array of messages');
           throw new Error('JSON file must contain an array of messages');
         }
         messages = parsed;
       } catch (error) {
-        logger.error('Failed to parse JSON file:', error);
+        logger.info('Failed to parse JSON file:', error);
         throw error;
       }
     }
@@ -187,10 +188,7 @@ export async function uploadFile(filepath: string, options: UploadOptions = {}):
           }
         }
         
-        session.sendMessage({
-            data: message,
-            type: 'output',
-        });
+        session.sendClaudeSessionMessage(message);
         logger.debug(`Sent message ${i + 1}/${messages.length}: ${JSON.stringify(message).substring(0, 100)}${JSON.stringify(message).length > 100 ? '...' : ''}`);
         
         // Apply delay if specified (but not after the last message)
@@ -200,7 +198,7 @@ export async function uploadFile(filepath: string, options: UploadOptions = {}):
         }
         
       } catch (error) {
-        logger.error(`Failed to send message ${i + 1}:`, error);
+        logger.info(`Failed to send message ${i + 1}:`, error);
         throw error;
       }
     }
@@ -228,7 +226,7 @@ export const uploadCommand = new Command('upload')
     try {
       await uploadFile(filepath, options);
     } catch (error) {
-      logger.error('Upload failed:', error);
+      logger.info('Upload failed:', error);
       process.exit(1);
     }
   });

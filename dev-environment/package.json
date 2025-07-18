@@ -20,6 +20,7 @@
     "chalk": "^5.4.1",
     "commander": "^14.0.0",
     "prompts": "^2.4.2",
+    "slopus": "file:../cli",
     "socket.io-client": "^4.8.1",
     "tweetnacl": "^1.0.3",
     "zod": "^4.0.5"
