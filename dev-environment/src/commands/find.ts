@@ -150,16 +150,16 @@ export const findCommand = new Command('find')
         return;
       }
       
-      console.log(`Searching for tool usage of "${options.tool}" in all Claude project files...`);
+      console.error(`Searching for tool usage of "${options.tool}" in all Claude project files...`);
       
       const allFiles = getAllProjectFiles(claudeProjectsDir);
       
       if (allFiles.length === 0) {
-        console.log('No .jsonl files found in any Claude projects.');
+        console.error('No .jsonl files found in any Claude projects.');
         return;
       }
       
-      console.log(`Found ${allFiles.length} JSONL files to search.`);
+              console.error(`Found ${allFiles.length} JSONL files to search.`);
       
       const allResults: ToolUseResult[] = [];
       
@@ -169,11 +169,11 @@ export const findCommand = new Command('find')
       }
       
       if (allResults.length === 0) {
-        console.log(`No tool usage found for "${options.tool}" in any files.`);
+        console.error(`No tool usage found for "${options.tool}" in any files.`);
         return;
       }
       
-      console.log(`\nFound ${allResults.length} tool usage(s) for "${options.tool}":\n`);
+              console.error(`\nFound ${allResults.length} tool usage(s) for "${options.tool}":\n`);
       console.log(JSON.stringify(allResults, null, 2));
       
     } catch (error) {
