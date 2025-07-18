@@ -7,6 +7,7 @@ import { EditCompactView, type EditToolCall } from './ToolCalls/Edit';
 import { ReadCompactView, type ReadToolCall } from './ToolCalls/Read';
 import { GrepCompactView, type GrepToolCall } from './ToolCalls/Grep';
 import { TodoWriteCompactView, type TodoWriteToolCall } from './ToolCalls/TodoWrite';
+import { LSCompactView, type LSToolCall } from './ToolCalls/LS';
 
 // Component that dispatches to different tool renderers based on tool type
 export function RenderToolV4({ tool, sessionId, messageId }: { tool: ToolCall, sessionId: string, messageId: string }) {
@@ -29,8 +30,8 @@ export function RenderToolV4({ tool, sessionId, messageId }: { tool: ToolCall, s
     case "Task":
       return null;
     
-    // case "LS":
-    //   return <LsCompactView tool={tool as LsToolCall} sessionId={sessionId} messageId={messageId}/>;
+    case "LS":
+      return <LSCompactView tool={tool as LSToolCall}/>;
     
     default:
       // Fallback for unknown tool types
