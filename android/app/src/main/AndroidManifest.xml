@@ -30,6 +30,7 @@
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="handy"/>
+        <data android:scheme="slopus"/>
       </intent-filter>
     </activity>
   </application>

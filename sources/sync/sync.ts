@@ -7,13 +7,12 @@ import { DecryptedMessage, MessageContent, Session } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { randomUUID } from 'expo-crypto';
 
-const API_ENDPOINT = 'https://handy-api.korshakov.org';
+export const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
 class Sync {
 
     private credentials!: AuthCredentials;
     private encryption!: ApiEncryption;
-    private wasConnected = false;
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
 
@@ -156,19 +155,17 @@ class Sync {
         apiSocket.onMessage('ephemeral', this.handleEphemeralUpdate.bind(this));
 
         // Subscribe to connection state changes
-        apiSocket.addListener((state) => {
-            if (state.isConnected && state.connectionStatus === 'connected') {
-                // Refresh sessions when socket reconnects (not on initial connection)
-                if (this.wasConnected) {
-                    console.log('Socket reconnected, refreshing sessions...');
-                    this.fetchSessions();
-                }
-                this.wasConnected = true;
-            } else if (!state.isConnected) {
-                // Track disconnection
-                this.wasConnected = false;
+        apiSocket.onReconnected(() => {
+            this.sessionsSync.invalidate();
+            for (let sessionId of storage.getState().sessionsActive.map(s => s.id)) {
+                this.messagesSync.get(sessionId)?.invalidate();
             }
         });
+
+        // Recalculate online sessions
+        setInterval(() => {
+            storage.getState().recalculateOnline();
+        }, 15000);
     }
 
     private handleUpdate = (update: unknown) => {
@@ -202,6 +199,7 @@ class Sync {
             storage.getState().applyMessages(updateData.body.sid, [decryptedMessage]);
 
             // Ping session
+            // NOTE: @kirill Might fetch all messages again?
             this.onSessionVisible(updateData.body.sid);
 
         } else if (updateData.body.t === 'new-session') {
