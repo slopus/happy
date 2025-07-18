@@ -27,6 +27,7 @@ interface StorageState {
     applyLoaded: () => void;
     applyMessages: (sessionId: string, messages: DecryptedMessage[]) => void;
     applyMessagesLoaded: (sessionId: string) => void;
+    recalculateOnline: () => void;
 }
 
 export const storage = create<StorageState>()((set) => {
@@ -36,7 +37,7 @@ export const storage = create<StorageState>()((set) => {
         sessionsActive: [],
         sessionsInactive: [],
         sessionMessages: {},
-        applySessions: (sessions: Session[]) => set((state) => {            
+        applySessions: (sessions: Session[]) => set((state) => {
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
 
@@ -162,7 +163,7 @@ export const storage = create<StorageState>()((set) => {
         applyMessagesLoaded: (sessionId: string) => set((state) => {
             const existingSession = state.sessionMessages[sessionId];
             let result;
-            
+
             if (!existingSession) {
                 result = {
                     ...state,
@@ -190,6 +191,56 @@ export const storage = create<StorageState>()((set) => {
             }
 
             return result;
+        }),
+        recalculateOnline: () => set((state) => {
+            const threshold = Date.now() - 10 * 60 * 1000;
+            
+            // Build set of session IDs that should be active
+            const shouldBeActiveSet = new Set<string>();
+            Object.values(state.sessions).forEach(session => {
+                if (session.active && session.activeAt > threshold) {
+                    shouldBeActiveSet.add(session.id);
+                }
+            });
+            
+            // Build set of currently active session IDs
+            const currentActiveSet = new Set(state.sessionsActive.map(s => s.id));
+            
+            // Check if sets are equal
+            if (shouldBeActiveSet.size === currentActiveSet.size && 
+                [...shouldBeActiveSet].every(id => currentActiveSet.has(id))) {
+                // No changes needed, return same state
+                return state;
+            }
+            
+            // Rebuild active and inactive lists
+            const newActiveSessions: Session[] = [];
+            const newInactiveSessions: Session[] = [];
+            
+            Object.values(state.sessions).forEach(session => {
+                if (shouldBeActiveSet.has(session.id)) {
+                    newActiveSessions.push(session);
+                } else {
+                    newInactiveSessions.push(session);
+                }
+            });
+            
+            // Sort both arrays by lastMessage time or createdAt if no messages
+            const getSortTime = (session: Session) => {
+                if (session.lastMessage) {
+                    return session.lastMessage.createdAt;
+                }
+                return session.createdAt;
+            };
+            
+            newActiveSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
+            newInactiveSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
+            
+            return {
+                ...state,
+                sessionsActive: newActiveSessions,
+                sessionsInactive: newInactiveSessions
+            };
         })
     }
 });

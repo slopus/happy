@@ -24,20 +24,13 @@ export type SyncSocketListener = (state: SyncSocketState) => void;
 //
 
 class ApiSocket {
-    
+
     // State
     private socket: Socket | null = null;
     private config: SyncSocketConfig | null = null;
     private encryption: ApiEncryption | null = null;
-    private state: SyncSocketState = {
-        isConnected: false,
-        connectionStatus: 'disconnected',
-        lastError: null
-    };
-
-    // Listeners
-    private listeners: Set<SyncSocketListener> = new Set();
     private messageHandlers: Map<string, (data: any) => void> = new Map();
+    private reconnectedListeners: Set<() => void> = new Set();
 
     //
     // Initialization
@@ -57,8 +50,6 @@ class ApiSocket {
         if (!this.config || this.socket) {
             return;
         }
-
-        this.updateState({ connectionStatus: 'connecting' });
 
         this.socket = io(this.config.endpoint, {
             path: '/v1/updates',
@@ -80,39 +71,16 @@ class ApiSocket {
             this.socket.disconnect();
             this.socket = null;
         }
-        this.updateState({
-            isConnected: false,
-            connectionStatus: 'disconnected'
-        });
-    }
-
-    //
-    // State Management
-    //
-
-    private updateState(updates: Partial<SyncSocketState>) {
-        this.state = { ...this.state, ...updates };
-        this.notifyListeners();
-    }
-
-    private notifyListeners() {
-        this.listeners.forEach(listener => listener(this.state));
-    }
-
-    getState() {
-        return { ...this.state };
     }
 
     //
     // Listener Management
     //
 
-    addListener(listener: SyncSocketListener) {
-        this.listeners.add(listener);
-        // Immediately notify with current state
-        listener(this.state);
-        return () => this.listeners.delete(listener);
-    }
+    onReconnected = (listener: () => void) => {
+        this.reconnectedListeners.add(listener);
+        return () => this.reconnectedListeners.delete(listener);
+    };
 
     //
     // Message Handling
@@ -139,11 +107,7 @@ class ApiSocket {
     }
 
     send(event: string, data: any) {
-        if (!this.socket || !this.state.isConnected) {
-            console.warn('SyncSocket: Cannot send message, not connected');
-            return false;
-        }
-        this.socket.emit(event, data);
+        this.socket!.emit(event, data);
         return true;
     }
 
@@ -197,42 +161,24 @@ class ApiSocket {
 
         // Connection events
         this.socket.on('connect', () => {
-            console.log('SyncSocket: Connected');
-            this.updateState({
-                isConnected: true,
-                connectionStatus: 'connected',
-                lastError: null
-            });
+            this.reconnectedListeners.forEach(listener => listener());
         });
 
         this.socket.on('disconnect', (reason) => {
             console.log('SyncSocket: Disconnected', reason);
-            this.updateState({
-                isConnected: false,
-                connectionStatus: 'disconnected'
-            });
         });
 
         // Error events
         this.socket.on('connect_error', (error) => {
             console.error('SyncSocket: Connection error', error);
-            this.updateState({
-                connectionStatus: 'error',
-                lastError: error
-            });
         });
 
         this.socket.on('error', (error) => {
             console.error('SyncSocket: Error', error);
-            this.updateState({
-                connectionStatus: 'error',
-                lastError: error
-            });
         });
 
         // Message handling
         this.socket.onAny((event, data) => {
-            // console.log('SyncSocket: Message received', event, data);
             const handler = this.messageHandlers.get(event);
             if (handler) {
                 handler(data);
