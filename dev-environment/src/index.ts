@@ -3,6 +3,7 @@ import { Command } from 'commander';
 import { recentCommand } from './commands/recent';
 import { uploadCommand } from './commands/upload';
 import { generateKeyCommand } from './commands/generate-key';
+import { findCommand } from './commands/find';
 
 const program = new Command();
 
@@ -14,5 +15,6 @@ program
 program.addCommand(recentCommand);
 program.addCommand(uploadCommand);
 program.addCommand(generateKeyCommand);
+program.addCommand(findCommand);
 
 program.parse(process.argv);
