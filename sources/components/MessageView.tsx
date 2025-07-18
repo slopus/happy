@@ -14,7 +14,6 @@ export const MessageView = (props: { message: Message, metadata: Metadata | null
         <View
             style={{
                 paddingHorizontal: 16,
-                paddingVertical: 8,
                 flexDirection: 'row'
             }}
         >
