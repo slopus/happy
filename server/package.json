@@ -1,7 +1,7 @@
 {
-  "name": "handy-server",
+  "name": "happy-server",
   "version": "0.0.0",
-  "repository": "https://github.com/ex3ndr/handy-server.git",
+  "repository": "https://github.com/slopus/happy-server.git",
   "author": "Steve Korshakov <steve@korshakov.com>",
   "license": "MIT",
   "private": true,
