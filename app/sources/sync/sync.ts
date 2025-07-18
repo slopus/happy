@@ -157,8 +157,13 @@ class Sync {
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
             this.sessionsSync.invalidate();
-            for (let sessionId of storage.getState().sessionsActive.map(s => s.id)) {
-                this.messagesSync.get(sessionId)?.invalidate();
+            const sessionsData = storage.getState().sessionsData;
+            if (sessionsData) {
+                for (const item of sessionsData) {
+                    if (typeof item !== 'string') {
+                        this.messagesSync.get(item.id)?.invalidate();
+                    }
+                }
             }
         });
 

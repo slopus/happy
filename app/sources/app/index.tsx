@@ -23,10 +23,10 @@ export default function Home() {
 }
 
 function Authenticated() {
-    const { active, inactive, loaded } = useSessions();
+    const sessionsData = useSessions();
     const { updateAvailable, reloadApp } = useUpdates();
 
-    if (!loaded) {
+    if (sessionsData === null) {
         return (
             <View className="flex-1 items-center justify-center mb-8">
                 <ActivityIndicator size="small" color="#000000" />
@@ -38,12 +38,12 @@ function Authenticated() {
         <View className="flex-1">
             {updateAvailable && <UpdateBanner onReload={reloadApp} />}
 
-            {active.length === 0 && inactive.length === 0 ? (
+            {sessionsData.length === 0 ? (
                 <View className="flex-1 items-center justify-center mb-8">
                     <Text>No sessions</Text>
                 </View>
             ) : (
-                <SessionsList active={active} inactive={inactive} />
+                <SessionsList data={sessionsData} />
             )}
         </View>
     )

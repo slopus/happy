@@ -1,86 +1,42 @@
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Session } from '@/sync/storageTypes';
-import { LegendList } from '@legendapp/list';
+import { SessionListItem } from '@/sync/storage';
 import { getSessionName, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { FlashList } from '@shopify/flash-list';
 
 interface SessionsListProps {
-    active: Session[];
-    inactive: Session[];
+    data: SessionListItem[];
 }
 
-interface SessionListItem {
-    type: 'header' | 'item' | 'empty';
-    title?: string;
-    session?: Session;
-    last: boolean;
-}
-
-export function SessionsList({ active, inactive }: SessionsListProps) {
+export function SessionsList({ data }: SessionsListProps) {
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
 
-    // Create flat list data with headers
-    const listData = React.useMemo(() => {
-        const data: SessionListItem[] = [];
-
-        // Add active sessions section (always show header)
-        data.push({ type: 'header', title: 'Active Sessions', last: false });
-        if (active.length > 0) {
-            active.forEach((session, index) => data.push({ type: 'item', session, last: index === active.length - 1 }));
-        } else {
-            data.push({ type: 'empty', title: 'No active sessions', last: false });
-        }
-
-        // Add offline sessions
-        if (inactive.length > 0) {
-            data.push({ type: 'header', title: 'Offline Sessions', last: false });
-            inactive.forEach((session, index) => data.push({ type: 'item', session, last: index === inactive.length - 1 }));
-        }
-
-        return data;
-    }, [active, inactive]);
-
-    // Memoize keyExtractor
     const keyExtractor = React.useCallback((item: SessionListItem, index: number) => {
-        if (item.type === 'header') return `header-${item.title}`;
-        if (item.type === 'empty') return `empty-${index}`;
-        return `session-${item.session!.id}`;
-    }, []);
-
-    // Memoize ItemSeparatorComponent
-    const ItemSeparatorComponent = React.useCallback(({ leadingItem }: { leadingItem: SessionListItem }) => {
-        if (leadingItem.type === 'item' && !leadingItem.last) {
-            return <View style={{ height: 1, backgroundColor: 'black', opacity: 0.05, marginLeft: 16 }} />;
+        if (typeof item === 'string') {
+            return `header-${item}-${index}`;
         }
-        return null;
+        return `session-${item.id}`;
     }, []);
 
-    const renderItem = ({ item }: { item: SessionListItem }) => {
-        if (item.type === 'header') {
-            const isActive = item.title === 'Active Sessions';
+    const renderItem = React.useCallback(({ item }: { item: SessionListItem }) => {
+        if (typeof item === 'string') {
+            const isOnline = item === 'online';
+            const title = isOnline ? 'Active Sessions' : 'Offline Sessions';
             return (
-                <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
+                <View style={{ paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        {isActive && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#34C759', marginRight: 8 }} />}
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: '#999' }}>{item.title}</Text>
+                        {isOnline && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#34C759', marginRight: 8 }} />}
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: '#999' }}>{title}</Text>
                     </View>
                 </View>
             );
         }
 
-        if (item.type === 'empty') {
-            return (
-                <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-                    <Text style={{ fontSize: 14, color: '#999', fontStyle: 'italic' }}>{item.title}</Text>
-                </View>
-            );
-        }
-
-        const session = item.session!;
+        const session = item;
         const lastMessage = session.lastMessage;
         const lastMessageText = JSON.stringify(lastMessage);
         const messagePreview = lastMessageText.length > 50
@@ -132,14 +88,23 @@ export function SessionsList({ active, inactive }: SessionsListProps) {
                 </View>
             </Pressable>
         );
-    };
+    }, [router]);
+
+    const getItemType = React.useCallback((item: SessionListItem) => {
+        return typeof item === 'string' ? 'header' : 'session';
+    }, []);
+
+    const ItemSeparatorComponent = React.useCallback(() => {
+        return <View style={{ height: 1, backgroundColor: 'black', opacity: 0.05, marginLeft: 16 }} />;
+    }, []);
 
     return (
-        <LegendList
-            data={listData}
+        <FlashList
+            data={data}
             renderItem={renderItem}
-            estimatedItemSize={68}
             keyExtractor={keyExtractor}
+            getItemType={getItemType}
+            estimatedItemSize={96}
             contentContainerStyle={{ paddingBottom: safeArea.bottom + 16 }}
             ItemSeparatorComponent={ItemSeparatorComponent}
         />

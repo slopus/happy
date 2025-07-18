@@ -3,7 +3,7 @@
     "name": "Slopus",
     "slug": "happy",
     "version": "1.0.2",
-    "runtimeVersion": "4",
+    "runtimeVersion": "5",
     "orientation": "portrait",
     "icon": "./sources/assets/images/icon.png",
     "scheme": "slopus",
