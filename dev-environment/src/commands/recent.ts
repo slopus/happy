@@ -3,6 +3,7 @@ import prompts from 'prompts';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
+import { uploadFile } from './upload.js';
 
 function formatRelativeTime(date: Date): string {
   const now = new Date();
@@ -79,7 +80,11 @@ function getAllProjectFiles(claudeProjectsDir: string): ProjectFile[] {
 
 export const recentCommand = new Command('recent')
   .description('Select from recent Claude project files')
-  .action(async () => {
+  .option('-k, --key <key>', 'Base64 encoded secret key for upload')
+  .option('-i, --interactive', 'Prompt before sending each message during upload')
+  .option('-d, --delay <seconds>', 'Delay between messages in seconds during upload', '0')
+  .option('-n, --new-session', 'Generate a new random session ID instead of using filename for upload')
+  .action(async (options: { key?: string; interactive?: boolean; delay?: string; newSession?: boolean }) => {
     try {
       const cwd = process.cwd();
       const homeDir = os.homedir();
@@ -157,10 +162,42 @@ export const recentCommand = new Command('recent')
 
       if (response.file === undefined) {
         console.error('Selection cancelled.');
+        return;
       } else if (response.file === 'nothing') {
         console.log('Nothing selected.');
+        return;
       } else {
         console.log('Selected file:', response.file);
+        
+        // Offer to upload the selected file
+        const uploadResponse = await prompts({
+          type: 'confirm',
+          name: 'shouldUpload',
+          message: 'Would you like to upload this file to a Claude session?',
+          initial: false
+        });
+
+        if (uploadResponse.shouldUpload === undefined) {
+          console.log('Upload cancelled.');
+          return;
+        }
+
+        if (uploadResponse.shouldUpload) {
+          try {
+            console.log('Starting upload...');
+            await uploadFile(response.file, {
+              key: options.key,
+              interactive: options.interactive,
+              delay: options.delay,
+              newSession: options.newSession
+            });
+            console.log('Upload completed successfully!');
+          } catch (error) {
+            console.error('Upload failed:', error);
+          }
+        } else {
+          console.log('Upload skipped.');
+        }
       }
     } catch (error) {
       console.error('Error accessing Claude project files:', error);
