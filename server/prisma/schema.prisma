@@ -19,13 +19,25 @@ datasource db {
 //
 
 model Account {
-    id        String    @id @default(cuid())
-    publicKey String    @unique
-    seq       Int       @default(0)
-    createdAt DateTime  @default(now())
-    updatedAt DateTime  @updatedAt
-    Session   Session[]
-    Update    Update[]
+    id               String             @id @default(cuid())
+    publicKey        String             @unique
+    seq              Int                @default(0)
+    createdAt        DateTime           @default(now())
+    updatedAt        DateTime           @updatedAt
+    Session          Session[]
+    Update           Update[]
+    AccountPushToken AccountPushToken[]
+}
+
+model AccountPushToken {
+    id        String   @id @default(cuid())
+    accountId String
+    account   Account  @relation(fields: [accountId], references: [id])
+    token     String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([accountId, token])
 }
 
 //
@@ -61,6 +73,7 @@ model SessionMessage {
     content   Json
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+
     @@unique([sessionId, localId])
 }
 
