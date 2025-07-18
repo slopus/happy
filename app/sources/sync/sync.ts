@@ -6,6 +6,9 @@ import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from '
 import { DecryptedMessage, MessageContent, Session } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { randomUUID } from 'expo-crypto';
+import * as Notifications from 'expo-notifications';
+import { registerPushToken } from './apiPush';
+import { Platform } from 'react-native';
 
 export const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
@@ -29,6 +32,9 @@ class Sync {
 
         // Invalidate sync
         this.sessionsSync.invalidate();
+
+        // Register push token
+        this.registerPushToken();
     }
 
     abort = async (sessionId: string) => {
@@ -141,6 +147,42 @@ class Sync {
 
         // Apply to storage
         storage.getState().applyMessages(sessionId, messages);
+    }
+
+    private registerPushToken = async () => {
+        // Only register on mobile platforms
+        if (Platform.OS === 'web') {
+            return;
+        }
+
+        try {
+            // Request permission
+            const { status: existingStatus } = await Notifications.getPermissionsAsync();
+            let finalStatus = existingStatus;
+            
+            if (existingStatus !== 'granted') {
+                const { status } = await Notifications.requestPermissionsAsync();
+                finalStatus = status;
+            }
+            
+            if (finalStatus !== 'granted') {
+                console.log('Failed to get push token for push notification!');
+                return;
+            }
+
+            // Get push token
+            const tokenData = await Notifications.getExpoPushTokenAsync({
+                projectId: process.env.EXPO_PUBLIC_PROJECT_ID
+            });
+            
+            console.log('Push token:', tokenData.data);
+
+            // Register with server
+            await registerPushToken(this.credentials, tokenData.data);
+            console.log('Push token registered successfully');
+        } catch (error) {
+            console.error('Failed to register push token:', error);
+        }
     }
 
     private subscribeToUpdates = () => {

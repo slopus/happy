@@ -75,6 +75,7 @@ export class ApiEncryption {
                 return {
                     id: encryptedMessage.id,
                     seq: encryptedMessage.seq,
+                    localId: encryptedMessage.localId ?? null,
                     content: null,
                     createdAt: encryptedMessage.createdAt,
                 }
@@ -82,6 +83,7 @@ export class ApiEncryption {
             return {
                 id: encryptedMessage.id,
                 seq: encryptedMessage.seq,
+                localId: encryptedMessage.localId ?? null,
                 content: decrypted,
                 createdAt: encryptedMessage.createdAt,
             }
@@ -89,6 +91,7 @@ export class ApiEncryption {
             return {
                 id: encryptedMessage.id,
                 seq: encryptedMessage.seq,
+                localId: encryptedMessage.localId ?? null,
                 content: null,
                 createdAt: encryptedMessage.createdAt,
             }

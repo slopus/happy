@@ -238,6 +238,7 @@ export function reducer(state: ReducerState, decryptedMsgs: DecryptedMessage[]):
                 newMessages.push({
                     role: 'agent',
                     id,
+                    localId: null,
                     createdAt: existing.createdAt,
                     content: {
                         type: 'tool',
@@ -249,6 +250,7 @@ export function reducer(state: ReducerState, decryptedMsgs: DecryptedMessage[]):
                 newMessages.push({
                     role: 'agent',
                     id,
+                    localId: null,
                     createdAt: existing.createdAt,
                     content: {
                         type: 'text',
