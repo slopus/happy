@@ -3,13 +3,6 @@ import { useShallow } from 'zustand/react/shallow'
 import { DecryptedMessage, Session, Message as Message } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer";
 
-// Mentally I'm going to call this a "RemoteClaudeCodeSession". This is all of
-// the state we need to render the UI for a specific session. Note to self, this
-// Message type is not one of those objects you find in the `.jsonl` files
-// (~/.claude/projects/${projectId}/${sessionId}.jsonl).
-// Instead Message is an aggregation of several of these log lines. It
-// represents the current UI state. The list of messages is the list of UI
-// elements we are showing in a ListView screen.
 interface SessionMessages {
     messages: Message[];
     messagesMap: Record<string, Message>;
@@ -17,11 +10,11 @@ interface SessionMessages {
     isLoaded: boolean;
 }
 
+export type SessionListItem = string | Session;
+
 interface StorageState {
     sessions: Record<string, Session>;
-    sessionsLoaded: boolean;
-    sessionsActive: Session[];
-    sessionsInactive: Session[];
+    sessionsData: SessionListItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
     applySessions: (sessions: Session[]) => void;
     applyLoaded: () => void;
@@ -32,10 +25,8 @@ interface StorageState {
 
 export const storage = create<StorageState>()((set) => {
     return {
-        sessionsLoaded: false,
         sessions: {},
-        sessionsActive: [],
-        sessionsInactive: [],
+        sessionsData: null,
         sessionMessages: {},
         applySessions: (sessions: Session[]) => set((state) => {
             // Merge new sessions with existing ones
@@ -78,18 +69,29 @@ export const storage = create<StorageState>()((set) => {
             activeSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
             inactiveSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
 
+            // Build flat list data for FlashList
+            const listData: SessionListItem[] = [];
+            
+            if (activeSessions.length > 0) {
+                listData.push('online');
+                listData.push(...activeSessions);
+            }
+            
+            if (inactiveSessions.length > 0) {
+                listData.push('offline');
+                listData.push(...inactiveSessions);
+            }
+
             return {
                 ...state,
                 sessions: mergedSessions,
-                sessionsLoaded: true,
-                sessionsActive: activeSessions,
-                sessionsInactive: inactiveSessions
+                sessionsData: listData
             };
         }),
         applyLoaded: () => set((state) => {
             const result = {
                 ...state,
-                sessionsLoaded: true,
+                sessionsData: []
             };
             return result;
         }),
@@ -216,7 +218,19 @@ export const storage = create<StorageState>()((set) => {
             });
             
             // Build set of currently active session IDs
-            const currentActiveSet = new Set(state.sessionsActive.map(s => s.id));
+            const currentActiveSet = new Set<string>();
+            if (state.sessionsData) {
+                let inOnlineSection = false;
+                for (const item of state.sessionsData) {
+                    if (item === 'online') {
+                        inOnlineSection = true;
+                    } else if (item === 'offline') {
+                        inOnlineSection = false;
+                    } else if (typeof item !== 'string' && inOnlineSection) {
+                        currentActiveSet.add(item.id);
+                    }
+                }
+            }
             
             // Check if sets are equal
             if (shouldBeActiveSet.size === currentActiveSet.size && 
@@ -248,21 +262,29 @@ export const storage = create<StorageState>()((set) => {
             newActiveSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
             newInactiveSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
             
+            // Build flat list data for FlashList
+            const listData: SessionListItem[] = [];
+            
+            if (newActiveSessions.length > 0) {
+                listData.push('online');
+                listData.push(...newActiveSessions);
+            }
+            
+            if (newInactiveSessions.length > 0) {
+                listData.push('offline');
+                listData.push(...newInactiveSessions);
+            }
+
             return {
                 ...state,
-                sessionsActive: newActiveSessions,
-                sessionsInactive: newInactiveSessions
+                sessionsData: listData
             };
         })
     }
 });
 
 export function useSessions() {
-    return storage(useShallow((state) => ({
-        active: state.sessionsActive,
-        inactive: state.sessionsInactive,
-        loaded: state.sessionsLoaded
-    })));
+    return storage(useShallow((state) => state.sessionsData));
 }
 
 export function useSession(id: string): Session | null {
