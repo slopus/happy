@@ -2,8 +2,7 @@ import { ApiSessionClient } from "@/api/apiSession"
 import { claudeRemote } from "./claudeRemote"
 import { claudeLocal } from "./claudeLocal"
 import { MessageQueue } from "@/utils/MessageQueue"
-import { getProjectDirForDirectory, getSessionFilePath, watchMostRecentSession, watchSessionFile } from "./watcher"
-import { join } from "path"
+import { watchMostRecentSession, LastKnownMessage } from "./watcher"
 import { logger } from "@/ui/logger"
 
 interface LoopOptions {
@@ -35,15 +34,16 @@ export async function loop(opts: LoopOptions) {
     let exited = false;
     let abortController: AbortController | null = null;
     let mode: 'interactive' | 'remote' = 'interactive' as 'interactive' | 'remote';
-    let queue = new MessageQueue();
+    let currentMessageQueue: MessageQueue = new MessageQueue();
     let sessionId: string | null = null;
-    let lastKnownMessageTimestamp: string | undefined = undefined;
+    let lastKnownMessage: LastKnownMessage = {};
     let onMessage: (() => void) | null = null;
 
     // Handle user messages
     opts.session.onUserMessage((message) => {
         logger.debugLargeJson('User message pushed to queue:', message)
-        queue.push(message.content.text);
+        currentMessageQueue.push(message.content.text);
+        
         if (onMessage) {
             onMessage();
         } else {
@@ -60,11 +60,17 @@ export async function loop(opts: LoopOptions) {
         currentWatcherAbortController = new AbortController();
 
         sessionId = newSessionId;
-        for await (const message of watchMostRecentSession(opts.path, sessionId, currentWatcherAbortController, lastKnownMessageTimestamp)) {
+        for await (const message of watchMostRecentSession(opts.path, sessionId, currentWatcherAbortController, lastKnownMessage)) {
+            // Update last known message based on type
+            if (message.type === 'user') {
+                lastKnownMessage.userMessageTimestamp = message.timestamp;
+            } else if (message.type === 'assistant' && message.message.id) {
+                lastKnownMessage.assistantMessageId = message.message.id;
+            }
+
             // NOTE: We want to skip messages from user in remote mode
             // they were all sent by us from remote, no need to re-send
             // Better solution would be to:
-            lastKnownMessageTimestamp = message.timestamp;
             if (mode === 'remote' && message.type === 'user') {
                 console.log('Skipping sending user message to server in remote mode');
                 continue;
@@ -74,9 +80,8 @@ export async function loop(opts: LoopOptions) {
     }
 
     while (!exited) {
-
-        // Switch to remote mode if there are messages in queue
-        if (queue.size() > 0) {
+        // Switch to remote mode if there are messages waiting
+        if (currentMessageQueue.size() > 0) {
             mode = 'remote';
             continue;
         }
@@ -121,6 +126,9 @@ export async function loop(opts: LoopOptions) {
             console.log('Starting ' + sessionId);
             const remoteAbortController = new AbortController();
             abortController = remoteAbortController;
+            
+            // Use the current queue for this session
+            const queueForThisSession = currentMessageQueue;
             opts.session.setHandler('abort', () => {
                 if (!remoteAbortController.signal.aborted) {
                     remoteAbortController.abort();
@@ -138,7 +146,7 @@ export async function loop(opts: LoopOptions) {
             process.stdin.setEncoding("utf8");
             process.stdin.on('data', abortHandler);
             try {
-                logger.debug(`Starting claudeRemote with messages: ${queue.size()}`);
+                logger.debug(`Starting claudeRemote with messages: ${queueForThisSession.size()}`);
                 await claudeRemote({
                     abort: remoteAbortController.signal,
                     sessionId: sessionId,
@@ -146,10 +154,16 @@ export async function loop(opts: LoopOptions) {
                     mcpServers: opts.mcpServers,
                     permissionPromptToolName: opts.permissionPromptToolName,
                     onSessionFound: startWatchingSessionForMessages,
-                    messages: queue,
+                    messages: queueForThisSession,
                 });
             } finally {
                 process.stdin.off('data', abortHandler);
+                process.stdin.setRawMode(false);
+                // Once we are done with this session, release the queue
+                // otherwise an old watcher somehow maintains reference to it
+                // and consumes our new message
+                currentMessageQueue.close()
+                currentMessageQueue = new MessageQueue();
             }
             if (mode !== 'remote' && !exited) {
                 console.log('Switching to interactive mode...');

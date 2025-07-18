@@ -1,4 +1,5 @@
 import { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-code";
+import { logger } from "@/ui/logger";
 
 /**
  * An async iterable message queue that allows pushing messages and consuming them asynchronously
@@ -24,8 +25,11 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
             throw new Error('Cannot push to closed queue');
         }
 
+        logger.debug(`[MessageQueue] push() called. Waiters: ${this.waiters.length}, Queue size before: ${this.queue.length}`);
+        
         const waiter = this.waiters.shift();
         if (waiter) {
+            logger.debug(`[MessageQueue] Found waiter! Delivering message directly: "${message}"`);
             waiter({
                 type: 'user',
                 message: {
@@ -36,6 +40,7 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
                 session_id: '',
             });
         } else {
+            logger.debug(`[MessageQueue] No waiter found. Adding to queue: "${message}"`);
             this.queue.push({
                 type: 'user',
                 message: {
@@ -46,12 +51,15 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
                 session_id: '',
             });
         }
+        
+        logger.debug(`[MessageQueue] push() completed. Waiters: ${this.waiters.length}, Queue size after: ${this.queue.length}`);
     }
 
     /**
      * Close the queue - no more messages can be pushed
      */
     close(): void {
+        logger.debug(`[MessageQueue] close() called. Waiters: ${this.waiters.length}`);
         this.closed = true;
         this.closeResolve?.();
     }
@@ -74,22 +82,28 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
      * Async iterator implementation
      */
     async *[Symbol.asyncIterator](): AsyncIterator<SDKUserMessage> {
+        logger.debug(`[MessageQueue] Iterator started`);
         while (true) {
             const message = this.queue.shift();
             if (message !== undefined) {
+                logger.debug(`[MessageQueue] Iterator yielding queued message`);
                 yield message;
                 continue;
             }
 
             if (this.closed) {
+                logger.debug(`[MessageQueue] Iterator ending - queue closed`);
                 return;
             }
 
             // Wait for next message
+            logger.debug(`[MessageQueue] Iterator waiting for next message...`);
             const nextMessage = await this.waitForNext();
             if (nextMessage === undefined) {
+                logger.debug(`[MessageQueue] Iterator ending - no more messages`);
                 return;
             }
+            logger.debug(`[MessageQueue] Iterator yielding waited message`);
             yield nextMessage;
         }
     }
@@ -100,18 +114,21 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
     private waitForNext(): Promise<SDKUserMessage | undefined> {
         return new Promise((resolve) => {
             if (this.closed) {
+                logger.debug(`[MessageQueue] waitForNext() called but queue is closed`);
                 resolve(undefined);
                 return;
             }
 
             const waiter = (value: SDKUserMessage) => resolve(value);
             this.waiters.push(waiter);
+            logger.debug(`[MessageQueue] waitForNext() adding waiter. Total waiters: ${this.waiters.length}`);
 
             // Also listen for close event
             this.closePromise?.then(() => {
                 const index = this.waiters.indexOf(waiter);
                 if (index !== -1) {
                     this.waiters.splice(index, 1);
+                    logger.debug(`[MessageQueue] waitForNext() waiter removed due to close. Remaining waiters: ${this.waiters.length}`);
                     resolve(undefined);
                 }
             });
