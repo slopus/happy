@@ -169,9 +169,12 @@ export function reducer(state: ReducerState, messages: DecryptedMessage[]): Mess
         if (m.content.role !== 'agent') {
             continue;
         }
-        if (m.content.content.type !== 'text') {
+        if (m.content.content.type !== 'output'
+            && m.content.content.type !== 'text'
+        ) {
             continue;
         }
+
         const content = m.content.content.data as ClaudeOutputData;
         if (content.type === 'assistant') {
             console.log(`🤖 Checking assistant message ${m.id} for text content`);
