@@ -1,6 +1,7 @@
 import { randomUUID } from "expo-crypto";
 import { ClaudeOutputData } from "./reducerTypes";
 import { DecryptedMessage, Message, ToolCall } from "./storageTypes";
+import { RawJSONLinesSchema } from "./claude-code-schema";
 
 export type ToolCallTree = {
     id: string;
@@ -8,6 +9,7 @@ export type ToolCallTree = {
     messageId: string;
     state: 'running' | 'completed' | 'error';
     arguments: any;
+    result?: unknown; // Add result field to store tool result data
     parentId: string | null;
     children: ToolCallTree[];
 }
@@ -34,13 +36,14 @@ function normalizeToolCalls(toolCalls: ToolCallTree[]): ToolCall[] {
         name: t.name,
         state: t.state,
         arguments: t.arguments,
+        result: t.result, // Include result field
         children: normalizeToolCalls(t.children)
     }));
 }
 
-export function reducer(state: ReducerState, messages: DecryptedMessage[]): Message[] {
-    console.log('🔄 applyMessages called with', messages.length, 'messages');
-    console.log('📨 Input messages:', messages.map(m => ({ id: m.id, type: m.content?.content?.type, contentType: m.content?.content?.data?.type })));
+export function reducer(state: ReducerState, decryptedMsgs: DecryptedMessage[]): Message[] {
+    console.log('🔄 applyMessages called with', decryptedMsgs.length, 'messages');
+    console.log('📨 Input messages:', decryptedMsgs.map(m => ({ id: m.id, type: m.content?.content?.type, contentType: m.content?.content?.data?.type })));
 
     let newMessages: Message[] = [];
 
@@ -49,27 +52,38 @@ export function reducer(state: ReducerState, messages: DecryptedMessage[]): Mess
     // 
 
     let changed = new Set<string>();
-    for (let m of messages) {
-        if (!m.content) {
+    // There are two layers of framing around the actual raw claude code JSON
+    for (let outerFrame of decryptedMsgs) {
+        if (!outerFrame.content) {
             continue;
         }
-        if (m.content.role !== 'agent') {
+        if (outerFrame.content.role !== 'agent') {
             continue;
         }
-        console.log(`🔍 Processing message ${m.id}, content.content.type:`, m.content.content.type);
+        const innerFrame = outerFrame.content.content;
+        
+        // There is a second layer of framing, the object transmitted by the 
+        if (innerFrame.type !== 'output') {
+            console.log(`⏭️  Skipping because innner frame inside ${outerFrame.id} is not 'output' type`);
+            continue;
+        }
+        console.log(`🔍 Processing message ${outerFrame.id}, content.content.type:`, innerFrame.type);
 
-        if (m.content.content.type !== 'output') {
-            console.log(`⏭️  Skipping message ${m.id} - not output type`);
+        const parsed = RawJSONLinesSchema.safeParse(innerFrame.data);
+        if (!parsed.success) {
+            console.error(`❌ Failed to parse message ${outerFrame.id}:`, parsed.error);
             continue;
         }
-        const content = m.content.content.data as ClaudeOutputData;
-        console.log(`📋 Message ${m.id} content type:`, content.type);
+
+        const rawClaudeCodeMsg = parsed.data;
+        //const content = outer.content.content.data as ClaudeOutputData;
+        console.log(`📋 Message ${outerFrame.id} content type:`, rawClaudeCodeMsg.type);
 
         // Process assistant messages for tool_use
-        if (content.type === 'assistant' && content.message.content && content.message.content.length > 0) {
-            console.log(`🤖 Processing assistant message ${m.id} with ${content.message.content.length} content blocks`);
+        if (rawClaudeCodeMsg.type === 'assistant') {
+            console.log(`🤖 Processing assistant message ${outerFrame.id} with ${rawClaudeCodeMsg.message.content.length} content blocks`);
 
-            for (let c of content.message.content) {
+            for (let c of rawClaudeCodeMsg.message.content) {
                 console.log(`📦 Content block type:`, c.type);
 
                 // Started tools
@@ -78,21 +92,22 @@ export function reducer(state: ReducerState, messages: DecryptedMessage[]): Mess
 
                     let existing = state.toolCalls.get(c.id);
                     if (!existing) {
-                        if (content.parent_tool_use_id) {
-                            console.log(`👶 Creating child tool ${c.id} under parent ${content.parent_tool_use_id}`);
+                        if (rawClaudeCodeMsg.parent_tool_use_id) {
+                            console.log(`👶 Creating child tool ${c.id} under parent ${rawClaudeCodeMsg.parent_tool_use_id}`);
 
-                            let parentTool = state.toolCalls.get(content.parent_tool_use_id);
+                            let parentTool = state.toolCalls.get(rawClaudeCodeMsg.parent_tool_use_id);
                             if (!parentTool) { // Should not happen
-                                console.warn('❌ Parent tool not found', content.parent_tool_use_id);
+                                console.warn('❌ Parent tool not found', rawClaudeCodeMsg.parent_tool_use_id);
                                 continue;
                             }
-                            let newTool = {
+                            let newTool: ToolCallTree = {
                                 id: c.id,
                                 name: c.name,
                                 messageId: parentTool.messageId, // Use parent's message ID
                                 state: 'running' as const,
-                                parentId: content.parent_tool_use_id,
+                                parentId: rawClaudeCodeMsg.parent_tool_use_id,
                                 arguments: c.input,
+                                result: null,
                                 children: []
                             }
                             parentTool.children.push(newTool);
@@ -110,10 +125,11 @@ export function reducer(state: ReducerState, messages: DecryptedMessage[]): Mess
                                 state: 'running' as const,
                                 parentId: null,
                                 arguments: c.input,
+                                result: null,
                                 children: []
                             }
                             state.toolCalls.set(c.id, newTool);
-                            state.messages.set(mid, { createdAt: m.createdAt, text: '', tools: [newTool] });
+                            state.messages.set(mid, { createdAt: outerFrame.createdAt, text: '', tools: [newTool] });
                             changed.add(mid);
                             console.log(`✅ Created root tool ${c.id} with message ID ${mid}, marked as changed`);
                         }
@@ -125,20 +141,27 @@ export function reducer(state: ReducerState, messages: DecryptedMessage[]): Mess
         }
 
         // Process user messages for tool_result
-        if (content.type === 'user' && content.message.content && content.message.content.length > 0) {
-            console.log(`👤 Processing user message ${m.id} with ${content.message.content.length} content blocks`);
+        if (rawClaudeCodeMsg.type === 'user') {
+            console.log(`👤 Processing user message ${outerFrame.id} with ${rawClaudeCodeMsg.message.content.length} content blocks`);
 
-            for (let c of content.message.content) {
+            for (let c of rawClaudeCodeMsg.message.content) {
+                if (typeof c === 'string') {
+                    continue;
+                }
                 console.log(`📦 User content block type:`, c.type);
 
                 if (c.type === 'tool_result') {
                     console.log(`🔧 Found tool_result for tool:`, c.tool_use_id);
 
                     let existing = state.toolCalls.get(c.tool_use_id);
+                    
                     if (!existing || existing.state !== 'running') { // Should not happen
                         console.warn('❌ Tool not running', c.tool_use_id, existing?.state);
                         continue;
                     }
+
+                    existing.result = rawClaudeCodeMsg.toolUseResult;
+
                     if (c.is_error) {
                         existing.state = 'error';
                         console.log(`💥 Tool ${c.tool_use_id} marked as error`);
@@ -162,41 +185,41 @@ export function reducer(state: ReducerState, messages: DecryptedMessage[]): Mess
     //
 
     console.log('📝 Processing text messages...');
-    for (let m of messages) {
-        if (!m.content) {
+    for (let outer of decryptedMsgs) {
+        if (!outer.content) {
             continue;
         }
-        if (m.content.role !== 'agent') {
+        if (outer.content.role !== 'agent') {
             continue;
         }
-        if (m.content.content.type !== 'output'
-            && m.content.content.type !== 'text'
+        if (outer.content.content.type !== 'output'
+            && outer.content.content.type !== 'text'
         ) {
             continue;
         }
 
-        const content = m.content.content.data as ClaudeOutputData;
+        const content = outer.content.content.data as ClaudeOutputData;
         if (content.type === 'assistant') {
-            console.log(`🤖 Checking assistant message ${m.id} for text content`);
+            console.log(`🤖 Checking assistant message ${outer.id} for text content`);
 
             if (content.message.content && content.message.content.length > 0) {
                 for (let c of content.message.content) {
                     if (c.type === 'text') {
-                        console.log(`📄 Found text content in message ${m.id}:`, c.text.substring(0, 50) + '...');
+                        console.log(`📄 Found text content in message ${outer.id}:`, c.text.substring(0, 50) + '...');
 
-                        let existing = state.messages.get(m.id);
+                        let existing = state.messages.get(outer.id);
                         if (!existing) {
-                            existing = { createdAt: m.createdAt, text: '', tools: [] };
-                            state.messages.set(m.id, existing);
-                            console.log(`🆕 Created new message entry for ${m.id}`);
+                            existing = { createdAt: outer.createdAt, text: '', tools: [] };
+                            state.messages.set(outer.id, existing);
+                            console.log(`🆕 Created new message entry for ${outer.id}`);
                         }
                         existing.text += c.text;
-                        changed.add(m.id);
-                        console.log(`✅ Added text to message ${m.id}, marked as changed`);
+                        changed.add(outer.id);
+                        console.log(`✅ Added text to message ${outer.id}, marked as changed`);
                     }
                 }
             } else {
-                console.log(`❌ Assistant message ${m.id} has no content`);
+                console.log(`❌ Assistant message ${outer.id} has no content`);
             }
         }
     }

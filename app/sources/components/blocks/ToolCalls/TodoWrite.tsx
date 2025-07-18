@@ -23,6 +23,14 @@ const getStateIcon = (state: string) => {
     }
 };
 
+const getTodoStatusColor = (status: string) => {
+    switch (status) {
+        case 'completed': return 'bg-green-500';
+        case 'in_progress': return 'bg-amber-500';
+        case 'cancelled': return 'bg-red-500';
+        default: return 'bg-gray-500';
+    }
+};
 
 export function TodoWriteCompactView({ tool }: { tool: TodoWriteToolCall }) {
   // Extract todo count from arguments if available
@@ -30,68 +38,38 @@ export function TodoWriteCompactView({ tool }: { tool: TodoWriteToolCall }) {
   const todos = tool.arguments?.todos as { id: string, content: string, status: 'in_progress' | 'pending' | 'completed' | 'cancelled' }[];
   const todoCount = Array.isArray(todos) ? todos.length : 0;
 
-
     return (
-        <View style={{
-            borderWidth: 1,
-            borderColor: '#d1d5db',
-            borderRadius: 8,
-            backgroundColor: 'white',
-            padding: 12
-        }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+        <View className="border border-gray-300 rounded-lg bg-white p-3">
+            <View className="flex-row items-center mb-2">
                 <Ionicons 
                     name={getStateIcon(tool.state)} 
                     size={16} 
                     color={getStateColor(tool.state)} 
                     style={{ marginRight: 8 }} 
                 />
-                <Text style={{
-                    fontSize: 14,
-                    color: '#374151',
-                    fontWeight: '500',
-                    flex: 1
-                }} numberOfLines={1}>
+                <Text className="text-sm text-gray-700 font-medium flex-1" numberOfLines={1}>
                     {(todos && todos.length > 0) ? `TODO (${todos.length} items)` : 'TODO'}
                 </Text>
-                <View style={{
-                    width: 8,
-                    height: 8,
-                    borderRadius: 4,
-                    backgroundColor: getStateColor(tool.state),
-                    marginLeft: 8
-                }} />
+                <View 
+                    className="w-2 h-2 rounded-full ml-2"
+                    style={{ backgroundColor: getStateColor(tool.state) }}
+                />
             </View>
-                <View style={{ marginBottom: 8 }}>
-                        {todos.map((todo) => (
-                            <View key={todo.id} style={{ 
-                                flexDirection: 'row', 
-                                alignItems: 'center', 
-                                marginBottom: 4,
-                                backgroundColor: '#f9fafb',
-                                padding: 6,
-                                borderRadius: 4
-                            }}>
-                                <View style={{
-                                    width: 8,
-                                    height: 8,
-                                    borderRadius: 4,
-                                    backgroundColor: todo.status === 'completed' ? '#10b981' : 
-                                                    todo.status === 'in_progress' ? '#f59e0b' : 
-                                                    todo.status === 'cancelled' ? '#ef4444' : '#6b7280',
-                                    marginRight: 8
-                                }} />
-                                <Text style={{ 
-                                    fontSize: 12, 
-                                    color: '#374151',
-                                    flex: 1,
-                                    textDecorationLine: todo.status === 'completed' ? 'line-through' : 'none'
-                                }}>
-                                    {todo.content}
-                                </Text>
-                            </View>
-                        ))}
-                        </View>
+            <View className="mb-2">
+                {todos.map((todo) => (
+                    <View key={todo.id} className="flex-row items-center mb-1 bg-gray-50 p-1.5 rounded">
+                        <View className={`w-2 h-2 rounded-full mr-2 ${getTodoStatusColor(todo.status)}`} />
+                        <Text 
+                            className="text-xs text-gray-700 flex-1"
+                            style={{ 
+                                textDecorationLine: todo.status === 'completed' ? 'line-through' : 'none'
+                            }}
+                        >
+                            {todo.content}
+                        </Text>
+                    </View>
+                ))}
+            </View>
         </View>
     );
 }
