@@ -80,6 +80,7 @@ const BaseEntrySchema = z.object({
   version: z.string(),
   uuid: z.string(),
   timestamp: z.string().datetime(),
+  parent_tool_use_id: z.string().nullable().optional(),
 });
 
 export const RawJSONLinesSchema = z.intersection(
