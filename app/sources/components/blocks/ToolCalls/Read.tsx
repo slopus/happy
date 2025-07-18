@@ -39,7 +39,7 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
 
   // Display parsed data or fallback to original
   const displayText = parsedResult 
-    ? `${parsedResult.file.numLines} lines (L${parsedResult.file.startLine}-L${parsedResult.file.startLine + parsedResult.file.numLines - 1} out of ${parsedResult.file.totalLines})`
+    ? `${parsedResult.file.numLines} lines (L${parsedResult.file.startLine}-L${parsedResult.file.startLine + parsedResult.file.numLines - 1})` //out of ${parsedResult.file.totalLines})`
     : "" /*parseError || JSON.stringify(tool.result)*/;
 
   return (
