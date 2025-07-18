@@ -117,7 +117,7 @@ export const storage = create<StorageState>()((set) => {
             });
 
             // Reduce messages
-            const newMessages = messages.filter(m => m.content?.role === 'agent' && existingAgentMessageIds.has(m.id));
+            const newMessages = messages.filter(m => m.content?.role === 'agent' && !existingAgentMessageIds.has(m.id));
             const processedMessages = reducer(existingSession.reducerState, newMessages);
 
             // Add user messages to the mix

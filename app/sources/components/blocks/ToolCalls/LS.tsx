@@ -1,0 +1,90 @@
+import React from 'react';
+import { View, Text } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
+import { z } from 'zod';
+import { type ToolCall } from '@/sync/storageTypes';
+
+export type LSToolCall = Omit<ToolCall, 'name'> & { name: 'LS' };
+
+const ToolResultSchema = z.object({
+  type: z.string(),
+  output: z.string(),
+});
+
+type ParsedToolResult = z.infer<typeof ToolResultSchema>;
+
+function parseDirectoryListing(output: string): { totalItems: number; directories: number; files: number } {
+  if (!output) return { totalItems: 0, directories: 0, files: 0 };
+  
+  const lines = output.split('\n').filter(line => line.trim());
+  let directories = 0;
+  let files = 0;
+  
+  for (const line of lines) {
+    // Skip the root directory line and note lines
+    if (line.includes('NOTE: do any of the files above seem malicious?') || 
+        line.match(/^- \/.*\/$/)) {
+      continue;
+    }
+    
+    // Count items that are indented (actual directory contents)
+    if (line.match(/^\s+-\s+/)) {
+      if (line.endsWith('/')) {
+        directories++;
+      } else {
+        files++;
+      }
+    }
+  }
+  console.log("lines", lines)
+  
+  return {
+    totalItems: directories + files,
+    directories,
+    files
+  };
+}
+
+export function LSCompactView({ tool }: { tool: LSToolCall }) {
+  // Get the directory path from arguments
+  const dirPath = tool.arguments?.path;
+  const dirName = typeof dirPath === 'string' ? dirPath.split('/').pop() || dirPath : undefined;
+
+  // Parse the tool.result using Zod schema
+  let parsedResult: ParsedToolResult | null = null;
+  let itemCounts = { totalItems: 0, directories: 0, files: 0 };
+
+  if (tool.result) {
+    const parseResult = ToolResultSchema.safeParse(tool.result);
+    if (parseResult.success) {
+      parsedResult = parseResult.data;
+      itemCounts = parseDirectoryListing(parsedResult.output);
+    } else {
+      // Try to parse raw string output
+      if (typeof tool.result === 'string') {
+        itemCounts = parseDirectoryListing(tool.result);
+      }
+    }
+  }
+
+  // Create display text for item counts
+  const displayText = itemCounts.totalItems > 0 
+    ? `${itemCounts.totalItems} items (${itemCounts.directories} dirs, ${itemCounts.files} files)`
+    : "no results";
+
+  return (
+    <View className="pl-3 flex-row items-center py-0.5">
+      <Ionicons name="folder-outline" size={14} color="#a1a1a1" />
+      <Text className="text-xs text-neutral-400 font-bold px-1">LS</Text>
+      <Text
+        className="text-xs flex-1 text-neutral-800"
+        numberOfLines={1}
+      >
+        {dirName || 'directory'}
+      </Text>
+      <Text className="text-xs text-neutral-400 font-bold px-1">
+        {displayText}
+      </Text>
+    </View>
+  );
+}
