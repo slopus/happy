@@ -39,6 +39,7 @@ const ToolResultContentSchema = z.object({
   tool_use_id: z.string(),
   type: z.literal("tool_result"),
   content: z.string(),
+  is_error: z.boolean().optional(),
 });
 
 // Union of all content types
