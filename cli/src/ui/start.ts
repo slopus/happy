@@ -165,13 +165,13 @@ export async function start(options: StartOptions = {}): Promise<void> {
         path: workingDirectory,
         model: options.model,
         permissionMode: options.permissionMode,
-        // mcpServers: {
-        //     'permission': {
-        //         type: 'http' as const,
-        //         url: permissionServer.url,
-        //     }
-        // },
-        // permissionPromptToolName: 'mcp__permission__' + permissionServer.toolName,
+        mcpServers: {
+            'permission': {
+                type: 'http' as const,
+                url: permissionServer.url,
+            }
+        },
+        permissionPromptToolName: 'mcp__permission__' + permissionServer.toolName,
         onThinking: (t) => {
             thinking = t;
             session.keepAlive(t);
