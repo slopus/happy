@@ -14,6 +14,7 @@ declare global {
                 id: string;
                 seq: number;
                 content: SessionMessageContent;
+                localId: string | null;
                 createdAt: number;
                 updatedAt: number;
             }
