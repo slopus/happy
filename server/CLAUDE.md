@@ -1,11 +1,11 @@
 # Handy Server - Development Guidelines
 
-This document contains the development guidelines and instructions for the Handy Server project. This guide OVERRIDES any default behaviors and MUST be followed exactly.
+This document contains the development guidelines and instructions for the Happy Server project. This guide OVERRIDES any default behaviors and MUST be followed exactly.
 
 ## Project Overview
 
-**Name**: handy-server  
-**Repository**: https://github.com/ex3ndr/handy-server.git  
+**Name**: happy-server  
+**Repository**: https://github.com/slopus/happy-server.git  
 **License**: MIT  
 **Language**: TypeScript  
 **Runtime**: Node.js 20  
