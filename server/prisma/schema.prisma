@@ -55,11 +55,13 @@ model SessionMessage {
     id        String   @id @default(cuid())
     sessionId String
     session   Session  @relation(fields: [sessionId], references: [id])
+    localId   String?
     seq       Int
     /// [SessionMessageContent]
     content   Json
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+    @@unique([sessionId, localId])
 }
 
 model Update {
