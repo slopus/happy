@@ -8,6 +8,7 @@ export type ToolCallTree = {
     messageId: string;
     state: 'running' | 'completed' | 'error';
     arguments: any;
+    result?: unknown; // Add result field to store tool result data
     parentId: string | null;
     children: ToolCallTree[];
 }
@@ -34,6 +35,7 @@ function normalizeToolCalls(toolCalls: ToolCallTree[]): ToolCall[] {
         name: t.name,
         state: t.state,
         arguments: t.arguments,
+        result: t.result, // Include result field
         children: normalizeToolCalls(t.children)
     }));
 }
@@ -86,13 +88,14 @@ export function reducer(state: ReducerState, messages: DecryptedMessage[]): Mess
                                 console.warn('❌ Parent tool not found', content.parent_tool_use_id);
                                 continue;
                             }
-                            let newTool = {
+                            let newTool: ToolCallTree = {
                                 id: c.id,
                                 name: c.name,
                                 messageId: parentTool.messageId, // Use parent's message ID
                                 state: 'running' as const,
                                 parentId: content.parent_tool_use_id,
                                 arguments: c.input,
+                                result: null,
                                 children: []
                             }
                             parentTool.children.push(newTool);
@@ -110,6 +113,7 @@ export function reducer(state: ReducerState, messages: DecryptedMessage[]): Mess
                                 state: 'running' as const,
                                 parentId: null,
                                 arguments: c.input,
+                                result: null,
                                 children: []
                             }
                             state.toolCalls.set(c.id, newTool);

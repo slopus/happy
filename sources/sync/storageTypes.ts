@@ -109,6 +109,7 @@ export type ToolCall = {
     name: string;
     state: 'running' | 'completed' | 'error';
     arguments: any;
+    result?: unknown; // Add result field to store toolUseResult data
     children: ToolCall[];
 }
 
