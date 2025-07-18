@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";
-import { FlatList, Text, View, StyleSheet, Button } from "react-native";
+import { Text, View, StyleSheet, Button, FlatList } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
@@ -61,22 +61,24 @@ export default function Session() {
             <KeyboardAvoidingView
                 behavior="translate-with-padding"
                 keyboardVerticalOffset={56}
-                style={{ flex: 1, paddingBottom: safeArea.bottom }}
+                style={{ flexGrow: 1, flexBasis: 0, paddingBottom: safeArea.bottom }}
             >
-                <FlatList
-                    data={messages}
-                    inverted={true}
-                    keyExtractor={(item) => item.id}
-                    renderItem={({ item }) => (
-                        <MessageView 
-                            message={item} 
-                            metadata={session.metadata}
-                            sessionId={sessionId}
-                        />
-                    )}
-                    ListFooterComponent={() => <View style={{ height: 100 }} />}
-                    ListHeaderComponent={() => <View style={{ height: 8 }} />}
-                />
+                <View style={{ flexGrow: 1, flexBasis: 0 }}>
+                    <FlatList
+                        data={messages}
+                        inverted={true}
+                        keyExtractor={(item) => item.id}
+                        renderItem={({ item }) => (
+                            <MessageView
+                                message={item}
+                                metadata={session.metadata}
+                                sessionId={sessionId}
+                            />
+                        )}
+                        ListHeaderComponent={() => <View style={{ height: 8 }} />}
+                        ListFooterComponent={() => <View style={{ height: 8 }} />}
+                    />
+                </View>
                 {permissionRequest && (
                     <View style={{ flexDirection: 'column', justifyContent: 'space-between', height: 128, paddingHorizontal: 24 }}>
                         <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>Permission request</Text>

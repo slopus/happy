@@ -71,12 +71,12 @@ export const storage = create<StorageState>()((set) => {
 
             // Build flat list data for FlashList
             const listData: SessionListItem[] = [];
-            
+
             if (activeSessions.length > 0) {
                 listData.push('online');
                 listData.push(...activeSessions);
             }
-            
+
             if (inactiveSessions.length > 0) {
                 listData.push('offline');
                 listData.push(...inactiveSessions);
@@ -116,33 +116,21 @@ export const storage = create<StorageState>()((set) => {
                 }
             });
 
-            // Filter out messages with duplicate local IDs
-            const newMessages = messages.filter(m => {
-                // If message has a localId and it already exists, skip it
-                if (m.content?.role === 'user' && m.content.localId 
-                    && existingUserMessageLocalIds.has(m.content.localId)
-                ) {
-                    console.log(`Skipping duplicate user message with localId: ${m.content.localId}`);
-                    return false;
-                }
-                if (m.content?.role === 'agent' && m.id 
-                    && existingAgentMessageIds.has(m.id)
-                ) {
-                    console.log(`Skipping duplicate agent message with id: ${m.id}`);
-                    return false;
-                }
-                return true;
-            });
-
             // Reduce messages
+            const newMessages = messages.filter(m => m.content?.role === 'agent' && existingAgentMessageIds.has(m.id));
             const processedMessages = reducer(existingSession.reducerState, newMessages);
-            for (let m of newMessages) {
+
+            // Add user messages to the mix
+            for (let m of messages) {
                 if (m.content?.role === 'user') {
+                    if (m.localId && existingUserMessageLocalIds.has(m.localId)) {
+                        continue;
+                    }
                     processedMessages.push({
                         id: m.id,
                         createdAt: m.createdAt,
                         role: 'user',
-                        localId: m.content.localId ?? null,
+                        localId: m.localId ?? null,
                         content: {
                             type: 'text',
                             text: m.content.content.text
@@ -208,7 +196,7 @@ export const storage = create<StorageState>()((set) => {
         }),
         recalculateOnline: () => set((state) => {
             const threshold = Date.now() - 10 * 60 * 1000;
-            
+
             // Build set of session IDs that should be active
             const shouldBeActiveSet = new Set<string>();
             Object.values(state.sessions).forEach(session => {
@@ -216,7 +204,7 @@ export const storage = create<StorageState>()((set) => {
                     shouldBeActiveSet.add(session.id);
                 }
             });
-            
+
             // Build set of currently active session IDs
             const currentActiveSet = new Set<string>();
             if (state.sessionsData) {
@@ -231,18 +219,18 @@ export const storage = create<StorageState>()((set) => {
                     }
                 }
             }
-            
+
             // Check if sets are equal
-            if (shouldBeActiveSet.size === currentActiveSet.size && 
+            if (shouldBeActiveSet.size === currentActiveSet.size &&
                 [...shouldBeActiveSet].every(id => currentActiveSet.has(id))) {
                 // No changes needed, return same state
                 return state;
             }
-            
+
             // Rebuild active and inactive lists
             const newActiveSessions: Session[] = [];
             const newInactiveSessions: Session[] = [];
-            
+
             Object.values(state.sessions).forEach(session => {
                 if (shouldBeActiveSet.has(session.id)) {
                     newActiveSessions.push(session);
@@ -250,7 +238,7 @@ export const storage = create<StorageState>()((set) => {
                     newInactiveSessions.push(session);
                 }
             });
-            
+
             // Sort both arrays by lastMessage time or createdAt if no messages
             const getSortTime = (session: Session) => {
                 if (session.lastMessage) {
@@ -258,18 +246,18 @@ export const storage = create<StorageState>()((set) => {
                 }
                 return session.createdAt;
             };
-            
+
             newActiveSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
             newInactiveSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
-            
+
             // Build flat list data for FlashList
             const listData: SessionListItem[] = [];
-            
+
             if (newActiveSessions.length > 0) {
                 listData.push('online');
                 listData.push(...newActiveSessions);
             }
-            
+
             if (newInactiveSessions.length > 0) {
                 listData.push('offline');
                 listData.push(...newInactiveSessions);
