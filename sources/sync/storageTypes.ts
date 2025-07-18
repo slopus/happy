@@ -6,7 +6,6 @@ import { z } from "zod";
 
 export const UserContentSchema = z.object({
     role: z.literal('user'),
-    localId: z.string().nullish(),
     content: z.object({
         type: z.literal('text'),
         text: z.string(),
@@ -69,6 +68,7 @@ export interface Session {
 export interface DecryptedMessage {
     id: string,
     seq: number | null,
+    localId: string | null,
     content: MessageContent | null,
     createdAt: number,
 }
@@ -116,6 +116,7 @@ export type ToolCall = {
 export type Message = {
     id: string;
     role: 'agent';
+    localId: string | null;
     createdAt: number;
     content: {
         type: 'text';

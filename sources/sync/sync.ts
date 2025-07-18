@@ -71,14 +71,8 @@ class Sync {
             id: localId,
             createdAt: Date.now(),
             seq: null,
-            content: {
-                role: 'user',
-                localId: localId,
-                content: {
-                    type: 'text',
-                    text
-                }
-            }
+            localId: localId,
+            content
         }]);
 
         // Send message
