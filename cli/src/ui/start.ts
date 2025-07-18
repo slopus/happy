@@ -64,7 +64,12 @@ ${chalk.yellow('💡 Tip for macOS users:')}
     logger.info(`
 ${chalk.bold('Press Enter to continue...')}`);
     await new Promise<void>((resolve) => {
-        process.stdin.once('data', () => resolve());
+        process.stdin.setRawMode(true);
+        process.stdin.once('data', () => {
+            process.stdin.setRawMode(false);
+            process.stdin.pause();
+            resolve();
+        });
     });
 
     // Save onboarding completed
@@ -77,7 +82,7 @@ export async function start(options: StartOptions = {}): Promise<void> {
     const sessionTag = randomUUID();
 
     // Check onboarding
-    showOnboarding({ optional: true })
+    await showOnboarding({ optional: true })
 
     // Get or create secret key
     let secret = await getSecret();
