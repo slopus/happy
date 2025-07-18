@@ -5,7 +5,7 @@ import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToCli
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { configuration } from '@/configuration';
-import { ClaudeSessionMessage, RawJSONLines } from '@/claude/types';
+import { RawJSONLines } from '@/claude/types';
 
 type RpcHandler<T = any, R = any> = (data: T) => R | Promise<R>;
 type RpcHandlerMap = Map<string, RpcHandler>;

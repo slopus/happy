@@ -4,9 +4,18 @@
  * 
  * - First watch for new session files
  * - Next watch for changes in the most recent session file and yield new messages as they appear
+ * 
+ * Session Resume Behavior:
+ * When Claude resumes a session with --resume, it creates a NEW session file and copies history.
+ * - User messages: Keep same UUID and timestamp
+ * - Assistant messages: Get new UUID and timestamp, but message.id remains stable
+ * 
+ * To avoid duplicates, we track:
+ * - Last known user message timestamp (doesn't change on resume)
+ * - Last known assistant message.id (stable across resumes)
  */
 
-import { watch, open } from 'node:fs/promises'
+import { watch, open, stat } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { createInterface } from 'node:readline'
@@ -17,17 +26,21 @@ import { existsSync } from 'node:fs'
 
 
 
+export interface LastKnownMessage {
+  userMessageTimestamp?: string;
+  assistantMessageId?: string;
+}
+
 export async function* watchMostRecentSession(
   workingDirectory: string,
   watchForSessionId: string,
   abortController: AbortController,
-  lastKnownMessageTimestamp: string | undefined = undefined
+  lastKnownMessage: LastKnownMessage = {}
 ): AsyncGenerator<RawJSONLines> {
   const projectName = resolve(workingDirectory).replace(/\//g, '-')
   const projectDir = join(homedir(), '.claude', 'projects', projectName)
   const expectedSessionFile = join(projectDir, `${watchForSessionId}.jsonl`)
-  logger.debug(`Starting session watcher for project: ${projectDir}`)
-  logger.debug(`Watching directory: ${projectDir}`)
+  logger.debug(`[WATCHER] Starting session watcher for project: ${projectDir} Watching directory: ${projectDir}, watchForSessionId: ${watchForSessionId}, lastKnownMessage: ${JSON.stringify(lastKnownMessage)}`)
   
   if (!existsSync(projectDir)) {
     logger.debug('Project directory does not exist, creating it')
@@ -54,13 +67,14 @@ export async function* watchMostRecentSession(
   const knownFiles = new Set(initialFiles.map(f => f.name))
   logger.debug(`Found ${knownFiles.size} existing session files`)
 
-  // Check if the session file already exists (unlikely to happen)
+  // Check if the session file already exists
   if (existsSync(expectedSessionFile)) {
     logger.debug(`Session file already exists, starting watch: ${expectedSessionFile}`)
-    yield* watchSessionFile(expectedSessionFile, abortController, lastKnownMessageTimestamp)
+    yield* watchSessionFile(expectedSessionFile, abortController, lastKnownMessage)
     return
   }
   
+  // Wait for our session file to be created
   await (async (): Promise<string | undefined> => {
     logger.debug('Entering directory watcher loop')
     try {
@@ -88,7 +102,7 @@ export async function* watchMostRecentSession(
     return
   }
 
-  yield* watchSessionFile(expectedSessionFile, abortController, lastKnownMessageTimestamp)
+  yield* watchSessionFile(expectedSessionFile, abortController, lastKnownMessage)
 }
 
 
@@ -96,14 +110,70 @@ export async function* watchMostRecentSession(
 export async function* watchSessionFile(
   sessionFile: string,
   abortController: AbortController,
-  lastKnownMessageTimestamp: string | undefined = undefined
+  lastKnownMessage: LastKnownMessage = {}
 ): AsyncGenerator<RawJSONLines> {
   logger.debug(`Watching claude session file: ${sessionFile}`)
   let position = 0
 
-  // Watch for changes
-  const fileWatcher = watch(sessionFile, { signal: abortController.signal })
+  // Define line processing function
+  const processLine = (line: string, lineBytes: number): { message?: RawJSONLines, bytesRead: number } => {
+    try {
+      const messageParsed = RawJSONLinesSchema.safeParse(JSON.parse(line))
+
+      if (!messageParsed.success) {
+        logger.debug('[ERROR] Skipping invalid JSON line', messageParsed.error.message)
+        return { bytesRead: lineBytes }
+      }
+
+      const message = messageParsed.data
+
+      // Skip messages we've already seen based on type
+      if (message.type === 'user' && lastKnownMessage.userMessageTimestamp) {
+        // For user messages, skip if timestamp is same or older
+        if (new Date(message.timestamp).getTime() <= new Date(lastKnownMessage.userMessageTimestamp).getTime()) {
+          logger.debug(`[WATCHER] Skipping user message with old timestamp: ${message.timestamp}`)
+          return { bytesRead: lineBytes }
+        }
+      } else if (message.type === 'assistant' && lastKnownMessage.assistantMessageId) {
+        // For assistant messages, skip if we've seen this message.id before
+        if (message.message.id === lastKnownMessage.assistantMessageId) {
+          logger.debug(`[WATCHER] Skipping assistant message with known id: ${message.message.id}`)
+          return { bytesRead: lineBytes }
+        }
+      }
+
+      logger.debug(`[WATCHER] New message from watched session file: ${message.type}`)
+      logger.debugLargeJson('[WATCHER] Message:', message)
+      return { message, bytesRead: lineBytes }
+    } catch (err: any) {
+      logger.debug('[ERROR] Skipping invalid JSON line', err)
+      return { bytesRead: lineBytes }
+    }
+  }
+
+  // First, read all existing lines
+  logger.debug('Reading existing lines from session file')
+  const initialHandle = await open(sessionFile, 'r')
+  const initialStream = initialHandle.createReadStream()
+  const initialRl = createInterface({ input: initialStream })
   
+  // Watch for changes (before we start reading existing lines to avoid a race)
+  const fileWatcher = watch(sessionFile, { signal: abortController.signal })
+
+  // Read all existing lines
+  for await (const line of initialRl) {
+    const lineBytes = Buffer.byteLength(line, 'utf8') + 1 // +1 for newline
+    const result = processLine(line, lineBytes)
+    position += result.bytesRead
+    if (result.message) {
+      yield result.message
+    }
+  }
+  
+  initialRl.close()
+  await initialHandle.close()
+  logger.debug(`Finished reading existing content, position: ${position}`)
+
   try {
     for await (const event of fileWatcher) {
       logger.debug(`File watcher event: ${event.eventType}`)
@@ -114,29 +184,13 @@ export async function* watchSessionFile(
         const stream = handle.createReadStream({ start: position })
         const rl = createInterface({ input: stream })
         
+        let bytesReadInThisChunk = 0
         for await (const line of rl) {
-          try {
-            const messageParsed = RawJSONLinesSchema.safeParse(JSON.parse(line))
-
-            if (!messageParsed.success) {
-              logger.debug('[ERROR] Skipping invalid JSON line')
-              continue
-            }
-
-            const message = messageParsed.data
-
-            // Skip all messages until we see a message with a timestamp greater than the last known message
-            if (lastKnownMessageTimestamp && message.timestamp <= lastKnownMessageTimestamp) {
-              logger.debug(`[WATCHER] Skipping message before last known message with type: ${message.type}`)
-              continue
-            }
-
-            logger.debug(`[WATCHER] New message from watched session file: ${message.type}`)
-            logger.debugLargeJson('[WATCHER] Message:', message)
-            yield message
-          } catch (err: any) {
-            logger.debug('[ERROR] Skipping invalid JSON line', err)
-            // Ignore invalid JSON
+          const lineBytes = Buffer.byteLength(line, 'utf8') + 1 // +1 for newline
+          const result = processLine(line, lineBytes)
+          bytesReadInThisChunk += result.bytesRead
+          if (result.message) {
+            yield result.message
           }
         }
         
@@ -144,13 +198,26 @@ export async function* watchSessionFile(
         rl.close()
         await handle.close()
         
-        // Open new handle just to get file size
-        const newHandle = await open(sessionFile, 'r')
-        const stats = await newHandle.stat()
+        // Update position based on bytes read
         const oldPosition = position
-        position = stats.size
-        logger.debug(`Updated file position: ${oldPosition} -> ${position}`)
-        await newHandle.close()
+        position += bytesReadInThisChunk
+        logger.debug(`Updated file position: ${oldPosition} -> ${position} (read ${bytesReadInThisChunk} bytes)`)
+
+        // Debug sanity check - verify our position tracking is correct
+        // Racy, but its fine
+        if (process.env.DEBUG) {
+          try {
+            const stats = await stat(sessionFile)
+            const actualFileSize = stats.size
+            if (actualFileSize !== position) {
+              logger.debug(`[DEBUG][WARNING] Position mismatch! Expected: ${position}, Actual file size: ${actualFileSize}`)
+            } else {
+              logger.debug(`[DEBUG] Position tracking correct: ${position} bytes`)
+            }
+          } catch (statErr) {
+            logger.debug(`[DEBUG] Could not stat file for sanity check:`, statErr)
+          }
+        }
       }
     }
   } catch (err: any) {

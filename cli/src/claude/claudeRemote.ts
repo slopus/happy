@@ -1,6 +1,7 @@
 import { query, type Options, type SDKUserMessage, type SDKMessage, AbortError } from '@anthropic-ai/claude-code'
 import { formatClaudeMessage, printDivider } from '@/ui/messageFormatter'
 import { claudeCheckSession } from './claudeCheckSession';
+import { logger } from '@/ui/logger';
 
 export async function claudeRemote(opts: {
     abort: AbortSignal,
@@ -49,6 +50,7 @@ export async function claudeRemote(opts: {
             }
         }
     });
+    logger.debug(`[claudeRemote] Starting query with messages`);
     response = query({
         prompt: opts.messages,
         abortController: abortController,
@@ -57,7 +59,9 @@ export async function claudeRemote(opts: {
 
     printDivider();
     try {
+        logger.debug(`[claudeRemote] Starting to iterate over response`);
         for await (const message of response) {
+            logger.debug(`[claudeRemote] Received message from SDK: ${message.type}`);
             // Always format and display the message
             formatClaudeMessage(message);
 
@@ -66,12 +70,15 @@ export async function claudeRemote(opts: {
                 opts.onSessionFound(message.session_id);
             }
         }
+        logger.debug(`[claudeRemote] Finished iterating over response`);
     } catch (e) {
         if (e instanceof AbortError) {
+            logger.debug(`[claudeRemote] Aborted`);
             // Ignore
         } else {
             throw e;
         }
     }
     printDivider();
+    logger.debug(`[claudeRemote] Function completed`);
 }
