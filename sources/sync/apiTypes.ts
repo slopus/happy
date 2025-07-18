@@ -7,6 +7,7 @@ import { z } from 'zod';
 export const ApiMessageSchema = z.object({
     id: z.string(),
     seq: z.number(),
+    localId: z.string().nullish(),
     content: z.object({
         t: z.literal('encrypted'),
         c: z.string(), // Base64 encoded encrypted content
