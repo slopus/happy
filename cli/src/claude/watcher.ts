@@ -6,27 +6,37 @@
  * - Next watch for changes in the most recent session file and yield new messages as they appear
  */
 
-import { watch, readdir, stat, open, mkdir } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { watch, open } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import { homedir } from 'node:os'
 import { createInterface } from 'node:readline'
 import { logger } from '@/ui/logger'
-import { ClaudeMessage, parseClaudePersistedMessage } from './types'
+import { RawJSONLines, RawJSONLinesSchema } from './types'
+import { mkdir, readdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+
+
 
 export async function* watchMostRecentSession(
   workingDirectory: string,
-  abortController: AbortController
-): AsyncGenerator<ClaudeMessage> {
+  watchForSessionId: string,
+  abortController: AbortController,
+  lastKnownMessageTimestamp: string | undefined = undefined
+): AsyncGenerator<RawJSONLines> {
   const projectName = resolve(workingDirectory).replace(/\//g, '-')
   const projectDir = join(homedir(), '.claude', 'projects', projectName)
-  logger.debug(`Starting session watcher for project: ${projectName}`)
+  const expectedSessionFile = join(projectDir, `${watchForSessionId}.jsonl`)
+  logger.debug(`Starting session watcher for project: ${projectDir}`)
   logger.debug(`Watching directory: ${projectDir}`)
   
   if (!existsSync(projectDir)) {
     logger.debug('Project directory does not exist, creating it')
     await mkdir(projectDir, { recursive: true })
   }
+
+  // Watch for new session files
+  logger.debug('Starting directory watcher for new session files')
+  const dirWatcher = watch(projectDir, { signal: abortController.signal })
 
   // Get existing session files
   const getSessionFiles = async () => {
@@ -44,27 +54,23 @@ export async function* watchMostRecentSession(
   const knownFiles = new Set(initialFiles.map(f => f.name))
   logger.debug(`Found ${knownFiles.size} existing session files`)
 
-  // Watch for new session files
-  logger.debug('Starting directory watcher for new session files')
-  const dirWatcher = watch(projectDir, { signal: abortController.signal })
+  // Check if the session file already exists (unlikely to happen)
+  if (existsSync(expectedSessionFile)) {
+    logger.debug(`Session file already exists, starting watch: ${expectedSessionFile}`)
+    yield* watchSessionFile(expectedSessionFile, abortController, lastKnownMessageTimestamp)
+    return
+  }
   
-  const newSessionFilePath = await (async (): Promise<string | undefined> => {
+  await (async (): Promise<string | undefined> => {
     logger.debug('Entering directory watcher loop')
     try {
       for await (const event of dirWatcher) {
         logger.debug(`Directory watcher event: ${event.eventType} - ${event.filename}`)
-        if (event.filename && event.filename.endsWith('.jsonl')) {
-          const files = await getSessionFiles()
-          
-          for (const file of files) {
-            if (!knownFiles.has(file.name)) {
-              logger.debug(`New session file detected: ${file.name}`)
-              knownFiles.add(file.name)
-              logger.debug(`Returning file path: ${file.path}`)
-              
-              return file.path
-            }
-          }
+        if (event.eventType === 'rename' 
+          && event.filename === `${watchForSessionId}.jsonl`
+        ) {
+          logger.debug(`Matching session file created by claude, will start watching`)
+          return
         }
       }
     } catch (err: any) {
@@ -77,32 +83,26 @@ export async function* watchMostRecentSession(
   })()
 
   // We aborted early
-  if (!newSessionFilePath) {
+  if (abortController.signal.aborted) {
     logger.debug('No new session file path returned, exiting watcher')
     return
   }
 
-  logger.debug(`Got session file path: ${newSessionFilePath}, now starting file watcher`)
-
-  yield* watchSessionFile(newSessionFilePath, abortController)
+  yield* watchSessionFile(expectedSessionFile, abortController, lastKnownMessageTimestamp)
 }
 
-async function* watchSessionFile(
-  filePath: string,
-  abortController: AbortController
-): AsyncGenerator<ClaudeMessage> {
-  logger.debug(`Watching session file: ${filePath}`)
+
+/* Emits raw, unvalidated json objects parsed from the session file */
+export async function* watchSessionFile(
+  sessionFile: string,
+  abortController: AbortController,
+  lastKnownMessageTimestamp: string | undefined = undefined
+): AsyncGenerator<RawJSONLines> {
+  logger.debug(`Watching claude session file: ${sessionFile}`)
   let position = 0
-  
-  // Read existing content to get to end
-  const handle = await open(filePath, 'r')
-  const stats = await handle.stat()
-  position = stats.size
-  await handle.close()
-  logger.debug(`Starting file watch from position: ${position}`)
 
   // Watch for changes
-  const fileWatcher = watch(filePath, { signal: abortController.signal })
+  const fileWatcher = watch(sessionFile, { signal: abortController.signal })
   
   try {
     for await (const event of fileWatcher) {
@@ -110,22 +110,32 @@ async function* watchSessionFile(
       if (event.eventType === 'change') {
         // Read new lines from last position
         logger.debug(`Reading new content from position: ${position}`)
-        const handle = await open(filePath, 'r')
+        const handle = await open(sessionFile, 'r')
         const stream = handle.createReadStream({ start: position })
         const rl = createInterface({ input: stream })
         
         for await (const line of rl) {
           try {
-            const message = parseClaudePersistedMessage(JSON.parse(line))
-            if (message) {
-              logger.debug(`[WATCHER] New message from watched session file: ${message.type}`)
-              logger.debugLargeJson('[WATCHER] Message:', message)
-              yield message
-            } else {
+            const messageParsed = RawJSONLinesSchema.safeParse(JSON.parse(line))
+
+            if (!messageParsed.success) {
               logger.debug('[ERROR] Skipping invalid JSON line')
+              continue
             }
-          } catch {
-            logger.debug('Skipping invalid JSON line')
+
+            const message = messageParsed.data
+
+            // Skip all messages until we see a message with a timestamp greater than the last known message
+            if (lastKnownMessageTimestamp && message.timestamp <= lastKnownMessageTimestamp) {
+              logger.debug(`[WATCHER] Skipping message before last known message with type: ${message.type}`)
+              continue
+            }
+
+            logger.debug(`[WATCHER] New message from watched session file: ${message.type}`)
+            logger.debugLargeJson('[WATCHER] Message:', message)
+            yield message
+          } catch (err: any) {
+            logger.debug('[ERROR] Skipping invalid JSON line', err)
             // Ignore invalid JSON
           }
         }
@@ -135,7 +145,7 @@ async function* watchSessionFile(
         await handle.close()
         
         // Open new handle just to get file size
-        const newHandle = await open(filePath, 'r')
+        const newHandle = await open(sessionFile, 'r')
         const stats = await newHandle.stat()
         const oldPosition = position
         position = stats.size
@@ -145,8 +155,10 @@ async function* watchSessionFile(
     }
   } catch (err: any) {
     if (err.name !== 'AbortError') {
-      logger.debug('[ERROR] File watcher error:', err)
-      throw err
+      logger.debug('[ERROR] File watcher error in session file:', sessionFile, err)
+      if (process.env.DEBUG) {
+        throw err
+      }
     }
     logger.debug('File watcher aborted')
   }

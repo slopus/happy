@@ -19,6 +19,11 @@ Happy CLI (`handy-cli`) is a command-line tool that wraps Claude Code to enable 
 - **File extensions**: Uses `.ts` for TypeScript files
 - **Export style**: Named exports preferred, with occasional default exports for main functions
 
+### DO NOT
+
+- Create stupid small functions / getters / setters
+- Excessive use of `if` statements - especially if you can avoid control flow changes with a better design
+
 ### Error Handling
 - Graceful error handling with proper error messages
 - Use of `try-catch` blocks with specific error logging
@@ -34,7 +39,6 @@ Happy CLI (`handy-cli`) is a command-line tool that wraps Claude Code to enable 
 ### Logging
 - All debugging through file logs to avoid disturbing Claude sessions
 - Console output only for user-facing messages
-- Structured logging with timestamps
 - Special handling for large JSON objects with truncation
 
 ## Architecture & Key Components

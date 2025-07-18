@@ -6,14 +6,23 @@
  * Simple argument parsing without any CLI framework dependencies
  */
 
-import { start } from '@/ui/start'
+import { showOnboarding, start } from '@/ui/start'
 import chalk from 'chalk'
-import { existsSync, unlinkSync, rmSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { existsSync, rmSync } from 'node:fs'
 import { createInterface } from 'node:readline'
+import { initializeConfiguration, configuration } from '@/configuration'
+import { initLoggerWithGlobalConfiguration, logger } from './ui/logger'
 
 const args = process.argv.slice(2)
+
+// Parse global options first
+let installationLocation: 'global' | 'local'
+  = (args.includes('--local') || process.env.HANDY_LOCAL) ? 'local' : 'global'
+
+initializeConfiguration(installationLocation)
+initLoggerWithGlobalConfiguration()
+
+logger.debug('Starting happy CLI with args: ', process.argv)
 
 // Check if first argument is a subcommand
 const subcommand = args[0]
@@ -26,6 +35,9 @@ if (subcommand === 'clean') {
     }
     process.exit(1)
   })
+} else if (subcommand === 'login' || subcommand === 'auth') {
+  console.log('login')
+  showOnboarding({ optional: false })
 } else {
   // Parse command line arguments for main command
   const options: Record<string, string> = {}
@@ -43,6 +55,9 @@ if (subcommand === 'clean') {
       options.model = args[++i]
     } else if (arg === '-p' || arg === '--permission-mode') {
       options.permissionMode = args[++i]
+    } else if (arg === '--local') {
+      // Already processed, skip the next arg
+      i++
     } else {
       console.error(chalk.red(`Unknown argument: ${arg}`))
       process.exit(1)
@@ -56,13 +71,21 @@ ${chalk.bold('happy')} - Claude Code session sharing
 
 ${chalk.bold('Usage:')}
   happy [options]
-  happy clean             Remove happy data directory (requires phone reconnection)
+  happy clean      Remove happy data directory
+  happy login      Show your secret QR code
+  happy auth       Same as login
 
 ${chalk.bold('Options:')}
   -h, --help              Show this help message
   -v, --version           Show version
   -m, --model <model>     Claude model to use (default: sonnet)
   -p, --permission-mode   Permission mode: auto, default, or plan
+
+  [Advanced]
+  --local < global | local >
+      Will use .happy folder in the current directory for storing your private key and debug logs. 
+      You will require re-login each time you run this in a new directory.
+      Use with login to show either global or local QR code.
 
 ${chalk.bold('Examples:')}
   happy                   Start a session with default settings
@@ -75,7 +98,7 @@ ${chalk.bold('Examples:')}
 
   // Show version
   if (showVersion) {
-    console.log('0.1.0')
+    console.log('0.1.3')
     process.exit(0)
   }
 
@@ -93,15 +116,15 @@ ${chalk.bold('Examples:')}
  * Clean subcommand - remove the happy data directory after confirmation
  */
 async function cleanKey(): Promise<void> {
-  const handyDir = join(homedir(), '.handy')
-
-  // Check if handy directory exists
-  if (!existsSync(handyDir)) {
-    console.log(chalk.yellow('No happy data directory found at:'), handyDir)
+  const happyDir = configuration.happyDir
+  
+  // Check if happy directory exists
+  if (!existsSync(happyDir)) {
+    console.log(chalk.yellow('No happy data directory found at:'), happyDir)
     return
   }
 
-  console.log(chalk.blue('Found happy data directory at:'), handyDir)
+  console.log(chalk.blue('Found happy data directory at:'), happyDir)
   console.log(chalk.yellow('⚠️  This will remove all authentication data and require reconnecting your phone.'))
 
   // Ask for confirmation
@@ -118,7 +141,7 @@ async function cleanKey(): Promise<void> {
 
   if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
     try {
-      rmSync(handyDir, { recursive: true, force: true })
+      rmSync(happyDir, { recursive: true, force: true })
       console.log(chalk.green('✓ Happy data directory removed successfully'))
       console.log(chalk.blue('ℹ️  You will need to reconnect your phone on the next session'))
     } catch (error) {

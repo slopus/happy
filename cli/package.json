@@ -32,8 +32,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "pkgroll",
-    "prepublishOnly": "yarn build && yarn test",
-    "dev": "yarn build && DEBUG=1 ./bin/happy"
+    "prepublishOnly": "tsc --noEmit && yarn build && yarn test",
+    "dev": "yarn build && ./bin/happy",
+    "dev:local": "yarn build && node --env-file=.env.local ./bin/happy --local"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.51",

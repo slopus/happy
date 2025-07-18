@@ -6,17 +6,62 @@
  */
 
 import chalk from 'chalk'
-import { writeFileSync, appendFileSync, existsSync } from 'fs'
-import { join } from 'path'
-import { getSessionLogPath } from '../persistence'
+import { appendFileSync } from 'fs'
+import { configuration } from '@/configuration'
+import { mkdir } from 'node:fs/promises'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
+
+async function getSessionLogPath(): Promise<string> {
+  if (!existsSync(configuration.logsDir)) {
+    await mkdir(configuration.logsDir, { recursive: true })
+  }
+  
+  // Create timestamp in local time, filename-safe format
+  const now = new Date()
+  // Weird format to get a format like 2025-07-16-12-34-56
+  const timestamp = now.toLocaleString('sv-SE', { 
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    year: 'numeric',
+    month: '2-digit', 
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  }).replace(/[: ]/g, '-').replace(/,/g, '')
+  
+  return join(configuration.logsDir, `${timestamp}.log`)
+}
 
 class Logger {
   constructor(
     public readonly logFilePathPromise: Promise<string> = getSessionLogPath()
   ) {}
 
+  // Use local timezone for simplicity of locating the logs,
+  // in practice you will not need absolute timestamps
+  localTimezoneTimestamp(): string {
+    return new Date().toLocaleTimeString('en-US', { 
+      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      hour12: false,
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      fractionalSecondDigits: 3
+    })
+  }
+
   debug(message: string, ...args: unknown[]): void {
-    this.logToFile(`[${new Date().toISOString()}]`, message, ...args)
+    this.logToFile(`[${this.localTimezoneTimestamp()}]`, message, ...args)
+
+    // NOTE: @kirill does not think its a good ideas,
+    // as it will break us using claude in interactive mode.
+    // Instead simply open the debug file in a new editor window.
+    //
+    // Also log to console in development mode
+    // if (process.env.DEBUG) {
+    //   this.logToConsole('debug', '', message, ...args)
+    // }
   }
 
   debugLargeJson(
@@ -58,7 +103,7 @@ class Logger {
 
     const truncatedObject = truncateStrings(object)
     const json = JSON.stringify(truncatedObject, null, 2)
-    this.logToFile(`[${new Date().toISOString()}]`, message, '\n', json)
+    this.logToFile(`[${this.localTimezoneTimestamp()}]`, message, '\n', json)
   }
   
   info(message: string, ...args: unknown[]): void {
@@ -103,7 +148,15 @@ class Logger {
     // Handle async file path
     this.logFilePathPromise
       .then(logFilePath => {
-        appendFileSync(logFilePath, logLine)
+        try {
+          appendFileSync(logFilePath, logLine)
+        } catch (appendError) {
+          if (process.env.DEBUG) {
+            console.error('Failed to append to log file:', appendError)
+            throw appendError
+          }
+          // In production, fail silently to avoid disturbing Claude session
+        }
       })
       .catch(error => {
         // NOTE: We should not fall back in production because we might disturb the claude session
@@ -117,4 +170,9 @@ class Logger {
   }
 }
 
-export const logger = new Logger()
+// Will be initialized immideately on startup
+export let logger: Logger
+
+export function initLoggerWithGlobalConfiguration() {
+  logger = new Logger()
+}
