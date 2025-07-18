@@ -82,7 +82,7 @@ class Sync {
         }]);
 
         // Send message
-        apiSocket.send('message', { sid: sessionId, message: encryptedContent });
+        apiSocket.send('message', { sid: sessionId, message: encryptedContent, localId });
     }
 
     //
@@ -159,12 +159,12 @@ class Sync {
             // Request permission
             const { status: existingStatus } = await Notifications.getPermissionsAsync();
             let finalStatus = existingStatus;
-            
+
             if (existingStatus !== 'granted') {
                 const { status } = await Notifications.requestPermissionsAsync();
                 finalStatus = status;
             }
-            
+
             if (finalStatus !== 'granted') {
                 console.log('Failed to get push token for push notification!');
                 return;
@@ -174,7 +174,7 @@ class Sync {
             const tokenData = await Notifications.getExpoPushTokenAsync({
                 projectId: process.env.EXPO_PUBLIC_PROJECT_ID
             });
-            
+
             console.log('Push token:', tokenData.data);
 
             // Register with server
