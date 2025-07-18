@@ -32,9 +32,11 @@ yarn-error.*
 
 # local env files
 .env*.local
+.env
 
 # typescript
 *.tsbuildinfo
 
 .claude/settings.local.json
 .plan
+

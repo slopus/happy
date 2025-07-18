@@ -16,6 +16,7 @@ export const UserContentSchema = z.object({
 // Assistant content schema
 export const AssistantContentSchema = z.object({
     role: z.literal('agent'),
+    id: z.string().nullish(),
     content: z.any()
 });
 
