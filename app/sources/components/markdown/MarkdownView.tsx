@@ -92,7 +92,7 @@ const style = StyleSheet.create({
 
     text: {
         fontSize: 16,
-        lineHeight: 28,
+        lineHeight: 24, // Reduced from 28 to 24
         marginTop: 8,
         marginBottom: 8,
         // color: 'rgb(236, 236, 236)',
@@ -108,7 +108,7 @@ const style = StyleSheet.create({
     },
     code: {
         fontSize: 14,
-        lineHeight: 24,
+        lineHeight: 21,  // Reduced from 24 to 21
         fontFamily: 'monospace',
         // backgroundColor: 'rgb(66, 66, 66)',
         backgroundColor: 'rgb(236, 236, 236)',
@@ -130,21 +130,21 @@ const style = StyleSheet.create({
     },
     header1: {
         fontSize: 24,
-        lineHeight: 36,
+        lineHeight: 32,  // Reduced from 36 to 32
         fontWeight: '700',
         marginTop: 16,
         marginBottom: 8
     },
     header2: {
         fontSize: 24,
-        lineHeight: 36,
+        lineHeight: 32,  // Reduced from 36 to 32
         fontWeight: '600',
         marginTop: 16,
         marginBottom: 8
     },
     header3: {
         fontSize: 20,
-        lineHeight: 32,
+        lineHeight: 28,  // Reduced from 32 to 28
         fontWeight: '600',
         marginTop: 16,
         marginBottom: 8,
@@ -158,12 +158,12 @@ const style = StyleSheet.create({
     },
     header5: {
         fontSize: 16,
-        lineHeight: 28,
+        lineHeight: 24,  // Reduced from 28 to 24
         fontWeight: '600'
     },
     header6: {
         fontSize: 16,
-        lineHeight: 28,
+        lineHeight: 24, // Reduced from 28 to 24
         fontWeight: '600'
     },
 
