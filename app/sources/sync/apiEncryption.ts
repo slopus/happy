@@ -4,6 +4,37 @@ import { decodeBase64, encodeBase64 } from '@/auth/base64';
 import { AgentState, AgentStateSchema, DecryptedMessage, MessageContent, MessageContentSchema, Metadata, MetadataSchema } from './storageTypes';
 import { ApiMessage } from './apiTypes';
 
+export function generateEphemeralKeyPair() {
+    return tweetnacl.box.keyPair();
+}
+
+export function encryptWithEphemeralKey(data: Uint8Array, recipientPublicKey: Uint8Array): { encrypted: Uint8Array; ephemeralPublicKey: Uint8Array } {
+    const ephemeralKeyPair = generateEphemeralKeyPair();
+    const nonce = getRandomBytes(tweetnacl.box.nonceLength);
+    const encrypted = tweetnacl.box(data, nonce, recipientPublicKey, ephemeralKeyPair.secretKey);
+
+    const result = new Uint8Array(nonce.length + encrypted.length);
+    result.set(nonce);
+    result.set(encrypted, nonce.length);
+
+    return {
+        encrypted: result,
+        ephemeralPublicKey: ephemeralKeyPair.publicKey
+    };
+}
+
+export function decryptWithEphemeralKey(encryptedData: Uint8Array, ephemeralPublicKey: Uint8Array, recipientSecretKey: Uint8Array): Uint8Array | null {
+    const nonce = encryptedData.slice(0, tweetnacl.box.nonceLength);
+    const encrypted = encryptedData.slice(tweetnacl.box.nonceLength);
+
+    const decrypted = tweetnacl.box.open(encrypted, nonce, ephemeralPublicKey, recipientSecretKey);
+    if (!decrypted) {
+        return null;
+    }
+
+    return decrypted;
+}
+
 export function encrypt(data: any, secret: Uint8Array): Uint8Array {
     const nonce = getRandomBytes(tweetnacl.secretbox.nonceLength);
     const encrypted = tweetnacl.secretbox(new TextEncoder().encode(JSON.stringify(data)), nonce, secret);
