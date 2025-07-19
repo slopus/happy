@@ -20,6 +20,48 @@ const ToolResultSchema = z.object({
 type ParsedToolResult = z.infer<typeof ToolResultSchema>;
 
 export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
+  // Handle running state
+  if (tool.state === 'running') {
+    const filePath = tool.arguments?.file_path;
+    const fileName = typeof filePath === 'string' ? filePath.split('/').pop() || filePath : 'file';
+    
+    return (
+      <View className="pl-3 flex-row items-center py-0.5">
+        <Ionicons name="eye" size={14} color="#a1a1a1" />
+        <Text className="text-xs text-neutral-400 font-bold px-1 shimmer">Reading</Text>
+        <Text
+          className="text-xs flex-1 text-neutral-800"
+          numberOfLines={1}
+        >
+          {fileName}
+        </Text>
+      </View>
+    );
+  }
+
+  // Handle error state
+  if (tool.state === 'error') {
+    const filePath = tool.arguments?.file_path;
+    const fileName = typeof filePath === 'string' ? filePath.split('/').pop() || filePath : 'file';
+    
+    return (
+      <View className="pl-3 flex-row items-center py-0.5">
+        <Ionicons name="warning" size={14} color="#ef4444" />
+        <Text className="text-xs text-red-500 font-bold px-1">Read</Text>
+        <Text
+          className="text-xs flex-1 text-neutral-800"
+          numberOfLines={1}
+        >
+          {fileName}
+        </Text>
+        <Text className="text-xs text-red-500">
+          Failed to read file
+        </Text>
+      </View>
+    );
+  }
+
+  // Handle completed state
   // Defensive: check for file_path
   const filePath = tool.arguments?.file_path;
   const fileName = typeof filePath === 'string' ? filePath.split('/').pop() || filePath : undefined;
@@ -43,7 +85,7 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
     : "" /*parseError || JSON.stringify(tool.result)*/;
 
   return (
-    <View className="pl-3 flex-row items-center py-0.5">
+    <View className="pl-3 flex-row items-center py-1">
       <Ionicons name="eye" size={14} color="#a1a1a1" />
       <Text className="text-xs text-neutral-400 font-bold px-1">Read</Text>
       <Text
