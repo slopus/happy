@@ -10,7 +10,7 @@ import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform } from 'react-native';
 
-export const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
+const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
 class Sync {
 

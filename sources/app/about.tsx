@@ -4,11 +4,11 @@ import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
 import { RoundButton } from '@/components/RoundButton';
 import { useAuth } from '@/auth/AuthContext';
+import { ConnectButton } from '@/components/ConnectButton';
 
 export default function AboutModal() {
     const router = useRouter();
     const appVersion = Constants.expoConfig?.version || '1.0.0';
-    const jsVersion = Platform.Version;
     const auth = useAuth();
 
     return (
@@ -38,56 +38,17 @@ export default function AboutModal() {
                     <Image source={require('../assets/images/logo.png')} style={{ width: 180, height: 180, borderRadius: 90, borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.0)' }} />
                     <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>Happy</Text>
                     <Text style={{ fontSize: 16, color: '#666' }}>Version {appVersion}</Text>
-                </View>
-
-                <View style={{ marginBottom: 24 }}>
-                    <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>About</Text>
-                    <Text style={{ fontSize: 16, lineHeight: 24, color: '#333' }}>
-                        Third-party mobile client for Claude Code. Access your coding assistant on the go with end-to-end encryption and real-time sync.
-                    </Text>
-                </View>
-
-                {auth.isAuthenticated && (
-                    <View style={{ marginBottom: 24, alignSelf: 'flex-start' }}>
-                        <RoundButton title="Logout" onPress={() => auth.logout()} />
+                    <View style={{ alignItems: 'center', paddingBottom: 32, marginTop: 16 }}>
+                        <Text style={{ fontSize: 14, color: '#999' }}>Not affiliated with Anthropic</Text>
                     </View>
-                )}
-
-                <View style={{ marginBottom: 24 }}>
-                    <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>Features</Text>
-                    <Text style={{ fontSize: 16, lineHeight: 24, color: '#333', marginBottom: 4 }}>
-                        • Connect to Claude Code sessions
-                    </Text>
-                    <Text style={{ fontSize: 16, lineHeight: 24, color: '#333', marginBottom: 4 }}>
-                        • End-to-end encrypted conversations
-                    </Text>
-                    <Text style={{ fontSize: 16, lineHeight: 24, color: '#333', marginBottom: 4 }}>
-                        • Real-time sync with desktop
-                    </Text>
-                    <Text style={{ fontSize: 16, lineHeight: 24, color: '#333', marginBottom: 4 }}>
-                        • Code syntax highlighting
-                    </Text>
-                    <Text style={{ fontSize: 16, lineHeight: 24, color: '#333' }}>
-                        • Image and file attachments
-                    </Text>
                 </View>
 
-                <View style={{ marginBottom: 24 }}>
-                    <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>Security</Text>
-                    <Text style={{ fontSize: 16, lineHeight: 24, color: '#333' }}>
-                        Your conversations are encrypted using your secret key. Only you can decrypt your messages. The server acts as an encrypted relay.
-                    </Text>
+                <View style={{ marginBottom: 12, alignSelf: 'center' }}>
+                    <ConnectButton />
                 </View>
 
-                <View style={{ marginBottom: 32 }}>
-                    <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>Claude Code</Text>
-                    <Text style={{ fontSize: 16, lineHeight: 24, color: '#333' }}>
-                        Claude Code is Anthropic's coding assistant. Happy Coder is an independent mobile client that allows you to continue conversations started on desktop.
-                    </Text>
-                </View>
-
-                <View style={{ alignItems: 'center', paddingBottom: 32 }}>
-                    <Text style={{ fontSize: 14, color: '#999' }}>Not affiliated with Anthropic</Text>
+                <View style={{ marginBottom: 24, alignSelf: 'center' }}>
+                    <RoundButton title="Logout" onPress={() => auth.logout()} />
                 </View>
             </ScrollView>
         </View>

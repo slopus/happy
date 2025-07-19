@@ -1,12 +1,12 @@
 {
   "expo": {
-    "name": "Slopus",
+    "name": "Happy Coder",
     "slug": "happy",
     "version": "1.0.2",
-    "runtimeVersion": "5",
+    "runtimeVersion": "6",
     "orientation": "portrait",
     "icon": "./sources/assets/images/icon.png",
-    "scheme": "slopus",
+    "scheme": "happy",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {

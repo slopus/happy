@@ -16,121 +16,120 @@ import { KeyboardProvider } from "react-native-keyboard-controller";
 import '../global.css';
 
 export {
-  // Catch any errors thrown by the Layout component.
-  ErrorBoundary,
+    // Catch any errors thrown by the Layout component.
+    ErrorBoundary,
 } from 'expo-router';
 
 // Configure splash screen
 SplashScreen.setOptions({
-  fade: true,
-  duration: 300,
+    fade: true,
+    duration: 300,
 })
 SplashScreen.preventAutoHideAsync();
 
 export const unstable_settings = {
-  initialRouteName: 'index',
+    initialRouteName: 'index',
 };
 
 function HeaderRight() {
-  const router = useRouter();
+    const router = useRouter();
 
-  return (
-    <Pressable
-      onPress={() => router.push('/about')}
-      hitSlop={10}
-    >
-      <Image source={require('../assets/images/icon.png')} style={{ width: 32, height: 32, borderRadius: 16, borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.2)' }} />
-    </Pressable>
-  );
+    return (
+        <Pressable
+            onPress={() => router.push('/about')}
+            hitSlop={10}
+        >
+            <Image source={require('../assets/images/icon.png')} style={{ width: 32, height: 32, borderRadius: 16, borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.2)' }} />
+        </Pressable>
+    );
 }
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
+    const colorScheme = useColorScheme();
 
-  // Load app
-  const [initState, setInitState] = React.useState<{ credentials: AuthCredentials | null } | null>(null);
-  React.useEffect(() => {
-    (async () => {
-      await Fonts.loadAsync({
-        SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-        ...FontAwesome.font,
-      });
-      const credentials = await TokenStorage.getCredentials();
-      setInitState({ credentials });
-    })();
-  }, []);
+    // Load app
+    const [initState, setInitState] = React.useState<{ credentials: AuthCredentials | null } | null>(null);
+    React.useEffect(() => {
+        (async () => {
+            await Fonts.loadAsync({
+                SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+                ...FontAwesome.font,
+            });
+            const credentials = await TokenStorage.getCredentials();
+            setInitState({ credentials });
+        })();
+    }, []);
 
-  React.useEffect(() => {
-    if (initState) {
-      setTimeout(() => {
-        SplashScreen.hideAsync();
-      }, 100);
+    React.useEffect(() => {
+        if (initState) {
+            setTimeout(() => {
+                SplashScreen.hideAsync();
+            }, 100);
+        }
+    }, [initState]);
+
+    if (!initState) {
+        return null;
     }
-  }, [initState]);
 
-  if (!initState) {
-    return null;
-  }
-
-  return (
-    <KeyboardProvider>
-      <AuthProvider initialCredentials={initState.credentials}>
-        <ThemeProvider value={DefaultTheme}>
-          <Stack
-            initialRouteName='index'
-            screenOptions={{
-              headerShadowVisible: false,
-              contentStyle: {
-                backgroundColor: 'white',
-              },
-              headerStyle: {
-                backgroundColor: 'white',
-              },
-              headerTintColor: '#000',
-              headerTitleStyle: {
-                color: '#000',
-              },
-            }}
-          >
-            <Stack.Screen
-              name="index"
-              options={{
-                headerShown: true,
-                headerTitle: 'Slopus',
-                headerRight: () => <HeaderRight />
-              }}
-            />
-            <Stack.Screen
-              name="about"
-              options={{
-                presentation: 'modal',
-                headerShown: false,
-              }}
-            />
-            <Stack.Screen
-              name="manual-entry"
-              options={{
-                presentation: 'modal',
-                headerShown: false,
-              }}
-            />
-            <Stack.Screen
-              name="session/[id]"
-              options={{
-                headerTitle: 'Session',
-                headerBackTitle: 'Home'
-              }}
-            />
-            <Stack.Screen
-              name="session/[id]/message/[messageId]"
-              options={{
-                presentation: 'modal',
-                headerShown: false,
-              }}
-            />
-          </Stack>
-        </ThemeProvider>
-      </AuthProvider>
-    </KeyboardProvider>
-  );
+    return (
+        <KeyboardProvider>
+            <AuthProvider initialCredentials={initState.credentials}>
+                <ThemeProvider value={DefaultTheme}>
+                    <Stack
+                        initialRouteName='index'
+                        screenOptions={{
+                            headerShadowVisible: false,
+                            contentStyle: {
+                                backgroundColor: 'white',
+                            },
+                            headerStyle: {
+                                backgroundColor: 'white',
+                            },
+                            headerTintColor: '#000',
+                            headerTitleStyle: {
+                                color: '#000',
+                            },
+                        }}
+                    >
+                        <Stack.Screen
+                            name="index"
+                            options={{
+                                headerShown: true,
+                                headerTitle: 'Happy Coder'
+                            }}
+                        />
+                        <Stack.Screen
+                            name="about"
+                            options={{
+                                presentation: 'modal',
+                                headerShown: false,
+                            }}
+                        />
+                        <Stack.Screen
+                            name="manual-entry"
+                            options={{
+                                presentation: 'modal',
+                                headerShown: false,
+                            }}
+                        />
+                        <Stack.Screen
+                            name="session/[id]"
+                            options={{
+                                headerTitle: 'Session',
+                                headerBackTitle: 'Home'
+                            }}
+                        />
+                        <Stack.Screen
+                            name="session/[id]/message/[messageId]"
+                            options={{
+                                presentation: 'modal',
+                                headerShown: false,
+                            }}
+                        />
+                    </Stack>
+                </ThemeProvider>
+            </AuthProvider>
+        </KeyboardProvider>
+    );
 }
