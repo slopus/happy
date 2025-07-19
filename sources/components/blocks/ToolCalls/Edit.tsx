@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { type ToolCall } from "@/sync/storageTypes";
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
+import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
 
 export type EditToolCall = Omit<ToolCall, 'name'> & { name: 'Edit' };
 
@@ -17,42 +18,7 @@ const EditArgumentsSchema = z.object({
 
 type EditArguments = z.infer<typeof EditArgumentsSchema>;
 
-// Calculate diff between two strings
-const calculateDiff = (oldStr: string, newStr: string) => {
-  const oldLines = oldStr.split('\n');
-  const newLines = newStr.split('\n');
-  
-  const diffLines: Array<{ type: 'removed' | 'added'; content: string; lineNum: number }> = [];
-  let oldIndex = 0;
-  let newIndex = 0;
-  
-  while (oldIndex < oldLines.length || newIndex < newLines.length) {
-    const oldLine = oldLines[oldIndex];
-    const newLine = newLines[newIndex];
-    
-    if (oldIndex >= oldLines.length) {
-      // Only new lines remaining
-      diffLines.push({ type: 'added', content: newLine, lineNum: newIndex + 1 });
-      newIndex++;
-    } else if (newIndex >= newLines.length) {
-      // Only old lines remaining
-      diffLines.push({ type: 'removed', content: oldLine, lineNum: oldIndex + 1 });
-      oldIndex++;
-    } else if (oldLine === newLine) {
-      // Lines are the same - skip in diff view
-      oldIndex++;
-      newIndex++;
-    } else {
-      // Lines are different
-      diffLines.push({ type: 'removed', content: oldLine, lineNum: oldIndex + 1 });
-      diffLines.push({ type: 'added', content: newLine, lineNum: newIndex + 1 });
-      oldIndex++;
-      newIndex++;
-    }
-  }
-  
-  return diffLines;
-};
+
 
 // Parse arguments safely
 const parseEditArguments = (args: any): EditArguments | null => {
@@ -93,11 +59,7 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
       return { additions: 0, deletions: 0 };
     }
     
-    const diffLines = calculateDiff(args.old_string, args.new_string);
-    const additions = diffLines.filter(line => line.type === 'added').length;
-    const deletions = diffLines.filter(line => line.type === 'removed').length;
-    
-    return { additions, deletions };
+    return calculateDiffStats(args.old_string, args.new_string);
   }, [args.old_string, args.new_string]);
 
   // Extract just the filename from the path
@@ -136,12 +98,6 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
 // Detailed view for full-screen modal
 export const EditDetailedView = ({ tool }: { tool: EditToolCall }) => {
   const { file_path: filePath, old_string: oldString, new_string: newString, replace_all: replaceAll } = tool.arguments;
-  
-  // Memoize diff calculation
-  const diffLines = useMemo(() => {
-    if (!oldString || !newString) return [];
-    return calculateDiff(oldString, newString);
-  }, [oldString, newString]);
 
   if (!filePath) {
     return (
@@ -182,47 +138,15 @@ export const EditDetailedView = ({ tool }: { tool: EditToolCall }) => {
       </View>
 
       {/* Diff View */}
-      <View className="bg-gray-50 border-y border-gray-200">
-        {/* File Path Header */}
-        <View className="flex-row items-center justify-between px-4 py-3 bg-gray-100 border-b border-gray-200">
-          <Text className="text-sm font-mono text-gray-700 flex-1" numberOfLines={1}>
-            {filePath}
-          </Text>
-          <Text className="text-sm text-gray-500 ml-2">Diff</Text>
-        </View>
-
-        {/* Diff Lines */}
-        <View>
-          {diffLines.map((diffLine, index) => (
-            <View key={index} className="flex-row">
-              <View className={`w-8 items-center justify-center border-r ${
-                diffLine.type === 'removed' 
-                  ? 'bg-red-50 border-red-200'
-                  : 'bg-green-50 border-green-200'
-              }`}>
-                <Text className={`text-sm font-mono ${
-                  diffLine.type === 'removed' ? 'text-red-600' : 'text-green-600'
-                }`}>
-                  {diffLine.type === 'removed' ? '-' : '+'}
-                </Text>
-              </View>
-              <View className={`flex-1 px-3 py-1 ${
-                diffLine.type === 'removed'
-                  ? 'bg-red-50'
-                  : 'bg-green-50'
-              }`}>
-                <Text className={`text-sm font-mono ${
-                  diffLine.type === 'removed' ? 'text-red-800' : 'text-green-800'
-                }`} style={{ lineHeight: 16 }}>
-                  {diffLine.content}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
+      <View className="px-4 pb-4">
+        <SharedDiffView
+          oldContent={oldString || ''}
+          newContent={newString || ''}
+          fileName={filePath}
+          showFileName={true}
+          maxHeight={400}
+        />
       </View>
-
-
     </ScrollView>
   );
 };
