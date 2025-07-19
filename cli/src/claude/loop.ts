@@ -2,9 +2,9 @@ import { ApiSessionClient } from "@/api/apiSession"
 import { claudeRemote } from "./claudeRemote"
 import { claudeLocal } from "./claudeLocal"
 import { MessageQueue } from "@/utils/MessageQueue"
-import { watchMostRecentSessionFull, ConversationState, createConversationState } from "./watcherFull"
 import { RawJSONLines } from "./types"
 import { logger } from "@/ui/logger"
+import { createSessionScanner } from "./scanner/sessionScanner"
 
 interface LoopOptions {
     path: string
@@ -50,32 +50,18 @@ export async function loop(opts: LoopOptions) {
         }
     });
 
-    let currentWatcherAbortController: AbortController | null = null;
-    // NOTE: This function might get called multiple times for a single session
-    let startWatchingSessionForMessages = async (
-        newSessionId: string
-    ) => {
-        currentWatcherAbortController?.abort();
-        currentWatcherAbortController = new AbortController();
 
-        sessionId = newSessionId;
-        for await (const message of watchMostRecentSessionFull(opts.path, sessionId, currentWatcherAbortController, conversationHistory)) {
-            conversationHistory.push(message);
-
-            // NOTE: We cannot skip all 'user' type messages, because 
-            // tool_result messages need to be sent to the server & have user type
-            if (mode === 'remote' 
-                && message.type === 'user' 
-                && typeof message.message.content === 'string' 
-                && seenRemoteUserMessageContents.has(message.message.content)
-            ) {
-                logger.debugLargeJson('[LOOP] Skipping message sent from mobile', message)
-                console.log('Skipping sending user message to server in remote mode');
-                continue;
-            }
-
+    const sessionScanner = createSessionScanner({
+        workingDirectory: opts.path,
+        onMessage: (message) => {
             opts.session.sendClaudeSessionMessage(message);
         }
+    });
+
+
+    let onSessionFound = (sessionId: string) => {
+        sessionId = sessionId;
+        sessionScanner.onNewSession(sessionId);
     }
 
     while (!exited) {
@@ -108,7 +94,7 @@ export async function loop(opts: LoopOptions) {
             await claudeLocal({
                 path: opts.path,
                 sessionId: sessionId,
-                onSessionFound: startWatchingSessionForMessages,
+                onSessionFound: onSessionFound,
                 abort: interactiveAbortController.signal,
             });
             onMessage = null;
@@ -152,7 +138,7 @@ export async function loop(opts: LoopOptions) {
                     path: opts.path,
                     mcpServers: opts.mcpServers,
                     permissionPromptToolName: opts.permissionPromptToolName,
-                    onSessionFound: startWatchingSessionForMessages,
+                    onSessionFound: onSessionFound,
                     messages: queueForThisSession,
                 });
             } finally {

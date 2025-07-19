@@ -2,6 +2,9 @@
 
 # CLI
 
+- Permissions fix
+- Test what happens when we timeout the response, how 
+
 - Test end to end & rollout new version
 - Server diying test
   - lsof -ti tcp:3005 | xargs kill -9
@@ -25,17 +28,13 @@ Emitted 'error' event on ReadStream instance at:
   syscall: 'read'
 }
 
-Node.js v22.17.0
-
 - Dogfood for issues
 - Refactor existing code
 - Make it feel nicer
 
 - Embed amphetamine into it?
 
-- Permissions
-  - Define schema
-  - 
+- Permissions - fix mcp server integration
 
 - Deep link to a website
 
