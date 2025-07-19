@@ -188,12 +188,12 @@ export async function startApi() {
 
         const answer = await db.terminalAuthRequest.upsert({
             where: { publicKey: privacyKit.encodeHex(publicKey) },
-            update: { updatedAt: new Date() },
+            update: {},
             create: { publicKey: privacyKit.encodeHex(publicKey) }
         });
 
-        if (answer.response) {
-            const token = await tokenGenerator.new({ user: answer.id, extras: { session: answer.id } });
+        if (answer.response && answer.responseAccountId) {
+            const token = await tokenGenerator.new({ user: answer.responseAccountId!, extras: { session: answer.id } });
             return reply.send({
                 state: 'authorized',
                 token: token,
@@ -206,6 +206,7 @@ export async function startApi() {
 
     // Approve auth request
     typed.post('/v1/auth/response', {
+        preHandler: app.authenticate,
         schema: {
             body: z.object({
                 response: z.string(),
@@ -227,7 +228,7 @@ export async function startApi() {
         if (!authRequest.response) {
             await db.terminalAuthRequest.update({
                 where: { id: authRequest.id },
-                data: { response: request.body.response }
+                data: { response: request.body.response, responseAccountId: request.user.id }
             });
         }
         return reply.send({ success: true });
