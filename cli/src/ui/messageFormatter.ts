@@ -118,6 +118,7 @@ export function formatClaudeMessage(message: SDKMessage): void {
             } else if (resultMsg.subtype === 'error_during_execution') {
                 console.log(chalk.red.bold('\n❌ Error during execution'));
                 console.log(chalk.gray(`Completed ${resultMsg.num_turns} turns before error`));
+                logger.debugLargeJson('[RESULT] Error during execution', resultMsg)
             }
             break;
         }

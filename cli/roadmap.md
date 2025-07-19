@@ -1,5 +1,57 @@
-# Roadmap
+# July 18
 
+# CLI
+
+- Test end to end & rollout new version
+- Server diying test
+  - lsof -ti tcp:3005 | xargs kill -9
+  - This kills the app :D and cli
+
+CLI dies with 
+error Command failed with exit code 137.
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.
+kirilldubovitskiy@MacBookPro handy-cli % node:events:496
+      throw er; // Unhandled 'error' event
+      ^
+
+Error: read EIO
+    at TTY.onStreamRead (node:internal/stream_base_commons:216:20)
+Emitted 'error' event on ReadStream instance at:
+    at emitErrorNT (node:internal/streams/destroy:170:8)
+    at emitErrorCloseNT (node:internal/streams/destroy:129:3)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21) {
+  errno: -5,
+  code: 'EIO',
+  syscall: 'read'
+}
+
+Node.js v22.17.0
+
+- Dogfood for issues
+- Refactor existing code
+- Make it feel nicer
+
+- Embed amphetamine into it?
+
+- Permissions
+  - Define schema
+  - 
+
+- Deep link to a website
+
+# App
+- Logout - make a full reload
+- Make scroll work nicely 
+
+# Big ideas
+- Coordinator agent - will ensure claude keeps working at max token usage - juice the most out of it
+- Social component
+- Notifications
+- Real time voice
+
+# Archive July 18
+
+# Roadmap
 
 ## App
 - Make key messages render
@@ -22,7 +74,6 @@
 ## CLI
 - Make it stable to be a drop in replacement for claude
 - Fix snooping on existing conversation bug, after switching back and forth stops watching the session file for new messages
-- Fix bug with 
 - [later] Test it works on linux, windows, lower node version
 
 Conversation continuity
@@ -37,10 +88,9 @@ MCP
 - Implement conversation naming
   - I wonder if the server can initiate an llm call on its own accord?
 
+Permission automatic checking
+- Pull antropic token from secrets
 
-Next for the cli
-
-- Make sure socket connection stays alive 
 
 Blocking
 - Permission checking [steve]
