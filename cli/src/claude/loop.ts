@@ -2,7 +2,8 @@ import { ApiSessionClient } from "@/api/apiSession"
 import { claudeRemote } from "./claudeRemote"
 import { claudeLocal } from "./claudeLocal"
 import { MessageQueue } from "@/utils/MessageQueue"
-import { watchMostRecentSession, LastKnownMessage } from "./watcher"
+import { watchMostRecentSessionFull, ConversationState, createConversationState } from "./watcherFull"
+import { RawJSONLines } from "./types"
 import { logger } from "@/ui/logger"
 
 interface LoopOptions {
@@ -16,17 +17,13 @@ interface LoopOptions {
 }
 
 /*
-  When switching between modes, we need to keep track of the last known 
-  message to prevent us from reading the same message twice after
-  resuming a session (remember claude clones the session file).
-
-  During this clone:
-  - The top level uuid does not survive - fresh one for each line
-  - The message.id does survive - but user messages do not have one
-  - timestamp does survive
-
-  It is impossible to switch back and forth so fast that the timestamp is the same.
-  So we will use it to seek the file until we find the last known message.
+  When switching between modes or resuming sessions, we maintain a complete
+  conversation history to properly deduplicate messages. This is necessary
+  because Claude creates new session files when resuming with --resume,
+  duplicating the conversation history in the new file.
+  
+  The new watcher uses full file reading and message deduplication to handle
+  this correctly.
 */
 
 export async function loop(opts: LoopOptions) {
@@ -35,14 +32,16 @@ export async function loop(opts: LoopOptions) {
     let abortController: AbortController | null = null;
     let mode: 'interactive' | 'remote' = 'interactive' as 'interactive' | 'remote';
     let currentMessageQueue: MessageQueue = new MessageQueue();
+    let seenRemoteUserMessageContents: Set<string> = new Set();
     let sessionId: string | null = null;
-    let lastKnownMessage: LastKnownMessage = {};
+    let conversationHistory: RawJSONLines[] = [];
     let onMessage: (() => void) | null = null;
 
     // Handle user messages
     opts.session.onUserMessage((message) => {
         logger.debugLargeJson('User message pushed to queue:', message)
         currentMessageQueue.push(message.content.text);
+        seenRemoteUserMessageContents.add(message.content.text);
         
         if (onMessage) {
             onMessage();
@@ -60,21 +59,21 @@ export async function loop(opts: LoopOptions) {
         currentWatcherAbortController = new AbortController();
 
         sessionId = newSessionId;
-        for await (const message of watchMostRecentSession(opts.path, sessionId, currentWatcherAbortController, lastKnownMessage)) {
-            // Update last known message based on type
-            if (message.type === 'user') {
-                lastKnownMessage.userMessageTimestamp = message.timestamp;
-            } else if (message.type === 'assistant' && message.message.id) {
-                lastKnownMessage.assistantMessageId = message.message.id;
-            }
+        for await (const message of watchMostRecentSessionFull(opts.path, sessionId, currentWatcherAbortController, conversationHistory)) {
+            conversationHistory.push(message);
 
-            // NOTE: We want to skip messages from user in remote mode
-            // they were all sent by us from remote, no need to re-send
-            // Better solution would be to:
-            if (mode === 'remote' && message.type === 'user') {
+            // NOTE: We cannot skip all 'user' type messages, because 
+            // tool_result messages need to be sent to the server & have user type
+            if (mode === 'remote' 
+                && message.type === 'user' 
+                && typeof message.message.content === 'string' 
+                && seenRemoteUserMessageContents.has(message.message.content)
+            ) {
+                logger.debugLargeJson('[LOOP] Skipping message sent from mobile', message)
                 console.log('Skipping sending user message to server in remote mode');
                 continue;
             }
+
             opts.session.sendClaudeSessionMessage(message);
         }
     }

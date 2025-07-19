@@ -156,18 +156,13 @@ export class ApiSessionClient extends EventEmitter {
         let content: MessageContent;
         
         // Check if body is already a MessageContent (has role property)
-        if (body.type === 'user') {
-            if (typeof body.message.content === 'string') {
-                content = {
-                    role: 'user',
-                    content: {
-                        type: 'text',
-                        text: body.message.content
-                    }
+        if (body.type === 'user' && typeof body.message.content === 'string') {
+            content = {
+                role: 'user',
+                content: {
+                    type: 'text',
+                    text: body.message.content
                 }
-            } else {
-                logger.debug('[ERROR] Unexpected user message type', body.message)
-                return
             }
         } else {
             // Legacy behavior: wrap as agent message

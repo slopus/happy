@@ -93,6 +93,10 @@ class Logger {
       if (obj && typeof obj === 'object') {
         const result: Record<string, unknown> = {}
         for (const [key, value] of Object.entries(obj)) {
+          if (key === 'usage') {
+            // Drop usage, not generally useful for debugging
+            continue
+          }
           result[key] = truncateStrings(value)
         }
         return result
