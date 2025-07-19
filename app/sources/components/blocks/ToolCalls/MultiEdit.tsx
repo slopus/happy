@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { type ToolCall } from "@/sync/storageTypes";
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
+import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
 
 export type MultiEditToolCall = Omit<ToolCall, 'name'> & { name: 'MultiEdit' };
 
@@ -20,42 +21,7 @@ const MultiEditArgumentsSchema = z.object({
 type MultiEditArguments = z.infer<typeof MultiEditArgumentsSchema>;
 type EditOperation = MultiEditArguments['edits'][0];
 
-// Calculate diff between two strings
-const calculateDiff = (oldStr: string, newStr: string) => {
-  const oldLines = oldStr.split('\n');
-  const newLines = newStr.split('\n');
-  
-  const diffLines: Array<{ type: 'removed' | 'added'; content: string; lineNum: number }> = [];
-  let oldIndex = 0;
-  let newIndex = 0;
-  
-  while (oldIndex < oldLines.length || newIndex < newLines.length) {
-    const oldLine = oldLines[oldIndex];
-    const newLine = newLines[newIndex];
-    
-    if (oldIndex >= oldLines.length) {
-      // Only new lines remaining
-      diffLines.push({ type: 'added', content: newLine, lineNum: newIndex + 1 });
-      newIndex++;
-    } else if (newIndex >= newLines.length) {
-      // Only old lines remaining
-      diffLines.push({ type: 'removed', content: oldLine, lineNum: oldIndex + 1 });
-      oldIndex++;
-    } else if (oldLine === newLine) {
-      // Lines are the same - skip in diff view
-      oldIndex++;
-      newIndex++;
-    } else {
-      // Lines are different
-      diffLines.push({ type: 'removed', content: oldLine, lineNum: oldIndex + 1 });
-      diffLines.push({ type: 'added', content: newLine, lineNum: newIndex + 1 });
-      oldIndex++;
-      newIndex++;
-    }
-  }
-  
-  return diffLines;
-};
+
 
 // Parse arguments safely
 const parseMultiEditArguments = (args: any): MultiEditArguments | null => {
@@ -101,9 +67,9 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
     
     for (const edit of args.edits) {
       if (edit.old_string && edit.new_string) {
-        const diffLines = calculateDiff(edit.old_string, edit.new_string);
-        totalAdditions += diffLines.filter(line => line.type === 'added').length;
-        totalDeletions += diffLines.filter(line => line.type === 'removed').length;
+        const stats = calculateDiffStats(edit.old_string, edit.new_string);
+        totalAdditions += stats.additions;
+        totalDeletions += stats.deletions;
       }
     }
     
@@ -176,29 +142,22 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
 export const MultiEditDetailedView = ({ tool }: { tool: MultiEditToolCall }) => {
   const { file_path: filePath, edits } = tool.arguments;
   
-  // Memoize total diff calculation
-  const { totalDiffLines, totalStats } = useMemo(() => {
-    if (!edits || edits.length === 0) return { totalDiffLines: [], totalStats: { additions: 0, deletions: 0 } };
+  // Memoize total diff stats calculation
+  const totalStats = useMemo(() => {
+    if (!edits || edits.length === 0) return { additions: 0, deletions: 0 };
     
-    const allDiffLines: Array<{ type: 'removed' | 'added'; content: string; lineNum: number; editIndex: number }> = [];
     let totalAdditions = 0;
     let totalDeletions = 0;
     
-    edits.forEach((edit: EditOperation, editIndex: number) => {
+    edits.forEach((edit: EditOperation) => {
       if (edit.old_string && edit.new_string) {
-        const diffLines = calculateDiff(edit.old_string, edit.new_string);
-        diffLines.forEach(line => {
-          allDiffLines.push({ ...line, editIndex });
-        });
-        totalAdditions += diffLines.filter(line => line.type === 'added').length;
-        totalDeletions += diffLines.filter(line => line.type === 'removed').length;
+        const stats = calculateDiffStats(edit.old_string, edit.new_string);
+        totalAdditions += stats.additions;
+        totalDeletions += stats.deletions;
       }
     });
     
-    return { 
-      totalDiffLines: allDiffLines, 
-      totalStats: { additions: totalAdditions, deletions: totalDeletions } 
-    };
+    return { additions: totalAdditions, deletions: totalDeletions };
   }, [edits]);
 
   if (!filePath) {
@@ -254,62 +213,30 @@ export const MultiEditDetailedView = ({ tool }: { tool: MultiEditToolCall }) => 
         </View>
       </View>
 
-      {/* Diff View */}
-      <View className="bg-gray-50 border-y border-gray-200">
-        {/* File Path Header */}
-        <View className="flex-row items-center justify-between px-4 py-3 bg-gray-100 border-b border-gray-200">
-          <Text className="text-sm font-mono text-gray-700 flex-1" numberOfLines={1}>
-            {filePath}
-          </Text>
-          <Text className="text-sm text-gray-500 ml-2">Diff ({edits.length} edits)</Text>
-        </View>
-
-        {/* Individual Edit Sections */}
-        {edits.map((edit: EditOperation, editIndex: number) => {
-          const diffLines = calculateDiff(edit.old_string, edit.new_string);
-          
-          return (
-            <View key={editIndex}>
-              {/* Edit Header */}
-              <View className="px-4 py-2 bg-gray-200 border-b border-gray-300">
-                <Text className="text-sm font-medium text-gray-700">
-                  Edit #{editIndex + 1}
-                  {edit.replace_all && (
-                    <Text className="text-amber-600"> (Replace All)</Text>
-                  )}
-                </Text>
-              </View>
-              
-              {/* Diff Lines for this edit */}
-              {diffLines.map((diffLine, lineIndex) => (
-                <View key={`${editIndex}-${lineIndex}`} className="flex-row">
-                  <View className={`w-8 items-center justify-center border-r ${
-                    diffLine.type === 'removed' 
-                      ? 'bg-red-50 border-red-200'
-                      : 'bg-green-50 border-green-200'
-                  }`}>
-                    <Text className={`text-sm font-mono ${
-                      diffLine.type === 'removed' ? 'text-red-600' : 'text-green-600'
-                    }`}>
-                      {diffLine.type === 'removed' ? '-' : '+'}
-                    </Text>
-                  </View>
-                  <View className={`flex-1 px-3 py-1 ${
-                    diffLine.type === 'removed'
-                      ? 'bg-red-50'
-                      : 'bg-green-50'
-                  }`}>
-                    <Text className={`text-sm font-mono ${
-                      diffLine.type === 'removed' ? 'text-red-800' : 'text-green-800'
-                    }`} style={{ lineHeight: 16 }}>
-                      {diffLine.content}
-                    </Text>
-                  </View>
-                </View>
-              ))}
+      {/* Individual Edit Sections */}
+      <View className="px-4 pb-4 space-y-4">
+        {edits.map((edit: EditOperation, editIndex: number) => (
+          <View key={editIndex}>
+            {/* Edit Header */}
+            <View className="mb-2">
+              <Text className="text-sm font-medium text-gray-700 mb-1">
+                Edit #{editIndex + 1}
+                {edit.replace_all && (
+                  <Text className="text-amber-600"> (Replace All)</Text>
+                )}
+              </Text>
             </View>
-          );
-        })}
+            
+            {/* Shared Diff View for this edit */}
+            <SharedDiffView
+              oldContent={edit.old_string || ''}
+              newContent={edit.new_string || ''}
+              fileName={`${filePath} - Edit ${editIndex + 1}`}
+              showFileName={true}
+              maxHeight={300}
+            />
+          </View>
+        ))}
       </View>
     </ScrollView>
   );

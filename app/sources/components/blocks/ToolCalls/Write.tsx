@@ -2,11 +2,10 @@ import React, { useMemo } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
-import { Diff, Hunk, IHunk, IChange, textLinesToHunk, insertHunk } from 'react-native-diff-view';
 import { type ToolCall } from '@/sync/storageTypes';
 import { ShimmerText } from './ShimmerRunningToolName';
 import { SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
-import { DiffViewerWebView } from './DiffViewerWebView';
+import { SharedDiffView } from './SharedDiffView';
 
 export type WriteToolCall = Omit<ToolCall, 'name'> & { name: 'Write' };
 
@@ -150,40 +149,7 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
   );
 }
 
-// Component for displaying new file content directly
-const NewFileViewer: React.FC<{ content: string }> = ({ content }) => {
-  const hunk = useMemo(() => {
-    const lines = content.split('\n');
-    
-    // Use the library function to create hunk from text lines
-    return textLinesToHunk(lines, 1, 1);
-  }, [content]);
 
-  if (!hunk) {
-    return (
-      <View className="flex-1 justify-center items-center">
-        <Text className="text-gray-500">No content to display</Text>
-      </View>
-    );
-  }
-
-  return (
-    <View className="flex-1">
-      <View className="bg-gray-100 px-4 py-2 border-b border-gray-200">
-        <Text className="text-sm text-gray-600">New file content ({hunk.newLines} lines)</Text>
-      </View>
-      <ScrollView className="flex-1">
-        <Diff diffType="add" hunks={[hunk]}>
-          {(hunks: IHunk[]) => 
-            hunks.map((h, index) => (
-              <Hunk key={index} hunk={h} />
-            ))
-          }
-        </Diff>
-      </ScrollView>
-    </View>
-  );
-};
 
 // Detailed view for full-screen modal
 export const WriteDetailedView = ({ tool }: { tool: WriteToolCall }) => {
@@ -253,19 +219,13 @@ export const WriteDetailedView = ({ tool }: { tool: WriteToolCall }) => {
         {/* Diff Viewer */}
         {contentAnalysis && (
           <View className="flex-1 bg-white">
-            {isNewFile ? (
-              // For new files, create the hunk structure directly
-              <NewFileViewer content={contentAnalysis.content} />
-            ) : (
-              <DiffViewerWebView
-                oldValue=""  // We don't have the old content for now
-                newValue={contentAnalysis.content}
-                splitView={false}
-                leftTitle="Previous Content"
-                rightTitle="Updated Content"
-                height={400}
-              />
-            )}
+            <SharedDiffView
+              oldContent=""  // For new files, old content is empty
+              newContent={contentAnalysis.content}
+              fileName={args.file_path}
+              showFileName={true}
+              maxHeight={400}
+            />
           </View>
         )}
       </View>
