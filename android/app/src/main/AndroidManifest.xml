@@ -31,6 +31,7 @@
         <category android:name="android.intent.category.BROWSABLE"/>
         <data android:scheme="handy"/>
         <data android:scheme="slopus"/>
+        <data android:scheme="happy"/>
       </intent-filter>
     </activity>
   </application>
