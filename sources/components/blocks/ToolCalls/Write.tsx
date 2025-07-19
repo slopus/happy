@@ -58,7 +58,7 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
     return (
       <View className="flex-row items-center py-1 gap-1">
         <Ionicons name="create-outline" size={14} color="#a1a1a1" />
-        <ShimmerText>Writing</ShimmerText>
+        <ShimmerText>Creating</ShimmerText>
         <Text
           className="text-sm flex-1 text-neutral-800"
           numberOfLines={1}
@@ -77,14 +77,14 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
     return (
       <View className="flex-row items-center py-0.5">
         <Ionicons name="warning" size={14} color="#ef4444" />
-        <Text className="text-sm text-red-500 font-bold px-1">Write</Text>
+        <Text className="text-sm text-red-500 font-bold px-1">Created</Text>
         <Text
           className="text-sm flex-1 text-neutral-800"
           numberOfLines={1}
         >
           {fileName}
         </Text>
-        <Text className="text-xs text-red-500">
+        <Text className="text-sm text-red-500">
           {inputParseError || 'Failed to write file'}
         </Text>
       </View>
@@ -127,25 +127,25 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
   const contentLength = parsedInput?.content?.length || 0;
   const lineCount = parsedInput?.content?.split('\n').length || 0;
   
-  const displayText = parsedResult && typeof parsedResult === 'object' && parsedResult !== null && 'bytes_written' in (parsedResult as Record<string, any>)
-    ? `${(parsedResult as any).bytes_written} bytes written`
-    : contentLength > 0 
-    ? `${lineCount} lines (${contentLength} chars)`
-    : "";
-
   return (
     <View className="flex-row items-center py-1">
       <Ionicons name="create" size={14} color="#a1a1a1" />
       <Text className="text-sm text-neutral-400 font-bold px-1">Write</Text>
       <Text
-        className="text-sm flex-1 text-neutral-800"
+        className="text-sm text-neutral-800"
         numberOfLines={1}
       >
         {fileName}
       </Text>
-      <Text className="text-sm text-neutral-400 font-bold px-1">
-        {displayText}
-      </Text>
+      
+      {/* Line count in diff style */}
+      {lineCount > 0 && (
+        <View className="flex-row items-center ml-2">
+          <Text className="text-sm font-medium text-emerald-600 font-mono">
+            +{lineCount}
+          </Text>
+        </View>
+      )}
     </View>
   );
 }
@@ -170,7 +170,7 @@ const NewFileViewer: React.FC<{ content: string }> = ({ content }) => {
   return (
     <View className="flex-1">
       <View className="bg-gray-100 px-4 py-2 border-b border-gray-200">
-        <Text className="text-xs text-gray-600">New file content ({hunk.newLines} lines)</Text>
+        <Text className="text-sm text-gray-600">New file content ({hunk.newLines} lines)</Text>
       </View>
       <ScrollView className="flex-1">
         <Diff diffType="add" hunks={[hunk]}>
@@ -221,7 +221,7 @@ export const WriteDetailedView = ({ tool }: { tool: WriteToolCall }) => {
         <View className="flex-row justify-between items-center mb-4">
           <Text className="text-lg font-semibold text-gray-900">📝 Write File</Text>
           <View className="px-2 py-1 bg-gray-100 rounded-xl">
-            <Text className={`text-xs font-medium ${getStatusColorClass(tool.state)}`}>
+            <Text className={`text-sm font-medium ${getStatusColorClass(tool.state)}`}>
               {getStatusDisplay(tool.state)}
             </Text>
           </View>
@@ -232,7 +232,7 @@ export const WriteDetailedView = ({ tool }: { tool: WriteToolCall }) => {
           <Text className="text-sm font-medium text-blue-800 mb-1">
             {isNewFile ? '📄 Creating new file' : '✏️ Overwriting existing file'}
           </Text>
-          <Text className="text-xs font-mono text-blue-700">{args.file_path}</Text>
+          <Text className="text-sm font-mono text-blue-700">{args.file_path}</Text>
         </View>
       </View>
 
@@ -240,11 +240,11 @@ export const WriteDetailedView = ({ tool }: { tool: WriteToolCall }) => {
       <View className="bg-gray-50 border-y border-gray-200 flex-1">
         {/* Content Header */}
         <View className="flex-row items-center justify-between px-4 py-3 bg-gray-100 border-b border-gray-200">
-          <Text className="text-xs font-medium text-gray-700">
+          <Text className="text-sm font-medium text-gray-700">
             {isNewFile ? 'File Content' : 'Content Diff'}
           </Text>
           {contentAnalysis && (
-            <Text className="text-xs text-gray-500">
+            <Text className="text-sm text-gray-500">
               {contentAnalysis.lines} lines • {contentAnalysis.chars} chars • {contentAnalysis.words} words
             </Text>
           )}
