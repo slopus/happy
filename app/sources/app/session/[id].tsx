@@ -60,15 +60,20 @@ export default function Session() {
                 }}
             />
             <KeyboardAvoidingView
-                behavior="translate-with-padding"
+                behavior="padding"
                 keyboardVerticalOffset={56}
-                style={{ flexGrow: 1, flexBasis: 0, paddingBottom: safeArea.bottom }}
+                style={{ flexGrow: 1, flexBasis: 0 }}
             >
                 <View style={{ flexGrow: 1, flexBasis: 0 }}>
-                    {messages.length === 0 && (
+                    {messages.length === 0 && isLoaded && (
                         <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
                             <LottieView source={require('@/assets/animations/popcorn.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
                             <Text style={{ color: '#666', fontSize: 20, marginTop: 16 }}>No messages yet</Text>
+                        </View>
+                    )}
+                    {messages.length === 0 && !isLoaded && (
+                        <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
+                            
                         </View>
                     )}
                     {messages.length > 0 && (
@@ -118,7 +123,7 @@ export default function Session() {
                         </View>
                     )}
                 </View>
-                <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
+                <View style={{ paddingHorizontal: 16, paddingBottom: 16 + safeArea.bottom }}>
                     <ChatInput
                         placeholder="Type a message..."
                         value={message}
