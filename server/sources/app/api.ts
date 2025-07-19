@@ -809,7 +809,9 @@ export async function startApi() {
                     const existing = await tx.sessionMessage.findFirst({
                         where: { sessionId: sid, localId: useLocalId }
                     });
-                    return { msg: existing, update: null };
+                    if (existing) {
+                        return { msg: existing, update: null };
+                    }
                 }
 
                 // Create message
