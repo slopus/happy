@@ -53,6 +53,7 @@ export const ChatInput = React.memo((props: {
             <Pressable
                 className="w-8 h-8 items-center justify-center bg-white rounded-3xl self-start m-2"
                 onPress={handlePress}
+                hitSlop={10}
             >
                 {props.loading && <ActivityIndicator color="black" size="small" />}
                 {!props.loading && <Ionicons name="arrow-up" size={20} color="black" />}
