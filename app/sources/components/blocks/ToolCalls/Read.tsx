@@ -47,11 +47,11 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
     const fileName = filePath.split('/').pop() || filePath;
     
     return (
-      <View className="pl-3 flex-row items-center py-0.5">
+      <View className="flex-row items-center py-1 gap-1 pl-[2px]">
         <Ionicons name="eye" size={14} color="#a1a1a1" />
         <ShimmerText>Reading</ShimmerText>
         <Text
-          className="text-xs flex-1 text-neutral-800"
+          className="text-sm flex-1 text-neutral-800"
           numberOfLines={1}
         >
           {fileName}
