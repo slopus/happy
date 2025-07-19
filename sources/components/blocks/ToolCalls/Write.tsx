@@ -56,7 +56,7 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
     
     return (
       <View className="flex-row items-center py-1 gap-1">
-        <Ionicons name="create" size={14} color="#a1a1a1" />
+        <Ionicons name="create-outline" size={14} color="#a1a1a1" />
         <ShimmerText>Writing</ShimmerText>
         <Text
           className="text-sm flex-1 text-neutral-800"

@@ -40,7 +40,7 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
   
   if (!args) {
     return (
-      <View className="flex-row items-center py-0.5">
+      <View className="flex-row items-center py-1">
         <Text className="text-xs text-gray-500 italic">✏️ File edit</Text>
       </View>
     );
@@ -55,9 +55,6 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
       <Text className="text-xs text-gray-700 flex-1" numberOfLines={1}>
         Edited {fileName}
       </Text>
-      {tool.state === 'error' && <Text className="text-xs ml-1">❌</Text>}
-      {tool.state === 'completed' && <Text className="text-xs ml-1">✅</Text>}
-      {tool.state === 'running' && <Text className="text-xs ml-1">⏳</Text>}
     </View>
   );
 };
