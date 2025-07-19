@@ -6,67 +6,75 @@
  * Simple argument parsing without any CLI framework dependencies
  */
 
-import { showOnboarding, start } from '@/ui/start'
+
 import chalk from 'chalk'
+import { start } from '@/ui/start'
 import { existsSync, rmSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { initializeConfiguration, configuration } from '@/configuration'
 import { initLoggerWithGlobalConfiguration, logger } from './ui/logger'
+import { readCredentials } from './persistence/persistence'
+import { doAuth } from './ui/auth'
 
-const args = process.argv.slice(2)
+(async () => {
 
-// Parse global options first
-let installationLocation: 'global' | 'local'
-  = (args.includes('--local') || process.env.HANDY_LOCAL) ? 'local' : 'global'
+  const args = process.argv.slice(2)
 
-initializeConfiguration(installationLocation)
-initLoggerWithGlobalConfiguration()
+  // Parse global options first
+  let installationLocation: 'global' | 'local'
+    = (args.includes('--local') || process.env.HANDY_LOCAL) ? 'local' : 'global'
 
-logger.debug('Starting happy CLI with args: ', process.argv)
+  initializeConfiguration(installationLocation)
+  initLoggerWithGlobalConfiguration()
 
-// Check if first argument is a subcommand
-const subcommand = args[0]
+  logger.debug('Starting happy CLI with args: ', process.argv)
 
-if (subcommand === 'clean') {
-  cleanKey().catch((error: Error) => {
-    console.error(chalk.red('Error:'), error.message)
-    if (process.env.DEBUG) {
-      console.error(error)
-    }
-    process.exit(1)
-  })
-} else if (subcommand === 'login' || subcommand === 'auth') {
-  console.log('login')
-  showOnboarding({ optional: false })
-} else {
-  // Parse command line arguments for main command
-  const options: Record<string, string> = {}
-  let showHelp = false
-  let showVersion = false
+  // Check if first argument is a subcommand
+  const subcommand = args[0]
 
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i]
-
-    if (arg === '-h' || arg === '--help') {
-      showHelp = true
-    } else if (arg === '-v' || arg === '--version') {
-      showVersion = true
-    } else if (arg === '-m' || arg === '--model') {
-      options.model = args[++i]
-    } else if (arg === '-p' || arg === '--permission-mode') {
-      options.permissionMode = args[++i]
-    } else if (arg === '--local') {
-      // Already processed, skip the next arg
-      i++
-    } else {
-      console.error(chalk.red(`Unknown argument: ${arg}`))
+  if (subcommand === 'clean') {
+    try {
+      await cleanKey();
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
       process.exit(1)
     }
-  }
+    return;
+  } else if (subcommand === 'login' || subcommand === 'auth') {
+    await doAuth();
+    return;
+  } else {
+    // Parse command line arguments for main command
+    const options: Record<string, string> = {}
+    let showHelp = false
+    let showVersion = false
 
-  // Show help
-  if (showHelp) {
-    console.log(`
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i]
+
+      if (arg === '-h' || arg === '--help') {
+        showHelp = true
+      } else if (arg === '-v' || arg === '--version') {
+        showVersion = true
+      } else if (arg === '-m' || arg === '--model') {
+        options.model = args[++i]
+      } else if (arg === '-p' || arg === '--permission-mode') {
+        options.permissionMode = args[++i]
+      } else if (arg === '--local') {
+        // Already processed, skip the next arg
+        i++
+      } else {
+        console.error(chalk.red(`Unknown argument: ${arg}`))
+        process.exit(1)
+      }
+    }
+
+    // Show help
+    if (showHelp) {
+      console.log(`
 ${chalk.bold('happy')} - Claude Code session sharing
 
 ${chalk.bold('Usage:')}
@@ -93,31 +101,44 @@ ${chalk.bold('Examples:')}
   happy -p plan           Use plan permission mode
   happy clean             Remove happy data directory and authentication
 `)
-    process.exit(0)
-  }
-
-  // Show version
-  if (showVersion) {
-    console.log('0.1.3')
-    process.exit(0)
-  }
-
-  // Start the CLI
-  start(options).catch((error: Error) => {
-    console.error(chalk.red('Error:'), error.message)
-    if (process.env.DEBUG) {
-      console.error(error)
+      process.exit(0)
     }
-    process.exit(1)
-  })
-}
+
+    // Show version
+    if (showVersion) {
+      console.log('0.1.3')
+      process.exit(0)
+    }
+
+    // Load credentials
+    let credentials = await readCredentials()
+    if (!credentials) { // No credentials found, show onboarding
+      let res = await doAuth();
+      if (!res) {
+        process.exit(1);
+      }
+      credentials = res;
+    }
+
+    // Start the CLI
+    try {
+      await start(credentials, options);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+  }
+})();
 
 /**
  * Clean subcommand - remove the happy data directory after confirmation
  */
 async function cleanKey(): Promise<void> {
   const happyDir = configuration.happyDir
-  
+
   // Check if happy directory exists
   if (!existsSync(happyDir)) {
     console.log(chalk.yellow('No happy data directory found at:'), happyDir)
