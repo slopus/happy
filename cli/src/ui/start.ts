@@ -1,14 +1,8 @@
-import { authGetToken, generateAppUrl } from '@/api/auth';
-import { readSettings, writeSettings, readPrivateKey, writePrivateKey } from '@/persistence';
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
-import { displayQRCode } from '@/ui/qrcode';
-import { basename } from 'node:path';
-import { randomUUID, randomBytes } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { loop } from '@/claude/loop';
 import os from 'node:os';
-import chalk from 'chalk';
-import { encodeBase64Url } from '@/api/encryption';
 import { AgentState, Metadata } from '@/api/types';
 import { startPermissionServerV2 } from '@/claude/mcp/startPermissionServerV2';
 
@@ -17,83 +11,12 @@ export interface StartOptions {
     permissionMode?: 'auto' | 'default' | 'plan'
 }
 
-export async function getSecret(): Promise<Uint8Array> {
-    let secret = await readPrivateKey();
-    if (!secret) {
-        secret = new Uint8Array(randomBytes(32));
-        await writePrivateKey(secret);
-    }
-    return secret;
-}
-
-export async function showOnboarding({ optional }: { optional?: boolean } = {}): Promise<void> {
-    const settings = await readSettings();
-    const goneThroughOnboarding = settings && settings.onboardingCompleted;
-    
-    if (optional && goneThroughOnboarding) {
-        logger.debug('Onboarding already completed, skipping');
-        return;
-    }
-
-    const secret = await getSecret();
-
-    logger.info(`
-${chalk.bold.green('🎉 Welcome to Happy CLI!')}
-
-Happy is an open-source, end-to-end encrypted wrapper around Claude Code
-that allows you to start a regular Claude terminal session with the \`happy\` command.
-`);
-
-    if (process.platform === 'darwin') {
-        logger.info(`
-${chalk.yellow('💡 Tip for macOS users:')}
-   Install Amphetamine to prevent your Mac from sleeping during sessions:
-   https://apps.apple.com/us/app/amphetamine/id937984704?mt=12
-
-   You can even close your laptop completely while running Amphetamine
-   and connect through hotspot to your phone for coding on the go!
-`);
-    }
-
-    const handyUrl = generateAppUrl(secret);
-    displayQRCode(handyUrl);
-    // Display secret for manual entry
-    const secretBase64Url = encodeBase64Url(secret);
-    logger.info(`Or manually enter this code: ${secretBase64Url}`);
-
-    logger.info(`
-${chalk.bold('Press Enter to continue...')}`);
-    await new Promise<void>((resolve) => {
-        process.stdin.setRawMode(true);
-        process.stdin.once('data', () => {
-            process.stdin.setRawMode(false);
-            process.stdin.pause();
-            resolve();
-        });
-    });
-
-    // Save onboarding completed
-    await writeSettings({ onboardingCompleted: true });
-}
-
-export async function start(options: StartOptions = {}): Promise<void> {
+export async function start(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
     const workingDirectory = process.cwd();
-    const projectName = basename(workingDirectory);
     const sessionTag = randomUUID();
 
-    // Check onboarding
-    await showOnboarding({ optional: true })
-
-    // Get or create secret key
-    let secret = await getSecret();
-
-    // Authenticate with server
-    const token = await authGetToken(secret);
-    logger.info('Authenticated with handy server');
-    logger.info('Logs at: ' + await logger.logFilePathPromise);
-
     // Create session service
-    const api = new ApiClient(token, secret);
+    const api = new ApiClient(credentials.token, credentials.secret);
 
     // Create a new session
     let state: AgentState = {};
@@ -110,7 +33,7 @@ export async function start(options: StartOptions = {}): Promise<void> {
         const id = randomUUID();
         let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => { requests.set(id, resolve); });
         logger.info('Permission request' + id + ' ' + JSON.stringify(request));
-        
+
         // Send push notification for permission request
         try {
             const pushClient = api.push();
@@ -128,7 +51,7 @@ export async function start(options: StartOptions = {}): Promise<void> {
         } catch (error) {
             logger.debug('Failed to send push notification:', error);
         }
-        
+
         session.updateAgentState((currentState) => ({
             ...currentState,
             requests: {
@@ -163,7 +86,6 @@ export async function start(options: StartOptions = {}): Promise<void> {
     const pingInterval = setInterval(() => {
         session.keepAlive(thinking);
     }, 15000); // Ping every 15 seconds
-
 
     // Create claude loop
     await loop({

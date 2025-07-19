@@ -7,6 +7,8 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { configuration } from '@/configuration'
+import * as z from 'zod';
+import { encodeBase64 } from '../api/encryption';
 
 interface Settings {
   onboardingCompleted: boolean
@@ -18,14 +20,14 @@ const defaultSettings: Settings = {
 
 export async function readSettings(): Promise<Settings | null> {
   if (!existsSync(configuration.settingsFile)) {
-    return {...defaultSettings}
+    return { ...defaultSettings }
   }
-  
+
   try {
     const content = await readFile(configuration.settingsFile, 'utf8')
     return JSON.parse(content)
   } catch {
-    return {...defaultSettings}
+    return { ...defaultSettings }
   }
 }
 
@@ -33,27 +35,41 @@ export async function writeSettings(settings: Settings): Promise<void> {
   if (!existsSync(configuration.happyDir)) {
     await mkdir(configuration.happyDir, { recursive: true })
   }
-  
+
   await writeFile(configuration.settingsFile, JSON.stringify(settings, null, 2))
 }
 
-// Store as base64 string for portability
-export async function readPrivateKey(): Promise<Uint8Array | null> {
+//
+// Authentication
+//
+
+const credentialsSchema = z.object({
+  secret: z.string().base64(),
+  token: z.string().base64()
+})
+
+export async function readCredentials(): Promise<{ secret: Uint8Array, token: string } | null> {
   if (!existsSync(configuration.privateKeyFile)) {
     return null
   }
   try {
-    const keyBase64 = (await readFile(configuration.privateKeyFile, 'utf8')).trim()
-    return new Uint8Array(Buffer.from(keyBase64, 'base64'))
+    const keyBase64 = (await readFile(configuration.privateKeyFile, 'utf8'));
+    const credentials = credentialsSchema.parse(JSON.parse(keyBase64));
+    return {
+      secret: new Uint8Array(Buffer.from(credentials.secret, 'base64')),
+      token: credentials.token
+    }
   } catch {
     return null
   }
 }
 
-export async function writePrivateKey(key: Uint8Array): Promise<void> {
+export async function writeCredentials(credentials: { secret: Uint8Array, token: string }): Promise<void> {
   if (!existsSync(configuration.happyDir)) {
     await mkdir(configuration.happyDir, { recursive: true })
   }
-  const keyBase64 = Buffer.from(key).toString('base64')
-  await writeFile(configuration.privateKeyFile, keyBase64, 'utf8')
+  await writeFile(configuration.privateKeyFile, JSON.stringify({
+    secret: encodeBase64(credentials.secret),
+    token: credentials.token
+  }, null, 2));
 }
