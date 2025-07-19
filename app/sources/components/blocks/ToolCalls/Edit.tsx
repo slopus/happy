@@ -185,26 +185,7 @@ export const EditDetailedView = ({ tool }: { tool: EditToolCall }) => {
         </View>
       </View>
 
-      {/* Additional Info */}
-      <View className="p-4">
-        {/* Tool State */}
-        <View className="mb-4">
-          <Text className="text-sm font-semibold text-gray-700 mb-2">Execution State</Text>
-          <Text className={`text-sm ${getStatusColorClass(tool.state)}`}>
-            {getStatusDescription(tool.state)}
-          </Text>
-        </View>
 
-        {/* Raw Arguments */}
-        <View>
-          <Text className="text-sm font-semibold text-gray-700 mb-2">Raw Parameters</Text>
-          <View className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-            <Text className="font-mono text-xs text-gray-700">
-              {JSON.stringify(tool.arguments, null, 2)}
-            </Text>
-          </View>
-        </View>
-      </View>
     </ScrollView>
   );
 };

@@ -3,6 +3,7 @@ import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { type ToolCall } from '@/sync/storageTypes';
+import { ShimmerText } from './ShimmerRunningToolName';
 
 export type LSToolCall = Omit<ToolCall, 'name'> & { name: 'LS' };
 
@@ -73,9 +74,9 @@ export function LSCompactView({ tool }: { tool: LSToolCall }) {
     : "no results";
 
   return (
-    <View className="pl-3 flex-row items-center py-0.5">
+    <View className="pl-3 flex-row items-center py-1">
       <Ionicons name="folder-outline" size={14} color="#a1a1a1" />
-      <Text className="text-xs text-neutral-400 font-bold px-1">LS</Text>
+      {tool.state === 'running' ? <ShimmerText>Listing</ShimmerText> : <Text className="text-xs text-neutral-400 font-bold px-1">List</Text>}
       <Text
         className="text-xs flex-1 text-neutral-800"
         numberOfLines={1}
