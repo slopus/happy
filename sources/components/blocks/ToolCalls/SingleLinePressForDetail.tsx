@@ -14,11 +14,14 @@ export function SingleLineToolSummaryBlock({ children, sessionId, messageId }: {
     >
       {children}
 
+      <View className="shrink-0">
+
       <Ionicons 
         name="chevron-forward" 
         size={12} 
         color="#6b7280"
       />
+      </View>
     </Pressable>
   );
 } 

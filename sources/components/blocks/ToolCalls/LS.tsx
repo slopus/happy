@@ -74,16 +74,16 @@ export function LSCompactView({ tool }: { tool: LSToolCall }) {
     : "no results";
 
   return (
-    <View className="flex-row gap-1 items-center py-1">
+    <View className="flex-row gap-1 items-center py-1 pl-[2px]">
       <Ionicons name="folder-outline" size={14} color="#a1a1a1" />
       {tool.state === 'running' ? <ShimmerText>Listing</ShimmerText> : <Text className="text-sm text-neutral-400 font-bold px-1">List</Text>}
       <Text
-        className="text-xs flex-1 text-neutral-800"
+        className="text-sm flex-1 text-neutral-800"
         numberOfLines={1}
       >
         {dirName || 'directory'}
       </Text>
-      <Text className="text-xs text-neutral-400 font-bold px-1">
+      <Text className="text-sm text-neutral-400 font-bold px-1">
         {displayText}
       </Text>
     </View>
