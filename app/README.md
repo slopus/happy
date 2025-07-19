@@ -1,8 +1,26 @@
-# Happy Coder - End-to-End Encrypted Client for Claude Code
+<img width="6828" height="3525" alt="wordart (1)" src="https://github.com/user-attachments/assets/343fa4c1-08e8-4342-bb33-6c332357e06c" />
 
-**The secure mobile client for Claude Code with military-grade encryption**
+# Happy Coder - Mobile Client for Claude Code
 
-Happy Coder is a mobile client that connects to Claude Code with complete end-to-end encryption. Every message, every code snippet, every interaction is encrypted on your device before transmission, ensuring your code and conversations remain private.
+Happy Coder is a mobile client that connects to Claude Code with full end-to-end encryption. Every message, every code snippet, every interaction is encrypted on your device before transmission, ensuring your code and conversations remain private.
+
+## How to use
+
+1. Install Happy Coder on your phone
+
+
+
+2. Install CLI on your computer
+
+```bash
+npm install -g happy-coder
+```
+
+3. Run it and connect it to your phone
+
+```bash
+happy
+```
 
 ## 📦 Project Components
 
