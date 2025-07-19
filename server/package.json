@@ -8,12 +8,12 @@
   "scripts": {
     "build": "tsc --noEmit",
     "start": "tsx ./sources/main.ts",
-    "dev": "lsof -ti tcp:3005 | xargs kill -9 && tsx --env-file=.env.local ./sources/main.ts",
+    "dev": "tsx --env-file=.env.local ./sources/main.ts",
     "test": "vitest",
-    "migrate": "prisma migrate dev",
+    "migrate": "dotenv -e .env.local -- prisma migrate dev",
     "generate": "prisma generate",
     "postinstall": "prisma generate",
-    "db": "docker run -e POSTGRES_PASSWORD=postgres -v $(pwd)/.pgdata:/var/lib/postgresql/data -p 5432:5432 postgres"
+    "db": "docker run -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=handy -v $(pwd)/.pgdata:/var/lib/postgresql/data -p 5432:5432 postgres"
   },
   "devDependencies": {
     "@types/chalk": "^2.2.0",
@@ -21,6 +21,7 @@
     "@types/node": "^20.12.3",
     "@types/tmp": "^0.2.6",
     "@types/uuid": "^9.0.8",
+    "dotenv-cli": "^8.0.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.3",
     "yaml": "^2.4.2"
@@ -40,6 +41,7 @@
     "fastify-type-provider-zod": "^4.0.2",
     "ioredis": "^5.4.1",
     "jsonwebtoken": "^9.0.2",
+    "pino-pretty": "^13.0.0",
     "prisma": "^6.11.1",
     "prisma-json-types-generator": "^3.5.1",
     "privacy-kit": "^0.0.23",

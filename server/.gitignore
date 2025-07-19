@@ -5,3 +5,7 @@ dist
 
 .env.local
 .env
+
+.logs/
+
+.claude/
