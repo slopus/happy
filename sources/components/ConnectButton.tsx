@@ -26,8 +26,8 @@ export const ConnectButton = React.memo(() => {
                     await CameraView.dismissScanner();
                     try {
                         const tail = event.data.slice('happy://terminal?'.length);
-                        const response = encryptWithEphemeralKey(decodeBase64(auth.credentials!.secret), decodeBase64(tail));
-                        await authApprove(auth.credentials!.token, response.ephemeralPublicKey, response.encrypted);
+                        const response = encryptWithEphemeralKey(decodeBase64(auth.credentials!.secret, 'base64url'), decodeBase64(tail, 'base64url'));
+                        await authApprove(auth.credentials!.token, decodeBase64(tail, 'base64url'), response);
                     } catch (e) {
                         console.error(e);
                         Alert.alert('Error', 'Failed to login', [{ text: 'OK' }]);

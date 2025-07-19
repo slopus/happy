@@ -1,31 +1,28 @@
 import { getRandomBytes } from 'expo-crypto';
-import * as tweetnacl from 'tweetnacl';
+import tweetnacl from 'tweetnacl';
 import { decodeBase64, encodeBase64 } from '@/auth/base64';
 import { AgentState, AgentStateSchema, DecryptedMessage, MessageContent, MessageContentSchema, Metadata, MetadataSchema } from './storageTypes';
 import { ApiMessage } from './apiTypes';
 
-export function generateEphemeralKeyPair() {
-    return tweetnacl.box.keyPair();
-}
-
-export function encryptWithEphemeralKey(data: Uint8Array, recipientPublicKey: Uint8Array): { encrypted: Uint8Array; ephemeralPublicKey: Uint8Array } {
-    const ephemeralKeyPair = generateEphemeralKeyPair();
+export function encryptWithEphemeralKey(data: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array {
+    const ephemeralKeyPair = tweetnacl.box.keyPair.fromSecretKey(getRandomBytes(32));
     const nonce = getRandomBytes(tweetnacl.box.nonceLength);
     const encrypted = tweetnacl.box(data, nonce, recipientPublicKey, ephemeralKeyPair.secretKey);
 
-    const result = new Uint8Array(nonce.length + encrypted.length);
-    result.set(nonce);
-    result.set(encrypted, nonce.length);
+    // Bundle format: ephemeral public key (32 bytes) + nonce (24 bytes) + encrypted data
+    const result = new Uint8Array(ephemeralKeyPair.publicKey.length + nonce.length + encrypted.length);
+    result.set(ephemeralKeyPair.publicKey, 0);
+    result.set(nonce, ephemeralKeyPair.publicKey.length);
+    result.set(encrypted, ephemeralKeyPair.publicKey.length + nonce.length);
 
-    return {
-        encrypted: result,
-        ephemeralPublicKey: ephemeralKeyPair.publicKey
-    };
+    return result;
 }
 
-export function decryptWithEphemeralKey(encryptedData: Uint8Array, ephemeralPublicKey: Uint8Array, recipientSecretKey: Uint8Array): Uint8Array | null {
-    const nonce = encryptedData.slice(0, tweetnacl.box.nonceLength);
-    const encrypted = encryptedData.slice(tweetnacl.box.nonceLength);
+export function decryptWithEphemeralKey(encryptedBundle: Uint8Array, recipientSecretKey: Uint8Array): Uint8Array | null {
+    // Extract components from bundle: ephemeral public key (32 bytes) + nonce (24 bytes) + encrypted data
+    const ephemeralPublicKey = encryptedBundle.slice(0, 32);
+    const nonce = encryptedBundle.slice(32, 32 + tweetnacl.box.nonceLength);
+    const encrypted = encryptedBundle.slice(32 + tweetnacl.box.nonceLength);
 
     const decrypted = tweetnacl.box.open(encrypted, nonce, ephemeralPublicKey, recipientSecretKey);
     if (!decrypted) {
