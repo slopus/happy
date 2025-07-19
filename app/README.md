@@ -2,25 +2,41 @@
 
 # Happy Coder - Mobile Client for Claude Code
 
-Happy Coder is a mobile client that connects to Claude Code with full end-to-end encryption. Every message, every code snippet, every interaction is encrypted on your device before transmission, ensuring your code and conversations remain private.
+Happy Coder is a mobile client that connects to Claude Code with full end-to-end encryption without replacing original experience of Claude Code.
 
-## How to use
+<h3 align="center">
+Step 1: Download App
+</h3>
 
-1. Install Happy Coder on your phone
+<div align="center">
+<img width="180" height="52" alt="appstore" src="https://github.com/user-attachments/assets/45e31a11-cf6b-40a2-a083-6dc8d1f01291" />
+  &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+<img width="180" height="52" alt="googleplay" src="https://github.com/user-attachments/assets/acbba639-858f-4c74-85c7-92a4096efbf5" />
+</div>
 
-
-
-2. Install CLI on your computer
+<h3 align="center">
+Step 2: Install CLI on your computer
+</h3>
 
 ```bash
 npm install -g happy-coder
 ```
 
-3. Run it and connect it to your phone
+<h3 align="center">
+Step 3: Start using `happy` isntead of `claude`
+</h3>
 
 ```bash
+
+# Instead of claude, just run happy
+
 happy
+
 ```
+
+## How does it work?
+
+This when you are on your computer, you are using the normal Claude Code UI, that is started by our wrapper `happy`, when you want to move control to the mobile app, it will restart the session in remote mode, when you want to get back to your computer you switch back by pressing any button on your physical keyboard.
 
 ## 📦 Project Components
 
