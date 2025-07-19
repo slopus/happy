@@ -1,6 +1,7 @@
-import { API_ENDPOINT } from './sync';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
+
+const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
 export async function registerPushToken(credentials: AuthCredentials, token: string): Promise<void> {
     await backoff(async () => {
