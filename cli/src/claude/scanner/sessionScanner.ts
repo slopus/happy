@@ -3,7 +3,8 @@ import { RawJSONLines, RawJSONLinesSchema } from "../types";
 import { resolve } from "node:path";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { readFile } from "node:fs/promises";
+import { readFile, watch } from "node:fs/promises";
+import { logger } from "@/ui/logger";
 
 export function createSessionScanner(opts: {
     workingDirectory: string
@@ -18,6 +19,7 @@ export function createSessionScanner(opts: {
     let finishedSessions = new Set<string>();
     let pendingSessions = new Set<string>();
     let currentSessionId: string | null = null;
+    let currentSessionWatcherAbortController: AbortController | null = null;
     let processedMessages = new Set<string>();
 
     // Main sync function
@@ -32,14 +34,16 @@ export function createSessionScanner(opts: {
             sessions.push(currentSessionId);
         }
 
-        // Process sessions
-        for (let session of sessions) {
-            const expectedSessionFile = join(projectDir, `${session}.jsonl`);
+        let processSessionFile = async (sessionId: string) => {
+            const expectedSessionFile = join(projectDir, `${sessionId}.jsonl`);
             let file: string;
             try {
+                // NOTE: When running claude in remote mode, we might not have
+                // the session file yet.
+                // We will fix it later with a session file watcher on claude side.
                 file = await readFile(expectedSessionFile, 'utf-8');
             } catch (error) {
-                continue;
+                return;
             }
             let lines = file.split('\n');
             for (let l of lines) {
@@ -47,6 +51,7 @@ export function createSessionScanner(opts: {
                     let message = JSON.parse(l);
                     let parsed = RawJSONLinesSchema.safeParse(message);
                     if (!parsed.success) {
+                        logger.debugLargeJson(`[SESSION_SCANNER] Failed to parse message`, message)
                         continue;
                     }
 
@@ -65,6 +70,11 @@ export function createSessionScanner(opts: {
             }
         }
 
+        // Process sessions
+        for (let session of sessions) {
+            await processSessionFile(session);
+        }
+
         // Move pending sessions to finished sessions
         for (let p of sessions) {
             if (pendingSessions.has(p)) {
@@ -72,14 +82,38 @@ export function createSessionScanner(opts: {
                 finishedSessions.add(p);
             }
         }
+
+        // Invalidate old watcher & start new one
+        currentSessionWatcherAbortController?.abort();
+        currentSessionWatcherAbortController = new AbortController();
+        void (async () => {
+            if (currentSessionId) {
+                const sessionFile = join(projectDir, `${currentSessionId}.jsonl`);
+                try {
+                    for await (const change of watch(sessionFile, { persistent: true, signal: currentSessionWatcherAbortController.signal })) {
+                        await processSessionFile(currentSessionId);
+                    }
+                } catch (error: any) {
+                    if (error.name !== 'AbortError') {
+                        logger.debug(`[SESSION_SCANNER] Watch error: ${error.message}`);
+                    }
+                }
+            }
+        })();
+
+        // We do not want to be creating a new watcher 
     });
 
     // Periodic sync
-    setInterval(() => { sync.invalidate(); }, 3000);
+    const intervalId = setInterval(() => { sync.invalidate(); }, 3000);
 
     // Public interface
     return {
         refresh: () => sync.invalidate(),
+        cleanup: () => {
+            clearInterval(intervalId);
+            currentSessionWatcherAbortController?.abort();
+        },
         onNewSession: (sessionId: string) => {
             if (currentSessionId === sessionId) {
                 return;
@@ -101,22 +135,13 @@ export function createSessionScanner(opts: {
 
 function getMessageKey(message: RawJSONLines): string {
     if (message.type === 'user') {
-        // For user messages: timestamp + content
-        // Timestamp is stable across resumes
-        const content = typeof message.message.content === 'string'
-            ? message.message.content
-            : JSON.stringify(message.message.content)
-        return `user:${message.timestamp}:${content}`
+        return `user:${message.uuid}`
     } else if (message.type === 'assistant') {
-        // For assistant messages: use content for deduplication
-        // This handles cases where the same message.id has different content
-        // (e.g., text response followed by tool_use)
-        const content = JSON.stringify(message.message.content)
-        return `assistant:${message.message.id}:${content}`
+        return `assistant:${message.uuid}`
     } else if (message.type === 'summary') {
         return `summary:${message.leafUuid}`
     } else if (message.type === 'system') {
-        return `system:${message.content}`
+        return `system:${message.uuid}`
     }
 
     return `unknown:<error, this should be unreachable>`
