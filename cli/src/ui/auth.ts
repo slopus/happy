@@ -5,6 +5,7 @@ import tweetnacl from 'tweetnacl';
 import axios from 'axios';
 import { displayQRCode } from "./qrcode";
 import { delay } from "@/utils/time";
+import { writeCredentials } from "@/persistence/persistence";
 
 export async function doAuth(): Promise<{ secret: Uint8Array, token: string } | null> {
 
@@ -44,6 +45,7 @@ export async function doAuth(): Promise<{ secret: Uint8Array, token: string } | 
                         secret: decrypted,
                         token: token
                     }
+                    await writeCredentials(credentials);
                     return credentials;
                 } else {
                     console.log('Failed to decrypt response, please try again later.');
