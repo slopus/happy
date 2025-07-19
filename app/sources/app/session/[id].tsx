@@ -12,6 +12,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import LottieView from 'lottie-react-native';
 
 export default function Session() {
     const safeArea = useSafeAreaInsets();
@@ -64,20 +65,28 @@ export default function Session() {
                 style={{ flexGrow: 1, flexBasis: 0, paddingBottom: safeArea.bottom }}
             >
                 <View style={{ flexGrow: 1, flexBasis: 0 }}>
-                    <FlatList
-                        data={messages}
-                        inverted={true}
-                        keyExtractor={(item) => item.id}
-                        renderItem={({ item }) => (
-                            <MessageView
-                                message={item}
-                                metadata={session.metadata}
-                                sessionId={sessionId}
-                            />
-                        )}
-                        ListHeaderComponent={() => <View style={{ height: 8 }} />}
-                        ListFooterComponent={() => <View style={{ height: 8 }} />}
-                    />
+                    {messages.length === 0 && (
+                        <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
+                            <LottieView source={require('@/assets/animations/popcorn.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
+                            <Text style={{ color: '#666', fontSize: 20, marginTop: 16 }}>No messages yet</Text>
+                        </View>
+                    )}
+                    {messages.length > 0 && (
+                        <FlatList
+                            data={messages}
+                            inverted={true}
+                            keyExtractor={(item) => item.id}
+                            renderItem={({ item }) => (
+                                <MessageView
+                                    message={item}
+                                    metadata={session.metadata}
+                                    sessionId={sessionId}
+                                />
+                            )}
+                            ListHeaderComponent={() => <View style={{ height: 8 }} />}
+                            ListFooterComponent={() => <View style={{ height: 8 }} />}
+                        />
+                    )}
                 </View>
                 {permissionRequest && (
                     <View style={{ flexDirection: 'column', justifyContent: 'space-between', height: 128, paddingHorizontal: 24 }}>
