@@ -90,8 +90,6 @@ function AgentMessageView(props: {
           flexGrow: 1,
           flexBasis: 0,
           flexDirection: "column",
-          marginTop: -12,
-          marginBottom: -12,
           paddingRight: 16,
         }}
       >
