@@ -20,7 +20,7 @@ export function BashCompactViewInner({ tool }: { tool: ToolCall }) {
   const description = tool.arguments?.description;
   
   // Dynamic label based on state
-  const label = tool.state === 'running' ? 'Running' : 'run';
+  const label = tool.state === 'running' ? 'Running' : 'Ran';
   
   if (!command) {
     return (
@@ -95,33 +95,6 @@ export const BashDetailedView = ({ tool }: { tool: ToolCall }) => {
         <View className="mb-4">
           <Text className="text-sm font-semibold text-gray-700 mb-2">Explanation</Text>
           <Text className="text-sm text-gray-700 leading-5">{explanation}</Text>
-        </View>
-      )}
-
-      {/* Arguments details */}
-      <View className="mb-4">
-        <Text className="text-sm font-semibold text-gray-700 mb-2">Tool Arguments</Text>
-        <View className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-          <Text className="font-mono text-sm text-gray-700">
-            {JSON.stringify(tool.arguments, null, 2)}
-          </Text>
-        </View>
-      </View>
-
-
-
-      {/* Children tools if any */}
-      {tool.children && tool.children.length > 0 && (
-        <View className="mb-4">
-          <Text className="text-sm font-semibold text-gray-700 mb-2">Child Tool Calls ({tool.children.length})</Text>
-          {tool.children.map((child: ToolCall, index: number) => (
-            <View key={index} className="flex-row justify-between items-center py-2 px-3 bg-gray-50 rounded-md mb-1">
-              <Text className="text-sm text-gray-700 font-medium">{child.name}</Text>
-              <Text className={`text-sm font-medium ${getStatusColorClass(child.state)}`}>
-                {child.state}
-              </Text>
-            </View>
-          ))}
         </View>
       )}
     </ScrollView>

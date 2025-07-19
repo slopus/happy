@@ -86,7 +86,7 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
   // Show input parse error if we couldn't understand the arguments
   if (inputParseError && !parsedInput) {
     return (
-      <View className="pl-3 flex-row items-center py-1">
+      <View className="flex-row items-center py-1">
         <Ionicons name="eye" size={14} color="#a1a1a1" />
         <Text className="text-xs text-neutral-400 font-bold px-1">Read</Text>
         <Text
@@ -120,7 +120,7 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
     : "" /*parseError || JSON.stringify(tool.result)*/;
 
   return (
-    <View className="pl-3 flex-row items-center py-1">
+    <View className="flex-row items-center py-1">
       <Ionicons name="eye" size={14} color="#a1a1a1" />
       <Text className="text-xs text-neutral-400 font-bold px-1">Read</Text>
       <Text
