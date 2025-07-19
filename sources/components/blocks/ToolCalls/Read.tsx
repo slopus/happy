@@ -3,8 +3,15 @@ import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { type ToolCall } from '@/sync/storageTypes';
+import { ShimmerText } from './ShimmerRunningToolName';
 
 export type ReadToolCall = Omit<ToolCall, 'name'> & { name: 'Read' };
+
+const ToolInputSchema = z.object({
+  file_path: z.string(),
+  offset: z.number().optional(),
+  limit: z.number().optional(),
+});
 
 const ToolResultSchema = z.object({
   type: z.string(),
@@ -17,18 +24,32 @@ const ToolResultSchema = z.object({
   }),
 });
 
+type ParsedToolInput = z.infer<typeof ToolInputSchema>;
 type ParsedToolResult = z.infer<typeof ToolResultSchema>;
 
 export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
+  // Parse and validate tool input
+  let parsedInput: ParsedToolInput | null = null;
+  let inputParseError: string | null = null;
+
+  if (tool.arguments) {
+    const inputParseResult = ToolInputSchema.safeParse(tool.arguments);
+    if (inputParseResult.success) {
+      parsedInput = inputParseResult.data;
+    } else {
+      inputParseError = `Invalid input: ${inputParseResult.error.message}`;
+    }
+  }
+
   // Handle running state
   if (tool.state === 'running') {
-    const filePath = tool.arguments?.file_path;
-    const fileName = typeof filePath === 'string' ? filePath.split('/').pop() || filePath : 'file';
+    const filePath = parsedInput?.file_path || (typeof tool.arguments?.file_path === 'string' ? tool.arguments.file_path : 'unknown');
+    const fileName = filePath.split('/').pop() || filePath;
     
     return (
       <View className="pl-3 flex-row items-center py-0.5">
         <Ionicons name="eye" size={14} color="#a1a1a1" />
-        <Text className="text-xs text-neutral-400 font-bold px-1 shimmer">Reading</Text>
+        <ShimmerText>Reading</ShimmerText>
         <Text
           className="text-xs flex-1 text-neutral-800"
           numberOfLines={1}
@@ -41,8 +62,8 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
 
   // Handle error state
   if (tool.state === 'error') {
-    const filePath = tool.arguments?.file_path;
-    const fileName = typeof filePath === 'string' ? filePath.split('/').pop() || filePath : 'file';
+    const filePath = parsedInput?.file_path || (typeof tool.arguments?.file_path === 'string' ? tool.arguments.file_path : 'unknown');
+    const fileName = filePath.split('/').pop() || filePath;
     
     return (
       <View className="pl-3 flex-row items-center py-0.5">
@@ -55,16 +76,30 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
           {fileName}
         </Text>
         <Text className="text-xs text-red-500">
-          Failed to read file
+          {inputParseError || 'Failed to read file'}
         </Text>
       </View>
     );
   }
 
   // Handle completed state
-  // Defensive: check for file_path
-  const filePath = tool.arguments?.file_path;
-  const fileName = typeof filePath === 'string' ? filePath.split('/').pop() || filePath : undefined;
+  // Show input parse error if we couldn't understand the arguments
+  if (inputParseError && !parsedInput) {
+    return (
+      <View className="pl-3 flex-row items-center py-1">
+        <Ionicons name="eye" size={14} color="#a1a1a1" />
+        <Text className="text-xs text-neutral-400 font-bold px-1">Read</Text>
+        <Text
+          className="text-xs flex-1 text-neutral-800"
+          numberOfLines={1}
+        >
+          Unable to parse arguments to show more information
+        </Text>
+      </View>
+    );
+  }
+
+  const fileName = parsedInput?.file_path.split('/').pop() || parsedInput?.file_path || 'file';
 
   // Parse the tool.result using Zod schema
   let parsedResult: ParsedToolResult | null = null;
@@ -92,7 +127,7 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
         className="text-xs flex-1 text-neutral-800"
         numberOfLines={1}
       >
-        {fileName || 'file'}
+        {fileName}
       </Text>
       <Text className="text-xs text-neutral-400 font-bold px-1">
         {displayText}

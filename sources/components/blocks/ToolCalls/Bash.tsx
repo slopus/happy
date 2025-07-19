@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { type ToolCall } from "@/sync/storageTypes";
 import { SingleLineToolSummaryBlock as SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
 
@@ -16,25 +17,32 @@ export function BashCompactView({ tool, sessionId, messageId }: { tool: BashTool
 // Compact view for display in session list (1-2 lines max)
 export function BashCompactViewInner({ tool }: { tool: ToolCall }) {
   const command = tool.arguments?.command;
+  const description = tool.arguments?.description;
+  
+  // Dynamic label based on state
+  const label = tool.state === 'running' ? 'Running' : 'run';
   
   if (!command) {
     return (
       <View className="flex-row items-center py-0.5">
-        <Text className="text-xs text-gray-500 italic">🖥️ Terminal command</Text>
+        <Ionicons name="terminal" size={14} color="#a1a1a1" />
+        <Text className="text-sm text-neutral-400 font-bold px-1">{label}</Text>
+        <Text className="text-sm text-gray-500 italic flex-1">Terminal command</Text>
       </View>
     );
   }
 
-  // Truncate long commands
-  const displayCommand = command.length > 50 ? `${command.substring(0, 47)}...` : command;
+  // Use description if available, otherwise use truncated command
+  const displayText = description || (command.length > 50 ? `${command.substring(0, 47)}...` : command);
+  const prefix = description ? '' : '$ ';
   
   return (
     <View className="flex-row items-center py-0.5">
-      <Text className="text-xs mr-1">🖥️</Text>
-      <Text className="text-xs font-mono text-gray-700 flex-1">$ {displayCommand}</Text>
-      {tool.state === 'error' && <Text className="text-xs ml-1">❌</Text>}
-      {tool.state === 'completed' && <Text className="text-xs ml-1">✅</Text>}
-      {tool.state === 'running' && <Text className="text-xs ml-1">⏳</Text>}
+      <Ionicons name="terminal" size={14} color="#a1a1a1" />
+      <Text className="text-sm text-neutral-400 font-bold px-1">{label}</Text>
+      <Text className="text-sm text-neutral-800 flex-1" numberOfLines={1}>
+        {prefix}{displayText}
+      </Text>
     </View>
   );
 };
@@ -60,7 +68,7 @@ export const BashDetailedView = ({ tool }: { tool: ToolCall }) => {
       <View className="flex-row justify-between items-center mb-5 pb-3 border-b border-gray-200">
         <Text className="text-lg font-semibold text-gray-900">🖥️ Terminal Command</Text>
         <View className="px-2 py-1 bg-gray-100 rounded-xl">
-          <Text className={`text-xs font-medium ${getStatusColorClass(tool.state)}`}>
+          <Text className={`text-sm font-medium ${getStatusColorClass(tool.state)}`}>
             {getStatusDisplay(tool.state)}
           </Text>
         </View>
@@ -94,19 +102,13 @@ export const BashDetailedView = ({ tool }: { tool: ToolCall }) => {
       <View className="mb-4">
         <Text className="text-sm font-semibold text-gray-700 mb-2">Tool Arguments</Text>
         <View className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-          <Text className="font-mono text-xs text-gray-700">
+          <Text className="font-mono text-sm text-gray-700">
             {JSON.stringify(tool.arguments, null, 2)}
           </Text>
         </View>
       </View>
 
-      {/* Tool State */}
-      <View className="mb-4">
-        <Text className="text-sm font-semibold text-gray-700 mb-2">Execution State</Text>
-        <Text className={`text-sm font-medium ${getStatusColorClass(tool.state)}`}>
-          {getStatusDescription(tool.state)}
-        </Text>
-      </View>
+
 
       {/* Children tools if any */}
       {tool.children && tool.children.length > 0 && (
@@ -114,8 +116,8 @@ export const BashDetailedView = ({ tool }: { tool: ToolCall }) => {
           <Text className="text-sm font-semibold text-gray-700 mb-2">Child Tool Calls ({tool.children.length})</Text>
           {tool.children.map((child: ToolCall, index: number) => (
             <View key={index} className="flex-row justify-between items-center py-2 px-3 bg-gray-50 rounded-md mb-1">
-              <Text className="text-xs text-gray-700 font-medium">{child.name}</Text>
-              <Text className={`text-xs font-medium ${getStatusColorClass(child.state)}`}>
+              <Text className="text-sm text-gray-700 font-medium">{child.name}</Text>
+              <Text className={`text-sm font-medium ${getStatusColorClass(child.state)}`}>
                 {child.state}
               </Text>
             </View>
