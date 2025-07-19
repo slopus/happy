@@ -130,16 +130,13 @@ export async function startApi() {
     }
 
     // Auth schema
-    const authSchema = z.object({
-        publicKey: z.string(),
-        challenge: z.string(),
-        signature: z.string()
-    });
-
-    // Single auth endpoint
     typed.post('/v1/auth', {
         schema: {
-            body: authSchema
+            body: z.object({
+                publicKey: z.string(),
+                challenge: z.string(),
+                signature: z.string()
+            })
         }
     }, async (request, reply) => {
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
@@ -162,6 +159,78 @@ export async function startApi() {
             success: true,
             token: await tokenGenerator.new({ user: user.id })
         });
+    });
+
+    typed.post('/v1/auth/request', {
+        schema: {
+            body: z.object({
+                publicKey: z.string(),
+            }),
+            response: {
+                200: z.union([z.object({
+                    state: z.literal('requested'),
+                }), z.object({
+                    state: z.literal('authorized'),
+                    token: z.string(),
+                    response: z.string()
+                })]),
+                401: z.object({
+                    error: z.literal('Invalid public key')
+                })
+            }
+        }
+    }, async (request, reply) => {
+        const publicKey = privacyKit.decodeBase64(request.body.publicKey);
+        const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
+        if (!isValid) {
+            return reply.code(401).send({ error: 'Invalid public key' });
+        }
+
+        const answer = await db.terminalAuthRequest.upsert({
+            where: { publicKey: privacyKit.encodeHex(publicKey) },
+            update: { updatedAt: new Date() },
+            create: { publicKey: privacyKit.encodeHex(publicKey) }
+        });
+
+        if (answer.response) {
+            const token = await tokenGenerator.new({ user: answer.id, extras: { session: answer.id } });
+            return reply.send({
+                state: 'authorized',
+                token: token,
+                response: answer.response
+            });
+        }
+
+        return reply.send({ state: 'requested' });
+    });
+
+    // Approve auth request
+    typed.post('/v1/auth/response', {
+        schema: {
+            body: z.object({
+                response: z.string(),
+                publicKey: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const publicKey = privacyKit.decodeBase64(request.body.publicKey);
+        const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
+        if (!isValid) {
+            return reply.code(401).send({ error: 'Invalid public key' });
+        }
+        const authRequest = await db.terminalAuthRequest.findUnique({
+            where: { publicKey: privacyKit.encodeHex(publicKey) }
+        });
+        if (!authRequest) {
+            return reply.code(404).send({ error: 'Request not found' });
+        }
+        if (!authRequest.response) {
+            await db.terminalAuthRequest.update({
+                where: { id: authRequest.id },
+                data: { response: request.body.response }
+            });
+        }
+        return reply.send({ success: true });
     });
 
     // Sessions API
