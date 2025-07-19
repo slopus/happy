@@ -1,8 +1,10 @@
 import React, { useMemo } from 'react';
 import { View, Text, ScrollView } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { type ToolCall } from "@/sync/storageTypes";
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
+import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
 
 export type EditToolCall = Omit<ToolCall, 'name'> & { name: 'Edit' };
 
@@ -15,6 +17,7 @@ const EditArgumentsSchema = z.object({
 });
 
 type EditArguments = z.infer<typeof EditArgumentsSchema>;
+
 
 
 // Parse arguments safely
@@ -40,74 +43,61 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
   
   if (!args) {
     return (
-      <View className="flex-row items-center py-0.5">
-        <Text className="text-xs text-gray-500 italic">✏️ File edit</Text>
+      <View className="flex-row items-center py-1">
+        <Ionicons name="pencil-outline" size={14} color="#a1a1a1" />
+        <Text className="text-sm text-neutral-400 font-bold px-1">Edit</Text>
+        <Text className="text-sm flex-1 text-neutral-800" numberOfLines={1}>
+          Invalid arguments
+        </Text>
       </View>
     );
   }
+
+  // Calculate diff stats for display
+  const diffStats = useMemo(() => {
+    if (!args.old_string || !args.new_string) {
+      return { additions: 0, deletions: 0 };
+    }
+    
+    return calculateDiffStats(args.old_string, args.new_string);
+  }, [args.old_string, args.new_string]);
 
   // Extract just the filename from the path
   const fileName = args.file_path.split('/').pop() || args.file_path;
   
   return (
-    <View className="flex-row items-center py-0.5">
-      <Text className="text-xs mr-1">✏️</Text>
-      <Text className="text-xs text-gray-700 flex-1" numberOfLines={1}>
-        Edited {fileName}
+    <View className="flex-row items-center py-1">
+      <Ionicons name="pencil" size={14} color="#a1a1a1" />
+      <Text className="text-sm text-neutral-400 font-bold px-1">Edit</Text>
+      <Text
+        className="text-sm text-neutral-800"
+        numberOfLines={1}
+      >
+        {fileName}
       </Text>
-      {tool.state === 'error' && <Text className="text-xs ml-1">❌</Text>}
-      {tool.state === 'completed' && <Text className="text-xs ml-1">✅</Text>}
-      {tool.state === 'running' && <Text className="text-xs ml-1">⏳</Text>}
+      
+      {/* Diff stats */}
+      {(diffStats.additions > 0 || diffStats.deletions > 0) && (
+        <View className="flex-row items-center ml-2">
+          {diffStats.additions > 0 && (
+            <Text className="text-sm font-medium text-emerald-600 font-mono">
+              +{diffStats.additions}
+            </Text>
+          )}
+          {diffStats.deletions > 0 && (
+            <Text className="text-sm font-medium text-red-600 font-mono">
+              -{diffStats.deletions}
+            </Text>
+          )}
+        </View>
+      )}
     </View>
   );
-};
-
-// Calculate diff between two strings
-const calculateDiff = (oldStr: string, newStr: string) => {
-  const oldLines = oldStr.split('\n');
-  const newLines = newStr.split('\n');
-  
-  const diffLines: Array<{ type: 'removed' | 'added'; content: string; lineNum: number }> = [];
-  let oldIndex = 0;
-  let newIndex = 0;
-  
-  while (oldIndex < oldLines.length || newIndex < newLines.length) {
-    const oldLine = oldLines[oldIndex];
-    const newLine = newLines[newIndex];
-    
-    if (oldIndex >= oldLines.length) {
-      // Only new lines remaining
-      diffLines.push({ type: 'added', content: newLine, lineNum: newIndex + 1 });
-      newIndex++;
-    } else if (newIndex >= newLines.length) {
-      // Only old lines remaining
-      diffLines.push({ type: 'removed', content: oldLine, lineNum: oldIndex + 1 });
-      oldIndex++;
-    } else if (oldLine === newLine) {
-      // Lines are the same - skip in diff view
-      oldIndex++;
-      newIndex++;
-    } else {
-      // Lines are different
-      diffLines.push({ type: 'removed', content: oldLine, lineNum: oldIndex + 1 });
-      diffLines.push({ type: 'added', content: newLine, lineNum: newIndex + 1 });
-      oldIndex++;
-      newIndex++;
-    }
-  }
-  
-  return diffLines;
 };
 
 // Detailed view for full-screen modal
 export const EditDetailedView = ({ tool }: { tool: EditToolCall }) => {
   const { file_path: filePath, old_string: oldString, new_string: newString, replace_all: replaceAll } = tool.arguments;
-  
-  // Memoize diff calculation
-  const diffLines = useMemo(() => {
-    if (!oldString || !newString) return [];
-    return calculateDiff(oldString, newString);
-  }, [oldString, newString]);
 
   if (!filePath) {
     return (
@@ -126,9 +116,12 @@ export const EditDetailedView = ({ tool }: { tool: EditToolCall }) => {
       {/* Header */}
       <View className="p-4">
         <View className="flex-row justify-between items-center mb-4">
-          <Text className="text-lg font-semibold text-gray-900">📝 Edit Diff</Text>
+          <View className="flex-row items-center">
+            <Ionicons name="pencil" size={18} color="#374151" style={{ marginRight: 8 }} />
+            <Text className="text-lg font-semibold text-gray-900">Edit Diff</Text>
+          </View>
           <View className="px-2 py-1 bg-gray-100 rounded-xl">
-            <Text className={`text-xs font-medium ${getStatusColorClass(tool.state)}`}>
+            <Text className={`text-sm font-medium ${getStatusColorClass(tool.state)}`}>
               {getStatusDisplay(tool.state)}
             </Text>
           </View>
@@ -145,65 +138,14 @@ export const EditDetailedView = ({ tool }: { tool: EditToolCall }) => {
       </View>
 
       {/* Diff View */}
-      <View className="bg-gray-50 border-y border-gray-200">
-        {/* File Path Header */}
-        <View className="flex-row items-center justify-between px-4 py-3 bg-gray-100 border-b border-gray-200">
-          <Text className="text-xs font-mono text-gray-700 flex-1" numberOfLines={1}>
-            {filePath}
-          </Text>
-          <Text className="text-xs text-gray-500 ml-2">Diff</Text>
-        </View>
-
-        {/* Diff Lines */}
-        <View>
-          {diffLines.map((diffLine, index) => (
-            <View key={index} className="flex-row">
-              <View className={`w-8 items-center justify-center border-r ${
-                diffLine.type === 'removed' 
-                  ? 'bg-red-50 border-red-200'
-                  : 'bg-green-50 border-green-200'
-              }`}>
-                <Text className={`text-xs font-mono ${
-                  diffLine.type === 'removed' ? 'text-red-600' : 'text-green-600'
-                }`}>
-                  {diffLine.type === 'removed' ? '-' : '+'}
-                </Text>
-              </View>
-              <View className={`flex-1 px-3 py-1 ${
-                diffLine.type === 'removed'
-                  ? 'bg-red-50'
-                  : 'bg-green-50'
-              }`}>
-                <Text className={`text-xs font-mono ${
-                  diffLine.type === 'removed' ? 'text-red-800' : 'text-green-800'
-                }`} style={{ lineHeight: 16 }}>
-                  {diffLine.content}
-                </Text>
-              </View>
-            </View>
-          ))}
-        </View>
-      </View>
-
-      {/* Additional Info */}
-      <View className="p-4">
-        {/* Tool State */}
-        <View className="mb-4">
-          <Text className="text-sm font-semibold text-gray-700 mb-2">Execution State</Text>
-          <Text className={`text-sm ${getStatusColorClass(tool.state)}`}>
-            {getStatusDescription(tool.state)}
-          </Text>
-        </View>
-
-        {/* Raw Arguments */}
-        <View>
-          <Text className="text-sm font-semibold text-gray-700 mb-2">Raw Parameters</Text>
-          <View className="bg-gray-50 rounded-lg p-3 border border-gray-200">
-            <Text className="font-mono text-xs text-gray-700">
-              {JSON.stringify(tool.arguments, null, 2)}
-            </Text>
-          </View>
-        </View>
+      <View className="px-4 pb-4">
+        <SharedDiffView
+          oldContent={oldString || ''}
+          newContent={newString || ''}
+          fileName={filePath}
+          showFileName={true}
+          maxHeight={400}
+        />
       </View>
     </ScrollView>
   );
