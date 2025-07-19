@@ -1,4 +1,4 @@
-import fastify from "fastify";
+import fastify, { FastifyInstance } from "fastify";
 import { log } from "@/utils/log";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { Server, Socket } from "socket.io";
@@ -34,7 +34,7 @@ declare module 'fastify' {
 }
 
 
-export async function startApi() {
+export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> {
 
     // Configure
     log('Starting API...');
@@ -120,11 +120,13 @@ export async function startApi() {
             }
 
             // Send to all session-scoped connections, only that match sessionId
-            if (connection.connectionType === 'session-scoped'
-                && connection.sessionId === sessionId
-            ) {
-                log({ module: 'websocket' }, `Sending ${event} to session-scoped connection ${connection.socket.id}`);
-                connection.socket.emit(event, payload);
+            if (connection.connectionType === 'session-scoped') {
+                const matches = connection.sessionId === sessionId;
+                log({ module: 'websocket' }, `Session-scoped connection ${connection.socket.id}: sessionId=${connection.sessionId}, messageSessionId=${sessionId}, matches=${matches}`);
+                if (matches) {
+                    log({ module: 'websocket' }, `Sending ${event} to session-scoped connection ${connection.socket.id}`);
+                    connection.socket.emit(event, payload);
+                }
             }
         }
     }
@@ -615,7 +617,7 @@ export async function startApi() {
         }
 
         const userId = verified.user as string;
-        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}`);
+        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, socketId: ${socket.id}`);
 
         // Store connection based on type
         const metadata = { clientType: clientType || 'user-scoped', sessionId };
@@ -761,7 +763,7 @@ export async function startApi() {
         socket.on('message', async (data: any) => {
             const { sid, message, localId } = data;
 
-            log({ module: 'websocket' }, `Received message from socket ${socket.id}: ${sid} ${message.length} bytes`);
+            log({ module: 'websocket' }, `Received message from socket ${socket.id}: sessionId=${sid}, messageLength=${message.length} bytes, connectionType=${connection.connectionType}, connectionSessionId=${connection.connectionType === 'session-scoped' ? connection.sessionId : 'N/A'}`);
 
             // Resolve session
             const session = await db.session.findUnique({
@@ -1227,4 +1229,6 @@ export async function startApi() {
 
     // End
     log('API ready on port http://localhost:' + port);
+    
+    return { app, io };
 }

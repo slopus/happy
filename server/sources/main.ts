@@ -11,7 +11,7 @@ async function main() {
     //
 
     await db.$connect();
-    await startApi();
+    const { app, io } = await startApi();
     startTimeout();
 
     //
@@ -21,6 +21,15 @@ async function main() {
     log('Ready');
     await awaitShutdown();
     log('Shutting down...');
+    
+    // Close Socket.io connections
+    io.close(() => {
+        log('Socket.io closed');
+    });
+    
+    // Close Fastify server
+    await app.close();
+    log('Fastify server closed');
 }
 
 main().catch(async (e) => {
