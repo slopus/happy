@@ -51,10 +51,10 @@ function Authenticated() {
                 {sessionsData.length === 0 ? (
                     <View className="flex-1 items-center justify-center mb-8">
                         <LottieView source={require('@/assets/animations/stone.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
-                        <Text style={{ fontSize: 24, marginTop: 16 }}>No sessions</Text>
+                        <Text style={{ marginTop: 16, textAlign: 'center',fontSize: 24, ...Typography.default('semiBold') }}>No sessions yet</Text>
                         {Platform.OS !== 'web' && (
                             <>
-                                <Text style={{ fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>Connect your terminal to your account</Text>
+                                <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>Connect your terminal so you can start coding from on your phone.</Text>
                                 <ConnectButton />
                             </>
                         )}
