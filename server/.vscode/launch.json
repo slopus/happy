@@ -14,7 +14,7 @@
             "env": {
                 "NODE_ENV": "development"
             },
-            "envFile": "${workspaceFolder}/.env.local",
+            "envFile": "${workspaceFolder}/.env.example",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "internalConsoleOptions": "neverOpen",
