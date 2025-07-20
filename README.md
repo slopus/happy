@@ -1,8 +1,14 @@
 <img width="6828" height="3525" alt="wordart (1)" src="https://github.com/user-attachments/assets/343fa4c1-08e8-4342-bb33-6c332357e06c" />
 
-# Happy Coder - Mobile Client for Claude Code
+<h1 align="center">
+  Mobile Client for Claude Code
+</h1>
 
-Happy Coder is a mobile client that connects to Claude Code with full end-to-end encryption without replacing original experience of Claude Code.
+<h4 align="center">
+Your code. Your privacy. Your Claude Code companion.
+</h4>
+
+Happy Coder is a native mobile client that connects to Claude Code with full end-to-end encryption without replacing original experience of Claude Code.
 
 <h3 align="center">
 Step 1: Download App
@@ -44,45 +50,19 @@ This when you are on your computer, you are using the normal Claude Code UI, tha
 - **[happy-server](https://github.com/slopus/happy-server)** - Backend server for encrypted sync
 - **happy-coder** - This mobile client (you are here)
 
-## 🔐 Why Happy Coder?
+## 🔥 Why Happy Coder?
 
-🛡️ **Your Code Stays Private** - End-to-end encryption ensures only you can read your conversations. Perfect for proprietary codebases and sensitive projects.
+- 📱 **Seamless Mobile Experience** - Continue Claude Code sessions from anywhere with real-time streaming and instant desktop/mobile switching
+- 🔔 **Push Notifications** - Get notified for permission requests, completed tasks, and errors - never miss important updates
+- ☁️ **Cloud Sync & Offline Access** - Access your full conversation history even when terminals are offline, with automatic sync when reconnected
+- 🛡️ **End-to-End Encryption** - Military-grade encryption using TweetNaCl ensures only you can read your code - perfect for proprietary projects
+- 🔑 **Zero-Knowledge Architecture** - Your encryption keys never leave your device, server cannot decrypt messages even if compromised
+- 📖 **Open Source** - Fully auditable codebase for complete transparency and trust
 
-☁️ **Encrypted Cloud Sync** - Your sessions are stored in the cloud but fully encrypted. The server sees only encrypted data, never your actual code.
+## 🏠 Who We Are
 
-📱 **Real-Time Mobile Access** - Continue Claude Code sessions seamlessly between desktop and mobile. Watch Claude think and respond in real-time.
-
-🔑 **Zero-Knowledge Architecture** - We use TweetNaCl (same as Signal) for military-grade encryption. Your keys never leave your device.
-
-📡 **Works Offline** - Encrypted sessions cached locally. Access your conversation history even without internet.
-
-## How It Works
-
-1. **Pair with QR Code**: Scan a QR code from your Claude Code terminal to establish a secure connection
-2. **Automatic Encryption**: Every message is encrypted with a unique key before transmission
-3. **Secure Sync**: Your encrypted messages sync in real-time across all paired devices
-4. **Local Storage**: Encrypted sessions are stored on-device for offline access
-
-## Open Source Transparency
-
-Happy Coder is completely open source. You can:
-- Audit the encryption implementation
-- Verify no data collection
-- Contribute improvements
-- Self-host your own server
-
-## Technical Stack
-
-- React Native with Expo for cross-platform mobile
-- TypeScript with strict mode
-- TweetNaCl for cryptography
-- WebSocket for real-time sync
-- NativeWind for styling
+We're engineers scattered across Bay Area coffee shops and hacker houses, constantly checking how Claude is progressing on our pet projects during lunch breaks. Happy Coder was born from the frustration of not being able to peek at Claude building our side hustles while we're away from our keyboards. We believe the best tools come from scratching your own itch and sharing with the community.
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
----
-
-**Your code. Your privacy. Your Claude Code companion.**
