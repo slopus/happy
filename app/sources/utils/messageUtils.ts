@@ -77,9 +77,29 @@ function getToolSummary(tools: ToolCall[]): string {
 function extractClaudeTextContent(content: any): string | null {
   // Handle the complex nested structure of agent messages
   if (content && typeof content === 'object') {
-    // Check if it's the outer agent content structure
+    // Format 1: Direct text content structure
+    if (content.type === 'text' && typeof content.data === 'string') {
+      return content.data;
+    }
+    
+    // Format 2: Simple text structure (alternative direct format)
+    if (content.type === 'text' && typeof content.text === 'string') {
+      return content.text;
+    }
+    
+    // Format 3: String content directly
+    if (typeof content === 'string') {
+      return content;
+    }
+    
+    // Format 4: Complex nested structure (output type)
     if (content.type === 'output' && content.data) {
       const data = content.data;
+      
+      // Handle summary messages - should not reach here anymore due to SessionsList filtering
+      if (data.type === 'summary' && data.summary) {
+        return 'Summary message (should be filtered)';
+      }
       
       // Check if it's an assistant message
       if (data.type === 'assistant' && data.message && data.message.content) {
@@ -90,11 +110,42 @@ function extractClaudeTextContent(content: any): string | null {
           }
         }
       }
+      
+      // Handle other data types that might contain text
+      if (data.type === 'user' && data.message && data.message.content) {
+        // User messages might also have text
+        if (typeof data.message.content === 'string') {
+          return data.message.content;
+        }
+        if (Array.isArray(data.message.content)) {
+          for (const item of data.message.content) {
+            if (typeof item === 'string') {
+              return item;
+            }
+            if (item.type === 'text' && item.text) {
+              return item.text;
+            }
+          }
+        }
+      }
     }
     
-    // Check if it's a direct text content structure
-    if (content.type === 'text' && content.text) {
-      return content.text;
+    // Format 5: Alternative structure patterns - try common text fields
+    const possibleTextFields = ['text', 'content', 'message', 'body'];
+    for (const field of possibleTextFields) {
+      if (content[field] && typeof content[field] === 'string') {
+        return content[field];
+      }
+    }
+    
+    // Format 6: Nested content field
+    if (content.content && typeof content.content === 'string') {
+      return content.content;
+    }
+    
+    // Format 7: Check if data field contains string directly
+    if (content.data && typeof content.data === 'string') {
+      return content.data;
     }
   }
   
@@ -151,9 +202,24 @@ export function getMessagePreview(message: DecryptedMessage | null, maxLength: n
     return 'User message';
   }
 
-  // Agent messages - handle the complex nested structure
+  // Agent messages - handle BOTH raw and processed formats
   if (content.role === 'agent') {
-    // First try to extract text content
+    // FIRST: Check if this is the processed Message format (simple structure)
+    // This handles: {role: 'agent', content: {type: 'text', text: '...'}}
+    if (content.content && typeof content.content === 'object') {
+      if (content.content.type === 'text' && content.content.text) {
+        const plainText = stripMarkdown(content.content.text);
+        return plainText.length > maxLength
+          ? plainText.substring(0, maxLength) + '...'
+          : plainText;
+      }
+      
+      if (content.content.type === 'tool' && content.content.tools) {
+        return getToolSummary(content.content.tools);
+      }
+    }
+    
+    // SECOND: Try the complex DecryptedMessage format (nested structure)
     const textContent = extractClaudeTextContent(content.content);
     if (textContent) {
       const plainText = stripMarkdown(textContent);
@@ -162,7 +228,7 @@ export function getMessagePreview(message: DecryptedMessage | null, maxLength: n
         : plainText;
     }
     
-    // If no text, check for tool calls
+    // THIRD: Check for tool calls in DecryptedMessage format
     const toolCalls = extractClaudeToolCalls(content.content);
     if (toolCalls.length > 0) {
       return getToolSummary(toolCalls);
