@@ -59,15 +59,59 @@ function Authenticated() {
 
     const emptyState = (
         <View className="flex-1 items-center justify-center mb-8">
-            <LottieView source={require('@/assets/animations/stone.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
-            <Text style={{ fontSize: 24, marginTop: 16 }}>No sessions</Text>
-            {Platform.OS !== 'web' && (
-                <>
-                    <Text style={{ fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>Connect your terminal to your account</Text>
-                    <ConnectButton />
-                </>
-            )}
+        {/* Terminal-style code block */}
+        <Text style={{ marginBottom: 16, textAlign: 'center', fontSize: 24, ...Typography.default('semiBold') }}>Ready to code?</Text>
+        <View style={{
+            backgroundColor: '#444',
+            borderRadius: 8,
+            padding: 20,
+            marginHorizontal: 24,
+            marginBottom: 20,
+            borderWidth: 1,
+            borderColor: '#333'
+        }}>
+            
+            <Text style={{ ...Typography.mono(), fontSize: 16, color: '#00ff00', marginBottom: 8 }}>
+                $ npm i -g happy-coder
+            </Text>
+            <Text style={{ ...Typography.mono(), fontSize: 16, color: '#00ff00' }}>
+                $ happy
+            </Text>
         </View>
+        
+        
+        {Platform.OS !== 'web' && (
+            <>
+                <View style={{ marginTop: 12, marginHorizontal: 24, marginBottom: 64, width: '70%' }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                            <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>1</Text>
+                        </View>
+                        <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
+                            Install the Happy CLI on your computer
+                        </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                            <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>2</Text>
+                        </View>
+                        <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
+                            Run it  
+                        </Text>
+                    </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                            <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>3</Text>
+                        </View>
+                        <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
+                            Scan the QR code
+                        </Text>
+                    </View>
+                </View>
+                <ConnectButton />
+            </>
+        )}
+    </View>
     );
 
     // On phones, use the existing navigation pattern
