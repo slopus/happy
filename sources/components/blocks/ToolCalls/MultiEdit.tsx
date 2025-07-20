@@ -4,7 +4,7 @@ import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { type ToolCall } from "@/sync/storageTypes";
 import { z } from 'zod';
-import { SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
+import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
 
 export type MultiEditToolCall = Omit<ToolCall, 'name'> & { name: 'MultiEdit' };

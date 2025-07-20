@@ -4,7 +4,8 @@ import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { type ToolCall } from '@/sync/storageTypes';
 import { z } from 'zod';
-import { SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
+import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
 export type TodoWriteToolCall = Omit<ToolCall, 'name'> & { name: 'TodoWrite' };
 
@@ -29,41 +30,7 @@ const parseTodoWriteArguments = (args: any): TodoWriteArguments | null => {
   }
 };
 
-const getStateColor = (state: string) => {
-    switch (state) {
-        case 'running': return '#f59e0b';
-        case 'completed': return '#10b981';
-        case 'error': return '#ef4444';
-        default: return '#6b7280';
-    }
-};
 
-const getStateIcon = (state: string) => {
-    switch (state) {
-        case 'running': return 'time-outline';
-        case 'completed': return 'checkmark-circle-outline';
-        case 'error': return 'close-circle-outline';
-        default: return 'ellipse-outline';
-    }
-};
-
-const getTodoStatusColor = (status: string) => {
-    switch (status) {
-        case 'completed': return '#10b981';
-        case 'in_progress': return '#f59e0b';
-        case 'cancelled': return '#ef4444';
-        default: return '#6b7280';
-    }
-};
-
-const getTodoStatusBgColor = (status: string) => {
-    switch (status) {
-        case 'completed': return 'bg-green-500';
-        case 'in_progress': return 'bg-amber-500';
-        case 'cancelled': return 'bg-red-500';
-        default: return 'bg-gray-500';
-    }
-};
 
 export function TodoWriteCompactView({ tool, sessionId, messageId }: { tool: ToolCall, sessionId: string, messageId: string }) {
   return (
@@ -79,10 +46,10 @@ export function TodoWriteCompactViewInner({ tool }: { tool: ToolCall }) {
   
   if (!args) {
     return (
-      <View className="flex-row items-center py-1">
-        <Ionicons name="list-outline" size={14} color="#a1a1a1" />
-        <Text className="text-sm text-neutral-400 font-bold px-1">TODO</Text>
-        <Text className="text-sm flex-1 text-neutral-800" numberOfLines={1}>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="list-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>TODO</Text>
+        <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
           Invalid arguments
         </Text>
       </View>
@@ -90,7 +57,6 @@ export function TodoWriteCompactViewInner({ tool }: { tool: ToolCall }) {
   }
 
   const todos = args.todos;
-  const todoCount = todos.length;
   
   // Count todos by status
   const statusCounts = todos.reduce((acc, todo) => {
@@ -110,28 +76,28 @@ export function TodoWriteCompactViewInner({ tool }: { tool: ToolCall }) {
   const failedCount = cancelledCount;
   
   return (
-    <View className="flex-row items-center py-1">
-      <Ionicons name="list" size={14} color="#a1a1a1" />
-      <Text className="text-sm text-neutral-400 font-bold px-1">Update TODOs</Text>
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <Ionicons name="list" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Update TODOs</Text>
       
       {/* Status indicators with icons */}
       <View className="flex-row items-center ml-2 font-medium">
         {successCount > 0 && (
           <View className="flex-row items-center mr-2">
-            <Ionicons name="checkmark" size={14} color="#10b981" />
-            <Text className="text-sm text-green-600 ml-[2px]">{successCount}</Text>
+            <Ionicons name="checkmark" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#10b981" />
+            <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-green-600 ml-[2px]`}>{successCount}</Text>
           </View>
         )}
         {pendingTotal > 0 && (
           <View className="flex-row items-center mr-2 font-bold">
-            <Ionicons name="sync-outline" size={14} color="#f59e0b" />
-            <Text className="text-sm text-amber-600 ml-[2px]">{pendingTotal}</Text>
+            <Ionicons name="sync-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#f59e0b" />
+            <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-amber-600 ml-[2px]`}>{pendingTotal}</Text>
           </View>
         )}
         {failedCount > 0 && (
           <View className="flex-row items-center mr-2">
-            <Ionicons name="close" size={14} color="#ef4444" />
-            <Text className="text-sm text-red-600 ml-[2px]">{failedCount}</Text>
+            <Ionicons name="close" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#ef4444" />
+            <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-red-600 ml-[2px]`}>{failedCount}</Text>
           </View>
         )}
       </View>
@@ -146,7 +112,7 @@ export const TodoWriteDetailedView = ({ tool }: { tool: TodoWriteToolCall }) => 
   if (!args) {
     return (
       <View className="flex-1 p-4 bg-white">
-        <Text className="text-lg font-semibold text-gray-900">TODO List</Text>
+        <Text className="text-lg font-semibold text-gray-900">Update TODO List</Text>
         <Text className="text-red-600 text-sm italic">Invalid arguments</Text>
       </View>
     );
@@ -154,75 +120,96 @@ export const TodoWriteDetailedView = ({ tool }: { tool: TodoWriteToolCall }) => 
 
   const todos = args.todos;
 
+  const getTodoStatusIcon = (status: string) => {
+    switch (status) {
+      case 'completed': return 'checkbox';
+      case 'cancelled': return 'close-circle';
+      default: return 'square-outline';
+    }
+  };
+
+  const getTodoStatusIconColor = (status: string) => {
+    switch (status) {
+      case 'completed': return '#007AFF';
+      case 'cancelled': return '#8E8E93';
+      default: return '#C7C7CC';
+    }
+  };
+
   return (
-    <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={true}>
+    <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={false}>
       {/* Header */}
-      <View className="p-4">
-        <View className="flex-row justify-between items-center mb-4">
-          <View className="flex-row items-center">
-            <Ionicons name="list" size={18} color="#374151" style={{ marginRight: 8 }} />
-            <Text className="text-lg font-semibold text-gray-900">TODO ({todos.length} items)</Text>
-          </View>
-          <View className="px-2 py-1 bg-gray-100 rounded-xl">
-            <Text className={`text-sm font-medium ${getStatusColorClass(tool.state)}`}>
-              {getStatusDisplay(tool.state)}
-            </Text>
-          </View>
+      <View className="pt-5 pl-3 pb-2">
+        <View className="flex-row items-center">
+          <Text className="text-2xl font-bold ">Update TODOs</Text>
         </View>
       </View>
 
       {/* Todo List */}
-      <View className="px-4 pb-4">
-        <View className="border border-gray-200 rounded-lg bg-gray-50 p-3">
-          {todos.map((todo, index) => (
-            <View key={todo.id} className={`flex-row items-center ${index < todos.length - 1 ? 'mb-3' : ''} bg-white p-3 rounded-lg border border-gray-100`}>
-              <View className={`w-3 h-3 rounded-full mr-3 ${getTodoStatusBgColor(todo.status)}`} />
-              <Text 
-                className="text-sm text-gray-700 flex-1"
-                style={{ 
-                  textDecorationLine: todo.status === 'completed' ? 'line-through' : 'none'
-                }}
-              >
-                {todo.content}
-              </Text>
-              {todo.priority && (
-                <View className={`px-2 py-1 rounded-md ml-2 ${
-                  todo.priority === 'high' ? 'bg-red-100' : 
-                  todo.priority === 'medium' ? 'bg-yellow-100' : 
-                  'bg-gray-100'
-                }`}>
-                  <Text className={`text-xs font-medium ${
-                    todo.priority === 'high' ? 'text-red-700' : 
-                    todo.priority === 'medium' ? 'text-yellow-700' : 
-                    'text-gray-700'
-                  }`}>
-                    {todo.priority}
-                  </Text>
-                </View>
-              )}
+      <View className="px-3">
+        {todos.map((todo, index) => (
+          <View key={todo.id}>
+            <View className="flex-row items-start py-3">
+              <View className="mr-3 -mt-[2px]">
+                <Ionicons 
+                  name={getTodoStatusIcon(todo.status)} 
+                  size={24} 
+                  color={getTodoStatusIconColor(todo.status)} 
+                />
+              </View>
+              
+              <View className="flex-1">
+                <Text 
+                  className={`text-base leading-6 ${
+                    todo.status === 'completed' 
+                      ? 'text-gray-500' 
+                      : todo.status === 'cancelled'
+                      ? 'text-gray-400'
+                      : 'text-gray-900'
+                  }`}
+                  style={{ 
+                    textDecorationLine: todo.status === 'completed' || todo.status === 'cancelled' ? 'line-through' : 'none'
+                  }}
+                >
+                  {todo.content}
+                </Text>
+                
+                {todo.priority && (
+                  <View className="mt-1 flex-row gap-2">
+                    {todo.status === 'in_progress' && (
+                      <View className="px-2 py-1 rounded-md self-start bg-blue-100">
+                        <Text className="text-sm font-bold text-blue-700">IN PROGRESS</Text>
+                      </View>
+                    )}
+
+                    <View className={`px-2 py-1 rounded-md self-start ${
+                      todo.priority === 'high' ? 'bg-red-100' : 
+                      todo.priority === 'medium' ? 'bg-orange-100' : 
+                      'bg-gray-100'
+                    }`}>
+                      <Text className={`text-sm font-bold ${
+                        todo.priority === 'high' ? 'text-red-700' : 
+                        todo.priority === 'medium' ? 'text-orange-700' : 
+                        'text-gray-600'
+                      }`}>
+                        {todo.priority.toUpperCase()}
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
             </View>
-          ))}
-        </View>
+            
+            {/* Divider line from text baseline to right edge */}
+            {index !== todos.length - 1 && (
+              <View className="flex-row">
+                <View className="w-9" /> {/* Space for icon + margin */}
+                <View className="flex-1 border-b border-gray-200 -mr-3" />
+              </View>
+            )}
+          </View>
+        ))}
       </View>
     </ScrollView>
   );
-};
-
-// Helper functions
-const getStatusDisplay = (state: string) => {
-  switch (state) {
-    case 'running': return '⏳ Running';
-    case 'completed': return '✅ Completed';
-    case 'error': return '❌ Error';
-    default: return state;
-  }
-};
-
-const getStatusColorClass = (state: string) => {
-  switch (state) {
-    case 'running': return 'text-amber-500';
-    case 'completed': return 'text-green-600';
-    case 'error': return 'text-red-600';
-    default: return 'text-gray-500';
-  }
 };

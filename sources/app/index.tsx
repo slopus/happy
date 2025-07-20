@@ -34,10 +34,10 @@ function Authenticated() {
     const { updateAvailable, reloadApp } = useUpdates();
     const isTablet = useIsTablet();
     const router = useRouter();
-    
+
     // Track selected session for tablet view
     const [selectedSessionId, setSelectedSessionId] = React.useState<string | null>(null);
-    
+
     React.useEffect(() => {
         // Auto-select first session on tablets if none selected
         if (isTablet && sessionsData && sessionsData.length > 0 && !selectedSessionId) {
@@ -59,59 +59,59 @@ function Authenticated() {
 
     const emptyState = (
         <View className="flex-1 items-center justify-center mb-8">
-        {/* Terminal-style code block */}
-        <Text style={{ marginBottom: 16, textAlign: 'center', fontSize: 24, ...Typography.default('semiBold') }}>Ready to code?</Text>
-        <View style={{
-            backgroundColor: '#444',
-            borderRadius: 8,
-            padding: 20,
-            marginHorizontal: 24,
-            marginBottom: 20,
-            borderWidth: 1,
-            borderColor: '#333'
-        }}>
-            
-            <Text style={{ ...Typography.mono(), fontSize: 16, color: '#00ff00', marginBottom: 8 }}>
-                $ npm i -g happy-coder
-            </Text>
-            <Text style={{ ...Typography.mono(), fontSize: 16, color: '#00ff00' }}>
-                $ happy
-            </Text>
+            {/* Terminal-style code block */}
+            <Text style={{ marginBottom: 16, textAlign: 'center', fontSize: 24, ...Typography.default('semiBold') }}>Ready to code?</Text>
+            <View style={{
+                backgroundColor: '#444',
+                borderRadius: 8,
+                padding: 20,
+                marginHorizontal: 24,
+                marginBottom: 20,
+                borderWidth: 1,
+                borderColor: '#333'
+            }}>
+
+                <Text style={{ ...Typography.mono(), fontSize: 16, color: '#00ff00', marginBottom: 8 }}>
+                    $ npm i -g happy-coder
+                </Text>
+                <Text style={{ ...Typography.mono(), fontSize: 16, color: '#00ff00' }}>
+                    $ happy
+                </Text>
+            </View>
+
+
+            {Platform.OS !== 'web' && (
+                <>
+                    <View style={{ marginTop: 12, marginHorizontal: 24, marginBottom: 64, width: 250 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                                <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>1</Text>
+                            </View>
+                            <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
+                                Install the Happy CLI
+                            </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                                <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>2</Text>
+                            </View>
+                            <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
+                                Run it
+                            </Text>
+                        </View>
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                                <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>3</Text>
+                            </View>
+                            <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
+                                Scan the QR code
+                            </Text>
+                        </View>
+                    </View>
+                    <ConnectButton />
+                </>
+            )}
         </View>
-        
-        
-        {Platform.OS !== 'web' && (
-            <>
-                <View style={{ marginTop: 12, marginHorizontal: 24, marginBottom: 64, width: '70%' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                            <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>1</Text>
-                        </View>
-                        <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
-                            Install the Happy CLI on your computer
-                        </Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                            <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>2</Text>
-                        </View>
-                        <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
-                            Run it  
-                        </Text>
-                    </View>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                            <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>3</Text>
-                        </View>
-                        <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
-                            Scan the QR code
-                        </Text>
-                    </View>
-                </View>
-                <ConnectButton />
-            </>
-        )}
-    </View>
     );
 
     // On phones, use the existing navigation pattern
@@ -126,8 +126,8 @@ function Authenticated() {
                 <View className="flex-1">
                     {updateAvailable && <UpdateBanner onReload={reloadApp} />}
                     {sessionsData.length === 0 ? emptyState : (
-                        <SessionsList 
-                            data={sessionsData} 
+                        <SessionsList
+                            data={sessionsData}
                             onSessionPress={(sessionId) => router.push(`/session/${sessionId}`)}
                         />
                     )}
@@ -155,8 +155,8 @@ function Authenticated() {
 
     // On tablets with sessions, use split view
     const masterView = (
-        <SessionsList 
-            data={sessionsData} 
+        <SessionsList
+            data={sessionsData}
             selectedSessionId={selectedSessionId}
             onSessionPress={(sessionId) => setSelectedSessionId(sessionId)}
         />
@@ -179,7 +179,7 @@ function Authenticated() {
             />
             <View className="flex-1">
                 {updateAvailable && <UpdateBanner onReload={reloadApp} />}
-                <SplitView 
+                <SplitView
                     master={masterView}
                     detail={detailView}
                 />
@@ -196,7 +196,7 @@ function Authenticated() {
                             borderWidth: 1,
                             borderColor: '#333'
                         }}>
-                            
+
                             <Text style={{ ...Typography.mono(), fontSize: 16, color: '#00ff00', marginBottom: 8 }}>
                                 $ npm i -g happy-coder
                             </Text>
@@ -204,17 +204,17 @@ function Authenticated() {
                                 $ happy
                             </Text>
                         </View>
-                        
-                        
+
+
                         {Platform.OS !== 'web' && (
                             <>
-                                <View style={{ marginTop: 12, marginHorizontal: 24, marginBottom: 64, width: '70%' }}>
+                                <View style={{ marginTop: 12, marginHorizontal: 24, marginBottom: 64, width: 250 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                                         <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
                                             <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>1</Text>
                                         </View>
                                         <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
-                                            Install the Happy CLI on your computer
+                                            Install the Happy CLI
                                         </Text>
                                     </View>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
@@ -222,7 +222,7 @@ function Authenticated() {
                                             <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>2</Text>
                                         </View>
                                         <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
-                                            Run it  
+                                            Run it
                                         </Text>
                                     </View>
                                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -248,6 +248,7 @@ function Authenticated() {
 
 function NotAuthenticated() {
     const auth = useAuth();
+    const router = useRouter();
 
     const createAccount = async () => {
         const secret = await getRandomBytesAsync(32);
@@ -314,8 +315,8 @@ function NotAuthenticated() {
             />
             <View className="flex-1 items-center justify-center">
                 <Image source={require('@/assets/images/happy-otter-2.png')} style={{ width: 200, height: 140 }} />
-                <Text style={{ marginTop: 16, textAlign: 'center',fontSize: 24, ...Typography.default('semiBold') }}>
-                Happy Coder is a{'\n'} Claude Code mobile client.
+                <Text style={{ marginTop: 16, textAlign: 'center', fontSize: 24, ...Typography.default('semiBold') }}>
+                    Claude Code mobile client.
                 </Text>
                 <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>
                     End-to-end encrypted and your account is stored only on your device.
@@ -324,6 +325,14 @@ function NotAuthenticated() {
                     <RoundButton
                         title="Create account"
                         action={createAccount}
+                    />
+                </View>
+                <View className="max-w-[200px] w-full pt-4">
+                    <RoundButton
+                        size="normal"
+                        title="Restore account"
+                        onPress={() => router.push('/restore')}
+                        display="inverted"
                     />
                 </View>
             </View>
