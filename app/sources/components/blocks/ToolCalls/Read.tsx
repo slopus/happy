@@ -1,10 +1,13 @@
-import React from 'react';
-import { View } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { type ToolCall } from '@/sync/storageTypes';
 import { ShimmerText } from './ShimmerRunningToolName';
+import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
+import { SharedDiffView } from './SharedDiffView';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
 export type ReadToolCall = Omit<ToolCall, 'name'> & { name: 'Read' };
 
@@ -28,7 +31,15 @@ const ToolResultSchema = z.object({
 type ParsedToolInput = z.infer<typeof ToolInputSchema>;
 type ParsedToolResult = z.infer<typeof ToolResultSchema>;
 
-export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
+export function ReadCompactView({ tool, sessionId, messageId }: { tool: ReadToolCall, sessionId: string, messageId: string }) {
+  return (
+    <SingleLineToolSummaryBlock sessionId={sessionId} messageId={messageId}>
+      <ReadCompactViewInner tool={tool} />
+    </SingleLineToolSummaryBlock>
+  );
+}
+
+export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
   // Parse and validate tool input
   let parsedInput: ParsedToolInput | null = null;
   let inputParseError: string | null = null;
@@ -48,11 +59,11 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
     const fileName = filePath.split('/').pop() || filePath;
     
     return (
-      <View className="flex-row items-center py-1 gap-1 pl-[2px]">
-        <Ionicons name="eye" size={14} color="#a1a1a1" />
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="eye" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
         <ShimmerText>Reading</ShimmerText>
         <Text
-          className="text-smlol flex-1 text-neutral-800"
+          className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
         >
           {fileName}
@@ -67,16 +78,16 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
     const fileName = filePath.split('/').pop() || filePath;
     
     return (
-      <View className="pl-3 flex-row items-center py-0.5">
-        <Ionicons name="warning" size={14} color="#ef4444" />
-        <Text className="text-xslol text-red-400 font-bold px-1">Read</Text>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="warning" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#ef4444" />
+        <Text className={`${TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_SIZE} text-red-500 font-bold px-1`}>Read</Text>
         <Text
-          className="text-xslol flex-1 text-neutral-800"
+          className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
         >
           {fileName}
         </Text>
-        <Text className="text-xslol text-red-400">
+        <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-red-500`}>
           {inputParseError || 'Failed to read file'}
         </Text>
       </View>
@@ -87,11 +98,11 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
   // Show input parse error if we couldn't understand the arguments
   if (inputParseError && !parsedInput) {
     return (
-      <View className="flex-row items-center py-1">
-        <Ionicons name="eye" size={14} color="#a1a1a1" />
-        <Text className="text-xslol text-neutral-500 font-bold px-1">Read</Text>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="eye" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Read</Text>
         <Text
-          className="text-xslol flex-1 text-neutral-800"
+          className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
         >
           Unable to parse arguments to show more information
@@ -121,18 +132,113 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
     : "" /*parseError || JSON.stringify(tool.result)*/;
 
   return (
-    <View className="flex-row items-center py-1 flex-wrap">
-      <Ionicons name="eye-outline" size={14} color="#a1a1a1" />
-      <Text className="text-xslol text-neutral-500 font-bold px-1">Read</Text>
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <Ionicons name="eye" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Read</Text>
       <Text
-        className="text-xslol flex-1 text-neutral-500"
+        className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
       >
         {fileName}
       </Text>
-      <Text className="text-xslol text-neutral-500 font-bold px-1 basis-full flex">
+      <Text className={TOOL_COMPACT_VIEW_STYLES.METADATA_CLASSES}>
         {displayText}
       </Text>
     </View>
   );
 }
+
+// Detailed view for full-screen modal
+export const ReadDetailedView = ({ tool }: { tool: ReadToolCall }) => {
+  const args = tool.arguments as ParsedToolInput;
+  
+  // Parse the tool result
+  let parsedResult: ParsedToolResult | null = null;
+  if (tool.result) {
+    const parseResult = ToolResultSchema.safeParse(tool.result);
+    if (parseResult.success) {
+      parsedResult = parseResult.data;
+    }
+  }
+
+  if (!args?.file_path) {
+    return (
+      <View className="flex-1 p-4 bg-white">
+        <Text className="text-lg font-semibold text-gray-900">File Read</Text>
+        <Text className="text-red-600 text-sm italic">No file specified</Text>
+      </View>
+    );
+  }
+
+  const fileContent = parsedResult?.file?.content || '';
+
+  return (
+    <View className="flex-1 bg-white">
+      {/* Simple Header */}
+      <View className="p-4 border-b border-gray-200">
+        <Text className="text-lg font-semibold text-gray-900">👁 {args.file_path}</Text>
+      </View>
+
+      {/* Content */}
+      <View className="flex-1">
+        {/* Show content if available */}
+        {fileContent && tool.state === 'completed' && (
+          <SharedDiffView
+            oldContent=""  // No old content for read operation
+            newContent={fileContent}
+            fileName={args.file_path || 'unknown'}
+            showFileName={false}  // Already shown in header
+          />
+        )}
+
+                 {/* Show loading state */}
+         {tool.state === 'running' && (
+           <View className="flex-1 justify-center items-center">
+             <ShimmerText>{`Reading ${args.file_path?.split('/').pop() || 'file'}...`}</ShimmerText>
+           </View>
+         )}
+
+        {/* Show error state */}
+        {tool.state === 'error' && (
+          <View className="flex-1 justify-center items-center p-4">
+            <Ionicons name="warning" size={48} color="#ef4444" />
+            <Text className="text-lg font-medium text-red-600 mt-4 text-center">
+              Failed to read file
+            </Text>
+            <Text className="text-sm text-red-500 mt-2 text-center">
+              {tool.result && typeof tool.result === 'object' && 'error' in tool.result 
+                ? String(tool.result.error) 
+                : 'Unknown error occurred'}
+            </Text>
+          </View>
+        )}
+
+        {/* Show empty file state */}
+        {!fileContent && tool.state === 'completed' && (
+          <View className="flex-1 justify-center items-center p-4">
+            <Text className="text-lg text-gray-500">File is empty</Text>
+          </View>
+        )}
+      </View>
+    </View>
+  );
+};
+
+// Helper functions
+const getStatusDisplay = (state: string) => {
+  switch (state) {
+    case 'running': return '⏳ Reading';
+    case 'completed': return '✅ Read';
+    case 'error': return '❌ Error';
+    default: return state;
+  }
+};
+
+const getStatusColorClass = (state: string) => {
+  switch (state) {
+    case 'running': return 'text-amber-500';
+    case 'completed': return 'text-green-600';
+    case 'error': return 'text-red-600';
+    default: return 'text-gray-500';
+  }
+};

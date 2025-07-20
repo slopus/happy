@@ -5,7 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
 import { type ToolCall } from '@/sync/storageTypes';
-import { SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
+import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
 export type WebSearchToolCall = Omit<ToolCall, 'name'> & { name: 'WebSearch' };
 
@@ -67,17 +68,17 @@ export function WebSearchCompactViewInner({ tool }: { tool: WebSearchToolCall })
   }
 
   return (
-    <View className="flex-row items-center py-0.5">
-      <Ionicons name="search" size={14} color="#a1a1a1" />
-      <Text className="text-xs text-neutral-400 font-bold px-1">{label}</Text>
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <Ionicons name="search" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>{label}</Text>
       <Text
-        className="text-xs flex-1 text-neutral-800"
+        className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
       >
         "{displayQuery}"
       </Text>
       {resultText && (
-        <Text className="text-xs text-neutral-500 ml-2">
+        <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-neutral-500 ml-2`}>
           {resultText}
         </Text>
       )}

@@ -15,6 +15,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import { Typography } from '@/constants/Typography';
+import { DebugProvider } from '@/contexts/DebugContext';
 import '../global.css';
 
 export {
@@ -92,6 +93,7 @@ export default function RootLayout() {
     return (
         <KeyboardProvider>
             <AuthProvider initialCredentials={initState.credentials}>
+                <DebugProvider>
                 <ThemeProvider value={DefaultTheme}>
                     <Stack
                         initialRouteName='index'
@@ -148,8 +150,19 @@ export default function RootLayout() {
                                 headerShown: false,
                             }}
                         />
+                        <Stack.Screen
+                            name="account"
+                        />
+                        <Stack.Screen
+                            name="restore"
+                            options={{
+                                presentation: 'modal',
+                                headerShown: false,
+                            }}
+                        />
                     </Stack>
                 </ThemeProvider>
+                </DebugProvider>
             </AuthProvider>
         </KeyboardProvider>
     );
