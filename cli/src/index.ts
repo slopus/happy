@@ -32,7 +32,7 @@ import { doAuth } from './ui/auth'
   // Check if first argument is a subcommand
   const subcommand = args[0]
 
-  if (subcommand === 'clean') {
+  if (subcommand === 'logout') {
     try {
       await cleanKey();
     } catch (error) {
@@ -79,7 +79,7 @@ ${chalk.bold('happy')} - Claude Code session sharing
 
 ${chalk.bold('Usage:')}
   happy [options]
-  happy clean      Remove happy data directory
+  happy logout     Logs out of your account and removes data directory
   happy login      Show your secret QR code
   happy auth       Same as login
 
@@ -99,7 +99,7 @@ ${chalk.bold('Examples:')}
   happy                   Start a session with default settings
   happy -m opus           Use Claude Opus model
   happy -p plan           Use plan permission mode
-  happy clean             Remove happy data directory and authentication
+  happy logout            Logs out of your account and removes data directory
 `)
       process.exit(0)
     }
