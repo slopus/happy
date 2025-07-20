@@ -16,7 +16,6 @@ export async function claudeRemote(opts: {
     onSessionFound: (id: string) => void,
     messages: AsyncIterable<SDKUserMessage>
 }) {
-
     // Check if session is valid
     let startFrom = opts.sessionId;
     if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {

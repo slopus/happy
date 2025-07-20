@@ -62,8 +62,6 @@ export async function loop(opts: LoopOptions) {
 
         if (onMessage) {
             onMessage();
-        } else {
-            console.log('[WARNING] No onMessage handler');
         }
     });
 
@@ -133,11 +131,10 @@ export async function loop(opts: LoopOptions) {
 
         // Start remote mode
         if (mode === 'remote') {
-            console.log('Starting ' + sessionId);
+            logger.debug('Starting ' + sessionId);
             const remoteAbortController = new AbortController();
             
             // Use the current queue for this session
-            const queueForThisSession = currentMessageQueue;
             opts.session.setHandler('abort', () => {
                 if (!remoteAbortController.signal.aborted) {
                     remoteAbortController.abort();
@@ -155,7 +152,7 @@ export async function loop(opts: LoopOptions) {
             process.stdin.setEncoding("utf8");
             process.stdin.on('data', abortHandler);
             try {
-                logger.debug(`Starting claudeRemote with messages: ${queueForThisSession.size()}`);
+                logger.debug(`Starting claudeRemote with messages: ${currentMessageQueue.size()}`);
                 await claudeRemote({
                     abort: remoteAbortController.signal,
                     sessionId: sessionId,
@@ -163,7 +160,7 @@ export async function loop(opts: LoopOptions) {
                     mcpServers: opts.mcpServers,
                     permissionPromptToolName: opts.permissionPromptToolName,
                     onSessionFound: onSessionFound,
-                    messages: queueForThisSession,
+                    messages: currentMessageQueue,
                 });
             } finally {
                 process.stdin.off('data', abortHandler);
@@ -175,7 +172,7 @@ export async function loop(opts: LoopOptions) {
                 currentMessageQueue = new MessageQueue();
             }
             if (mode !== 'remote') {
-                console.log('Switching to interactive mode...');
+                console.log('Switching back to good old claude...');
             }
         }
     }

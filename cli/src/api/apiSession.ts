@@ -58,7 +58,7 @@ export class ApiSessionClient extends EventEmitter {
         //
 
         this.socket.on('connect', () => {
-            logger.info('Socket connected successfully');
+            logger.debug('Socket connected successfully');
             // Re-register all RPC handlers on reconnection
             this.reregisterHandlers();
         })
@@ -133,6 +133,11 @@ export class ApiSessionClient extends EventEmitter {
                 }
             }
         });
+
+        // DEATH
+        this.socket.on('error', (error) => {
+            logger.debug('[API] Socket error:', error);
+        })
 
         //
         // Connect (after short delay to give a time to add handlers)
