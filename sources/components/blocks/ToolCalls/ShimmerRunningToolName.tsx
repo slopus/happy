@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
+import { MonoText as Text } from './MonoText';
 import Animated, { useSharedValue, withRepeat, withTiming, Easing, useAnimatedStyle } from 'react-native-reanimated';
 
 export function ShimmerText({ children }: { children: string; }) {
@@ -39,7 +40,7 @@ export function ShimmerText({ children }: { children: string; }) {
   return (
     <View className="relative overflow-hidden">
       {/* Base text */}
-      <Text className="text-sm text-neutral-500 font-bold" style={{ opacity: 0.7 }}>
+      <Text style={{ opacity: 0.7 }} className="text-sm text-neutral-500 font-bold">
         {children}
       </Text>
 

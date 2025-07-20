@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text } from 'react-native';
+import { View } from 'react-native';
+import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { type ToolCall } from '@/sync/storageTypes';

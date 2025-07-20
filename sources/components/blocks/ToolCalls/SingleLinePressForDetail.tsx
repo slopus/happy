@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Pressable } from 'react-native';
+import { MonoText as Text } from './MonoText';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 
