@@ -139,7 +139,7 @@ function NotAuthenticated() {
                     Hello there!
                 </Text>
                 <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>
-                    Happy Coder is an end-to-end Claude Code mobile client.
+                    Happy Coder is an end-to-end encrypted Claude Code mobile client.
                 </Text>
                 <View className="max-w-[200px] w-full mb-4">
                     <RoundButton
