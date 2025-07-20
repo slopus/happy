@@ -117,13 +117,15 @@ export default function Session() {
                     </View>
                 )}
                 {/* <Button title="Abort" onPress={() => session.abort()} /> */}
+                {!online && (
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', height: 32, paddingHorizontal: 24 }}>
-                    {!online && (
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Ionicons name="information-circle-outline" size={16} color="#666" />
-                            <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>Session disconnected</Text>
-                        </View>
-                    )}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', display: 'flex', height: 45, marginBottom: 46 }}>
+                        <Ionicons name="information-circle-outline" size={16} color="#666" />
+                        <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>Session disconnected</Text>
+                    </View>
+                </View>
+                )}
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', height: 32, paddingHorizontal: 24 }}>
                     {online && thinking && (
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>Thinking...</Text>
@@ -135,6 +137,7 @@ export default function Session() {
                         </View>
                     )}
                 </View>
+                {online && (
                 <View style={{ paddingHorizontal: 16, paddingBottom: 16 + safeArea.bottom }}>
                     <ChatInput
                         placeholder="Type a message..."
@@ -147,6 +150,7 @@ export default function Session() {
                         loading={false}
                     />
                 </View>
+                )}
             </KeyboardAvoidingView>
         </>
     )
