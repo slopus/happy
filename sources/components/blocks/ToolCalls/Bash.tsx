@@ -5,7 +5,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { type ToolCall } from "@/sync/storageTypes";
 import { SingleLineToolSummaryBlock as SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
-import { Typography } from '@/constants/Typography';
 
 export type BashToolCall = Omit<ToolCall, 'name'> & { name: 'Bash' };
 
