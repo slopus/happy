@@ -14,6 +14,8 @@ import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import LottieView from 'lottie-react-native';
 import { useIsTablet } from '@/utils/responsive';
+import { ConfigurationModal } from '@/components/ConfigurationModal';
+import { Pressable } from 'react-native';
 
 export default function Session() {
     const safeArea = useSafeAreaInsets();
@@ -32,6 +34,7 @@ export default function Session() {
         }
     }, [isTablet, router]);
     
+    const [showConfigModal, setShowConfigModal] = useState(false);
     const online = isSessionOnline(session);
     const lastSeenText = formatLastSeen(session.active, session.activeAt);
     const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
@@ -62,8 +65,13 @@ export default function Session() {
                     ),
                     headerRight(props) {
                         return (
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <Avatar id={sessionId} size={32} monochrome={!online} />
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                <Pressable
+                                    onPress={() => setShowConfigModal(true)}
+                                    hitSlop={10}
+                                >
+                                    <Avatar id={sessionId} size={32} monochrome={!online} />
+                                </Pressable>
                             </View>
                         )
                     },
@@ -146,6 +154,10 @@ export default function Session() {
                     />
                 </View>
             </KeyboardAvoidingView>
+            <ConfigurationModal 
+                visible={showConfigModal}
+                onClose={() => setShowConfigModal(false)}
+            />
         </>
     )
 }

@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
 import { type ToolCall } from '@/sync/storageTypes';
-import { SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
+import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 
 export type WebSearchToolCall = Omit<ToolCall, 'name'> & { name: 'WebSearch' };
 
