@@ -2,6 +2,10 @@ import { query, type Options, type SDKUserMessage, type SDKMessage, AbortError }
 import { formatClaudeMessage, printDivider } from '@/ui/messageFormatter'
 import { claudeCheckSession } from './claudeCheckSession';
 import { logger } from '@/ui/logger';
+import { mkdirSync, watch } from 'node:fs';
+import { homedir } from 'node:os';
+import { resolve } from 'node:path';
+import { join } from 'node:path';
 
 export async function claudeRemote(opts: {
     abort: AbortSignal,
@@ -67,7 +71,19 @@ export async function claudeRemote(opts: {
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
-                opts.onSessionFound(message.session_id);
+
+                // Session id is still in memory, wait until session file is  written to disk
+                // Start a watcher for to detect the session id
+                const projectName = resolve(opts.path).replace(/\//g, '-')
+                const projectDir = join(homedir(), '.claude', 'projects', projectName);
+                mkdirSync(projectDir, { recursive: true });
+                const watcher = watch(projectDir)
+                    .on('change', (_, filename) => {
+                        if (filename === `${message.session_id}.jsonl`) {
+                            opts.onSessionFound(message.session_id);
+                            watcher.close();
+                        }
+                    });
             }
         }
         logger.debug(`[claudeRemote] Finished iterating over response`);
