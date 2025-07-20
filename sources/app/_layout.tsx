@@ -147,6 +147,16 @@ export default function RootLayout() {
                                 headerShown: false,
                             }}
                         />
+                        <Stack.Screen
+                            name="account"
+                        />
+                        <Stack.Screen
+                            name="restore"
+                            options={{
+                                presentation: 'modal',
+                                headerShown: false,
+                            }}
+                        />
                     </Stack>
                 </ThemeProvider>
             </AuthProvider>

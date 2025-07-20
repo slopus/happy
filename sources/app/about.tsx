@@ -51,8 +51,11 @@ export default function AboutModal() {
                     <ConnectButton />
                 </View> */}
 
-                <View style={{ marginBottom: 24, alignSelf: 'center' }}>
-                    <RoundButton title="Logout" onPress={() => auth.logout()} />
+                <View style={{ marginBottom: 12, alignSelf: 'center' }}>
+                    <RoundButton 
+                        title="Account" 
+                        onPress={() => router.push('/account')}
+                    />
                 </View>
             </ScrollView>
         </View>
