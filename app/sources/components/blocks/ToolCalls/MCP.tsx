@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { type ToolCall } from '@/sync/storageTypes';
 import { ShimmerText } from './ShimmerRunningToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
+import { MarkdownView } from '@/components/markdown/MarkdownView';
 
 // Type for MCP tool calls with pattern mcp__{server}__{operation}
 export type MCPToolCall = Omit<ToolCall, 'name'> & { 
@@ -40,8 +41,8 @@ export function MCPCompactViewInner({ tool }: { tool: MCPToolCall }) {
     return (
       <View className="flex-row items-center py-1 gap-1">
         <Ionicons name="cube-outline" size={14} color="#a1a1a1" />
-        <Text className="text-sm text-neutral-400 font-bold px-1">MCP</Text>
-        <Text className="text-sm flex-1 text-neutral-800" numberOfLines={1}>
+        <Text className="text-md text-neutral-400 font-bold px-1">MCP</Text>
+        <Text className="text-md flex-1 text-neutral-800" numberOfLines={1}>
           Invalid tool name format
         </Text>
       </View>
@@ -55,11 +56,13 @@ export function MCPCompactViewInner({ tool }: { tool: MCPToolCall }) {
     return (
       <View className="flex-row items-center py-1 gap-1">
         <Ionicons name="cube-outline" size={14} color="#a1a1a1" />
-        <ShimmerText>MCP</ShimmerText>
-        <Text className="text-sm text-neutral-600" numberOfLines={1}>
-          {server}
-        </Text>
-        <Text className="text-sm text-neutral-800" numberOfLines={1}>
+        <ShimmerText>Calling MCP</ShimmerText>
+        <View className="bg-gray-100 px-1.5 py-0.5 rounded-md border border-gray-200">
+          <Text className="text-md text-neutral-600 font-medium" numberOfLines={1}>
+            {server}
+          </Text>
+        </View>
+        <Text className="text-md text-neutral-800" numberOfLines={1}>
           {operation}
         </Text>
       </View>
@@ -71,14 +74,14 @@ export function MCPCompactViewInner({ tool }: { tool: MCPToolCall }) {
     return (
       <View className="flex-row items-center py-1 gap-1">
         <Ionicons name="warning" size={14} color="#ef4444" />
-        <Text className="text-sm text-red-500 font-bold px-1">MCP</Text>
-        <Text className="text-sm text-neutral-600" numberOfLines={1}>
+        <Text className="text-md text-red-500 font-bold px-1 rounded-md">MCP</Text>
+        <Text className="text-md text-neutral-600" numberOfLines={1}>
           {server}
         </Text>
-        <Text className="text-sm text-neutral-800" numberOfLines={1}>
+        <Text className="text-md text-neutral-800" numberOfLines={1}>
           {operation}
         </Text>
-        <Text className="text-sm text-red-500">Error</Text>
+        <Text className="text-md text-red-500">Error</Text>
       </View>
     );
   }
@@ -87,11 +90,13 @@ export function MCPCompactViewInner({ tool }: { tool: MCPToolCall }) {
   return (
     <View className="flex-row items-center py-1 gap-1">
       <Ionicons name="cube" size={14} color="#a1a1a1" />
-      <Text className="text-sm text-neutral-400 font-bold px-1">MCP</Text>
-      <Text className="text-sm text-neutral-600" numberOfLines={1}>
-        {server}
-      </Text>
-      <Text className="text-sm text-neutral-800" numberOfLines={1}>
+      <Text className="text-md text-neutral-400 font-bold px-1">MCP</Text>
+      <View className="bg-gray-100 px-2 py-1">
+        <Text className="text-md text-neutral-600" numberOfLines={1}>
+          {server}
+        </Text>
+      </View>
+      <Text className="text-md text-neutral-800" numberOfLines={1}>
         {operation}
       </Text>
     </View>
@@ -106,7 +111,7 @@ export const MCPDetailedView = ({ tool }: { tool: MCPToolCall }) => {
     return (
       <View className="flex-1 p-4 bg-white">
         <Text className="text-lg font-semibold text-gray-900">MCP Tool Call</Text>
-        <Text className="text-red-600 text-sm italic">Invalid tool name format: {tool.name}</Text>
+        <Text className="text-red-600 text-md italic">Invalid tool name format: {tool.name}</Text>
       </View>
     );
   }
@@ -117,6 +122,10 @@ export const MCPDetailedView = ({ tool }: { tool: MCPToolCall }) => {
   const argumentsJson = tool.arguments ? JSON.stringify(tool.arguments, null, 2) : 'null';
   const resultJson = tool.result ? JSON.stringify(tool.result, null, 2) : 'null';
 
+  // Create markdown code blocks for JSON display
+  const argumentsMarkdown = `\`\`\`json\n${argumentsJson}\n\`\`\``;
+  const resultMarkdown = `\`\`\`json\n${resultJson}\n\`\`\``;
+
   return (
     <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={true}>
       {/* Header */}
@@ -124,7 +133,7 @@ export const MCPDetailedView = ({ tool }: { tool: MCPToolCall }) => {
         <View className="flex-row justify-between items-center mb-4">
           <Text className="text-lg font-semibold text-gray-900">🔌 MCP Tool Call</Text>
           <View className="px-2 py-1 bg-gray-100 rounded-xl">
-            <Text className={`text-sm font-medium ${getStatusColorClass(tool.state)}`}>
+            <Text className={`text-md font-medium ${getStatusColorClass(tool.state)}`}>
               {getStatusDisplay(tool.state)}
             </Text>
           </View>
@@ -132,25 +141,21 @@ export const MCPDetailedView = ({ tool }: { tool: MCPToolCall }) => {
 
         {/* Tool Info */}
         <View className="mb-4 bg-blue-50 rounded-lg p-3 border border-blue-200">
-          <Text className="text-sm font-medium text-blue-800 mb-1">Server</Text>
-          <Text className="text-sm font-mono text-blue-700 mb-2">{server}</Text>
+          <Text className="text-md font-medium text-blue-800 mb-1">Server</Text>
+          <Text className="text-md font-mono text-blue-700 mb-2">{server}</Text>
           
-          <Text className="text-sm font-medium text-blue-800 mb-1">Operation</Text>
-          <Text className="text-sm font-mono text-blue-700">{operation}</Text>
+          <Text className="text-md font-medium text-blue-800 mb-1">Operation</Text>
+          <Text className="text-md font-mono text-blue-700">{operation}</Text>
         </View>
       </View>
 
       {/* Arguments Section */}
       <View className="bg-gray-50 border-y border-gray-200">
         <View className="px-4 py-3 bg-gray-100 border-b border-gray-200">
-          <Text className="text-sm font-medium text-gray-700">Input Arguments</Text>
+          <Text className="text-md font-medium text-gray-700">Input Arguments</Text>
         </View>
         <View className="bg-white p-4">
-          <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-            <Text className="text-xs font-mono text-gray-800" style={{ fontFamily: 'monospace' }}>
-              {argumentsJson}
-            </Text>
-          </ScrollView>
+          <MarkdownView markdown={argumentsMarkdown} />
         </View>
       </View>
 
@@ -158,21 +163,17 @@ export const MCPDetailedView = ({ tool }: { tool: MCPToolCall }) => {
       {tool.result && (
         <View className="bg-gray-50 border-b border-gray-200">
           <View className="px-4 py-3 bg-gray-100 border-b border-gray-200">
-            <Text className="text-sm font-medium text-gray-700">Result</Text>
+            <Text className="text-md font-medium text-gray-700">Result</Text>
           </View>
           <View className="bg-white p-4">
-            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-              <Text className="text-xs font-mono text-gray-800" style={{ fontFamily: 'monospace' }}>
-                {resultJson}
-              </Text>
-            </ScrollView>
+            <MarkdownView markdown={resultMarkdown} />
           </View>
         </View>
       )}
 
       {/* Status Information */}
       <View className="p-4">
-        <Text className="text-sm text-gray-600">
+        <Text className="text-md text-gray-600">
           {getStatusDescription(tool.state)}
         </Text>
       </View>

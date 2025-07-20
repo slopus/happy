@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
 import { type ToolCall } from '@/sync/storageTypes';
+import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 
 /*
 Example Grep input args:
@@ -41,8 +42,14 @@ const GrepToolResultSchema = z.object({
 type ParsedGrepToolResult = z.infer<typeof GrepToolResultSchema>;
 
 export function GrepCompactView({ tool, sessionId, messageId }: { tool: GrepToolCall, sessionId: string, messageId: string }) {
-  const router = useRouter();
+  return (
+    <SingleLineToolSummaryBlock sessionId={sessionId} messageId={messageId}>
+      <GrepCompactViewInner tool={tool} />
+    </SingleLineToolSummaryBlock>
+  );
+}
 
+export function GrepCompactViewInner({ tool }: { tool: GrepToolCall }) {
   // Parse input arguments
   const query = tool.arguments?.query || tool.arguments?.pattern;
   const filePath = tool.arguments?.file_path || tool.arguments?.files || tool.arguments?.path;
@@ -94,51 +101,7 @@ export function GrepCompactView({ tool, sessionId, messageId }: { tool: GrepTool
   }
 
   return (
-    <Pressable
-      onPress={() => router.push(`/session/${sessionId}/message/${messageId}`)}
-      className="border border-gray-300 rounded-lg bg-white overflow-hidden flex-row items-center justify-between px-3 py-3 active:scale-95 active:opacity-70"
-    >
-      <View className="flex-row items-center flex-1">
-        <Ionicons name="search" size={14} color="#a1a1a1" />
-        <Text className="text-xs text-neutral-400 font-bold px-1">Grep</Text>
-        <Text
-          className="text-xs flex-1 text-neutral-800"
-          numberOfLines={1}
-        >
-          "{query || 'pattern'}" in {displayTarget}
-        </Text>
-      </View>
-
-      <View className="flex-row items-center">
-        <Text className="text-xs text-neutral-500 mr-2">
-          {resultText}
-        </Text>
-        <Ionicons 
-          name="chevron-forward" 
-          size={12} 
-          color="#6b7280"
-        />
-      </View>
-    </Pressable>
-  );
-}
-
-export function GrepCompactViewInner({ tool }: { tool: GrepToolCall }) {
-  // Defensive: check for common grep arguments
-  const query = tool.arguments?.query || tool.arguments?.pattern;
-  const filePath = tool.arguments?.file_path || tool.arguments?.files || tool.arguments?.path;
-  const directory = tool.arguments?.directory || tool.arguments?.dir;
-  
-  // Display search target (file, directory, or pattern)
-  const searchTarget = filePath || directory || 'files';
-  const displayTarget = typeof searchTarget === 'string' 
-    ? searchTarget.split('/').pop() || searchTarget 
-    : Array.isArray(searchTarget) 
-      ? `${searchTarget.length} files` 
-      : 'files';
-
-  return (
-    <View className="flex-row items-center py-0.5">
+    <View className="flex-row items-center py-1">
       <Ionicons name="search" size={14} color="#a1a1a1" />
       <Text className="text-xs text-neutral-400 font-bold px-1">Grep</Text>
       <Text
@@ -146,6 +109,9 @@ export function GrepCompactViewInner({ tool }: { tool: GrepToolCall }) {
         numberOfLines={1}
       >
         "{query || 'pattern'}" in {displayTarget}
+      </Text>
+      <Text className="text-xs text-neutral-500 mr-2">
+        {resultText}
       </Text>
     </View>
   );

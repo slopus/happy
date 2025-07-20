@@ -2,22 +2,7 @@ import React from "react";
 import { View, Text, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { type Message, type ToolCall } from "@/sync/storageTypes";
-import {
-  EditDetailedView,
-  type EditToolCall,
-} from "@/components/blocks/ToolCalls/Edit";
-import {
-  WriteDetailedView,
-  type WriteToolCall,
-} from "@/components/blocks/ToolCalls/Write";
-import {
-  BashDetailedView,
-  type BashToolCall,
-} from "@/components/blocks/ToolCalls/Bash";
-import {
-  TodoWriteDetailedView,
-  TodoWriteToolCall,
-} from "./blocks/ToolCalls/TodoWrite";
+import { DetailedToolBlock } from "@/components/blocks/RenderToolCallV4";
 
 interface MessageDetailViewProps {
   message: Message;
@@ -100,94 +85,12 @@ export function MessageDetailView({
             key={index}
             style={{ marginBottom: index < tools.length - 1 ? 20 : 0 }}
           >
-            {renderToolDetailedView(tool)}
+            <DetailedToolBlock tool={tool} />
           </View>
         ))}
       </ScrollView>
     );
   };
-
-  const renderToolDetailedView = (tool: ToolCall) => {
-    switch (tool.name) {
-      case "Edit":
-        return <EditDetailedView tool={tool as EditToolCall} />;
-
-      case "Write":
-        return <WriteDetailedView tool={tool as WriteToolCall} />;
-
-      case "Bash":
-        return <BashDetailedView tool={tool as BashToolCall} />;
-
-      case "TodoWrite":
-        return <TodoWriteDetailedView tool={tool as TodoWriteToolCall} />;
-
-      default:
-        // Fallback for tools without detailed views
-        return renderToolFallback(tool);
-    }
-  };
-
-  const renderToolFallback = (tool: ToolCall) => (
-    <View
-      style={{
-        backgroundColor: "#f8f9fa",
-        padding: 16,
-        borderRadius: 8,
-        borderWidth: 1,
-        borderColor: "#e0e0e0",
-        margin: 16,
-      }}
-    >
-      <Text
-        style={{
-          fontSize: 16,
-          fontWeight: "600",
-          marginBottom: 8,
-          color: "#333",
-        }}
-      >
-        {tool.name}
-      </Text>
-      <Text
-        style={{
-          fontSize: 12,
-          color: "#666",
-          fontFamily: "monospace",
-          marginBottom: 8,
-        }}
-      >
-        State: {tool.state}
-      </Text>
-
-      {(tool.result as any) && (
-        <View>
-          <Text style={{ fontSize: 12, color: "#666", marginBottom: 4 }}>
-            Result:
-          </Text>
-          <View
-            style={{
-              backgroundColor: "#fff",
-              padding: 8,
-              borderRadius: 4,
-              borderWidth: 1,
-              borderColor: "#ddd",
-            }}
-          >
-            <Text
-              style={{ fontSize: 10, color: "#666", fontFamily: "monospace" }}
-            >
-              {typeof tool.result === "string"
-                ? tool.result.length > 300
-                  ? tool.result.slice(0, 300) + "..."
-                  : tool.result
-                : JSON.stringify(tool.result, null, 2).slice(0, 300) +
-                  (JSON.stringify(tool.result).length > 300 ? "..." : "")}
-            </Text>
-          </View>
-        </View>
-      )}
-    </View>
-  );
 
   const renderUnknownMessage = (content: any) => (
     <ScrollView
