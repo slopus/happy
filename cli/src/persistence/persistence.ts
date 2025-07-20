@@ -45,7 +45,7 @@ export async function writeSettings(settings: Settings): Promise<void> {
 
 const credentialsSchema = z.object({
   secret: z.string().base64(),
-  token: z.string().base64()
+  token: z.string(),
 })
 
 export async function readCredentials(): Promise<{ secret: Uint8Array, token: string } | null> {
