@@ -10,8 +10,8 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./sources/assets/images/splash-icon-2.png",
-      "resizeMode": "contain",
+      "image": "./sources/assets/images/splash-icon.png",
+      "imageWidth": 256,
       "backgroundColor": "#ffffff"
     },
     "ios": {
@@ -23,7 +23,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./sources/assets/images/happy-otter-icon.png",
+        "foregroundImage": "./sources/assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
