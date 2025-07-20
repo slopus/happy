@@ -33,8 +33,24 @@ function bytesToBase32(bytes: Uint8Array): string {
 }
 
 function base32ToBytes(base32: string): Uint8Array {
-    // Remove any non-base32 characters (like dashes)
-    const cleaned = base32.replace(/[^A-Z2-7]/g, '');
+    // Normalize the input:
+    // 1. Convert to uppercase
+    // 2. Replace common mistakes: 0->O, 1->I, 8->B
+    // 3. Remove all non-base32 characters (spaces, dashes, etc)
+    let normalized = base32.toUpperCase()
+        .replace(/0/g, 'O')  // Zero to O
+        .replace(/1/g, 'I')  // One to I  
+        .replace(/8/g, 'B')  // Eight to B
+        .replace(/9/g, 'G'); // Nine to G (arbitrary but consistent)
+    
+    // Remove any non-base32 characters
+    const cleaned = normalized.replace(/[^A-Z2-7]/g, '');
+    
+    // Check if we have any content left
+    if (cleaned.length === 0) {
+        throw new Error('No valid characters found');
+    }
+    
     const bytes: number[] = [];
     let buffer = 0;
     let bufferLength = 0;
@@ -76,8 +92,10 @@ export function formatSecretKeyForBackup(secretKey: string): string {
             groups.push(base32.slice(i, i + 5));
         }
 
-        // Join with dashes (take first 7 groups for a cleaner look)
-        return groups.slice(0, 7).join('-');
+        // Join with dashes (need all groups to preserve all 32 bytes)
+        // 32 bytes = 256 bits = 52 base32 chars (51.2 rounded up)
+        // That's 11 groups of 5 chars (55 chars total)
+        return groups.join('-');
     } catch (error) {
         throw new Error('Invalid secret key format');
     }
@@ -101,6 +119,13 @@ export function parseBackupSecretKey(formattedKey: string): string {
         // Encode to base64url
         return encodeBase64(bytes, 'base64url');
     } catch (error) {
+        // Re-throw specific error messages
+        if (error instanceof Error) {
+            if (error.message.includes('Invalid key length') || 
+                error.message.includes('No valid characters found')) {
+                throw error;
+            }
+        }
         throw new Error('Invalid secret key format');
     }
 }
@@ -131,15 +156,24 @@ export function isValidSecretKey(key: string): boolean {
  * @returns Base64url encoded secret key
  */
 export function normalizeSecretKey(key: string): string {
-    if (key.includes('-')) {
-        return parseBackupSecretKey(key);
+    // Trim whitespace
+    const trimmed = key.trim();
+    
+    // Check if it looks like a formatted key (contains dashes or spaces between groups)
+    // or has been typed with spaces/formatting
+    if (/[-\s]/.test(trimmed) || trimmed.length > 50) {
+        return parseBackupSecretKey(trimmed);
     }
 
-    // Validate it's a proper base64url key
-    const bytes = decodeBase64(key, 'base64url');
-    if (bytes.length !== 32) {
-        throw new Error('Invalid secret key');
+    // Otherwise try to parse as base64url
+    try {
+        const bytes = decodeBase64(trimmed, 'base64url');
+        if (bytes.length !== 32) {
+            throw new Error('Invalid secret key');
+        }
+        return trimmed;
+    } catch (error) {
+        // If base64 parsing fails, try parsing as formatted key anyway
+        return parseBackupSecretKey(trimmed);
     }
-
-    return key;
 }
