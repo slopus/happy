@@ -17,6 +17,7 @@ import { ConnectButton } from "@/components/ConnectButton";
 import { useIsTablet } from "@/utils/responsive";
 import { SplitView } from "@/components/SplitView";
 import { SessionDetail } from "@/components/SessionDetail";
+import { Typography } from "@/constants/Typography";
 
 export default function Home() {
     const auth = useAuth();
@@ -138,6 +139,20 @@ function Authenticated() {
                     master={masterView}
                     detail={detailView}
                 />
+                {sessionsData.length === 0 ? (
+                    <View className="flex-1 items-center justify-center mb-8">
+                        <LottieView source={require('@/assets/animations/stone.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
+                        <Text style={{ marginTop: 16, textAlign: 'center',fontSize: 24, ...Typography.default('semiBold') }}>No sessions yet</Text>
+                        {Platform.OS !== 'web' && (
+                            <>
+                                <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>Connect your terminal so you can start coding from on your phone.</Text>
+                                <ConnectButton />
+                            </>
+                        )}
+                    </View>
+                ) : (
+                    <SessionsList data={sessionsData} />
+                )}
             </View>
         </>
     );
@@ -210,12 +225,12 @@ function NotAuthenticated() {
                 }}
             />
             <View className="flex-1 items-center justify-center">
-                <LottieView source={require('@/assets/animations/owl.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
-                <Text style={{ fontSize: 28, fontWeight: '600' }}>
-                    Create an account
+                <Image source={require('@/assets/images/happy-otter-2.png')} style={{ width: 200, height: 140 }} />
+                <Text style={{ marginTop: 16, textAlign: 'center',fontSize: 24, ...Typography.default('semiBold') }}>
+                Happy Coder is a{'\n'} Claude Code mobile client.
                 </Text>
-                <Text style={{ fontSize: 16, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>
-                    Happy Coder is fully end-to-end encrypted and your account is stored only on your device.
+                <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>
+                    End-to-end encrypted and your account is stored only on your device.
                 </Text>
                 <View className="max-w-[200px] w-full mb-4">
                     <RoundButton
