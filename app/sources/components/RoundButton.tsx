@@ -1,6 +1,7 @@
 import * as React from 'react';
-import { ActivityIndicator, Platform, Pressable, StyleProp, Text, View, ViewStyle } from 'react-native';
+import { ActivityIndicator, Platform, Pressable, StyleProp, Text, TextStyle, View, ViewStyle } from 'react-native';
 import { iOSUIKit } from 'react-native-typography';
+import { Typography } from '@/constants/Typography';
 
 export type RoundButtonSize = 'large' | 'normal' | 'small';
 const sizes: { [key in RoundButtonSize]: { height: number, fontSize: number, hitSlop: number, pad: number } } = {
@@ -11,7 +12,7 @@ const sizes: { [key in RoundButtonSize]: { height: number, fontSize: number, hit
 
 export type RoundButtonDisplay = 'default' | 'inverted';
 
-export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?: RoundButtonDisplay, title?: any, style?: StyleProp<ViewStyle>, disabled?: boolean, loading?: boolean, onPress?: () => void, action?: () => Promise<any> }) => {
+export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?: RoundButtonDisplay, title?: any, style?: StyleProp<ViewStyle>, textStyle?: StyleProp<TextStyle>, disabled?: boolean, loading?: boolean, onPress?: () => void, action?: () => Promise<any> }) => {
     const [loading, setLoading] = React.useState(false);
     const doLoading = props.loading !== undefined ? props.loading : loading;
     const doAction = React.useCallback(() => {
@@ -82,14 +83,14 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
                 )}
                 <Text 
                     className="font-semibold"
-                    style={[iOSUIKit.title3, { 
+                    style={[iOSUIKit.title3, Typography.default('semiBold'), { 
                         marginTop: size.pad, 
                         opacity: doLoading ? 0 : 1, 
                         color: display.textColor, 
                         fontSize: size.fontSize, 
                         fontWeight: '600', 
                         includeFontPadding: false 
-                    }]} 
+                    }, props.textStyle]} 
                     numberOfLines={1}
                 >
                     {props.title}

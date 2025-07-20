@@ -9,10 +9,11 @@ import * as React from 'react';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider } from '@/auth/AuthContext';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
-import { Image, Pressable } from 'react-native';
+import { Image, Pressable, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { Typography } from '@/constants/Typography';
 import '../global.css';
 
 export {
@@ -52,7 +53,22 @@ export default function RootLayout() {
     React.useEffect(() => {
         (async () => {
             await Fonts.loadAsync({
+                // Keep existing font
                 SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+                
+                // IBM Plex Sans family
+                'IBMPlexSans-Regular': require('../assets/fonts/IBMPlexSans-Regular.ttf'),
+                'IBMPlexSans-Italic': require('../assets/fonts/IBMPlexSans-Italic.ttf'),
+                'IBMPlexSans-SemiBold': require('../assets/fonts/IBMPlexSans-SemiBold.ttf'),
+                
+                // IBM Plex Mono family  
+                'IBMPlexMono-Regular': require('../assets/fonts/IBMPlexMono-Regular.ttf'),
+                'IBMPlexMono-Italic': require('../assets/fonts/IBMPlexMono-Italic.ttf'),
+                'IBMPlexMono-SemiBold': require('../assets/fonts/IBMPlexMono-SemiBold.ttf'),
+                
+                // Bricolage Grotesque
+                'BricolageGrotesque-Bold': require('../assets/fonts/BricolageGrotesque-Bold.ttf'),
+                
                 ...FontAwesome.font,
             });
             const credentials = await TokenStorage.getCredentials();
@@ -96,7 +112,11 @@ export default function RootLayout() {
                             name="index"
                             options={{
                                 headerShown: true,
-                                headerTitle: 'Happy Coder'
+                                headerTitle: () => (
+                                    <Text style={{ fontSize: 24, color: '#000', ...Typography.logo() }}>
+                                        Happy Coder
+                                    </Text>
+                                )
                             }}
                         />
                         <Stack.Screen
