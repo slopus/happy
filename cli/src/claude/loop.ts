@@ -27,22 +27,39 @@ interface LoopOptions {
 */
 
 export async function loop(opts: LoopOptions) {
-    // NOTE: exited & abortController are currently unused
-    let exited = false;
-    let abortController: AbortController | null = null;
     let mode: 'interactive' | 'remote' = 'interactive' as 'interactive' | 'remote';
     let currentMessageQueue: MessageQueue = new MessageQueue();
-    let seenRemoteUserMessageContents: Set<string> = new Set();
     let sessionId: string | null = null;
-    let conversationHistory: RawJSONLines[] = [];
     let onMessage: (() => void) | null = null;
+
+    /*
+        NOTE: User messages that come to us from the remote session, will be
+        written by claude to session file, and re-emitted to us.
+        We cannot pass any stable ID to claude for the message.
+
+        Invariant:
+        For each incoming user message, we expect to see it come out of the session
+        scanner exactly once.
+
+        Why can't we simply ignore messages with the same content we have seen?
+        - Remote User: Run 'yarn build'
+        - Scanner emits 'user: Run 'yarn build''
+        - [switch to local mode]
+        - Local user (through claude terminal session): Run 'yarn build'
+        - Scanner emits 'user: Run 'yarn build''
+        
+        So if we were to ignore messages with the same content we have seen, we would not emit this message to the server. The counter solution addresses this.
+    */
+    let seenRemoteUserMessageCounters: Map<string, number> = new Map();
 
     // Handle user messages
     opts.session.onUserMessage((message) => {
         logger.debugLargeJson('User message pushed to queue:', message)
         currentMessageQueue.push(message.content.text);
-        seenRemoteUserMessageContents.add(message.content.text);
-        
+
+        // Increment the counter for this remote user message
+        seenRemoteUserMessageCounters.set(message.content.text, (seenRemoteUserMessageCounters.get(message.content.text) || 0) + 1);
+
         if (onMessage) {
             onMessage();
         } else {
@@ -54,17 +71,26 @@ export async function loop(opts: LoopOptions) {
     const sessionScanner = createSessionScanner({
         workingDirectory: opts.path,
         onMessage: (message) => {
+            if (message.type === 'user' && typeof message.message.content === 'string') {
+                const currentCounter = seenRemoteUserMessageCounters.get(message.message.content);
+                if (currentCounter && currentCounter > 0) {
+                    // We have already seen this message from the remote session
+                    // Lets decrement the counter & skip
+                    seenRemoteUserMessageCounters.set(message.message.content, currentCounter - 1);
+                    return;
+                }
+            }
             opts.session.sendClaudeSessionMessage(message);
         }
     });
 
 
-    let onSessionFound = (sessionId: string) => {
-        sessionId = sessionId;
-        sessionScanner.onNewSession(sessionId);
+    let onSessionFound = (newSessionId: string) => {
+        sessionId = newSessionId;
+        sessionScanner.onNewSession(newSessionId);
     }
 
-    while (!exited) {
+    while (true) {
         // Switch to remote mode if there are messages waiting
         if (currentMessageQueue.size() > 0) {
             mode = 'remote';
@@ -75,7 +101,6 @@ export async function loop(opts: LoopOptions) {
         if (mode === 'interactive') {
             let abortedOutside = false;
             const interactiveAbortController = new AbortController();
-            abortController = interactiveAbortController;
             opts.session.setHandler('switch', () => {
                 if (!interactiveAbortController.signal.aborted) {
                     abortedOutside = true;
@@ -110,7 +135,6 @@ export async function loop(opts: LoopOptions) {
         if (mode === 'remote') {
             console.log('Starting ' + sessionId);
             const remoteAbortController = new AbortController();
-            abortController = remoteAbortController;
             
             // Use the current queue for this session
             const queueForThisSession = currentMessageQueue;
@@ -150,7 +174,7 @@ export async function loop(opts: LoopOptions) {
                 currentMessageQueue.close()
                 currentMessageQueue = new MessageQueue();
             }
-            if (mode !== 'remote' && !exited) {
+            if (mode !== 'remote') {
                 console.log('Switching to interactive mode...');
             }
         }

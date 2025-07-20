@@ -137,7 +137,9 @@ function getMessageKey(message: RawJSONLines): string {
     if (message.type === 'user') {
         return `user:${message.uuid}`
     } else if (message.type === 'assistant') {
-        return `assistant:${message.uuid}`
+        // @kirill has observed strange cases where the same assistant message
+        // is duplicated in the history, with the same content, but new uuid
+        return stableStringify(message.message)
     } else if (message.type === 'summary') {
         return `summary:${message.leafUuid}`
     } else if (message.type === 'system') {
@@ -145,4 +147,21 @@ function getMessageKey(message: RawJSONLines): string {
     }
 
     return `unknown:<error, this should be unreachable>`
+}
+
+function stableStringify(obj: any): string {
+    return JSON.stringify(sortKeys(obj), null, 2);
+}
+
+function sortKeys(value: any): any {
+    if (Array.isArray(value)) {
+        return value.map(sortKeys);
+    } else if (value && typeof value === 'object' && value.constructor === Object) {
+        return Object.keys(value).sort().reduce((result: any, key) => {
+            result[key] = sortKeys(value[key]);
+            return result;
+        }, {});
+    } else {
+        return value;
+    }
 }
