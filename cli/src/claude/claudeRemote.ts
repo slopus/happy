@@ -87,6 +87,10 @@ export async function claudeRemote(opts: {
         }
         logger.debug(`[claudeRemote] Finished iterating over response`);
     } catch (e) {
+        if (abortController.signal.aborted) {
+            logger.debug(`[claudeRemote] Aborted`);
+            // Ignore
+        }
         if (e instanceof AbortError) {
             logger.debug(`[claudeRemote] Aborted`);
             // Ignore
