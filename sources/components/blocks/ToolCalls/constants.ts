@@ -12,14 +12,14 @@ export const TOOL_COMPACT_VIEW_STYLES = {
   
   // Colors
   ICON_COLOR: '#a1a1a1',
-  TOOL_NAME_COLOR: 'text-neutral-400',
-  CONTENT_COLOR: 'text-neutral-800',
-  METADATA_COLOR: 'text-neutral-400',
+  TOOL_NAME_COLOR: 'text-neutral-500',
+  CONTENT_COLOR: 'text-neutral-500',
+  METADATA_COLOR: 'text-neutral-500',
   
   // Common class combinations for consistent styling
-  TOOL_NAME_CLASSES: 'text-base text-neutral-400 font-bold px-1',
-  CONTENT_CLASSES: 'text-base leading-6 font-normal flex-1 text-neutral-800',
-  METADATA_CLASSES: 'text-sm text-neutral-400 font-bold px-1',
+  TOOL_NAME_CLASSES: 'text-base text-neutral-500 font-bold px-1',
+  CONTENT_CLASSES: 'text-base leading-6 font-normal flex-1 text-neutral-500',
+  METADATA_CLASSES: 'text-sm text-neutral-500 font-bold px-1 basis-full',
 } as const;
 
 // Container styles - padding should come from SingleLineToolSummaryBlock
@@ -27,5 +27,5 @@ export const TOOL_COMPACT_VIEW_STYLES = {
 export const TOOL_CONTAINER_STYLES = {
   // The base container for tool compact views
   // Note: py-* padding comes from SingleLineToolSummaryBlock, not here
-  BASE_CONTAINER: 'flex-row gap-1 items-center',
+  BASE_CONTAINER: 'flex-row gap-1 items-center flex-wrap',
 } as const; 
