@@ -11,7 +11,7 @@ export const MonoText: React.FC<MonoTextProps> = ({ style, ...props }) => {
   return (
     <Text 
       useDefaultTypography={false} 
-      style={[Typography.mono(), style]} 
+      style={[Typography.mono(), { fontSize: 16 }, style]} 
       {...props} 
     />
   );

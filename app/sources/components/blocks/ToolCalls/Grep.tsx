@@ -97,27 +97,27 @@ export function GrepCompactView({ tool, sessionId, messageId }: { tool: GrepTool
   return (
     <Pressable
       onPress={() => router.push(`/session/${sessionId}/message/${messageId}`)}
-      className="border border-gray-300 rounded-lg bg-white overflow-hidden flex-row items-center justify-between px-3 py-3 active:scale-95 active:opacity-70"
+      className="border bg-neutral-50 border-gray-300 rounded-lg bg-white flex-col items-start justify-between py-2 px-3 my-3"
     >
-      <View className="flex-row items-center flex-1">
+      <View className="flex-row items-center py-1">
         <Ionicons name="search" size={14} color="#a1a1a1" />
-        <Text className="text-xs text-neutral-400 font-bold px-1">Grep</Text>
+        <Text className="text-neutral-500 font-bold px-1">Grep</Text>
         <Text
-          className="text-xs flex-1 text-neutral-800"
+          className="flex-1 text-neutral-500"
           numberOfLines={1}
         >
           "{query || 'pattern'}" in {displayTarget}
         </Text>
       </View>
 
-      <View className="flex-row items-center">
-        <Text className="text-xs text-neutral-500 mr-2">
+      <View className="flex-row items-center basis-full">
+        <Text className="text-neutral-500 mr-2">
           {resultText}
         </Text>
         <Ionicons 
           name="chevron-forward" 
           size={12} 
-          color="#6b7280"
+          color="#a3a3a3"
         />
       </View>
     </Pressable>
@@ -141,7 +141,7 @@ export function GrepCompactViewInner({ tool }: { tool: GrepToolCall }) {
   return (
     <View className="flex-row items-center py-0.5">
       <Ionicons name="search" size={14} color="#a1a1a1" />
-      <Text className="text-xs text-neutral-400 font-bold px-1">Grep</Text>
+      <Text className="text-xs text-neutral-500 font-bold px-1">Grep</Text>
       <Text
         className="text-xs flex-1 text-neutral-800"
         numberOfLines={1}

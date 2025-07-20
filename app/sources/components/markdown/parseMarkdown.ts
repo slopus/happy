@@ -22,7 +22,7 @@ export type MarkdownBlock = {
 }
 
 export type MarkdownSpan = {
-    styles: ('italic' | 'bold' | 'code')[],
+    styles: ('italic' | 'semibold' | 'code')[],
     text: string,
     url: string | null
 }
