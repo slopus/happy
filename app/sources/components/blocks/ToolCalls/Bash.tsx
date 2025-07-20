@@ -3,6 +3,7 @@ import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { type ToolCall } from "@/sync/storageTypes";
 import { SingleLineToolSummaryBlock as SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
 export type BashToolCall = Omit<ToolCall, 'name'> & { name: 'Bash' };
 
@@ -24,10 +25,10 @@ export function BashCompactViewInner({ tool }: { tool: ToolCall }) {
   
   if (!command) {
     return (
-      <View className="flex-row items-center py-2">
-        <Ionicons name="terminal" size={20} color="#a1a1a1" />
-        <Text className="text-md text-neutral-400 font-bold px-1">{label}</Text>
-        <Text className="text-md text-gray-500 italic flex-1">Terminal command</Text>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="terminal" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>{label}</Text>
+        <Text className={`${TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} italic`}>Terminal command</Text>
       </View>
     );
   }
@@ -37,10 +38,10 @@ export function BashCompactViewInner({ tool }: { tool: ToolCall }) {
   const prefix = description ? '' : '$ ';
   
   return (
-    <View className="flex-row items-center py-2">
-      <Ionicons name="terminal" size={20} color="" />
-      <Text className="text-sm text-neutral-400 font-bold px-1">{label}</Text>
-      <Text className="text-sm text-neutral-800 flex-1" numberOfLines={1}>
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <Ionicons name="terminal" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>{label}</Text>
+      <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
         {prefix}{displayText}
       </Text>
     </View>

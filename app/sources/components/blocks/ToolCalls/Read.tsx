@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
@@ -6,6 +6,7 @@ import { type ToolCall } from '@/sync/storageTypes';
 import { ShimmerText } from './ShimmerRunningToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView } from './SharedDiffView';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
 export type ReadToolCall = Omit<ToolCall, 'name'> & { name: 'Read' };
 
@@ -57,11 +58,11 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
     const fileName = filePath.split('/').pop() || filePath;
     
     return (
-      <View className="flex-row items-center py-1 gap-1 pl-[2px]">
-        <Ionicons name="eye" size={14} color="#a1a1a1" />
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="eye" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
         <ShimmerText>Reading</ShimmerText>
         <Text
-          className="text-sm flex-1 text-neutral-800"
+          className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
         >
           {fileName}
@@ -76,16 +77,16 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
     const fileName = filePath.split('/').pop() || filePath;
     
     return (
-      <View className="pl-3 flex-row items-center py-0.5">
-        <Ionicons name="warning" size={14} color="#ef4444" />
-        <Text className="text-xs text-red-500 font-bold px-1">Read</Text>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="warning" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#ef4444" />
+        <Text className={`${TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_SIZE} text-red-500 font-bold px-1`}>Read</Text>
         <Text
-          className="text-xs flex-1 text-neutral-800"
+          className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
         >
           {fileName}
         </Text>
-        <Text className="text-xs text-red-500">
+        <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-red-500`}>
           {inputParseError || 'Failed to read file'}
         </Text>
       </View>
@@ -96,11 +97,11 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
   // Show input parse error if we couldn't understand the arguments
   if (inputParseError && !parsedInput) {
     return (
-      <View className="flex-row items-center py-1">
-        <Ionicons name="eye" size={14} color="#a1a1a1" />
-        <Text className="text-xs text-neutral-400 font-bold px-1">Read</Text>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="eye" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Read</Text>
         <Text
-          className="text-xs flex-1 text-neutral-800"
+          className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
         >
           Unable to parse arguments to show more information
@@ -130,16 +131,16 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
     : "" /*parseError || JSON.stringify(tool.result)*/;
 
   return (
-    <View className="flex-row items-center py-1">
-      <Ionicons name="eye" size={14} color="#a1a1a1" />
-      <Text className="text-xs text-neutral-400 font-bold px-1">Read</Text>
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <Ionicons name="eye" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Read</Text>
       <Text
-        className="text-xs flex-1 text-neutral-800"
+        className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
       >
         {fileName}
       </Text>
-      <Text className="text-xs text-neutral-400 font-bold px-1">
+      <Text className={TOOL_COMPACT_VIEW_STYLES.METADATA_CLASSES}>
         {displayText}
       </Text>
     </View>
@@ -168,96 +169,57 @@ export const ReadDetailedView = ({ tool }: { tool: ReadToolCall }) => {
     );
   }
 
-  // Extract filename for display
-  const fileName = args.file_path.split('/').pop() || args.file_path;
   const fileContent = parsedResult?.file?.content || '';
-  const startLine = parsedResult?.file?.startLine || 1;
-  const numLines = parsedResult?.file?.numLines || 0;
-  const totalLines = parsedResult?.file?.totalLines || 0;
 
   return (
-    <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={true}>
-      {/* Header */}
-      <View className="p-4">
-        <View className="flex-row justify-between items-center mb-4">
-          <Text className="text-lg font-semibold text-gray-900">👁 Read File</Text>
-          <View className="px-2 py-1 bg-gray-100 rounded-xl">
-            <Text className={`text-sm font-medium ${getStatusColorClass(tool.state)}`}>
-              {getStatusDisplay(tool.state)}
-            </Text>
-          </View>
-        </View>
-
-        {/* File Info */}
-        <View className="mb-4 bg-blue-50 rounded-lg p-3 border border-blue-200">
-          <Text className="text-sm font-medium text-blue-800 mb-1">
-            📖 File contents
-          </Text>
-          <Text className="text-sm font-mono text-blue-700 mb-2">{args.file_path}</Text>
-          {parsedResult && (
-            <View className="flex-row flex-wrap gap-4">
-              <Text className="text-xs text-blue-600">
-                Lines {startLine}-{startLine + numLines - 1}
-              </Text>
-              <Text className="text-xs text-blue-600">
-                {numLines} of {totalLines} total lines
-              </Text>
-              <Text className="text-xs text-blue-600">
-                {fileContent.length} characters
-              </Text>
-            </View>
-          )}
-        </View>
+    <View className="flex-1 bg-white">
+      {/* Simple Header */}
+      <View className="p-4 border-b border-gray-200">
+        <Text className="text-lg font-semibold text-gray-900">👁 {args.file_path}</Text>
       </View>
 
-      {/* Content Display */}
-      <View className="bg-gray-50 border-y border-gray-200 flex-1">
-        {/* Content Header */}
-        <View className="flex-row items-center justify-between px-4 py-3 bg-gray-100 border-b border-gray-200">
-          <Text className="text-sm font-medium text-gray-700">
-            File Contents
-          </Text>
-          {parsedResult && (
-            <Text className="text-sm text-gray-500">
-              {numLines} lines • {fileContent.length} chars
-            </Text>
-          )}
-        </View>
-
-        {/* File Content Display */}
-        {fileContent && (
-          <View className="flex-1 bg-white">
-            <SharedDiffView
-              oldContent=""  // No old content for read operation
-              newContent={fileContent}
-              fileName={args.file_path}
-              showFileName={false}  // Already shown in header
-              maxHeight={600}
-            />
-          </View>
+      {/* Content */}
+      <View className="flex-1">
+        {/* Show content if available */}
+        {fileContent && tool.state === 'completed' && (
+          <SharedDiffView
+            oldContent=""  // No old content for read operation
+            newContent={fileContent}
+            fileName={args.file_path || 'unknown'}
+            showFileName={false}  // Already shown in header
+          />
         )}
 
-        {/* Show message if no content */}
-        {!fileContent && tool.state === 'completed' && (
-          <View className="p-4 bg-white">
-            <Text className="text-gray-500 italic text-center">
-              File appears to be empty or content could not be loaded
-            </Text>
-          </View>
-        )}
+                 {/* Show loading state */}
+         {tool.state === 'running' && (
+           <View className="flex-1 justify-center items-center">
+             <ShimmerText>{`Reading ${args.file_path?.split('/').pop() || 'file'}...`}</ShimmerText>
+           </View>
+         )}
 
-        {/* Show error message if failed */}
+        {/* Show error state */}
         {tool.state === 'error' && (
-          <View className="p-4 bg-red-50">
-            <Text className="text-red-600 text-center">
-              Failed to read file: {tool.result && typeof tool.result === 'object' && 'error' in tool.result 
+          <View className="flex-1 justify-center items-center p-4">
+            <Ionicons name="warning" size={48} color="#ef4444" />
+            <Text className="text-lg font-medium text-red-600 mt-4 text-center">
+              Failed to read file
+            </Text>
+            <Text className="text-sm text-red-500 mt-2 text-center">
+              {tool.result && typeof tool.result === 'object' && 'error' in tool.result 
                 ? String(tool.result.error) 
                 : 'Unknown error occurred'}
             </Text>
           </View>
         )}
+
+        {/* Show empty file state */}
+        {!fileContent && tool.state === 'completed' && (
+          <View className="flex-1 justify-center items-center p-4">
+            <Text className="text-lg text-gray-500">File is empty</Text>
+          </View>
+        )}
       </View>
-    </ScrollView>
+    </View>
   );
 };
 

@@ -4,13 +4,14 @@ import { type ToolCall } from '@/sync/storageTypes';
 
 import { BashCompactView, BashDetailedView, type BashToolCall } from './ToolCalls/Bash';
 import { EditCompactView, EditDetailedView, type EditToolCall } from './ToolCalls/Edit';
-import { ReadCompactView, type ReadToolCall } from './ToolCalls/Read';
-import { GrepCompactView, type GrepToolCall } from './ToolCalls/Grep';
+import { ReadCompactView, ReadDetailedView, type ReadToolCall } from './ToolCalls/Read';
+import { GrepCompactView, GrepDetailedView, type GrepToolCall } from './ToolCalls/Grep';
 import { TodoWriteCompactView, TodoWriteDetailedView, type TodoWriteToolCall } from './ToolCalls/TodoWrite';
 import { LSCompactView, LSDetailedView, type LSToolCall } from './ToolCalls/LS';
 import { WriteCompactView, WriteDetailedView, WriteToolCall } from './ToolCalls/Write';
-import { MCPCompactView, MCPToolCall } from './ToolCalls/MCP';
+import { MCPCompactView, MCPDetailedView, MCPToolCall } from './ToolCalls/MCP';
 import { UnknownToolDetailedView } from './ToolCalls/Unknown';
+import { TaskCompactView, TaskDetailedView, type TaskToolCall } from './ToolCalls/Task';
 
 // Component that dispatches to different tool renderers based on tool type
 export function CompactToolBlock({ tool, sessionId, messageId }: { tool: ToolCall, sessionId: string, messageId: string }) {
@@ -30,8 +31,8 @@ export function CompactToolBlock({ tool, sessionId, messageId }: { tool: ToolCal
     case "TodoWrite":
       return <TodoWriteCompactView tool={tool as TodoWriteToolCall} sessionId={sessionId} messageId={messageId} />;
     
-    //case "Task":
-    //  return null;
+    case "Task":
+      return <TaskCompactView tool={tool as TaskToolCall} sessionId={sessionId} messageId={messageId} />;
     
     case "LS":
       return <LSCompactView tool={tool as LSToolCall}/>;
@@ -59,6 +60,9 @@ export function DetailedToolBlock({ tool }: { tool: ToolCall }) {
   switch (tool.name) {
     case "Edit":
       return <EditDetailedView tool={tool as EditToolCall} />;
+    
+    case "Read":
+      return <ReadDetailedView tool={tool as ReadToolCall} />;
 
     case "Write":
       return <WriteDetailedView tool={tool as WriteToolCall} />;
@@ -68,11 +72,20 @@ export function DetailedToolBlock({ tool }: { tool: ToolCall }) {
 
     case "TodoWrite":
       return <TodoWriteDetailedView tool={tool as TodoWriteToolCall} />;
+    
+    case "Grep":
+      return <GrepDetailedView tool={tool as GrepToolCall} />;
 
     case "LS":
       return <LSDetailedView tool={tool as LSToolCall} />;
 
+    case "Task":
+      return <TaskDetailedView tool={tool as TaskToolCall} />;
+
     default:
+      if (tool.name.startsWith('mcp__')) {
+        return <MCPDetailedView tool={tool as MCPToolCall} />;
+      }
       // Fallback for tools without detailed views
       return <UnknownToolDetailedView tool={tool} />;
   }

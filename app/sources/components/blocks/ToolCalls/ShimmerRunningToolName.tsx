@@ -1,6 +1,7 @@
 import React, { useEffect } from 'react';
 import { View, Text } from 'react-native';
 import Animated, { useSharedValue, withRepeat, withTiming, Easing, useAnimatedStyle } from 'react-native-reanimated';
+import { TOOL_COMPACT_VIEW_STYLES } from './constants';
 
 export function ShimmerText({ children }: { children: string; }) {
   const shimmerPosition = useSharedValue(-1);
@@ -39,7 +40,7 @@ export function ShimmerText({ children }: { children: string; }) {
   return (
     <View className="relative overflow-hidden">
       {/* Base text */}
-      <Text className="text-sm text-neutral-500 font-bold" style={{ opacity: 0.7 }}>
+      <Text className={`${TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_SIZE} text-neutral-500 font-bold px-1`} style={{ opacity: 0.7 }}>
         {children}
       </Text>
 

@@ -6,6 +6,7 @@ import { type ToolCall } from '@/sync/storageTypes';
 import { ShimmerText } from './ShimmerRunningToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView } from './SharedDiffView';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
 export type WriteToolCall = Omit<ToolCall, 'name'> & { name: 'Write' };
 
@@ -55,11 +56,11 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
     const fileName = filePath.split('/').pop() || filePath;
     
     return (
-      <View className="flex-row items-center py-1 gap-1">
-        <Ionicons name="create-outline" size={14} color="#a1a1a1" />
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="create-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
         <ShimmerText>Creating</ShimmerText>
         <Text
-          className="text-sm flex-1 text-neutral-800"
+          className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
         >
           {fileName}
@@ -74,16 +75,16 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
     const fileName = filePath.split('/').pop() || filePath;
     
     return (
-      <View className="flex-row items-center py-0.5">
-        <Ionicons name="warning" size={14} color="#ef4444" />
-        <Text className="text-sm text-red-500 font-bold px-1">Created</Text>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="warning" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#ef4444" />
+        <Text className={`${TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_SIZE} text-red-500 font-bold px-1`}>Created</Text>
         <Text
-          className="text-sm flex-1 text-neutral-800"
+          className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
         >
           {fileName}
         </Text>
-        <Text className="text-sm text-red-500">
+        <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-red-500`}>
           {inputParseError || 'Failed to write file'}
         </Text>
       </View>
@@ -94,11 +95,11 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
   // Show input parse error if we couldn't understand the arguments
   if (inputParseError && !parsedInput) {
     return (
-      <View className="flex-row items-center py-1">
-        <Ionicons name="create" size={14} color="#a1a1a1" />
-        <Text className="text-sm text-neutral-400 font-bold px-1">Write</Text>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="create" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Write</Text>
         <Text
-          className="text-sm flex-1 text-neutral-800"
+          className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
         >
           Unable to parse arguments
@@ -127,11 +128,11 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
   const lineCount = parsedInput?.content?.split('\n').length || 0;
   
   return (
-    <View className="flex-row items-center py-1">
-      <Ionicons name="create" size={14} color="#a1a1a1" />
-      <Text className="text-sm text-neutral-400 font-bold px-1">Write</Text>
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <Ionicons name="create" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Write</Text>
       <Text
-        className="text-sm text-neutral-800"
+        className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
       >
         {fileName}
@@ -140,7 +141,7 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
       {/* Line count in diff style */}
       {lineCount > 0 && (
         <View className="flex-row items-center ml-2">
-          <Text className="text-sm font-medium text-emerald-600 font-mono">
+          <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} font-medium text-emerald-600 font-mono`}>
             +{lineCount}
           </Text>
         </View>
