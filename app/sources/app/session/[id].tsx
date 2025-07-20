@@ -13,15 +13,25 @@ import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import LottieView from 'lottie-react-native';
+import { useIsTablet } from '@/utils/responsive';
 
 export default function Session() {
     const safeArea = useSafeAreaInsets();
     const route = useRoute();
     const router = useRouter();
+    const isTablet = useIsTablet();
     const sessionId = (route.params! as any).id as string;
     const session = useSession(sessionId)!;
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const [message, setMessage] = useState('');
+    
+    // Redirect to home on tablets (split view handles session display)
+    React.useEffect(() => {
+        if (isTablet) {
+            router.replace('/');
+        }
+    }, [isTablet, router]);
+    
     const online = isSessionOnline(session);
     const lastSeenText = formatLastSeen(session.active, session.activeAt);
     const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout

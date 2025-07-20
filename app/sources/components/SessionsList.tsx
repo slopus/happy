@@ -9,9 +9,11 @@ import { FlashList } from '@shopify/flash-list';
 
 interface SessionsListProps {
     data: SessionListItem[];
+    selectedSessionId?: string | null;
+    onSessionPress?: (sessionId: string) => void;
 }
 
-export function SessionsList({ data }: SessionsListProps) {
+export function SessionsList({ data, selectedSessionId, onSessionPress }: SessionsListProps) {
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
 
@@ -47,11 +49,24 @@ export function SessionsList({ data }: SessionsListProps) {
         const lastSeenText = formatLastSeen(session.active, session.activeAt);
         const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
         const isFromAssistant = lastMessage?.content?.role === 'agent' || thinking;
+        const isSelected = selectedSessionId === session.id;
 
         return (
             <Pressable
-                style={{ height: 96, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 }}
-                onPress={() => router.push(`/session/${session.id}` as any)}
+                style={{ 
+                    height: 96, 
+                    flexDirection: 'row', 
+                    alignItems: 'center', 
+                    paddingHorizontal: 16,
+                    backgroundColor: isSelected ? 'rgba(0, 0, 0, 0.05)' : 'transparent'
+                }}
+                onPress={() => {
+                    if (onSessionPress) {
+                        onSessionPress(session.id);
+                    } else {
+                        router.push(`/session/${session.id}` as any);
+                    }
+                }}
             >
                 <Avatar id={session.id} size={56} monochrome={!online} />
                 <View style={{ flex: 1, marginLeft: 16 }}>
@@ -88,7 +103,7 @@ export function SessionsList({ data }: SessionsListProps) {
                 </View>
             </Pressable>
         );
-    }, [router]);
+    }, [router, selectedSessionId, onSessionPress]);
 
     const getItemType = React.useCallback((item: SessionListItem) => {
         return typeof item === 'string' ? 'header' : 'session';

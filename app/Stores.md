@@ -16,7 +16,9 @@ claude, code, ai, programming, developer, tools, encrypted, secure, coding, assi
 
 ## App Description / Full Description
 
-Happy Coder is the secure mobile companion for Claude Code that lets you continue your AI coding sessions anywhere. Built by developers who needed to check on Claude's progress during coffee breaks, this app brings the full Claude Code experience to your phone with military-grade encryption.
+Happy Coder is the secure mobile companion for Claude Code that lets you continue your AI coding sessions anywhere (not affiliated with Anthropic). Built by developers who needed to check on Claude's progress during coffee breaks, this app brings the full Claude Code experience to your phone with military-grade encryption.
+
+**Important**: This app requires Claude Code to be installed on your computer. Happy Coder is a companion app that connects to your existing Claude Code setup.
 
 **Key Features:**
 
