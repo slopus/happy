@@ -14,6 +14,7 @@ import { useSessions } from "@/sync/storage";
 import LottieView from "lottie-react-native";
 import { getRandomBytesAsync } from "expo-crypto";
 import { ConnectButton } from "@/components/ConnectButton";
+import { Typography } from "@/constants/Typography";
 
 export default function Home() {
     const auth = useAuth();
@@ -134,11 +135,11 @@ function NotAuthenticated() {
             />
             <View className="flex-1 items-center justify-center">
                 <LottieView source={require('@/assets/animations/owl.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
-                <Text style={{ fontSize: 28, fontWeight: '600' }}>
-                    Create an account
+                <Text style={{ fontSize: 28, ...Typography.default('semiBold') }}>
+                    Hello there!
                 </Text>
-                <Text style={{ fontSize: 16, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>
-                    Happy Coder is fully end-to-end encrypted and your account is stored only on your device.
+                <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>
+                    Happy Coder is an end-to-end Claude Code mobile client.
                 </Text>
                 <View className="max-w-[200px] w-full mb-4">
                     <RoundButton
