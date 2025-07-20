@@ -63,6 +63,7 @@ export interface Session {
     lastMessage: DecryptedMessage | null,
     thinking: boolean,
     thinkingAt: number,
+    presence: "online" | number, // "online" when active, timestamp when last seen
 }
 
 export interface DecryptedMessage {

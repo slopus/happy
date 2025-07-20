@@ -30,7 +30,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     }
     
     const online = isSessionOnline(session);
-    const lastSeenText = formatLastSeen(session.active, session.activeAt);
+    const lastSeenText = formatLastSeen(session.presence);
     const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
     
     const permissionRequest = React.useMemo(() => {

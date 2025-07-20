@@ -3,6 +3,9 @@ import { useShallow } from 'zustand/react/shallow'
 import { DecryptedMessage, Session, Message as Message } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer";
 
+// Session is considered online if it was active within this timeout
+export const ONLINE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+
 interface SessionMessages {
     messages: Message[];
     messagesMap: Record<string, Message>;
@@ -16,7 +19,7 @@ interface StorageState {
     sessions: Record<string, Session>;
     sessionsData: SessionListItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
-    applySessions: (sessions: Session[]) => void;
+    applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyLoaded: () => void;
     applyMessages: (sessionId: string, messages: DecryptedMessage[]) => void;
     applyMessagesLoaded: (sessionId: string) => void;
@@ -28,19 +31,29 @@ export const storage = create<StorageState>()((set) => {
         sessions: {},
         sessionsData: null,
         sessionMessages: {},
-        applySessions: (sessions: Session[]) => set((state) => {
+        applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
+            const now = Date.now();
+            const threshold = now - ONLINE_TIMEOUT_MS;
+            
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
 
-            // Update sessions
+            // Update sessions with calculated presence
             sessions.forEach(session => {
-                mergedSessions[session.id] = session;
+                // Calculate presence based on active and activeAt
+                const isOnline = session.active && session.activeAt > threshold;
+                const presence: "online" | number = isOnline ? "online" : session.activeAt;
+                
+                mergedSessions[session.id] = {
+                    ...session,
+                    presence
+                };
             });
 
             // Build active set from all sessions (including existing ones)
             const activeSet = new Set<string>();
             Object.values(mergedSessions).forEach(session => {
-                if (session.active && session.activeAt > Date.now() - 10 * 60 * 1000) {
+                if (session.presence === "online") {
                     activeSet.add(session.id);
                 }
             });
@@ -195,12 +208,23 @@ export const storage = create<StorageState>()((set) => {
             return result;
         }),
         recalculateOnline: () => set((state) => {
-            const threshold = Date.now() - 10 * 60 * 1000;
+            const now = Date.now();
+            const threshold = now - ONLINE_TIMEOUT_MS;
+
+            // Update presence for all sessions
+            const updatedSessions: Record<string, Session> = {};
+            Object.entries(state.sessions).forEach(([id, session]) => {
+                const isOnline = session.active && session.activeAt > threshold;
+                updatedSessions[id] = {
+                    ...session,
+                    presence: isOnline ? "online" : session.activeAt
+                };
+            });
 
             // Build set of session IDs that should be active
             const shouldBeActiveSet = new Set<string>();
-            Object.values(state.sessions).forEach(session => {
-                if (session.active && session.activeAt > threshold) {
+            Object.values(updatedSessions).forEach(session => {
+                if (session.presence === "online") {
                     shouldBeActiveSet.add(session.id);
                 }
             });
@@ -231,7 +255,7 @@ export const storage = create<StorageState>()((set) => {
             const newActiveSessions: Session[] = [];
             const newInactiveSessions: Session[] = [];
 
-            Object.values(state.sessions).forEach(session => {
+            Object.values(updatedSessions).forEach(session => {
                 if (shouldBeActiveSet.has(session.id)) {
                     newActiveSessions.push(session);
                 } else {
@@ -265,6 +289,7 @@ export const storage = create<StorageState>()((set) => {
 
             return {
                 ...state,
+                sessions: updatedSessions,
                 sessionsData: listData
             };
         })
