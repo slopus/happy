@@ -57,20 +57,20 @@ export default function RootLayout() {
             await Fonts.loadAsync({
                 // Keep existing font
                 SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
-                
+
                 // IBM Plex Sans family
                 'IBMPlexSans-Regular': require('../assets/fonts/IBMPlexSans-Regular.ttf'),
                 'IBMPlexSans-Italic': require('../assets/fonts/IBMPlexSans-Italic.ttf'),
                 'IBMPlexSans-SemiBold': require('../assets/fonts/IBMPlexSans-SemiBold.ttf'),
-                
+
                 // IBM Plex Mono family  
                 'IBMPlexMono-Regular': require('../assets/fonts/IBMPlexMono-Regular.ttf'),
                 'IBMPlexMono-Italic': require('../assets/fonts/IBMPlexMono-Italic.ttf'),
                 'IBMPlexMono-SemiBold': require('../assets/fonts/IBMPlexMono-SemiBold.ttf'),
-                
+
                 // Bricolage Grotesque
                 'BricolageGrotesque-Bold': require('../assets/fonts/BricolageGrotesque-Bold.ttf'),
-                
+
                 ...FontAwesome.font,
             });
             const credentials = await TokenStorage.getCredentials();
@@ -94,74 +94,73 @@ export default function RootLayout() {
         <KeyboardProvider>
             <AuthProvider initialCredentials={initState.credentials}>
                 <DebugProvider>
-                <ThemeProvider value={DefaultTheme}>
-                    <Stack
-                        initialRouteName='index'
-                        screenOptions={{
-                            headerShadowVisible: false,
-                            contentStyle: {
-                                backgroundColor: 'white',
-                            },
-                            headerStyle: {
-                                backgroundColor: 'white',
-                            },
-                            headerTintColor: '#000',
-                            headerTitleStyle: {
-                                color: '#000',
-                            },
-                        }}
-                    >
-                        <Stack.Screen
-                            name="index"
-                            options={{
-                                headerShown: true,
-                                headerTitle: () => (
-                                    <Text useDefaultTypography={false} style={{ fontSize: 24, color: '#000', ...Typography.logo() }}>
-                                        Happy Coder
-                                    </Text>
-                                )
+                    <ThemeProvider value={DefaultTheme}>
+                        <Stack
+                            initialRouteName='index'
+                            screenOptions={{
+                                headerShadowVisible: false,
+                                contentStyle: {
+                                    backgroundColor: 'white',
+                                },
+                                headerStyle: {
+                                    backgroundColor: 'white',
+                                },
+                                headerTintColor: '#000',
+                                headerTitleStyle: {
+                                    color: '#000',
+                                },
                             }}
-                        />
-                        <Stack.Screen
-                            name="about"
-                            options={{
-                                presentation: 'modal',
-                                headerShown: false,
-                            }}
-                        />
-                        <Stack.Screen
-                            name="manual-entry"
-                            options={{
-                                presentation: 'modal',
-                                headerShown: false,
-                            }}
-                        />
-                        <Stack.Screen
-                            name="session/[id]"
-                            options={{
-                                headerTitle: 'Session',
-                                headerBackTitle: 'Home'
-                            }}
-                        />
-                        <Stack.Screen
-                            name="session/[id]/message/[messageId]"
-                            options={{
-                                presentation: 'modal',
-                                headerShown: false,
-                            }}
-                        />
-                        <Stack.Screen
-                            name="account"
-                        />
-                        <Stack.Screen
-                            name="restore"
-                            options={{
-                                presentation: 'modal',
-                                headerShown: false,
-                            }}
-                        />
-                    </Stack>
-                </ThemeProvider>
+                        >
+                            <Stack.Screen
+                                name="index"
+                                options={{
+                                    headerShown: true,
+                                    headerTitle: () => (
+                                        <Text useDefaultTypography={false} style={{ fontSize: 24, color: '#000', ...Typography.logo() }}>
+                                            Happy Coder
+                                        </Text>
+                                    )
+                                }}
+                            />
+                            <Stack.Screen
+                                name="about"
+                                options={{
+                                    presentation: 'modal',
+                                    headerShown: false,
+                                }}
+                            />
+                            <Stack.Screen
+                                name="session/[id]"
+                                options={{
+                                    headerTitle: 'Session',
+                                    headerBackTitle: 'Home'
+                                }}
+                            />
+                            <Stack.Screen
+                                name="session/[id]/message/[messageId]"
+                                options={{
+                                    presentation: 'modal',
+                                    headerShown: false,
+                                }}
+                            />
+                            <Stack.Screen
+                                name="account"
+                                options={{
+                                    presentation: 'modal',
+                                    headerShown: true,
+                                    headerTitle: 'Account',
+                                }}
+                            />
+                            <Stack.Screen
+                                name="restore"
+                                options={{
+                                    presentation: 'modal',
+                                    headerShown: true,
+                                    headerTitle: 'Restore Account',
+                                }}
+                            />
+                        </Stack>
+                    </ThemeProvider>
                 </DebugProvider>
             </AuthProvider>
         </KeyboardProvider>
