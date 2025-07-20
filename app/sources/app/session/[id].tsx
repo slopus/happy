@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";
-import { Text, View, StyleSheet, Button, FlatList } from "react-native";
+import { View, StyleSheet, Button, FlatList } from "react-native";
+import { Text } from '@/components/StyledText';
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
@@ -14,6 +15,7 @@ import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import LottieView from 'lottie-react-native';
 import { useIsTablet } from '@/utils/responsive';
+import { Typography } from '@/constants/Typography';
 
 export default function Session() {
     const safeArea = useSafeAreaInsets();
@@ -56,7 +58,7 @@ export default function Session() {
                 options={{
                     headerTitle: () => (
                         <View style={{ flexDirection: 'column', alignItems: 'center', alignContent: 'center' }}>
-                            <Text style={{ fontSize: 20, fontWeight: '600' }}>{getSessionName(session)}</Text>
+                            <Text style={{ fontSize: 20, fontWeight: '600' }}>/{getSessionName(session)}</Text>
                             <Text style={{ color: (online ? '#34C759' : '#999') }}>{(online ? 'online' : lastSeenText)}</Text>
                         </View>
                     ),
