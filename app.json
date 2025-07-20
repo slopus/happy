@@ -5,12 +5,12 @@
     "version": "1.0.2",
     "runtimeVersion": "6",
     "orientation": "portrait",
-    "icon": "./sources/assets/images/icon.png",
+    "icon": "./sources/assets/images/happy-otter-icon.png",
     "scheme": "happy",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
-      "image": "./sources/assets/images/splash-icon.png",
+      "image": "./sources/assets/images/splash-icon-2.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -23,7 +23,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./sources/assets/images/adaptive-icon.png",
+        "foregroundImage": "./sources/assets/images/happy-otter-icon.png",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
@@ -32,7 +32,7 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./sources/assets/images/favicon.png"
+      "favicon": "./sources/assets/images/happy-otter-icon.png"
     },
     "plugins": [
       [
