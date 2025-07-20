@@ -52,7 +52,22 @@ export default function RootLayout() {
     React.useEffect(() => {
         (async () => {
             await Fonts.loadAsync({
+                // Keep existing font
                 SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+                
+                // IBM Plex Sans family
+                'IBMPlexSans-Regular': require('../assets/fonts/IBMPlexSans-Regular.ttf'),
+                'IBMPlexSans-Italic': require('../assets/fonts/IBMPlexSans-Italic.ttf'),
+                'IBMPlexSans-SemiBold': require('../assets/fonts/IBMPlexSans-SemiBold.ttf'),
+                
+                // IBM Plex Mono family  
+                'IBMPlexMono-Regular': require('../assets/fonts/IBMPlexMono-Regular.ttf'),
+                'IBMPlexMono-Italic': require('../assets/fonts/IBMPlexMono-Italic.ttf'),
+                'IBMPlexMono-SemiBold': require('../assets/fonts/IBMPlexMono-SemiBold.ttf'),
+                
+                // Bricolage Grotesque
+                'BricolageGrotesque-Bold': require('../assets/fonts/BricolageGrotesque-Bold.ttf'),
+                
                 ...FontAwesome.font,
             });
             const credentials = await TokenStorage.getCredentials();
