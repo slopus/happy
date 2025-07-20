@@ -1,6 +1,6 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import { ActivityIndicator, Alert, Image, Platform, Pressable, Text, View } from "react-native";
 import { CameraView } from 'expo-camera';
 import * as React from 'react';
@@ -160,7 +160,7 @@ function HeaderRight() {
             onPress={() => router.push('/about')}
             hitSlop={10}
         >
-            <LottieView source={require('@/assets/animations/game.json')} autoPlay={true} loop={false} style={{ width: 32, height: 32 }} />
+            <MaterialIcons name="info-outline" size={24} color="#000" />
         </Pressable>
     );
 }
