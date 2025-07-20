@@ -58,8 +58,8 @@ export default function Session() {
                 options={{
                     headerTitle: () => (
                         <View style={{ flexDirection: 'column', alignItems: 'center', alignContent: 'center' }}>
-                            <Text style={{ fontSize: 20, fontWeight: '600' }}>/{getSessionName(session)}</Text>
-                            <Text style={{ color: (online ? '#34C759' : '#999') }}>{(online ? 'online' : lastSeenText)}</Text>
+                            <Text style={{ fontSize: 18, fontWeight: '600', lineHeight: 18 }}>/{getSessionName(session)}</Text>
+                            <Text style={{ color: (online ? '#34C759' : '#999'), marginTop: 0, fontSize: 12}}>{(online ? 'online' : lastSeenText)}</Text>
                         </View>
                     ),
                     headerRight(props) {
@@ -131,7 +131,7 @@ export default function Session() {
                     )}
                     {online && !thinking && (
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>Awaiting command.</Text>
+                            <Text style={{ color: '#666', fontSize: 14, marginLeft: 8 }}>Awaiting command</Text>
                         </View>
                     )}
                 </View>

@@ -39,7 +39,7 @@ export default function AboutModal() {
                 <View style={{ alignItems: 'center', marginBottom: 32 }}>
                     <Image source={require('../assets/images/happy-otter-2.png')} style={{ width: 200, height: 140, marginBottom: 16, marginTop: 16 }} />
                     <Text style={{ ...Typography.logo(), fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>Happy Coder</Text>
-                    <Text style={{ ...Typography.default(), fontSize: 14, color: '#666' }}>Version {appVersion}</Text>
+                    <Text style={{ ...Typography.mono(), fontSize: 14, color: '#666' }}>{appVersion}</Text>
                     <View style={{ alignItems: 'center', paddingBottom: 32, marginTop: 16, width: '80%' }}>
                     <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>Happy Code is a Claude Code mobile client.
                         It's fully end-to-end encrypted and your account is stored only on your device.
