@@ -134,13 +134,11 @@ function NotAuthenticated() {
                 }}
             />
             <View className="flex-1 items-center justify-center">
-                <LottieView source={require('@/assets/animations/owl.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
-                <Text style={{ fontSize: 24, ...Typography.default('semiBold') }}>
-                    Hello there!
+                <Image source={require('@/assets/images/happy-otter-2.png')} style={{ width: 200, height: 140 }} />
+                <Text style={{ marginTop: 16, textAlign: 'center',fontSize: 24, ...Typography.default('semiBold') }}>
+                Happy Coder is a{'\n'} Claude Code mobile client.
                 </Text>
                 <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>
-                    Happy Coder is a{'\n'} Claude Code mobile client.
-                    {'\n'}{'\n'}
                     End-to-end encrypted and your account is stored only on your device.
                 </Text>
                 <View className="max-w-[200px] w-full mb-4">
