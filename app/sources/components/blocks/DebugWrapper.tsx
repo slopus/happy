@@ -1,6 +1,6 @@
+import { useConfigStore } from '@/store/configStore';
 import React from 'react';
 import { View, Text } from 'react-native';
-import { useDebug } from '@/contexts/DebugContext';
 
 interface DebugWrapperProps {
   debugId?: string;
@@ -9,7 +9,7 @@ interface DebugWrapperProps {
 }
 
 export const DebugWrapper: React.FC<DebugWrapperProps> = ({ debugId, debugLabel, children }) => {
-  const { showDebugInfo } = useDebug();
+  const { showDebugInfo } = useConfigStore();
 
   return (
     <View>

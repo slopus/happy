@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";
-import { View, StyleSheet, FlatList } from "react-native";
+import { View, FlatList } from "react-native";
 import { Text } from '@/components/StyledText';
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -173,61 +173,3 @@ export default function Session() {
         </>
     )
 }
-
-const styles = StyleSheet.create({
-    offlineOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: 'rgba(0, 0, 0, 0.7)',
-        justifyContent: 'center',
-        alignItems: 'center',
-        paddingHorizontal: 32,
-    },
-    offlineCard: {
-        backgroundColor: 'white',
-        borderRadius: 16,
-        padding: 32,
-        alignItems: 'center',
-        maxWidth: 320,
-        width: '100%',
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2,
-        },
-        shadowOpacity: 0.25,
-        shadowRadius: 8,
-        elevation: 5,
-    },
-    closeButton: {
-        position: 'absolute',
-        top: 12,
-        right: 12,
-        padding: 8,
-        borderRadius: 20,
-        backgroundColor: '#f5f5f5',
-    },
-    offlineTitle: {
-        fontSize: 20,
-        fontWeight: '600',
-        color: '#000',
-        marginTop: 16,
-        marginBottom: 8,
-        textAlign: 'center',
-    },
-    offlineMessage: {
-        fontSize: 16,
-        color: '#666',
-        textAlign: 'center',
-        marginBottom: 8,
-    },
-    offlineHint: {
-        fontSize: 14,
-        color: '#999',
-        textAlign: 'center',
-        fontStyle: 'italic',
-    },
-});
