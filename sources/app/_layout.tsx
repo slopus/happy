@@ -6,7 +6,6 @@ import { FontAwesome } from '@expo/vector-icons';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { AuthProvider } from '@/auth/AuthContext';
 import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { DebugProvider } from '@/contexts/DebugContext';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -81,11 +80,9 @@ export default function RootLayout() {
             <KeyboardProvider>
                 <GestureHandlerRootView style={{ flex: 1 }}>
                     <AuthProvider initialCredentials={initState.credentials}>
-                        <DebugProvider>
-                            <ThemeProvider value={DefaultTheme}>
-                                <SidebarNavigator />
-                            </ThemeProvider>
-                        </DebugProvider>
+                        <ThemeProvider value={DefaultTheme}>
+                            <SidebarNavigator />
+                        </ThemeProvider>
                     </AuthProvider>
                 </GestureHandlerRootView>
             </KeyboardProvider>

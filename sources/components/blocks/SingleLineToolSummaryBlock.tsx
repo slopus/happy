@@ -1,8 +1,6 @@
 import React from 'react';
 import { View, Pressable } from 'react-native';
-import { MonoText as Text } from './MonoText';
 import { useRouter } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
 
 // Block-level component that provides chrome/wrapper and navigation
 export function SingleLineToolSummaryBlock({ children, sessionId, messageId }: { children: React.ReactNode, sessionId: string, messageId: string }) {

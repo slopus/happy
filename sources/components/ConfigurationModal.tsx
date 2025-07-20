@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, Modal, Pressable, SafeAreaView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Toggle } from './Toggle';
-import { useDebug } from '@/contexts/DebugContext';
+import { useConfigStore } from '@/store/configStore';
 
 interface ConfigurationModalProps {
   visible: boolean;
@@ -10,7 +10,7 @@ interface ConfigurationModalProps {
 }
 
 export const ConfigurationModal: React.FC<ConfigurationModalProps> = ({ visible, onClose }) => {
-  const { showDebugInfo, toggleDebugInfo } = useDebug();
+  const { showDebugInfo, toggleDebugInfo } = useConfigStore();
 
   return (
     <Modal
