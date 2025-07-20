@@ -5,6 +5,7 @@ import Constants from 'expo-constants';
 import { RoundButton } from '@/components/RoundButton';
 import { useAuth } from '@/auth/AuthContext';
 import { ConnectButton } from '@/components/ConnectButton';
+import { Typography } from "@/constants/Typography";
 
 export default function AboutModal() {
     const router = useRouter();
@@ -35,17 +36,20 @@ export default function AboutModal() {
 
             <ScrollView style={{ flex: 1, padding: 16, paddingTop: 32 }}>
                 <View style={{ alignItems: 'center', marginBottom: 32 }}>
-                    <Image source={require('../assets/images/logo.png')} style={{ width: 180, height: 180, borderRadius: 90, borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.0)' }} />
-                    <Text style={{ fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>Happy</Text>
-                    <Text style={{ fontSize: 16, color: '#666' }}>Version {appVersion}</Text>
-                    <View style={{ alignItems: 'center', paddingBottom: 32, marginTop: 16 }}>
-                        <Text style={{ fontSize: 14, color: '#999' }}>Not affiliated with Anthropic</Text>
+                    <Image source={require('../assets/images/happy-otter-logo.png')} style={{ width: 180, height: 180, borderRadius: 90, borderWidth: 0.5, borderColor: 'rgba(0,0,0,0.0)' }} />
+                    <Text style={{ ...Typography.logo(), fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>Happy Coder</Text>
+                    <Text style={{ ...Typography.default(), fontSize: 14, color: '#666' }}>Version {appVersion}</Text>
+                    <View style={{ alignItems: 'center', paddingBottom: 32, marginTop: 16, width: '80%' }}>
+                    <Text style={{ ...Typography.default(), fontSize: 16, color: '#666', textAlign: 'center' }}>Happy Code is a Claude Code mobile client.
+                        It's fully end-to-end encrypted and your account is stored only on your device.
+                        {'\n'}{'\n'}
+                        It's not affiliated with Anthropic.</Text>
                     </View>
                 </View>
 
-                <View style={{ marginBottom: 12, alignSelf: 'center' }}>
+                {/* <View style={{ marginBottom: 12, alignSelf: 'center' }}>
                     <ConnectButton />
-                </View>
+                </View> */}
 
                 <View style={{ marginBottom: 24, alignSelf: 'center' }}>
                     <RoundButton title="Logout" onPress={() => auth.logout()} />
