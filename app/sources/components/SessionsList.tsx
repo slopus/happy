@@ -4,6 +4,7 @@ import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { SessionListItem } from '@/sync/storage';
 import { getSessionName, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
+import { getMessagePreview, isMessageFromAssistant } from '@/utils/messageUtils';
 import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
@@ -29,7 +30,7 @@ export function SessionsList({ data, selectedSessionId, onSessionPress }: Sessio
     const renderItem = React.useCallback(({ item }: { item: SessionListItem }) => {
         if (typeof item === 'string') {
             const isOnline = item === 'online';
-            const title = isOnline ? 'Active Sessions' : 'Offline Sessions';
+            const title = isOnline ? 'Active Sessions' : 'Previous Sessions';
             return (
                 <View style={{ paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -42,15 +43,12 @@ export function SessionsList({ data, selectedSessionId, onSessionPress }: Sessio
 
         const session = item;
         const lastMessage = session.lastMessage;
-        const lastMessageText = JSON.stringify(lastMessage);
-        const messagePreview = lastMessageText.length > 50
-            ? lastMessageText.substring(0, 50) + '...'
-            : lastMessageText;
+        const messagePreview = getMessagePreview(lastMessage, 50);
         const online = isSessionOnline(session);
         const sessionName = getSessionName(session);
         const lastSeenText = formatLastSeen(session.active, session.activeAt);
         const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
-        const isFromAssistant = lastMessage?.content?.role === 'agent' || thinking;
+        const isFromAssistant = isMessageFromAssistant(lastMessage) || thinking;
         const isSelected = selectedSessionId === session.id;
 
         return (
