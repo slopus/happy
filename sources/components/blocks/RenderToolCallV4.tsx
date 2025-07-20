@@ -26,7 +26,7 @@ export function RenderToolV4({ tool, sessionId, messageId }: { tool: ToolCall, s
       return <GrepCompactView tool={tool as GrepToolCall} sessionId={sessionId} messageId={messageId}/>;
     
     case "TodoWrite":
-      return <TodoWriteCompactView tool={tool as TodoWriteToolCall} />;
+      return <TodoWriteCompactView tool={tool as TodoWriteToolCall} sessionId={sessionId} messageId={messageId} />;
     
     //case "Task":
     //  return null;

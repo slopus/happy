@@ -14,6 +14,9 @@ import { useSessions } from "@/sync/storage";
 import LottieView from "lottie-react-native";
 import { getRandomBytesAsync } from "expo-crypto";
 import { ConnectButton } from "@/components/ConnectButton";
+import { useIsTablet } from "@/utils/responsive";
+import { SplitView } from "@/components/SplitView";
+import { SessionDetail } from "@/components/SessionDetail";
 import { Typography } from "@/constants/Typography";
 
 export default function Home() {
@@ -29,6 +32,22 @@ export default function Home() {
 function Authenticated() {
     const sessionsData = useSessions();
     const { updateAvailable, reloadApp } = useUpdates();
+    const isTablet = useIsTablet();
+    const router = useRouter();
+    
+    // Track selected session for tablet view
+    const [selectedSessionId, setSelectedSessionId] = React.useState<string | null>(null);
+    
+    React.useEffect(() => {
+        // Auto-select first session on tablets if none selected
+        if (isTablet && sessionsData && sessionsData.length > 0 && !selectedSessionId) {
+            // Find first session (skip headers which are strings)
+            const firstSession = sessionsData.find(item => typeof item !== 'string');
+            if (firstSession && typeof firstSession !== 'string') {
+                setSelectedSessionId(firstSession.id);
+            }
+        }
+    }, [isTablet, sessionsData, selectedSessionId]);
 
     if (sessionsData === null) {
         return (
@@ -37,6 +56,75 @@ function Authenticated() {
             </View>
         )
     }
+
+    const emptyState = (
+        <View className="flex-1 items-center justify-center mb-8">
+            <LottieView source={require('@/assets/animations/stone.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
+            <Text style={{ fontSize: 24, marginTop: 16 }}>No sessions</Text>
+            {Platform.OS !== 'web' && (
+                <>
+                    <Text style={{ fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>Connect your terminal to your account</Text>
+                    <ConnectButton />
+                </>
+            )}
+        </View>
+    );
+
+    // On phones, use the existing navigation pattern
+    if (!isTablet) {
+        return (
+            <>
+                <Stack.Screen
+                    options={{
+                        headerRight: () => <HeaderRight />
+                    }}
+                />
+                <View className="flex-1">
+                    {updateAvailable && <UpdateBanner onReload={reloadApp} />}
+                    {sessionsData.length === 0 ? emptyState : (
+                        <SessionsList 
+                            data={sessionsData} 
+                            onSessionPress={(sessionId) => router.push(`/session/${sessionId}`)}
+                        />
+                    )}
+                </View>
+            </>
+        );
+    }
+
+    // On tablets, show empty state full screen when no sessions
+    if (sessionsData.length === 0) {
+        return (
+            <>
+                <Stack.Screen
+                    options={{
+                        headerRight: () => <HeaderRight />
+                    }}
+                />
+                <View className="flex-1">
+                    {updateAvailable && <UpdateBanner onReload={reloadApp} />}
+                    {emptyState}
+                </View>
+            </>
+        );
+    }
+
+    // On tablets with sessions, use split view
+    const masterView = (
+        <SessionsList 
+            data={sessionsData} 
+            selectedSessionId={selectedSessionId}
+            onSessionPress={(sessionId) => setSelectedSessionId(sessionId)}
+        />
+    );
+
+    const detailView = selectedSessionId ? (
+        <SessionDetail sessionId={selectedSessionId} />
+    ) : (
+        <View className="flex-1 items-center justify-center">
+            <Text className="text-gray-500">Select a session to view</Text>
+        </View>
+    );
 
     return (
         <>
@@ -47,7 +135,10 @@ function Authenticated() {
             />
             <View className="flex-1">
                 {updateAvailable && <UpdateBanner onReload={reloadApp} />}
-
+                <SplitView 
+                    master={masterView}
+                    detail={detailView}
+                />
                 {sessionsData.length === 0 ? (
                     <View className="flex-1 items-center justify-center mb-8">
                         {/* Terminal-style code block */}
@@ -108,7 +199,7 @@ function Authenticated() {
                 )}
             </View>
         </>
-    )
+    );
 }
 
 function NotAuthenticated() {
