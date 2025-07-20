@@ -45,7 +45,11 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
         };
     })
 
-    const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: () => randomUUID() });
+    const transport = new StreamableHTTPServerTransport({ 
+        // NOTE: Returning session id here will result in claude
+        // sdk spawn to fail with `Invalid Request: Server already initialized`
+        sessionIdGenerator: undefined 
+    });
     await mcp.connect(transport);
 
     //
@@ -54,7 +58,6 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
 
     const server = createServer(async (req, res) => {
         try {
-
             await transport.handleRequest(req, res);
         } catch (error) {
             logger.debug("Error handling request:", error);

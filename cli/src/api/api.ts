@@ -37,7 +37,7 @@ export class ApiClient {
         }
       )
 
-      logger.info(`Session created/loaded: ${response.data.session.id} (tag: ${opts.tag})`)
+      logger.debug(`Session created/loaded: ${response.data.session.id} (tag: ${opts.tag})`)
       let raw = response.data.session;
       let session: Session = {
         id: raw.id,

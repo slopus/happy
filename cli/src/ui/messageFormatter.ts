@@ -45,7 +45,7 @@ export function formatClaudeMessage(message: SDKMessage): void {
                                 const outputStr = typeof block.content === 'string' 
                                     ? block.content 
                                     : JSON.stringify(block.content, null, 2);
-                                const maxLength = 1000;
+                                const maxLength = 200;
                                 if (outputStr.length > maxLength) {
                                     console.log(outputStr.substring(0, maxLength) + chalk.gray('\n... (truncated)'));
                                 } else {
@@ -111,6 +111,10 @@ export function formatClaudeMessage(message: SDKMessage): void {
                     }
                     console.log(chalk.gray(`  • Cost: $${resultMsg.total_cost_usd.toFixed(4)}`));
                     console.log(chalk.gray(`  • Duration: ${resultMsg.duration_ms}ms`));
+
+                    // Show instructions how to take over terminal control
+                    console.log(chalk.gray('\n👀 Back already?'));
+                    console.log(chalk.green('👉 Press any key to continue your session in `claude`'));
                 }
             } else if (resultMsg.subtype === 'error_max_turns') {
                 console.log(chalk.red.bold('\n❌ Error: Maximum turns reached'));

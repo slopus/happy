@@ -4,16 +4,16 @@
     {
       "type": "node",
       "request": "launch",
-      "name": "Run Claude exists with 1 - does not like to be debugged?",
+      "name": "CLI [does not work for interactive claude, needs fixing]",
       "skipFiles": [
         "<node_internals>/**"
       ],
-      "runtimeExecutable": "node",
+      "runtimeExecutable": "npx",
       "runtimeArgs": [
-        "--no-warnings=ExperimentalWarning"
+        "tsx",
+        "${workspaceFolder}/src/index.ts"
       ],
-      "program": "${workspaceFolder}/bin/happy",
       "console": "integratedTerminal",
-    },
+    }
   ]
 }

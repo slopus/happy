@@ -22,7 +22,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     let state: AgentState = {};
     let metadata: Metadata = { path: workingDirectory, host: os.hostname() };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
-    logger.info(`Session created: ${response.id}`);
+    logger.debug(`Session created: ${response.id}`);
 
     // Create realtime session
     const session = api.session(response);
@@ -106,22 +106,23 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         session
     });
 
-    // Handle graceful shutdown
-    logger.info('Shutting down...')
-
     // Stop ping interval
     clearInterval(pingInterval);
 
-    // Send session death message
-    session.sendSessionDeath();
+    // NOTE: Shut down as fast as possible to provide 0 claude overhead
+    // Do not handle shutdown gracefully, just exit
+    let _gracefulShutdown = async () => {
+        // Send session death message
+        session.sendSessionDeath();
 
-    // Wait for socket to flush
-    logger.info('Waiting for socket to flush...');
-    await session.flush();
+        // Wait for socket to flush
+        logger.info('Waiting for socket to flush...');
+        await session.flush();
 
-    // Close session
-    logger.info('Closing session...');
-    await session.close();
+        // Close session
+        logger.info('Closing session...');
+        await session.close();
+    }
 
     // Exit
     process.exit(0);
