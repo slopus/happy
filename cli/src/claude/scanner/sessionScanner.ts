@@ -62,6 +62,9 @@ export function createSessionScanner(opts: {
                     }
                     processedMessages.add(key);
 
+                    logger.debugLargeJson(`[SESSION_SCANNER] Processing message`, parsed.data)
+                    logger.debug(`[SESSION_SCANNER] Message key (new): ${key}`)
+
                     // Notify
                     opts.onMessage(parsed.data);
                 } catch (e) {

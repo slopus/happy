@@ -5,6 +5,7 @@ import { loop } from '@/claude/loop';
 import os from 'node:os';
 import { AgentState, Metadata } from '@/api/types';
 import { startPermissionServerV2 } from '@/claude/mcp/startPermissionServerV2';
+import type { OnAssistantResultCallback } from '@/ui/messageFormatter';
 
 export interface StartOptions {
     model?: string
@@ -26,17 +27,21 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Create realtime session
     const session = api.session(response);
+    const pushClient = api.push();
 
     // Start MCP permission server
     let requests = new Map<string, (response: { approved: boolean, reason?: string }) => void>();
     const permissionServer = await startPermissionServerV2(async (request) => {
         const id = randomUUID();
         let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => { requests.set(id, resolve); });
+        let timeout = setTimeout(() => {
+            // We need to interrupt claude remote execution
+            
+        }, 1000 * 60 * 4.5)
         logger.info('Permission request' + id + ' ' + JSON.stringify(request));
 
         // Send push notification for permission request
         try {
-            const pushClient = api.push();
             await pushClient.sendToAllDevices(
                 'Permission Request',
                 `Claude wants to use ${request.name}`,
@@ -87,6 +92,31 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         session.keepAlive(thinking);
     }, 15000); // Ping every 15 seconds
 
+    // Notify mobile client when in remote mode & assistant finished
+    const onAssistantResult: OnAssistantResultCallback = async (result) => {
+        try {
+            // Extract summary or create a default message
+            const summary = 'result' in result && result.result 
+                ? result.result.substring(0, 100) + (result.result.length > 100 ? '...' : '')
+                : '';
+
+            await pushClient.sendToAllDevices(
+                'Your move :D',
+                summary,
+                {
+                    sessionId: response.id,
+                    type: 'assistant_result',
+                    turns: result.num_turns,
+                    duration_ms: result.duration_ms,
+                    cost_usd: result.total_cost_usd
+                }
+            );
+            logger.debug('Push notification sent: Assistant result');
+        } catch (error) {
+            logger.debug('Failed to send assistant result push notification:', error);
+        }
+    };
+
     // Create claude loop
     await loop({
         path: workingDirectory,
@@ -103,7 +133,8 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             thinking = t;
             session.keepAlive(t);
         },
-        session
+        session,
+        onAssistantResult
     });
 
     // Stop ping interval
