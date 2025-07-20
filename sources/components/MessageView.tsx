@@ -22,26 +22,29 @@ export const MessageView = (props: {
   console.log(props.message);
 
   return (
-    <View
-      style={{
-        flexDirection: "column",
-        flexGrow: 1,
-        flexBasis: 0,
-        paddingHorizontal: 16,
-      }}
-    >
-      {props.message.content && props.message.role === "user" && (
-        <UserMessageView message={props.message} metadata={props.metadata} />
-      )}
-      {props.message.content && props.message.role === "agent" && (
-        <AgentMessageView
-          message={props.message}
-          metadata={props.metadata}
-          messageId={props.message.id}
-          sessionId={props.sessionId}
-        />
-      )}
-      {!props.message.content && <UnknownMessageView />}
+    <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+      <View
+        style={{
+          flexDirection: "column",
+          flexGrow: 1,
+          flexBasis: 0,
+          maxWidth: 700,
+          paddingHorizontal: 16,
+        }}
+      >
+        {props.message.content && props.message.role === "user" && (
+          <UserMessageView message={props.message} metadata={props.metadata} />
+        )}
+        {props.message.content && props.message.role === "agent" && (
+          <AgentMessageView
+            message={props.message}
+            metadata={props.metadata}
+            messageId={props.message.id}
+            sessionId={props.sessionId}
+          />
+        )}
+        {!props.message.content && <UnknownMessageView />}
+      </View>
     </View>
   );
 };
