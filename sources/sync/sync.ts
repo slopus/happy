@@ -118,9 +118,9 @@ class Sync {
         }>;
 
         // Decrypt sessions
-        let decryptedSessions: Session[] = [];
+        let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
         for (const session of sessions) {
-            const processedSession: Session = {
+            const processedSession = {
                 ...session,
                 thinking: false,
                 thinkingAt: 0,
@@ -229,7 +229,7 @@ class Sync {
                     ...session,
                     lastMessage: decryptedMessage,
                     updatedAt: updateData.createdAt,
-                    seq: updateData.seq,
+                    seq: updateData.seq
                 }])
             } else {
                 // Fetch sessions again if we don't have this session
@@ -252,7 +252,7 @@ class Sync {
                     ...session,
                     agentState: this.encryption.decryptAgentState(updateData.body.agentState?.value),
                     updatedAt: updateData.createdAt,
-                    seq: updateData.seq,
+                    seq: updateData.seq
                 }])
             }
         }
@@ -273,7 +273,7 @@ class Sync {
                 active: updateData.active,
                 activeAt: updateData.activeAt,
                 thinking: updateData.thinking,
-                thinkingAt: updateData.thinking ? updateData.activeAt : 0,
+                thinkingAt: updateData.thinking ? updateData.activeAt : 0
             }])
         }
     }

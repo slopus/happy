@@ -27,7 +27,7 @@ export default function Session() {
 
     const [showConfigModal, setShowConfigModal] = useState(false);
     const online = isSessionOnline(session);
-    const lastSeenText = formatLastSeen(session.active, session.activeAt);
+    const lastSeenText = formatLastSeen(session.presence);
     const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
     const permissionRequest = React.useMemo(() => {
         let requests = session.agentState?.requests;

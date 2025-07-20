@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { Typography } from '@/constants/Typography';
 import type { DecryptedMessage, Message } from '@/sync/storageTypes';
+import { SessionText } from './SessionText';
 
 interface SessionsListProps {
     data: SessionListItem[];
@@ -150,10 +151,9 @@ function SessionItem({ session, selectedSessionId, router }: {
     const actualLastMessage = getLastNonSummaryMessage(messages, session.lastMessage);
 
     // Use the actual last message for preview
-    const messagePreview = getMessagePreview(actualLastMessage, 50);
     const online = isSessionOnline(session);
     const sessionName = getSessionName(session);
-    const lastSeenText = formatLastSeen(session.active, session.activeAt);
+    const lastSeenText = formatLastSeen(session.presence);
     const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
     const isFromAssistant = isMessageFromAssistant(actualLastMessage) || thinking;
     const isSelected = selectedSessionId === session.id;
@@ -175,7 +175,7 @@ function SessionItem({ session, selectedSessionId, router }: {
             <View style={{ flex: 1, marginLeft: 16 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                     <Text style={{ fontSize: 20, fontWeight: '600', opacity: online ? 1 : 0.5, flex: 1, marginRight: 8, ...Typography.default('semiBold') }} numberOfLines={1}>
-                        /{sessionName}
+                        {sessionName}
                     </Text>
                     <Text style={{ fontSize: 14, color: '#999', ...Typography.default() }}>
                         {lastSeenText}
@@ -195,7 +195,7 @@ function SessionItem({ session, selectedSessionId, router }: {
 
                         {!thinking && (
                             <Text className="text-sm text-gray-500 flex-1" numberOfLines={1}>
-                                {' ' + messagePreview}
+                                {' '}<SessionText message={actualLastMessage} />
                             </Text>
                         )}
 
