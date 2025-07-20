@@ -113,7 +113,7 @@ export default function RootLayout() {
                             options={{
                                 headerShown: true,
                                 headerTitle: () => (
-                                    <Text style={{ fontSize: 20, color: '#000', ...Typography.logo() }}>
+                                    <Text style={{ fontSize: 24, color: '#000', ...Typography.logo() }}>
                                         Happy Coder
                                     </Text>
                                 )
