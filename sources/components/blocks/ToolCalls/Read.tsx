@@ -52,7 +52,7 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
         <Ionicons name="eye" size={14} color="#a1a1a1" />
         <ShimmerText>Reading</ShimmerText>
         <Text
-          className="text-sm flex-1 text-neutral-800"
+          className="text-smlol flex-1 text-neutral-800"
           numberOfLines={1}
         >
           {fileName}
@@ -69,14 +69,14 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
     return (
       <View className="pl-3 flex-row items-center py-0.5">
         <Ionicons name="warning" size={14} color="#ef4444" />
-        <Text className="text-xs text-red-500 font-bold px-1">Read</Text>
+        <Text className="text-xslol text-red-400 font-bold px-1">Read</Text>
         <Text
-          className="text-xs flex-1 text-neutral-800"
+          className="text-xslol flex-1 text-neutral-800"
           numberOfLines={1}
         >
           {fileName}
         </Text>
-        <Text className="text-xs text-red-500">
+        <Text className="text-xslol text-red-400">
           {inputParseError || 'Failed to read file'}
         </Text>
       </View>
@@ -89,9 +89,9 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
     return (
       <View className="flex-row items-center py-1">
         <Ionicons name="eye" size={14} color="#a1a1a1" />
-        <Text className="text-xs text-neutral-400 font-bold px-1">Read</Text>
+        <Text className="text-xslol text-neutral-500 font-bold px-1">Read</Text>
         <Text
-          className="text-xs flex-1 text-neutral-800"
+          className="text-xslol flex-1 text-neutral-800"
           numberOfLines={1}
         >
           Unable to parse arguments to show more information
@@ -121,16 +121,16 @@ export function ReadCompactView({ tool }: { tool: ReadToolCall }) {
     : "" /*parseError || JSON.stringify(tool.result)*/;
 
   return (
-    <View className="flex-row items-center py-1">
-      <Ionicons name="eye" size={14} color="#a1a1a1" />
-      <Text className="text-xs text-neutral-400 font-bold px-1">Read</Text>
+    <View className="flex-row items-center py-1 flex-wrap">
+      <Ionicons name="eye-outline" size={14} color="#a1a1a1" />
+      <Text className="text-xslol text-neutral-500 font-bold px-1">Read</Text>
       <Text
-        className="text-xs flex-1 text-neutral-800"
+        className="text-xslol flex-1 text-neutral-500"
         numberOfLines={1}
       >
         {fileName}
       </Text>
-      <Text className="text-xs text-neutral-400 font-bold px-1">
+      <Text className="text-xslol text-neutral-500 font-bold px-1 basis-full flex">
         {displayText}
       </Text>
     </View>

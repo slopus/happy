@@ -1,7 +1,9 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import { Link } from 'expo-router';
 import * as React from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
+import { Text } from '../StyledText';
+import { Typography } from '@/constants/Typography';
 
 export const MarkdownView = React.memo((props: { markdown: string }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
@@ -29,29 +31,32 @@ export const MarkdownView = React.memo((props: { markdown: string }) => {
 });
 
 function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean }) {
-    return <Text style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} /></Text>;
+    return <Text style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} /></Text>;
 }
 
 function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: MarkdownSpan[], first: boolean, last: boolean }) {
     const s = (style as any)[`header${props.level}`];
-    return <Text style={[style.header, s, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} /></Text>;
+    const headerStyle = [style.header, s, props.first && style.first, props.last && style.last];
+    return <Text style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} /></Text>;
 }
 
 function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean }) {
+    const listStyle = [style.text, style.list];
     return (
         <View className="list-none" style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text className="list-none" style={[style.text, style.list]} key={index}>• <RenderSpans spans={item} /></Text>
+                <Text className="list-none" style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} /></Text>
             ))}
         </View>
     );
 }
 
 function RenderNumberedListBlock(props: { items: { number: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean }) {
+    const listStyle = [style.text, style.list];
     return (
         <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text style={[style.text, style.list]} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} /></Text>
+                <Text style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} /></Text>
             ))}
         </View>
     );
@@ -67,19 +72,19 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
                 contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
                 showsHorizontalScrollIndicator={false}
             >
-                <Text style={style.codeText}>{props.content}</Text>
+                <Text style={[style.codeText, { color: '#ff0000' }]}>{props.content}</Text>
             </ScrollView>
         </View>
     );
 }
 
-function RenderSpans(props: { spans: MarkdownSpan[] }) {
+function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
     return (<>
         {props.spans.map((span, index) => {
             if (span.url) {
-                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
+                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, { color: '#2BACCC' }, span.styles.map(s => style[s])]}>{span.text}</Link>
             } else {
-                return <Text key={index} style={span.styles.map(s => style[s])}>{span.text}</Text>
+                return <Text key={index} style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
             }
         })}
     </>)
@@ -91,6 +96,7 @@ const style = StyleSheet.create({
     // Plain text
 
     text: {
+        ...Typography.default(),
         fontSize: 16,
         lineHeight: 24, // Reduced from 28 to 24
         marginTop: 8,
@@ -106,17 +112,20 @@ const style = StyleSheet.create({
     bold: {
         fontWeight: 'bold',
     },
+    semibold: {
+        fontWeight: '600',
+    },
     code: {
-        fontSize: 14,
+        ...Typography.mono(),
+        fontSize: 16,
         lineHeight: 21,  // Reduced from 24 to 21
-        fontFamily: 'monospace',
         // backgroundColor: 'rgb(66, 66, 66)',
-        backgroundColor: 'rgb(236, 236, 236)',
-        paddingHorizontal: 4,
-        paddingVertical: 2,
-        borderRadius: 4,
+        // backgroundColor: 'rgb(244, 244, 244)',
+        // color: 'rgb(78, 78, 78)',
+        color: '#737373',
     },
     link: {
+        ...Typography.default(),
         // color: 'rgb(122, 183, 255)',
         color: 'rgb(0, 0, 0)',
         fontWeight: '400',
@@ -125,25 +134,26 @@ const style = StyleSheet.create({
     // Headers
 
     header: {
+        ...Typography.default('semiBold'),
         // color: 'rgb(236, 236, 236)',
         color: 'rgb(0, 0, 0)',
     },
     header1: {
-        fontSize: 24,
-        lineHeight: 32,  // Reduced from 36 to 32
-        fontWeight: '700',
+        fontSize: 16,
+        lineHeight: 24,  // Reduced from 36 to 24
+        fontWeight: '900',
         marginTop: 16,
         marginBottom: 8
     },
     header2: {
-        fontSize: 24,
-        lineHeight: 32,  // Reduced from 36 to 32
+        fontSize: 20,
+        lineHeight: 24,  // Reduced from 36 to 32
         fontWeight: '600',
         marginTop: 16,
         marginBottom: 8
     },
     header3: {
-        fontSize: 20,
+        fontSize: 16,
         lineHeight: 28,  // Reduced from 32 to 28
         fontWeight: '600',
         marginTop: 16,
@@ -172,6 +182,7 @@ const style = StyleSheet.create({
     //
 
     list: {
+        ...Typography.default(),
         // color: 'rgb(236, 236, 236)',
         color: 'rgb(0, 0, 0)',
         marginTop: 0,
@@ -200,19 +211,19 @@ const style = StyleSheet.create({
         marginVertical: 8,
     },
     codeLanguage: {
+        ...Typography.mono(),
         // color: 'rgb(122, 183, 255)',
         color: 'rgb(0, 0, 0)',
         fontSize: 12,
-        fontFamily: 'SpaceMono',
         marginTop: 8,
         paddingHorizontal: 16,
         marginBottom: 0,
     },
     codeText: {
+        ...Typography.mono(),
         // color: 'rgb(236, 236, 236)',
         color: 'rgb(0, 0, 0)',
         fontSize: 14,
         lineHeight: 20,
-        fontFamily: 'SpaceMono',
     },
 });
