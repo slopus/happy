@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, ScrollView } from 'react-native';
+import { MonoText as Text } from './MonoText';
 
 interface DiffLine {
   type: 'removed' | 'added' | 'context';
