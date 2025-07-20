@@ -44,12 +44,6 @@ happy
 
 This when you are on your computer, you are using the normal Claude Code UI, that is started by our wrapper `happy`, when you want to move control to the mobile app, it will restart the session in remote mode, when you want to get back to your computer you switch back by pressing any button on your physical keyboard.
 
-## 📦 Project Components
-
-- **[happy-cli](https://github.com/slopus/happy-cli)** - Command-line interface for Claude Code
-- **[happy-server](https://github.com/slopus/happy-server)** - Backend server for encrypted sync
-- **happy-coder** - This mobile client (you are here)
-
 ## 🔥 Why Happy Coder?
 
 - 📱 **Seamless Mobile Experience** - Continue Claude Code sessions from anywhere with real-time streaming and instant desktop/mobile switching
@@ -58,6 +52,12 @@ This when you are on your computer, you are using the normal Claude Code UI, tha
 - 🛡️ **End-to-End Encryption** - Military-grade encryption using TweetNaCl ensures only you can read your code - perfect for proprietary projects
 - 🔑 **Zero-Knowledge Architecture** - Your encryption keys never leave your device, server cannot decrypt messages even if compromised
 - 📖 **Open Source** - Fully auditable codebase for complete transparency and trust
+
+## 📦 Project Components
+
+- **[happy-cli](https://github.com/slopus/happy-cli)** - Command-line interface for Claude Code
+- **[happy-server](https://github.com/slopus/happy-server)** - Backend server for encrypted sync
+- **happy-coder** - This mobile client (you are here)
 
 ## 🏠 Who We Are
 
