@@ -9,10 +9,11 @@ import * as React from 'react';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider } from '@/auth/AuthContext';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
-import { Image, Pressable } from 'react-native';
+import { Image, Pressable, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { KeyboardProvider } from "react-native-keyboard-controller";
+import { Typography } from '@/constants/Typography';
 import '../global.css';
 
 export {
@@ -111,7 +112,11 @@ export default function RootLayout() {
                             name="index"
                             options={{
                                 headerShown: true,
-                                headerTitle: 'Happy Coder'
+                                headerTitle: () => (
+                                    <Text style={{ fontSize: 20, color: '#000', ...Typography.logo() }}>
+                                        Happy Coder
+                                    </Text>
+                                )
                             }}
                         />
                         <Stack.Screen
