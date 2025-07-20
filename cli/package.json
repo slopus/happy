@@ -33,8 +33,8 @@
     "test:watch": "vitest",
     "build": "pkgroll",
     "prepublishOnly": "tsc --noEmit && yarn build && yarn test",
-    "dev": "yarn build && ./bin/happy",
-    "dev:local": "yarn build && node --env-file=.env.local ./bin/happy --local"
+    "dev": "npx tsx --env-file .env.sample src/index.ts",
+    "dev:local": "HANDY_SERVER_URL=http://localhost:3005 npx tsx --env-file .env.sample src/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.51",

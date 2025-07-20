@@ -62,7 +62,13 @@ export async function claudeLocal(opts: {
             if (startFrom) {
                 args.push('--resume', startFrom)
             }
-            const child = spawn('node', [resolve(join(__dirname, '../scripts/interactiveLaunch.cjs')), ...args], {
+
+            // Check for custom Claude CLI path
+            // Running with tsx path to cli is different
+            const claudeCliPath = process.env.HAPPY_CLAUDE_CLI_PATH 
+                || resolve(join(__dirname, '..', 'scripts', 'claudeInteractiveLaunch.cjs')) 
+
+            const child = spawn('node', [claudeCliPath, ...args], {
                 stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
                 signal: opts.abort,
                 cwd: opts.path,
