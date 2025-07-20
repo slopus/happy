@@ -37,7 +37,7 @@ export default function AboutModal() {
 
             <ScrollView style={{ flex: 1, padding: 16, paddingTop: 32 }}>
                 <View style={{ alignItems: 'center', marginBottom: 32 }}>
-                    <Image source={require('../assets/images/happy-otter-2.png')} style={{ width: 200, height: 140, marginBottom: 16, marginTop: 16 }} />
+                    <Image source={require('@/assets/images/happy-otter-2.png')} style={{ width: 200, height: 140, marginBottom: 16, marginTop: 16 }} />
                     <Text style={{ ...Typography.logo(), fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>Happy Coder</Text>
                     <Text style={{ ...Typography.mono(), fontSize: 14, color: '#666' }}>{appVersion}</Text>
                     <View style={{ alignItems: 'center', paddingBottom: 32, marginTop: 16, width: '80%' }}>

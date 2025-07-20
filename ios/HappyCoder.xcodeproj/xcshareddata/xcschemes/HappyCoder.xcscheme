@@ -16,8 +16,8 @@
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
                BuildableName = "HappyCoder.app"
-               BlueprintName = "Happy"
-               ReferencedContainer = "container:Happy.xcodeproj">
+               BlueprintName = "HappyCoder"
+               ReferencedContainer = "container:HappyCoder.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>
       </BuildActionEntries>
@@ -33,9 +33,9 @@
             <BuildableReference
                BuildableIdentifier = "primary"
                BlueprintIdentifier = "00E356ED1AD99517003FC87E"
-               BuildableName = "HappyTests.xctest"
-               BlueprintName = "HappyTests"
-               ReferencedContainer = "container:Happy.xcodeproj">
+               BuildableName = "HappyCoderTests.xctest"
+               BlueprintName = "HappyCoderTests"
+               ReferencedContainer = "container:HappyCoder.xcodeproj">
             </BuildableReference>
          </TestableReference>
       </Testables>
@@ -56,8 +56,8 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
             BuildableName = "HappyCoder.app"
-            BlueprintName = "Happy"
-            ReferencedContainer = "container:Happy.xcodeproj">
+            BlueprintName = "HappyCoder"
+            ReferencedContainer = "container:HappyCoder.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </LaunchAction>
@@ -73,8 +73,8 @@
             BuildableIdentifier = "primary"
             BlueprintIdentifier = "13B07F861A680F5B00A75B9A"
             BuildableName = "HappyCoder.app"
-            BlueprintName = "Happy"
-            ReferencedContainer = "container:Happy.xcodeproj">
+            BlueprintName = "HappyCoder"
+            ReferencedContainer = "container:HappyCoder.xcodeproj">
          </BuildableReference>
       </BuildableProductRunnable>
    </ProfileAction>

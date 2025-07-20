@@ -39,7 +39,7 @@ function getLastNonSummaryMessage(messages: Message[], fallbackLastMessage: Decr
                 createdAt: message.createdAt
             };
         }
-        
+
         if (message.role === 'user') {
             // Convert user message to DecryptedMessage format
             return {
@@ -56,7 +56,7 @@ function getLastNonSummaryMessage(messages: Message[], fallbackLastMessage: Decr
                 createdAt: message.createdAt
             };
         }
-        
+
         if (message.role === 'agent' && message.content.type === 'tool') {
             // Convert tool message to DecryptedMessage format
             return {
@@ -74,7 +74,7 @@ function getLastNonSummaryMessage(messages: Message[], fallbackLastMessage: Decr
             };
         }
     }
-    
+
     // If no messages found, fall back to the original lastMessage
     return fallbackLastMessage;
 }
@@ -137,7 +137,7 @@ export function SessionsList({ data, selectedSessionId, onSessionPress }: Sessio
 }
 
 // Sub-component that handles session message logic
-function SessionItem({ session, selectedSessionId, onSessionPress, router }: {
+function SessionItem({ session, selectedSessionId, router }: {
     session: any;
     selectedSessionId?: string | null;
     onSessionPress?: (sessionId: string) => void;
@@ -145,10 +145,10 @@ function SessionItem({ session, selectedSessionId, onSessionPress, router }: {
 }) {
     // Get all messages for this session
     const { messages } = useSessionMessages(session.id);
-    
+
     // Find the last non-summary message
     const actualLastMessage = getLastNonSummaryMessage(messages, session.lastMessage);
-    
+
     // Use the actual last message for preview
     const messagePreview = getMessagePreview(actualLastMessage, 50);
     const online = isSessionOnline(session);
@@ -160,19 +160,15 @@ function SessionItem({ session, selectedSessionId, onSessionPress, router }: {
 
     return (
         <Pressable
-            style={{ 
-                height: 96, 
-                flexDirection: 'row', 
-                alignItems: 'center', 
+            style={{
+                height: 96,
+                flexDirection: 'row',
+                alignItems: 'center',
                 paddingHorizontal: 16,
                 backgroundColor: isSelected ? 'rgba(0, 0, 0, 0.05)' : 'transparent'
             }}
             onPress={() => {
-                if (onSessionPress) {
-                    onSessionPress(session.id);
-                } else {
-                    router.push(`/session/${session.id}` as any);
-                }
+                router.push(`/session/${session.id}`);
             }}
         >
             <Avatar id={session.id} size={56} monochrome={!online} />
