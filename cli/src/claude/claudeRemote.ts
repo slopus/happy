@@ -1,5 +1,5 @@
 import { query, type Options, type SDKUserMessage, type SDKMessage, AbortError } from '@anthropic-ai/claude-code'
-import { formatClaudeMessage, printDivider } from '@/ui/messageFormatter'
+import { formatClaudeMessage, printDivider, type OnAssistantResultCallback } from '@/ui/messageFormatter'
 import { claudeCheckSession } from './claudeCheckSession';
 import { logger } from '@/ui/logger';
 import { mkdirSync, watch } from 'node:fs';
@@ -14,7 +14,8 @@ export async function claudeRemote(opts: {
     mcpServers?: Record<string, any>,
     permissionPromptToolName?: string,
     onSessionFound: (id: string) => void,
-    messages: AsyncIterable<SDKUserMessage>
+    messages: AsyncIterable<SDKUserMessage>,
+    onAssistantResult?: OnAssistantResultCallback
 }) {
     // Check if session is valid
     let startFrom = opts.sessionId;
@@ -63,10 +64,23 @@ export async function claudeRemote(opts: {
     printDivider();
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
+
+        // NOTE: Undocumented in the sdk.d.ts, but it exists
+        // Hoping to use this to abort the response before we will timeout
+        // our our permission request
+        // Lets test behavior first
+        // setTimeout(() => {
+        //     console.log('Interrupting claude remote execution');
+        //     // @ts-ignore
+        //     response.interrupt()
+
+        //     // Next after 
+        // }, 1000 * 30)
+
         for await (const message of response) {
             logger.debug(`[claudeRemote] Received message from SDK: ${message.type}`);
             // Always format and display the message
-            formatClaudeMessage(message);
+            formatClaudeMessage(message, opts.onAssistantResult);
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {

@@ -5,6 +5,7 @@ import { MessageQueue } from "@/utils/MessageQueue"
 import { RawJSONLines } from "./types"
 import { logger } from "@/ui/logger"
 import { createSessionScanner } from "./scanner/sessionScanner"
+import type { OnAssistantResultCallback } from "@/ui/messageFormatter"
 
 interface LoopOptions {
     path: string
@@ -14,6 +15,7 @@ interface LoopOptions {
     permissionPromptToolName?: string
     onThinking?: (thinking: boolean) => void,
     session: ApiSessionClient
+    onAssistantResult?: OnAssistantResultCallback
 }
 
 /*
@@ -161,6 +163,7 @@ export async function loop(opts: LoopOptions) {
                     permissionPromptToolName: opts.permissionPromptToolName,
                     onSessionFound: onSessionFound,
                     messages: currentMessageQueue,
+                    onAssistantResult: opts.onAssistantResult
                 });
             } finally {
                 process.stdin.off('data', abortHandler);

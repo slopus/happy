@@ -2,10 +2,15 @@ import chalk from 'chalk';
 import type { SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@anthropic-ai/claude-code';
 import { logger } from './logger';
 
+export type OnAssistantResultCallback = (result: SDKResultMessage) => void | Promise<void>;
+
 /**
  * Formats Claude SDK messages for terminal display
  */
-export function formatClaudeMessage(message: SDKMessage): void {
+export function formatClaudeMessage(
+    message: SDKMessage,
+    onAssistantResult?: OnAssistantResultCallback
+): void {
     logger.debugLargeJson('[CLAUDE] Message from non interactive & remote mode:', message)
 
     switch (message.type) {
@@ -115,6 +120,13 @@ export function formatClaudeMessage(message: SDKMessage): void {
                     // Show instructions how to take over terminal control
                     console.log(chalk.gray('\n👀 Back already?'));
                     console.log(chalk.green('👉 Press any key to continue your session in `claude`'));
+
+                    // Call the assistant result callback after showing instructions
+                    if (onAssistantResult) {
+                        Promise.resolve(onAssistantResult(resultMsg)).catch(err => {
+                            logger.debug('Error in onAssistantResult callback:', err);
+                        });
+                    }
                 }
             } else if (resultMsg.subtype === 'error_max_turns') {
                 console.log(chalk.red.bold('\n❌ Error: Maximum turns reached'));

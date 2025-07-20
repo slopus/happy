@@ -112,6 +112,7 @@ class Logger {
   
   info(message: string, ...args: unknown[]): void {
     this.logToConsole('info', '', message, ...args)
+    this.debug(message, args)
   }
   
   private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {
