@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import { z } from 'zod';
 import { type ToolCall } from '@/sync/storageTypes';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
 export type WebFetchToolCall = Omit<ToolCall, 'name'> & { name: 'WebFetch' };
 
@@ -81,22 +82,22 @@ export function WebFetchCompactViewInner({ tool }: { tool: WebFetchToolCall }) {
   }
 
   return (
-    <View className="flex-row items-center py-0.5">
-      <Ionicons name="cloud-download" size={14} color="#a1a1a1" />
-      <Text className="text-xs text-neutral-400 font-bold px-1">{label}</Text>
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <Ionicons name="cloud-download" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>{label}</Text>
       <Text
-        className="text-xs flex-1 text-neutral-800"
+        className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
       >
         {displayUrl}
       </Text>
       {prompt && (
-        <Text className="text-xs text-neutral-600 mx-1" numberOfLines={1}>
+        <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-neutral-600 mx-1`} numberOfLines={1}>
           • {prompt.length > 20 ? prompt.substring(0, 17) + '...' : prompt}
         </Text>
       )}
       {resultText && (
-        <Text className="text-xs text-neutral-500 ml-2">
+        <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-neutral-500 ml-2`}>
           {resultText}
         </Text>
       )}

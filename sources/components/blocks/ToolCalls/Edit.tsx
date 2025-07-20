@@ -5,6 +5,7 @@ import { type ToolCall } from "@/sync/storageTypes";
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
 export type EditToolCall = Omit<ToolCall, 'name'> & { name: 'Edit' };
 
@@ -43,10 +44,10 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
   
   if (!args) {
     return (
-      <View className="flex-row items-center py-1">
-        <Ionicons name="pencil-outline" size={14} color="#a1a1a1" />
-        <Text className="text-sm text-neutral-400 font-bold px-1">Edit</Text>
-        <Text className="text-sm flex-1 text-neutral-800" numberOfLines={1}>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="pencil-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Edit</Text>
+        <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
           Invalid arguments
         </Text>
       </View>
@@ -66,11 +67,11 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
   const fileName = args.file_path.split('/').pop() || args.file_path;
   
   return (
-    <View className="flex-row items-center py-1">
-      <Ionicons name="pencil" size={14} color="#a1a1a1" />
-      <Text className="text-sm text-neutral-400 font-bold px-1">Edit</Text>
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <Ionicons name="pencil" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Edit</Text>
       <Text
-        className="text-sm text-neutral-800"
+        className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
       >
         {fileName}
@@ -80,12 +81,12 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
       {(diffStats.additions > 0 || diffStats.deletions > 0) && (
         <View className="flex-row items-center ml-2">
           {diffStats.additions > 0 && (
-            <Text className="text-sm font-medium text-emerald-600 font-mono">
+            <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} font-medium text-emerald-600 font-mono`}>
               +{diffStats.additions}
             </Text>
           )}
           {diffStats.deletions > 0 && (
-            <Text className="text-sm font-medium text-red-600 font-mono">
+            <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} font-medium text-red-600 font-mono`}>
               -{diffStats.deletions}
             </Text>
           )}

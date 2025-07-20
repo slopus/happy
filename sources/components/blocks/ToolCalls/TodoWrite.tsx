@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { type ToolCall } from '@/sync/storageTypes';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
 export type TodoWriteToolCall = Omit<ToolCall, 'name'> & { name: 'TodoWrite' };
 
@@ -44,10 +45,10 @@ export function TodoWriteCompactViewInner({ tool }: { tool: ToolCall }) {
   
   if (!args) {
     return (
-      <View className="flex-row items-center py-1">
-        <Ionicons name="list-outline" size={14} color="#a1a1a1" />
-        <Text className="text-sm text-neutral-400 font-bold px-1">TODO</Text>
-        <Text className="text-sm flex-1 text-neutral-800" numberOfLines={1}>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <Ionicons name="list-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>TODO</Text>
+        <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
           Invalid arguments
         </Text>
       </View>
@@ -74,28 +75,28 @@ export function TodoWriteCompactViewInner({ tool }: { tool: ToolCall }) {
   const failedCount = cancelledCount;
   
   return (
-    <View className="flex-row items-center py-1">
-      <Ionicons name="list" size={14} color="#a1a1a1" />
-      <Text className="text-sm text-neutral-400 font-bold px-1">Update TODOs</Text>
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <Ionicons name="list" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Update TODOs</Text>
       
       {/* Status indicators with icons */}
       <View className="flex-row items-center ml-2 font-medium">
         {successCount > 0 && (
           <View className="flex-row items-center mr-2">
-            <Ionicons name="checkmark" size={14} color="#10b981" />
-            <Text className="text-sm text-green-600 ml-[2px]">{successCount}</Text>
+            <Ionicons name="checkmark" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#10b981" />
+            <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-green-600 ml-[2px]`}>{successCount}</Text>
           </View>
         )}
         {pendingTotal > 0 && (
           <View className="flex-row items-center mr-2 font-bold">
-            <Ionicons name="sync-outline" size={14} color="#f59e0b" />
-            <Text className="text-sm text-amber-600 ml-[2px]">{pendingTotal}</Text>
+            <Ionicons name="sync-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#f59e0b" />
+            <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-amber-600 ml-[2px]`}>{pendingTotal}</Text>
           </View>
         )}
         {failedCount > 0 && (
           <View className="flex-row items-center mr-2">
-            <Ionicons name="close" size={14} color="#ef4444" />
-            <Text className="text-sm text-red-600 ml-[2px]">{failedCount}</Text>
+            <Ionicons name="close" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#ef4444" />
+            <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-red-600 ml-[2px]`}>{failedCount}</Text>
           </View>
         )}
       </View>

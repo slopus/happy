@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { type ToolCall } from '@/sync/storageTypes';
 import { ShimmerText } from './ShimmerRunningToolName';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
 export type LSToolCall = Omit<ToolCall, 'name'> & { name: 'LS' };
 
@@ -117,16 +118,16 @@ export function LSCompactView({ tool }: { tool: LSToolCall }) {
     : "no results";
 
   return (
-    <View className="flex-row gap-1 items-center py-1 pl-[2px]">
-      <Ionicons name="folder-outline" size={14} color="#a1a1a1" />
-      {tool.state === 'running' ? <ShimmerText>Listing</ShimmerText> : <Text className="text-sm text-neutral-400 font-bold px-1">List</Text>}
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <Ionicons name="folder-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      {tool.state === 'running' ? <ShimmerText>Listing</ShimmerText> : <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>List</Text>}
       <Text
-        className="text-sm flex-1 text-neutral-800"
+        className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
       >
         {dirName || 'directory'}
       </Text>
-      <Text className="text-sm text-neutral-400 font-bold px-1">
+      <Text className={TOOL_COMPACT_VIEW_STYLES.METADATA_CLASSES}>
         {displayText}
       </Text>
     </View>

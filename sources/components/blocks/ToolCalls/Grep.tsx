@@ -1,10 +1,11 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
 import { type ToolCall } from '@/sync/storageTypes';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
 /*
 Example Grep input args:
@@ -101,18 +102,223 @@ export function GrepCompactViewInner({ tool }: { tool: GrepToolCall }) {
   }
 
   return (
-    <View className="flex-row items-center py-1">
-      <Ionicons name="search" size={14} color="#a1a1a1" />
-      <Text className="text-xs text-neutral-400 font-bold px-1">Grep</Text>
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <Ionicons name="search" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Grep</Text>
       <Text
-        className="text-xs flex-1 text-neutral-800"
+        className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
       >
         "{query || 'pattern'}" in {displayTarget}
       </Text>
-      <Text className="text-xs text-neutral-500 mr-2">
+      <Text className={TOOL_COMPACT_VIEW_STYLES.METADATA_CLASSES}>
         {resultText}
       </Text>
     </View>
   );
 }
+
+// Detailed view for full-screen modal
+export const GrepDetailedView = ({ tool }: { tool: GrepToolCall }) => {
+  // Parse input arguments
+  const pattern = tool.arguments?.pattern || tool.arguments?.query;
+  const searchPath = tool.arguments?.path;
+  const glob = tool.arguments?.glob;
+  const outputMode = tool.arguments?.output_mode || 'files_with_matches';
+  const caseInsensitive = tool.arguments?.['-i'];
+  const showLineNumbers = tool.arguments?.['-n'];
+  const contextBefore = tool.arguments?.['-B'];
+  const contextAfter = tool.arguments?.['-A'];
+  const contextAround = tool.arguments?.['-C'];
+  const fileType = tool.arguments?.type;
+  const headLimit = tool.arguments?.head_limit;
+  const multiline = tool.arguments?.multiline;
+
+  // Parse the tool result
+  let parsedResult: ParsedGrepToolResult | null = null;
+  if (tool.result) {
+    const parseResult = GrepToolResultSchema.safeParse(tool.result);
+    if (parseResult.success) {
+      parsedResult = parseResult.data;
+    }
+  }
+
+  // Prepare display information
+  const searchTarget = searchPath || 'current directory';
+  const displayPath = searchPath?.split('/').pop() || searchPath || 'current directory';
+
+  return (
+    <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={true}>
+      {/* Header */}
+      <View className="p-4">
+        <View className="flex-row justify-between items-center mb-4">
+          <Text className="text-lg font-semibold text-gray-900">🔍 Grep Search</Text>
+          <View className="px-2 py-1 bg-gray-100 rounded-xl">
+            <Text className={`text-sm font-medium ${getStatusColorClass(tool.state)}`}>
+              {getStatusDisplay(tool.state)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Search Parameters */}
+        <View className="mb-4 bg-blue-50 rounded-lg p-3 border border-blue-200">
+          <Text className="text-sm font-medium text-blue-800 mb-2">Search Parameters</Text>
+          
+          <View className="space-y-1">
+            <View className="flex-row">
+              <Text className="text-sm font-medium text-blue-700 w-16">Pattern:</Text>
+              <Text className="text-sm font-mono text-blue-800 flex-1">"{pattern || 'N/A'}"</Text>
+            </View>
+            
+            <View className="flex-row">
+              <Text className="text-sm font-medium text-blue-700 w-16">Target:</Text>
+              <Text className="text-sm text-blue-800 flex-1">{searchTarget}</Text>
+            </View>
+            
+            <View className="flex-row">
+              <Text className="text-sm font-medium text-blue-700 w-16">Mode:</Text>
+              <Text className="text-sm text-blue-800 flex-1">{outputMode}</Text>
+            </View>
+            
+            {glob && (
+              <View className="flex-row">
+                <Text className="text-sm font-medium text-blue-700 w-16">Glob:</Text>
+                <Text className="text-sm font-mono text-blue-800 flex-1">{glob}</Text>
+              </View>
+            )}
+            
+            {fileType && (
+              <View className="flex-row">
+                <Text className="text-sm font-medium text-blue-700 w-16">Type:</Text>
+                <Text className="text-sm text-blue-800 flex-1">{fileType}</Text>
+              </View>
+            )}
+          </View>
+
+          {/* Search Options */}
+          {(caseInsensitive || showLineNumbers || contextBefore || contextAfter || contextAround || headLimit || multiline) && (
+            <View className="mt-3 pt-2 border-t border-blue-200">
+              <Text className="text-sm font-medium text-blue-700 mb-1">Options:</Text>
+              <View className="flex-row flex-wrap gap-1">
+                {caseInsensitive && (
+                  <View className="px-2 py-1 bg-blue-200 rounded">
+                    <Text className="text-xs font-medium text-blue-800">Case insensitive</Text>
+                  </View>
+                )}
+                {showLineNumbers && (
+                  <View className="px-2 py-1 bg-blue-200 rounded">
+                    <Text className="text-xs font-medium text-blue-800">Line numbers</Text>
+                  </View>
+                )}
+                {contextBefore && (
+                  <View className="px-2 py-1 bg-blue-200 rounded">
+                    <Text className="text-xs font-medium text-blue-800">Before: {contextBefore}</Text>
+                  </View>
+                )}
+                {contextAfter && (
+                  <View className="px-2 py-1 bg-blue-200 rounded">
+                    <Text className="text-xs font-medium text-blue-800">After: {contextAfter}</Text>
+                  </View>
+                )}
+                {contextAround && (
+                  <View className="px-2 py-1 bg-blue-200 rounded">
+                    <Text className="text-xs font-medium text-blue-800">Context: {contextAround}</Text>
+                  </View>
+                )}
+                {headLimit && (
+                  <View className="px-2 py-1 bg-blue-200 rounded">
+                    <Text className="text-xs font-medium text-blue-800">Limit: {headLimit}</Text>
+                  </View>
+                )}
+                {multiline && (
+                  <View className="px-2 py-1 bg-blue-200 rounded">
+                    <Text className="text-xs font-medium text-blue-800">Multiline</Text>
+                  </View>
+                )}
+              </View>
+            </View>
+          )}
+        </View>
+      </View>
+
+      {/* Results Section */}
+      <View className="bg-gray-50 border-y border-gray-200 flex-1">
+        {/* Results Header */}
+        <View className="flex-row items-center justify-between px-4 py-3 bg-gray-100 border-b border-gray-200">
+          <Text className="text-sm font-medium text-gray-700">Search Results</Text>
+          {parsedResult && (
+            <Text className="text-sm text-gray-500">
+              {outputMode === 'content' 
+                ? `${parsedResult.numLines} lines in ${parsedResult.numFiles} files`
+                : `${parsedResult.numFiles} files matched`
+              }
+            </Text>
+          )}
+        </View>
+
+        {/* Results Content */}
+        <View className="flex-1 bg-white p-4">
+          {!parsedResult ? (
+            <Text className="text-gray-500 italic">No results available</Text>
+          ) : parsedResult.numFiles === 0 && parsedResult.numLines === 0 ? (
+            <View className="items-center py-8">
+              <Ionicons name="search" size={48} color="#9ca3af" />
+              <Text className="text-gray-500 text-lg font-medium mt-2">No matches found</Text>
+              <Text className="text-gray-400 text-sm text-center mt-1">
+                Try adjusting your search pattern or expanding the search scope
+              </Text>
+            </View>
+          ) : outputMode === 'content' && parsedResult.content ? (
+            // Show content matches
+            <View className="bg-gray-50 rounded-lg p-3">
+              <ScrollView 
+                className="max-h-96" 
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
+              >
+                <Text className="text-sm font-mono text-gray-800" selectable={true}>
+                  {parsedResult.content}
+                </Text>
+              </ScrollView>
+            </View>
+          ) : parsedResult.filenames.length > 0 ? (
+            // Show file list
+            <View className="space-y-2">
+              {parsedResult.filenames.map((filename, index) => (
+                <View key={index} className="flex-row items-center py-2 px-3 bg-gray-50 rounded-lg">
+                  <Ionicons name="document-outline" size={16} color="#6b7280" />
+                  <Text className="text-sm font-mono text-gray-800 ml-2 flex-1" selectable={true}>
+                    {filename}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          ) : (
+            <Text className="text-gray-500 italic">
+              Results available but cannot be displayed in current format
+            </Text>
+          )}
+        </View>
+      </View>
+    </ScrollView>
+  );
+};
+
+// Helper functions
+const getStatusDisplay = (state: string) => {
+  switch (state) {
+    case 'running': return '⏳ Searching';
+    case 'completed': return '✅ Complete';
+    case 'error': return '❌ Error';
+    default: return state;
+  }
+};
+
+const getStatusColorClass = (state: string) => {
+  switch (state) {
+    case 'running': return 'text-amber-500';
+    case 'completed': return 'text-green-600';
+    case 'error': return 'text-red-600';
+    default: return 'text-gray-500';
+  }
+};
