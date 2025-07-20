@@ -45,7 +45,7 @@ export const ConnectButton = React.memo(() => {
     return (
         <View className="max-w-[220px] w-full mb-4">
             <RoundButton
-                title="Connect terminal"
+                title="Scan QR code"
                 onPress={connectTerminal}
                 loading={isLoading}
             />
