@@ -4,6 +4,7 @@ import * as React from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
+import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 
 export const MarkdownView = React.memo((props: { markdown: string }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
@@ -72,7 +73,10 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
                 contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
                 showsHorizontalScrollIndicator={false}
             >
-                <Text style={[style.codeText, { color: '#ff0000' }]}>{props.content}</Text>
+                <SimpleSyntaxHighlighter 
+                    code={props.content} 
+                    language={props.language} 
+                />
             </ScrollView>
         </View>
     );
