@@ -11,7 +11,7 @@ import { View, Text, Pressable } from "react-native";
 import { MarkdownView } from "./markdown/MarkdownView";
 import { RenderToolV3 } from "./blocks/RenderToolCallV3";
 import { fakeTool } from "./blocks/debug/data-for-nested-toolcall";
-import { RenderToolV4 as RenderToolV4 } from "./blocks/RenderToolCallV4";
+import { CompactToolBlock as CompactToolBlock } from "./blocks/RenderToolCallV4";
 // import { RenderToolV1 } from './blocks/RenderToolCallV1';
 
 export const MessageView = (props: {
@@ -109,7 +109,7 @@ function AgentMessageView(props: {
                 <RenderToolV3 tool={fakeTool} metadata={props.metadata} />
                 */}
         {props.message.content.tools.map((tool: ToolCall) => (
-          <RenderToolV4
+          <CompactToolBlock
             tool={tool}
             sessionId={props.sessionId}
             messageId={props.messageId}
