@@ -9,7 +9,8 @@ import * as React from 'react';
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider } from '@/auth/AuthContext';
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
-import { Image, Pressable, Text } from 'react-native';
+import { Image, Pressable } from 'react-native';
+import { Text } from '@/components/StyledText';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { KeyboardProvider } from "react-native-keyboard-controller";
@@ -113,7 +114,7 @@ export default function RootLayout() {
                             options={{
                                 headerShown: true,
                                 headerTitle: () => (
-                                    <Text style={{ fontSize: 24, color: '#000', ...Typography.logo() }}>
+                                    <Text useDefaultTypography={false} style={{ fontSize: 24, color: '#000', ...Typography.logo() }}>
                                         Happy Coder
                                     </Text>
                                 )

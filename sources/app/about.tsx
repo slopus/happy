@@ -1,4 +1,5 @@
-import { Text, View, ScrollView, Pressable, Platform, Image } from 'react-native';
+import { View, ScrollView, Pressable, Platform, Image } from 'react-native';
+import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
@@ -40,7 +41,7 @@ export default function AboutModal() {
                     <Text style={{ ...Typography.logo(), fontSize: 24, fontWeight: 'bold', marginBottom: 8 }}>Happy Coder</Text>
                     <Text style={{ ...Typography.default(), fontSize: 14, color: '#666' }}>Version {appVersion}</Text>
                     <View style={{ alignItems: 'center', paddingBottom: 32, marginTop: 16, width: '80%' }}>
-                    <Text style={{ ...Typography.default(), fontSize: 16, color: '#666', textAlign: 'center' }}>Happy Code is a Claude Code mobile client.
+                    <Text style={{ fontSize: 16, color: '#666', textAlign: 'center' }}>Happy Code is a Claude Code mobile client.
                         It's fully end-to-end encrypted and your account is stored only on your device.
                         {'\n'}{'\n'}
                         It's not affiliated with Anthropic.</Text>

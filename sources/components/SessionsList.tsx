@@ -1,11 +1,13 @@
 import React from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Pressable } from 'react-native';
+import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { SessionListItem } from '@/sync/storage';
 import { getSessionName, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
+import { Typography } from '@/constants/Typography';
 
 interface SessionsListProps {
     data: SessionListItem[];
@@ -32,7 +34,7 @@ export function SessionsList({ data, selectedSessionId, onSessionPress }: Sessio
                 <View style={{ paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                         {isOnline && <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#34C759', marginRight: 8 }} />}
-                        <Text style={{ fontSize: 14, fontWeight: '600', color: '#999' }}>{title}</Text>
+                        <Text style={{ fontSize: 14, fontWeight: '600', color: '#999', ...Typography.default() }}>{title}</Text>
                     </View>
                 </View>
             );
@@ -71,16 +73,16 @@ export function SessionsList({ data, selectedSessionId, onSessionPress }: Sessio
                 <Avatar id={session.id} size={56} monochrome={!online} />
                 <View style={{ flex: 1, marginLeft: 16 }}>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                        <Text style={{ fontSize: 20, fontWeight: '600', opacity: online ? 1 : 0.5, flex: 1, marginRight: 8 }} numberOfLines={1}>
-                            {sessionName}
+                        <Text style={{ fontSize: 20, fontWeight: '600', opacity: online ? 1 : 0.5, flex: 1, marginRight: 8, ...Typography.default('semiBold') }} numberOfLines={1}>
+                            /{sessionName}
                         </Text>
-                        <Text style={{ fontSize: 14, color: '#999' }}>
+                        <Text style={{ fontSize: 14, color: '#999', ...Typography.default() }}>
                             {lastSeenText}
                         </Text>
                     </View>
                     {lastMessage ? (
                         <Text style={{ fontSize: 14, color: '#999' }} numberOfLines={1}>
-                            <Text style={{ color: online ? (isFromAssistant ? '#007AFF' : '#34C759') : '#999', fontWeight: '600' }}>
+                            <Text style={{ color: online ? (isFromAssistant ? '#007AFF' : '#34C759') : '#999', fontWeight: '600', ...Typography.default() }}>
                                 {isFromAssistant ? 'Claude' : 'You'}:
                             </Text>
 
