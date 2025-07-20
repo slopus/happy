@@ -20,7 +20,7 @@ export function RenderToolV4({ tool, sessionId, messageId }: { tool: ToolCall, s
       return <EditCompactView tool={tool as EditToolCall} sessionId={sessionId} messageId={messageId} />;
       
     case "Read":
-      return <ReadCompactView tool={tool as ReadToolCall}/>;
+      return <ReadCompactView tool={tool as ReadToolCall} sessionId={sessionId} messageId={messageId}/>;
       
     case "Grep":
       return <GrepCompactView tool={tool as GrepToolCall} sessionId={sessionId} messageId={messageId}/>;

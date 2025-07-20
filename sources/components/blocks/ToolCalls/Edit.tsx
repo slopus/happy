@@ -3,7 +3,7 @@ import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { type ToolCall } from "@/sync/storageTypes";
 import { z } from 'zod';
-import { SingleLineToolSummaryBlock } from './SingleLinePressForDetail';
+import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
 
 export type EditToolCall = Omit<ToolCall, 'name'> & { name: 'Edit' };
