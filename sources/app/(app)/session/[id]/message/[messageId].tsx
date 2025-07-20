@@ -2,13 +2,13 @@
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { View, Text, Pressable } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
-import { useMessage, useSession } from "@/sync/storage";
+import { useMessage } from "@/sync/storage";
 import { MessageDetailView, getMessageDetailTitle } from "@/components/MessageDetailView";
+import { Deferred } from "@/components/Deferred";
 
 export default function MessageModal() {
     const { id: sessionId, messageId } = useLocalSearchParams<{ id: string; messageId: string }>();
     const router = useRouter();
-    const session = useSession(sessionId!);
     const message = useMessage(sessionId!, messageId!);
 
     if (message === null) {
@@ -51,7 +51,9 @@ export default function MessageModal() {
                 }}
             />
 
-            <MessageDetailView message={message} messageId={messageId!} />
+            <Deferred>
+                <MessageDetailView message={message} messageId={messageId!} />
+            </Deferred>
         </View>
     );
 } 
