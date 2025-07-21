@@ -42,10 +42,9 @@ describe('reducer', () => {
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(1);
-            expect(result[0].role).toBe('user');
-            expect(result[0].content.type).toBe('text');
-            if (result[0].content.type === 'text') {
-                expect(result[0].content.text).toBe('Hello');
+            expect(result[0].kind).toBe('user-text');
+            if (result[0].kind === 'user-text') {
+                expect(result[0].text).toBe('Hello');
             }
             expect(state.localIds.has('local123')).toBe(true);
         });
@@ -121,14 +120,14 @@ describe('reducer', () => {
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(3);
-            if (result[0].content.type === 'text') {
-                expect(result[0].content.text).toBe('First');
+            if (result[0].kind === 'user-text') {
+                expect(result[0].text).toBe('First');
             }
-            if (result[1].content.type === 'text') {
-                expect(result[1].content.text).toBe('Second');
+            if (result[1].kind === 'user-text') {
+                expect(result[1].text).toBe('Second');
             }
-            if (result[2].content.type === 'text') {
-                expect(result[2].content.text).toBe('Third');
+            if (result[2].kind === 'user-text') {
+                expect(result[2].text).toBe('Third');
             }
         });
     });
@@ -158,10 +157,9 @@ describe('reducer', () => {
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(1);
-            expect(result[0].role).toBe('agent');
-            expect(result[0].content.type).toBe('text');
-            if (result[0].content.type === 'text') {
-                expect(result[0].content.text).toBe('Hello from Claude!');
+            expect(result[0].kind).toBe('agent-text');
+            if (result[0].kind === 'agent-text') {
+                expect(result[0].text).toBe('Hello from Claude!');
             }
         });
 
@@ -189,11 +187,11 @@ describe('reducer', () => {
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(2);
-            if (result[0].content.type === 'text') {
-                expect(result[0].content.text).toBe('Part 1');
+            if (result[0].kind === 'agent-text') {
+                expect(result[0].text).toBe('Part 1');
             }
-            if (result[1].content.type === 'text') {
-                expect(result[1].content.text).toBe('Part 2');
+            if (result[1].kind === 'agent-text') {
+                expect(result[1].text).toBe('Part 2');
             }
         });
     });
@@ -242,21 +240,21 @@ describe('reducer', () => {
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(4);
-            expect(result[0].role).toBe('user');
-            if (result[0].content.type === 'text') {
-                expect(result[0].content.text).toBe('Question 1');
+            expect(result[0].kind).toBe('user-text');
+            if (result[0].kind === 'user-text') {
+                expect(result[0].text).toBe('Question 1');
             }
-            expect(result[1].role).toBe('agent');
-            if (result[1].content.type === 'text') {
-                expect(result[1].content.text).toBe('Answer 1');
+            expect(result[1].kind).toBe('agent-text');
+            if (result[1].kind === 'agent-text') {
+                expect(result[1].text).toBe('Answer 1');
             }
-            expect(result[2].role).toBe('user');
-            if (result[2].content.type === 'text') {
-                expect(result[2].content.text).toBe('Question 2');
+            expect(result[2].kind).toBe('user-text');
+            if (result[2].kind === 'user-text') {
+                expect(result[2].text).toBe('Question 2');
             }
-            expect(result[3].role).toBe('agent');
-            if (result[3].content.type === 'text') {
-                expect(result[3].content.text).toBe('Answer 2');
+            expect(result[3].kind).toBe('agent-text');
+            if (result[3].kind === 'agent-text') {
+                expect(result[3].text).toBe('Answer 2');
             }
         });
     });
@@ -314,8 +312,8 @@ describe('reducer', () => {
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(1);
-            if (result[0].content.type === 'text') {
-                expect(result[0].content.text).toBe('Valid');
+            if (result[0].kind === 'user-text') {
+                expect(result[0].text).toBe('Valid');
             }
         });
 

@@ -7,6 +7,7 @@ import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { ToolIcon } from './design-tokens/ToolIcon';
 import { ToolName } from './design-tokens/ToolName';
 import { ShimmerToolName } from './design-tokens/ShimmerToolName';
+import { Ionicons } from '@expo/vector-icons';
 
 export type TaskToolCall = Omit<ToolCall, 'name'> & { name: 'Task' };
 
@@ -108,10 +109,10 @@ export function TaskCompactView({ tool, sessionId, messageId }: { tool: TaskTool
               <Text className="text-sm text-gray-800 leading-5">{args.prompt}</Text>
               
               {/* Show child tools if any */}
-              {tool.children && (tool.children as any[]).length > 0 && (
+              {tool.children && tool.children.length > 0 && (
                 <View className="mt-3">
-                  <Text className="text-sm text-gray-600 mb-2">Sub-tasks ({(tool.children as any[]).length}):</Text>
-                  {(tool.children as any[]).map((child, index) => (
+                  <Text className="text-sm text-gray-600 mb-2">Sub-tasks ({tool.children.length}):</Text>
+                  {tool.children.map((child, index) => (
                     <View key={index} className="flex-row items-center mb-1">
                       <ToolIcon 
                         name={getStateIcon(child.state) as any} 
@@ -163,6 +164,7 @@ export const TaskDetailedView = ({ tool }: { tool: TaskToolCall }) => {
 
   return (
     <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={false}>
+      <>
       {/* Header */}
       <View className="pt-5 px-4 pb-2">
         <View className="flex-row items-center">
@@ -182,6 +184,8 @@ export const TaskDetailedView = ({ tool }: { tool: TaskToolCall }) => {
 
       {/* Task Details */}
       <View className="px-4">
+        {/*
+        */}
         <View className="mb-4">
           <Text className="text-sm font-semibold text-gray-600 mb-1">Description</Text>
           <View className="bg-gray-100 p-3 rounded-lg">
@@ -197,6 +201,7 @@ export const TaskDetailedView = ({ tool }: { tool: TaskToolCall }) => {
         </View>
 
         {/* Child Tools */}
+        <View>
         {tool.children && tool.children.length > 0 && (
           <View className="mb-4">
             <Text className="text-sm font-semibold text-gray-600 mb-2">Sub-tasks ({tool.children.length})</Text>
@@ -213,8 +218,10 @@ export const TaskDetailedView = ({ tool }: { tool: TaskToolCall }) => {
             ))}
           </View>
         )}
+        </View>
 
-        {/* Result */}
+        {/* Result
+        */}
         {tool.result && (
           <View className="mb-4">
             <Text className="text-sm font-semibold text-gray-600 mb-1">Result</Text>
@@ -224,6 +231,7 @@ export const TaskDetailedView = ({ tool }: { tool: TaskToolCall }) => {
           </View>
         )}
       </View>
+      </>
     </ScrollView>
   );
 };

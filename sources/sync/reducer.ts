@@ -161,38 +161,29 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
         if (existing && existing.role === 'agent') {
             if (existing.tools.length > 0) {
                 newMessages.push({
-                    role: 'agent',
                     id,
                     localId: null,
                     createdAt: existing.createdAt,
-                    content: {
-                        type: 'tool',
-                        tools: normalizeToolCalls(existing.tools)
-                    }
+                    kind: 'tool-call',
+                    tools: normalizeToolCalls(existing.tools)
                 });
             } else {
                 newMessages.push({
-                    role: 'agent',
                     id,
                     localId: null,
                     createdAt: existing.createdAt,
-                    content: {
-                        type: 'text',
-                        text: existing.text
-                    }
+                    kind: 'agent-text',
+                    text: existing.text
                 });
             }
         }
         if (existing && existing.role === 'user') {
             newMessages.push({
-                role: 'user',
                 id,
                 localId: null,
                 createdAt: existing.createdAt,
-                content: {
-                    type: 'text',
-                    text: existing.text
-                }
+                kind: 'user-text',
+                text: existing.text
             });
         }
     }

@@ -8,6 +8,7 @@ import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { ToolIcon } from './design-tokens/ToolIcon';
 import { ToolName } from './design-tokens/ToolName';
+import { Ionicons } from '@expo/vector-icons';
 
 export type MultiEditToolCall = Omit<ToolCall, 'name'> & { name: 'MultiEdit' };
 

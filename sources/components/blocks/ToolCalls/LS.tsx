@@ -7,6 +7,7 @@ import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { ToolName } from './design-tokens/ToolName';
 import { ToolIcon } from './design-tokens/ToolIcon';
+import { Ionicons } from '@expo/vector-icons';
 
 export type LSToolCall = Omit<ToolCall, 'name'> & { name: 'LS' };
 
