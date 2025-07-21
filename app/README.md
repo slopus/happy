@@ -29,7 +29,7 @@ npm install -g happy-coder
 ```
 
 <h3 align="center">
-Step 3: Start using `happy` isntead of `claude`
+Step 3: Start using `happy` instead of `claude`
 </h3>
 
 ```bash
