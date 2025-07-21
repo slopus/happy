@@ -92,8 +92,29 @@ function SessionItem({ session, selectedSessionId, router }: {
     const sessionName = getSessionName(session);
     const lastSeenText = formatLastSeen(session.presence);
     const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
-    const isFromAssistant = isMessageFromAssistant(session.lastMessage) || thinking;
+    const isFromAssistant = session.lastMessage?.role === 'agent' || thinking;
     const isSelected = selectedSessionId === session.id;
+    let message: string | null = null;
+    if (session.lastMessage) {
+        if (session.lastMessage.role === 'user') {
+            message = session.lastMessage.content.text;
+        } else if (session.lastMessage.role === 'agent') {
+            for (let c of session.lastMessage.content) {
+                if (c.type === 'text') {
+                    message = c.text;
+                }
+                if (c.type === 'tool-call') {
+                    message = 'Tool call: ' + c.name;
+                }
+                if (c.type === 'tool-result') {
+                    message = 'Tool result received';
+                }
+                if (c.type === 'summary') {
+                    message = 'Summary: ' + c.summary;
+                }
+            }
+        }
+    }
 
     return (
         <Pressable
@@ -132,7 +153,7 @@ function SessionItem({ session, selectedSessionId, router }: {
 
                         {!thinking && (
                             <Text className="text-sm text-gray-500 flex-1" numberOfLines={1}>
-                                {/* {' '}<SessionText message={session.lastMessage} /> */}
+                                {' ' + (message ?? '<no message>')}
                             </Text>
                         )}
 

@@ -9,7 +9,7 @@ import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform } from 'react-native';
-import { RawRecord } from './typesRaw';
+import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 
 const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
@@ -121,13 +121,20 @@ class Sync {
         // Decrypt sessions
         let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
         for (const session of sessions) {
+            let lastMessage: NormalizedMessage | null = null;
+            if (session.lastMessage) {
+                const decrypted = this.encryption.decryptMessage(session.lastMessage);
+                if (decrypted) {
+                    lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                }
+            }
             const processedSession = {
                 ...session,
                 thinking: false,
                 thinkingAt: 0,
                 metadata: this.encryption.decryptMetadata(session.metadata),
                 agentState: this.encryption.decryptAgentState(session.agentState),
-                lastMessage: this.encryption.decryptMessage(session.lastMessage)
+                lastMessage
             };
             decryptedSessions.push(processedSession);
         }
@@ -145,7 +152,6 @@ class Sync {
         for (const msg of [...data.messages as ApiMessage[]].reverse()) {
             messages.push(this.encryption.decryptMessage(msg)!);
         }
-        console.log(JSON.stringify(messages));
 
         // Apply to storage
         storage.getState().applyMessages(sessionId, messages);
@@ -222,27 +228,34 @@ class Sync {
         const updateData = validatedUpdate.data;
 
         if (updateData.body.t === 'new-message') {
-            const decryptedMessage = this.encryption.decryptMessage(updateData.body.message)!;
+            let lastMessage: NormalizedMessage | null = null;
+            if (updateData.body.message) {
+                const decrypted = this.encryption.decryptMessage(updateData.body.message);
+                if (decrypted) {
+                    lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
 
-            // Update session
-            const session = storage.getState().sessions[updateData.body.sid];
-            if (session) {
-                storage.getState().applySessions([{
-                    ...session,
-                    lastMessage: decryptedMessage,
-                    updatedAt: updateData.createdAt,
-                    seq: updateData.seq
-                }])
-            } else {
-                // Fetch sessions again if we don't have this session
-                this.fetchSessions();
+                    // Update session
+                    const session = storage.getState().sessions[updateData.body.sid];
+                    if (session) {
+                        storage.getState().applySessions([{
+                            ...session,
+                            lastMessage,
+                            updatedAt: updateData.createdAt,
+                            seq: updateData.seq
+                        }])
+                    } else {
+                        // Fetch sessions again if we don't have this session
+                        this.fetchSessions();
+                    }
+
+                    // Update messages
+                    if (lastMessage) {
+                        storage.getState().applyMessages(updateData.body.sid, [decrypted]);
+                    }
+                }
             }
 
-            // Update messages
-            storage.getState().applyMessages(updateData.body.sid, [decryptedMessage]);
-
             // Ping session
-            // NOTE: @kirill Might fetch all messages again?
             this.onSessionVisible(updateData.body.sid);
 
         } else if (updateData.body.t === 'new-session') {
