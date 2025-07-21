@@ -48,9 +48,9 @@ export default function AboutModal() {
                     </View>
                 </View>
 
-                {/* <View style={{ marginBottom: 12, alignSelf: 'center' }}>
+                <View style={{ marginBottom: 12, alignSelf: 'center' }}>
                     <ConnectButton />
-                </View> */}
+                </View>
 
                 <View style={{ marginBottom: 12, alignSelf: 'center' }}>
                     <RoundButton 
