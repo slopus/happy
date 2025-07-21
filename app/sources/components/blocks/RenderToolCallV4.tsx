@@ -12,15 +12,16 @@ import { MCPCompactView, MCPDetailedView, MCPToolCall } from './ToolCalls/MCP';
 import { UnknownToolDetailedView } from './ToolCalls/Unknown';
 import { TaskCompactView, TaskDetailedView, type TaskToolCall } from './ToolCalls/Task';
 import { ToolCall } from '@/sync/typesMessage';
+import { Metadata } from '@/sync/storageTypes';
 
 // Component that dispatches to different tool renderers based on tool type
-export function CompactToolBlock({ tool, sessionId, messageId }: { tool: ToolCall, sessionId: string, messageId: string }) {
+export function CompactToolBlock({ tool, sessionId, messageId, metadata }: { tool: ToolCall, sessionId: string, messageId: string, metadata: Metadata | null }) {
   switch (tool.name) {
     case 'Bash':
       return <BashCompactView tool={tool as BashToolCall} sessionId={sessionId} messageId={messageId} />;
 
     case 'Edit':
-      return <EditCompactView tool={tool as EditToolCall} sessionId={sessionId} messageId={messageId} />;
+      return <EditCompactView tool={tool as EditToolCall} sessionId={sessionId} messageId={messageId} metadata={metadata} />;
 
     case "Read":
       return <ReadCompactView tool={tool as ReadToolCall} sessionId={sessionId} messageId={messageId} />;
@@ -40,6 +41,10 @@ export function CompactToolBlock({ tool, sessionId, messageId }: { tool: ToolCal
     case "Write":
       return <WriteCompactView tool={tool as WriteToolCall} sessionId={sessionId} messageId={messageId} />;
   }
+  if (tool.name.startsWith('mcp__')) {
+   return <MCPCompactView tool={tool as MCPToolCall} sessionId={sessionId} messageId={messageId} />;
+  }
+  // Fallback for uknown tool types
   return (
     <View style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 2 }}>
       <Text style={{ fontSize: 16, color: '#6b7280', fontStyle: 'italic' }}>
@@ -50,10 +55,10 @@ export function CompactToolBlock({ tool, sessionId, messageId }: { tool: ToolCal
 }
 
 // Component that dispatches to different detailed tool renderers based on tool type
-export function DetailedToolBlock({ tool }: { tool: ToolCall }) {
+export function DetailedToolBlock({ tool, metadata }: { tool: ToolCall, metadata: Metadata | null }) {
   switch (tool.name) {
     case "Edit":
-      return <EditDetailedView tool={tool as EditToolCall} />;
+      return <EditDetailedView tool={tool as EditToolCall} metadata={metadata} />;
 
     case "Read":
       return <ReadDetailedView tool={tool as ReadToolCall} />;
