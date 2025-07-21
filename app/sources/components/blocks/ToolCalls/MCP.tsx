@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
+import { ToolIcon } from './design-tokens/ToolIcon';
 
 // Type for MCP tool calls with pattern mcp__{server}__{operation}
 export type MCPToolCall = Omit<ToolCall, 'name'> & {
@@ -40,7 +40,7 @@ export function MCPCompactViewInner({ tool }: { tool: MCPToolCall }) {
   if (!parsed) {
     return (
       <View className="flex-row items-center py-1 gap-1">
-        <Ionicons name="cube-outline" size={14} color="#a1a1a1" />
+        <ToolIcon name="cube-outline" />
         <Text className="text-md text-neutral-400 font-bold px-1">MCP</Text>
         <Text className="text-md flex-1 text-neutral-800" numberOfLines={1}>
           Invalid tool name format
@@ -55,7 +55,7 @@ export function MCPCompactViewInner({ tool }: { tool: MCPToolCall }) {
   if (tool.state === 'running') {
     return (
       <View className="flex-row items-center py-1 gap-1">
-        <Ionicons name="cube-outline" size={14} color="#a1a1a1" />
+        <ToolIcon name="cube-outline" />
         <ShimmerToolName>Calling MCP</ShimmerToolName>
         <View className="bg-gray-100 px-1.5 py-0.5 rounded-md border border-gray-200">
           <Text className="text-md text-neutral-600 font-medium" numberOfLines={1}>
@@ -73,7 +73,7 @@ export function MCPCompactViewInner({ tool }: { tool: MCPToolCall }) {
   if (tool.state === 'error') {
     return (
       <View className="flex-row items-center py-1 gap-1">
-        <Ionicons name="warning" size={14} color="#ef4444" />
+        <ToolIcon name="cube" state="error" />
         <Text className="text-md text-red-500 font-bold px-1 rounded-md">MCP</Text>
         <Text className="text-md text-neutral-600" numberOfLines={1}>
           {server}
@@ -89,7 +89,7 @@ export function MCPCompactViewInner({ tool }: { tool: MCPToolCall }) {
   // Handle completed state
   return (
     <View className="flex-row items-center py-1 gap-1">
-      <Ionicons name="cube" size={14} color="#a1a1a1" />
+      <ToolIcon name="cube" />
       <Text className="text-md text-neutral-400 font-bold px-1">MCP</Text>
       <View className="bg-gray-100 px-2 py-1">
         <Text className="text-md text-neutral-600" numberOfLines={1}>

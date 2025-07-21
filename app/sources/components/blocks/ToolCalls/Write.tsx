@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './design-tokens/MonoText';
-import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
 import { ShimmerToolName } from './design-tokens/ShimmerToolName';
@@ -79,7 +78,7 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
     
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-        <Ionicons name="warning" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#ef4444" />
+        <ToolIcon name="create-outline" state="error" />
         <Text className={`${TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_SIZE} text-red-500 font-bold px-1`}>Created</Text>
         <Text
           className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}

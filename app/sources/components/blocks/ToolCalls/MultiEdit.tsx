@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './design-tokens/MonoText';
-import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
@@ -182,16 +181,10 @@ export const MultiEditDetailedView = ({ tool }: { tool: MultiEditToolCall }) => 
       <View className="p-4">
         <View className="flex-row justify-between items-center mb-4">
           <View className="flex-row items-center">
-            <Ionicons name="pencil" size={18} color="#374151" style={{ marginRight: 8 }} />
+            <ToolIcon name="pencil" />
             <Text className="text-lg font-semibold text-gray-900">Multi Edit Diff</Text>
           </View>
           <View className="px-2 py-1 bg-gray-100 rounded-xl flex-row items-center">
-            <Ionicons
-              name={getStatusIcon(tool.state)}
-              size={14}
-              color={getStatusIconColor(tool.state)}
-              style={{ marginRight: 4 }}
-            />
             <Text className={`text-sm font-medium ${getStatusColorClass(tool.state)}`}>
               {getStatusDisplay(tool.state)}
             </Text>
