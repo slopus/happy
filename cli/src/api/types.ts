@@ -182,6 +182,7 @@ export type MessageContent = z.infer<typeof MessageContentSchema>
 export type Metadata = {
   path: string,
   host: string,
+  version?: string,
   name?: string,
   usage?: {
     [model: string]: {

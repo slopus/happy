@@ -15,6 +15,7 @@ import { initializeConfiguration, configuration } from '@/configuration'
 import { initLoggerWithGlobalConfiguration, logger } from './ui/logger'
 import { readCredentials } from './persistence/persistence'
 import { doAuth } from './ui/auth'
+import packageJson from '../package.json'
 
 (async () => {
 
@@ -106,7 +107,7 @@ ${chalk.bold('Examples:')}
 
     // Show version
     if (showVersion) {
-      console.log('0.1.3')
+      console.log(packageJson.version)
       process.exit(0)
     }
 

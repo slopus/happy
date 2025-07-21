@@ -7,6 +7,7 @@ import { AgentState, Metadata } from '@/api/types';
 import { startPermissionServerV2 } from '@/claude/mcp/startPermissionServerV2';
 import type { OnAssistantResultCallback } from '@/ui/messageFormatter';
 import { InterruptController } from '@/claude/InterruptController';
+import packageJson from '../../package.json';
 
 export interface StartOptions {
     model?: string
@@ -22,7 +23,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Create a new session
     let state: AgentState = {};
-    let metadata: Metadata = { path: workingDirectory, host: os.hostname() };
+    let metadata: Metadata = { path: workingDirectory, host: os.hostname(), version: packageJson.version };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);
 
