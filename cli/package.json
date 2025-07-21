@@ -1,13 +1,13 @@
 {
   "name": "happy-coder",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Claude Code session sharing CLI",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
   "type": "module",
-  "homepage": "https://github.com/bra1ndump/handy-cli",
-  "bugs": "https://github.com/bra1ndump/handy-cli/issues",
-  "repository": "bra1ndump/handy-cli",
+  "homepage": "https://github.com/slopus/happy-cli",
+  "bugs": "https://github.com/slopus/happy-cli/issues",
+  "repository": "slopus/happy-cli",
   "bin": {
     "happy": "./bin/happy"
   },
