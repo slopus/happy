@@ -1,7 +1,8 @@
 import React from "react";
 import { View, Text, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { type Message, type ToolCall } from "@/sync/storageTypes";
+import { type Message } from "@/sync/typesMessage";
+import { type ToolCall } from "@/sync/typesMessage";
 import { DetailedToolBlock } from "@/components/blocks/RenderToolCallV4";
 
 interface MessageDetailViewProps {

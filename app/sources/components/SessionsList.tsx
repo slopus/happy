@@ -9,8 +9,6 @@ import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { Typography } from '@/constants/Typography';
-import { SessionText } from './SessionText';
-import { Message } from '@/sync/typesMessage';
 import { Session } from '@/sync/storageTypes';
 
 interface SessionsListProps {
