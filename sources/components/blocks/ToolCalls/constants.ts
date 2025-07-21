@@ -3,7 +3,6 @@
 
 export const TOOL_COMPACT_VIEW_STYLES = {
   // Font sizes - matching MarkdownView.tsx
-  TOOL_NAME_SIZE: 'text-base', // 16px - matching main text size
   CONTENT_SIZE: 'text-base',   // 16px - for main content text
   METADATA_SIZE: 'text-sm',    // 12px - for result counts, status text, etc.
   
@@ -17,7 +16,6 @@ export const TOOL_COMPACT_VIEW_STYLES = {
   METADATA_COLOR: 'text-neutral-500',
   
   // Common class combinations for consistent styling
-  TOOL_NAME_CLASSES: 'text-base text-neutral-500 font-bold px-1',
   CONTENT_CLASSES: 'text-base leading-6 font-normal flex-1 text-neutral-500 flex-1',
   METADATA_CLASSES: 'text-sm text-neutral-500 font-bold px-1 basis-full',
 } as const;

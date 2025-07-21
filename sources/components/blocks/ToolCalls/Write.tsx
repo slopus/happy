@@ -78,8 +78,8 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
     
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-        <ToolIcon name="create-outline" state="error" />
-        <Text className={`${TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_SIZE} text-red-500 font-bold px-1`}>Created</Text>
+        <ToolIcon name="create-outline" state={tool.state} />
+        <ToolName state={tool.state}>Create</ToolName>
         <Text
           className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}

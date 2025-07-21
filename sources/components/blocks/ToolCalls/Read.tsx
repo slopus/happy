@@ -81,7 +81,7 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
         <ToolIcon name="eye" state={tool.state} />
-        <Text className={`${TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_SIZE} text-red-500 font-bold px-1`}>Read</Text>
+        <ToolName state={tool.state}>Read</ToolName>
         <Text
           className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
