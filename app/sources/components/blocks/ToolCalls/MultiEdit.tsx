@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
-import { type ToolCall } from "@/sync/storageTypes";
+import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
@@ -43,8 +43,8 @@ export function MultiEditCompactView({ tool, sessionId, messageId }: { tool: Too
 
 // Compact view for display in session list (1-2 lines max)
 export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
-  const args = parseMultiEditArguments(tool.arguments);
-  
+  const args = parseMultiEditArguments(tool.input);
+
   if (!args) {
     return (
       <View className="flex-row items-center py-1">
@@ -62,10 +62,10 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
     if (!args.edits || args.edits.length === 0) {
       return { additions: 0, deletions: 0 };
     }
-    
+
     let totalAdditions = 0;
     let totalDeletions = 0;
-    
+
     for (const edit of args.edits) {
       if (edit.old_string && edit.new_string) {
         const stats = calculateDiffStats(edit.old_string, edit.new_string);
@@ -73,13 +73,13 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
         totalDeletions += stats.deletions;
       }
     }
-    
+
     return { additions: totalAdditions, deletions: totalDeletions };
   }, [args.edits]);
 
   // Extract just the filename from the path
   const fileName = args.file_path.split('/').pop() || args.file_path;
-  
+
   // Show different content based on completion status
   if (tool.state === 'completed') {
     return (
@@ -89,7 +89,7 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
         <Text className="text-sm text-neutral-800" numberOfLines={1}>
           1 file edited
         </Text>
-        
+
         {/* Total diff stats */}
         {(totalDiffStats.additions > 0 || totalDiffStats.deletions > 0) && (
           <View className="flex-row items-center ml-2">
@@ -108,7 +108,7 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
       </View>
     );
   }
-  
+
   return (
     <View className="flex-row items-center py-1">
       <Ionicons name="pencil" size={14} color="#a1a1a1" />
@@ -119,7 +119,7 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
       >
         {fileName} ({args.edits.length} edits)
       </Text>
-      
+
       {/* Diff stats while running */}
       {(totalDiffStats.additions > 0 || totalDiffStats.deletions > 0) && (
         <View className="flex-row items-center ml-2">
@@ -141,15 +141,15 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
 
 // Detailed view for full-screen modal
 export const MultiEditDetailedView = ({ tool }: { tool: MultiEditToolCall }) => {
-  const { file_path: filePath, edits } = tool.arguments;
-  
+  const { file_path: filePath, edits } = tool.input;
+
   // Memoize total diff stats calculation
   const totalStats = useMemo(() => {
     if (!edits || edits.length === 0) return { additions: 0, deletions: 0 };
-    
+
     let totalAdditions = 0;
     let totalDeletions = 0;
-    
+
     edits.forEach((edit: EditOperation) => {
       if (edit.old_string && edit.new_string) {
         const stats = calculateDiffStats(edit.old_string, edit.new_string);
@@ -157,7 +157,7 @@ export const MultiEditDetailedView = ({ tool }: { tool: MultiEditToolCall }) => 
         totalDeletions += stats.deletions;
       }
     });
-    
+
     return { additions: totalAdditions, deletions: totalDeletions };
   }, [edits]);
 
@@ -183,11 +183,11 @@ export const MultiEditDetailedView = ({ tool }: { tool: MultiEditToolCall }) => 
             <Text className="text-lg font-semibold text-gray-900">Multi Edit Diff</Text>
           </View>
           <View className="px-2 py-1 bg-gray-100 rounded-xl flex-row items-center">
-            <Ionicons 
-              name={getStatusIcon(tool.state)} 
-              size={14} 
-              color={getStatusIconColor(tool.state)} 
-              style={{ marginRight: 4 }} 
+            <Ionicons
+              name={getStatusIcon(tool.state)}
+              size={14}
+              color={getStatusIconColor(tool.state)}
+              style={{ marginRight: 4 }}
             />
             <Text className={`text-sm font-medium ${getStatusColorClass(tool.state)}`}>
               {getStatusDisplay(tool.state)}
@@ -198,11 +198,11 @@ export const MultiEditDetailedView = ({ tool }: { tool: MultiEditToolCall }) => 
         {/* Edit Summary */}
         <View className="mb-3 bg-blue-50 rounded-lg p-3 border border-blue-200">
           <View className="flex-row items-center">
-            <Ionicons 
-              name={getStatusIcon(tool.state)} 
-              size={16} 
-              color={getStatusIconColor(tool.state)} 
-              style={{ marginRight: 6 }} 
+            <Ionicons
+              name={getStatusIcon(tool.state)}
+              size={16}
+              color={getStatusIconColor(tool.state)}
+              style={{ marginRight: 6 }}
             />
             <Text className="text-sm font-medium text-blue-800">
               {edits.length} edits applied to {fileName}
@@ -227,7 +227,7 @@ export const MultiEditDetailedView = ({ tool }: { tool: MultiEditToolCall }) => 
                 )}
               </Text>
             </View>
-            
+
             {/* Shared Diff View for this edit */}
             <SharedDiffView
               oldContent={edit.old_string || ''}

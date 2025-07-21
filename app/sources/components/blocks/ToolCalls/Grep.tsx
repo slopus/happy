@@ -4,7 +4,7 @@ import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
-import { type ToolCall } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
@@ -53,9 +53,9 @@ export function GrepCompactView({ tool, sessionId, messageId }: { tool: GrepTool
 
 export function GrepCompactViewInner({ tool }: { tool: GrepToolCall }) {
   // Parse input arguments
-  const query = tool.arguments?.query || tool.arguments?.pattern;
-  const filePath = tool.arguments?.file_path || tool.arguments?.files || tool.arguments?.path;
-  const directory = tool.arguments?.directory || tool.arguments?.dir;
+  const query = tool.input?.query || tool.input?.pattern;
+  const filePath = tool.input?.file_path || tool.input?.files || tool.input?.path;
+  const directory = tool.input?.directory || tool.input?.dir;
   
   // Determine if this is a single file search or multi-file search
   const isSingleFileSearch = typeof filePath === 'string' && !directory;
@@ -122,18 +122,18 @@ export function GrepCompactViewInner({ tool }: { tool: GrepToolCall }) {
 // Detailed view for full-screen modal
 export const GrepDetailedView = ({ tool }: { tool: GrepToolCall }) => {
   // Parse input arguments
-  const pattern = tool.arguments?.pattern || tool.arguments?.query;
-  const searchPath = tool.arguments?.path;
-  const glob = tool.arguments?.glob;
-  const outputMode = tool.arguments?.output_mode || 'files_with_matches';
-  const caseInsensitive = tool.arguments?.['-i'];
-  const showLineNumbers = tool.arguments?.['-n'];
-  const contextBefore = tool.arguments?.['-B'];
-  const contextAfter = tool.arguments?.['-A'];
-  const contextAround = tool.arguments?.['-C'];
-  const fileType = tool.arguments?.type;
-  const headLimit = tool.arguments?.head_limit;
-  const multiline = tool.arguments?.multiline;
+  const pattern = tool.input?.pattern || tool.input?.query;
+  const searchPath = tool.input?.path;
+  const glob = tool.input?.glob;
+  const outputMode = tool.input?.output_mode || 'files_with_matches';
+  const caseInsensitive = tool.input?.['-i'];
+  const showLineNumbers = tool.input?.['-n'];
+  const contextBefore = tool.input?.['-B'];
+  const contextAfter = tool.input?.['-A'];
+  const contextAround = tool.input?.['-C'];
+  const fileType = tool.input?.type;
+  const headLimit = tool.input?.head_limit;
+  const multiline = tool.input?.multiline;
 
   // Parse the tool result
   let parsedResult: ParsedGrepToolResult | null = null;

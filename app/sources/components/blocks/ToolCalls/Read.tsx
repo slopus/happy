@@ -3,7 +3,7 @@ import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
-import { type ToolCall } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 import { ShimmerText } from './ShimmerRunningToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView } from './SharedDiffView';
@@ -44,8 +44,8 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
   let parsedInput: ParsedToolInput | null = null;
   let inputParseError: string | null = null;
 
-  if (tool.arguments) {
-    const inputParseResult = ToolInputSchema.safeParse(tool.arguments);
+  if (tool.input) {
+    const inputParseResult = ToolInputSchema.safeParse(tool.input);
     if (inputParseResult.success) {
       parsedInput = inputParseResult.data;
     } else {
@@ -55,7 +55,7 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
 
   // Handle running state
   if (tool.state === 'running') {
-    const filePath = parsedInput?.file_path || (typeof tool.arguments?.file_path === 'string' ? tool.arguments.file_path : 'unknown');
+    const filePath = parsedInput?.file_path || (typeof tool.input?.file_path === 'string' ? tool.input.file_path : 'unknown');
     const fileName = filePath.split('/').pop() || filePath;
     
     return (
@@ -74,7 +74,7 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
 
   // Handle error state
   if (tool.state === 'error') {
-    const filePath = parsedInput?.file_path || (typeof tool.arguments?.file_path === 'string' ? tool.arguments.file_path : 'unknown');
+    const filePath = parsedInput?.file_path || (typeof tool.input?.file_path === 'string' ? tool.input.file_path : 'unknown');
     const fileName = filePath.split('/').pop() || filePath;
     
     return (
@@ -150,7 +150,7 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
 
 // Detailed view for full-screen modal
 export const ReadDetailedView = ({ tool }: { tool: ReadToolCall }) => {
-  const args = tool.arguments as ParsedToolInput;
+  const args = tool.input as ParsedToolInput;
   
   // Parse the tool result
   let parsedResult: ParsedToolResult | null = null;

@@ -1,31 +1,31 @@
 import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { type ToolCall } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 import { ShimmerText } from './ShimmerRunningToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 
 // Type for MCP tool calls with pattern mcp__{server}__{operation}
-export type MCPToolCall = Omit<ToolCall, 'name'> & { 
-  name: `mcp__${string}__${string}` 
+export type MCPToolCall = Omit<ToolCall, 'name'> & {
+  name: `mcp__${string}__${string}`
 };
 
 // Helper function to parse MCP tool name
 function parseMCPToolName(toolName: string): { server: string; operation: string } | null {
   const match = toolName.match(/^mcp__(.+?)__(.+)$/);
   if (!match) return null;
-  
+
   return {
     server: match[1],
     operation: match[2]
   };
 }
 
-export function MCPCompactView({ tool, sessionId, messageId }: { 
-  tool: MCPToolCall; 
-  sessionId: string; 
-  messageId: string; 
+export function MCPCompactView({ tool, sessionId, messageId }: {
+  tool: MCPToolCall;
+  sessionId: string;
+  messageId: string;
 }) {
   return (
     <SingleLineToolSummaryBlock sessionId={sessionId} messageId={messageId}>
@@ -36,7 +36,7 @@ export function MCPCompactView({ tool, sessionId, messageId }: {
 
 export function MCPCompactViewInner({ tool }: { tool: MCPToolCall }) {
   const parsed = parseMCPToolName(tool.name);
-  
+
   if (!parsed) {
     return (
       <View className="flex-row items-center py-1 gap-1">
@@ -106,7 +106,7 @@ export function MCPCompactViewInner({ tool }: { tool: MCPToolCall }) {
 // Detailed view for full-screen modal
 export const MCPDetailedView = ({ tool }: { tool: MCPToolCall }) => {
   const parsed = parseMCPToolName(tool.name);
-  
+
   if (!parsed) {
     return (
       <View className="flex-1 p-4 bg-white">
@@ -119,7 +119,7 @@ export const MCPDetailedView = ({ tool }: { tool: MCPToolCall }) => {
   const { server, operation } = parsed;
 
   // Format arguments and result as JSON strings
-  const argumentsJson = tool.arguments ? JSON.stringify(tool.arguments, null, 2) : 'null';
+  const argumentsJson = tool.input ? JSON.stringify(tool.input, null, 2) : 'null';
   const resultJson = tool.result ? JSON.stringify(tool.result, null, 2) : 'null';
 
   // Create markdown code blocks for JSON display
@@ -143,7 +143,7 @@ export const MCPDetailedView = ({ tool }: { tool: MCPToolCall }) => {
         <View className="mb-4 bg-blue-50 rounded-lg p-3 border border-blue-200">
           <Text className="text-md font-medium text-blue-800 mb-1">Server</Text>
           <Text className="text-md font-mono text-blue-700 mb-2">{server}</Text>
-          
+
           <Text className="text-md font-medium text-blue-800 mb-1">Operation</Text>
           <Text className="text-md font-mono text-blue-700">{operation}</Text>
         </View>

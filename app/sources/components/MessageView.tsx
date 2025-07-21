@@ -1,17 +1,9 @@
-import {
-  AssistantContent,
-  Message,
-  MessageContent,
-  Metadata,
-  ToolCall,
-  UserContent,
-} from "@/sync/storageTypes";
 import * as React from "react";
-import { View, Text, Pressable } from "react-native";
+import { View, Text } from "react-native";
 import { MarkdownView } from "./markdown/MarkdownView";
-import { RenderToolV3 } from "./blocks/RenderToolCallV3";
-import { fakeTool } from "./blocks/debug/data-for-nested-toolcall";
 import { CompactToolBlock as CompactToolBlock } from "./blocks/RenderToolCallV4";
+import { AgentMessage, Message, ToolCall, UserMessage } from "@/sync/typesMessage";
+import { Metadata } from "@/sync/storageTypes";
 // import { RenderToolV1 } from './blocks/RenderToolCallV1';
 
 export const MessageView = (props: {
@@ -50,7 +42,7 @@ export const MessageView = (props: {
 };
 
 function UserMessageView(props: {
-  message: UserContent;
+  message: UserMessage;
   metadata: Metadata | null;
 }) {
   if (props.message.content.type === "text") {
@@ -79,7 +71,7 @@ function UserMessageView(props: {
 // to the props.
 // Once I understand what the intention behind the types are, I will refactor this.
 function AgentMessageView(props: {
-  message: AssistantContent;
+  message: AgentMessage;
   metadata: Metadata | null;
   messageId: string;
   sessionId: string;

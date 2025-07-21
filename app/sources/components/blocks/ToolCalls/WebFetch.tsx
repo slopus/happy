@@ -4,7 +4,7 @@ import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
-import { type ToolCall } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
@@ -30,8 +30,8 @@ export function WebFetchCompactView({ tool, sessionId, messageId }: { tool: WebF
 
 export function WebFetchCompactViewInner({ tool }: { tool: WebFetchToolCall }) {
   // Parse input arguments
-  const url = tool.arguments?.url;
-  const prompt = tool.arguments?.prompt;
+  const url = tool.input?.url;
+  const prompt = tool.input?.prompt;
   
   // Dynamic label based on state
   const label = tool.state === 'running' ? 'Fetching' : 'fetch';

@@ -3,12 +3,13 @@ import { AuthCredentials } from '@/auth/tokenStorage';
 import { ApiEncryption } from '@/sync/apiEncryption';
 import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
-import { DecryptedMessage, MessageContent, Session } from './storageTypes';
+import { DecryptedMessage, Session } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform } from 'react-native';
+import { RawRecord } from './typesRaw';
 
 const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
@@ -63,14 +64,14 @@ class Sync {
         const localId = randomUUID();
 
         // Create user message content
-        const content: MessageContent = {
+        const content: RawRecord = {
             role: 'user',
             content: {
                 type: 'text',
                 text
             }
         };
-        const encryptedContent = this.encryption.encrypt(content);
+        const encryptedRawRecord = this.encryption.encryptRawRecord(content);
 
         // Add to messages
         storage.getState().applyMessages(sessionId, [{
@@ -82,7 +83,7 @@ class Sync {
         }]);
 
         // Send message
-        apiSocket.send('message', { sid: sessionId, message: encryptedContent, localId });
+        apiSocket.send('message', { sid: sessionId, message: encryptedRawRecord, localId });
     }
 
     //
@@ -144,6 +145,7 @@ class Sync {
         for (const msg of [...data.messages as ApiMessage[]].reverse()) {
             messages.push(this.encryption.decryptMessage(msg)!);
         }
+        console.log(JSON.stringify(messages));
 
         // Apply to storage
         storage.getState().applyMessages(sessionId, messages);

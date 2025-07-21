@@ -2,7 +2,7 @@ import React from 'react';
 import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
-import { type ToolCall } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
@@ -42,7 +42,7 @@ export function TodoWriteCompactView({ tool, sessionId, messageId }: { tool: Too
 
 // Compact view for display in session list (1-2 lines max)
 export function TodoWriteCompactViewInner({ tool }: { tool: ToolCall }) {
-  const args = parseTodoWriteArguments(tool.arguments);
+  const args = parseTodoWriteArguments(tool.input);
   
   if (!args) {
     return (
@@ -107,7 +107,7 @@ export function TodoWriteCompactViewInner({ tool }: { tool: ToolCall }) {
 
 // Detailed view for full-screen modal
 export const TodoWriteDetailedView = ({ tool }: { tool: TodoWriteToolCall }) => {
-  const args = parseTodoWriteArguments(tool.arguments);
+  const args = parseTodoWriteArguments(tool.input);
 
   if (!args) {
     return (

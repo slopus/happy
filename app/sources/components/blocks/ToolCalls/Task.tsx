@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Animated } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { type ToolCall } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
@@ -37,7 +37,7 @@ export function TaskCompactView({ tool, sessionId, messageId }: { tool: TaskTool
     }).start();
   }, [isExpanded]);
 
-  const args = parseTaskArguments(tool.arguments);
+  const args = parseTaskArguments(tool.input);
 
   const getStateIcon = (state: string) => {
     switch (state) {
@@ -109,10 +109,10 @@ export function TaskCompactView({ tool, sessionId, messageId }: { tool: TaskTool
               <Text className="text-sm text-gray-800 leading-5">{args.prompt}</Text>
               
               {/* Show child tools if any */}
-              {tool.children && tool.children.length > 0 && (
+              {tool.children && (tool.children as any[]).length > 0 && (
                 <View className="mt-3">
-                  <Text className="text-sm text-gray-600 mb-2">Sub-tasks ({tool.children.length}):</Text>
-                  {tool.children.map((child, index) => (
+                  <Text className="text-sm text-gray-600 mb-2">Sub-tasks ({(tool.children as any[]).length}):</Text>
+                  {(tool.children as any[]).map((child, index) => (
                     <View key={index} className="flex-row items-center mb-1">
                       <Ionicons 
                         name={getStateIcon(child.state)} 
@@ -134,7 +134,7 @@ export function TaskCompactView({ tool, sessionId, messageId }: { tool: TaskTool
 
 // Detailed view for full-screen modal
 export const TaskDetailedView = ({ tool }: { tool: TaskToolCall }) => {
-  const args = parseTaskArguments(tool.arguments);
+    const args = parseTaskArguments(tool.input);
 
   if (!args) {
     return (
