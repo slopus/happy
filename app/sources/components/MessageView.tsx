@@ -108,6 +108,7 @@ function AgentMessageView(props: {
             tool={tool}
             sessionId={props.sessionId}
             messageId={props.messageId}
+            metadata={props.metadata}
           />
         ))}
       </View>

@@ -97,7 +97,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                             renderItem={({ item }) => (
                                 <MessageView 
                                     message={item} 
-                                    metadata={null}
+                                    metadata={session.metadata}
                                     sessionId={sessionId}
                                 />
                             )}
