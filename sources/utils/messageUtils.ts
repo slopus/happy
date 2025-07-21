@@ -1,4 +1,5 @@
-import { DecryptedMessage, MessageContent, ToolCall } from '@/sync/storageTypes';
+import { type DecryptedMessage } from '@/sync/storageTypes';
+import { type ToolCall } from '@/sync/typesMessage';
 
 /**
  * Extracts plain text from markdown by removing formatting
@@ -42,16 +43,16 @@ function getToolSummary(tools: ToolCall[]): string {
     switch (toolName) {
       case 'Edit':
       case 'Write':
-        const filePath = tool.arguments?.target_file || tool.arguments?.file_path;
+        const filePath = tool.input?.target_file || tool.input?.file_path;
         return filePath ? `Edited ${filePath}` : `Used ${toolName}`;
       
       case 'Read':
-        const readPath = tool.arguments?.target_file || tool.arguments?.file_path;
+        const readPath = tool.input?.target_file || tool.input?.file_path;
         return readPath ? `Read ${readPath}` : 'Read file';
       
       case 'Bash':
       case 'RunCommand':
-        const command = tool.arguments?.command;
+        const command = tool.input?.command;
         if (command && typeof command === 'string') {
           return `Ran: ${command.length > 20 ? command.substring(0, 20) + '...' : command}`;
         }
