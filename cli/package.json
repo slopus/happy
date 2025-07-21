@@ -15,14 +15,26 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
   "exports": {
-    "require": {
-      "types": "./dist/index.d.cts",
-      "default": "./dist/index.cjs"
+      ".": {
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
     },
-    "import": {
-      "types": "./dist/index.d.mts",
-      "default": "./dist/index.mjs"
-    }
+    "./lib": {                                                                                      
+      "require": {                                                                                  
+        "types": "./dist/lib.d.cts",                                                                
+        "default": "./dist/lib.cjs"                                                                 
+      },                                                                                            
+      "import": {                                                                                   
+        "types": "./dist/lib.d.mts",                                                                
+        "default": "./dist/lib.mjs"                                                                 
+      }                                                                                             
+    }   
   },
   "files": [
     "dist",
