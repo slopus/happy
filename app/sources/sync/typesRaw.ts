@@ -39,8 +39,8 @@ const rawAgentRecordSchema = z.object({
         z.object({ type: z.literal('system') }),
         z.object({ type: z.literal('result') }),
         z.object({ type: z.literal('summary'), summary: z.string() }),
-        z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string(), content: z.array(rawAgentContentSchema) }) }),
-        z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.array(rawAgentContentSchema) }) }),
+        z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string(), content: z.array(rawAgentContentSchema) }), parent_tool_use_id: z.string().nullable().optional() }),
+        z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.array(rawAgentContentSchema) }), parent_tool_use_id: z.string().nullable().optional() }),
     ]),
 });
 
@@ -125,11 +125,12 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 };
             } else if (raw.content.data.type === 'assistant') {
                 let content: NormalizedAgentContent[] = [];
+                const parentToolId = raw.content.data.parent_tool_use_id || null;
                 for (let c of raw.content.data.message.content) {
                     if (c.type === 'text') {
                         content.push({ type: 'text', text: c.text });
                     } else if (c.type === 'tool_use') {
-                        content.push({ type: 'tool-call', id: c.id, name: c.name, input: c.input, parent_id: null });
+                        content.push({ type: 'tool-call', id: c.id, name: c.name, input: c.input, parent_id: parentToolId });
                     }
                 }
                 return {
@@ -141,6 +142,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 };
             } else if (raw.content.data.type === 'user') {
                 let content: NormalizedAgentContent[] = [];
+                const parentToolId = raw.content.data.parent_tool_use_id || null;
                 for (let c of raw.content.data.message.content) {
                     if (c.type === 'tool_result') {
                         content.push({ type: 'tool-result', tool_use_id: c.tool_use_id, content: typeof c.content === 'string' ? c.content : c.content[0].text, is_error: c.is_error || false });
