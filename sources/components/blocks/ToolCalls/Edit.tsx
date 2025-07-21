@@ -7,6 +7,8 @@ import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
+import { Metadata } from '@/sync/storageTypes';
+import { getRelativePath } from '@/hooks/useGetPath';
 
 export type EditToolCall = Omit<ToolCall, 'name'> & { name: 'Edit' };
 
@@ -31,16 +33,16 @@ const parseEditArguments = (args: any): EditArguments | null => {
   }
 };
 
-export function EditCompactView({ tool, sessionId, messageId }: { tool: ToolCall, sessionId: string, messageId: string }) {
+export function EditCompactView({ tool, sessionId, messageId, metadata }: { tool: ToolCall, sessionId: string, messageId: string, metadata: Metadata | null }) {
   return (
     <SingleLineToolSummaryBlock sessionId={sessionId} messageId={messageId}>
-      <EditCompactViewInner tool={tool} />
+      <EditCompactViewInner tool={tool} metadata={metadata} />
     </SingleLineToolSummaryBlock>
   );
 }
 
 // Compact view for display in session list (1-2 lines max)
-export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
+export function EditCompactViewInner({ tool, metadata }: { tool: ToolCall, metadata: Metadata | null }) {
   const args = parseEditArguments(tool.input);
   
   if (!args) {
@@ -64,8 +66,8 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
     return calculateDiffStats(args.old_string, args.new_string);
   }, [args.old_string, args.new_string]);
 
-  // Extract just the filename from the path
-  const fileName = args.file_path.split('/').pop() || args.file_path;
+  // Get relative path or filename
+  const displayPath = getRelativePath(metadata, args.file_path);
   
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
@@ -75,7 +77,7 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
         className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
       >
-        {fileName}
+        {displayPath}
       </Text>
       
       {/* Diff stats */}
@@ -97,8 +99,8 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
   );
 };
 
-// Detailed view for full-screen modal
-export const EditDetailedView = ({ tool }: { tool: EditToolCall }) => {
+// Detailed view for full-screen modal  
+export const EditDetailedView = ({ tool, metadata }: { tool: EditToolCall, metadata: Metadata | null }) => {
   const { file_path: filePath, old_string: oldString, new_string: newString, replace_all: replaceAll } = tool.input;
 
   if (!filePath) {
@@ -110,8 +112,9 @@ export const EditDetailedView = ({ tool }: { tool: EditToolCall }) => {
     );
   }
 
-  // Extract filename for display
-  const fileName = filePath.split('/').pop() || filePath;
+  // Get relative path for display
+  console.log("!!!!!! metadata", metadata);
+  const displayPath = getRelativePath(metadata || null, filePath);
 
   return (
     <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={true}>
@@ -144,7 +147,7 @@ export const EditDetailedView = ({ tool }: { tool: EditToolCall }) => {
         <SharedDiffView
           oldContent={oldString || ''}
           newContent={newString || ''}
-          fileName={filePath}
+          fileName={displayPath}
           showFileName={true}
           maxHeight={400}
         />

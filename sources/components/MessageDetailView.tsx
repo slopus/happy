@@ -4,63 +4,115 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { type Message } from "@/sync/typesMessage";
 import { type ToolCall } from "@/sync/typesMessage";
 import { DetailedToolBlock } from "@/components/blocks/RenderToolCallV4";
+import { useSession } from "@/sync/storage";
+import { type Metadata } from "@/sync/storageTypes";
 
 interface MessageDetailViewProps {
   message: Message;
   messageId: string;
+  sessionId: string;
 }
+
+const EmptyMesssage = () => (
+  <View
+    style={{
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 20,
+    }}
+  >
+    <Text style={{ fontSize: 16, color: "#666", textAlign: "center" }}>
+      This message has no content
+    </Text>
+  </View>
+);
+
+const MessageHeader = ({message, messageId}: {message: Message, messageId: string}) => (
+  <>
+    <View
+      style={{
+        backgroundColor: "#f8f9fa",
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderBottomWidth: 1,
+        borderBottomColor: "#e0e0e0",
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          alignItems: "center",
+        }}
+      >
+        <Text style={{ fontSize: 12, color: "#666" }}>
+          Message ID: {messageId}
+        </Text>
+        <Text style={{ fontSize: 12, color: "#666" }}>
+          {message.role === "user" ? "User" : "Assistant"}
+        </Text>
+      </View>
+    </View>
+
+    <View
+      style={{
+        margin: 16,
+        padding: 12,
+        backgroundColor: "#f8f9fa",
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: "#e0e0e0",
+      }}
+    >
+      <Text
+        style={{
+          fontSize: 14,
+          fontWeight: "600",
+          marginBottom: 8,
+          color: "#666",
+        }}
+      >
+        Message Details
+      </Text>
+      <Text style={{ fontSize: 12, color: "#666", fontFamily: "monospace" }}>
+        Local ID: {message.id}
+      </Text>
+      {message.role && (
+        <Text
+          style={{ fontSize: 12, color: "#666", fontFamily: "monospace" }}
+        >
+          Role: {message.role}
+        </Text>
+      )}
+      {message.content &&
+        typeof message.content === "object" &&
+        "type" in message.content && (
+          <Text
+            style={{ fontSize: 12, color: "#666", fontFamily: "monospace" }}
+          >
+            Content Type: {String((message.content as any).type)}
+          </Text>
+        )}
+    </View>
+  </>
+);
 
 export function MessageDetailView({
   message,
   messageId,
+  sessionId,
 }: MessageDetailViewProps) {
   const safeArea = useSafeAreaInsets();
 
-  // Determine message content type and render accordingly
-  const renderMessageContent = () => {
-    // Check message content type
-    if (!message.content) {
-      return renderEmptyMessage();
-    }
-
-    if (typeof message.content === "string") {
-      return renderTextMessage(message.content);
-    }
-
-    if (typeof message.content === "object" && "type" in message.content) {
-      switch (message.content.type) {
-        case "tool":
-          return renderToolMessage(message.content);
-
-        default:
-          return renderUnknownMessage(message.content);
-      }
-    }
-
-    return renderUnknownMessage(message.content);
-  };
-
-  const renderEmptyMessage = () => (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        padding: 20,
-      }}
-    >
-      <Text style={{ fontSize: 16, color: "#666", textAlign: "center" }}>
-        This message has no content
-      </Text>
-    </View>
-  );
-
+  // Ok if we were for some reason to want to show a details view modal for text
+  // messages, this is how we would do it:
   const renderTextMessage = (content: string) => (
     <ScrollView
       style={{ flex: 1 }}
       contentContainerStyle={{ paddingBottom: safeArea.bottom + 20 }}
     >
-      {renderMessageHeader()}
+      <MessageHeader message={message} messageId={messageId} />
       <View style={{ margin: 16 }}>
         <Text style={{ fontSize: 16, lineHeight: 24, color: "#333" }}>
           {content}
@@ -73,6 +125,8 @@ export function MessageDetailView({
     if (!content.tools || !Array.isArray(content.tools)) {
       return renderUnknownMessage(content);
     }
+    
+    const session = useSession(sessionId);
 
     const tools = content.tools as ToolCall[];
 
@@ -86,7 +140,7 @@ export function MessageDetailView({
             key={index}
             style={{ marginBottom: index < tools.length - 1 ? 20 : 0 }}
           >
-            <DetailedToolBlock tool={tool} />
+            <DetailedToolBlock tool={tool} metadata={session?.metadata || null} />
           </View>
         ))}
       </ScrollView>
@@ -98,7 +152,7 @@ export function MessageDetailView({
       style={{ flex: 1 }}
       contentContainerStyle={{ paddingBottom: safeArea.bottom + 20 }}
     >
-      {renderMessageHeader()}
+      <MessageHeader message={message} messageId={messageId} />
       <View style={{ margin: 16 }}>
         <Text
           style={{
@@ -129,75 +183,37 @@ export function MessageDetailView({
     </ScrollView>
   );
 
-  const renderMessageHeader = () => (
-    <>
-      <View
-        style={{
-          backgroundColor: "#f8f9fa",
-          paddingHorizontal: 16,
-          paddingVertical: 12,
-          borderBottomWidth: 1,
-          borderBottomColor: "#e0e0e0",
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <Text style={{ fontSize: 12, color: "#666" }}>
-            Message ID: {messageId}
-          </Text>
-          <Text style={{ fontSize: 12, color: "#666" }}>
-            {message.role === "user" ? "User" : "Assistant"}
-          </Text>
-        </View>
-      </View>
 
-      <View
-        style={{
-          margin: 16,
-          padding: 12,
-          backgroundColor: "#f8f9fa",
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: "#e0e0e0",
-        }}
-      >
-        <Text
-          style={{
-            fontSize: 14,
-            fontWeight: "600",
-            marginBottom: 8,
-            color: "#666",
-          }}
-        >
-          Message Details
-        </Text>
-        <Text style={{ fontSize: 12, color: "#666", fontFamily: "monospace" }}>
-          Local ID: {message.id}
-        </Text>
-        {message.role && (
-          <Text
-            style={{ fontSize: 12, color: "#666", fontFamily: "monospace" }}
-          >
-            Role: {message.role}
-          </Text>
-        )}
-        {message.content &&
-          typeof message.content === "object" &&
-          "type" in message.content && (
-            <Text
-              style={{ fontSize: 12, color: "#666", fontFamily: "monospace" }}
-            >
-              Content Type: {String((message.content as any).type)}
-            </Text>
-          )}
-      </View>
-    </>
-  );
+
+    // Determine message content type and render accordingly
+    const renderMessageContent = () => {
+      // Check message content type
+      if (!message.content) {
+        
+        return (
+          <View style={{ flex: 1, backgroundColor: "white" }}>
+              <EmptyMesssage />
+          </View>
+        )
+      }
+  
+      if (typeof message.content === "string") {
+        return renderTextMessage(message.content);
+      }
+  
+      if (typeof message.content === "object" && "type" in message.content) {
+        switch (message.content.type) {
+          case "tool":
+            return renderToolMessage(message.content);
+  
+          default:
+            return renderUnknownMessage(message.content);
+        }
+      }
+  
+      return renderUnknownMessage(message.content);
+    };
+  
 
   return (
     <View style={{ flex: 1, backgroundColor: "white" }}>
