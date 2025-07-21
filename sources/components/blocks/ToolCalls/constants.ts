@@ -18,7 +18,7 @@ export const TOOL_COMPACT_VIEW_STYLES = {
   
   // Common class combinations for consistent styling
   TOOL_NAME_CLASSES: 'text-base text-neutral-500 font-bold px-1',
-  CONTENT_CLASSES: 'text-base leading-6 font-normal flex-1 text-neutral-500',
+  CONTENT_CLASSES: 'text-base leading-6 font-normal flex-1 text-neutral-500 flex-1',
   METADATA_CLASSES: 'text-sm text-neutral-500 font-bold px-1 basis-full',
 } as const;
 

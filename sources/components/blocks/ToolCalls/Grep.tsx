@@ -1,12 +1,15 @@
 import React from 'react';
 import { View, Pressable, ScrollView } from 'react-native';
-import { MonoText as Text } from './MonoText';
+import { MonoText as Text } from './design-tokens/MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
+import { ToolIcon } from './design-tokens/ToolIcon';
+import { ToolName } from './design-tokens/ToolName';
+import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 
 /*
 Example Grep input args:
@@ -104,8 +107,8 @@ export function GrepCompactViewInner({ tool }: { tool: GrepToolCall }) {
 
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-      <Ionicons name="search" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Grep</Text>
+      <ToolIcon name="search" />
+      {tool.state === 'running' ? <ShimmerToolName>Searching</ShimmerToolName> : <ToolName>Grep</ToolName>}
       <Text
         className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}

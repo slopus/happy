@@ -1,12 +1,13 @@
 import React from 'react';
 import { View, Pressable } from 'react-native';
-import { MonoText as Text } from './MonoText';
+import { MonoText as Text } from './design-tokens/MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
+import { ToolIcon } from './design-tokens/ToolIcon';
 
 export type WebSearchToolCall = Omit<ToolCall, 'name'> & { name: 'WebSearch' };
 
@@ -69,7 +70,7 @@ export function WebSearchCompactViewInner({ tool }: { tool: WebSearchToolCall })
 
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-      <Ionicons name="search" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <ToolIcon name="search" />
       <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>{label}</Text>
       <Text
         className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}

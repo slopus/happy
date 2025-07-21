@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
 import { View, ScrollView } from 'react-native';
-import { MonoText as Text } from './MonoText';
+import { MonoText as Text } from './design-tokens/MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
-import { ShimmerText } from './ShimmerRunningToolName';
+import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView } from './SharedDiffView';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
@@ -61,7 +61,7 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
         <Ionicons name="eye" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-        <ShimmerText>Reading</ShimmerText>
+        <ShimmerToolName>Reading</ShimmerToolName>
         <Text
           className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
@@ -194,7 +194,7 @@ export const ReadDetailedView = ({ tool }: { tool: ReadToolCall }) => {
                  {/* Show loading state */}
          {tool.state === 'running' && (
            <View className="flex-1 justify-center items-center">
-             <ShimmerText>{`Reading ${args.file_path?.split('/').pop() || 'file'}...`}</ShimmerText>
+             <ShimmerToolName>{`Reading ${args.file_path?.split('/').pop() || 'file'}...`}</ShimmerToolName>
            </View>
          )}
 

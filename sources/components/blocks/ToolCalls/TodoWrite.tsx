@@ -1,11 +1,12 @@
 import React from 'react';
 import { View, ScrollView } from 'react-native';
-import { MonoText as Text } from './MonoText';
+import { MonoText as Text } from './design-tokens/MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
+import { ToolIcon } from './design-tokens/ToolIcon';
 
 export type TodoWriteToolCall = Omit<ToolCall, 'name'> & { name: 'TodoWrite' };
 
@@ -21,7 +22,6 @@ const TodoWriteArgumentsSchema = z.object({
 
 type TodoWriteArguments = z.infer<typeof TodoWriteArgumentsSchema>;
 
-// Parse arguments safely
 const parseTodoWriteArguments = (args: any): TodoWriteArguments | null => {
   try {
     return TodoWriteArgumentsSchema.parse(args);
@@ -29,8 +29,6 @@ const parseTodoWriteArguments = (args: any): TodoWriteArguments | null => {
     return null;
   }
 };
-
-
 
 export function TodoWriteCompactView({ tool, sessionId, messageId }: { tool: ToolCall, sessionId: string, messageId: string }) {
   return (
@@ -47,7 +45,7 @@ export function TodoWriteCompactViewInner({ tool }: { tool: ToolCall }) {
   if (!args) {
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-        <Ionicons name="list-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+        <ToolIcon name="list-outline" />
         <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>TODO</Text>
         <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
           Invalid arguments
@@ -77,25 +75,26 @@ export function TodoWriteCompactViewInner({ tool }: { tool: ToolCall }) {
   
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-      <Ionicons name="list" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+      <ToolIcon name="list" />
       <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Update TODOs</Text>
+      <View className="flex-1"></View>
       
       {/* Status indicators with icons */}
-      <View className="flex-row items-center ml-2 font-medium">
+      <View className="flex-row gap-2 items-center ml-2 font-medium">
         {successCount > 0 && (
-          <View className="flex-row items-center mr-2">
+          <View className="flex-row items-center">
             <Ionicons name="checkmark" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#10b981" />
             <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-green-600 ml-[2px]`}>{successCount}</Text>
           </View>
         )}
         {pendingTotal > 0 && (
-          <View className="flex-row items-center mr-2 font-bold">
+          <View className="flex-row items-center font-bold">
             <Ionicons name="sync-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#f59e0b" />
             <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-amber-600 ml-[2px]`}>{pendingTotal}</Text>
           </View>
         )}
         {failedCount > 0 && (
-          <View className="flex-row items-center mr-2">
+          <View className="flex-row items-center">
             <Ionicons name="close" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#ef4444" />
             <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-red-600 ml-[2px]`}>{failedCount}</Text>
           </View>

@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, ScrollView } from 'react-native';
-import { MonoText as Text } from './MonoText';
+import { MonoText as Text } from './design-tokens/MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
@@ -9,6 +9,9 @@ import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { Metadata } from '@/sync/storageTypes';
 import { getRelativePath } from '@/hooks/useGetPath';
+import { ToolIcon } from './design-tokens/ToolIcon';
+import { ShimmerToolName } from './design-tokens/ShimmerToolName';
+import { ToolName } from './design-tokens/ToolName';
 
 export type EditToolCall = Omit<ToolCall, 'name'> & { name: 'Edit' };
 
@@ -22,17 +25,6 @@ const EditArgumentsSchema = z.object({
 
 type EditArguments = z.infer<typeof EditArgumentsSchema>;
 
-
-
-// Parse arguments safely
-const parseEditArguments = (args: any): EditArguments | null => {
-  try {
-    return EditArgumentsSchema.parse(args);
-  } catch {
-    return null;
-  }
-};
-
 export function EditCompactView({ tool, sessionId, messageId, metadata }: { tool: ToolCall, sessionId: string, messageId: string, metadata: Metadata | null }) {
   return (
     <SingleLineToolSummaryBlock sessionId={sessionId} messageId={messageId}>
@@ -43,13 +35,14 @@ export function EditCompactView({ tool, sessionId, messageId, metadata }: { tool
 
 // Compact view for display in session list (1-2 lines max)
 export function EditCompactViewInner({ tool, metadata }: { tool: ToolCall, metadata: Metadata | null }) {
-  const args = parseEditArguments(tool.input);
+  const parseResult = EditArgumentsSchema.safeParse(tool.input);
   
-  if (!args) {
+  if (!parseResult.success) {
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-        <Ionicons name="pencil-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Edit</Text>
+        <ToolIcon name="pencil-outline" />
+        {tool.state === "running" && (<ShimmerToolName>Editing</ShimmerToolName>)}
+        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>{tool.state}</Text>
         <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
           Invalid arguments
         </Text>
@@ -57,6 +50,7 @@ export function EditCompactViewInner({ tool, metadata }: { tool: ToolCall, metad
     );
   }
 
+  const args: EditArguments = parseResult.data;
   // Calculate diff stats for display
   const diffStats = useMemo(() => {
     if (!args.old_string || !args.new_string) {
@@ -71,8 +65,9 @@ export function EditCompactViewInner({ tool, metadata }: { tool: ToolCall, metad
   
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-      <Ionicons name="pencil" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Edit</Text>
+      <ToolIcon name="pencil" />
+      {tool.state === "running" && (<ShimmerToolName>Editing</ShimmerToolName>)}
+      {tool.state !== "running" && <ToolName>Edit</ToolName>}
       <Text
         className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 import { ToolCall } from '@/sync/typesMessage';
+import { ToolIcon } from './design-tokens/ToolIcon';
 
 interface UnknownToolDetailedViewProps {
   tool: ToolCall;
@@ -9,6 +10,7 @@ interface UnknownToolDetailedViewProps {
 export function UnknownToolDetailedView({ tool }: UnknownToolDetailedViewProps) {
   return (
     <View className="bg-gray-50 p-4 rounded-lg border border-gray-300 m-4">
+      <ToolIcon name="help-outline" />
       <Text className="text-base font-semibold mb-2 text-gray-800">
         {tool.name}
       </Text>

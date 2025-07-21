@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, ScrollView } from 'react-native';
-import { MonoText as Text } from './MonoText';
+import { MonoText as Text } from './design-tokens/MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
-import { ShimmerText } from './ShimmerRunningToolName';
+import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
+import { ToolName } from './design-tokens/ToolName';
+import { ToolIcon } from './design-tokens/ToolIcon';
 
 export type LSToolCall = Omit<ToolCall, 'name'> & { name: 'LS' };
 
@@ -120,8 +122,9 @@ export function LSCompactView({ tool }: { tool: LSToolCall }) {
 
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-      <Ionicons name="folder-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-      {tool.state === 'running' ? <ShimmerText>Listing</ShimmerText> : <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>List</Text>}
+      <ToolIcon name="folder-outline" />
+      {tool.state === 'running' && (<ShimmerToolName>Listing</ShimmerToolName>)}
+      {tool.state !== 'running' && (<ToolName>List</ToolName>)}
       <Text
         className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
