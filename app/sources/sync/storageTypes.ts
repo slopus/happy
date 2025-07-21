@@ -8,6 +8,7 @@ import { NormalizedMessage } from "./typesRaw";
 export const MetadataSchema = z.object({
     path: z.string(),
     host: z.string(),
+    version: z.string().optional(),
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

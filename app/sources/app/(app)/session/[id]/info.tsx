@@ -144,6 +144,14 @@ export default function SessionInfo() {
                             icon={<Ionicons name="folder-outline" size={29} color="#5856D6" />}
                             showChevron={false}
                         />
+                        {session.metadata.version && (
+                            <Item 
+                                title="Version"
+                                subtitle={session.metadata.version}
+                                icon={<Ionicons name="git-branch-outline" size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
                         <Item 
                             title="Copy Metadata"
                             icon={<Ionicons name="copy-outline" size={29} color="#007AFF" />}
