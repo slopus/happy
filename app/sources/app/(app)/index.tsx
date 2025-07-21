@@ -1,6 +1,6 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { MaterialIcons } from '@expo/vector-icons';
+import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Image, Platform, Pressable, Text, View } from "react-native";
 import * as React from 'react';
 import { encodeBase64 } from "@/auth/base64";
@@ -182,10 +182,10 @@ function HeaderRight() {
 
     return (
         <Pressable
-            onPress={() => router.push('/about')}
+            onPress={() => router.push('/settings')}
             hitSlop={10}
         >
-            <MaterialIcons name="info-outline" size={24} color="#000" />
+            <Ionicons name="settings-outline" size={24} color="#000" />
         </Pressable>
     );
 }
