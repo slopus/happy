@@ -1,7 +1,6 @@
 import React, { useMemo } from 'react';
 import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './design-tokens/MonoText';
-import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
@@ -37,12 +36,14 @@ export function EditCompactView({ tool, sessionId, messageId, metadata }: { tool
 export function EditCompactViewInner({ tool, metadata }: { tool: ToolCall, metadata: Metadata | null }) {
   const parseResult = EditArgumentsSchema.safeParse(tool.input);
   
+  // If we can't parse the arguments at all, we can explain that we can't show
+  // any more information
   if (!parseResult.success) {
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
         <ToolIcon name="pencil-outline" />
         {tool.state === "running" && (<ShimmerToolName>Editing</ShimmerToolName>)}
-        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>{tool.state}</Text>
+        <ToolName>{tool.state}</ToolName>
         <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
           Invalid arguments
         </Text>
@@ -117,7 +118,7 @@ export const EditDetailedView = ({ tool, metadata }: { tool: EditToolCall, metad
       <View className="p-4">
         <View className="flex-row justify-between items-center mb-4">
           <View className="flex-row items-center">
-            <Ionicons name="pencil" size={18} color="#374151" style={{ marginRight: 8 }} />
+            <ToolIcon name="pencil" />
             <Text className="text-lg font-semibold text-gray-900">Edit Diff</Text>
           </View>
           <View className="px-2 py-1 bg-gray-100 rounded-xl">

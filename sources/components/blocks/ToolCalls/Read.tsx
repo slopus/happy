@@ -1,13 +1,14 @@
 import React, { useMemo } from 'react';
 import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './design-tokens/MonoText';
-import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
 import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView } from './SharedDiffView';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
+import { ToolIcon } from './design-tokens/ToolIcon';
+import { ToolName } from './design-tokens/ToolName';
 
 export type ReadToolCall = Omit<ToolCall, 'name'> & { name: 'Read' };
 
@@ -60,7 +61,7 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
     
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-        <Ionicons name="eye" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
+        <ToolIcon name="eye" />
         <ShimmerToolName>Reading</ShimmerToolName>
         <Text
           className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
@@ -79,7 +80,7 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
     
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-        <Ionicons name="warning" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#ef4444" />
+        <ToolIcon name="eye" state={tool.state} />
         <Text className={`${TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_SIZE} text-red-500 font-bold px-1`}>Read</Text>
         <Text
           className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
@@ -99,8 +100,8 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
   if (inputParseError && !parsedInput) {
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-        <Ionicons name="eye" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Read</Text>
+        <ToolIcon name="eye" state={tool.state} />
+        <ToolName>Read</ToolName>
         <Text
           className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
@@ -133,8 +134,8 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
 
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-      <Ionicons name="eye" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Read</Text>
+      <ToolIcon name="eye" state={tool.state} />
+      <ToolName>Read</ToolName>
       <Text
         className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
@@ -201,7 +202,7 @@ export const ReadDetailedView = ({ tool }: { tool: ReadToolCall }) => {
         {/* Show error state */}
         {tool.state === 'error' && (
           <View className="flex-1 justify-center items-center p-4">
-            <Ionicons name="warning" size={48} color="#ef4444" />
+            <ToolIcon name="eye" state="error" />
             <Text className="text-lg font-medium text-red-600 mt-4 text-center">
               Failed to read file
             </Text>

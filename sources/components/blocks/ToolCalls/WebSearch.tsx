@@ -1,13 +1,14 @@
 import React from 'react';
 import { View, Pressable } from 'react-native';
 import { MonoText as Text } from './design-tokens/MonoText';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { ToolIcon } from './design-tokens/ToolIcon';
+import { ToolName } from './design-tokens/ToolName';
+import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 
 export type WebSearchToolCall = Omit<ToolCall, 'name'> & { name: 'WebSearch' };
 
@@ -36,9 +37,6 @@ export function WebSearchCompactViewInner({ tool }: { tool: WebSearchToolCall })
   const query = tool.input?.query;
   const allowedDomains = tool.input?.allowed_domains;
   const blockedDomains = tool.input?.blocked_domains;
-  
-  // Dynamic label based on state
-  const label = tool.state === 'running' ? 'Searching' : 'search';
   
   // Parse the tool.result using Zod schema
   let parsedResult: ParsedWebSearchToolResult | null = null;
@@ -71,7 +69,8 @@ export function WebSearchCompactViewInner({ tool }: { tool: WebSearchToolCall })
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
       <ToolIcon name="search" />
-      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>{label}</Text>
+      {tool.state === "running" && (<ShimmerToolName>Searching</ShimmerToolName>)}
+      {tool.state !=="running" && (<ToolName>Search</ToolName>)}
       <Text
         className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}

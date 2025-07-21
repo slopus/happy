@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './design-tokens/MonoText';
-import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
 import { ShimmerToolName } from './design-tokens/ShimmerToolName';
@@ -239,7 +238,7 @@ export const LSDetailedView = ({ tool }: { tool: LSToolCall }) => {
       <View className="px-3">
         {items.length === 0 ? (
           <View className="py-8 items-center">
-            <Ionicons name="folder-open-outline" size={48} color="#9CA3AF" />
+            <ToolIcon name="folder-open-outline" />
             <Text className="text-gray-500 text-base mt-2">Directory is empty</Text>
           </View>
         ) : (

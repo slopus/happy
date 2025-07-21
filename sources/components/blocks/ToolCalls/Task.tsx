@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Animated } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
@@ -73,15 +72,12 @@ export function TaskCompactView({ tool, sessionId, messageId }: { tool: TaskTool
                   {args.description}
                 </Text>
                 <View className="flex-row items-center gap-1">
-                  <Ionicons 
-                    name={getStateIcon(tool.state)} 
-                    size={14} 
-                    color={getStateColor(tool.state)} 
+                  <ToolIcon 
+                    name={getStateIcon(tool.state) as any} 
+                    state={tool.state === 'error' ? 'error' : undefined}
                   />
-                  <Ionicons 
+                  <ToolIcon 
                     name={isExpanded ? "chevron-up" : "chevron-down"} 
-                    size={14} 
-                    color="#6b7280"
                   />
                 </View>
               </>
@@ -117,10 +113,9 @@ export function TaskCompactView({ tool, sessionId, messageId }: { tool: TaskTool
                   <Text className="text-sm text-gray-600 mb-2">Sub-tasks ({(tool.children as any[]).length}):</Text>
                   {(tool.children as any[]).map((child, index) => (
                     <View key={index} className="flex-row items-center mb-1">
-                      <Ionicons 
-                        name={getStateIcon(child.state)} 
-                        size={12} 
-                        color={getStateColor(child.state)} 
+                      <ToolIcon 
+                        name={getStateIcon(child.state) as any} 
+                        state={child.state === 'error' ? 'error' : undefined}
                       />
                       <Text className="text-sm text-gray-700 ml-2">{child.name}</Text>
                     </View>
@@ -171,13 +166,12 @@ export const TaskDetailedView = ({ tool }: { tool: TaskToolCall }) => {
       {/* Header */}
       <View className="pt-5 px-4 pb-2">
         <View className="flex-row items-center">
-          <Ionicons name="flash" size={24} color="#6b7280" />
+          <ToolIcon name="flash" />
           <Text className="text-2xl font-bold ml-2">Task</Text>
           <View className="ml-auto flex-row items-center">
-            <Ionicons 
-              name={getStateIcon(tool.state)} 
-              size={20} 
-              color={getStateColor(tool.state)} 
+            <ToolIcon 
+              name={getStateIcon(tool.state) as any} 
+              state={tool.state === 'error' ? 'error' : undefined} 
             />
             <Text className={`text-sm font-medium ml-1`} style={{ color: getStateColor(tool.state) }}>
               {tool.state.toUpperCase()}

@@ -1,7 +1,6 @@
 import React from 'react';
 import { View, Pressable, ScrollView } from 'react-native';
 import { MonoText as Text } from './design-tokens/MonoText';
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
@@ -266,7 +265,7 @@ export const GrepDetailedView = ({ tool }: { tool: GrepToolCall }) => {
             <Text className="text-gray-500 italic">No results available</Text>
           ) : parsedResult.numFiles === 0 && parsedResult.numLines === 0 ? (
             <View className="items-center py-8">
-              <Ionicons name="search" size={48} color="#9ca3af" />
+              <ToolIcon name="search" />
               <Text className="text-gray-500 text-lg font-medium mt-2">No matches found</Text>
               <Text className="text-gray-400 text-sm text-center mt-1">
                 Try adjusting your search pattern or expanding the search scope
@@ -290,7 +289,7 @@ export const GrepDetailedView = ({ tool }: { tool: GrepToolCall }) => {
             <View className="space-y-2">
               {parsedResult.filenames.map((filename, index) => (
                 <View key={index} className="flex-row items-center py-2 px-3 bg-gray-50 rounded-lg">
-                  <Ionicons name="document-outline" size={16} color="#6b7280" />
+                  <ToolIcon name="document-outline" />
                   <Text className="text-sm font-mono text-gray-800 ml-2 flex-1" selectable={true}>
                     {filename}
                   </Text>

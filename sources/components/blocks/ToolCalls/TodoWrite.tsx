@@ -1,12 +1,14 @@
 import React from 'react';
 import { View, ScrollView } from 'react-native';
-import { MonoText as Text } from './design-tokens/MonoText';
 import { Ionicons } from '@expo/vector-icons';
+import { MonoText as Text } from './design-tokens/MonoText';
 import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { ToolIcon } from './design-tokens/ToolIcon';
+import { ToolName } from './design-tokens/ToolName';
+import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 
 export type TodoWriteToolCall = Omit<ToolCall, 'name'> & { name: 'TodoWrite' };
 
@@ -46,7 +48,8 @@ export function TodoWriteCompactViewInner({ tool }: { tool: ToolCall }) {
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
         <ToolIcon name="list-outline" />
-        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>TODO</Text>
+        {tool.state === "running" && (<ShimmerToolName>Updating TODOs</ShimmerToolName>)}
+        {tool.state !== "running" && (<ToolName>Update TODOs</ToolName>)}
         <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
           Invalid arguments
         </Text>
@@ -76,26 +79,27 @@ export function TodoWriteCompactViewInner({ tool }: { tool: ToolCall }) {
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
       <ToolIcon name="list" />
-      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Update TODOs</Text>
+      {tool.state === "running" && (<ShimmerToolName>Updating TODOs</ShimmerToolName>)}
+      {tool.state !== "running" && (<ToolName>Update TODOs</ToolName>)}
       <View className="flex-1"></View>
       
       {/* Status indicators with icons */}
       <View className="flex-row gap-2 items-center ml-2 font-medium">
         {successCount > 0 && (
           <View className="flex-row items-center">
-            <Ionicons name="checkmark" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#10b981" />
+            <ToolIcon name="checkmark" />
             <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-green-600 ml-[2px]`}>{successCount}</Text>
           </View>
         )}
         {pendingTotal > 0 && (
           <View className="flex-row items-center font-bold">
-            <Ionicons name="sync-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#f59e0b" />
+            <ToolIcon name="sync-outline" />
             <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-amber-600 ml-[2px]`}>{pendingTotal}</Text>
           </View>
         )}
         {failedCount > 0 && (
           <View className="flex-row items-center">
-            <Ionicons name="close" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color="#ef4444" />
+            <ToolIcon name="close" state="error" />
             <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} text-red-600 ml-[2px]`}>{failedCount}</Text>
           </View>
         )}
