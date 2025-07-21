@@ -144,7 +144,7 @@ export const TodoWriteDetailedView = ({ tool }: { tool: TodoWriteToolCall }) => 
       {/* Header */}
       <View className="pt-5 pl-3 pb-2">
         <View className="flex-row items-center">
-          <Text className="text-2xl font-bold ">Update TODOs</Text>
+          <Text className="text-2xl font-bold ">TODOs</Text>
         </View>
       </View>
 
