@@ -143,7 +143,7 @@ export const EditDetailedView = ({ tool, metadata }: { tool: EditToolCall, metad
       </View>
 
       {/* Diff View */}
-      <View className="px-4 pb-4">
+      <View className="pb-4">
         <SharedDiffView
           oldContent={oldString || ''}
           newContent={newString || ''}
