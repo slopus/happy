@@ -1,6 +1,6 @@
 {
-  "name": "slopus",
-  "version": "0.1.5",
+  "name": "happy-coder",
+  "version": "0.1.6",
   "description": "Claude Code session sharing CLI",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
@@ -26,7 +26,8 @@
   },
   "files": [
     "dist",
-    "bin"
+    "bin",
+    "scripts"
   ],
   "scripts": {
     "test": "vitest run",
