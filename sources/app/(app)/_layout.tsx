@@ -39,7 +39,7 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="about"
+                name="settings"
                 options={{
                     presentation: 'modal',
                     headerShown: false,

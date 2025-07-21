@@ -24,7 +24,8 @@ export const ItemList = React.memo<ItemListProps>((props) => {
         ...scrollViewProps
     } = props;
 
-    const backgroundColor = Platform.OS === 'ios' && insetGrouped ? '#F2F2F7' : '#FFFFFF';
+    const isIOS = Platform.OS === 'ios';
+    const backgroundColor = isIOS && insetGrouped ? '#F2F2F7' : '#FFFFFF';
 
     return (
         <ScrollView 
@@ -37,10 +38,13 @@ export const ItemList = React.memo<ItemListProps>((props) => {
             ]}
             contentContainerStyle={[
                 {
-                    paddingBottom: Platform.OS === 'ios' ? 34 : 16
+                    paddingBottom: isIOS ? 34 : 16,
+                    paddingTop: isIOS && insetGrouped ? 0 : 0
                 },
                 containerStyle
             ]}
+            showsVerticalScrollIndicator={isIOS ? true : scrollViewProps.showsVerticalScrollIndicator}
+            contentInsetAdjustmentBehavior={isIOS ? 'automatic' : undefined}
             {...scrollViewProps}
         >
             {children}

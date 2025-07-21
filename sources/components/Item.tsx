@@ -55,53 +55,77 @@ export const Item = React.memo<ItemProps>((props) => {
         detailStyle,
         showChevron = true,
         showDivider = true,
-        dividerInset = 16,
+        dividerInset = Platform.OS === 'ios' ? 15 : 16,
         pressableStyle
     } = props;
 
     const isInteractive = onPress || onLongPress;
     const showAccessory = isInteractive && showChevron && !rightElement;
 
+    // iOS-specific measurements
+    const horizontalPadding = Platform.OS === 'ios' ? 16 : 16;
+    const iconSize = 29; // Standard iOS icon size in table cells
+    const chevronSize = Platform.OS === 'ios' ? 17 : 20;
+    const minHeight = 44; // iOS standard touch target
+
     const content = (
         <>
-            <View className="flex-row items-center px-4 py-3 min-h-[44px]" style={style}>
+            <View 
+                style={[
+                    {
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingHorizontal: horizontalPadding,
+                        minHeight: minHeight,
+                        paddingVertical: subtitle ? 11 : 12, // Adjust for subtitle
+                    },
+                    style
+                ]}
+            >
                 {/* Left Section */}
                 {(icon || leftElement) && (
-                    <View className="mr-3">
+                    <View style={{ 
+                        marginRight: Platform.OS === 'ios' ? 15 : 12,
+                        width: iconSize,
+                        height: iconSize,
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}>
                         {leftElement || icon}
                     </View>
                 )}
 
                 {/* Center Section */}
-                <View className="flex-1 justify-center">
+                <View style={{ flex: 1, justifyContent: 'center' }}>
                     <Text 
-                        className="text-base"
                         style={[
                             Typography.default('regular'),
                             {
-                                color: destructive ? '#FF3B30' : (selected ? '#007AFF' : '#000'),
+                                color: destructive ? '#FF3B30' : (selected ? '#007AFF' : '#000000'),
                                 fontSize: 17,
-                                lineHeight: 22
+                                lineHeight: 22,
+                                letterSpacing: -0.41
                             },
                             titleStyle
                         ]}
-                        numberOfLines={1}
+                        numberOfLines={subtitle ? 1 : 2}
                     >
                         {title}
                     </Text>
                     {subtitle && (
                         <Text 
-                            className="text-sm mt-0.5"
                             style={[
                                 Typography.default('regular'),
                                 {
                                     color: '#8E8E93',
                                     fontSize: 15,
-                                    lineHeight: 20
+                                    lineHeight: 20,
+                                    letterSpacing: -0.24,
+                                    marginTop: 2
                                 },
                                 subtitleStyle
                             ]}
-                            numberOfLines={2}
+                            numberOfLines={1}
                         >
                             {subtitle}
                         </Text>
@@ -109,15 +133,20 @@ export const Item = React.memo<ItemProps>((props) => {
                 </View>
 
                 {/* Right Section */}
-                <View className="flex-row items-center ml-2">
+                <View style={{ 
+                    flexDirection: 'row', 
+                    alignItems: 'center',
+                    marginLeft: 8
+                }}>
                     {detail && !rightElement && (
                         <Text 
-                            className="mr-2"
                             style={[
                                 Typography.default('regular'),
                                 {
                                     color: '#8E8E93',
-                                    fontSize: 17
+                                    fontSize: 17,
+                                    letterSpacing: -0.41,
+                                    marginRight: showAccessory ? 6 : 0
                                 },
                                 detailStyle
                             ]}
@@ -130,15 +159,16 @@ export const Item = React.memo<ItemProps>((props) => {
                         <ActivityIndicator 
                             size="small" 
                             color="#8E8E93"
-                            style={{ marginRight: 8 }}
+                            style={{ marginRight: showAccessory ? 6 : 0 }}
                         />
                     )}
                     {rightElement}
                     {showAccessory && (
                         <Ionicons 
                             name="chevron-forward" 
-                            size={20} 
+                            size={chevronSize} 
                             color="#C7C7CC"
+                            style={{ marginLeft: 4 }}
                         />
                     )}
                 </View>
@@ -147,11 +177,10 @@ export const Item = React.memo<ItemProps>((props) => {
             {/* Divider */}
             {showDivider && (
                 <View 
-                    className="h-px bg-gray-200"
                     style={{ 
-                        marginLeft: dividerInset + (icon || leftElement ? 52 : 0),
+                        height: Platform.OS === 'ios' ? 0.33 : 0.5,
                         backgroundColor: '#C6C6C8',
-                        opacity: 0.5
+                        marginLeft: dividerInset + (icon || leftElement ? (horizontalPadding + iconSize + 15) : horizontalPadding)
                     }}
                 />
             )}
