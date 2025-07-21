@@ -1,8 +1,7 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";
-import { View, FlatList } from "react-native";
-import { Text } from '@/components/StyledText';
+import { View, FlatList, Text } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
@@ -104,13 +103,8 @@ export default function Session() {
                     ),
                     headerRight(props) {
                         return (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                <Pressable
-                                    onPress={() => setShowConfigModal(true)}
-                                    hitSlop={10}
-                                >
-                                    <Avatar id={sessionId} size={32} monochrome={!online} />
-                                </Pressable>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: -4 }}>
+                                <Avatar id={sessionId} size={32} monochrome={!online} />
                             </View>
                         )
                     },
