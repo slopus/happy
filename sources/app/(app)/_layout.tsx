@@ -75,6 +75,13 @@ export default function RootLayout() {
                     headerTitle: 'Restore Account',
                 }}
             />
+            <Stack.Screen
+                name="dev"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Developer Tools',
+                }}
+            />
         </Stack>
     );
 }
