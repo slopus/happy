@@ -268,6 +268,39 @@ describe('reducer', () => {
             expect(result).toHaveLength(0);
         });
 
+        it('should not duplicate agent messages when applied multiple times', () => {
+            const state = createReducer();
+            const messages = [
+                normalizeRawMessage('agent1', null, 1000, {
+                    role: 'agent',
+                    content: {
+                        type: 'output',
+                        data: {
+                            type: 'assistant',
+                            message: {
+                                role: 'assistant',
+                                model: 'claude-3',
+                                content: [{
+                                    type: 'text',
+                                    text: 'Hello world!'
+                                }]
+                            }
+                        }
+                    }
+                })
+            ].filter(Boolean) as NormalizedMessage[];
+
+            // Apply the same messages multiple times
+            const result1 = reducer(state, messages);
+            expect(result1).toHaveLength(1);
+            
+            const result2 = reducer(state, messages);
+            expect(result2).toHaveLength(0); // Should not add duplicates
+            
+            const result3 = reducer(state, messages);
+            expect(result3).toHaveLength(0); // Still no duplicates
+        });
+
         it('should filter out null normalized messages', () => {
             const state = createReducer();
             const messages = [

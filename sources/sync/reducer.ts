@@ -79,6 +79,15 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
 
         if (msg.role === 'agent') {
             console.log('agent', msg);
+            
+            // Check if we've seen this agent message before
+            if (state.messageIds.has(msg.id)) {
+                continue;
+            }
+            
+            // Mark this message as seen
+            state.messageIds.set(msg.id, msg.id);
+            
             for (let c of msg.content) {
                 if (c.type === 'text') {
                     let mid = allocateId();

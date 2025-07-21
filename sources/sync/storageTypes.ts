@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NormalizedMessage } from "./typesRaw";
 
 //
 // Agent states
@@ -30,7 +31,7 @@ export interface Session {
     activeAt: number,
     metadata: Metadata | null,
     agentState: AgentState | null,
-    lastMessage: DecryptedMessage | null,
+    lastMessage: NormalizedMessage | null,
     thinking: boolean,
     thinkingAt: number,
     presence: "online" | number, // "online" when active, timestamp when last seen
