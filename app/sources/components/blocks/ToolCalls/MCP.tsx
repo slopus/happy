@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
-import { ShimmerText } from './ShimmerRunningToolName';
+import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
 
@@ -56,7 +56,7 @@ export function MCPCompactViewInner({ tool }: { tool: MCPToolCall }) {
     return (
       <View className="flex-row items-center py-1 gap-1">
         <Ionicons name="cube-outline" size={14} color="#a1a1a1" />
-        <ShimmerText>Calling MCP</ShimmerText>
+        <ShimmerToolName>Calling MCP</ShimmerToolName>
         <View className="bg-gray-100 px-1.5 py-0.5 rounded-md border border-gray-200">
           <Text className="text-md text-neutral-600 font-medium" numberOfLines={1}>
             {server}

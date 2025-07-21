@@ -1,11 +1,14 @@
 import React, { useMemo } from 'react';
 import { View, ScrollView } from 'react-native';
-import { MonoText as Text } from './MonoText';
+import { MonoText as Text } from './design-tokens/MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
+import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
+import { ToolIcon } from './design-tokens/ToolIcon';
+import { ToolName } from './design-tokens/ToolName';
 
 export type MultiEditToolCall = Omit<ToolCall, 'name'> & { name: 'MultiEdit' };
 
@@ -47,10 +50,10 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
 
   if (!args) {
     return (
-      <View className="flex-row items-center py-1">
-        <Ionicons name="pencil-outline" size={14} color="#a1a1a1" />
-        <Text className="text-sm text-neutral-400 font-bold px-1">MultiEdit</Text>
-        <Text className="text-sm flex-1 text-neutral-800" numberOfLines={1}>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <ToolIcon name="pencil-outline" />
+        <ToolName>MultiEdit</ToolName>
+        <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
           Invalid arguments
         </Text>
       </View>
@@ -83,10 +86,10 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
   // Show different content based on completion status
   if (tool.state === 'completed') {
     return (
-      <View className="flex-row items-center py-1">
-        <Ionicons name="pencil" size={14} color="#a1a1a1" />
-        <Text className="text-sm text-neutral-400 font-bold px-1">MultiEdit</Text>
-        <Text className="text-sm text-neutral-800" numberOfLines={1}>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <ToolIcon name="pencil" />
+        <ToolName>MultiEdit</ToolName>
+        <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
           1 file edited
         </Text>
 
@@ -94,12 +97,12 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
         {(totalDiffStats.additions > 0 || totalDiffStats.deletions > 0) && (
           <View className="flex-row items-center ml-2">
             {totalDiffStats.additions > 0 && (
-              <Text className="text-sm font-medium text-emerald-600 font-mono">
+              <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} font-medium text-emerald-600 font-mono`}>
                 +{totalDiffStats.additions}
               </Text>
             )}
             {totalDiffStats.deletions > 0 && (
-              <Text className="text-sm font-medium text-red-600 font-mono ml-1">
+              <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} font-medium text-red-600 font-mono ml-1`}>
                 -{totalDiffStats.deletions}
               </Text>
             )}
@@ -110,11 +113,11 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
   }
 
   return (
-    <View className="flex-row items-center py-1">
-      <Ionicons name="pencil" size={14} color="#a1a1a1" />
-      <Text className="text-sm text-neutral-400 font-bold px-1">MultiEdit</Text>
+    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+      <ToolIcon name="pencil" />
+      <ToolName>MultiEdit</ToolName>
       <Text
-        className="text-sm text-neutral-800"
+        className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
       >
         {fileName} ({args.edits.length} edits)
@@ -124,12 +127,12 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
       {(totalDiffStats.additions > 0 || totalDiffStats.deletions > 0) && (
         <View className="flex-row items-center ml-2">
           {totalDiffStats.additions > 0 && (
-            <Text className="text-sm font-medium text-emerald-600 font-mono">
+            <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} font-medium text-emerald-600 font-mono`}>
               +{totalDiffStats.additions}
             </Text>
           )}
           {totalDiffStats.deletions > 0 && (
-            <Text className="text-sm font-medium text-red-600 font-mono ml-1">
+            <Text className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} font-medium text-red-600 font-mono ml-1`}>
               -{totalDiffStats.deletions}
             </Text>
           )}

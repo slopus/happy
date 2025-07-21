@@ -1,10 +1,12 @@
 import React from 'react';
 import { View, ScrollView } from 'react-native';
-import { MonoText as Text } from './MonoText';
-import { Ionicons } from '@expo/vector-icons';
+import { MonoText as Text } from './design-tokens/MonoText';
 import { SingleLineToolSummaryBlock as SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { ToolCall } from '@/sync/typesMessage';
+import { ToolIcon } from './design-tokens/ToolIcon';
+import { ToolName } from './design-tokens/ToolName';
+import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 
 export type BashToolCall = Omit<ToolCall, 'name'> & { name: 'Bash' };
 
@@ -27,8 +29,8 @@ export function BashCompactViewInner({ tool }: { tool: ToolCall }) {
   if (!command) {
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-        <Ionicons name="terminal" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>{label}</Text>
+        <ToolIcon name="terminal" />
+        {tool.state === 'running' ? <ShimmerToolName>{label}</ShimmerToolName> : <ToolName>{label}</ToolName>}
         <Text className={`${TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} italic`}>Terminal command</Text>
       </View>
     );
@@ -40,8 +42,8 @@ export function BashCompactViewInner({ tool }: { tool: ToolCall }) {
   
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-      <Ionicons name="terminal" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>{label}</Text>
+      <ToolIcon name="terminal" />
+      {tool.state === 'running' ? <ShimmerToolName>{label}</ShimmerToolName> : <ToolName>{label}</ToolName>}
       <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
         {prefix}{displayText}
       </Text>

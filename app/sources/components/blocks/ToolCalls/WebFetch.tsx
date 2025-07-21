@@ -1,12 +1,12 @@
 import React from 'react';
-import { View, Pressable } from 'react-native';
-import { MonoText as Text } from './MonoText';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { View } from 'react-native';
+import { MonoText as Text } from './design-tokens/MonoText';
 import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
+import { ToolIcon } from './design-tokens/ToolIcon';
+import { ToolName } from './design-tokens/ToolName';
 
 export type WebFetchToolCall = Omit<ToolCall, 'name'> & { name: 'WebFetch' };
 
@@ -84,8 +84,8 @@ export function WebFetchCompactViewInner({ tool }: { tool: WebFetchToolCall }) {
 
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-      <Ionicons name="cloud-download" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>{label}</Text>
+      <ToolIcon name="cloud-download" />
+      <ToolName>{label}</ToolName>
       <Text
         className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}

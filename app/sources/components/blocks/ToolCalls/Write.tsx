@@ -1,13 +1,15 @@
 import React, { useMemo } from 'react';
 import { View, ScrollView } from 'react-native';
-import { MonoText as Text } from './MonoText';
+import { MonoText as Text } from './design-tokens/MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
-import { ShimmerText } from './ShimmerRunningToolName';
+import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView } from './SharedDiffView';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
+import { ToolIcon } from './design-tokens/ToolIcon';
+import { ToolName } from './design-tokens/ToolName';
 
 export type WriteToolCall = Omit<ToolCall, 'name'> & { name: 'Write' };
 
@@ -58,8 +60,8 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
     
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-        <Ionicons name="create-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-        <ShimmerText>Creating</ShimmerText>
+        <ToolIcon name="create-outline" />
+        <ShimmerToolName>Creating</ShimmerToolName>
         <Text
           className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
@@ -97,8 +99,8 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
   if (inputParseError && !parsedInput) {
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-        <Ionicons name="create" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-        <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Write</Text>
+        <ToolIcon name="create" />
+        <ToolName>Write</ToolName>
         <Text
           className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
@@ -130,8 +132,8 @@ export function WriteCompactViewInner({ tool }: { tool: WriteToolCall }) {
   
   return (
     <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-      <Ionicons name="create" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-      <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Write</Text>
+      <ToolIcon name="create" />
+      <ToolName>Write</ToolName>
       <Text
         className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}

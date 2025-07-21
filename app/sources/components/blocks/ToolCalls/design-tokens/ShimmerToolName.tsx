@@ -2,9 +2,9 @@ import React, { useEffect } from 'react';
 import { View } from 'react-native';
 import { MonoText as Text } from './MonoText';
 import Animated, { useSharedValue, withRepeat, withTiming, Easing, useAnimatedStyle } from 'react-native-reanimated';
-import { TOOL_COMPACT_VIEW_STYLES } from './constants';
 
-export function ShimmerText({ children }: { children: string; }) {
+// Use a subtle shimmer effect to communicate the tool call is running 
+export function ShimmerToolName({ children }: { children: string; }) {
   const shimmerPosition = useSharedValue(-1);
   const opacityPhase = useSharedValue(0);
 
@@ -41,7 +41,7 @@ export function ShimmerText({ children }: { children: string; }) {
   return (
     <View className="relative overflow-hidden">
       {/* Base text */}
-      <Text className={`${TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_SIZE} text-neutral-500 font-bold px-1`} style={{ opacity: 0.7 }}>
+      <Text className={`text-[16px] text-neutral-500 font-bold px-1`} style={{ opacity: 0.7 }}>
         {children}
       </Text>
 
@@ -55,7 +55,6 @@ export function ShimmerText({ children }: { children: string; }) {
             width: 40,
             height: '100%',
             backgroundColor: 'rgba(255, 255, 255, 0.8)',
-            //backgroundColor: 'rgb(255, 0,0)',
             borderRadius: 2,
           },
           shimmerStyle,

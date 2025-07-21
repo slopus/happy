@@ -5,6 +5,9 @@ import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
+import { ToolIcon } from './design-tokens/ToolIcon';
+import { ToolName } from './design-tokens/ToolName';
+import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 
 export type TaskToolCall = Omit<ToolCall, 'name'> & { name: 'Task' };
 
@@ -62,8 +65,8 @@ export function TaskCompactView({ tool, sessionId, messageId }: { tool: TaskTool
       <TouchableOpacity onPress={() => setIsExpanded(!isExpanded)}>
         <SingleLineToolSummaryBlock sessionId={sessionId} messageId={messageId}>
           <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-            <Ionicons name="flash-outline" size={TOOL_COMPACT_VIEW_STYLES.ICON_SIZE} color={TOOL_COMPACT_VIEW_STYLES.ICON_COLOR} />
-            <Text className={TOOL_COMPACT_VIEW_STYLES.TOOL_NAME_CLASSES}>Task</Text>
+            <ToolIcon name="flash-outline" />
+            {tool.state === 'running' ? <ShimmerToolName>Running</ShimmerToolName> : <ToolName>Task</ToolName>}
             {args ? (
               <>
                 <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
