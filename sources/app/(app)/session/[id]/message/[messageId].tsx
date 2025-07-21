@@ -52,7 +52,7 @@ export default function MessageModal() {
             />
 
             <Deferred>
-                <MessageDetailView message={message} messageId={messageId!} />
+                <MessageDetailView message={message} messageId={messageId!} sessionId={sessionId!}/>
             </Deferred>
         </View>
     );
