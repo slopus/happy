@@ -1,10 +1,10 @@
-import { type ToolCall } from '@/sync/storageTypes';
+import { type ToolCall } from '@/sync/typesMessage';
 
 // Fake tool call object with nested children for testing the design.
 export const fakeTool: ToolCall = {
     name: 'FileOperations',
     state: 'completed',
-    arguments: {
+    input: {
         operation: 'batch_process',
         files: ['src/components', 'src/utils'],
         options: { recursive: true, backup: true }
@@ -13,7 +13,7 @@ export const fakeTool: ToolCall = {
         {
             name: 'ReadFile',
             state: 'completed',
-            arguments: {
+            input: {
                 file_path: 'src/components/Button.tsx',
                 encoding: 'utf8'
             },
@@ -22,7 +22,7 @@ export const fakeTool: ToolCall = {
         {
             name: 'ProcessDirectory',
             state: 'running',
-            arguments: {
+            input: {
                 directory: 'src/utils',
                 pattern: '*.ts'
             },
@@ -30,7 +30,7 @@ export const fakeTool: ToolCall = {
                 {
                     name: 'ValidateFile',
                     state: 'completed',
-                    arguments: {
+                    input: {
                         file: 'src/utils/helpers.ts',
                         checks: ['syntax', 'types']
                     },
@@ -39,7 +39,7 @@ export const fakeTool: ToolCall = {
                 {
                     name: 'FormatFile',
                     state: 'error',
-                    arguments: {
+                    input: {
                         file: 'src/utils/api.ts',
                         formatter: 'prettier'
                     },
@@ -50,7 +50,7 @@ export const fakeTool: ToolCall = {
         {
             name: 'BackupFiles',
             state: 'completed',
-            arguments: {
+            input: {
                 destination: './backup',
                 timestamp: '2024-01-15T10:30:00Z'
             },
