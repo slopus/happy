@@ -6,6 +6,7 @@ import os from 'node:os';
 import { AgentState, Metadata } from '@/api/types';
 import { startPermissionServerV2 } from '@/claude/mcp/startPermissionServerV2';
 import type { OnAssistantResultCallback } from '@/ui/messageFormatter';
+import { InterruptController } from '@/claude/InterruptController';
 
 export interface StartOptions {
     model?: string
@@ -29,14 +30,34 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     const session = api.session(response);
     const pushClient = api.push();
 
+    // Create interrupt controller
+    const interruptController = new InterruptController();
+
     // Start MCP permission server
     let requests = new Map<string, (response: { approved: boolean, reason?: string }) => void>();
     const permissionServer = await startPermissionServerV2(async (request) => {
         const id = randomUUID();
         let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => { requests.set(id, resolve); });
-        let timeout = setTimeout(() => {
-            // We need to interrupt claude remote execution
-            
+        let timeout = setTimeout(async () => {
+            // Interrupt claude execution on permission timeout
+            logger.info('Permission timeout - attempting to interrupt Claude');
+            const interrupted = await interruptController.interrupt();
+            if (interrupted) {
+                logger.info('Claude interrupted successfully');
+            }
+
+            // Delete callback we are awaiting on
+            requests.delete(id);
+
+            // Delete the permission request itself from the agent state
+            session.updateAgentState((currentState) => {
+                let r = { ...currentState.requests };
+                delete r[id];
+                return ({
+                    ...currentState,
+                    requests: r,
+                });
+            });
         }, 1000 * 60 * 4.5)
         logger.info('Permission request' + id + ' ' + JSON.stringify(request));
 
@@ -67,6 +88,10 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                 }
             }
         }));
+        
+        // Clear timeout when permission is resolved
+        promise.then(() => clearTimeout(timeout)).catch(() => clearTimeout(timeout));
+        
         return promise;
     });
     session.setHandler<{ id: string, approved: boolean, reason?: string }, void>('permission', (message) => {
@@ -75,6 +100,9 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         const resolve = requests.get(id);
         if (resolve) {
             resolve({ approved: message.approved, reason: message.reason });
+        } else {
+            logger.info('Permission request stale, likely timed out')
+            return
         }
         session.updateAgentState((currentState) => {
             let r = { ...currentState.requests };
@@ -84,6 +112,11 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                 requests: r,
             });
         });
+    });
+
+    session.setHandler<{}, void>('abort', async () => {
+        logger.info('Abort request - interrupting Claude');
+        await interruptController.interrupt();
     });
 
     // Session keep alive
@@ -134,7 +167,8 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             session.keepAlive(t);
         },
         session,
-        onAssistantResult
+        onAssistantResult,
+        interruptController
     });
 
     // Stop ping interval

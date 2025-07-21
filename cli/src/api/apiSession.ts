@@ -99,7 +99,7 @@ export class ApiSessionClient extends EventEmitter {
         })
 
         this.socket.on('connect_error', (error) => {
-            logger.debug('[API] Socket connection error:', error.message);
+            logger.debug('[API] Socket connection error:', error);
         })
 
         // Server events

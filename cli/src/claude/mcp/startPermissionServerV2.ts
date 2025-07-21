@@ -67,6 +67,18 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
         }
     });
 
+    // NOTE: For reference, the server is actually 
+    // the one timing out. Might be on the createServer layer
+    // Tested with npx @modelcontextprotocol/inspector
+    //
+    // Configure infinite timeouts
+    // Setting to 1 second for testing
+    // const timeout = 100000000;
+    // server.keepAliveTimeout = timeout;
+    // server.headersTimeout = timeout;
+    // server.requestTimeout = timeout;
+    // server.timeout = timeout;
+
     const baseUrl = await new Promise<URL>((resolve) => {
         server.listen(0, "127.0.0.1", () => {
             const addr = server.address() as AddressInfo;
