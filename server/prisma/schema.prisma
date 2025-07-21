@@ -28,6 +28,7 @@ model Account {
     Update              Update[]
     AccountPushToken    AccountPushToken[]
     TerminalAuthRequest TerminalAuthRequest[]
+    UsageReport         UsageReport[]
 }
 
 model TerminalAuthRequest {
@@ -70,6 +71,7 @@ model Session {
     createdAt         DateTime         @default(now())
     updatedAt         DateTime         @updatedAt
     messages          SessionMessage[]
+    usageReports      UsageReport[]
 
     @@unique([accountId, tag])
 }
@@ -123,4 +125,25 @@ model SimpleCache {
     value     String
     createdAt DateTime @default(now())
     updatedAt DateTime @updatedAt
+}
+
+//
+// Usage Reporting
+//
+
+model UsageReport {
+    id        String   @id @default(cuid())
+    key       String
+    accountId String
+    account   Account  @relation(fields: [accountId], references: [id])
+    sessionId String?
+    session   Session? @relation(fields: [sessionId], references: [id])
+    /// [UsageReportData]
+    data      Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([accountId, sessionId, key])
+    @@index([accountId])
+    @@index([sessionId])
 }

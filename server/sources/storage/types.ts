@@ -6,6 +6,18 @@ declare global {
             c: string; // Base64 encoded encrypted content
         };
 
+        // Usage report data structure
+        type UsageReportData = {
+            tokens: {
+                total: number;
+                [key: string]: number;
+            };
+            cost: {
+                total: number;
+                [key: string]: number;
+            };
+        };
+
         // Update content types
         type UpdateBody = {
             t: 'new-message';
