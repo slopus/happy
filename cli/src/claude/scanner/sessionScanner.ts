@@ -140,9 +140,13 @@ function getMessageKey(message: RawJSONLines): string {
     if (message.type === 'user') {
         return `user:${message.uuid}`
     } else if (message.type === 'assistant') {
+        // Usage will sometimes change, but otherwise the message will be 
+        // exactly the same
+        const { usage, ...messageWithoutUsage } = message.message;
+
         // @kirill has observed strange cases where the same assistant message
         // is duplicated in the history, with the same content, but new uuid
-        return stableStringify(message.message)
+        return stableStringify(messageWithoutUsage)
     } else if (message.type === 'summary') {
         return `summary:${message.leafUuid}`
     } else if (message.type === 'system') {
