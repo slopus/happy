@@ -98,7 +98,7 @@ export default function Session() {
                 options={{
                     headerTitle: () => (
                         <View style={{ flexDirection: 'column', alignItems: 'center', alignContent: 'center' }}>
-                            <Text style={{ fontSize: 18, fontWeight: '600', lineHeight: 18 }}>/{getSessionName(session)}</Text>
+                            <Text style={{ fontSize: 18, fontWeight: '600', lineHeight: 18 }}>{getSessionName(session)}</Text>
                             <Text style={{ color: (online ? '#34C759' : '#999'), marginTop: 0, fontSize: 12 }}>{(online ? 'online' : lastSeenText)}</Text>
                         </View>
                     ),
