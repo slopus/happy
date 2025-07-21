@@ -15,6 +15,7 @@ import { ConfigurationModal } from '@/components/ConfigurationModal';
 import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
 import { RoundButton } from '@/components/RoundButton';
+import { formatPermissionParams } from '@/utils/formatPermissionParams';
 
 export default function Session() {
     const safeArea = useSafeAreaInsets();
@@ -80,7 +81,7 @@ export default function Session() {
                         {permissionRequest?.call.tool}
                     </Text>
                     <Text style={{ fontSize: 24, color: '#666' }}>
-                        {JSON.stringify('Hello world')}
+                        {formatPermissionParams(permissionRequest?.call.arguments, 2, 20)}
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
                         <RoundButton size='normal' title={"Deny"} onPress={() => sync.deny(sessionId, permissionRequest?.id ?? '')} />
