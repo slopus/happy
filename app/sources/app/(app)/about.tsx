@@ -12,6 +12,7 @@ export default function AboutModal() {
     const router = useRouter();
     const appVersion = Constants.expoConfig?.version || '1.0.0';
     const auth = useAuth();
+    const isDev = __DEV__;
 
     return (
         <View style={{ flex: 1, backgroundColor: 'white' }}>
@@ -58,6 +59,15 @@ export default function AboutModal() {
                         onPress={() => router.push('/account')}
                     />
                 </View>
+
+                {isDev && (
+                    <View style={{ marginBottom: 12, alignSelf: 'center' }}>
+                        <RoundButton 
+                            title="Developer Tools" 
+                            onPress={() => router.push('/dev')}
+                        />
+                    </View>
+                )}
             </ScrollView>
         </View>
     );
