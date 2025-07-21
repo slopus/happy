@@ -6,6 +6,7 @@ import { mkdirSync, watch } from 'node:fs';
 import { homedir } from 'node:os';
 import { resolve } from 'node:path';
 import { join } from 'node:path';
+import type { InterruptController } from './InterruptController';
 
 export async function claudeRemote(opts: {
     abort: AbortSignal,
@@ -15,7 +16,8 @@ export async function claudeRemote(opts: {
     permissionPromptToolName?: string,
     onSessionFound: (id: string) => void,
     messages: AsyncIterable<SDKUserMessage>,
-    onAssistantResult?: OnAssistantResultCallback
+    onAssistantResult?: OnAssistantResultCallback,
+    interruptController?: InterruptController
 }) {
     // Check if session is valid
     let startFrom = opts.sessionId;
@@ -55,27 +57,40 @@ export async function claudeRemote(opts: {
         }
     });
     logger.debug(`[claudeRemote] Starting query with messages`);
+
+    /*
+    UPDATE: Not working, will timeout and interrupt for now after 4.5 minutes.
+    
+    NOTE: @kirill We do not have a direct way to pass in env to the sdk without patching it, but it uses ...process.env to pass .env to spawn.
+
+    See more about permission handling in this file TODO link
+
+    Setting infinite timeout for MCP_TOOL_TIMEOUT & MCP_TIMEOUT
+
+    Setting MCP_TOOL_TIMEOUT to 100 -> times it out very fast
+
+    This though does not solve the timout issue
+    process.env.MCP_TOOL_TIMEOUT = '100000000'; // 27.8 hours
+    process.env.MCP_TIMEOUT = '100000000'; // 27.8 hours
+    */
     response = query({
         prompt: opts.messages,
         abortController: abortController,
         options: sdkOptions,
     });
 
+    // Register interrupt function if controller provided
+    if (opts.interruptController) {
+        opts.interruptController.register(async () => {
+            logger.debug('[claudeRemote] Interrupting Claude via SDK');
+            // @ts-ignore - undocumented but exists
+            await response.interrupt();
+        });
+    }
+
     printDivider();
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
-
-        // NOTE: Undocumented in the sdk.d.ts, but it exists
-        // Hoping to use this to abort the response before we will timeout
-        // our our permission request
-        // Lets test behavior first
-        // setTimeout(() => {
-        //     console.log('Interrupting claude remote execution');
-        //     // @ts-ignore
-        //     response.interrupt()
-
-        //     // Next after 
-        // }, 1000 * 30)
 
         for await (const message of response) {
             logger.debug(`[claudeRemote] Received message from SDK: ${message.type}`);
@@ -110,6 +125,11 @@ export async function claudeRemote(opts: {
             // Ignore
         } else {
             throw e;
+        }
+    } finally {
+        // Clean up interrupt registration
+        if (opts.interruptController) {
+            opts.interruptController.unregister();
         }
     }
     printDivider();
