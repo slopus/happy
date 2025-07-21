@@ -2,7 +2,7 @@ import * as React from "react";
 import { View, Text } from "react-native";
 import { MarkdownView } from "./markdown/MarkdownView";
 import { CompactToolBlock as CompactToolBlock } from "./blocks/RenderToolCallV4";
-import { AgentMessage, Message, ToolCall, UserMessage } from "@/sync/typesMessage";
+import { Message, ToolCall, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 // import { RenderToolV1 } from './blocks/RenderToolCallV1';
 
@@ -21,102 +21,103 @@ export const MessageView = (props: {
           flexGrow: 1,
           flexBasis: 0,
           maxWidth: 700,
-          paddingHorizontal: 16,
         }}
       >
-        {props.message.content && props.message.role === "user" && (
-          <UserMessageView message={props.message} metadata={props.metadata} />
-        )}
-        {props.message.content && props.message.role === "agent" && (
-          <AgentMessageView
-            message={props.message}
-            metadata={props.metadata}
-            messageId={props.message.id}
-            sessionId={props.sessionId}
-          />
-        )}
-        {!props.message.content && <UnknownMessageView />}
+        <RenderBlock 
+          message={props.message} 
+          metadata={props.metadata} 
+          sessionId={props.sessionId} 
+        />
       </View>
     </View>
   );
 };
 
-function UserMessageView(props: {
-  message: UserMessage;
+// RenderBlock function that dispatches to the correct component based on message kind
+function RenderBlock(props: {
+  message: Message;
   metadata: Metadata | null;
-}) {
-  if (props.message.content.type === "text") {
-    return (
-      <View
-        style={{
-          backgroundColor: "#f0eee6",
-          paddingHorizontal: 12,
-          paddingVertical: 4,
-          borderRadius: 12,
-          marginBottom: 12,
-          alignSelf: "flex-end",
-        }}
-      >
-        <MarkdownView markdown={props.message.content.text} />
-      </View>
-    );
+  sessionId: string;
+}): React.ReactElement {
+  switch (props.message.kind) {
+    case 'user-text':
+      return <UserTextBlock message={props.message} metadata={props.metadata} />;
+    
+    case 'agent-text':
+      return <AgentTextBlock message={props.message} metadata={props.metadata} />;
+    
+    case 'tool-call':
+      return <ToolCallBlock 
+        message={props.message} 
+        metadata={props.metadata} 
+        sessionId={props.sessionId} 
+      />;
+    
+    default:
+      // Exhaustive check - TypeScript will error if we miss a case
+      const _exhaustive: never = props.message;
+      throw new Error(`Unknown message kind: ${_exhaustive}`);
   }
-
-  return <UnknownMessageView />;
 }
 
-// I dont know why steve narrowed the type to just AssistantContent here, but I
-// need know the messageId and sessionId to navigate to open the details modals.
-// So I quickly hacked around this narrow type by adding messageId and sessionId
-// to the props.
-// Once I understand what the intention behind the types are, I will refactor this.
-function AgentMessageView(props: {
-  message: AgentMessage;
+function UserTextBlock(props: {
+  message: UserTextMessage;
   metadata: Metadata | null;
-  messageId: string;
+}) {
+  return (
+    <View
+      style={{
+        marginHorizontal: 16,
+        backgroundColor: "#f0eee6",
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        borderRadius: 12,
+        marginBottom: 12,
+        alignSelf: "flex-end",
+      }}
+    >
+      <MarkdownView markdown={props.message.text} />
+    </View>
+  );
+}
+
+function AgentTextBlock(props: {
+  message: AgentTextMessage;
+  metadata: Metadata | null;
+}) {
+  return (
+    <View
+      style={{
+        marginHorizontal: 16,
+        borderRadius: 16,
+        alignSelf: "flex-start",
+        flexGrow: 1,
+        flexBasis: 0,
+        flexDirection: "column",
+        paddingRight: 16,
+      }}
+    >
+      <MarkdownView markdown={props.message.text} />
+    </View>
+  );
+}
+
+function ToolCallBlock(props: {
+  message: ToolCallMessage;
+  metadata: Metadata | null;
   sessionId: string;
 }) {
-  if (props.message.content.type === "text") {
-    return (
-      <View
-        style={{
-          borderRadius: 16,
-          alignSelf: "flex-start",
-          flexGrow: 1,
-          flexBasis: 0,
-          flexDirection: "column",
-          paddingRight: 16,
-        }}
-      >
-        <MarkdownView markdown={props.message.content.text} />
-      </View>
-    );
-  }
-  if (props.message.content.type === "tool") {
-    //     <View style={{ marginBottom: 16 }}>
-    //         {props.message.content.tools.map((tool, index) => (
-    //             <ToolDrawer key={index} tool={tool} />
-    //         ))}
-    //     </View>
-    return (
-      <View>
-        {/*
-                <RenderToolV3 tool={fakeTool} metadata={props.metadata} />
-                */}
-        {props.message.content.tools.map((tool: ToolCall) => (
-          <CompactToolBlock
-            tool={tool}
-            sessionId={props.sessionId}
-            messageId={props.messageId}
-            metadata={props.metadata}
-          />
-        ))}
-      </View>
-    );
-  }
   return (
     <View>
-      <Text>{JSON.stringify(props.message.content, null, 2)}</Text>
+      {props.message.tools.map((tool: ToolCall, index: number) => (
+        <CompactToolBlock
+          key={index}
+          tool={tool}
+          sessionId={props.sessionId}
+          messageId={props.message.id}
+          metadata={props.metadata}
+        />
+      ))}
     </View>
   );
 }

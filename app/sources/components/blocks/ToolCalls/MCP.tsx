@@ -128,8 +128,9 @@ export const MCPDetailedView = ({ tool }: { tool: MCPToolCall }) => {
 
   return (
     <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={true}>
-      {/* Header */}
-      <View className="p-4">
+      <>
+        {/* Header */}
+        <View className="p-4">
         <View className="flex-row justify-between items-center mb-4">
           <Text className="text-lg font-semibold text-gray-900">🔌 MCP Tool Call</Text>
           <View className="px-2 py-1 bg-gray-100 rounded-xl">
@@ -177,6 +178,7 @@ export const MCPDetailedView = ({ tool }: { tool: MCPToolCall }) => {
           {getStatusDescription(tool.state)}
         </Text>
       </View>
+      </>
     </ScrollView>
   );
 };

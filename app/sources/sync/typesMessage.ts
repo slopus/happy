@@ -1,34 +1,34 @@
 export type ToolCall = {
     name: string;
-    input: any;
     state: 'running' | 'completed' | 'error';
-    children: ToolCall[];
+    input: any;
     result?: unknown;
+    children: ToolCall[];
 }
 
-export type UserMessage = {
+// Flattened message types - each message represents a single block
+export type UserTextMessage = {
     id: string;
     localId: string | null;
     createdAt: number;
-    role: 'user';
-    content: {
-        type: 'text';
-        text: string;
-    }
+    kind: 'user-text';
+    text: string;
 }
 
-export type AgentMessage = {
+export type AgentTextMessage = {
     id: string;
     localId: string | null;
     createdAt: number;
-    role: 'agent';
-    content: {
-        type: 'text';
-        text: string;
-    } | {
-        type: 'tool';
-        tools: ToolCall[];
-    }
+    kind: 'agent-text';
+    text: string;
 }
 
-export type Message = AgentMessage | UserMessage;
+export type ToolCallMessage = {
+    id: string;
+    localId: string | null;
+    createdAt: number;
+    kind: 'tool-call';
+    tools: ToolCall[];
+}
+
+export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage;
