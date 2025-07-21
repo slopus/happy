@@ -15,6 +15,7 @@ export type ToolCallTree = {
 export type ReducerState = {
     toolCalls: Map<string, ToolCallTree>;
     localIds: Map<string, string>;
+    messageIds: Map<string, string>; // originalId -> internalId
     messages: Map<string, { role: 'user' | 'agent', createdAt: number, text: string, tools: ToolCallTree[] }>;
 };
 
@@ -22,7 +23,8 @@ export function createReducer(): ReducerState {
     return {
         toolCalls: new Map(),
         messages: new Map(),
-        localIds: new Map()
+        localIds: new Map(),
+        messageIds: new Map()
     }
 };
 
@@ -41,10 +43,12 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
         //
 
         if (msg.role === 'user') {
+            // Check if we've seen this localId before
             if (msg.localId && state.localIds.has(msg.localId)) {
                 continue;
             }
-            if (state.messages.has(msg.id)) {
+            // Check if we've seen this message ID before
+            if (state.messageIds.has(msg.id)) {
                 continue;
             }
 
@@ -57,6 +61,13 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                 text: msg.content.text,
                 tools: []
             });
+            
+            // Track both localId and messageId
+            if (msg.localId) {
+                state.localIds.set(msg.localId, mid);
+            }
+            state.messageIds.set(msg.id, mid);
+            
             changed.push(mid);
 
             continue;
