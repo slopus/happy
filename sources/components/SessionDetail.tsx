@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useState } from "react";
-import { Text, View, FlatList } from "react-native";
+import { Text, View, FlatList, Pressable } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
@@ -10,6 +10,7 @@ import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import LottieView from 'lottie-react-native';
+import { useRouter } from 'expo-router';
 
 interface SessionDetailProps {
     sessionId: string;
@@ -17,6 +18,7 @@ interface SessionDetailProps {
 
 export function SessionDetail({ sessionId }: SessionDetailProps) {
     const safeArea = useSafeAreaInsets();
+    const router = useRouter();
     const session = useSession(sessionId);
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const [message, setMessage] = useState('');
@@ -59,7 +61,12 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
     const header = (
         <View className="flex-row items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
             <View className="flex-row items-center flex-1">
-                <Avatar id={sessionId} size={40} monochrome={!online} />
+                <Pressable 
+                    onPress={() => router.push(`/session/${sessionId}/info`)}
+                    hitSlop={10}
+                >
+                    <Avatar id={sessionId} size={40} monochrome={!online} />
+                </Pressable>
                 <View className="ml-3 flex-1">
                     <Text className="text-lg font-semibold">{getSessionName(session)}</Text>
                     <Text className={online ? 'text-green-500 text-sm' : 'text-gray-500 text-sm'}>

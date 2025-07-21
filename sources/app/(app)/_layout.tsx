@@ -60,6 +60,13 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="session/[id]/info"
+                options={{
+                    presentation: 'modal',
+                    headerShown: false,
+                }}
+            />
+            <Stack.Screen
                 name="account"
                 options={{
                     presentation: 'modal',

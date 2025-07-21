@@ -5,7 +5,7 @@ import { View, FlatList, Text } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
-import { Stack } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import { formatLastSeen, getSessionName, isSessionOnline } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages } from '@/sync/storage';
@@ -20,6 +20,7 @@ import { formatPermissionParams } from '@/utils/formatPermissionParams';
 export default function Session() {
     const safeArea = useSafeAreaInsets();
     const route = useRoute();
+    const router = useRouter();
     const sessionId = (route.params! as any).id as string;
     const session = useSession(sessionId)!;
     const { messages, isLoaded } = useSessionMessages(sessionId);
@@ -104,9 +105,13 @@ export default function Session() {
                     ),
                     headerRight(props) {
                         return (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginRight: -4 }}>
+                            <Pressable 
+                                onPress={() => router.push(`/session/${sessionId}/info`)}
+                                hitSlop={10}
+                                style={{ flexDirection: 'row', alignItems: 'center', marginRight: -4 }}
+                            >
                                 <Avatar id={sessionId} size={32} monochrome={!online} />
-                            </View>
+                            </Pressable>
                         )
                     },
                 }}
