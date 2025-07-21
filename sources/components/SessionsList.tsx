@@ -2,82 +2,21 @@ import React from 'react';
 import { View, Pressable } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
-import { SessionListItem, useSessionMessages } from '@/sync/storage';
+import { SessionListItem } from '@/sync/storage';
 import { getSessionName, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
-import { getMessagePreview, isMessageFromAssistant } from '@/utils/messageUtils';
+import { isMessageFromAssistant } from '@/utils/messageUtils';
 import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { Typography } from '@/constants/Typography';
-import type { DecryptedMessage, Message } from '@/sync/storageTypes';
 import { SessionText } from './SessionText';
+import { Message } from '@/sync/typesMessage';
+import { Session } from '@/sync/storageTypes';
 
 interface SessionsListProps {
     data: SessionListItem[];
     selectedSessionId?: string | null;
     onSessionPress?: (sessionId: string) => void;
-}
-
-// Helper function to find the last non-summary message
-function getLastNonSummaryMessage(messages: Message[], fallbackLastMessage: DecryptedMessage | null): DecryptedMessage | null {
-    // First, try to find the last non-summary message in the session messages
-    for (const message of messages) {
-        // Skip summary messages - we want actual conversation content
-        if (message.role === 'agent' && message.content.type === 'text') {
-            // Check if this might be a summary by looking at the message content
-            // Convert the processed Message back to DecryptedMessage format for compatibility
-            return {
-                id: message.id,
-                seq: null,
-                localId: message.localId,
-                content: {
-                    role: 'agent',
-                    content: {
-                        type: 'text',
-                        text: message.content.text
-                    }
-                },
-                createdAt: message.createdAt
-            };
-        }
-
-        if (message.role === 'user') {
-            // Convert user message to DecryptedMessage format
-            return {
-                id: message.id,
-                seq: null,
-                localId: message.localId,
-                content: {
-                    role: 'user',
-                    content: {
-                        type: 'text',
-                        text: message.content.text
-                    }
-                },
-                createdAt: message.createdAt
-            };
-        }
-
-        if (message.role === 'agent' && message.content.type === 'tool') {
-            // Convert tool message to DecryptedMessage format
-            return {
-                id: message.id,
-                seq: null,
-                localId: message.localId,
-                content: {
-                    role: 'agent',
-                    content: {
-                        type: 'tool',
-                        tools: message.content.tools
-                    }
-                },
-                createdAt: message.createdAt
-            };
-        }
-    }
-
-    // If no messages found, fall back to the original lastMessage
-    return fallbackLastMessage;
 }
 
 export function SessionsList({ data, selectedSessionId, onSessionPress }: SessionsListProps) {
@@ -139,23 +78,21 @@ export function SessionsList({ data, selectedSessionId, onSessionPress }: Sessio
 
 // Sub-component that handles session message logic
 function SessionItem({ session, selectedSessionId, router }: {
-    session: any;
+    session: Session;
     selectedSessionId?: string | null;
     onSessionPress?: (sessionId: string) => void;
     router: any;
 }) {
-    // Get all messages for this session
-    const { messages } = useSessionMessages(session.id);
 
     // Find the last non-summary message
-    const actualLastMessage = getLastNonSummaryMessage(messages, session.lastMessage);
+    // const actualLastMessage = getLastNonSummaryMessage(messages, session.lastMessage);
 
     // Use the actual last message for preview
     const online = isSessionOnline(session);
     const sessionName = getSessionName(session);
     const lastSeenText = formatLastSeen(session.presence);
     const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
-    const isFromAssistant = isMessageFromAssistant(actualLastMessage) || thinking;
+    const isFromAssistant = isMessageFromAssistant(session.lastMessage) || thinking;
     const isSelected = selectedSessionId === session.id;
 
     return (
@@ -181,7 +118,7 @@ function SessionItem({ session, selectedSessionId, router }: {
                         {lastSeenText}
                     </Text>
                 </View>
-                {actualLastMessage ? (
+                {session.lastMessage ? (
                     <Text style={{ fontSize: 14, color: '#999' }} numberOfLines={1}>
                         <Text style={{ color: online ? (isFromAssistant ? '#007AFF' : '#34C759') : '#999', fontWeight: '600', ...Typography.default() }}>
                             {isFromAssistant ? 'Claude' : 'You'}:
@@ -195,7 +132,7 @@ function SessionItem({ session, selectedSessionId, router }: {
 
                         {!thinking && (
                             <Text className="text-sm text-gray-500 flex-1" numberOfLines={1}>
-                                {' '}<SessionText message={actualLastMessage} />
+                                {/* {' '}<SessionText message={session.lastMessage} /> */}
                             </Text>
                         )}
 

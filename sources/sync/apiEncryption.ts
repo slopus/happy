@@ -1,8 +1,9 @@
 import { getRandomBytes } from 'expo-crypto';
 import tweetnacl from 'tweetnacl';
 import { decodeBase64, encodeBase64 } from '@/auth/base64';
-import { AgentState, AgentStateSchema, DecryptedMessage, MessageContent, MessageContentSchema, Metadata, MetadataSchema } from './storageTypes';
+import { AgentState, AgentStateSchema, DecryptedMessage, Metadata, MetadataSchema } from './storageTypes';
 import { ApiMessage } from './apiTypes';
+import { RawRecord, RawRecordSchema } from './typesRaw';
 
 export function encryptWithEphemeralKey(data: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array {
     const ephemeralKeyPair = tweetnacl.box.keyPair.fromSecretKey(getRandomBytes(32));
@@ -98,7 +99,7 @@ export class ApiEncryption {
             return null;
         }
         if (encryptedMessage.content.t === 'encrypted') {
-            const decrypted = this.decrypt(encryptedMessage.content.c);
+            const decrypted = this.decryptContent(encryptedMessage.content.c);
             if (!decrypted) {
                 return {
                     id: encryptedMessage.id,
@@ -126,7 +127,7 @@ export class ApiEncryption {
         }
     }
 
-    encrypt(data: MessageContent): string {
+    encryptRawRecord(data: RawRecord): string {
         try {
             const encrypted = encrypt(data, this.secretKey);
             return encodeBase64(encrypted, 'base64');
@@ -136,18 +137,14 @@ export class ApiEncryption {
         }
     }
 
-    decrypt(encryptedContent: string): MessageContent | null {
+    decryptContent(encryptedContent: string): any {
         try {
             const encryptedData = decodeBase64(encryptedContent, 'base64');
             const decrypted = decrypt(encryptedData, this.secretKey);
             if (!decrypted) {
                 return null;
             }
-            const parsed = MessageContentSchema.safeParse(decrypted);
-            if (!parsed.success) {
-                return null;
-            }
-            return parsed.data;
+            return decrypted;
         } catch (error) {
             console.error('Decryption failed:', error);
             return null;

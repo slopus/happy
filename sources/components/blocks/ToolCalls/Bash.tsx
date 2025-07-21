@@ -2,9 +2,9 @@ import React from 'react';
 import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
-import { type ToolCall } from "@/sync/storageTypes";
 import { SingleLineToolSummaryBlock as SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
+import { ToolCall } from '@/sync/typesMessage';
 
 export type BashToolCall = Omit<ToolCall, 'name'> & { name: 'Bash' };
 
@@ -18,8 +18,8 @@ export function BashCompactView({ tool, sessionId, messageId }: { tool: BashTool
 
 // Compact view for display in session list (1-2 lines max)
 export function BashCompactViewInner({ tool }: { tool: ToolCall }) {
-  const command = tool.arguments?.command;
-  const description = tool.arguments?.description;
+  const command = tool.input?.command;
+  const description = tool.input?.description;
   
   // Dynamic label based on state
   const label = tool.state === 'running' ? 'Running' : 'Ran';
@@ -51,9 +51,9 @@ export function BashCompactViewInner({ tool }: { tool: ToolCall }) {
 
 // Detailed view for full-screen modal
 export const BashDetailedView = ({ tool }: { tool: ToolCall }) => {
-  const command = tool.arguments?.command;
-  const description = tool.arguments?.description;
-  const explanation = tool.arguments?.explanation;
+  const command = tool.input?.command;
+  const description = tool.input?.description;
+  const explanation = tool.input?.explanation;
   
   if (!command) {
     return (

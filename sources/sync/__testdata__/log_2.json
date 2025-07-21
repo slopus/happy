@@ -1,0 +1,53 @@
+[
+    {
+        "id": "cmdcacbo400eyy614d4hf1fmo",
+        "seq": 1,
+        "localId": null,
+        "content": {
+            "role": "agent",
+            "content": {
+                "type": "output",
+                "data": {
+                    "type": "summary",
+                    "summary": "Casual Greeting, No Specific Task Discussed",
+                    "leafUuid": "e23f9262-aa94-4ee1-ac45-25fac8643601"
+                }
+            }
+        },
+        "createdAt": 1753052745749
+    },
+    {
+        "id": "cmdcacc8h00f2y614re8lteu8",
+        "seq": 2,
+        "localId": null,
+        "content": {
+            "role": "agent",
+            "content": {
+                "type": "output",
+                "data": {
+                    "type": "summary",
+                    "summary": "Home Folder Contents Exploration and Listing",
+                    "leafUuid": "3eac8abd-72f3-4344-b335-bec5a067e108"
+                }
+            }
+        },
+        "createdAt": 1753052746482
+    },
+    {
+        "id": "cmdcacdbz00f6y614er4p4rx6",
+        "seq": 3,
+        "localId": null,
+        "content": {
+            "role": "agent",
+            "content": {
+                "type": "output",
+                "data": {
+                    "type": "summary",
+                    "summary": "Unclear macOS home folder exploration attempt",
+                    "leafUuid": "f71308f9-3c50-4031-9170-70825af40474"
+                }
+            }
+        },
+        "createdAt": 1753052747903
+    }
+]

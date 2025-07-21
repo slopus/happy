@@ -4,7 +4,7 @@ import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { z } from 'zod';
-import { type ToolCall } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
@@ -32,9 +32,9 @@ export function WebSearchCompactView({ tool, sessionId, messageId }: { tool: Web
 
 export function WebSearchCompactViewInner({ tool }: { tool: WebSearchToolCall }) {
   // Parse input arguments
-  const query = tool.arguments?.query;
-  const allowedDomains = tool.arguments?.allowed_domains;
-  const blockedDomains = tool.arguments?.blocked_domains;
+  const query = tool.input?.query;
+  const allowedDomains = tool.input?.allowed_domains;
+  const blockedDomains = tool.input?.blocked_domains;
   
   // Dynamic label based on state
   const label = tool.state === 'running' ? 'Searching' : 'search';

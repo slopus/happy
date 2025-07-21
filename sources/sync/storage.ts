@@ -1,7 +1,9 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { DecryptedMessage, Session, Message as Message } from "./storageTypes";
+import { DecryptedMessage, Session } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer";
+import { Message } from "./typesMessage";
+import { normalizeRawMessage } from "./typesRaw";
 
 // Session is considered online if it was active within this timeout
 export const ONLINE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -109,6 +111,7 @@ export const storage = create<StorageState>()((set) => {
             return result;
         }),
         applyMessages: (sessionId: string, messages: DecryptedMessage[]) => set((state) => {
+            
             // Resolve session messages state
             const existingSession = state.sessionMessages[sessionId] || {
                 messages: [],
@@ -117,40 +120,11 @@ export const storage = create<StorageState>()((set) => {
                 isLoaded: false
             };
 
-            // Build a set of existing local IDs for quick lookup
-            const existingUserMessageLocalIds = new Set<string>();
-            const existingAgentMessageIds = new Set<string>();
-            Object.values(existingSession.messagesMap).forEach(msg => {
-                if (msg.role === 'user' && msg.localId) {
-                    existingUserMessageLocalIds.add(msg.localId);
-                }
-                if (msg.role === 'agent' && msg.id) {
-                    existingAgentMessageIds.add(msg.id);
-                }
-            });
+            // Normalize messages
+            let normalizedMessages = messages.map(m => normalizeRawMessage(m.id, m.localId, m.createdAt, m.content)).filter(m => m !== null);
 
-            // Reduce messages
-            const newMessages = messages.filter(m => m.content?.role === 'agent' && !existingAgentMessageIds.has(m.id));
-            const processedMessages = reducer(existingSession.reducerState, newMessages);
-
-            // Add user messages to the mix
-            for (let m of messages) {
-                if (m.content?.role === 'user') {
-                    if (m.localId && existingUserMessageLocalIds.has(m.localId)) {
-                        continue;
-                    }
-                    processedMessages.push({
-                        id: m.id,
-                        createdAt: m.createdAt,
-                        role: 'user',
-                        localId: m.localId ?? null,
-                        content: {
-                            type: 'text',
-                            text: m.content.content.text
-                        }
-                    });
-                }
-            }
+            // Run reducer
+            const processedMessages = reducer(existingSession.reducerState, normalizedMessages);
 
             // Merge messages
             const mergedMessagesMap = { ...existingSession.messagesMap };

@@ -3,7 +3,7 @@ import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
 import { z } from 'zod';
-import { type ToolCall } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 import { ShimmerText } from './ShimmerRunningToolName';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 
@@ -93,7 +93,7 @@ function parseDirectoryItems(output: string): DirectoryItem[] {
 
 export function LSCompactView({ tool }: { tool: LSToolCall }) {
   // Get the directory path from arguments
-  const dirPath = tool.arguments?.path;
+  const dirPath = tool.input?.path;
   const dirName = typeof dirPath === 'string' ? dirPath.split('/').pop() || dirPath : undefined;
 
   // Parse the tool.result using Zod schema
@@ -138,7 +138,7 @@ export function LSCompactView({ tool }: { tool: LSToolCall }) {
 // Detailed view for full-screen modal
 export const LSDetailedView = ({ tool }: { tool: LSToolCall }) => {
   // Get the directory path from arguments
-  const dirPath = tool.arguments?.path || 'directory';
+  const dirPath = tool.input?.path || 'directory';
   
   // Parse the tool.result using Zod schema
   let parsedResult: ParsedToolResult | null = null;

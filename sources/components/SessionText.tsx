@@ -1,8 +1,7 @@
-
-import { DecryptedMessage, ToolCall } from '@/sync/storageTypes';
+import { Message, ToolCall } from '@/sync/typesMessage';
 import { Text } from 'react-native';
 
-export function SessionText({ message }: { message: DecryptedMessage }) {
+export function SessionText({ message }: { message: Message }) {
     return <Text>{getMessagePreview(message) ?? '<empty>'}</Text>;
 }
 
@@ -42,22 +41,22 @@ function getToolSummary(tools: ToolCall[]): string {
 
     if (tools.length === 1) {
         const tool = tools[0];
-        const toolName = tool.name;
+        const toolName = tool.descriptor.name;
 
         // Try to extract meaningful info from common tools
         switch (toolName) {
             case 'Edit':
             case 'Write':
-                const filePath = tool.arguments?.target_file || tool.arguments?.file_path;
+                const filePath = tool.descriptor.input?.target_file || tool.descriptor.input?.file_path;
                 return filePath ? `Edited ${filePath}` : `Used ${toolName}`;
 
             case 'Read':
-                const readPath = tool.arguments?.target_file || tool.arguments?.file_path;
+                const readPath = tool.descriptor.input?.target_file || tool.descriptor.input?.file_path;
                 return readPath ? `Read ${readPath}` : 'Read file';
 
             case 'Bash':
             case 'RunCommand':
-                const command = tool.arguments?.command;
+                const command = tool.descriptor.input?.command;
                 if (command && typeof command === 'string') {
                     return `Bash: ${command.length > 20 ? command.substring(0, 20) + '...' : command}`;
                 }
@@ -68,7 +67,7 @@ function getToolSummary(tools: ToolCall[]): string {
     }
 
     // Multiple tools
-    const toolNames = tools.map(t => t.name).slice(0, 3);
+    const toolNames = tools.map(t => t.descriptor.name).slice(0, 3);
     if (tools.length <= 3) {
         return `Used ${toolNames.join(', ')}`;
     } else {
@@ -189,7 +188,7 @@ function extractClaudeToolCalls(content: any): any[] {
 /**
  * Extracts a readable preview from message content
  */
-export function getMessagePreview(message: DecryptedMessage | null, maxLength: number = 50): string | null {
+export function getMessagePreview(message: Message | null, maxLength: number = 50): string | null {
     if (!message?.content) {
         return null;
     }
@@ -197,9 +196,9 @@ export function getMessagePreview(message: DecryptedMessage | null, maxLength: n
     const content = message.content;
 
     // User messages
-    if (content.role === 'user') {
-        if (content.content && content.content.type === 'text') {
-            const plainText = stripMarkdown(content.content.text);
+    if (message.role === 'user') {
+        if (content.type === 'text') {
+            const plainText = stripMarkdown(content.text);
             return plainText.length > maxLength
                 ? plainText.substring(0, maxLength) + '...'
                 : plainText;
@@ -208,24 +207,24 @@ export function getMessagePreview(message: DecryptedMessage | null, maxLength: n
     }
 
     // Agent messages - handle BOTH raw and processed formats
-    if (content.role === 'agent') {
+    if (message.role === 'agent') {
         // FIRST: Check if this is the processed Message format (simple structure)
         // This handles: {role: 'agent', content: {type: 'text', text: '...'}}
-        if (content.content && typeof content.content === 'object') {
-            if (content.content.type === 'text' && content.content.text) {
-                const plainText = stripMarkdown(content.content.text);
+        if (content && typeof content === 'object') {
+            if (content.type === 'text' && content.text) {
+                const plainText = stripMarkdown(content.text);
                 return plainText.length > maxLength
                     ? plainText.substring(0, maxLength) + '...'
                     : plainText;
             }
 
-            if (content.content.type === 'tool' && content.content.tools) {
-                return getToolSummary(content.content.tools);
+            if (content.type === 'tool' && content.tools) {
+                return getToolSummary(content.tools);
             }
         }
 
         // SECOND: Try the complex DecryptedMessage format (nested structure)
-        const textContent = extractClaudeTextContent(content.content);
+        const textContent = extractClaudeTextContent(content);
         if (textContent) {
             const plainText = stripMarkdown(textContent);
             return plainText.length > maxLength
@@ -234,7 +233,7 @@ export function getMessagePreview(message: DecryptedMessage | null, maxLength: n
         }
 
         // THIRD: Check for tool calls in DecryptedMessage format
-        const toolCalls = extractClaudeToolCalls(content.content);
+        const toolCalls = extractClaudeToolCalls(content);
         if (toolCalls.length > 0) {
             return getToolSummary(toolCalls);
         }
@@ -249,7 +248,7 @@ export function getMessagePreview(message: DecryptedMessage | null, maxLength: n
 /**
  * Determines if a message is from the assistant/agent
  */
-export function isMessageFromAssistant(message: DecryptedMessage | null): boolean {
-    if (!message?.content) return false;
-    return message.content.role === 'agent';
+export function isMessageFromAssistant(message: Message | null): boolean {
+    if (!message) return false;
+    return message.role === 'agent';
 } 

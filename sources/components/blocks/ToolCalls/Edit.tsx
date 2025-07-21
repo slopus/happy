@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { View, ScrollView } from 'react-native';
 import { MonoText as Text } from './MonoText';
 import { Ionicons } from '@expo/vector-icons';
-import { type ToolCall } from "@/sync/storageTypes";
+import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
@@ -41,7 +41,7 @@ export function EditCompactView({ tool, sessionId, messageId }: { tool: ToolCall
 
 // Compact view for display in session list (1-2 lines max)
 export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
-  const args = parseEditArguments(tool.arguments);
+  const args = parseEditArguments(tool.input);
   
   if (!args) {
     return (
@@ -99,7 +99,7 @@ export function EditCompactViewInner({ tool }: { tool: ToolCall }) {
 
 // Detailed view for full-screen modal
 export const EditDetailedView = ({ tool }: { tool: EditToolCall }) => {
-  const { file_path: filePath, old_string: oldString, new_string: newString, replace_all: replaceAll } = tool.arguments;
+  const { file_path: filePath, old_string: oldString, new_string: newString, replace_all: replaceAll } = tool.input;
 
   if (!filePath) {
     return (
