@@ -16,6 +16,7 @@ import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
 import { RoundButton } from '@/components/RoundButton';
 import { formatPermissionParams } from '@/utils/formatPermissionParams';
+import { Deferred } from '@/components/Deferred';
 
 export default function Session() {
     const safeArea = useSafeAreaInsets();
@@ -105,7 +106,7 @@ export default function Session() {
                     ),
                     headerRight(props) {
                         return (
-                            <Pressable 
+                            <Pressable
                                 onPress={() => router.push(`/session/${sessionId}/info`)}
                                 hitSlop={10}
                                 style={{ flexDirection: 'row', alignItems: 'center', marginRight: -4 }}
@@ -117,38 +118,44 @@ export default function Session() {
                 }}
             />
             <KeyboardAvoidingView
-                behavior="padding"
+                behavior="translate-with-padding"
                 keyboardVerticalOffset={safeArea.top + 44}
                 style={{ flexGrow: 1, flexBasis: 0, marginBottom: safeArea.bottom }}
             >
                 <View style={{ flexGrow: 1, flexBasis: 0 }}>
-                    {messages.length === 0 && isLoaded && (
-                        <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
-                            <LottieView source={require('@/assets/animations/popcorn.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
-                            <Text style={{ color: '#666', fontSize: 20, marginTop: 16 }}>No messages yet</Text>
-                        </View>
-                    )}
-                    {messages.length === 0 && !isLoaded && (
-                        <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
+                    <Deferred>
+                        {messages.length === 0 && isLoaded && (
+                            <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
+                                <LottieView source={require('@/assets/animations/popcorn.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
+                                <Text style={{ color: '#666', fontSize: 20, marginTop: 16 }}>No messages yet</Text>
+                            </View>
+                        )}
+                        {messages.length === 0 && !isLoaded && (
+                            <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
 
-                        </View>
-                    )}
-                    {messages.length > 0 && (
-                        <FlatList
-                            data={messages}
-                            inverted={true}
-                            keyExtractor={(item) => item.id}
-                            renderItem={({ item }) => (
-                                <MessageView
-                                    message={item}
-                                    metadata={session.metadata}
-                                    sessionId={sessionId}
-                                />
-                            )}
-                            ListHeaderComponent={footer}
-                            ListFooterComponent={() => <View style={{ height: 8 }} />}
-                        />
-                    )}
+                            </View>
+                        )}
+                        {messages.length > 0 && (
+                            <FlatList
+                                data={messages}
+                                inverted={true}
+                                keyExtractor={(item) => item.id}
+                                maintainVisibleContentPosition={{
+                                    minIndexForVisible: 0,
+                                    autoscrollToTopThreshold: 100,
+                                }}
+                                renderItem={({ item }) => (
+                                    <MessageView
+                                        message={item}
+                                        metadata={session.metadata}
+                                        sessionId={sessionId}
+                                    />
+                                )}
+                                ListHeaderComponent={footer}
+                                ListFooterComponent={() => <View style={{ height: 8 }} />}
+                            />
+                        )}
+                    </Deferred>
                 </View>
                 <AgentInput
                     placeholder="Type a message..."

@@ -3,12 +3,18 @@ import 'react-native-reanimated';
 import * as React from 'react';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
+import { isRunningOnMac } from '@/utils/platform';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const unstable_settings = {
     initialRouteName: 'index',
 };
 
 export default function RootLayout() {
+    const isMac = isRunningOnMac();
+    const insets = useSafeAreaInsets();
+    // console.log('insets', insets);
+    
     return (
         <Stack
             initialRouteName='index'
