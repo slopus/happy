@@ -1,11 +1,12 @@
 import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
-import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema } from './types'
+import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToClientEvents, Session, Update, UserMessage, UserMessageSchema, Usage } from './types'
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { configuration } from '@/configuration';
-import { RawJSONLines } from '@/claude/types';
+// import { RawJSONLines } from '@/claude/types';
+import { RawJSONLines } from 'happy-liberal/sources/claude-code-types';
 
 type RpcHandler<T = any, R = any> = (data: T) => R | Promise<R>;
 type RpcHandlerMap = Map<string, RpcHandler>;
@@ -188,6 +189,15 @@ export class ApiSessionClient extends EventEmitter {
             sid: this.sessionId,
             message: encrypted
         });
+        
+        // Track usage from assistant messages
+        if (body.type === 'assistant' && body.message.usage) {
+            try {
+                this.sendUsageData(body.message.usage);
+            } catch (error) {
+                logger.debug('[SOCKET] Failed to send usage data:', error);
+            }
+        }
     }
 
     /**
@@ -202,6 +212,28 @@ export class ApiSessionClient extends EventEmitter {
      */
     sendSessionDeath() {
         this.socket.emit('session-end', { sid: this.sessionId, time: Date.now() });
+    }
+
+    /**
+     * Send usage data to the server
+     */
+    sendUsageData(usage: Usage) {
+        const usageReport = {
+            key: 'claude-session',
+            sessionId: this.sessionId,
+            usage,
+        }
+
+        logger.debugLargeJson('[SOCKET] Sending usage data:', usageReport)
+        
+        this.socket.emit('usage-report', usageReport);
+        
+        logger.debug('[SOCKET] Reported usage:', { 
+            sessionId: this.sessionId,
+            totalTokens,
+            input: usage.input_tokens,
+            output: usage.output_tokens 
+        });
     }
 
     /**

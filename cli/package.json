@@ -39,7 +39,8 @@
   "files": [
     "dist",
     "bin",
-    "scripts"
+    "scripts",
+    "package.json"
   ],
   "scripts": {
     "test": "vitest run",
@@ -47,16 +48,18 @@
     "build": "pkgroll",
     "prepublishOnly": "tsc --noEmit && yarn build && yarn test",
     "dev": "npx tsx --env-file .env.sample src/index.ts",
-    "dev:local": "HANDY_SERVER_URL=http://localhost:3005 npx tsx --env-file .env.sample src/index.ts"
+    "dev:local-server": "HANDY_SERVER_URL=http://localhost:3005 npx tsx --env-file .env.sample src/index.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.51",
     "@anthropic-ai/sdk": "^0.56.0",
     "@modelcontextprotocol/sdk": "^1.15.1",
+    "@stablelib/base64": "^2.0.1",
     "@types/qrcode-terminal": "^0.12.2",
     "axios": "^1.10.0",
     "chalk": "^5.4.1",
     "expo-server-sdk": "^3.15.0",
+    "http-proxy-middleware": "^3.0.5",
     "qrcode-terminal": "^0.12.0",
     "socket.io-client": "^4.8.1",
     "tweetnacl": "^1.0.3",

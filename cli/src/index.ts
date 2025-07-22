@@ -8,7 +8,7 @@
 
 
 import chalk from 'chalk'
-import { start } from '@/ui/start'
+import { start, StartOptions } from '@/ui/start'
 import { existsSync, rmSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 import { initializeConfiguration, configuration } from '@/configuration'
@@ -44,8 +44,8 @@ import packageJson from '../package.json'
       process.exit(1)
     }
     return;
-  } else if (subcommand === 'login' || subcommand === 'auth') {
-    await doAuth();
+  } else if (subcommand === 'backup-key' || subcommand === 'backup') {
+    await showBackupKey();
     return;
   } else if (subcommand === 'daemon') {
     // Handle daemon command
@@ -88,9 +88,10 @@ Currently only supported on macOS.
     return;
   } else {
     // Parse command line arguments for main command
-    const options: Record<string, string> = {}
+    const options: StartOptions = {}
     let showHelp = false
     let showVersion = false
+    let forceAuth = false
 
     for (let i = 0; i < args.length; i++) {
       const arg = args[i]
@@ -99,13 +100,18 @@ Currently only supported on macOS.
         showHelp = true
       } else if (arg === '-v' || arg === '--version') {
         showVersion = true
+      } else if (arg === '--auth' || arg === '--login') {
+        forceAuth = true
       } else if (arg === '-m' || arg === '--model') {
         options.model = args[++i]
       } else if (arg === '-p' || arg === '--permission-mode') {
-        options.permissionMode = args[++i]
+        // Use zod to validate the permission mode
+        options.permissionMode = z.enum(['auto', 'default', 'plan']).parse(args[++i])
       } else if (arg === '--local') {
         // Already processed, skip the next arg
         i++
+      } else if (arg === '--happy-starting-mode') {
+        options.startingMode = z.enum(['interactive', 'remote']).parse(args[++i])
       } else {
         console.error(chalk.red(`Unknown argument: ${arg}`))
         process.exit(1)
@@ -120,8 +126,6 @@ ${chalk.bold('happy')} - Claude Code session sharing
 ${chalk.bold('Usage:')}
   happy [options]
   happy logout     Logs out of your account and removes data directory
-  happy login      Show your secret QR code
-  happy auth       Same as login
   happy daemon     Manage the background daemon (macOS only)
 
 ${chalk.bold('Options:')}
@@ -129,17 +133,21 @@ ${chalk.bold('Options:')}
   -v, --version           Show version
   -m, --model <model>     Claude model to use (default: sonnet)
   -p, --permission-mode   Permission mode: auto, default, or plan
+  --auth, --login         Force re-authentication
 
   [Advanced]
   --local < global | local >
       Will use .happy folder in the current directory for storing your private key and debug logs. 
       You will require re-login each time you run this in a new directory.
-      Use with login to show either global or local QR code.
+
+  --happy-starting-mode <mode>  Start in specified mode (interactive or remote) 
+      Default: interactive
 
 ${chalk.bold('Examples:')}
   happy                   Start a session with default settings
   happy -m opus           Use Claude Opus model
   happy -p plan           Use plan permission mode
+  happy --auth            Force re-authentication before starting session
   happy logout            Logs out of your account and removes data directory
 `)
       process.exit(0)
@@ -153,7 +161,7 @@ ${chalk.bold('Examples:')}
 
     // Load credentials
     let credentials = await readCredentials()
-    if (!credentials) { // No credentials found, show onboarding
+    if (!credentials || forceAuth) { // No credentials found or force auth requested
       let res = await doAuth();
       if (!res) {
         process.exit(1);

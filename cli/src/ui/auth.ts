@@ -27,7 +27,14 @@ export async function doAuth(): Promise<{ secret: Uint8Array, token: string } | 
 
     // Show QR code
     console.log('Please, authenticate using mobile app');
-    displayQRCode('happy://terminal?' + encodeBase64Url(keypair.publicKey));
+    const authUrl = 'happy://terminal?' + encodeBase64Url(keypair.publicKey);
+    displayQRCode(authUrl);
+    
+    // For dev mode - show the URL for manual entry
+    if (process.env.DEBUG === '1') {
+        console.log('\n📋 For manual entry, copy this URL:');
+        console.log(authUrl);
+    }
 
     // Wait for authentication
     let credentials: { secret: Uint8Array, token: string } | null = null;

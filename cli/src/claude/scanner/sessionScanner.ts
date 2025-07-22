@@ -22,6 +22,26 @@ export function createSessionScanner(opts: {
     let currentSessionWatcherAbortController: AbortController | null = null;
     let processedMessages = new Set<string>();
 
+    /*
+        NOTE: User messages that come to us from the remote session, will be
+        written by claude to session file, and re-emitted to us.
+        We cannot pass any stable ID to claude for the message.
+
+        Invariant:
+        For each incoming user message, we expect to see it come out of the session
+        scanner exactly once.
+
+        Why can't we simply ignore messages with the same content we have seen?
+        - Remote User: Run 'yarn build'
+        - Scanner emits 'user: Run 'yarn build''
+        - [switch to local mode]
+        - Local user (through claude terminal session): Run 'yarn build'
+        - Scanner emits 'user: Run 'yarn build''
+        
+        So if we were to ignore messages with the same content we have seen, we would not emit this message to the server. The counter solution addresses this.
+    */
+    let seenRemoteUserMessageCounters: Map<string, number> = new Map();
+
     // Main sync function
     const sync = new InvalidateSync(async () => {
 
@@ -64,6 +84,17 @@ export function createSessionScanner(opts: {
 
                     logger.debugLargeJson(`[SESSION_SCANNER] Processing message`, parsed.data)
                     logger.debug(`[SESSION_SCANNER] Message key (new): ${key}`)
+
+                    // Check if this is a user message that should be deduplicated
+                    if (parsed.data.type === 'user' && typeof parsed.data.message.content === 'string') {
+                        const currentCounter = seenRemoteUserMessageCounters.get(parsed.data.message.content);
+                        if (currentCounter && currentCounter > 0) {
+                            // We have already seen this message from the remote session
+                            // Lets decrement the counter & skip
+                            seenRemoteUserMessageCounters.set(parsed.data.message.content, currentCounter - 1);
+                            continue;
+                        }
+                    }
 
                     // Notify
                     opts.onMessage(parsed.data);
@@ -132,6 +163,10 @@ export function createSessionScanner(opts: {
             }
             currentSessionId = sessionId;
             sync.invalidate();
+        },
+        onRemoteUserMessageForDeduplication: (messageContent: string) => {
+            // Increment the counter for this remote user message
+            seenRemoteUserMessageCounters.set(messageContent, (seenRemoteUserMessageCounters.get(messageContent) || 0) + 1);
         },
     }
 }

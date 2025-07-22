@@ -1,3 +1,14 @@
+# APi eeror?
+
+API Error: 500 {"type":"error","error":{"type":"api_error","message":"Overloaded"}}
+
+Not showng
+Session
+213d643d-fc52-4d43-83cd-d4d1e1b45fc6
+logs  /Users/kirilldubovitskiy/.happy/logs/2025-07-20-20-48-12.log
+
+
+
 # July 20 
 
 3) permission cancelling 
