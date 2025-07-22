@@ -142,9 +142,11 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
       >
         {fileName}
       </Text>
-      <Text className={TOOL_COMPACT_VIEW_STYLES.METADATA_CLASSES}>
-        {displayText}
-      </Text>
+      {displayText && (
+        <Text className={TOOL_COMPACT_VIEW_STYLES.METADATA_CLASSES}>
+          {displayText}
+        </Text>
+      )}
     </View>
   );
 }
