@@ -1,0 +1,57 @@
+[
+    {
+        "id": "cmdcc8c1t00qgy614t1302bec",
+        "seq": 1,
+        "localId": null,
+        "content": {
+            "role": "user",
+            "content": {
+                "type": "text",
+                "text": "hey"
+            }
+        },
+        "createdAt": 1753055918850
+    },
+    {
+        "id": "cmdcc8ep700qky614e2h3egwf",
+        "seq": 2,
+        "localId": null,
+        "content": {
+            "role": "agent",
+            "content": {
+                "type": "output",
+                "data": {
+                    "cwd": "/Users/steve/Develop/slopus/happy-cli",
+                    "sessionId": "334a7695-9b4c-4076-a3c5-547c83b15985",
+                    "version": "1.0.53",
+                    "uuid": "99be988d-e261-4462-b3e1-b1b79b1d355b",
+                    "timestamp": "2025-07-20T23:58:42.252Z",
+                    "type": "assistant",
+                    "message": {
+                        "id": "msg_014dhiLQskJY7Q9rkUurPPmC",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "claude-opus-4-20250514",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "Hey! How can I help you today?"
+                            }
+                        ],
+                        "stop_reason": null,
+                        "stop_sequence": null,
+                        "usage": {
+                            "input_tokens": 4,
+                            "cache_creation_input_tokens": 16631,
+                            "cache_read_input_tokens": 0,
+                            "output_tokens": 1,
+                            "service_tier": "standard"
+                        }
+                    },
+                    "requestId": "req_011CRKBJ1fBUMQHXpFQLAMD7"
+                }
+            }
+        },
+        "createdAt": 1753055922283
+    }
+]
