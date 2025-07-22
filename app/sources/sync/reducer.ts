@@ -54,7 +54,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
 
             // Create a new message
             let mid = allocateId();
-            console.log('user', msg);
+            // console.log('user', msg);
             state.messages.set(mid, {
                 role: 'user',
                 createdAt: msg.createdAt,
@@ -78,7 +78,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
         //
 
         if (msg.role === 'agent') {
-            console.log('agent', msg);
+            // console.log('agent', msg);
             
             // Check if we've seen this agent message before
             if (state.messageIds.has(msg.id)) {

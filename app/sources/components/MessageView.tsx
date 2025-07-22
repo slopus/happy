@@ -13,7 +13,6 @@ export const MessageView = (props: {
   sessionId: string;
   getMessageById?: (id: string) => Message | null;
 }) => {
-  console.log(props.message);
 
   return (
     <View style={{ flexDirection: 'row', justifyContent: 'center' }}>

@@ -25,6 +25,8 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
 
+    // console.log('RootLayout', initialWindowMetrics);
+
     //
     // Init sequence
     //
