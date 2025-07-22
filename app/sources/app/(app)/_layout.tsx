@@ -56,7 +56,7 @@ export default function RootLayout() {
                 name="session/[id]/message/[messageId]"
                 options={{
                     presentation: 'modal',
-                    headerShown: false,
+                    headerShown: true,
                 }}
             />
             <Stack.Screen

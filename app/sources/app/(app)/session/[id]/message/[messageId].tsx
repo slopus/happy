@@ -1,6 +1,6 @@
 
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
-import { View, Text, Pressable } from "react-native";
+import { View, Text, Pressable, Platform } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
 import { useMessage } from "@/sync/storage";
 import { MessageDetailView, getMessageDetailTitle } from "@/components/MessageDetailView";
@@ -17,7 +17,7 @@ export default function MessageModal() {
                 <Stack.Screen
                     options={{
                         title: "Message Not Found",
-                        headerLeft: () => (
+                        headerRight: () => (
                             <Pressable onPress={() => router.back()} hitSlop={10}>
                                 <Ionicons name="close" size={24} color="#000" />
                             </Pressable>
@@ -37,17 +37,18 @@ export default function MessageModal() {
 
     // Get the appropriate title using the helper function
     const title = getMessageDetailTitle(message);
+    console.log("!!!!!! we should be showing the title ", title);
 
     return (
         <View style={{ flex: 1, backgroundColor: 'white' }}>
             <Stack.Screen
                 options={{
                     title,
-                    headerLeft: () => (
+                    headerRight: Platform.OS === 'ios' ? () => (
                         <Pressable onPress={() => router.back()} hitSlop={10}>
                             <Ionicons name="close" size={24} color="#000" />
                         </Pressable>
-                    )
+                    ) : undefined,
                 }}
             />
 
