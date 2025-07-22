@@ -31,4 +31,12 @@ export type ToolCallMessage = {
     tools: ToolCall[];
 }
 
-export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage;
+export type ToolCallGroupMessage = {
+    id: string;
+    localId: string | null;
+    createdAt: number;
+    kind: 'tool-call-group';
+    messageIds: string[]; // IDs of the tool call messages in this group
+}
+
+export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage | ToolCallGroupMessage;

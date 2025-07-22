@@ -1,8 +1,9 @@
 import * as React from "react";
-import { View, Text } from "react-native";
+import { View } from "react-native";
 import { MarkdownView } from "./markdown/MarkdownView";
 import { CompactToolBlock as CompactToolBlock } from "./blocks/RenderToolCallV4";
-import { Message, ToolCall, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
+import { ToolCallGroupBlock } from "./blocks/ToolCallGroupBlock";
+import { Message, ToolCall, UserTextMessage, AgentTextMessage, ToolCallMessage, ToolCallGroupMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 // import { RenderToolV1 } from './blocks/RenderToolCallV1';
 
@@ -10,6 +11,7 @@ export const MessageView = (props: {
   message: Message;
   metadata: Metadata | null;
   sessionId: string;
+  getMessageById?: (id: string) => Message | null;
 }) => {
   console.log(props.message);
 
@@ -26,7 +28,8 @@ export const MessageView = (props: {
         <RenderBlock 
           message={props.message} 
           metadata={props.metadata} 
-          sessionId={props.sessionId} 
+          sessionId={props.sessionId}
+          getMessageById={props.getMessageById}
         />
       </View>
     </View>
@@ -38,6 +41,7 @@ function RenderBlock(props: {
   message: Message;
   metadata: Metadata | null;
   sessionId: string;
+  getMessageById?: (id: string) => Message | null;
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
@@ -51,6 +55,14 @@ function RenderBlock(props: {
         message={props.message} 
         metadata={props.metadata} 
         sessionId={props.sessionId} 
+      />;
+    
+    case 'tool-call-group':
+      return <ToolCallGroupBlock 
+        message={props.message} 
+        metadata={props.metadata} 
+        sessionId={props.sessionId}
+        getMessageById={props.getMessageById || (() => null)}
       />;
     
     default:
@@ -108,7 +120,7 @@ function ToolCallBlock(props: {
   sessionId: string;
 }) {
   return (
-    <View>
+    <View style={{ marginHorizontal: 16 }}>
       {props.message.tools.map((tool: ToolCall, index: number) => (
         <CompactToolBlock
           key={index}
@@ -122,10 +134,3 @@ function ToolCallBlock(props: {
   );
 }
 
-function UnknownMessageView() {
-  return (
-    <View>
-      <Text>Unknown message, please update the app to the latest version.</Text>
-    </View>
-  );
-}
