@@ -3,6 +3,7 @@ import { log } from "@/utils/log";
 import { awaitShutdown } from "@/utils/shutdown";
 import { db } from './storage/db';
 import { startTimeout } from "./app/timeout";
+import { getHelloWorld } from 'happy-liberal/hello-world';
 
 async function main() {
 
@@ -18,6 +19,7 @@ async function main() {
     // Ready
     //
 
+    log(`Server says: ${getHelloWorld('Handy Server')}`);
     log('Ready');
     await awaitShutdown();
     log('Shutting down...');

@@ -6,9 +6,9 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "(cd ../happy-liberal && yarn build) && tsc",
     "start": "tsx ./sources/main.ts",
-    "dev": "tsx --env-file=.env.example ./sources/main.ts",
+    "dev": "tsc && tsx --env-file=.env.example ./sources/main.ts",
     "test": "vitest",
     "migrate": "dotenv -e .env.example -- prisma migrate dev",
     "generate": "prisma generate",
@@ -27,6 +27,7 @@
     "yaml": "^2.4.2"
   },
   "dependencies": {
+    "happy-liberal": "workspace:*",
     "@date-fns/tz": "^1.2.0",
     "@fastify/bearer-auth": "^10.1.1",
     "@fastify/cors": "^10.0.1",
