@@ -15,7 +15,7 @@ Step 1: Download App
 </h3>
 
 <div align="center">
-<img width="180" height="52" alt="appstore" src="https://github.com/user-attachments/assets/45e31a11-cf6b-40a2-a083-6dc8d1f01291" />
+<a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><img width="180" height="52" alt="appstore" src="https://github.com/user-attachments/assets/45e31a11-cf6b-40a2-a083-6dc8d1f01291" /></a>
   &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
 <img width="180" height="52" alt="googleplay" src="https://github.com/user-attachments/assets/acbba639-858f-4c74-85c7-92a4096efbf5" />
 </div>
