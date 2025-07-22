@@ -1,0 +1,7 @@
+node_modules
+
+# Kirill's experimental files
+one-off-experiments
+
+# Individual devs workspace setups
+*.code-workspace
