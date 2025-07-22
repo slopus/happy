@@ -1,7 +1,7 @@
 import React from "react";
 import { View, Text, ScrollView } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { type Message, type ToolCallMessage } from "@/sync/typesMessage";
+import { type Message, type ToolCallMessage, type ToolCallGroupMessage } from "@/sync/typesMessage";
 import { DetailedToolBlock } from "@/components/blocks/RenderToolCallV4";
 import { useSession } from "@/sync/storage";
 
@@ -9,6 +9,7 @@ interface MessageDetailViewProps {
   message: Message;
   messageId: string;
   sessionId: string;
+  getMessageById?: (id: string) => Message | null;
 }
 
 // Component specifically for rendering tool call details
@@ -56,12 +57,68 @@ function ToolCallDetailView({
   );
 }
 
+// Component for rendering tool call group details
+function ToolCallGroupDetailView({
+  message,
+  sessionId,
+  getMessageById,
+}: {
+  message: ToolCallGroupMessage;
+  sessionId: string;
+  getMessageById: (id: string) => Message | null;
+}) {
+  const safeArea = useSafeAreaInsets();
+  const session = useSession(sessionId);
+
+  // Get the actual tool call messages
+  const toolCallMessages = message.messageIds
+    .map(id => getMessageById(id))
+    .filter((msg): msg is ToolCallMessage => msg !== null && msg.kind === 'tool-call');
+
+  return (
+    <ScrollView
+      style={{ flex: 1 }}
+      contentContainerStyle={{ paddingBottom: safeArea.bottom + 20 }}
+    >
+      <View
+        style={{
+          backgroundColor: "#f8f9fa",
+          paddingHorizontal: 16,
+          paddingVertical: 12,
+          borderBottomWidth: 1,
+          borderBottomColor: "#e0e0e0",
+        }}
+      >
+        <Text style={{ fontSize: 16, fontWeight: '600', color: '#333', marginBottom: 4 }}>
+          Tool Call Group
+        </Text>
+        <Text style={{ fontSize: 12, color: "#666" }}>
+          {toolCallMessages.length} tool call{toolCallMessages.length !== 1 ? 's' : ''}
+        </Text>
+      </View>
+
+      {toolCallMessages.map((toolMsg, index) => (
+        <View key={toolMsg.id} style={{ margin: 16 }}>
+          <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 8, color: '#666' }}>
+            Tool Call {index + 1}
+          </Text>
+          {toolMsg.tools.map((tool, toolIndex) => (
+            <View key={toolIndex} style={{ marginBottom: toolIndex < toolMsg.tools.length - 1 ? 20 : 0 }}>
+              <DetailedToolBlock tool={tool} metadata={session?.metadata || null} />
+            </View>
+          ))}
+        </View>
+      ))}
+    </ScrollView>
+  );
+}
+
 // Debug/fallback component for showing raw message details
 function DebugMessageDetailView({
   message,
   messageId,
 }: {
-  message: Exclude<Message, ToolCallMessage>;
+  message: Exclude<Message, ToolCallMessage | ToolCallGroupMessage>;
   messageId: string;
 }) {
   const safeArea = useSafeAreaInsets();
@@ -171,12 +228,26 @@ export function MessageDetailView({
   message,
   messageId,
   sessionId,
+  getMessageById,
 }: MessageDetailViewProps) {
   // For tool call messages, use the specialized tool detail view
   if (message.kind === 'tool-call') {
     return (
       <View style={{ flex: 1, backgroundColor: "white" }}>
         <ToolCallDetailView message={message} sessionId={sessionId} />
+      </View>
+    );
+  }
+
+  // For tool call group messages, use the specialized tool group detail view
+  if (message.kind === 'tool-call-group') {
+    return (
+      <View style={{ flex: 1, backgroundColor: "white" }}>
+        <ToolCallGroupDetailView 
+          message={message} 
+          sessionId={sessionId} 
+          getMessageById={getMessageById || (() => null)}
+        />
       </View>
     );
   }
@@ -203,6 +274,9 @@ export function getMessageDetailTitle(message: Message): string {
         return "Tool Details";
       }
       return "Tool Details";
+    
+    case 'tool-call-group':
+      return `Tool Group (${message.messageIds.length} tools)`;
     
     case 'user-text':
       return "User Message";

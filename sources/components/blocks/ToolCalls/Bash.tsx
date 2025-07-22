@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, Pressable } from 'react-native';
+import { useRouter } from 'expo-router';
 import { MonoText as Text } from './design-tokens/MonoText';
-import { SingleLineToolSummaryBlock as SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { ToolCall } from '@/sync/typesMessage';
 import { ToolIcon } from './design-tokens/ToolIcon';
@@ -11,45 +11,47 @@ import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 export type BashToolCall = Omit<ToolCall, 'name'> & { name: 'Bash' };
 
 export function BashCompactView({ tool, sessionId, messageId }: { tool: BashToolCall, sessionId: string, messageId: string }) {
-  return (
-    <SingleLineToolSummaryBlock sessionId={sessionId} messageId={messageId}>
-      <BashCompactViewInner tool={tool} />
-    </SingleLineToolSummaryBlock>
-  );
-}
-
-// Compact view for display in session list (1-2 lines max)
-export function BashCompactViewInner({ tool }: { tool: ToolCall }) {
+  const router = useRouter();
   const command = tool.input?.command;
-  const description = tool.input?.description;
   
   // Dynamic label based on state
   const label = tool.state === 'running' ? 'Running' : 'Ran';
   
   if (!command) {
     return (
-      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-        <ToolIcon name="terminal" />
-        {tool.state === 'running' ? <ShimmerToolName>{label}</ShimmerToolName> : <ToolName>{label}</ToolName>}
-        <Text className={`${TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} italic`}>Terminal command</Text>
-      </View>
+      <Pressable
+        onPress={() => router.push(`/session/${sessionId}/message/${messageId}`)}
+        className="border-2 border-transparent active:border-neutral-200 active:bg-neutral-50 rounded-lg bg-white py-2 -mx-2 px-2"
+      >
+        <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+          <ToolIcon name="terminal" />
+          {tool.state === 'running' ? <ShimmerToolName>{label}</ShimmerToolName> : <ToolName>{label}</ToolName>}
+          <Text className={`${TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} italic`}>Terminal command</Text>
+        </View>
+      </Pressable>
     );
   }
 
-  // Use description if available, otherwise use truncated command
-  const displayText = description || (command.length > 50 ? `${command.substring(0, 47)}...` : command);
-  const prefix = description ? '' : '$ ';
-  
   return (
-    <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-      <ToolIcon name="terminal" />
-      {tool.state === 'running' ? <ShimmerToolName>{label}</ShimmerToolName> : <ToolName>{label}</ToolName>}
-      <Text className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} numberOfLines={1}>
-        {prefix}{displayText}
-      </Text>
-    </View>
+    <Pressable
+      onPress={() => router.push(`/session/${sessionId}/message/${messageId}`)}
+      className="border-2 border-transparent active:border-neutral-200 active:bg-neutral-50 rounded-lg bg-white py-2 -mx-2 px-2"
+    >
+      <View className="flex-1">
+        {/* Header with icon and status */}
+        <View className="flex-row items-center mb-2">
+          <ToolIcon name="terminal" />
+          {tool.state === 'running' ? <ShimmerToolName>{label}</ShimmerToolName> : <ToolName>{label}</ToolName>}
+        </View>
+        
+        {/* Terminal display */}
+        <View className="bg-gray-800 rounded-lg p-3">
+          <Text className="text-green-400 font-mono text-sm">$ {command}</Text>
+        </View>
+      </View>
+    </Pressable>
   );
-};
+}
 
 // Detailed view for full-screen modal
 export const BashDetailedView = ({ tool }: { tool: ToolCall }) => {

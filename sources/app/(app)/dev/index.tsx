@@ -103,6 +103,12 @@ export default function DevScreen() {
                     icon={<Ionicons name="color-palette-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/colors')}
                 />
+                <Item 
+                    title="Message Demos"
+                    subtitle="Various message types and components"
+                    icon={<Ionicons name="chatbubbles-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/messages-demo')}
+                />
             </ItemGroup>
 
             {/* Test Features */}

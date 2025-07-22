@@ -161,77 +161,78 @@ export const TaskDetailedView = ({ tool }: { tool: TaskToolCall }) => {
       default: return '#6b7280';
     }
   };
+  
+  // Apparently typescript can't infer the types inside the template expression,
+  // so I manually specified the types here.
+  const toolCalls: ToolCall[] = tool.children;
+  const weHaveResult: boolean = !!tool.result
 
   return (
     <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={false}>
-      <>
-      {/* Header */}
-      <View className="pt-5 px-4 pb-2">
-        <View className="flex-row items-center">
-          <ToolIcon name="flash" />
-          <Text className="text-2xl font-bold ml-2">Task</Text>
-          <View className="ml-auto flex-row items-center">
-            <ToolIcon 
-              name={getStateIcon(tool.state) as any} 
-              state={tool.state === 'error' ? 'error' : undefined} 
-            />
-            <Text className={`text-sm font-medium ml-1`} style={{ color: getStateColor(tool.state) }}>
-              {tool.state.toUpperCase()}
-            </Text>
-          </View>
-        </View>
-      </View>
-
-      {/* Task Details */}
-      <View className="px-4">
-        {/*
-        */}
-        <View className="mb-4">
-          <Text className="text-sm font-semibold text-gray-600 mb-1">Description</Text>
-          <View className="bg-gray-100 p-3 rounded-lg">
-            <Text className="text-base text-gray-800">{args.description}</Text>
-          </View>
-        </View>
-
-        <View className="mb-4">
-          <Text className="text-sm font-semibold text-gray-600 mb-1">Prompt</Text>
-          <View className="bg-gray-100 p-3 rounded-lg">
-            <Text className="text-sm text-gray-800 leading-5">{args.prompt}</Text>
-          </View>
-        </View>
-
-        {/* Child Tools */}
-        <View>
-        {tool.children && tool.children.length > 0 && (
-          <View className="mb-4">
-            <Text className="text-sm font-semibold text-gray-600 mb-2">Sub-tasks ({tool.children.length})</Text>
-            {tool.children.map((child, index) => (
-              <View key={index} className="flex-row items-center bg-gray-50 p-3 rounded-lg mb-2">
-                <Ionicons 
-                  name={getStateIcon(child.state)} 
-                  size={18} 
-                  color={getStateColor(child.state)} 
-                />
-                <Text className="text-base text-gray-800 ml-3 flex-1">{child.name}</Text>
-                <Text className="text-sm text-gray-500">{child.state}</Text>
-              </View>
-            ))}
-          </View>
-        )}
-        </View>
-
-        {/* Result
-        */}
-        {tool.result && (
-          <View className="mb-4">
-            <Text className="text-sm font-semibold text-gray-600 mb-1">Result</Text>
-            <View className="bg-gray-100 p-3 rounded-lg">
-              <Text className="text-sm text-gray-800">{JSON.stringify(tool.result, null, 2)}</Text>
+        {/* Header */}
+        <View className="pt-5 px-4 pb-2">
+          <View className="flex-row items-center">
+            <ToolIcon name="flash" />
+            <Text className="text-2xl font-bold ml-2">Task</Text>
+            <View className="ml-auto flex-row items-center">
+              <ToolIcon 
+                name={getStateIcon(tool.state) as any} 
+                state={tool.state === 'error' ? 'error' : undefined} 
+              />
+              <Text className={`text-sm font-medium ml-1`} style={{ color: getStateColor(tool.state) }}>
+                {tool.state.toUpperCase()}
+              </Text>
             </View>
           </View>
-        )}
+        </View>
+
+        {/* Task Details */}
+        <View className="px-4">
+          <View className="mb-4">
+            <Text className="text-sm font-semibold text-gray-600 mb-1">Description</Text>
+            <View className="bg-gray-100 p-3 rounded-lg">
+              <Text className="text-base text-gray-800">{args.description}</Text>
+            </View>
+          </View>
+
+          <View className="mb-4">
+            <Text className="text-sm font-semibold text-gray-600 mb-1">Prompt</Text>
+            <View className="bg-gray-100 p-3 rounded-lg">
+              <Text className="text-sm text-gray-800 leading-5">{args.prompt}</Text>
+            </View>
+          </View>
+
+
+          {/* Child Tools */}
+          <View>
+            {toolCalls.length > 0 && (
+              <View className="mb-4">
+                <Text className="text-sm font-semibold text-gray-600 mb-2">Sub-tasks ({toolCalls.length})</Text>
+                {toolCalls.map((child, index) => (
+                  <View key={index} className="flex-row items-center bg-gray-50 p-3 rounded-lg mb-2">
+                    <Ionicons 
+                      name={getStateIcon(child.state)} 
+                      size={18} 
+                      color={getStateColor(child.state)} 
+                    />
+                    <Text className="text-base text-gray-800 ml-3 flex-1">{child.name}</Text>
+                    <Text className="text-sm text-gray-500">{child.state}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
+
+          {/* Result */}
+          {weHaveResult && (
+            <View className="mb-4">
+              <Text className="text-sm font-semibold text-gray-600 mb-1">Result</Text>
+              <View className="bg-gray-100 p-3 rounded-lg">
+                <Text className="text-sm text-gray-800">{JSON.stringify(tool.result, null, 2)}</Text>
+              </View>
+            </View>
+          )}
       </View>
-      </>
     </ScrollView>
   );
 };
