@@ -5,6 +5,9 @@
     "paths": {
       "@/*": [
         "./sources/*"
+      ],
+      "happy-liberal/*": [
+        "../happy-liberal/sources/*"
       ]
     }
   },

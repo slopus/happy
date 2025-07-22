@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
+import { getHelloWorld } from 'happy-liberal';
 
 interface SessionsListProps {
     data: SessionListItem[];
@@ -20,6 +21,11 @@ interface SessionsListProps {
 export function SessionsList({ data, selectedSessionId, onSessionPress }: SessionsListProps) {
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
+    
+    // Log happy-liberal test on component mount
+    React.useEffect(() => {
+        console.log(` says: ${getHelloWorld('React Native')}`);
+    }, []);
 
     const keyExtractor = React.useCallback((item: SessionListItem, index: number) => {
         if (typeof item === 'string') {
@@ -31,7 +37,7 @@ export function SessionsList({ data, selectedSessionId, onSessionPress }: Sessio
     const renderItem = React.useCallback(({ item }: { item: SessionListItem }) => {
         if (typeof item === 'string') {
             const isOnline = item === 'online';
-            const title = isOnline ? 'Active Sessions' : 'Previous Sessions';
+            const title = isOnline ? 'Active Sessions' : 'Previous Sessions' + ' ' + getHelloWorld('sdf Native');
             return (
                 <View style={{ paddingHorizontal: 16, paddingVertical: 12, backgroundColor: '#fff' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
