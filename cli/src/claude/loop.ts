@@ -12,6 +12,7 @@ interface LoopOptions {
     path: string
     model?: string
     permissionMode?: 'auto' | 'default' | 'plan'
+    startingMode?: 'interactive' | 'remote'
     mcpServers?: Record<string, any>
     permissionPromptToolName?: string
     onThinking?: (thinking: boolean) => void,
@@ -31,60 +32,30 @@ interface LoopOptions {
 */
 
 export async function loop(opts: LoopOptions) {
-    let mode: 'interactive' | 'remote' = 'interactive' as 'interactive' | 'remote';
+    let mode: 'interactive' | 'remote' = opts.startingMode ?? 'interactive';
     let currentMessageQueue: MessageQueue = new MessageQueue();
     let sessionId: string | null = null;
     let onMessage: (() => void) | null = null;
 
-    /*
-        NOTE: User messages that come to us from the remote session, will be
-        written by claude to session file, and re-emitted to us.
-        We cannot pass any stable ID to claude for the message.
-
-        Invariant:
-        For each incoming user message, we expect to see it come out of the session
-        scanner exactly once.
-
-        Why can't we simply ignore messages with the same content we have seen?
-        - Remote User: Run 'yarn build'
-        - Scanner emits 'user: Run 'yarn build''
-        - [switch to local mode]
-        - Local user (through claude terminal session): Run 'yarn build'
-        - Scanner emits 'user: Run 'yarn build''
-        
-        So if we were to ignore messages with the same content we have seen, we would not emit this message to the server. The counter solution addresses this.
-    */
-    let seenRemoteUserMessageCounters: Map<string, number> = new Map();
+    const sessionScanner = createSessionScanner({
+        workingDirectory: opts.path,
+        onMessage: (message) => {
+            opts.session.sendClaudeSessionMessage(message);
+        }
+    });
 
     // Handle user messages
     opts.session.onUserMessage((message) => {
-        logger.debugLargeJson('User message pushed to queue:', message)
-        currentMessageQueue.push(message.content.text);
+        sessionScanner.onRemoteUserMessageForDeduplication(message.content.text);
 
-        // Increment the counter for this remote user message
-        seenRemoteUserMessageCounters.set(message.content.text, (seenRemoteUserMessageCounters.get(message.content.text) || 0) + 1);
+        currentMessageQueue.push(message.content.text);
+        logger.debugLargeJson('User message pushed to queue:', message)
 
         if (onMessage) {
             onMessage();
         }
     });
 
-
-    const sessionScanner = createSessionScanner({
-        workingDirectory: opts.path,
-        onMessage: (message) => {
-            if (message.type === 'user' && typeof message.message.content === 'string') {
-                const currentCounter = seenRemoteUserMessageCounters.get(message.message.content);
-                if (currentCounter && currentCounter > 0) {
-                    // We have already seen this message from the remote session
-                    // Lets decrement the counter & skip
-                    seenRemoteUserMessageCounters.set(message.message.content, currentCounter - 1);
-                    return;
-                }
-            }
-            opts.session.sendClaudeSessionMessage(message);
-        }
-    });
 
 
     let onSessionFound = (newSessionId: string) => {
@@ -149,10 +120,14 @@ export async function loop(opts: LoopOptions) {
                     mode = 'interactive';
                     remoteAbortController.abort();
                 }
-                process.stdin.setRawMode(false);
+                if (process.stdin.isTTY) {
+                    process.stdin.setRawMode(false);
+                }
             };
             process.stdin.resume();
-            process.stdin.setRawMode(true);
+            if (process.stdin.isTTY) {
+                process.stdin.setRawMode(true);
+            }
             process.stdin.setEncoding("utf8");
             process.stdin.on('data', abortHandler);
             try {
@@ -170,7 +145,9 @@ export async function loop(opts: LoopOptions) {
                 });
             } finally {
                 process.stdin.off('data', abortHandler);
-                process.stdin.setRawMode(false);
+                if (process.stdin.isTTY) {
+                    process.stdin.setRawMode(false);
+                }
                 // Once we are done with this session, release the queue
                 // otherwise an old watcher somehow maintains reference to it
                 // and consumes our new message

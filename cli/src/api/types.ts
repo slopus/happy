@@ -1,4 +1,10 @@
 import { z } from 'zod'
+import { UsageSchema } from '@/claude/types'
+
+/**
+ * Usage data type from Claude
+ */
+export type Usage = z.infer<typeof UsageSchema>
 
 /**
  * Base message content structure for encrypted messages
@@ -103,6 +109,11 @@ export interface ClientToServerEvents {
     result?: string
     error?: string
   }) => void) => void
+  'usage-report': (data: { 
+    key: string
+    sessionId: string
+    usage: Usage
+  }) => void
 }
 
 /**

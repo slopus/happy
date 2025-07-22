@@ -1,3 +1,19 @@
+// NOTE: To allow for longer than 5 minutes 
+// CRITICAL: Set custom timeouts BEFORE importing MCP SDK
+// import { setGlobalDispatcher, Agent } from 'undici';
+
+// Override the default 5-minute timeout with 27.8 hours
+// const globalAgent = new Agent({
+//   headersTimeout: 100000000, // 27.8 hours
+//   bodyTimeout: 100000000,
+//   keepAliveTimeout: 100000000,
+//   connectTimeout: 100000000
+// });
+
+// setGlobalDispatcher(globalAgent);
+// logger.debug('[MCP] Set global undici dispatcher with 27.8 hour timeouts');
+
+// NOW import MCP SDK (order matters!)
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createServer } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -67,17 +83,13 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
         }
     });
 
-    // NOTE: For reference, the server is actually 
-    // the one timing out. Might be on the createServer layer
-    // Tested with npx @modelcontextprotocol/inspector
-    //
-    // Configure infinite timeouts
-    // Setting to 1 second for testing
-    // const timeout = 100000000;
+    // Configure server timeouts to match undici timeouts
+    // const timeout = 100000000; // 27.8 hours
     // server.keepAliveTimeout = timeout;
     // server.headersTimeout = timeout;
     // server.requestTimeout = timeout;
     // server.timeout = timeout;
+    // logger.debug('[MCP] HTTP server timeouts set to 27.8 hours');
 
     const baseUrl = await new Promise<URL>((resolve) => {
         server.listen(0, "127.0.0.1", () => {

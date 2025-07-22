@@ -8,10 +8,12 @@ import { startPermissionServerV2 } from '@/claude/mcp/startPermissionServerV2';
 import type { OnAssistantResultCallback } from '@/ui/messageFormatter';
 import { InterruptController } from '@/claude/InterruptController';
 import packageJson from '../../package.json';
+import { startAnthropicActivityProxy } from '@/claude/proxy/startAnthropicActivityProxy';
 
 export interface StartOptions {
     model?: string
     permissionMode?: 'auto' | 'default' | 'plan'
+    startingMode?: 'interactive' | 'remote'
 }
 
 export async function start(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
@@ -30,6 +32,23 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // Create realtime session
     const session = api.session(response);
     const pushClient = api.push();
+
+    // Start Anthropic activity monitoring proxy
+    const antropicActivityProxy = await startAnthropicActivityProxy(
+        (activity) => {
+            session.keepAlive(activity === 'working');
+        }
+    );
+
+    // Set the proxy URL for both HTTP and HTTPS traffic
+    process.env.HTTP_PROXY = antropicActivityProxy.url;
+    process.env.HTTPS_PROXY = antropicActivityProxy.url;
+    logger.debug(`[AnthropicProxy] Set HTTP_PROXY and HTTPS_PROXY to ${antropicActivityProxy.url}`);
+    
+    // Print log file path
+    const logPath = await logger.logFilePathPromise;
+    logger.info(`Session: ${response.id}`);
+    logger.infoDeveloper(`Logs: ${logPath}`);
 
     // Create interrupt controller
     const interruptController = new InterruptController();
@@ -59,7 +78,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                     requests: r,
                 });
             });
-        }, 1000 * 60 * 4.5)
+        }, 1000 * 60 * 4.5) // 4.5 minutes, 30 seconds before max timeout
         logger.info('Permission request' + id + ' ' + JSON.stringify(request));
 
         // Send push notification for permission request
@@ -156,6 +175,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         path: workingDirectory,
         model: options.model,
         permissionMode: options.permissionMode,
+        startingMode: options.startingMode,
         mcpServers: {
             'permission': {
                 type: 'http' as const,
@@ -191,5 +211,9 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     }
 
     // Exit
+    if (antropicActivityProxy) {
+        logger.info('[AnthropicProxy] Shutting down activity monitoring proxy');
+        antropicActivityProxy.cleanup();
+    }
     process.exit(0);
 }

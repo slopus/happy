@@ -115,6 +115,16 @@ class Logger {
     this.debug(message, args)
   }
   
+  infoDeveloper(message: string, ...args: unknown[]): void {
+    // Always write to debug
+    this.debug(message, ...args)
+    
+    // Write to info if DEBUG mode is on
+    if (process.env.DEBUG) {
+      this.logToConsole('info', '[DEV]', message, ...args)
+    }
+  }
+  
   private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {
     switch (level) {
       case 'debug': {
@@ -180,4 +190,12 @@ export let logger: Logger
 
 export function initLoggerWithGlobalConfiguration() {
   logger = new Logger()
+  
+  // Print debug mode message if DEBUG is on
+  if (configuration.DEBUG) {
+    logger.logFilePathPromise.then(logPath => {
+      logger.info(chalk.yellow('[DEBUG MODE] Debug logging enabled'))
+      logger.info(chalk.gray(`Log file: ${logPath}`))
+    })
+  }
 }

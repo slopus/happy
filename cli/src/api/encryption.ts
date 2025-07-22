@@ -3,8 +3,13 @@ import tweetnacl from 'tweetnacl'
 
 /**
  * Encode a Uint8Array to base64 string
+ * @param buffer - The buffer to encode
+ * @param variant - The encoding variant ('base64' or 'base64url')
  */
-export function encodeBase64(buffer: Uint8Array): string {
+export function encodeBase64(buffer: Uint8Array, variant: 'base64' | 'base64url' = 'base64'): string {
+  if (variant === 'base64url') {
+    return encodeBase64Url(buffer);
+  }
   return Buffer.from(buffer).toString('base64')
 }
 
@@ -23,9 +28,18 @@ export function encodeBase64Url(buffer: Uint8Array): string {
 /**
  * Decode a base64 string to a Uint8Array
  * @param base64 - The base64 string to decode
+ * @param variant - The encoding variant ('base64' or 'base64url')
  * @returns The decoded Uint8Array
  */
-export function decodeBase64(base64: string): Uint8Array {
+export function decodeBase64(base64: string, variant: 'base64' | 'base64url' = 'base64'): Uint8Array {
+  if (variant === 'base64url') {
+    // Convert base64url to base64
+    const base64Standard = base64
+      .replaceAll('-', '+')
+      .replaceAll('_', '/')
+      + '='.repeat((4 - base64.length % 4) % 4);
+    return new Uint8Array(Buffer.from(base64Standard, 'base64'));
+  }
   return new Uint8Array(Buffer.from(base64, 'base64'));
 }
 
