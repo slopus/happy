@@ -1,0 +1,80 @@
+{
+  "name": "happy-coder",
+  "version": "0.1.8",
+  "description": "Claude Code session sharing CLI",
+  "author": "Kirill Dubovitskiy",
+  "license": "MIT",
+  "type": "module",
+  "homepage": "https://github.com/slopus/happy-cli",
+  "bugs": "https://github.com/slopus/happy-cli/issues",
+  "repository": "slopus/happy-cli",
+  "bin": {
+    "happy": "./bin/happy"
+  },
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+      ".": {
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      },
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      }
+    },
+    "./lib": {                                                                                      
+      "require": {                                                                                  
+        "types": "./dist/lib.d.cts",                                                                
+        "default": "./dist/lib.cjs"                                                                 
+      },                                                                                            
+      "import": {                                                                                   
+        "types": "./dist/lib.d.mts",                                                                
+        "default": "./dist/lib.mjs"                                                                 
+      }                                                                                             
+    }   
+  },
+  "files": [
+    "dist",
+    "bin",
+    "scripts",
+    "package.json"
+  ],
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "pkgroll",
+    "prepublishOnly": "tsc --noEmit && yarn build && yarn test",
+    "dev": "npx tsx --env-file .env.sample src/index.ts",
+    "dev:local-server": "HANDY_SERVER_URL=http://localhost:3005 npx tsx --env-file .env.sample src/index.ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.51",
+    "@anthropic-ai/sdk": "^0.56.0",
+    "@modelcontextprotocol/sdk": "^1.15.1",
+    "@stablelib/base64": "^2.0.1",
+    "@types/qrcode-terminal": "^0.12.2",
+    "axios": "^1.10.0",
+    "chalk": "^5.4.1",
+    "expo-server-sdk": "^3.15.0",
+    "http-proxy-middleware": "^3.0.5",
+    "qrcode-terminal": "^0.12.0",
+    "socket.io-client": "^4.8.1",
+    "tweetnacl": "^1.0.3",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@eslint/compat": "^1",
+    "@types/node": "^18",
+    "eslint": "^9",
+    "eslint-config-prettier": "^10",
+    "pkgroll": "^2.14.2",
+    "shx": "^0.3.3",
+    "ts-node": "^10",
+    "tsx": "^4.20.3",
+    "typescript": "^5",
+    "vitest": "^3.2.4"
+  }
+}
