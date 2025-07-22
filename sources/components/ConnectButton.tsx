@@ -14,7 +14,9 @@ export const ConnectButton = React.memo(() => {
     const checkScannerPermissions = useCheckScannerPermissions();
 
     const connectTerminal = async () => {
-        if (!await checkScannerPermissions()) {
+        const hasPermissions = await checkScannerPermissions();
+        
+        if (!hasPermissions) {
             return;
         }
 
