@@ -47,6 +47,45 @@ import packageJson from '../package.json'
   } else if (subcommand === 'login' || subcommand === 'auth') {
     await doAuth();
     return;
+  } else if (subcommand === 'daemon') {
+    // Handle daemon command
+    if (process.env.HAPPY_DAEMON_MODE) {
+      // Running as daemon
+      const { run } = await import('./daemon/run')
+      await run()
+    } else {
+      // Show daemon management help
+      const daemonSubcommand = args[1]
+      if (daemonSubcommand === 'install') {
+        const { install } = await import('./daemon/install')
+        try {
+          await install()
+        } catch (error) {
+          console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+          process.exit(1)
+        }
+      } else if (daemonSubcommand === 'uninstall') {
+        const { uninstall } = await import('./daemon/uninstall')
+        try {
+          await uninstall()
+        } catch (error) {
+          console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+          process.exit(1)
+        }
+      } else {
+        console.log(`
+${chalk.bold('happy daemon')} - Daemon management
+
+${chalk.bold('Usage:')}
+  sudo happy daemon install     Install the daemon (requires sudo)
+  sudo happy daemon uninstall   Uninstall the daemon (requires sudo)
+
+${chalk.bold('Note:')} The daemon runs in the background and provides persistent services.
+Currently only supported on macOS.
+`)
+      }
+    }
+    return;
   } else {
     // Parse command line arguments for main command
     const options: Record<string, string> = {}
@@ -83,6 +122,7 @@ ${chalk.bold('Usage:')}
   happy logout     Logs out of your account and removes data directory
   happy login      Show your secret QR code
   happy auth       Same as login
+  happy daemon     Manage the background daemon (macOS only)
 
 ${chalk.bold('Options:')}
   -h, --help              Show this help message
