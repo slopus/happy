@@ -2,10 +2,11 @@ import * as React from 'react';
 import { FlatList, View } from 'react-native';
 import { MessageView } from '@/components/MessageView';
 import { debugMessages, debugToolCallMessages } from './messages-demo-data';
+import { Message } from '@/sync/typesMessage';
 
 export default function MessagesDemoScreen() {
     // Combine all demo messages
-    const allMessages = [...debugMessages, ...debugToolCallMessages].reverse();
+    const allMessages = [...debugMessages, ...debugToolCallMessages];
 
     return (
         <View style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -18,11 +19,13 @@ export default function MessagesDemoScreen() {
                             message={item} 
                             metadata={null}
                             sessionId="demo-session"
+                            getMessageById={(id: string): Message | null => {
+                                return allMessages.find((msg) => msg.id === id) || null;
+                            }}
                         />
                     )}
                     style={{ flexGrow: 1, flexBasis: 0 }}
                     contentContainerStyle={{ paddingVertical: 20 }}
-                    inverted
                 />
             )}
         </View>

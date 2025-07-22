@@ -119,7 +119,7 @@ function ToolCallBlock(props: {
   sessionId: string;
 }) {
   return (
-    <View style={{ marginHorizontal: 16 }}>
+    <View style={{ marginHorizontal: 8 }}>
       {props.message.tools.map((tool: ToolCall, index: number) => (
         <CompactToolBlock
           key={index}

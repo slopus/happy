@@ -3,6 +3,27 @@
 
 import { Message } from '@/sync/typesMessage';
 
+// Reusable Read tool call constant
+const createReadToolCall = (id: string, filePath: string, startLine: number, endLine: number, result: string) => ({
+    id,
+    localId: null,
+    createdAt: Date.now() - Math.random() * 10000,
+    kind: 'tool-call' as const,
+    tools: [
+        {
+            name: 'Read',
+            state: 'completed' as const,
+            input: {
+                file_path: filePath,
+                start_line: startLine,
+                end_line: endLine
+            },
+            result,
+            children: []
+        }
+    ]
+});
+
 export const debugMessages: Message[] = [
     // User message
     {
@@ -242,9 +263,30 @@ export const debugMessages: Message[] = [
         ]
     },
 
-    // Grep tool - completed
+    // Grep tool - running
     {
-        id: 'grep-completed',
+        id: 'grep-running',
+        localId: null,
+        createdAt: Date.now() - 75000,
+        kind: 'tool-call',
+        tools: [
+            {
+                name: 'Grep',
+                state: 'running',
+                input: {
+                    pattern: 'console\\.log',
+                    include_pattern: '*.ts *.tsx',
+                    output_mode: 'content',
+                    '-n': true
+                },
+                children: []
+            }
+        ]
+    },
+
+    // Grep tool - completed with results
+    {
+        id: 'grep-completed-with-results',
         localId: null,
         createdAt: Date.now() - 70000,
         kind: 'tool-call',
@@ -254,9 +296,70 @@ export const debugMessages: Message[] = [
                 state: 'completed',
                 input: {
                     pattern: 'TODO',
-                    include_pattern: '*.ts *.tsx'
+                    include_pattern: '*.ts *.tsx',
+                    output_mode: 'content',
+                    '-n': true
                 },
-                result: 'src/components/App.tsx:15:// TODO: Add error handling\nsrc/utils/api.ts:23:// TODO: Implement retry logic\nsrc/hooks/useAuth.ts:45:// TODO: Add token refresh',
+                result: {
+                    mode: 'content',
+                    numFiles: 3,
+                    filenames: [
+                        'src/components/App.tsx',
+                        'src/utils/api.ts',
+                        'src/hooks/useAuth.ts'
+                    ],
+                    content: 'src/components/App.tsx:15:// TODO: Add error handling\nsrc/utils/api.ts:23:// TODO: Implement retry logic\nsrc/hooks/useAuth.ts:45:// TODO: Add token refresh',
+                    numLines: 3
+                },
+                children: []
+            }
+        ]
+    },
+
+    // Grep tool - completed with zero results
+    {
+        id: 'grep-completed-no-results',
+        localId: null,
+        createdAt: Date.now() - 65000,
+        kind: 'tool-call',
+        tools: [
+            {
+                name: 'Grep',
+                state: 'completed',
+                input: {
+                    pattern: 'DEPRECATED_FUNCTION',
+                    include_pattern: '*.ts *.tsx',
+                    output_mode: 'content',
+                    '-n': true
+                },
+                result: {
+                    mode: 'content',
+                    numFiles: 0,
+                    filenames: [],
+                    content: '',
+                    numLines: 0
+                },
+                children: []
+            }
+        ]
+    },
+
+    // Grep tool - error
+    {
+        id: 'grep-error',
+        localId: null,
+        createdAt: Date.now() - 60000,
+        kind: 'tool-call',
+        tools: [
+            {
+                name: 'Grep',
+                state: 'error',
+                input: {
+                    pattern: 'test',
+                    path: '/non/existent/directory',
+                    output_mode: 'content'
+                },
+                result: 'Error: ENOENT: no such file or directory, open \'/non/existent/directory\'',
                 children: []
             }
         ]
@@ -323,6 +426,15 @@ export const debugMessages: Message[] = [
         ]
     },
 
+    // User message introducing MCP examples
+    {
+        id: 'user-mcp-intro',
+        localId: null,
+        createdAt: Date.now() - 35000,
+        kind: 'user-text',
+        text: 'Below are the 3 MCP examples:'
+    },
+
     // MCP tool - completed
     {
         id: 'mcp-completed',
@@ -350,6 +462,15 @@ export const debugMessages: Message[] = [
         createdAt: Date.now() - 20000,
         kind: 'tool-call-group',
         messageIds: ['tool-group-grep', 'tool-group-bash']
+    },
+
+    // Tool call group with 4 Read tools
+    {
+        id: 'tool-group-reads',
+        localId: null,
+        createdAt: Date.now() - 15000,
+        kind: 'tool-call-group',
+        messageIds: ['read-tool-1', 'read-tool-2', 'read-tool-3', 'read-tool-4']
     }
 ];
 
@@ -366,9 +487,20 @@ export const debugToolCallMessages: Message[] = [
                 state: 'completed',
                 input: {
                     pattern: 'console\\.log',
-                    include_pattern: '*.ts *.tsx'
+                    include_pattern: '*.ts *.tsx',
+                    output_mode: 'content',
+                    '-n': true
                 },
-                result: 'src/utils/debug.ts:12:console.log("Debug mode enabled");\nsrc/components/App.tsx:34:console.log("Rendering App component");',
+                result: {
+                    mode: 'content',
+                    numFiles: 2,
+                    filenames: [
+                        'src/utils/debug.ts',
+                        'src/components/App.tsx'
+                    ],
+                    content: 'src/utils/debug.ts:12:console.log("Debug mode enabled");\nsrc/components/App.tsx:34:console.log("Rendering App component");',
+                    numLines: 2
+                },
                 children: []
             }
         ]
@@ -389,5 +521,35 @@ export const debugToolCallMessages: Message[] = [
                 children: []
             }
         ]
-    }
+    },
+
+    // Individual Read tool calls for the 4-tool group
+    createReadToolCall(
+        'read-tool-1',
+        '/src/components/App.tsx',
+        1,
+        20,
+        '1  import React from "react";\n2  import { useState, useEffect } from "react";\n3  \n4  interface AppProps {\n5    title: string;\n6  }\n7  \n8  export const App: React.FC<AppProps> = ({ title }) => {\n9    const [count, setCount] = useState(0);\n10   \n11   useEffect(() => {\n12     document.title = title;\n13   }, [title]);\n14   \n15   return (\n16     <div className="app">\n17       <h1>{title}</h1>\n18       <p>Count: {count}</p>\n19       <button onClick={() => setCount(count + 1)}>Increment</button>\n20     </div>\n21   );\n22 };'
+    ),
+    createReadToolCall(
+        'read-tool-2',
+        '/src/utils/api.ts',
+        1,
+        15,
+        '1  export interface ApiResponse<T> {\n2    data: T;\n3    status: number;\n4    message: string;\n5  }\n6  \n7  export const apiClient = {\n8    async get<T>(url: string): Promise<ApiResponse<T>> {\n9      const response = await fetch(url);\n10     return response.json();\n11   },\n12   \n13   async post<T>(url: string, data: any): Promise<ApiResponse<T>> {\n14     const response = await fetch(url, {\n15       method: "POST",\n16       headers: { "Content-Type": "application/json" },\n17       body: JSON.stringify(data)\n18     });\n19     return response.json();\n20   }\n21 };'
+    ),
+    createReadToolCall(
+        'read-tool-3',
+        '/src/hooks/useAuth.ts',
+        1,
+        25,
+        '1  import { useState, useEffect } from "react";\n2  \n3  interface User {\n4    id: string;\n5    email: string;\n6    name: string;\n7  }\n8  \n9  interface AuthState {\n10   user: User | null;\n11   isLoading: boolean;\n12   isAuthenticated: boolean;\n13  }\n14  \n15  export const useAuth = () => {\n16   const [authState, setAuthState] = useState<AuthState>({\n17     user: null,\n18     isLoading: true,\n19     isAuthenticated: false\n20   });\n21  \n22   useEffect(() => {\n23     // Check for existing token\n24     checkAuthStatus();\n25   }, []);\n26  \n27   const checkAuthStatus = async () => {\n28     try {\n29       const token = localStorage.getItem("authToken");\n30       if (token) {\n31         // Validate token with server\n32         const user = await validateToken(token);\n33         setAuthState({\n34           user,\n35           isLoading: false,\n36           isAuthenticated: true\n37         });\n38       } else {\n39         setAuthState(prev => ({ ...prev, isLoading: false }));\n40       }\n41     } catch (error) {\n42       setAuthState({\n43         user: null,\n44         isLoading: false,\n45         isAuthenticated: false\n46       });\n47     }\n48   };'
+    ),
+    createReadToolCall(
+        'read-tool-4',
+        '/src/constants/config.ts',
+        1,
+        10,
+        '1  export const APP_CONFIG = {\n2    name: "My Application",\n3    version: "1.0.0",\n4    apiUrl: process.env.REACT_APP_API_URL || "http://localhost:3000",\n5    environment: process.env.NODE_ENV || "development",\n6    features: {\n7      enableAnalytics: true,\n8      enableNotifications: false,\n9      debugMode: process.env.NODE_ENV === "development"\n10   }\n11 };'
+    )
 ]; 
