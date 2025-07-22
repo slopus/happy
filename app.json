@@ -3,7 +3,7 @@
     "name": "Happy Coder",
     "slug": "happy",
     "version": "1.0.2",
-    "runtimeVersion": "8",
+    "runtimeVersion": "7",
     "orientation": "portrait",
     "icon": "./sources/assets/images/happy-otter-icon.png",
     "scheme": "happy",
