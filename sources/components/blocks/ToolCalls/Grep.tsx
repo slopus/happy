@@ -114,7 +114,7 @@ export function GrepCompactViewInner({ tool }: { tool: GrepToolCall }) {
       >
         "{query || 'pattern'}" in {displayTarget}
       </Text>
-      <Text className={TOOL_COMPACT_VIEW_STYLES.METADATA_CLASSES}>
+      <Text className={TOOL_COMPACT_VIEW_STYLES.METADATA_CLASSES + ' pl-7'}>
         {resultText}
       </Text>
     </View>
