@@ -7,11 +7,19 @@ import { ToolCall } from '@/sync/typesMessage';
 import { ToolIcon } from './design-tokens/ToolIcon';
 import { ToolName } from './design-tokens/ToolName';
 import { ShimmerToolName } from './design-tokens/ShimmerToolName';
+import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
 
 export type BashToolCall = Omit<ToolCall, 'name'> & { name: 'Bash' };
 
 export function BashCompactView({ tool, sessionId, messageId }: { tool: BashToolCall, sessionId: string, messageId: string }) {
-  const router = useRouter();
+  return (
+    <SingleLineToolSummaryBlock sessionId={sessionId} messageId={messageId}>
+      <BashCompactViewInner tool={tool} />
+    </SingleLineToolSummaryBlock>
+  );
+}
+
+export function BashCompactViewInner({ tool }: { tool: BashToolCall }) {
   const command = tool.input?.command;
   
   // Dynamic label based on state
@@ -19,37 +27,27 @@ export function BashCompactView({ tool, sessionId, messageId }: { tool: BashTool
   
   if (!command) {
     return (
-      <Pressable
-        onPress={() => router.push(`/session/${sessionId}/message/${messageId}`)}
-        className="border-2 border-transparent active:border-neutral-200 active:bg-neutral-50 rounded-lg bg-white py-2 -mx-2 px-2"
-      >
-        <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
-          <ToolIcon name="terminal" />
-          {tool.state === 'running' ? <ShimmerToolName>{label}</ShimmerToolName> : <ToolName>{label}</ToolName>}
-          <Text className={`${TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} italic`}>Terminal command</Text>
-        </View>
-      </Pressable>
+      <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
+        <ToolIcon name="terminal" />
+        {tool.state === 'running' ? <ShimmerToolName>{label}</ShimmerToolName> : <ToolName>{label}</ToolName>}
+        <Text className={`${TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES} italic`}>Terminal command</Text>
+      </View>
     );
   }
 
   return (
-    <Pressable
-      onPress={() => router.push(`/session/${sessionId}/message/${messageId}`)}
-      className="border-2 border-transparent active:border-neutral-200 active:bg-neutral-50 rounded-lg bg-white py-2 -mx-2 px-2"
-    >
-      <View className="flex-1">
-        {/* Header with icon and status */}
-        <View className="flex-row items-center mb-2">
-          <ToolIcon name="terminal" />
-          {tool.state === 'running' ? <ShimmerToolName>{label}</ShimmerToolName> : <ToolName>{label}</ToolName>}
-        </View>
-        
-        {/* Terminal display */}
-        <View className="bg-gray-800 rounded-lg p-3">
-          <Text className="text-green-400 font-mono text-sm">$ {command}</Text>
-        </View>
+    <View className="flex-1">
+      {/* Header with icon and status */}
+      <View className="flex-row items-center mb-2">
+        <ToolIcon name="terminal" />
+        {tool.state === 'running' ? <ShimmerToolName>{label}</ShimmerToolName> : <ToolName>{label}</ToolName>}
       </View>
-    </Pressable>
+      
+      {/* Terminal display */}
+      <View className="bg-gray-800 rounded-lg p-3">
+        <Text className="text-green-400 font-mono text-sm">$ {command}</Text>
+      </View>
+    </View>
   );
 }
 

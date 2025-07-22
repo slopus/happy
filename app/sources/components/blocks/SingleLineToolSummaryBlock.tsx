@@ -9,7 +9,7 @@ export function SingleLineToolSummaryBlock({ children, sessionId, messageId }: {
   return (
     <Pressable
       onPress={() => router.push(`/session/${sessionId}/message/${messageId}`)}
-      className="border-2 border-transparent active:border-neutral-200 active:bg-neutral-50 rounded-lg bg-white flex-row items-center justify-between py-2 -mx-2 px-2"
+      className="border-2 border-transparent active:border-neutral-200 active:bg-neutral-50 rounded-lg bg-transparent flex-row items-center justify-between py-2 px-2"
     >
       {children}
 

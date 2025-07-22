@@ -151,7 +151,7 @@ export const GrepDetailedView = ({ tool }: { tool: GrepToolCall }) => {
   const displayPath = searchPath?.split('/').pop() || searchPath || 'current directory';
 
   return (
-    <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={true}>
+    <ScrollView className="flex-1" showsVerticalScrollIndicator={true}>
       {/* Header */}
       <View className="p-4">
         <View className="flex-row justify-between items-center mb-4">

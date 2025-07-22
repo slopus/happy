@@ -166,7 +166,7 @@ export const ReadDetailedView = ({ tool }: { tool: ReadToolCall }) => {
 
   if (!args?.file_path) {
     return (
-      <View className="flex-1 p-4 bg-white">
+      <View className="flex-1 p-4">
         <Text className="text-lg font-semibold text-gray-900">File Read</Text>
         <Text className="text-red-600 text-sm italic">No file specified</Text>
       </View>
@@ -176,7 +176,7 @@ export const ReadDetailedView = ({ tool }: { tool: ReadToolCall }) => {
   const fileContent = parsedResult?.file?.content || '';
 
   return (
-    <View className="flex-1 bg-white">
+    <View className="flex-1">
       {/* Simple Header */}
       <View className="p-4 border-b border-gray-200">
         <Text className="text-lg font-semibold text-gray-900">👁 {args.file_path}</Text>
