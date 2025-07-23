@@ -58,6 +58,7 @@ This when you are on your computer, you are using the normal Claude Code UI, tha
 - **[app](./app)** - Mobile / Web clients
 - **[cli](./cli)** - `happy` Command-line interface for Claude Code
 - **[server](./server)** - Backend server for encrypted sync
+- **[shared library](./liberal)** - Shared types & communication protocol definitions
 
 ## 🏠 Who We Are
 
