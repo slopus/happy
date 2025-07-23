@@ -8,28 +8,28 @@
 
 /* Begin PBXBuildFile section */
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
-		30D3CEAE1DBBBD1041FF0A2D /* libPods-HappyCoder.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 25DEE0C4F8058E0E754BF3BD /* libPods-HappyCoder.a */; };
 		3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */; };
-		9CB3A7B837C38767BA9CA466 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F472428585C5FB909759A85 /* ExpoModulesProvider.swift */; };
-		B3A1BFA2DB26B194F63492A1 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 405512BAAD283AF7F3C0C2B5 /* PrivacyInfo.xcprivacy */; };
+		465CA019211A5301DD7867E4 /* ExpoModulesProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AEADFE13D1CA677DEEAB70CE /* ExpoModulesProvider.swift */; };
+		57DAF8B6FA370D776C3A2E3C /* libPods-HappyCoder.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 8B9CA1AE66FAC3C2D632E7CF /* libPods-HappyCoder.a */; };
 		BB2F792D24A3F905000567C9 /* Expo.plist in Resources */ = {isa = PBXBuildFile; fileRef = BB2F792C24A3F905000567C9 /* Expo.plist */; };
 		F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11748412D0307B40044C1D9 /* AppDelegate.swift */; };
+		F4116A23534EE6030447FEE7 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = D27B495C6A5563F4634F4548 /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* HappyCoder.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HappyCoder.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = HappyCoder/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = HappyCoder/Info.plist; sourceTree = "<group>"; };
-		1F472428585C5FB909759A85 /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-HappyCoder/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
-		25DEE0C4F8058E0E754BF3BD /* libPods-HappyCoder.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-HappyCoder.a"; sourceTree = BUILT_PRODUCTS_DIR; };
-		405512BAAD283AF7F3C0C2B5 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xml; name = PrivacyInfo.xcprivacy; path = HappyCoder/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
-		5A5FE69BB0AAF71B45350A2B /* Pods-HappyCoder.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HappyCoder.debug.xcconfig"; path = "Target Support Files/Pods-HappyCoder/Pods-HappyCoder.debug.xcconfig"; sourceTree = "<group>"; };
+		7512F91D232677C38D953C98 /* Pods-HappyCoder.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HappyCoder.debug.xcconfig"; path = "Target Support Files/Pods-HappyCoder/Pods-HappyCoder.debug.xcconfig"; sourceTree = "<group>"; };
+		8B9CA1AE66FAC3C2D632E7CF /* libPods-HappyCoder.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-HappyCoder.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = SplashScreen.storyboard; path = HappyCoder/SplashScreen.storyboard; sourceTree = "<group>"; };
+		AEADFE13D1CA677DEEAB70CE /* ExpoModulesProvider.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ExpoModulesProvider.swift; path = "Pods/Target Support Files/Pods-HappyCoder/ExpoModulesProvider.swift"; sourceTree = "<group>"; };
 		BB2F792C24A3F905000567C9 /* Expo.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; path = Expo.plist; sourceTree = "<group>"; };
-		E4760DC49332400D0ACBEC20 /* Pods-HappyCoder.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HappyCoder.release.xcconfig"; path = "Target Support Files/Pods-HappyCoder/Pods-HappyCoder.release.xcconfig"; sourceTree = "<group>"; };
+		D27B495C6A5563F4634F4548 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; name = PrivacyInfo.xcprivacy; path = HappyCoder/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 		F11748412D0307B40044C1D9 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = HappyCoder/AppDelegate.swift; sourceTree = "<group>"; };
 		F11748442D0722820044C1D9 /* HappyCoder-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "HappyCoder-Bridging-Header.h"; path = "HappyCoder/HappyCoder-Bridging-Header.h"; sourceTree = "<group>"; };
+		FA3BCABA589F8D149A1C09E7 /* Pods-HappyCoder.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HappyCoder.release.xcconfig"; path = "Target Support Files/Pods-HappyCoder/Pods-HappyCoder.release.xcconfig"; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -37,7 +37,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				30D3CEAE1DBBBD1041FF0A2D /* libPods-HappyCoder.a in Frameworks */,
+				57DAF8B6FA370D776C3A2E3C /* libPods-HappyCoder.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -53,34 +53,18 @@
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				AA286B85B6C04FC6940260E9 /* SplashScreen.storyboard */,
-				405512BAAD283AF7F3C0C2B5 /* PrivacyInfo.xcprivacy */,
+				D27B495C6A5563F4634F4548 /* PrivacyInfo.xcprivacy */,
 			);
 			name = HappyCoder;
-			sourceTree = "<group>";
-		};
-		26FFEF4860FF196D4A8B5860 /* ExpoModulesProviders */ = {
-			isa = PBXGroup;
-			children = (
-				583703788F2E0A6601A5D7BE /* HappyCoder */,
-			);
-			name = ExpoModulesProviders;
 			sourceTree = "<group>";
 		};
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
-				25DEE0C4F8058E0E754BF3BD /* libPods-HappyCoder.a */,
+				8B9CA1AE66FAC3C2D632E7CF /* libPods-HappyCoder.a */,
 			);
 			name = Frameworks;
-			sourceTree = "<group>";
-		};
-		583703788F2E0A6601A5D7BE /* HappyCoder */ = {
-			isa = PBXGroup;
-			children = (
-				1F472428585C5FB909759A85 /* ExpoModulesProvider.swift */,
-			);
-			name = HappyCoder;
 			sourceTree = "<group>";
 		};
 		832341AE1AAA6A7D00B99B32 /* Libraries */ = {
@@ -97,8 +81,8 @@
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
-				F8E70DF6ACB946D7FDA1E498 /* Pods */,
-				26FFEF4860FF196D4A8B5860 /* ExpoModulesProviders */,
+				9930BB600F852E5A15A566A3 /* Pods */,
+				D917BE0A6550D8ABACB374B7 /* ExpoModulesProviders */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -113,6 +97,16 @@
 			name = Products;
 			sourceTree = "<group>";
 		};
+		9930BB600F852E5A15A566A3 /* Pods */ = {
+			isa = PBXGroup;
+			children = (
+				7512F91D232677C38D953C98 /* Pods-HappyCoder.debug.xcconfig */,
+				FA3BCABA589F8D149A1C09E7 /* Pods-HappyCoder.release.xcconfig */,
+			);
+			name = Pods;
+			path = Pods;
+			sourceTree = "<group>";
+		};
 		BB2F792B24A3F905000567C9 /* Supporting */ = {
 			isa = PBXGroup;
 			children = (
@@ -122,13 +116,20 @@
 			path = HappyCoder/Supporting;
 			sourceTree = "<group>";
 		};
-		F8E70DF6ACB946D7FDA1E498 /* Pods */ = {
+		BF8464DD89149166DBBEBE4C /* HappyCoder */ = {
 			isa = PBXGroup;
 			children = (
-				5A5FE69BB0AAF71B45350A2B /* Pods-HappyCoder.debug.xcconfig */,
-				E4760DC49332400D0ACBEC20 /* Pods-HappyCoder.release.xcconfig */,
+				AEADFE13D1CA677DEEAB70CE /* ExpoModulesProvider.swift */,
 			);
-			path = Pods;
+			name = HappyCoder;
+			sourceTree = "<group>";
+		};
+		D917BE0A6550D8ABACB374B7 /* ExpoModulesProviders */ = {
+			isa = PBXGroup;
+			children = (
+				BF8464DD89149166DBBEBE4C /* HappyCoder */,
+			);
+			name = ExpoModulesProviders;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -139,13 +140,13 @@
 			buildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget "HappyCoder" */;
 			buildPhases = (
 				08A4A3CD28434E44B6B9DE2E /* [CP] Check Pods Manifest.lock */,
-				3D1132213F9FB7E58D498002 /* [Expo] Configure project */,
+				C2D135945FEC332248B8F88B /* [Expo] Configure project */,
 				13B07F871A680F5B00A75B9A /* Sources */,
 				13B07F8C1A680F5B00A75B9A /* Frameworks */,
 				13B07F8E1A680F5B00A75B9A /* Resources */,
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */,
-				32A7957BA237AEFC13E187CB /* [CP] Embed Pods Frameworks */,
+				A0CD521CB2373BEE15608D5C /* [CP] Embed Pods Frameworks */,
 			);
 			buildRules = (
 			);
@@ -195,7 +196,7 @@
 				BB2F792D24A3F905000567C9 /* Expo.plist in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				3E461D99554A48A4959DE609 /* SplashScreen.storyboard in Resources */,
-				B3A1BFA2DB26B194F63492A1 /* PrivacyInfo.xcprivacy in Resources */,
+				F4116A23534EE6030447FEE7 /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -238,43 +239,6 @@
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
 			showEnvVarsInLog = 0;
-		};
-		32A7957BA237AEFC13E187CB /* [CP] Embed Pods Frameworks */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${PODS_ROOT}/Target Support Files/Pods-HappyCoder/Pods-HappyCoder-frameworks.sh",
-				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
-			);
-			name = "[CP] Embed Pods Frameworks";
-			outputPaths = (
-				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HappyCoder/Pods-HappyCoder-frameworks.sh\"\n";
-			showEnvVarsInLog = 0;
-		};
-		3D1132213F9FB7E58D498002 /* [Expo] Configure project */ = {
-			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputFileListPaths = (
-			);
-			inputPaths = (
-			);
-			name = "[Expo] Configure project";
-			outputFileListPaths = (
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-HappyCoder/expo-configure-project.sh\"\n";
 		};
 		800E24972A6A228C8D4807E9 /* [CP] Copy Pods Resources */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -336,6 +300,43 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HappyCoder/Pods-HappyCoder-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		A0CD521CB2373BEE15608D5C /* [CP] Embed Pods Frameworks */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-HappyCoder/Pods-HappyCoder-frameworks.sh",
+				"${PODS_XCFRAMEWORKS_BUILD_DIR}/hermes-engine/Pre-built/hermes.framework/hermes",
+			);
+			name = "[CP] Embed Pods Frameworks";
+			outputPaths = (
+				"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/hermes.framework",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HappyCoder/Pods-HappyCoder-frameworks.sh\"\n";
+			showEnvVarsInLog = 0;
+		};
+		C2D135945FEC332248B8F88B /* [Expo] Configure project */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "[Expo] Configure project";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# This script configures Expo modules and generates the modules provider file.\nbash -l -c \"./Pods/Target\\ Support\\ Files/Pods-HappyCoder/expo-configure-project.sh\"\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -344,7 +345,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				F11748422D0307B40044C1D9 /* AppDelegate.swift in Sources */,
-				9CB3A7B837C38767BA9CA466 /* ExpoModulesProvider.swift in Sources */,
+				465CA019211A5301DD7867E4 /* ExpoModulesProvider.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -353,13 +354,12 @@
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = 5A5FE69BB0AAF71B45350A2B /* Pods-HappyCoder.debug.xcconfig */;
+			baseConfigurationReference = 7512F91D232677C38D953C98 /* Pods-HappyCoder.debug.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = HappyCoder/HappyCoder.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 466DQWDR8C;
 				ENABLE_BITCODE = NO;
 				GCC_PREPROCESSOR_DEFINITIONS = (
 					"$(inherited)",
@@ -379,7 +379,7 @@
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_DEBUG";
 				PRODUCT_BUNDLE_IDENTIFIER = com.ex3ndr.happy;
-				PRODUCT_NAME = "HappyCoder";
+				PRODUCT_NAME = HappyCoder;
 				SWIFT_OBJC_BRIDGING_HEADER = "HappyCoder/HappyCoder-Bridging-Header.h";
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -390,13 +390,12 @@
 		};
 		13B07F951A680F5B00A75B9A /* Release */ = {
 			isa = XCBuildConfiguration;
-			baseConfigurationReference = E4760DC49332400D0ACBEC20 /* Pods-HappyCoder.release.xcconfig */;
+			baseConfigurationReference = FA3BCABA589F8D149A1C09E7 /* Pods-HappyCoder.release.xcconfig */;
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CLANG_ENABLE_MODULES = YES;
 				CODE_SIGN_ENTITLEMENTS = HappyCoder/HappyCoder.entitlements;
 				CURRENT_PROJECT_VERSION = 1;
-				DEVELOPMENT_TEAM = 466DQWDR8C;
 				INFOPLIST_FILE = HappyCoder/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -411,7 +410,7 @@
 				);
 				OTHER_SWIFT_FLAGS = "$(inherited) -D EXPO_CONFIGURATION_RELEASE";
 				PRODUCT_BUNDLE_IDENTIFIER = com.ex3ndr.happy;
-				PRODUCT_NAME = "HappyCoder";
+				PRODUCT_NAME = HappyCoder;
 				SWIFT_OBJC_BRIDGING_HEADER = "HappyCoder/HappyCoder-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";

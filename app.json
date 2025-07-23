@@ -26,6 +26,9 @@
         "foregroundImage": "./sources/assets/images/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
+      "blockedPermissions": [
+        "android.permission.ACTIVITY_RECOGNITION"
+      ],
       "edgeToEdgeEnabled": true,
       "package": "com.ex3ndr.happy",
       "googleServicesFile": "./google-services.json"
