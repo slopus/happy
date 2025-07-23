@@ -67,9 +67,15 @@ export default {
             [
                 "expo-location",
                 {
-                    locationAlwaysAndWhenInUsePermission: "Allow $(PRODUCT_NAME) to improve AI results by using your location.",
-                    locationAlwaysPermission: "Allow $(PRODUCT_NAME) to improve AI results by using your location.",
-                    locationWhenInUsePermission: "Allow $(PRODUCT_NAME) to improve AI results by using your location."
+                    locationAlwaysAndWhenInUsePermission: "Allow $(PRODUCT_NAME) to improve AI quality by using your location.",
+                    locationAlwaysPermission: "Allow $(PRODUCT_NAME) to improve AI quality by using your location.",
+                    locationWhenInUsePermission: "Allow $(PRODUCT_NAME) to improve AI quality by using your location."
+                }
+            ],
+            [
+                "expo-calendar",
+                {
+                    "calendarPermission": "Allow $(PRODUCT_NAME) to access your calendar to improve AI quality."
                 }
             ]
         ],
