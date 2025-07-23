@@ -12,13 +12,13 @@
     "prebuild": "expo prebuild",
     "ota": "eas update --branch production",
     "typecheck": "tsc --noEmit",
+    "preinstall": "rm -rf sources/liberal && ln -s ../../liberal/sources sources/liberal",
     "postinstall": "patch-package"
   },
   "jest": {
     "preset": "jest-expo"
   },
   "dependencies": {
-    "happy-liberal": "workspace:*",
     "@expo/vector-icons": "^14.1.0",
     "@legendapp/list": "^1.1.4",
     "@lottiefiles/dotlottie-react": "^0.14.3",

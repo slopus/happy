@@ -6,7 +6,7 @@ import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { configuration } from '@/configuration';
 // import { RawJSONLines } from '@/claude/types';
-import { RawJSONLines } from 'happy-liberal/sources/claude-code-types';
+import { RawJSONLines } from '@/liberal/claude-code-types';
 
 type RpcHandler<T = any, R = any> = (data: T) => R | Promise<R>;
 type RpcHandlerMap = Map<string, RpcHandler>;
@@ -230,7 +230,7 @@ export class ApiSessionClient extends EventEmitter {
         
         logger.debug('[SOCKET] Reported usage:', { 
             sessionId: this.sessionId,
-            totalTokens,
+            totalTokens: (usage.input_tokens || 0) + (usage.output_tokens || 0),
             input: usage.input_tokens,
             output: usage.output_tokens 
         });

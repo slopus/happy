@@ -43,6 +43,7 @@
     "package.json"
   ],
   "scripts": {
+    "preinstall": "rm -rf src/liberal && ln -s ../../liberal/sources src/liberal",
     "test": "vitest run",
     "test:watch": "vitest",
     "build": "pkgroll",

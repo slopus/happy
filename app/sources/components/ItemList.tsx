@@ -52,7 +52,7 @@ export const ItemList = React.memo<ItemListProps>((props) => {
     );
 });
 
-export const ItemListStatic = React.memo<Omit<ItemListProps, keyof ScrollViewProps>>((props) => {
+export const ItemListStatic = React.memo<Pick<ItemListProps, 'children' | 'style' | 'containerStyle' | 'insetGrouped'>>((props) => {
     const {
         children,
         style,

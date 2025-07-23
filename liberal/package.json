@@ -1,0 +1,12 @@
+{
+  "name": "@liberal",
+  "version": "1.0.0",
+  "type": "module",
+  "exports": {
+    "./*": "./sources/*.ts"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "zod": "^4.0.5"
+  }
+}

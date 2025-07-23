@@ -16,6 +16,11 @@ import { initLoggerWithGlobalConfiguration, logger } from './ui/logger'
 import { readCredentials } from './persistence/persistence'
 import { doAuth } from './ui/auth'
 import packageJson from '../package.json'
+import { z } from 'zod'
+
+import { getHelloWorld } from '@/liberal'
+
+console.log(getHelloWorld());
 
 (async () => {
 
@@ -45,7 +50,7 @@ import packageJson from '../package.json'
     }
     return;
   } else if (subcommand === 'backup-key' || subcommand === 'backup') {
-    await showBackupKey();
+    // await showBackupKey(); // TODO: implement showBackupKey
     return;
   } else if (subcommand === 'daemon') {
     // Handle daemon command

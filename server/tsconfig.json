@@ -20,18 +20,10 @@
     "paths": {
       "@/*": [
         "./sources/*"
-      ],
-      "happy-liberal/*": [
-        "../happy-liberal/sources/*"
       ]
     }
   },
   "include": [
     "sources/**/*"
-  ],
-  "references": [
-    {
-      "path": "../happy-liberal"
-    }
   ]
 }

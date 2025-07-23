@@ -3,7 +3,7 @@ import { log } from "@/utils/log";
 import { awaitShutdown } from "@/utils/shutdown";
 import { db } from './storage/db';
 import { startTimeout } from "./app/timeout";
-import { getHelloWorld } from 'happy-liberal/hello-world';
+import { getHelloWorld } from '@/liberal/hello-world';
 
 async function main() {
 

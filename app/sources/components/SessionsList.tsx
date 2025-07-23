@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
-import { getHelloWorld } from 'happy-liberal';
+import { getHelloWorld } from '@/liberal/hello-world';
 
 interface SessionsListProps {
     data: SessionListItem[];

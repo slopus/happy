@@ -6,7 +6,8 @@
   "license": "MIT",
   "private": true,
   "scripts": {
-    "build": "(cd ../happy-liberal && yarn build) && tsc",
+    "preinstall": "rm -rf sources/liberal && ln -s ../../liberal/sources sources/liberal",
+    "build": "tsc",
     "start": "tsx ./sources/main.ts",
     "dev": "tsc && tsx --env-file=.env.example ./sources/main.ts",
     "test": "vitest",
@@ -27,7 +28,6 @@
     "yaml": "^2.4.2"
   },
   "dependencies": {
-    "happy-liberal": "workspace:*",
     "@date-fns/tz": "^1.2.0",
     "@fastify/bearer-auth": "^10.1.1",
     "@fastify/cors": "^10.0.1",
