@@ -55,9 +55,9 @@ This when you are on your computer, you are using the normal Claude Code UI, tha
 
 ## 📦 Project Components
 
-- **[happy-cli](https://github.com/slopus/happy-cli)** - Command-line interface for Claude Code
-- **[happy-server](https://github.com/slopus/happy-server)** - Backend server for encrypted sync
-- **happy-coder** - This mobile client (you are here)
+- **[app](./app)** - Mobile / Web clients
+- **[cli](./cli)** - `happy` Command-line interface for Claude Code
+- **[server](./server)** - Backend server for encrypted sync
 
 ## 🏠 Who We Are
 
