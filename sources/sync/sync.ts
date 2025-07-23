@@ -1,3 +1,4 @@
+import Constants from 'expo-constants';
 import { apiSocket } from '@/sync/apiSocket';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { ApiEncryption } from '@/sync/apiEncryption';
@@ -179,11 +180,8 @@ class Sync {
             }
 
             // Get push token
-            const tokenData = await Notifications.getExpoPushTokenAsync({
-                projectId: process.env.EXPO_PUBLIC_PROJECT_ID
-            });
-
-            console.log('Push token:', tokenData.data);
+            const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+            const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
 
             // Register with server
             await registerPushToken(this.credentials, tokenData.data);

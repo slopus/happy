@@ -27,7 +27,8 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.ex3ndr.happy"
+      "package": "com.ex3ndr.happy",
+      "googleServicesFile": "./google-services.json"
     },
     "web": {
       "bundler": "metro",
