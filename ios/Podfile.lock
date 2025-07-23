@@ -337,6 +337,8 @@ PODS:
     - ExpoModulesCore
   - ExpoLocalization (16.1.6):
     - ExpoModulesCore
+  - ExpoLocation (18.1.6):
+    - ExpoModulesCore
   - ExpoMailComposer (14.1.5):
     - ExpoModulesCore
   - ExpoMeshGradient (0.3.4):
@@ -2842,6 +2844,7 @@ DEPENDENCIES:
   - ExpoLivePhoto (from `../node_modules/expo-live-photo/ios`)
   - ExpoLocalAuthentication (from `../node_modules/expo-local-authentication/ios`)
   - ExpoLocalization (from `../node_modules/expo-localization/ios`)
+  - ExpoLocation (from `../node_modules/expo-location/ios`)
   - ExpoMailComposer (from `../node_modules/expo-mail-composer/ios`)
   - ExpoMeshGradient (from `../node_modules/expo-mesh-gradient/ios`)
   - ExpoModulesCore (from `../node_modules/expo-modules-core`)
@@ -3041,6 +3044,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-local-authentication/ios"
   ExpoLocalization:
     :path: "../node_modules/expo-localization/ios"
+  ExpoLocation:
+    :path: "../node_modules/expo-location/ios"
   ExpoMailComposer:
     :path: "../node_modules/expo-mail-composer/ios"
   ExpoMeshGradient:
@@ -3289,6 +3294,7 @@ SPEC CHECKSUMS:
   ExpoLivePhoto: 1336460da8e4eb2ee56e00636bb5fee4dfb7e82d
   ExpoLocalAuthentication: c35f18692dcb35775a1be0f37b2131096951a6bd
   ExpoLocalization: 999a1ff61a7f5917d65c2bd9234883009019ca9f
+  ExpoLocation: a43df2ff15f2fae9504b23a77060e7cd16b3e326
   ExpoMailComposer: 93d95af509c6dfcfc18aec02cad047b7bc5bfc55
   ExpoMeshGradient: 0cf84ffc9edb16fa2866f940a2dafd4aa7981992
   ExpoModulesCore: e0409d8c674a651a183e941be663e1966b49e2a2
@@ -3400,10 +3406,10 @@ SPEC CHECKSUMS:
   SDWebImageSVGCoder: 15a300a97ec1c8ac958f009c02220ac0402e936c
   SDWebImageWebPCoder: e38c0a70396191361d60c092933e22c20d5b1380
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
-  VisionCamera: 9a8f98ae344fe5d148f84bb45829f9e4caab9d2f
+  VisionCamera: 0f3c379d61348bfb97249ec95d7742f17ca43d77
   Yoga: adb397651e1c00672c12e9495babca70777e411e
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 
-PODFILE CHECKSUM: a83c84f5010715418cfae8cf8de237a213f82fbc
+PODFILE CHECKSUM: 18a533cfbe7fc9aa57cbb3fa84a565c49979d007
 
 COCOAPODS: 1.16.2

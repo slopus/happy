@@ -3529,6 +3529,11 @@ expo-localization@~16.1.6:
   dependencies:
     rtl-detect "^1.0.2"
 
+expo-location@~18.1.6:
+  version "18.1.6"
+  resolved "https://registry.yarnpkg.com/expo-location/-/expo-location-18.1.6.tgz#b855e14e8b4e29a1bde470fc4dc2a341abecf631"
+  integrity sha512-l5dQQ2FYkrBgNzaZN1BvSmdhhcztFOUucu2kEfDBMV4wSIuTIt/CKsho+F3RnAiWgvui1wb1WTTf80E8zq48hA==
+
 expo-mail-composer@~14.1.5:
   version "14.1.5"
   resolved "https://registry.yarnpkg.com/expo-mail-composer/-/expo-mail-composer-14.1.5.tgz#357d75172f930cc5533f0ecd4b67f6d169c4448f"
