@@ -71,9 +71,8 @@ export const ConnectButton = React.memo(() => {
                 <View style={{
                     marginBottom: 16,
                     padding: 16,
-                    backgroundColor: '#f5f5f5',
                     borderRadius: 8,
-                    width: 300,
+                    width: 200,
                 }}>
                     <Text style={{
                         fontSize: 14,
