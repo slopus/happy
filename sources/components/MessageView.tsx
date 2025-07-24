@@ -105,7 +105,6 @@ function AgentTextBlock(props: {
         flexGrow: 1,
         flexBasis: 0,
         flexDirection: "column",
-        paddingRight: 16,
       }}
     >
       <MarkdownView markdown={props.message.text} />
