@@ -1,9 +1,9 @@
-import * as Crypto from 'expo-crypto';
-import * as TweetNacl from 'tweetnacl';
+import { getRandomBytes } from 'expo-crypto';
+import sodium from 'react-native-libsodium';
 
 export function authChallenge(secret: Uint8Array) {
-    const keypair = TweetNacl.sign.keyPair.fromSeed(secret);
-    const challenge = Crypto.getRandomBytes(32);
-    const signature = TweetNacl.sign.detached(challenge, keypair.secretKey);
+    const keypair = sodium.crypto_sign_seed_keypair(secret);
+    const challenge = getRandomBytes(32);
+    const signature = sodium.crypto_sign_detached(challenge, keypair.privateKey);
     return { challenge, signature, publicKey: keypair.publicKey };
 }

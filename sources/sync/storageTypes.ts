@@ -9,6 +9,10 @@ export const MetadataSchema = z.object({
     path: z.string(),
     host: z.string(),
     version: z.string().optional(),
+    encryption: z.object({
+        type: z.literal('aes-gcm-256'),
+        key: z.string(),
+    }).nullish()
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

@@ -11,6 +11,8 @@ import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform } from 'react-native';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
+import { decodeBase64 } from '@/auth/base64';
+import { SessionEncryption } from './apiSessionEncryption';
 
 const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
@@ -20,6 +22,8 @@ class Sync {
     private encryption!: ApiEncryption;
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
+    private sessionEncryption = new Map<string, SessionEncryption>();
+    private sessionReceivedMessages = new Map<string, Set<string>>();
 
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
@@ -61,6 +65,14 @@ class Sync {
     }
 
     sendMessage(sessionId: string, text: string) {
+
+        // Get encryption
+        const encryption = this.sessionEncryption.get(sessionId);
+        if (!encryption) { // Should never happen
+            console.error(`Session ${sessionId} not found`);
+            return;
+        }
+
         // Generate local ID
         const localId = randomUUID();
 
@@ -72,7 +84,7 @@ class Sync {
                 text
             }
         };
-        const encryptedRawRecord = this.encryption.encryptRawRecord(content);
+        const encryptedRawRecord = encryption.encryptRawRecord(content);
 
         // Add to messages
         storage.getState().applyMessages(sessionId, [{
@@ -122,19 +134,57 @@ class Sync {
         // Decrypt sessions
         let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
         for (const session of sessions) {
+
+            //
+            // Load decrypted metadata
+            //
+
+            let metadata = this.encryption.decryptMetadata(session.metadata);
+
+            //
+            // Create encryption
+            //
+
+            let encryption: SessionEncryption;
+            if (!this.sessionEncryption.has(session.id)) {
+                if (metadata?.encryption) {
+                    encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'aes-gcm-256', key: decodeBase64(metadata.encryption.key) });
+                } else {
+                    encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'libsodium' });
+                }
+                this.sessionEncryption.set(session.id, encryption);
+            } else {
+                encryption = this.sessionEncryption.get(session.id)!;
+            }
+
+            //
+            // Decrypt last message
+            //
+
             let lastMessage: NormalizedMessage | null = null;
             if (session.lastMessage) {
-                const decrypted = this.encryption.decryptMessage(session.lastMessage);
+                const decrypted = encryption.decryptMessage(session.lastMessage);
                 if (decrypted) {
                     lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
                 }
             }
+
+            //
+            // Decrypt agent state
+            //
+
+            let agentState = this.encryption.decryptAgentState(session.agentState);
+
+            //
+            // Put it all together
+            //
+
             const processedSession = {
                 ...session,
                 thinking: false,
                 thinkingAt: 0,
-                metadata: this.encryption.decryptMetadata(session.metadata),
-                agentState: this.encryption.decryptAgentState(session.agentState),
+                metadata,
+                agentState,
                 lastMessage
             };
             decryptedSessions.push(processedSession);
@@ -145,14 +195,39 @@ class Sync {
     }
 
     private fetchMessages = async (sessionId: string) => {
+
+        // Get encryption
+        const encryption = this.sessionEncryption.get(sessionId);
+        if (!encryption) { // Should never happen
+            console.error(`Session ${sessionId} not found`);
+            return;
+        }
+
+        // Request
         const response = await apiSocket.request(`/v1/sessions/${sessionId}/messages`);
         const data = await response.json();
 
+        // Collect existing messages
+        let eixstingMessages = this.sessionReceivedMessages.get(sessionId);
+        if (!eixstingMessages) {
+            eixstingMessages = new Set<string>();
+            this.sessionReceivedMessages.set(sessionId, eixstingMessages);
+        }
+
         // Decrypt messages
+        let start = Date.now();
         let messages: DecryptedMessage[] = [];
         for (const msg of [...data.messages as ApiMessage[]].reverse()) {
-            messages.push(this.encryption.decryptMessage(msg)!);
+            if (eixstingMessages.has(msg.id)) {
+                continue;
+            }
+            let m = encryption.decryptMessage(msg);
+            if (m) {
+                eixstingMessages.add(m.id);
+                messages.push(m);
+            }
         }
+        console.log('Decrypted messages in', Date.now() - start, 'ms');
 
         // Apply to storage
         storage.getState().applyMessages(sessionId, messages);
@@ -226,9 +301,19 @@ class Sync {
         const updateData = validatedUpdate.data;
 
         if (updateData.body.t === 'new-message') {
+
+            // Get encryption
+            const encryption = this.sessionEncryption.get(updateData.body.sid);
+            if (!encryption) { // Should never happen
+                console.error(`Session ${updateData.body.sid} not found`);
+                this.fetchSessions(); // Just fetch sessions again
+                return;
+            }
+
+            // Decrypt message
             let lastMessage: NormalizedMessage | null = null;
             if (updateData.body.message) {
-                const decrypted = this.encryption.decryptMessage(updateData.body.message);
+                const decrypted = encryption.decryptMessage(updateData.body.message);
                 if (decrypted) {
                     lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
 

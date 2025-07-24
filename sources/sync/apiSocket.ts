@@ -162,7 +162,10 @@ class ApiSocket {
 
         // Connection events
         this.socket.on('connect', () => {
-            this.reconnectedListeners.forEach(listener => listener());
+            console.log('SyncSocket: Connected, recovered: ' + this.socket?.recovered);
+            if (!this.socket?.recovered) {
+                this.reconnectedListeners.forEach(listener => listener());
+            }
         });
 
         this.socket.on('disconnect', (reason) => {

@@ -1,8 +1,8 @@
-const variant = process.env.APP_ENV || 'production';
+const variant = process.env.APP_ENV || 'development';
 const name = {
     development: "Happy (dev)",
     preview: "Happy (preview)",
-    production: "Happy Coder"
+    production: "Happy"
 }[variant];
 const bundleId = {
     development: "com.slopus.happy.dev",
@@ -14,8 +14,8 @@ export default {
     expo: {
         name,
         slug: "happy",
-        version: "1.0.3",
-        runtimeVersion: "9",
+        version: "1.0.4",
+        runtimeVersion: "10",
         orientation: "portrait",
         icon: "./sources/assets/images/happy-otter-icon.png",
         scheme: "happy",
@@ -64,6 +64,7 @@ export default {
             "expo-secure-store",
             "expo-web-browser",
             "react-native-vision-camera",
+            "react-native-libsodium",
             [
                 "expo-location",
                 {

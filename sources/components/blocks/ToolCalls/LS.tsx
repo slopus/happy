@@ -41,7 +41,7 @@ function parseDirectoryListing(output: string): { totalItems: number; directorie
       }
     }
   }
-  console.log("lines", lines)
+  // console.log("lines", lines)
   
   return {
     totalItems: directories + files,
