@@ -1,18 +1,25 @@
 import * as React from 'react';
-import { Alert, View } from 'react-native';
+import { Alert } from 'react-native';
 import { RoundButton } from './RoundButton';
 import { CameraView } from 'expo-camera';
 import { useAuth } from '@/auth/AuthContext';
 import { decodeBase64 } from '@/auth/base64';
 import { encryptWithEphemeralKey } from '@/sync/apiEncryption';
 import { authApprove } from '@/auth/authApprove';
+import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 
 export const ConnectButton = React.memo(() => {
-
     const auth = useAuth();
     const [isLoading, setIsLoading] = React.useState(false);
+    const checkScannerPermissions = useCheckScannerPermissions();
 
-    const connectTerminal = () => {
+    const connectTerminal = async () => {
+        const hasPermissions = await checkScannerPermissions();
+        
+        if (!hasPermissions) {
+            return;
+        }
+
         CameraView.launchScanner({
             barcodeTypes: ['qr']
         });
@@ -46,7 +53,7 @@ export const ConnectButton = React.memo(() => {
         <RoundButton
             title="Connect"
             size="normal"
-            onPress={connectTerminal}
+            action={connectTerminal}
             loading={isLoading}
         />
     )
