@@ -26,17 +26,17 @@ function ToolCallDetailView({
 
   if (tools.length === 0) {
     return (<View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          padding: 20,
-        }}
-      >
-        <Text style={{ fontSize: 16, color: "#666", textAlign: "center" }}>
-          I expected to find a at leat one tool call, but found zero.
-        </Text>
-      </View>
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 20,
+      }}
+    >
+      <Text style={{ fontSize: 16, color: "#666", textAlign: "center" }}>
+        I expected to find a at leat one tool call, but found zero.
+      </Text>
+    </View>
     )
   }
 
@@ -243,9 +243,9 @@ export function MessageDetailView({
   if (message.kind === 'tool-call-group') {
     return (
       <View style={{ flex: 1, backgroundColor: "white" }}>
-        <ToolCallGroupDetailView 
-          message={message} 
-          sessionId={sessionId} 
+        <ToolCallGroupDetailView
+          message={message}
+          sessionId={sessionId}
           getMessageById={getMessageById || (() => null)}
         />
       </View>
@@ -274,16 +274,16 @@ export function getMessageDetailTitle(message: Message): string {
         return "Tool Details";
       }
       return "Tool Details";
-    
+
     case 'tool-call-group':
       return `Tool Group (${message.messageIds.length} tools)`;
-    
+
     case 'user-text':
       return "User Message";
-    
+
     case 'agent-text':
       return "Assistant Message";
-    
+
     default:
       return "Message Details";
   }

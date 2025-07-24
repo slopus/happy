@@ -5,10 +5,10 @@ import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
 import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
-import { DiffView } from '@/components/diff/DiffView';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { ToolIcon } from './design-tokens/ToolIcon';
 import { ToolName } from './design-tokens/ToolName';
+import { FileView } from '@/components/files/FileView';
 
 export type ReadToolCall = Omit<ToolCall, 'name'> & { name: 'Read' };
 
@@ -58,7 +58,7 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
   if (tool.state === 'running') {
     const filePath = parsedInput?.file_path || (typeof tool.input?.file_path === 'string' ? tool.input.file_path : 'unknown');
     const fileName = filePath.split('/').pop() || filePath;
-    
+
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
         <ToolIcon name="eye" />
@@ -77,7 +77,7 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
   if (tool.state === 'error') {
     const filePath = parsedInput?.file_path || (typeof tool.input?.file_path === 'string' ? tool.input.file_path : 'unknown');
     const fileName = filePath.split('/').pop() || filePath;
-    
+
     return (
       <View className={TOOL_CONTAINER_STYLES.BASE_CONTAINER}>
         <ToolIcon name="eye" state={tool.state} />
@@ -128,7 +128,7 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
   }
 
   // Display parsed data or fallback to original
-  const displayText = parsedResult 
+  const displayText = parsedResult
     ? `${parsedResult.file.numLines} lines (L${parsedResult.file.startLine}-L${parsedResult.file.startLine + parsedResult.file.numLines - 1})` //out of ${parsedResult.file.totalLines})`
     : "" /*parseError || JSON.stringify(tool.result)*/;
 
@@ -154,7 +154,7 @@ export function ReadCompactViewInner({ tool }: { tool: ReadToolCall }) {
 // Detailed view for full-screen modal
 export const ReadDetailedView = ({ tool }: { tool: ReadToolCall }) => {
   const args = tool.input as ParsedToolInput;
-  
+
   // Parse the tool result
   let parsedResult: ParsedToolResult | null = null;
   if (tool.result) {
@@ -174,32 +174,34 @@ export const ReadDetailedView = ({ tool }: { tool: ReadToolCall }) => {
   }
 
   const fileContent = parsedResult?.file?.content || '';
+  // console.log(fileContent);
+  console.log(!!parsedResult, tool.state);
 
   return (
-    <View className="flex-1">
+    <View style={{ flexGrow: 1 }}>
       {/* Simple Header */}
       <View className="p-4 border-b border-gray-200">
         <Text className="text-lg font-semibold text-gray-900">👁 {args.file_path}</Text>
       </View>
 
       {/* Content */}
-      <View className="flex-1">
+      <View className="flex-1" style={{ flexGrow: 1 }}>
         {/* Show content if available */}
         {fileContent && tool.state === 'completed' && (
-          <DiffView
-            oldText=""  // No old content for read operation
-            newText={fileContent}
+          <FileView
+            content={fileContent}
+            startLine={parsedResult?.file?.startLine || 1}
             showLineNumbers={true}
             wrapLines={false}
           />
         )}
 
-                 {/* Show loading state */}
-         {tool.state === 'running' && (
-           <View className="flex-1 justify-center items-center">
-             <ShimmerToolName>{`Reading ${args.file_path?.split('/').pop() || 'file'}...`}</ShimmerToolName>
-           </View>
-         )}
+        {/* Show loading state */}
+        {tool.state === 'running' && (
+          <View className="flex-1 justify-center items-center">
+            <ShimmerToolName>{`Reading ${args.file_path?.split('/').pop() || 'file'}...`}</ShimmerToolName>
+          </View>
+        )}
 
         {/* Show error state */}
         {tool.state === 'error' && (
@@ -209,8 +211,8 @@ export const ReadDetailedView = ({ tool }: { tool: ReadToolCall }) => {
               Failed to read file
             </Text>
             <Text className="text-sm text-red-500 mt-2 text-center">
-              {tool.result && typeof tool.result === 'object' && 'error' in tool.result 
-                ? String(tool.result.error) 
+              {tool.result && typeof tool.result === 'object' && 'error' in tool.result
+                ? String(tool.result.error)
                 : 'Unknown error occurred'}
             </Text>
           </View>

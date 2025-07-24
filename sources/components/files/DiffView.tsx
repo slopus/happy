@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useEffect } from 'react';
 import { View, ScrollView, Text, ViewStyle, TextStyle } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
-import { calculateUnifiedDiff, DiffToken } from '@/components/diff/calculateDiff';
+import { calculateUnifiedDiff, DiffToken } from '@/components/files/calculateDiff';
 import { Typography } from '@/constants/Typography';
 
 
