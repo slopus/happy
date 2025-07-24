@@ -73,12 +73,36 @@ export type ApiUpdateContainer = z.infer<typeof ApiUpdateContainerSchema>;
 // Ephemeral update
 //
 
-export const ApiEphemeralUpdateSchema = z.object({
+export const ApiEphemeralActivityUpdateSchema = z.object({
     type: z.literal('activity'),
     id: z.string(),
     active: z.boolean(),
     activeAt: z.number(),
     thinking: z.boolean(),
 });
+
+export const ApiEphemeralUsageUpdateSchema = z.object({
+    type: z.literal('usage'),
+    id: z.string(),
+    key: z.string(),
+    timestamp: z.number(),
+    tokens: z.object({
+        total: z.number(),
+        input: z.number(),
+        output: z.number(),
+        cache_creation: z.number(),
+        cache_read: z.number(),
+    }),
+    cost: z.object({
+        total: z.number(),
+        input: z.number(),
+        output: z.number(),
+    }),
+});
+
+export const ApiEphemeralUpdateSchema = z.union([
+    ApiEphemeralActivityUpdateSchema,
+    ApiEphemeralUsageUpdateSchema,
+]);
 
 export type ApiEphemeralUpdate = z.infer<typeof ApiEphemeralUpdateSchema>;
