@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ScrollView, View, Text, Pressable, TextInput, Switch } from 'react-native';
-import { DiffView } from '@/components/diff/DiffView';
+import { DiffView } from '@/components/files/DiffView';
 import { useColorScheme } from '@/components/useColorScheme';
 
 // Sample text pairs for testing

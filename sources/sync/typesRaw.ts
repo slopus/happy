@@ -40,7 +40,7 @@ const rawAgentRecordSchema = z.object({
         z.object({ type: z.literal('result') }),
         z.object({ type: z.literal('summary'), summary: z.string() }),
         z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string(), content: z.array(rawAgentContentSchema) }), parent_tool_use_id: z.string().nullable().optional() }),
-        z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.array(rawAgentContentSchema) }), parent_tool_use_id: z.string().nullable().optional() }),
+        z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.array(rawAgentContentSchema) }), parent_tool_use_id: z.string().nullable().optional(), toolUseResult: z.any().nullable().optional() }),
     ]),
 });
 
@@ -78,7 +78,7 @@ type NormalizedAgentContent =
     } | {
         type: 'tool-result'
         tool_use_id: string;
-        content: string;
+        content: any;
         is_error: boolean;
     } | {
         type: 'summary',
@@ -145,7 +145,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 const parentToolId = raw.content.data.parent_tool_use_id || null;
                 for (let c of raw.content.data.message.content) {
                     if (c.type === 'tool_result') {
-                        content.push({ type: 'tool-result', tool_use_id: c.tool_use_id, content: typeof c.content === 'string' ? c.content : c.content[0].text, is_error: c.is_error || false });
+
+                        content.push({ type: 'tool-result', tool_use_id: c.tool_use_id, content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text), is_error: c.is_error || false });
                     }
                 }
                 return {

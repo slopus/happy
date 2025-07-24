@@ -228,6 +228,7 @@ class Sync {
             }
         }
         console.log('Decrypted messages in', Date.now() - start, 'ms');
+        console.log('messages', JSON.stringify(messages));
 
         // Apply to storage
         storage.getState().applyMessages(sessionId, messages);

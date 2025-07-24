@@ -4,8 +4,7 @@ import { MonoText as Text } from "./design-tokens/MonoText";
 import { ToolCall } from "@/sync/typesMessage";
 import { z } from "zod";
 import { SingleLineToolSummaryBlock } from "../SingleLineToolSummaryBlock";
-import { DiffView } from '@/components/diff/DiffView';
-import { getDiffStats } from '@/components/diff/calculateDiff';
+import { DiffView } from '@/components/files/DiffView';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from "./constants";
 import { Metadata } from "@/sync/storageTypes";
 import { getRelativePath } from "@/hooks/useGetPath";
@@ -72,14 +71,6 @@ export function EditCompactViewInner({
   }
 
   const args: EditArguments = parseResult.data;
-  // Calculate diff stats for display
-  const diffStats = useMemo(() => {
-    if (!args.old_string || !args.new_string) {
-      return { additions: 0, deletions: 0 };
-    }
-
-    return getDiffStats(args.old_string, args.new_string);
-  }, [args.old_string, args.new_string]);
 
   // Get relative path or filename
   const displayPath = getRelativePath(metadata, args.file_path);
@@ -95,26 +86,6 @@ export function EditCompactViewInner({
       >
         {displayPath}
       </Text>
-
-      {/* Diff stats */}
-      {(diffStats.additions > 0 || diffStats.deletions > 0) && (
-        <View className="flex-row items-center ml-2">
-          {diffStats.additions > 0 && (
-            <Text
-              className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} font-medium text-emerald-600 font-mono`}
-            >
-              +{diffStats.additions}
-            </Text>
-          )}
-          {diffStats.deletions > 0 && (
-            <Text
-              className={`${TOOL_COMPACT_VIEW_STYLES.METADATA_SIZE} font-medium text-red-600 font-mono`}
-            >
-              -{diffStats.deletions}
-            </Text>
-          )}
-        </View>
-      )}
     </View>
   );
 }
