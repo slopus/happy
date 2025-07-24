@@ -115,6 +115,18 @@ export default function DevScreen() {
                     icon={<Ionicons name="swap-vertical-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/inverted-list')}
                 />
+                <Item 
+                    title="Atomic Components"
+                    subtitle="Showcase of all atomic UI components"
+                    icon={<Ionicons name="shapes-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/atoms')}
+                />
+                <Item 
+                    title="Diff View"
+                    subtitle="Text diff viewer component demo"
+                    icon={<Ionicons name="git-compare-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/diff-demo')}
+                />
             </ItemGroup>
 
             {/* Test Features */}

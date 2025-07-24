@@ -21,7 +21,8 @@ export default function DevLayout() {
             <Stack.Screen
                 name="index"
                 options={{
-                    headerShown: false,
+                    headerShown: true,
+                    headerTitle: 'Developer Tools',
                 }}
             />
             <Stack.Screen

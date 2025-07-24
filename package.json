@@ -34,6 +34,7 @@
     "@types/resolve-path": "^1.4.3",
     "@types/uuid": "^10.0.0",
     "axios": "^1.10.0",
+    "diff": "^8.0.2",
     "expo": "~53.0.17",
     "expo-application": "~6.1.5",
     "expo-asset": "~11.1.7",

@@ -4,7 +4,8 @@ import { MonoText as Text } from './design-tokens/MonoText';
 import { ToolCall } from '@/sync/typesMessage';
 import { z } from 'zod';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
-import { SharedDiffView, calculateDiffStats } from './SharedDiffView';
+import { DiffView } from '@/components/diff/DiffView';
+import { getDiffStats } from '@/components/diff/calculateDiff';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { ToolIcon } from './design-tokens/ToolIcon';
 import { ToolName } from './design-tokens/ToolName';
@@ -71,7 +72,7 @@ export function MultiEditCompactViewInner({ tool }: { tool: ToolCall }) {
 
     for (const edit of args.edits) {
       if (edit.old_string && edit.new_string) {
-        const stats = calculateDiffStats(edit.old_string, edit.new_string);
+        const stats = getDiffStats(edit.old_string, edit.new_string);
         totalAdditions += stats.additions;
         totalDeletions += stats.deletions;
       }
@@ -155,7 +156,7 @@ export const MultiEditDetailedView = ({ tool }: { tool: MultiEditToolCall }) => 
 
     edits.forEach((edit: EditOperation) => {
       if (edit.old_string && edit.new_string) {
-        const stats = calculateDiffStats(edit.old_string, edit.new_string);
+        const stats = getDiffStats(edit.old_string, edit.new_string);
         totalAdditions += stats.additions;
         totalDeletions += stats.deletions;
       }
@@ -225,13 +226,14 @@ export const MultiEditDetailedView = ({ tool }: { tool: MultiEditToolCall }) => 
               </Text>
             </View>
 
-            {/* Shared Diff View for this edit */}
-            <SharedDiffView
-              oldContent={edit.old_string || ''}
-              newContent={edit.new_string || ''}
-              fileName={`${filePath} - Edit ${editIndex + 1}`}
-              showFileName={true}
-              maxHeight={300}
+            {/* Diff View for this edit */}
+            <DiffView
+              oldText={edit.old_string || ''}
+              newText={edit.new_string || ''}
+              oldTitle="Before"
+              newTitle="After"
+              showLineNumbers={true}
+              wrapLines={false}
             />
           </View>
         ))}

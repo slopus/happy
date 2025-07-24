@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
 import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
-import { SharedDiffView } from './SharedDiffView';
+import { DiffView } from '@/components/diff/DiffView';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { ToolIcon } from './design-tokens/ToolIcon';
 import { ToolName } from './design-tokens/ToolName';
@@ -222,12 +222,13 @@ export const WriteDetailedView = ({ tool }: { tool: WriteToolCall }) => {
         {/* Diff Viewer */}
         {contentAnalysis && (
           <View className="flex-1 bg-white">
-            <SharedDiffView
-              oldContent=""  // For new files, old content is empty
-              newContent={contentAnalysis.content}
-              fileName={args.file_path}
-              showFileName={true}
-              maxHeight={400}
+            <DiffView
+              oldText=""  // For new files, old content is empty
+              newText={contentAnalysis.content}
+              oldTitle="Before"
+              newTitle="New File"
+              showLineNumbers={true}
+              wrapLines={false}
             />
           </View>
         )}
