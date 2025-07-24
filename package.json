@@ -19,6 +19,7 @@
     "preset": "jest-expo"
   },
   "dependencies": {
+    "@expensify/react-native-live-markdown": "^0.1.297",
     "@expo/vector-icons": "^14.1.0",
     "@legendapp/list": "^1.1.4",
     "@lottiefiles/dotlottie-react": "^0.14.3",
@@ -34,6 +35,7 @@
     "@types/resolve-path": "^1.4.3",
     "@types/uuid": "^10.0.0",
     "axios": "^1.10.0",
+    "expensify-common": "^2.0.151",
     "expo": "~53.0.17",
     "expo-application": "~6.1.5",
     "expo-asset": "~11.1.7",
@@ -82,6 +84,7 @@
     "expo-system-ui": "~5.0.10",
     "expo-updates": "~0.28.17",
     "expo-web-browser": "~14.2.0",
+    "html-entities": "2.5.3",
     "lottie-react-native": "7.2.2",
     "nativewind": "^4.1.23",
     "react": "19.0.0",
