@@ -1,6 +1,6 @@
 {
   "name": "happy-coder",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Claude Code session sharing CLI",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
@@ -15,7 +15,7 @@
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.cts",
   "exports": {
-      ".": {
+    ".": {
       "require": {
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
@@ -25,16 +25,16 @@
         "default": "./dist/index.mjs"
       }
     },
-    "./lib": {                                                                                      
-      "require": {                                                                                  
-        "types": "./dist/lib.d.cts",                                                                
-        "default": "./dist/lib.cjs"                                                                 
-      },                                                                                            
-      "import": {                                                                                   
-        "types": "./dist/lib.d.mts",                                                                
-        "default": "./dist/lib.mjs"                                                                 
-      }                                                                                             
-    }   
+    "./lib": {
+      "require": {
+        "types": "./dist/lib.d.cts",
+        "default": "./dist/lib.cjs"
+      },
+      "import": {
+        "types": "./dist/lib.d.mts",
+        "default": "./dist/lib.mjs"
+      }
+    }
   },
   "files": [
     "dist",
