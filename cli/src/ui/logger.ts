@@ -192,7 +192,7 @@ export function initLoggerWithGlobalConfiguration() {
   logger = new Logger()
   
   // Print debug mode message if DEBUG is on
-  if (configuration.DEBUG) {
+  if (process.env.DEBUG) {
     logger.logFilePathPromise.then(logPath => {
       logger.info(chalk.yellow('[DEBUG MODE] Debug logging enabled'))
       logger.info(chalk.gray(`Log file: ${logPath}`))

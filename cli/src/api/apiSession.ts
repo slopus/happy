@@ -5,8 +5,7 @@ import { AgentState, ClientToServerEvents, MessageContent, Metadata, ServerToCli
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { configuration } from '@/configuration';
-// import { RawJSONLines } from '@/claude/types';
-import { RawJSONLines } from 'happy-liberal/sources/claude-code-types';
+import { RawJSONLines } from '@/claude/types';
 
 type RpcHandler<T = any, R = any> = (data: T) => R | Promise<R>;
 type RpcHandlerMap = Map<string, RpcHandler>;
@@ -240,17 +239,8 @@ export class ApiSessionClient extends EventEmitter {
                 output: 0
             }
         }
-
         logger.debugLargeJson('[SOCKET] Sending usage data:', usageReport)
-        
         this.socket.emit('usage-report', usageReport);
-        
-        logger.debug('[SOCKET] Reported usage:', { 
-            sessionId: this.sessionId,
-            totalTokens,
-            input: usage.input_tokens,
-            output: usage.output_tokens 
-        });
     }
 
     /**

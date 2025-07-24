@@ -161,6 +161,7 @@ export function createSessionScanner(opts: {
             if (currentSessionId) {
                 pendingSessions.add(currentSessionId);
             }
+            logger.debug(`[SESSION_SCANNER] New session: ${sessionId}`)
             currentSessionId = sessionId;
             sync.invalidate();
         },

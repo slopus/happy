@@ -16,6 +16,7 @@ import { initLoggerWithGlobalConfiguration, logger } from './ui/logger'
 import { readCredentials } from './persistence/persistence'
 import { doAuth } from './ui/auth'
 import packageJson from '../package.json'
+import { z } from 'zod'
 
 (async () => {
 
@@ -43,9 +44,6 @@ import packageJson from '../package.json'
       }
       process.exit(1)
     }
-    return;
-  } else if (subcommand === 'backup-key' || subcommand === 'backup') {
-    await showBackupKey();
     return;
   } else if (subcommand === 'daemon') {
     // Handle daemon command

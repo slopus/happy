@@ -7,6 +7,7 @@ import { AgentState, Metadata } from '@/api/types';
 import { startPermissionServerV2 } from '@/claude/mcp/startPermissionServerV2';
 import type { OnAssistantResultCallback } from '@/ui/messageFormatter';
 import { InterruptController } from '@/claude/InterruptController';
+// @ts-ignore
 import packageJson from '../../package.json';
 import { startAnthropicActivityProxy } from '@/claude/proxy/startAnthropicActivityProxy';
 
