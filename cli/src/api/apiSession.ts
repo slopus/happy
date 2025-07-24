@@ -218,10 +218,27 @@ export class ApiSessionClient extends EventEmitter {
      * Send usage data to the server
      */
     sendUsageData(usage: Usage) {
+        // Calculate total tokens
+        const totalTokens = usage.input_tokens + usage.output_tokens + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
+        
+        // Transform Claude usage format to backend expected format
         const usageReport = {
             key: 'claude-session',
             sessionId: this.sessionId,
-            usage,
+            tokens: {
+                total: totalTokens,
+                input: usage.input_tokens,
+                output: usage.output_tokens,
+                cache_creation: usage.cache_creation_input_tokens || 0,
+                cache_read: usage.cache_read_input_tokens || 0
+            },
+            cost: {
+                // TODO: Calculate actual costs based on pricing
+                // For now, using placeholder values
+                total: 0,
+                input: 0,
+                output: 0
+            }
         }
 
         logger.debugLargeJson('[SOCKET] Sending usage data:', usageReport)

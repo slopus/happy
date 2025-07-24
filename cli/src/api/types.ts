@@ -112,7 +112,14 @@ export interface ClientToServerEvents {
   'usage-report': (data: { 
     key: string
     sessionId: string
-    usage: Usage
+    tokens: {
+      total: number
+      [key: string]: number
+    }
+    cost: {
+      total: number
+      [key: string]: number
+    }
   }) => void
 }
 
