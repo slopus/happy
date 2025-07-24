@@ -6,7 +6,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "ios:local-server": "EXPO_PUBLIC_API_ENDPOINT=http://localhost:3005 expo run:ios",
+    "ios:local-server": "EXPO_PUBLIC_DEBUG=1 EXPO_PUBLIC_API_ENDPOINT=http://localhost:3005 expo run:ios",
     "submit": "eas submit --platform ios",
     "web": "expo start --web",
     "test": "vitest",
