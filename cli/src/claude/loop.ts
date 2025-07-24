@@ -15,7 +15,6 @@ interface LoopOptions {
     startingMode?: 'interactive' | 'remote'
     mcpServers?: Record<string, any>
     permissionPromptToolName?: string
-    onThinking?: (thinking: boolean) => void,
     session: ApiSessionClient
     onAssistantResult?: OnAssistantResultCallback
     interruptController?: InterruptController

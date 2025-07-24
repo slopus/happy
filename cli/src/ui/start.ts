@@ -34,10 +34,23 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     const session = api.session(response);
     const pushClient = api.push();
 
+    // We should recieve updates when state changes immediately
+    // If we have not recieved an update - that means session is disconnected
+    // Either it was closed by user or the computer is offline
+    let thinking = false;
+    let pingInterval = setInterval(() => {
+        session.keepAlive(thinking);
+    }, 2000);
+
     // Start Anthropic activity monitoring proxy
     const antropicActivityProxy = await startAnthropicActivityProxy(
         (activity) => {
-            session.keepAlive(activity === 'working');
+            const newThinking = activity === 'working';
+            if (newThinking !== thinking) {
+                thinking = newThinking;
+                logger.debug(`[PING] Thinking state changed: ${thinking}`);
+                session.keepAlive(thinking);
+            }
         }
     );
 
@@ -140,12 +153,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         await interruptController.interrupt();
     });
 
-    // Session keep alive
-    let thinking = false;
-    const pingInterval = setInterval(() => {
-        session.keepAlive(thinking);
-    }, 15000); // Ping every 15 seconds
-
     // Notify mobile client when in remote mode & assistant finished
     const onAssistantResult: OnAssistantResultCallback = async (result) => {
         try {
@@ -184,16 +191,11 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             }
         },
         permissionPromptToolName: 'mcp__permission__' + permissionServer.toolName,
-        onThinking: (t) => {
-            thinking = t;
-            session.keepAlive(t);
-        },
         session,
         onAssistantResult,
         interruptController
     });
 
-    // Stop ping interval
     clearInterval(pingInterval);
 
     // NOTE: Shut down as fast as possible to provide 0 claude overhead

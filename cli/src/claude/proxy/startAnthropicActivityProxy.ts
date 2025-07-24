@@ -11,19 +11,50 @@ export interface AnthropicActivityProxy {
     cleanup: () => void;
 }
 
+/**
+ * @kirill is concerned this might not work well for SSE requests.
+ * Kind of surprised it works at all :D
+ * 
+ * This is also error prone to failed or in some strange way incomplete request
+ * This will result in counter never going to 0 and session never being marked as idle
+ * 
+ * The current proxy is poorly implemented, because claude
+ * will actually show we are 'offline' because of the proxy.
+ * 
+ * Using Antropic api base url env was nicer in this way.
+ * 
+ * We might also not able to inpect the traffic
+ * that is being sent through the proxy easily since its encrypted - TBD verification.
+ * 
+ * We currently will detect 'thinking' sometimes when it doesn't make sense.
+ * For example after aborting, or before 
+ */
+
 export async function startAnthropicActivityProxy(
     onClaudeActivity: (activity: 'working' | 'idle') => void
 ) {
-    let activeRequests = 0;
+    const requestTimeouts = new Map<number, NodeJS.Timeout>();
     let requestCounter = 0;
     let idleTimer: NodeJS.Timeout | null = null;
-    const maxTimeBeforeIdle = 1000; // 1 second
+    const maxTimeBeforeIdle = 50; // 50ms
+    const requestTimeout = 5 * 60 * 1000; // 5 minutes max per request
 
-    const checkIdle = () => {
+    const cleanupRequest = (requestId: number, reason: string) => {
+        const timeout = requestTimeouts.get(requestId);
+        if (timeout) {
+            clearTimeout(timeout);
+            requestTimeouts.delete(requestId);
+            logger.debug(`[AnthropicProxy #${requestId}] Cleaned up (${reason}), active requests: ${requestTimeouts.size}`);
+            claudeDidSomeWork();
+        }
+    };
+
+    const claudeDidSomeWork = () => {
         if (idleTimer) clearTimeout(idleTimer);
         
-        if (activeRequests === 0) {
+        if (requestTimeouts.size === 0) {
             idleTimer = setTimeout(() => {
+                logger.debug(`[AnthropicProxy] Idle for ${maxTimeBeforeIdle}ms, active requests: ${requestTimeouts.size}`);
                 onClaudeActivity('idle');
             }, maxTimeBeforeIdle);
         }
@@ -37,14 +68,26 @@ export async function startAnthropicActivityProxy(
                                    req.url?.includes('anthropic.com');
         
         if (isAnthropicRequest) {
-            activeRequests++;
+            // Set timeout to clean up stuck requests
+            const timeout = setTimeout(() => {
+                logger.debug(`[AnthropicProxy #${requestId}] Request timeout after ${requestTimeout}ms`);
+                cleanupRequest(requestId, 'timeout');
+            }, requestTimeout);
+            requestTimeouts.set(requestId, timeout);
+            
             onClaudeActivity('working');
-            logger.debug(`[AnthropicProxy #${requestId}] Anthropic request: ${req.method} ${req.url}`);
+            logger.debug(`[AnthropicProxy #${requestId}] Anthropic request: ${req.method} ${req.url}, active requests: ${requestTimeouts.size}`);
         }
 
         // Collect request body
         const chunks: Buffer[] = [];
-        req.on('data', (chunk) => chunks.push(chunk));
+        req.on('data', (chunk) => {
+            chunks.push(chunk);
+
+            if (isAnthropicRequest) {
+                claudeDidSomeWork();
+            }
+        });
         
         req.on('end', () => {
             const body = Buffer.concat(chunks);
@@ -79,23 +122,22 @@ export async function startAnthropicActivityProxy(
                 res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
                 
                 // Pipe response
+                // @kirill Is this why SSE requests are working fine?
                 proxyRes.pipe(res);
                 
                 proxyRes.on('end', () => {
                     if (isAnthropicRequest) {
-                        activeRequests--;
-                        logger.debug(`[AnthropicProxy #${requestId}] Request completed`);
-                        checkIdle();
+                        cleanupRequest(requestId, 'completed');
                     }
                 });
             });
 
             proxyReq.on('error', (error) => {
                 if (isAnthropicRequest) {
-                    activeRequests--;
-                    checkIdle();
+                    cleanupRequest(requestId, `error: ${error.message}`);
+                } else {
+                    logger.debug(`[AnthropicProxy #${requestId}] Error:`, error.message);
                 }
-                logger.debug(`[AnthropicProxy #${requestId}] Error:`, error.message);
                 res.writeHead(502);
                 res.end('Bad Gateway');
             });
@@ -115,9 +157,15 @@ export async function startAnthropicActivityProxy(
         const isAnthropicRequest = hostname === 'api.anthropic.com';
         
         if (isAnthropicRequest) {
-            activeRequests++;
+            // Set timeout to clean up stuck CONNECT requests
+            const timeout = setTimeout(() => {
+                logger.debug(`[AnthropicProxy #${requestId}] CONNECT timeout after ${requestTimeout}ms`);
+                cleanupRequest(requestId, 'timeout');
+            }, requestTimeout);
+            requestTimeouts.set(requestId, timeout);
+            
             onClaudeActivity('working');
-            logger.debug(`[AnthropicProxy #${requestId}] CONNECT to api.anthropic.com`);
+            logger.debug(`[AnthropicProxy #${requestId}] CONNECT to api.anthropic.com, active requests: ${requestTimeouts.size}`);
         }
 
         // Create connection to target
@@ -132,9 +180,7 @@ export async function startAnthropicActivityProxy(
 
         const cleanup = () => {
             if (isAnthropicRequest) {
-                activeRequests--;
-                logger.debug(`[AnthropicProxy #${requestId}] CONNECT closed`);
-                checkIdle();
+                cleanupRequest(requestId, 'CONNECT closed');
             }
         };
 
@@ -165,6 +211,19 @@ export async function startAnthropicActivityProxy(
         url,
         cleanup: () => {
             if (idleTimer) clearTimeout(idleTimer);
+            
+            // Clean up any remaining timeouts
+            for (const [requestId, timeout] of requestTimeouts) {
+                clearTimeout(timeout);
+                logger.debug(`[AnthropicProxy] Cleaning up timeout for request #${requestId}`);
+            }
+            requestTimeouts.clear();
+            
+            // Log any stuck requests
+            if (requestTimeouts.size > 0) {
+                logger.debug(`[AnthropicProxy] Warning: ${requestTimeouts.size} active requests still pending at cleanup:`, Array.from(requestTimeouts.keys()));
+            }
+            
             server.close();
         }
     };
