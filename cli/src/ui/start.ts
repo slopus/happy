@@ -128,11 +128,16 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         
         return promise;
     });
-    session.setHandler<{ id: string, approved: boolean, reason?: string }, void>('permission', (message) => {
+    session.setHandler<{ id: string, approved: boolean, reason?: string }, void>('permission', async (message) => {
         logger.info('Permission response' + JSON.stringify(message));
         const id = message.id;
         const resolve = requests.get(id);
         if (resolve) {
+            if (!message.approved) {
+                logger.debug('Permission denied, interrupting Claude');
+                await interruptController.interrupt();
+            }
+
             resolve({ approved: message.approved, reason: message.reason });
         } else {
             logger.info('Permission request stale, likely timed out')
