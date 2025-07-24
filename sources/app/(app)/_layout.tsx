@@ -91,7 +91,7 @@ export default function RootLayout() {
             <Stack.Screen
                 name="dev"
                 options={{
-                    headerShown: true,
+                    headerShown: false,
                     headerTitle: 'Developer Tools',
                 }}
             />

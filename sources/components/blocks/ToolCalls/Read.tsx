@@ -5,7 +5,7 @@ import { z } from 'zod';
 import { ToolCall } from '@/sync/typesMessage';
 import { ShimmerToolName } from './design-tokens/ShimmerToolName';
 import { SingleLineToolSummaryBlock } from '../SingleLineToolSummaryBlock';
-import { SharedDiffView } from './SharedDiffView';
+import { DiffView } from '@/components/diff/DiffView';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from './constants';
 import { ToolIcon } from './design-tokens/ToolIcon';
 import { ToolName } from './design-tokens/ToolName';
@@ -186,11 +186,11 @@ export const ReadDetailedView = ({ tool }: { tool: ReadToolCall }) => {
       <View className="flex-1">
         {/* Show content if available */}
         {fileContent && tool.state === 'completed' && (
-          <SharedDiffView
-            oldContent=""  // No old content for read operation
-            newContent={fileContent}
-            fileName={args.file_path || 'unknown'}
-            showFileName={false}  // Already shown in header
+          <DiffView
+            oldText=""  // No old content for read operation
+            newText={fileContent}
+            showLineNumbers={true}
+            wrapLines={false}
           />
         )}
 

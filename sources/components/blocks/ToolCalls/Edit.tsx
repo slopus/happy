@@ -4,7 +4,8 @@ import { MonoText as Text } from "./design-tokens/MonoText";
 import { ToolCall } from "@/sync/typesMessage";
 import { z } from "zod";
 import { SingleLineToolSummaryBlock } from "../SingleLineToolSummaryBlock";
-import { SharedDiffView, calculateDiffStats } from "./SharedDiffView";
+import { DiffView } from '@/components/diff/DiffView';
+import { getDiffStats } from '@/components/diff/calculateDiff';
 import { TOOL_COMPACT_VIEW_STYLES, TOOL_CONTAINER_STYLES } from "./constants";
 import { Metadata } from "@/sync/storageTypes";
 import { getRelativePath } from "@/hooks/useGetPath";
@@ -77,7 +78,7 @@ export function EditCompactViewInner({
       return { additions: 0, deletions: 0 };
     }
 
-    return calculateDiffStats(args.old_string, args.new_string);
+    return getDiffStats(args.old_string, args.new_string);
   }, [args.old_string, args.new_string]);
 
   // Get relative path or filename
@@ -180,12 +181,13 @@ export const EditDetailedView = ({
 
       {/* Diff View */}
       <View className="pb-4">
-        <SharedDiffView
-          oldContent={oldString || ""}
-          newContent={newString || ""}
-          fileName={displayPath}
-          showFileName={true}
-          maxHeight={400}
+        <DiffView
+          oldText={oldString || ""}
+          newText={newString || ""}
+          oldTitle="Before"
+          newTitle="After"
+          showLineNumbers={true}
+          wrapLines={false}
         />
       </View>
     </ScrollView>
