@@ -285,10 +285,10 @@ class Sync {
             }
         });
 
-        // Recalculate online sessions
+        // Recalculate online sessions every second (for 5-second disconnect timeout)
         setInterval(() => {
             storage.getState().recalculateOnline();
-        }, 15000);
+        }, 1000);
     }
 
     private handleUpdate = (update: unknown) => {
@@ -365,14 +365,20 @@ class Sync {
             return;
         }
         const updateData = validatedUpdate.data;
+        
+        // Only process activity updates
+        if (updateData.type !== 'activity') {
+            return;
+        }
+        
         const session = storage.getState().sessions[updateData.id];
         if (session) {
             storage.getState().applySessions([{
                 ...session,
                 active: updateData.active,
                 activeAt: updateData.activeAt,
-                thinking: updateData.thinking,
-                thinkingAt: updateData.thinking ? updateData.activeAt : 0
+                thinking: updateData.thinking ?? false,
+                thinkingAt: updateData.activeAt // Always use activeAt for consistency
             }])
         }
     }
