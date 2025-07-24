@@ -174,17 +174,46 @@ export const DiffView: React.FC<DiffViewProps> = ({
     // Helper function to render line with styled leading space dots and inline highlighting
     const renderLineContent = (content: string, textStyle: any, tokens?: DiffToken[]) => {
         const formatted = formatLineContent(content);
-        const leadingSpaces = formatted.match(/^( +)/);
-        const leadingDots = leadingSpaces ? '\u00b7'.repeat(leadingSpaces[0].length) : '';
-        const mainContent = leadingSpaces ? formatted.slice(leadingSpaces[0].length) : formatted;
         
         if (tokens && tokens.length > 0) {
             // Render with inline highlighting
+            let processedLeadingSpaces = false;
+            
             return (
                 <View style={{ flexDirection: 'row', flex: 1 }}>
                     <Text style={[textStyle, { transform: [{ scaleX: fontScaleX }] }]}>
-                        {leadingDots && <Text style={{ color: colors.leadingSpaceDot }}>{leadingDots}</Text>}
                         {tokens.map((token, idx) => {
+                            // Process leading spaces in the first token only
+                            if (!processedLeadingSpaces && token.value) {
+                                const leadingMatch = token.value.match(/^( +)/);
+                                if (leadingMatch) {
+                                    processedLeadingSpaces = true;
+                                    const leadingDots = '\u00b7'.repeat(leadingMatch[0].length);
+                                    const restOfToken = token.value.slice(leadingMatch[0].length);
+                                    
+                                    if (token.added || token.removed) {
+                                        return (
+                                            <Text key={idx}>
+                                                <Text style={{ color: colors.leadingSpaceDot }}>{leadingDots}</Text>
+                                                <Text style={{ 
+                                                    backgroundColor: token.added ? colors.inlineAddedBg : colors.inlineRemovedBg,
+                                                    color: token.added ? colors.inlineAddedText : colors.inlineRemovedText,
+                                                }}>
+                                                    {restOfToken}
+                                                </Text>
+                                            </Text>
+                                        );
+                                    }
+                                    return (
+                                        <Text key={idx}>
+                                            <Text style={{ color: colors.leadingSpaceDot }}>{leadingDots}</Text>
+                                            {restOfToken}
+                                        </Text>
+                                    );
+                                }
+                                processedLeadingSpaces = true;
+                            }
+                            
                             if (token.added || token.removed) {
                                 return (
                                     <Text 
@@ -206,6 +235,10 @@ export const DiffView: React.FC<DiffViewProps> = ({
         }
         
         // Regular rendering without tokens
+        const leadingSpaces = formatted.match(/^( +)/);
+        const leadingDots = leadingSpaces ? '\u00b7'.repeat(leadingSpaces[0].length) : '';
+        const mainContent = leadingSpaces ? formatted.slice(leadingSpaces[0].length) : formatted;
+        
         return (
             <View style={{ flexDirection: 'row', flex: 1 }}>
                 <Text style={[textStyle, { transform: [{ scaleX: fontScaleX }] }]}>
