@@ -1,5 +1,51 @@
 import { Session } from '@/sync/storageTypes';
 
+// Timeout for considering a session disconnected (5 seconds)
+export const DISCONNECTED_TIMEOUT_MS = 5000;
+
+export type SessionState = 'disconnected' | 'thinking' | 'waiting';
+
+export interface SessionStatus {
+    state: SessionState;
+    isConnected: boolean;
+    statusText: string;
+    shouldShowStatus: boolean;
+}
+
+/**
+ * Get the current state of a session based on activeAt and thinking status.
+ * This centralizes the logic for determining session state across the app.
+ */
+export function getSessionState(session: Session): SessionStatus {
+    const now = Date.now();
+    const isDisconnected = !session.activeAt || session.activeAt < now - DISCONNECTED_TIMEOUT_MS;
+    
+    if (isDisconnected) {
+        return {
+            state: 'disconnected',
+            isConnected: false,
+            statusText: 'Disconnected',
+            shouldShowStatus: true
+        };
+    }
+    
+    if (session.thinking === true) {
+        return {
+            state: 'thinking',
+            isConnected: true,
+            statusText: 'thinking...',
+            shouldShowStatus: true
+        };
+    }
+    
+    return {
+        state: 'waiting',
+        isConnected: true,
+        statusText: '',
+        shouldShowStatus: false
+    };
+}
+
 /**
  * Extracts a display name from a session's metadata path.
  * Returns the last segment of the path, or 'unknown' if no path is available.
@@ -15,9 +61,20 @@ export function getSessionName(session: Session): string {
 /**
  * Checks if a session is currently online based on the presence field.
  * A session is considered online if presence is "online".
+ * Note: This uses the 10-minute timeout. For UI consistency with
+ * disconnected state, consider using getSessionState().isConnected instead.
  */
 export function isSessionOnline(session: Session): boolean {
     return session.presence === "online";
+}
+
+/**
+ * Checks if a session should be shown in the active sessions group.
+ * Uses the same 5-second timeout as the disconnected state.
+ */
+export function isSessionActive(session: Session): boolean {
+    const now = Date.now();
+    return !!session.activeAt && (session.activeAt >= now - DISCONNECTED_TIMEOUT_MS);
 }
 
 /**
