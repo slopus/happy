@@ -111,6 +111,7 @@
     "resolve-path": "^1.4.0",
     "rn-encryption": "^2.5.0",
     "socket.io-client": "^4.8.1",
+    "twrnc": "^4.9.1",
     "uuid": "^11.1.0",
     "vitest": "^3.2.4",
     "zod": "^4.0.5",
