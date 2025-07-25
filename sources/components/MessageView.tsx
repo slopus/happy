@@ -5,6 +5,7 @@ import { CompactToolBlock as CompactToolBlock } from "./blocks/RenderToolCallV4"
 import { ToolCallGroupBlock } from "./blocks/ToolCallGroupBlock";
 import { Message, ToolCall, UserTextMessage, AgentTextMessage, ToolCallMessage, ToolCallGroupMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
+import { layout } from "./layout";
 // import { RenderToolV1 } from './blocks/RenderToolCallV1';
 
 export const MessageView = (props: {
@@ -21,7 +22,7 @@ export const MessageView = (props: {
           flexDirection: "column",
           flexGrow: 1,
           flexBasis: 0,
-          maxWidth: 700,
+          maxWidth: layout.maxWidth,
         }}
       >
         <RenderBlock 
