@@ -4,6 +4,7 @@ import { DecryptedMessage, Session } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer";
 import { Message } from "./typesMessage";
 import { normalizeRawMessage } from "./typesRaw";
+import { isSessionActive, DISCONNECTED_TIMEOUT_MS } from '@/utils/sessionUtils';
 
 // Session is considered online if it was active within this timeout
 export const ONLINE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -53,9 +54,10 @@ export const storage = create<StorageState>()((set) => {
             });
 
             // Build active set from all sessions (including existing ones)
+            // Use 5-second timeout for consistency with UI
             const activeSet = new Set<string>();
             Object.values(mergedSessions).forEach(session => {
-                if (session.presence === "online") {
+                if (isSessionActive(session)) {
                     activeSet.add(session.id);
                 }
             });
@@ -184,21 +186,29 @@ export const storage = create<StorageState>()((set) => {
         recalculateOnline: () => set((state) => {
             const now = Date.now();
             const threshold = now - ONLINE_TIMEOUT_MS;
+            const disconnectThreshold = now - DISCONNECTED_TIMEOUT_MS;
 
             // Update presence for all sessions
             const updatedSessions: Record<string, Session> = {};
             Object.entries(state.sessions).forEach(([id, session]) => {
                 const isOnline = session.active && session.activeAt > threshold;
+                const isDisconnected = !session.activeAt || session.activeAt <= disconnectThreshold;
+                
+                // Update session with presence and clear thinking/active if disconnected
                 updatedSessions[id] = {
                     ...session,
-                    presence: isOnline ? "online" : session.activeAt
+                    presence: isOnline ? "online" : session.activeAt,
+                    // Clear thinking and active states when disconnected
+                    thinking: isDisconnected ? false : session.thinking,
+                    active: isDisconnected ? false : session.active
                 };
             });
 
             // Build set of session IDs that should be active
+            // Use 5-second timeout for consistency with UI
             const shouldBeActiveSet = new Set<string>();
             Object.values(updatedSessions).forEach(session => {
-                if (session.presence === "online") {
+                if (isSessionActive(session)) {
                     shouldBeActiveSet.add(session.id);
                 }
             });
@@ -266,7 +276,7 @@ export const storage = create<StorageState>()((set) => {
                 sessions: updatedSessions,
                 sessionsData: listData
             };
-        })
+        }),
     }
 });
 

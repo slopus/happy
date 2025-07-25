@@ -6,7 +6,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
 import { Stack, useRouter } from "expo-router";
-import { formatLastSeen, getSessionName, isSessionOnline } from "@/utils/sessionUtils";
+import { formatLastSeen, getSessionName, getSessionState, isSessionOnline } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -28,9 +28,9 @@ export default function Session() {
     const [message, setMessage] = useState('');
 
     const [showConfigModal, setShowConfigModal] = useState(false);
-    const online = isSessionOnline(session);
-    const lastSeenText = formatLastSeen(session.presence);
-    const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
+    const sessionStatus = getSessionState(session);
+    const online = sessionStatus.isConnected;
+    const lastSeenText = sessionStatus.isConnected ? 'Active now' : formatLastSeen(session.activeAt);
     const permissionRequest = React.useMemo(() => {
         let requests = session.agentState?.requests;
         if (!requests) {
@@ -46,16 +46,15 @@ export default function Session() {
     }, [sessionId]);
 
     const status = React.useMemo(() => {
-        if (!online) {
-            return <Text style={{ color: '#999', fontSize: 14, marginLeft: 8 }}>Session disconnected</Text>
-        }
-        if (thinking) {
+        if (sessionStatus.shouldShowStatus) {
             return (
-                <Text style={{ color: '#999', fontSize: 14, marginLeft: 8 }}>Thinking...</Text>
-            )
+                <Text style={{ color: '#999', fontSize: 14, marginLeft: 8 }}>
+                    {sessionStatus.state === 'disconnected' ? 'Session disconnected' : 'Thinking...'}
+                </Text>
+            );
         }
-        return null
-    }, [sessionId, online, thinking]);
+        return null;
+    }, [sessionStatus]);
 
     const footer = React.useMemo(() => {
         if (!permissionRequest) {

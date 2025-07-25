@@ -8,7 +8,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession } from '@/sync/storage';
-import { getSessionName, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
+import { getSessionName, getSessionState, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 
 export default function SessionInfo() {
@@ -24,8 +24,9 @@ export default function SessionInfo() {
         );
     }
 
-    const online = isSessionOnline(session);
-    const lastSeenText = formatLastSeen(session.presence);
+    const sessionStatus = getSessionState(session);
+    const online = sessionStatus.isConnected; // Use 5-second timeout for consistency
+    const lastSeenText = sessionStatus.isConnected ? 'Active now' : formatLastSeen(session.activeAt);
 
     const handleCopySessionId = async () => {
         try {
