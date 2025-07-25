@@ -12,16 +12,10 @@ RUN yarn install --frozen-lockfile --ignore-engines
 
 # Copy the rest of the application code
 COPY sources ./sources
-COPY assets ./assets
-COPY modules ./modules
-COPY 3rdparty ./3rdparty
-COPY app.config.js ./
-COPY metro.config.js ./
-COPY tsconfig.json ./
-COPY public ./public
+COPY * ./
 
 # Build the Next.js application for web
-RUN yarn build-web
+RUN yarn expo export --platform web
 
 # Stage 2: Runtime with Nginx
 FROM nginx:alpine AS runner
