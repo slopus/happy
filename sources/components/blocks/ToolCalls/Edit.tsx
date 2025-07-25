@@ -1,6 +1,6 @@
-import React, { useMemo } from "react";
-import { View, ScrollView } from "react-native";
-import { MonoText as Text } from "./design-tokens/MonoText";
+import React, { useMemo, useState } from "react";
+import { View, ScrollView, Text, Pressable } from "react-native";
+import { MonoText } from "./design-tokens/MonoText";
 import { ToolCall } from "@/sync/typesMessage";
 import { z } from "zod";
 import { SingleLineToolSummaryBlock } from "../SingleLineToolSummaryBlock";
@@ -11,6 +11,8 @@ import { getRelativePath } from "@/hooks/useGetPath";
 import { ToolIcon } from "./design-tokens/ToolIcon";
 import { ShimmerToolName } from "./design-tokens/ShimmerToolName";
 import { ToolName } from "./design-tokens/ToolName";
+import { Toggle } from "@/components/Toggle";
+import tw from 'twrnc';
 
 export type EditToolCall = Omit<ToolCall, "name"> & { name: "Edit" };
 
@@ -23,6 +25,51 @@ const EditArgumentsSchema = z.object({
 });
 
 type EditArguments = z.infer<typeof EditArgumentsSchema>;
+
+// Sliding toggle component for Unified/Split view
+const ViewModeToggle: React.FC<{
+  value: 'unified' | 'split';
+  onChange: (value: 'unified' | 'split') => void;
+}> = ({ value, onChange }) => {
+  return (
+    <View style={[tw`relative flex-row bg-gray-100 rounded-lg p-0.5`, { width: 140 }]}>
+      {/* Sliding white background */}
+      <View style={tw.style(
+        'absolute top-0.5 rounded-md bg-white shadow-sm',
+        // Dynamic positioning and size
+        { 
+          left: value === 'unified' ? 2 : 72, // 140/2 + 2 = 72
+          width: 66, // (140-4)/2 = 68, but adjust for better fit
+          height: 28
+        }
+      )} />
+      
+      <Pressable
+        onPress={() => onChange('unified')}
+        style={tw`flex-1 py-1.5 px-3 rounded-md z-10`}
+      >
+        <Text style={tw.style(
+          'text-center text-xs font-medium',
+          value === 'unified' ? 'text-gray-900' : 'text-gray-500'
+        )}>
+          Unified
+        </Text>
+      </Pressable>
+      
+      <Pressable
+        onPress={() => onChange('split')}
+        style={tw`flex-1 py-1.5 px-3 rounded-md z-10`}
+      >
+        <Text style={tw.style(
+          'text-center text-xs font-medium',
+          value === 'split' ? 'text-gray-900' : 'text-gray-500'
+        )}>
+          Split
+        </Text>
+      </Pressable>
+    </View>
+  );
+};
 
 export function EditCompactView({
   tool,
@@ -60,12 +107,12 @@ export function EditCompactViewInner({
         <ToolIcon name="pencil-outline" state={tool.state} />
         {tool.state === "running" && <ShimmerToolName>Editing</ShimmerToolName>}
         <ToolName>{tool.state}</ToolName>
-        <Text
+        <MonoText
           className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
           numberOfLines={1}
         >
           Invalid arguments
-        </Text>
+        </MonoText>
       </View>
     );
   }
@@ -80,12 +127,12 @@ export function EditCompactViewInner({
       <ToolIcon name="pencil" state={tool.state} />
       {tool.state === "running" && <ShimmerToolName>Editing</ShimmerToolName>}
       {tool.state !== "running" && <ToolName>Edit</ToolName>}
-      <Text
+      <MonoText
         className={TOOL_COMPACT_VIEW_STYLES.CONTENT_CLASSES}
         numberOfLines={1}
       >
         {displayPath}
-      </Text>
+      </MonoText>
     </View>
   );
 }
@@ -98,6 +145,10 @@ export const EditDetailedView = ({
   tool: EditToolCall;
   metadata: Metadata | null;
 }) => {
+  const [viewMode, setViewMode] = useState<'unified' | 'split'>('unified');
+  const [wrapLines, setWrapLines] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+
   const {
     file_path: filePath,
     old_string: oldString,
@@ -107,34 +158,37 @@ export const EditDetailedView = ({
 
   if (!filePath) {
     return (
-      <View className="flex-1 p-4 bg-white">
-        <Text className="text-lg font-semibold text-gray-900">File Edit</Text>
-        <Text className="text-red-600 text-sm italic">No file specified</Text>
+      <View style={tw`flex-1 bg-white`}>
+        <View style={tw`p-4`}>
+          <Text style={tw`text-lg font-semibold text-gray-900`}>File Edit</Text>
+          <Text style={tw`text-red-600 text-sm italic`}>No file specified</Text>
+        </View>
       </View>
     );
   }
 
   // Get relative path for display
-  console.log("!!!!!! metadata", metadata);
   const displayPath = getRelativePath(metadata || null, filePath);
 
   return (
-    <ScrollView className="flex-1 bg-white" showsVerticalScrollIndicator={true}>
-      {/* Header */}
-      <View className="p-4">
-        <View className="flex-row justify-between items-center mb-4">
-          <View className="flex-row items-center">
-            <ToolIcon name="pencil" state={tool.state} />
-            <Text className="text-lg font-semibold text-gray-900">
-              Edit Diff
+    <View style={tw`flex-1 bg-white`}>
+      {/* Minimal Header */}
+      <View style={tw`px-4 pt-4 pb-3 border-b border-gray-200 bg-white`}>
+        <View style={tw`flex-row items-center gap-2 mb-2`}>
+          <ToolIcon name="pencil" state={tool.state} />
+          <View style={tw`flex-1`}>
+            <Text style={tw`text-lg font-semibold text-gray-900 font-mono`}>
+              {displayPath}
+            </Text>
+            <Text style={tw`text-xs text-gray-500 mt-0.5`}>
+              Edit File
             </Text>
           </View>
-          <View className="px-2 py-1 bg-gray-100 rounded-xl">
-            <Text
-              className={`text-sm font-medium ${getStatusColorClass(
-                tool.state
-              )}`}
-            >
+          <View style={tw`px-2 py-1 bg-gray-100 rounded-full`}>
+            <Text style={tw.style(
+              'text-xs font-medium',
+              getStatusColorClass(tool.state)
+            )}>
               {getStatusDisplay(tool.state)}
             </Text>
           </View>
@@ -142,26 +196,63 @@ export const EditDetailedView = ({
 
         {/* Replace All Mode */}
         {replaceAll && (
-          <View className="mb-3 bg-amber-50 rounded-lg p-3 border border-amber-200">
-            <Text className="text-sm font-medium text-amber-800">
-              🔄 Replace All - All occurrences replaced
+          <View style={tw`bg-amber-50 border border-amber-200 rounded-lg p-3`}>
+            <Text style={tw`text-xs font-medium text-amber-800`}>
+              🔄 Replace All Mode - All occurrences will be replaced
             </Text>
           </View>
         )}
       </View>
 
-      {/* Diff View */}
-      <View className="pb-4">
+      {/* Full-width Diff View */}
+      <View style={tw`flex-1`}>
         <DiffView
           oldText={oldString || ""}
           newText={newString || ""}
           oldTitle="Before"
           newTitle="After"
           showLineNumbers={true}
-          wrapLines={false}
+          showDiffStats={true}
+          contextLines={3}
+          wrapLines={wrapLines}
+          style={tw`flex-1`}
         />
       </View>
-    </ScrollView>
+
+      {/* Enhanced iOS-style Bottom Toolbar */}
+      <View style={tw`bg-white border-t border-gray-200 shadow-lg`}>
+        {/* Main toolbar row */}
+        <View style={tw`flex-row items-center justify-between px-4 py-3`}>
+          {/* Left section - View Mode Toggle */}
+          <ViewModeToggle value={viewMode} onChange={setViewMode} />
+
+          {/* Right section - More options */}
+          <Pressable
+            onPress={() => setShowSettings(true)}
+            style={tw`px-4 py-2 bg-gray-100 rounded-lg`}
+          >
+            <Text style={tw`text-sm font-medium text-gray-700`}>
+              More
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Optional: Secondary toolbar row for additional controls */}
+        {showSettings && (
+          <View style={tw`flex-row items-center justify-around px-4 pb-3 border-t border-gray-100`}>
+            <Pressable style={tw`items-center p-2`}>
+              <Text style={tw`text-xs text-gray-500`}>Copy</Text>
+            </Pressable>
+            <Pressable style={tw`items-center p-2`}>
+              <Text style={tw`text-xs text-gray-500`}>Share</Text>
+            </Pressable>
+            <Pressable style={tw`items-center p-2`}>
+              <Text style={tw`text-xs text-gray-500`}>Export</Text>
+            </Pressable>
+          </View>
+        )}
+      </View>
+    </View>
   );
 };
 
@@ -169,13 +260,26 @@ export const EditDetailedView = ({
 const getStatusDisplay = (state: string) => {
   switch (state) {
     case "running":
-      return "⏳ Running";
+      return "Running";
     case "completed":
-      return "✅ Completed";
+      return "Completed";
     case "error":
-      return "❌ Error";
+      return "Error";
     default:
       return state;
+  }
+};
+
+const getStatusColor = (state: string) => {
+  switch (state) {
+    case "running":
+      return "#F59E0B";
+    case "completed":
+      return "#10B981";
+    case "error":
+      return "#EF4444";
+    default:
+      return "#6B7280";
   }
 };
 
