@@ -5,7 +5,7 @@ import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
 import { ChatInput } from "@/components/ChatInput";
-import { formatLastSeen, getSessionName, isSessionOnline } from "@/utils/sessionUtils";
+import { formatLastSeen, getSessionName, getSessionState, isSessionOnline } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -31,9 +31,9 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
         );
     }
     
-    const online = isSessionOnline(session);
-    const lastSeenText = formatLastSeen(session.presence);
-    const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
+    const sessionStatus = getSessionState(session);
+    const online = sessionStatus.isConnected; // Use 5-second timeout for consistency
+    const lastSeenText = sessionStatus.isConnected ? 'Active now' : formatLastSeen(session.activeAt);
     
     const permissionRequest = React.useMemo(() => {
         let requests = session.agentState?.requests;
@@ -119,9 +119,11 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                             <Text style={{ fontSize: 14, color: '#666' }}>{JSON.stringify(permissionRequest.call, null, 2)}</Text>
                         </View>
                     )}
-                    {thinking && (
+                    {sessionStatus.shouldShowStatus && (
                         <View style={{ padding: 16, flexDirection: 'row', alignItems: 'center' }}>
-                            <Text style={{ color: '#666' }}>Claude is thinking...</Text>
+                            <Text style={{ color: '#666' }}>
+                                {sessionStatus.state === 'disconnected' ? 'Session disconnected' : 'Claude is thinking...'}
+                            </Text>
                         </View>
                     )}
                 </View>
@@ -129,7 +131,7 @@ export function SessionDetail({ sessionId }: SessionDetailProps) {
                     value={message}
                     onChangeText={setMessage}
                     onSend={handleSend}
-                    loading={!online}
+                    loading={sessionStatus.state === 'thinking'}
                     placeholder="Type a message..."
                 />
             </KeyboardAvoidingView>

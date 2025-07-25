@@ -3,7 +3,7 @@ import { View, Pressable } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { SessionListItem } from '@/sync/storage';
-import { getSessionName, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
+import { getSessionName, getSessionState, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
 import { isMessageFromAssistant } from '@/utils/messageUtils';
 import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -86,11 +86,11 @@ function SessionItem({ session, selectedSessionId, router }: {
     // const actualLastMessage = getLastNonSummaryMessage(messages, session.lastMessage);
 
     // Use the actual last message for preview
-    const online = isSessionOnline(session);
+    const sessionStatus = getSessionState(session);
+    const online = sessionStatus.isConnected;
     const sessionName = getSessionName(session);
-    const lastSeenText = formatLastSeen(session.presence);
-    const thinking = session.thinking && session.thinkingAt > Date.now() - 1000 * 30; // 30 seconds timeout
-    const isFromAssistant = session.lastMessage?.role === 'agent' || thinking;
+    const lastSeenText = sessionStatus.isConnected ? 'Active now' : formatLastSeen(session.activeAt);
+    const isFromAssistant = session.lastMessage?.role === 'agent' || sessionStatus.state === 'thinking';
     const isSelected = selectedSessionId === session.id;
     let message: string | null = null;
     if (session.lastMessage) {
@@ -143,13 +143,13 @@ function SessionItem({ session, selectedSessionId, router }: {
                             {isFromAssistant ? 'Claude' : 'You'}:
                         </Text>
 
-                        {thinking && (
+                        {sessionStatus.shouldShowStatus && (
                             <Text className="text-sm text-blue-500 flex-1">
-                                {' thinking...'}
+                                {' ' + sessionStatus.statusText}
                             </Text>
                         )}
 
-                        {!thinking && (
+                        {!sessionStatus.shouldShowStatus && (
                             <Text className="text-sm text-gray-500 flex-1" numberOfLines={1}>
                                 {' ' + (message ?? '<no message>')}
                             </Text>
