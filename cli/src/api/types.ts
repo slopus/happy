@@ -202,6 +202,10 @@ export type Metadata = {
   host: string,
   version?: string,
   name?: string,
+  summary?: {
+    text: string,
+    updatedAt: number
+  },
   usage?: {
     [model: string]: {
       input?: number,

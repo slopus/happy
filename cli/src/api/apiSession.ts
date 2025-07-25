@@ -197,6 +197,17 @@ export class ApiSessionClient extends EventEmitter {
                 logger.debug('[SOCKET] Failed to send usage data:', error);
             }
         }
+        
+        // Update metadata with summary if this is a summary message
+        if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {
+            this.updateMetadata((metadata) => ({
+                ...metadata,
+                summary: {
+                    text: body.summary,
+                    updatedAt: Date.now()
+                }
+            }));
+        }
     }
 
     /**
