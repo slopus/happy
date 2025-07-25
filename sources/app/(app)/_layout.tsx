@@ -72,7 +72,7 @@ export default function RootLayout() {
                 name="session/[id]/info"
                 options={{
                     presentation: 'modal',
-                    headerShown: false,
+                    headerShown: true,
                 }}
             />
             <Stack.Screen

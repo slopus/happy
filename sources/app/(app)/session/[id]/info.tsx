@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo, useCallback } from 'react';
 import { View, Text, Alert, Pressable, Platform } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,7 +11,7 @@ import { useSession } from '@/sync/storage';
 import { getSessionName, getSessionState, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 
-export default function SessionInfo() {
+export default React.memo(() => {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
     const session = useSession(id);
@@ -24,6 +24,7 @@ export default function SessionInfo() {
         );
     }
 
+    const sessionName = getSessionName(session);
     const sessionStatus = getSessionState(session);
     const online = sessionStatus.isConnected; // Use 5-second timeout for consistency
     const lastSeenText = sessionStatus.isConnected ? 'Active now' : formatLastSeen(session.activeAt);
@@ -52,43 +53,47 @@ export default function SessionInfo() {
         return new Date(timestamp).toLocaleString();
     };
 
+    const handleClose = useCallback(() => {
+        router.back();
+    }, [router]);
+
+    const screenOptions = {
+        // headerShown: true,
+        headerTitle: 'Session Info',
+        headerStyle: {
+            backgroundColor: 'white',
+        },
+        headerTintColor: '#000',
+        headerTitleStyle: {
+            color: '#000',
+            fontSize: 17,
+            fontWeight: '600' as const,
+        },
+        headerRight: Platform.OS === 'ios' ? () => (
+            <Pressable onPress={handleClose} hitSlop={10}>
+                <Ionicons name="close" size={24} color="#000" />
+            </Pressable>
+        ) : undefined,
+    };
+
     return (
         <>
-            <Stack.Screen
-                options={{
-                    headerShown: true,
-                    headerTitle: 'Session Info',
-                    headerStyle: {
-                        backgroundColor: 'white',
-                    },
-                    headerTintColor: '#000',
-                    headerTitleStyle: {
-                        color: '#000',
-                        fontSize: 17,
-                        fontWeight: '600',
-                    },
-                    headerRight: Platform.OS === 'ios' ? () => (
-                        <Pressable onPress={() => router.back()} hitSlop={10}>
-                            <Ionicons name="close" size={24} color="#000" />
-                        </Pressable>
-                    ) : undefined,
-                }}
-            />
-            
+            <Stack.Screen options={screenOptions} />
+
             <ItemList>
                 {/* Session Header */}
                 <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: 'white', marginBottom: 35 }}>
                     <Avatar id={session.id} size={80} monochrome={!online} />
-                    <Text style={{ 
-                        fontSize: 20, 
-                        fontWeight: '600', 
+                    <Text style={{
+                        fontSize: 20,
+                        fontWeight: '600',
                         marginTop: 12,
                         ...Typography.default('semiBold')
                     }}>
-                        {getSessionName(session)}
+                        {sessionName}
                     </Text>
-                    <Text style={{ 
-                        fontSize: 15, 
+                    <Text style={{
+                        fontSize: 15,
                         color: online ? '#34C759' : '#8E8E93',
                         marginTop: 4
                     }}>
@@ -98,31 +103,31 @@ export default function SessionInfo() {
 
                 {/* Session Details */}
                 <ItemGroup title="Session Details">
-                    <Item 
+                    <Item
                         title="Session ID"
                         subtitle={`${session.id.substring(0, 8)}...${session.id.substring(session.id.length - 8)}`}
                         icon={<Ionicons name="finger-print-outline" size={29} color="#007AFF" />}
                         onPress={handleCopySessionId}
                     />
-                    <Item 
+                    <Item
                         title="Status"
                         detail={session.active ? "Active" : "Inactive"}
                         icon={<Ionicons name="pulse-outline" size={29} color={session.active ? "#34C759" : "#8E8E93"} />}
                         showChevron={false}
                     />
-                    <Item 
+                    <Item
                         title="Created"
                         subtitle={formatDate(session.createdAt)}
                         icon={<Ionicons name="calendar-outline" size={29} color="#007AFF" />}
                         showChevron={false}
                     />
-                    <Item 
+                    <Item
                         title="Last Updated"
                         subtitle={formatDate(session.updatedAt)}
                         icon={<Ionicons name="time-outline" size={29} color="#007AFF" />}
                         showChevron={false}
                     />
-                    <Item 
+                    <Item
                         title="Sequence"
                         detail={session.seq.toString()}
                         icon={<Ionicons name="git-commit-outline" size={29} color="#007AFF" />}
@@ -133,27 +138,27 @@ export default function SessionInfo() {
                 {/* Metadata */}
                 {session.metadata && (
                     <ItemGroup title="Metadata">
-                        <Item 
+                        <Item
                             title="Host"
                             subtitle={session.metadata.host}
                             icon={<Ionicons name="desktop-outline" size={29} color="#5856D6" />}
                             showChevron={false}
                         />
-                        <Item 
+                        <Item
                             title="Path"
                             subtitle={session.metadata.path}
                             icon={<Ionicons name="folder-outline" size={29} color="#5856D6" />}
                             showChevron={false}
                         />
                         {session.metadata.version && (
-                            <Item 
+                            <Item
                                 title="Version"
                                 subtitle={session.metadata.version}
                                 icon={<Ionicons name="git-branch-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
                             />
                         )}
-                        <Item 
+                        <Item
                             title="Copy Metadata"
                             icon={<Ionicons name="copy-outline" size={29} color="#007AFF" />}
                             onPress={handleCopyMetadata}
@@ -164,14 +169,14 @@ export default function SessionInfo() {
                 {/* Agent State */}
                 {session.agentState && (
                     <ItemGroup title="Agent State">
-                        <Item 
+                        <Item
                             title="Controlled by User"
                             detail={session.agentState.controlledByUser ? "Yes" : "No"}
                             icon={<Ionicons name="person-outline" size={29} color="#FF9500" />}
                             showChevron={false}
                         />
                         {session.agentState.requests && Object.keys(session.agentState.requests).length > 0 && (
-                            <Item 
+                            <Item
                                 title="Pending Requests"
                                 detail={Object.keys(session.agentState.requests).length.toString()}
                                 icon={<Ionicons name="hourglass-outline" size={29} color="#FF9500" />}
@@ -183,14 +188,14 @@ export default function SessionInfo() {
 
                 {/* Activity */}
                 <ItemGroup title="Activity">
-                    <Item 
+                    <Item
                         title="Thinking"
                         detail={session.thinking ? "Yes" : "No"}
                         icon={<Ionicons name="bulb-outline" size={29} color={session.thinking ? "#FFCC00" : "#8E8E93"} />}
                         showChevron={false}
                     />
                     {session.thinking && (
-                        <Item 
+                        <Item
                             title="Thinking Since"
                             subtitle={formatDate(session.thinkingAt)}
                             icon={<Ionicons name="timer-outline" size={29} color="#FFCC00" />}
@@ -198,7 +203,7 @@ export default function SessionInfo() {
                         />
                     )}
                     {session.lastMessage && (
-                        <Item 
+                        <Item
                             title="Last Message"
                             subtitle={`${session.lastMessage.role === 'user' ? 'You' : 'Claude'} • ${formatDate(session.lastMessage.createdAt)}`}
                             icon={<Ionicons name="chatbubble-outline" size={29} color="#007AFF" />}
@@ -209,4 +214,4 @@ export default function SessionInfo() {
             </ItemList>
         </>
     );
-}
+});

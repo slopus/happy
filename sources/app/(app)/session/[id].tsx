@@ -19,7 +19,7 @@ import { formatPermissionParams } from '@/utils/formatPermissionParams';
 import { Deferred } from '@/components/Deferred';
 import { Session } from '@/sync/storageTypes';
 
-export default function SessionScreen() {
+export default React.memo(() => {
     const route = useRoute();
     const sessionId = (route.params! as any).id as string;
     const session = useSession(sessionId);
@@ -33,7 +33,7 @@ export default function SessionScreen() {
     }
 
     return <SessionView sessionId={sessionId} session={session} />;
-}
+});
 
 function SessionView({ sessionId, session }: { sessionId: string, session: Session }) {
     const router = useRouter();

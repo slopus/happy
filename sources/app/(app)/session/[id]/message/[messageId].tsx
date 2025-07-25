@@ -1,4 +1,4 @@
-
+import * as React from 'react';
 import { useLocalSearchParams, useRouter, Stack } from "expo-router";
 import { View, Text, Pressable, Platform } from "react-native";
 import { Ionicons } from '@expo/vector-icons';
@@ -6,7 +6,7 @@ import { useMessage } from "@/sync/storage";
 import { MessageDetailView, getMessageDetailTitle } from "@/components/MessageDetailView";
 import { Deferred } from "@/components/Deferred";
 
-export default function MessageModal() {
+export default React.memo(() => {
     const { id: sessionId, messageId } = useLocalSearchParams<{ id: string; messageId: string }>();
     const router = useRouter();
     const message = useMessage(sessionId!, messageId!);
@@ -53,8 +53,8 @@ export default function MessageModal() {
             />
 
             <Deferred>
-                <MessageDetailView message={message} messageId={messageId!} sessionId={sessionId!}/>
+                <MessageDetailView message={message} messageId={messageId!} sessionId={sessionId!} />
             </Deferred>
         </View>
     );
-} 
+});
