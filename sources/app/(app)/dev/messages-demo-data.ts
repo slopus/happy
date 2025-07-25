@@ -54,6 +54,7 @@ export const debugMessages: Message[] = [
                 name: 'Bash',
                 state: 'running',
                 input: {
+                    description: 'Running the tests',
                     command: 'npm test -- --coverage'
                 },
                 children: []
@@ -91,6 +92,7 @@ export const debugMessages: Message[] = [
                 name: 'Bash',
                 state: 'error',
                 input: {
+                    description: 'This is a test description',
                     command: 'npm run invalid-script'
                 },
                 result: 'Error: Missing script: "invalid-script"\n\nTo see a list of scripts, run:\n  npm run',
