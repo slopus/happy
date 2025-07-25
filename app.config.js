@@ -14,8 +14,8 @@ export default {
     expo: {
         name,
         slug: "happy",
-        version: "1.0.4",
-        runtimeVersion: "10",
+        version: "1.0.5",
+        runtimeVersion: "11",
         orientation: "portrait",
         icon: "./sources/assets/images/happy-otter-icon.png",
         scheme: "happy",
@@ -77,6 +77,13 @@ export default {
                 "expo-calendar",
                 {
                     "calendarPermission": "Allow $(PRODUCT_NAME) to access your calendar to improve AI quality."
+                }
+            ],
+            [
+                "@config-plugins/react-native-webrtc",
+                {
+                    cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to talk to AI.",
+                    microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone to talk to AI.",
                 }
             ]
         ],

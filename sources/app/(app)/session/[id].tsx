@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
 import { useState } from "react";
-import { View, FlatList, Text } from "react-native";
+import { View, FlatList, Text, ActivityIndicator } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
@@ -17,13 +17,27 @@ import { AgentInput } from '@/components/AgentInput';
 import { RoundButton } from '@/components/RoundButton';
 import { formatPermissionParams } from '@/utils/formatPermissionParams';
 import { Deferred } from '@/components/Deferred';
+import { Session } from '@/sync/storageTypes';
 
-export default function Session() {
-    const safeArea = useSafeAreaInsets();
+export default function SessionScreen() {
     const route = useRoute();
-    const router = useRouter();
     const sessionId = (route.params! as any).id as string;
-    const session = useSession(sessionId)!;
+    const session = useSession(sessionId);
+
+    if (!session) {
+        return (
+            <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#666" />
+            </View>
+        )
+    }
+
+    return <SessionView sessionId={sessionId} session={session} />;
+}
+
+function SessionView({ sessionId, session }: { sessionId: string, session: Session }) {
+    const router = useRouter();
+    const safeArea = useSafeAreaInsets();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const [message, setMessage] = useState('');
 

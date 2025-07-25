@@ -57,7 +57,7 @@ const grayscaleColors = ['#070707', '#242424', '#575757', '#979797', '#bbbbbb'];
 export const Avatar = React.memo((props: AvatarProps) => {
     const { id, square, size = 48, monochrome } = props;
     const defaultColors = monochrome ? grayscaleColors : colors;
-    const pixelColors = React.useMemo(() => generateColors(id, defaultColors, monochrome), [id, defaultColors, monochrome]);
+    const pixelColors = React.useMemo(() => generateColors(id, defaultColors, monochrome), [id, defaultColors]);
     
     // Calculate cell size based on the avatar size
     const cellSize = size / GRID_SIZE;
@@ -80,15 +80,13 @@ export const Avatar = React.memo((props: AvatarProps) => {
         return positions;
     }, [cellSize]);
 
-    const borderRadius = square ? 0 : size / 2;
-    
     return (
         <View
             style={{
                 width: size,
                 height: size,
-                borderRadius: borderRadius,
                 overflow: 'hidden',
+                borderRadius: square ? 0 : size / 2,
             }}
         >
             <svg
@@ -97,13 +95,6 @@ export const Avatar = React.memo((props: AvatarProps) => {
                 viewBox={`0 0 ${size} ${size}`}
                 style={{ display: 'block' }}
             >
-                {square ? null : (
-                    <defs>
-                        <clipPath id={`avatar-clip-${id}`}>
-                            <circle cx={size / 2} cy={size / 2} r={size / 2} />
-                        </clipPath>
-                    </defs>
-                )}
                 <g clipPath={square ? undefined : `url(#avatar-clip-${id})`}>
                     {rects.map((rect, index) => (
                         <rect
