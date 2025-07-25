@@ -918,6 +918,15 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             // Start transaction to ensure consistency
             const result = await db.$transaction(async (tx) => {
 
+                // Get user for update (lock account first to prevent deadlocks)
+                const user = await tx.account.findUnique({
+                    where: { id: userId }
+                });
+
+                if (!user) {
+                    throw new Error('User not found');
+                }
+
                 // Verify session belongs to user and lock it
                 const session = await tx.session.findFirst({
                     where: {
@@ -928,15 +937,6 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
                 if (!session) {
                     throw new Error('Session not found');
-                }
-
-                // Get user for update
-                const user = await tx.account.findUnique({
-                    where: { id: userId }
-                });
-
-                if (!user) {
-                    throw new Error('User not found');
                 }
 
                 // Get next sequence numbers
@@ -1038,6 +1038,15 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
             // Start transaction to ensure consistency
             const result = await db.$transaction(async (tx) => {
+                // Get user for update (lock account first to prevent deadlocks)
+                const user = await tx.account.findUnique({
+                    where: { id: userId }
+                });
+                if (!user) {
+                    callback({ result: 'error' });
+                    return null;
+                }
+                
                 // Verify session belongs to user and lock it
                 const session = await tx.session.findFirst({
                     where: {
@@ -1045,10 +1054,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                         accountId: userId
                     }
                 });
-                const user = await tx.account.findUnique({
-                    where: { id: userId }
-                });
-                if (!user || !session) {
+                if (!session) {
                     callback({ result: 'error' });
                     return null;
                 }
@@ -1128,6 +1134,15 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
             // Start transaction to ensure consistency
             const result = await db.$transaction(async (tx) => {
+                // Get user for update (lock account first to prevent deadlocks)
+                const user = await tx.account.findUnique({
+                    where: { id: userId }
+                });
+                if (!user) {
+                    callback({ result: 'error' });
+                    return null;
+                }
+                
                 // Verify session belongs to user and lock it
                 const session = await tx.session.findFirst({
                     where: {
@@ -1135,10 +1150,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                         accountId: userId
                     }
                 });
-                const user = await tx.account.findUnique({
-                    where: { id: userId }
-                });
-                if (!user || !session) {
+                if (!session) {
                     callback({ result: 'error' });
                     return null;
                 }
