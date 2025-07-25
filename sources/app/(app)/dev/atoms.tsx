@@ -11,6 +11,7 @@ import { ToolHeader } from '@/components/atoms/ToolHeader';
 import { InfoBox } from '@/components/atoms/InfoBox';
 import { Badge } from '@/components/atoms/Badge';
 import { SearchResultBlock } from '@/components/atoms/SearchResultBlock';
+import { JsonCopyBlock } from '@/components/atoms/JsonCopyBlock';
 
 export default function AtomsShowcase() {
     return (
@@ -180,6 +181,13 @@ sources/hooks/useAuth.ts
    23:  const [loading, setLoading] = useState(true);`}
                         maxHeight={200}
                     />
+                </Section>
+                <Section title="JsonCopyBlock">
+                    <JsonCopyBlock data={{
+                        name: 'John Doe',
+                        age: 30,
+                        email: 'john.doe@example.com'
+                    }} />
                 </Section>
             </View>
         </ScrollView>
