@@ -44,7 +44,7 @@ sources/
 2. **Data Synchronization**: WebSocket-based real-time sync with automatic reconnection and state management
 3. **Encryption**: End-to-end encryption using tweetnacl for all sensitive data
 4. **State Management**: React Context for auth state, custom reducer for sync state
-5. **Platform-Specific Code**: Separate implementations for web vs native (e.g., ChatInput.tsx vs ChatInput.web.tsx)
+5. **Platform-Specific Code**: Separate implementations for web vs native when needed
 
 ### Development Guidelines
 
