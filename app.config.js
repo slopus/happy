@@ -31,6 +31,9 @@ export default {
             bundleIdentifier: bundleId,
             config: {
                 usesNonExemptEncryption: false
+            },
+            infoPlist: {
+                NSMicrophoneUsageDescription: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations with AI."
             }
         },
         android: {
@@ -65,6 +68,12 @@ export default {
             "expo-web-browser",
             "react-native-vision-camera",
             "react-native-libsodium",
+            [
+                "expo-av",
+                {
+                    microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations."
+                }
+            ],
             [
                 "expo-location",
                 {

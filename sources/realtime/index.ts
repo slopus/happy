@@ -98,6 +98,7 @@ export async function createRealtimeSession(config: SessionConfig): Promise<Sess
   let isMuted = false;
   let transcript = '';
   let updateCallback: (() => void) | null = null;
+  let muteTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Enable audio
   await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
@@ -204,24 +205,47 @@ export async function createRealtimeSession(config: SessionConfig): Promise<Sess
 
   peerConnection = pc;
 
+  // Helper function to end session
+  const endSession = () => {
+    if (muteTimeout) {
+      clearTimeout(muteTimeout);
+      muteTimeout = null;
+    }
+    InCallManager.stop();
+    if (dataChannel) dataChannel.close();
+    if (peerConnection) peerConnection.close();
+    if (localMediaStream) {
+      localMediaStream.getTracks().forEach(track => track.stop());
+    }
+    isActive = false;
+    updateCallback?.();
+  };
+
   // Return control functions
   const controls: SessionControls = {
-    end: () => {
-      InCallManager.stop();
-      if (dataChannel) dataChannel.close();
-      if (peerConnection) peerConnection.close();
-      if (localMediaStream) {
-        localMediaStream.getTracks().forEach(track => track.stop());
-      }
-      isActive = false;
-      updateCallback?.();
-    },
+    end: endSession,
     toggleMute: () => {
       if (localMediaStream) {
         const audioTrack = localMediaStream.getAudioTracks()[0];
         if (audioTrack) {
           audioTrack.enabled = !audioTrack.enabled;
           isMuted = !audioTrack.enabled;
+          
+          // Handle mute timeout
+          if (isMuted) {
+            // Start 1 minute timeout when muted
+            muteTimeout = setTimeout(() => {
+              console.log('Auto-disconnecting due to 1 minute mute timeout');
+              endSession();
+            }, 60 * 1000); // 1 minute
+          } else {
+            // Clear timeout when unmuted
+            if (muteTimeout) {
+              clearTimeout(muteTimeout);
+              muteTimeout = null;
+            }
+          }
+          
           updateCallback?.();
         }
       }

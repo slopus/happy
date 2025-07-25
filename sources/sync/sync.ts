@@ -350,6 +350,9 @@ class Sync {
                 storage.getState().applySessions([{
                     ...session,
                     agentState: this.encryption.decryptAgentState(updateData.body.agentState?.value),
+                    metadata: updateData.body.metadata ? 
+                        this.encryption.decryptMetadata(updateData.body.metadata.value) : 
+                        session.metadata,
                     updatedAt: updateData.createdAt,
                     seq: updateData.seq
                 }])
