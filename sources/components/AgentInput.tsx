@@ -9,7 +9,8 @@ export const AgentInput = React.memo((props: {
     placeholder: string,
     onChangeText: (text: string) => void,
     onSend: () => void,
-    status?: React.ReactNode
+    status?: React.ReactNode,
+    sendIcon?: React.ReactNode
 }) => {
 
     const safeArea = useSafeAreaInsets();
@@ -29,10 +30,8 @@ export const AgentInput = React.memo((props: {
         }
     }, [props.value, props.onSend]);
     const handlePress = React.useCallback(() => {
-        if (props.value.trim()) {
-            props.onSend();
-        }
-    }, [props.value, props.onSend]);
+        props.onSend();
+    }, [props.onSend]);
 
     return (
         <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
@@ -88,7 +87,7 @@ export const AgentInput = React.memo((props: {
                         onPress={handlePress}
                         hitSlop={10}
                     >
-                        <Ionicons name="arrow-up" size={20} color="white" />
+                        {props.sendIcon || <Ionicons name="arrow-up" size={20} color="white" />}
                     </Pressable>
                 </View>
             </View>
