@@ -8,6 +8,7 @@ import {
   MediaStream,
   RTCView,
 } from 'react-native-webrtc';
+import { OpenAIKeyStorage } from '@/auth/openAIKeyStorage';
 
 // Helper to convert Zod schema to OpenAI function schema
 export function zodToOpenAIFunction<T extends z.ZodType>(
@@ -79,16 +80,43 @@ interface SessionConfig {
 
 interface SessionControls {
   end: () => void;
+  pushContent: (content: string) => void;
   toggleMute: () => void;
   isActive: boolean;
   isMuted: boolean;
   transcript: string;
 }
 
+// Global reference to ensure only one session at a time
+// Fallback, should not be used
+let globalActiveSession: SessionControls | null = null;
+
 export async function createRealtimeSession(config: SessionConfig): Promise<SessionControls> {
-  const EPHEMERAL_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+  // Check for API key in environment variable first, then in secure storage
+  let EPHEMERAL_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+  
   if (!EPHEMERAL_KEY) {
-    throw new Error('EXPO_PUBLIC_OPENAI_API_KEY is not set');
+    // Try to get from secure storage
+    const storedKey = await OpenAIKeyStorage.getAPIKey();
+    if (storedKey) {
+      EPHEMERAL_KEY = storedKey;
+    }
+  }
+  
+  if (!EPHEMERAL_KEY) {
+    Alert.alert(
+      'OpenAI API Key Required',
+      'Please set your OpenAI API key in Settings to use voice control.',
+      [{ text: 'OK' }]
+    );
+    throw new Error('OpenAI API key not configured');
+  }
+  
+  // If there's already an active session, end it first
+  if (globalActiveSession && globalActiveSession.isActive) {
+    console.warn('Ending existing realtime session before creating a new one');
+    globalActiveSession.end();
+    globalActiveSession = null;
   }
 
   let peerConnection: RTCPeerConnection | null = null;
@@ -187,7 +215,7 @@ export async function createRealtimeSession(config: SessionConfig): Promise<Sess
   await pc.setLocalDescription(offer);
 
   const baseUrl = 'https://api.openai.com/v1/realtime';
-  const model = 'gpt-4o-realtime-preview-2024-12-17';
+  const model = 'gpt-4o-realtime-preview-2025-06-03';
   const sdpResponse = await fetch(`${baseUrl}?model=${model}`, {
     method: 'POST',
     body: offer.sdp,
@@ -218,12 +246,33 @@ export async function createRealtimeSession(config: SessionConfig): Promise<Sess
       localMediaStream.getTracks().forEach(track => track.stop());
     }
     isActive = false;
+    // Clear global reference
+    if (globalActiveSession === controls) {
+      globalActiveSession = null;
+    }
     updateCallback?.();
   };
 
   // Return control functions
   const controls: SessionControls = {
     end: endSession,
+    pushContent: (content: string) => {
+      const event = {
+        type: 'conversation.item.create',
+        item: {
+          type: 'message',
+          // Assume its claude's response
+          role: 'assistant',
+          content: [
+            {
+              type: 'text',
+              text: content,
+            }
+          ],
+        },
+      };
+      dc.send(JSON.stringify(event));
+    },
     toggleMute: () => {
       if (localMediaStream) {
         const audioTrack = localMediaStream.getAudioTracks()[0];
@@ -259,6 +308,9 @@ export async function createRealtimeSession(config: SessionConfig): Promise<Sess
   (controls as any)._setUpdateCallback = (cb: () => void) => {
     updateCallback = cb;
   };
+
+  // Set as the global active session
+  globalActiveSession = controls;
 
   return controls;
 }
