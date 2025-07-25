@@ -5,6 +5,8 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { isRunningOnMac } from '@/utils/platform';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { createHeader } from '@/components/navigation/Header';
+import { Platform } from 'react-native';
 
 export const unstable_settings = {
     initialRouteName: 'index',
@@ -19,6 +21,7 @@ export default function RootLayout() {
         <Stack
             initialRouteName='index'
             screenOptions={{
+                header: Platform.OS === 'ios' ? undefined : createHeader,
                 headerBackTitle: 'Back',
                 headerShadowVisible: false,
                 contentStyle: {

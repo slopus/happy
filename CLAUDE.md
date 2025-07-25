@@ -61,3 +61,38 @@ sources/
 - `sources/sync/reducer.ts` - State management logic for sync operations
 - `sources/auth/AuthContext.tsx` - Authentication state management
 - `sources/app/_layout.tsx` - Root navigation structure
+
+### Custom Header Component
+
+The app includes a custom header component (`sources/components/Header.tsx`) that provides consistent header rendering across platforms and integrates with React Navigation.
+
+#### Usage with React Navigation:
+```tsx
+import { NavigationHeader } from '@/components/Header';
+
+// As default for all screens in Stack navigator:
+<Stack
+    screenOptions={{
+        header: NavigationHeader,
+        // Other default options...
+    }}
+>
+
+// Or for individual screens:
+<Stack.Screen
+    name="settings"
+    options={{
+        header: NavigationHeader,
+        headerTitle: 'Settings',
+        headerSubtitle: 'Manage your preferences', // Custom extension
+        headerTintColor: '#000',
+        // All standard React Navigation header options are supported
+    }}
+/>
+```
+
+The custom header supports all standard React Navigation header options plus:
+- `headerSubtitle`: Display a subtitle below the main title
+- `headerSubtitleStyle`: Style object for the subtitle text
+
+This ensures consistent header appearance and behavior across iOS, Android, and web platforms.

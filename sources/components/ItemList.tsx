@@ -32,14 +32,14 @@ export const ItemList = React.memo<ItemListProps>((props) => {
             style={[
                 {
                     flex: 1,
-                    backgroundColor
+                    backgroundColor,
                 },
                 style
             ]}
             contentContainerStyle={[
                 {
                     paddingBottom: isIOS ? 34 : 16,
-                    paddingTop: isIOS && insetGrouped ? 0 : 0
+                    paddingTop: isIOS && insetGrouped ? 0 : 0,
                 },
                 containerStyle
             ]}
@@ -52,7 +52,12 @@ export const ItemList = React.memo<ItemListProps>((props) => {
     );
 });
 
-export const ItemListStatic = React.memo<Omit<ItemListProps, keyof ScrollViewProps>>((props) => {
+export const ItemListStatic = React.memo<Omit<ItemListProps, keyof ScrollViewProps> & {
+    children: React.ReactNode;
+    style?: StyleProp<ViewStyle>;
+    containerStyle?: StyleProp<ViewStyle>;
+    insetGrouped?: boolean;
+}>((props) => {
     const {
         children,
         style,
