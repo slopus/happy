@@ -127,6 +127,18 @@ export default function DevScreen() {
                     icon={<Ionicons name="git-compare-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/diff-demo')}
                 />
+                <Item 
+                    title="Tool Views"
+                    subtitle="Tool call visualization components"
+                    icon={<Ionicons name="construct-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/tools2')}
+                />
+                <Item 
+                    title="Shimmer View"
+                    subtitle="Shimmer loading effects with masks"
+                    icon={<Ionicons name="sparkles-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/shimmer-demo')}
+                />
             </ItemGroup>
 
             {/* Test Features */}
