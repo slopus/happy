@@ -19,6 +19,14 @@ import { formatPermissionParams } from '@/utils/formatPermissionParams';
 import { Deferred } from '@/components/Deferred';
 import { Session } from '@/sync/storageTypes';
 
+
+import {
+    mediaDevices,
+    RTCPeerConnection,
+    MediaStream,
+    RTCView,
+  } from 'react-native-webrtc'
+
 export default React.memo(() => {
     const route = useRoute();
     const sessionId = (route.params! as any).id as string;
@@ -171,7 +179,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     </Deferred>
                 </View>
                 <AgentInput
-                    placeholder="Type a message..."
+                    placeholder="Type a message (app)..."
                     value={message}
                     onChangeText={setMessage}
                     onSend={() => {
