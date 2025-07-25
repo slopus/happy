@@ -47,6 +47,15 @@ export const debugMessages: Message[] = [
         kind: 'agent-text',
         text: 'I\'ll help you debug and improve your application. Let me start by examining the codebase and running various analysis tools.'
     },
+    createSectionTitle('missing-tool-call-title', 'What happens when a tool call Message has zero tools? If the empty tools array would render anything, it would show up between these two messages\nvvvvvvvvvvvvvvvvvvvv'),
+    {
+        id: 'missing-tool-call',
+        localId: null,
+        createdAt: Date.now() - 190000,
+        kind: 'tool-call',
+        tools: []
+    },
+    createSectionTitle('missing-tool-call-after', '^^^^^^^^^^^^^^^^^^^^'),
 
     // Bash tool - running
     {
@@ -168,7 +177,7 @@ export const debugMessages: Message[] = [
         ]
     },
 
-    createSectionTitle('edit-large-diff', 'Edit tool - large diff example'),
+    createSectionTitle('edit-large-diff-title', 'Edit tool - large diff example'),
     {
         id: 'edit-large-diff',
         localId: null,

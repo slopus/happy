@@ -3,6 +3,7 @@ import { Text, View, ScrollView, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { ToolSectionView } from '../ToolSectionView';
+import { DiffView } from '@/components/files/DiffView';
 
 interface EditViewProps {
     tool: ToolCall;
