@@ -3,10 +3,15 @@ import { FlatList, View } from 'react-native';
 import { MessageView } from '@/components/MessageView';
 import { debugMessages, debugToolCallMessages } from './messages-demo-data';
 import { Message } from '@/sync/typesMessage';
+import { useDemoMessages } from '@/hooks/useDemoMessages';
+import { useMessage } from '@/sync/storage';
 
 export default function MessagesDemoScreen() {
     // Combine all demo messages
     const allMessages = [...debugMessages, ...debugToolCallMessages];
+    
+    // Load demo messages into session storage
+    const sessionId = useDemoMessages(allMessages);
 
     return (
         <View style={{ flex: 1, backgroundColor: '#fff' }}>
@@ -18,9 +23,9 @@ export default function MessagesDemoScreen() {
                         <MessageView 
                             message={item} 
                             metadata={null}
-                            sessionId="demo-session"
+                            sessionId={sessionId}
                             getMessageById={(id: string): Message | null => {
-                                return allMessages.find((msg) => msg.id === id) || null;
+                                return allMessages.find((m)=>m.id === id) || null;
                             }}
                         />
                     )}
