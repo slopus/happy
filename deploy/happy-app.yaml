@@ -1,0 +1,31 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: happy-app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: happy-app
+  template:
+    metadata:
+      labels:
+        app: happy-app
+    spec:
+      containers:
+      - name: happy-app
+        image: docker.korshakov.com/happy-app:{version}
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: happy-app
+spec:
+  selector:
+    app: happy-app
+  ports:
+  - port: 3000
+    targetPort: 80
+  type: ClusterIP
