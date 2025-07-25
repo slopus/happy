@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
-import { useState } from "react";
-import { View, FlatList, Text, ActivityIndicator } from "react-native";
+import { useState, useMemo, useCallback } from "react";
+import { View, FlatList, Text, ActivityIndicator, Alert } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
@@ -18,14 +18,9 @@ import { RoundButton } from '@/components/RoundButton';
 import { formatPermissionParams } from '@/utils/formatPermissionParams';
 import { Deferred } from '@/components/Deferred';
 import { Session } from '@/sync/storageTypes';
-
-
-import {
-    mediaDevices,
-    RTCPeerConnection,
-    MediaStream,
-    RTCView,
-  } from 'react-native-webrtc'
+import { createRealtimeSession, zodToOpenAIFunction, type Tools, type Tool } from '@/realtime';
+import { z } from 'zod';
+import { Ionicons } from '@expo/vector-icons';
 
 export default React.memo(() => {
     const route = useRoute();
@@ -48,11 +43,61 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const safeArea = useSafeAreaInsets();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const [message, setMessage] = useState('');
+    const [isRecording, setIsRecording] = useState(false);
+    const [, forceUpdate] = React.useReducer(x => x + 1, 0);
 
     const [showConfigModal, setShowConfigModal] = useState(false);
     const sessionStatus = getSessionState(session);
     const online = sessionStatus.isConnected;
     const lastSeenText = sessionStatus.isConnected ? 'Active now' : formatLastSeen(session.activeAt);
+    
+    // Define tools for the realtime session
+    const tools: Tools = useMemo(() => ({
+        helloWorld: zodToOpenAIFunction(
+            'helloWorld',
+            'Displays a hello world alert',
+            z.object({
+                message: z.string().describe('The message to display in the alert').optional()
+            }),
+            async ({ message }) => {
+                Alert.alert('Hello World', message || 'Hello from OpenAI!');
+                return { success: true, message: message || 'Hello from OpenAI!' };
+            }
+        )
+    }), []);
+    
+    // Create realtime session with memoization
+    const realtimeSession = useMemo(() => {
+        if (!isRecording) return null;
+        
+        return createRealtimeSession({
+            context: `You are a helpful assistant talking with ${getSessionName(session)}. You have access to a helloWorld function that can display alerts. Use it when the user asks you to say hello or demonstrate functionality.`,
+            tools
+        }).then(controls => {
+            // Set up update callback to trigger re-renders
+            (controls as any)._setUpdateCallback(() => forceUpdate());
+            return controls;
+        }).catch(error => {
+            console.error('Failed to create realtime session:', error);
+            Alert.alert('Error', 'Failed to start voice session');
+            setIsRecording(false);
+            return null;
+        });
+    }, [sessionId, isRecording, tools, forceUpdate]);
+    
+    // Handle microphone button press
+    const handleMicrophonePress = useCallback(async () => {
+        if (!isRecording) {
+            setIsRecording(true);
+        } else {
+            const session = await realtimeSession;
+            if (session) {
+                session.end();
+            }
+            setIsRecording(false);
+        }
+    }, [isRecording, realtimeSession]);
+    
     const permissionRequest = React.useMemo(() => {
         let requests = session.agentState?.requests;
         if (!requests) {
@@ -179,16 +224,30 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     </Deferred>
                 </View>
                 <AgentInput
-                    placeholder="Type a message (app)..."
+                    placeholder="Type a message ..."
                     value={message}
                     onChangeText={setMessage}
-                    onSend={() => {
+                    onSend={message.trim() ? () => {
                         setMessage('');
                         sync.sendMessage(sessionId, message);
-                    }}
+                    } : handleMicrophonePress}
+                    sendIcon={message.trim() ? undefined : (
+                        <Ionicons 
+                            name={isRecording ? "stop-circle" : "mic"} 
+                            size={24} 
+                            color={isRecording ? "#FF3B30" : "#007AFF"} 
+                        />
+                    )}
                     status={
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 4 }}>
-                            <RoundButton size='normal' display='inverted' title={"Abort"} action={() => sync.abort(sessionId)} />
+                            {sessionStatus.state === 'thinking' && 
+                                <RoundButton 
+                                    size='normal' 
+                                    display='inverted' 
+                                    title={"Abort"} 
+                                    action={() => sync.abort(sessionId)} 
+                                />
+                            }
                             {status}
                         </View>
                     }
