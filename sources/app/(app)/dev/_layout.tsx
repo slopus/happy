@@ -43,6 +43,24 @@ export default function DevLayout() {
                     headerTitle: 'Colors',
                 }}
             />
+            <Stack.Screen
+                name="tools2"
+                options={{
+                    headerTitle: 'Tool Views Demo',
+                }}
+            />
+            <Stack.Screen
+                name="masked-progress"
+                options={{
+                    headerTitle: 'Masked Progress',
+                }}
+            />
+            <Stack.Screen
+                name="shimmer-demo"
+                options={{
+                    headerTitle: 'Shimmer View Demo',
+                }}
+            />
         </Stack>
     );
 }

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Text } from '../StyledText';
-import { TOOL_COMPACT_VIEW_STYLES } from '../blocks/ToolCalls/constants';
+import { TOOL_COMPACT_VIEW_STYLES } from '../blocks/tools/constants';
 
 interface MetadataTextProps {
     children: React.ReactNode;

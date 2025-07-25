@@ -1,16 +1,16 @@
 import React from 'react';
 import { View, Text } from 'react-native';
 
-import { BashCompactView, BashDetailedView, type BashToolCall } from './ToolCalls/Bash';
-import { EditCompactView, EditDetailedView, type EditToolCall } from './ToolCalls/Edit';
-import { ReadCompactView, ReadDetailedView, type ReadToolCall } from './ToolCalls/Read';
-import { GrepCompactView, GrepDetailedView, type GrepToolCall } from './ToolCalls/Grep';
-import { TodoWriteCompactView, TodoWriteDetailedView, type TodoWriteToolCall } from './ToolCalls/TodoWrite';
-import { LSCompactView, LSDetailedView, type LSToolCall } from './ToolCalls/LS';
-import { WriteCompactView, WriteDetailedView, WriteToolCall } from './ToolCalls/Write';
-import { MCPCompactView, MCPDetailedView, MCPToolCall } from './ToolCalls/MCP';
-import { UnknownToolDetailedView } from './ToolCalls/Unknown';
-import { TaskCompactView, TaskDetailedView, type TaskToolCall } from './ToolCalls/Task';
+import { BashCompactView, BashDetailedView, type BashToolCall } from './tools/Bash';
+import { EditCompactView, EditDetailedView, type EditToolCall } from './tools/Edit';
+import { ReadCompactView, ReadDetailedView, type ReadToolCall } from './tools/Read';
+import { GrepCompactView, GrepDetailedView, type GrepToolCall } from './tools/Grep';
+import { TodoWriteCompactView, TodoWriteDetailedView, type TodoWriteToolCall } from './tools/TodoWrite';
+import { LSCompactView, LSDetailedView, type LSToolCall } from './tools/LS';
+import { WriteCompactView, WriteDetailedView, WriteToolCall } from './tools/Write';
+import { MCPCompactView, MCPDetailedView, MCPToolCall } from './tools/MCP';
+import { UnknownToolDetailedView } from './tools/Unknown';
+import { TaskCompactView, TaskDetailedView, type TaskToolCall } from './tools/Task';
 import { ToolCall } from '@/sync/typesMessage';
 import { Metadata } from '@/sync/storageTypes';
 

@@ -6,6 +6,7 @@ import { ToolCallGroupBlock } from "./blocks/ToolCallGroupBlock";
 import { Message, ToolCall, UserTextMessage, AgentTextMessage, ToolCallMessage, ToolCallGroupMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 import { layout } from "./layout";
+import { ToolView } from "./blocks/ToolView";
 // import { RenderToolV1 } from './blocks/RenderToolCallV1';
 
 export const MessageView = (props: {
@@ -121,13 +122,14 @@ function ToolCallBlock(props: {
   return (
     <View style={{ marginHorizontal: 8 }}>
       {props.message.tools.map((tool: ToolCall, index: number) => (
-        <CompactToolBlock
-          key={index}
-          tool={tool}
-          sessionId={props.sessionId}
-          messageId={props.message.id}
-          metadata={props.metadata}
-        />
+        <ToolView tool={tool} />
+        // <CompactToolBlock
+        //   key={index}
+        //   tool={tool}
+        //   sessionId={props.sessionId}
+        //   messageId={props.message.id}
+        //   metadata={props.metadata}
+        // />
       ))}
     </View>
   );
