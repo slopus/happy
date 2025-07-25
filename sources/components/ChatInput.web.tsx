@@ -29,7 +29,15 @@ export const ChatInput = React.memo((props: {
     }, [props.loading, props.value, props.onSend]);
 
     return (
-        <View className="bg-gray-200 rounded-3xl flex-row min-h-12 self-stretch">
+        <View style={{
+            backgroundColor: 'red',
+            borderRadius: 16,
+            padding: 8,
+            display: 'flex',
+            flexDirection: 'row',
+            alignItems: 'center',
+            minHeight: 48,
+        }}>
             <TextareaAutosize
                 minRows={1}
                 maxRows={3}
