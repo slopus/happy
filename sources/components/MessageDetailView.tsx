@@ -40,6 +40,17 @@ function ToolCallDetailView({
     )
   }
 
+  // I know this is a hack. but at the moment, I have not heard back from other devs about reorging the code.
+  // My thinking is that each detail view needs to fully handle its own layout,
+  // so each tool call should decide where it wants a scrollview.
+  // For single tool that handles its own layout (like Edit), don't wrap in ScrollView
+  if (tools.length === 1 && ['Edit', 'Read', 'Write'].includes(tools[0].name)) {
+    return (
+      <DetailedToolBlock tool={tools[0]} metadata={session?.metadata || null} />
+    );
+  }
+
+  // For multiple tools or tools that need outer scrolling
   return (
     <ScrollView
       style={{ flex: 1 }}

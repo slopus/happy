@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, useWindowDimensions, Modal, ScrollView } 
 import { type ToolCallGroupMessage, type Message, type ToolCallMessage } from '@/sync/typesMessage';
 import { type Metadata } from '@/sync/storageTypes';
 import { CompactToolBlock } from './RenderToolCallV4';
+import { Ionicons } from '@expo/vector-icons';
 
 interface ToolCallGroupBlockProps {
     message: ToolCallGroupMessage;
@@ -67,29 +68,19 @@ export function ToolCallGroupBlock({
                 borderBottomRightRadius: 8,
             }}
         >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8,  }}>
-                <Text style={{ fontSize: 14, fontWeight: '600', color: '#666' }}>
-                    Tool Group
-                </Text>
-                <View
-                    style={{
-                        backgroundColor: '#e0e0e0',
-                        borderRadius: 12,
-                        paddingHorizontal: 8,
-                        paddingVertical: 2,
-                    }}
-                >
-                    <Text style={{ fontSize: 12, color: '#666' }}>
-                        {toolCount} tool{toolCount !== 1 ? 's' : ''}
-                    </Text>
-                </View>
-                <Text style={{ fontSize: 11, color: '#999', fontFamily: 'monospace' }}>
-                    {message.id}
-                </Text>
-            </View>
-            <Text style={{ fontSize: 16, color: '#666' }}>
-                {toolCount > 3 ? `View all (${toolCount})` : ''}
+            <Text style={{ fontSize: 14, fontWeight: '600', color: '#666' }}>
+                {toolCount} tool{toolCount !== 1 ? 's' : ''}
             </Text>
+
+            {toolCount > 3 && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+
+                <Text style={{ fontSize: 16, color: '#666' }}>
+                    View All
+                </Text>
+                <Ionicons name="chevron-forward" size={16} color="#999" />
+                </View>
+            )}
         </TouchableOpacity>
     );
 
@@ -160,6 +151,7 @@ export function ToolCallGroupBlock({
                     ))}
                 </View>
             ))}
+            {/*
             {toolCount > 3 && (
                 <View style={{ paddingHorizontal: 16, paddingVertical: 8 }}>
                     <Text style={{ fontSize: 12, color: '#666', textAlign: 'center' }}>
@@ -167,6 +159,7 @@ export function ToolCallGroupBlock({
                     </Text>
                 </View>
             )}
+            */}
             </View>
         </View>
     );

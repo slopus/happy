@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useRef } from "react";
 import { View, ScrollView, Text, Pressable } from "react-native";
 import { MonoText } from "./design-tokens/MonoText";
 import { ToolCall } from "@/sync/typesMessage";
@@ -12,6 +12,9 @@ import { ToolIcon } from "./design-tokens/ToolIcon";
 import { ShimmerToolName } from "./design-tokens/ShimmerToolName";
 import { ToolName } from "./design-tokens/ToolName";
 import { Toggle } from "@/components/Toggle";
+import { Dropdown, DropdownOption } from "@/components/Dropdown";
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import tw from 'twrnc';
 
 export type EditToolCall = Omit<ToolCall, "name"> & { name: "Edit" };
@@ -147,7 +150,10 @@ export const EditDetailedView = ({
 }) => {
   const [viewMode, setViewMode] = useState<'unified' | 'split'>('unified');
   const [wrapLines, setWrapLines] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const [showLineNumbers, setShowLineNumbers] = useState(true);
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const gearButtonRef = useRef<View>(null);
+  const insets = useSafeAreaInsets();
 
   const {
     file_path: filePath,
@@ -170,28 +176,77 @@ export const EditDetailedView = ({
   // Get relative path for display
   const displayPath = getRelativePath(metadata || null, filePath);
 
+  const dropdownOptions: DropdownOption[] = [
+    {
+      label: 'Unified Diff',
+      value: 'unified-diff',
+      icon: viewMode === 'unified' ? 
+        <Ionicons name="checkmark" size={20} color="#34C759" /> : 
+        <View style={{ width: 20 }} />
+    },
+    {
+      label: 'Split Diff',
+      value: 'split-diff',
+      icon: viewMode === 'split' ? 
+        <Ionicons name="checkmark" size={20} color="#34C759" /> : 
+        <View style={{ width: 20 }} />
+    },
+    {
+      label: 'Wrap Lines',
+      value: 'wrap-lines',
+      icon: wrapLines ? 
+        <Ionicons name="checkmark" size={20} color="#34C759" /> : 
+        <View style={{ width: 20 }} />
+    },
+    {
+      label: 'Show Line Numbers',
+      value: 'show-line-numbers',
+      icon: showLineNumbers ? 
+        <Ionicons name="checkmark" size={20} color="#34C759" /> : 
+        <View style={{ width: 20 }} />
+    },
+  ];
+
+  const handleDropdownSelect = (value: string) => {
+    switch (value) {
+      case 'unified-diff':
+        setViewMode('unified');
+        break;
+      case 'split-diff':
+        setViewMode('split');
+        break;
+      case 'wrap-lines':
+        setWrapLines(!wrapLines);
+        break;
+      case 'show-line-numbers':
+        setShowLineNumbers(!showLineNumbers);
+        break;
+    }
+  };
+
   return (
     <View style={tw`flex-1 bg-white`}>
-      {/* Minimal Header */}
+      {/* Header with Custom Gear Button */}
       <View style={tw`px-4 pt-4 pb-3 border-b border-gray-200 bg-white`}>
         <View style={tw`flex-row items-center gap-2 mb-2`}>
-          <ToolIcon name="pencil" state={tool.state} />
           <View style={tw`flex-1`}>
-            <Text style={tw`text-lg font-semibold text-gray-900 font-mono`}>
+            <Text style={tw`text-xs text-gray-500 font-mono`}>
               {displayPath}
             </Text>
-            <Text style={tw`text-xs text-gray-500 mt-0.5`}>
-              Edit File
-            </Text>
           </View>
-          <View style={tw`px-2 py-1 bg-gray-100 rounded-full`}>
-            <Text style={tw.style(
-              'text-xs font-medium',
-              getStatusColorClass(tool.state)
-            )}>
-              {getStatusDisplay(tool.state)}
-            </Text>
-          </View>
+          
+          {/* Custom Gear Icon Button */}
+          <Pressable
+            ref={gearButtonRef}
+            onPress={() => setIsDropdownOpen(true)}
+            style={({ pressed }) => [
+              tw`p-2 bg-white border border-gray-300 rounded-lg shadow-sm`,
+              {'bg-blue-100' : pressed},
+              { opacity: pressed ? 0.7 : 1 }
+            ]}
+          >
+            <Ionicons name="settings-outline" size={20} color="#6B7280" />
+          </Pressable>
         </View>
 
         {/* Replace All Mode */}
@@ -203,55 +258,29 @@ export const EditDetailedView = ({
           </View>
         )}
       </View>
-
+      
       {/* Full-width Diff View */}
-      <View style={tw`flex-1`}>
-        <DiffView
-          oldText={oldString || ""}
-          newText={newString || ""}
-          oldTitle="Before"
-          newTitle="After"
-          showLineNumbers={true}
-          showDiffStats={true}
-          contextLines={3}
-          wrapLines={wrapLines}
-          style={tw`flex-1`}
-        />
-      </View>
+      <DiffView
+        oldText={oldString || ""}
+        newText={newString || ""}
+        oldTitle="Before"
+        newTitle="After"
+        showLineNumbers={showLineNumbers}
+        showDiffStats={true}
+        contextLines={3}
+        wrapLines={wrapLines}
+        bottomPadding={insets.bottom + 16}
+        style={tw.style(`flex-1`)}
+      />
 
-      {/* Enhanced iOS-style Bottom Toolbar */}
-      <View style={tw`bg-white border-t border-gray-200 shadow-lg`}>
-        {/* Main toolbar row */}
-        <View style={tw`flex-row items-center justify-between px-4 py-3`}>
-          {/* Left section - View Mode Toggle */}
-          <ViewModeToggle value={viewMode} onChange={setViewMode} />
-
-          {/* Right section - More options */}
-          <Pressable
-            onPress={() => setShowSettings(true)}
-            style={tw`px-4 py-2 bg-gray-100 rounded-lg`}
-          >
-            <Text style={tw`text-sm font-medium text-gray-700`}>
-              More
-            </Text>
-          </Pressable>
-        </View>
-
-        {/* Optional: Secondary toolbar row for additional controls */}
-        {showSettings && (
-          <View style={tw`flex-row items-center justify-around px-4 pb-3 border-t border-gray-100`}>
-            <Pressable style={tw`items-center p-2`}>
-              <Text style={tw`text-xs text-gray-500`}>Copy</Text>
-            </Pressable>
-            <Pressable style={tw`items-center p-2`}>
-              <Text style={tw`text-xs text-gray-500`}>Share</Text>
-            </Pressable>
-            <Pressable style={tw`items-center p-2`}>
-              <Text style={tw`text-xs text-gray-500`}>Export</Text>
-            </Pressable>
-          </View>
-        )}
-      </View>
+      {/* External Dropdown */}
+      <Dropdown
+        options={dropdownOptions}
+        onSelect={handleDropdownSelect}
+        isOpen={isDropdownOpen}
+        onClose={() => setIsDropdownOpen(false)}
+        triggerRef={gearButtonRef}
+      />
     </View>
   );
 };

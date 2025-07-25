@@ -127,6 +127,12 @@ export default function DevScreen() {
                     icon={<Ionicons name="git-compare-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/diff-demo')}
                 />
+                <Item 
+                    title="Dropdown Menu"
+                    subtitle="Click dropdown with options"
+                    icon={<Ionicons name="chevron-down-circle-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/dropdown-demo')}
+                />
             </ItemGroup>
 
             {/* Test Features */}

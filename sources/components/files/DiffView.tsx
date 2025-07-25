@@ -18,6 +18,7 @@ interface DiffViewProps {
     maxHeight?: number;
     wrapLines?: boolean;
     fontScaleX?: number;
+    bottomPadding?: number;
 }
 
 // Define colors inline - using traditional diff colors
@@ -91,6 +92,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
     maxHeight = 500,
     wrapLines = true,
     fontScaleX = 1,
+    bottomPadding = 0,
 }) => {
     const colorScheme = useColorScheme();
     const colors = COLORS[colorScheme ?? 'light'];
@@ -342,6 +344,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
                 style={{ flex: 1 }} 
                 nestedScrollEnabled 
                 showsVerticalScrollIndicator={true}
+                contentContainerStyle={{ paddingBottom: bottomPadding }}
             >
                 <ScrollView
                     ref={scrollRef}
@@ -379,6 +382,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
                 style={{ flex: 1 }} 
                 nestedScrollEnabled 
                 showsVerticalScrollIndicator={true}
+                contentContainerStyle={{ paddingBottom: bottomPadding }}
             >
                 <ScrollView
                     ref={scrollRef}

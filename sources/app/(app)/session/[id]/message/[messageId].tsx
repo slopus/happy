@@ -39,17 +39,34 @@ export default React.memo(() => {
     const title = getMessageDetailTitle(message);
     console.log("!!!!!! we should be showing the title ", title);
 
+    // Generate subtitle based on message type
+    const getSubtitle = (): string | undefined => {
+        if (message.kind === 'tool-call') {
+            return `${message.tools.length} tool${message.tools.length !== 1 ? 's' : ''}`;
+        }
+        if (message.kind === 'tool-call-group') {
+            return `${message.messageIds.length} grouped tool calls`;
+        }
+        return undefined;
+    };
+
     return (
         <View style={{ flex: 1, backgroundColor: 'white' }}>
             <Stack.Screen
                 options={{
                     title,
-                    headerRight: Platform.OS === 'ios' ? () => (
+                    headerSubtitle: getSubtitle(), // Use the subtitle feature
+                    headerRight: () => (
                         <Pressable onPress={() => router.back()} hitSlop={10}>
                             <Ionicons name="close" size={24} color="#000" />
                         </Pressable>
-                    ) : undefined,
-                }}
+                    ),
+                    headerStyle: {
+                        backgroundColor: 'white',
+                    },
+                    headerTintColor: '#000',
+                    headerShadowVisible: true,
+                } as any} // Cast to any to include headerSubtitle
             />
 
             <Deferred>

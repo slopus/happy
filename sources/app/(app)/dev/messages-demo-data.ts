@@ -168,7 +168,7 @@ export const debugMessages: Message[] = [
         ]
     },
 
-    createSectionTitle('edit-large-diff', 'Edit tool - large diff example'),
+    createSectionTitle('edit-large-diff-title', 'Edit tool - large diff example'),
     {
         id: 'edit-large-diff',
         localId: null,
