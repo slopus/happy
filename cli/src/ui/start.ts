@@ -15,6 +15,7 @@ export interface StartOptions {
     model?: string
     permissionMode?: 'auto' | 'default' | 'plan'
     startingMode?: 'interactive' | 'remote'
+    shouldStartDaemon?: boolean
 }
 
 export async function start(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
@@ -61,7 +62,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     
     // Print log file path
     const logPath = await logger.logFilePathPromise;
-    logger.info(`Session: ${response.id}`);
+    logger.infoDeveloper(`Session: ${response.id}`);
     logger.infoDeveloper(`Logs: ${logPath}`);
 
     // Create interrupt controller

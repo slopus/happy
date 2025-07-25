@@ -12,6 +12,9 @@ import { encodeBase64 } from '../api/encryption';
 
 interface Settings {
   onboardingCompleted: boolean
+  machineId?: string
+  machineHost?: string
+  daemonAutoStartWhenRunningHappy?: boolean
 }
 
 const defaultSettings: Settings = {

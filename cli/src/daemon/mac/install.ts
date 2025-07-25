@@ -1,3 +1,17 @@
+/**
+ * Installation script for Happy daemon using macOS LaunchDaemons
+ * 
+ * NOTE: This installation method is currently NOT USED in favor of auto-starting 
+ * the daemon when the user runs the happy command. 
+ * 
+ * Why we're not using this approach:
+ * 1. Installing a LaunchDaemon requires sudo permissions, which users might not be comfortable with
+ * 2. We assume users will run happy frequently (every time they open their laptop)
+ * 3. The auto-start approach provides the same functionality without requiring elevated permissions
+ * 
+ * This code is kept for potential future use if we decide to offer system-level installation as an option.
+ */
+
 import { writeFileSync, chmodSync, existsSync } from 'fs';
 import { execSync } from 'child_process';
 import { logger } from '@/ui/logger';
@@ -5,6 +19,10 @@ import { trimIdent } from '@/utils/trimIdent';
 
 const PLIST_LABEL = 'com.happy-cli.daemon';
 const PLIST_FILE = `/Library/LaunchDaemons/${PLIST_LABEL}.plist`;
+
+const USER_HOME = process.env.HOME || process.env.USERPROFILE
+
+// NOTE: Local installation like --local does not make too much sense I feel like
 
 export async function install(): Promise<void> {
     try {
@@ -31,7 +49,7 @@ export async function install(): Promise<void> {
                 <array>
                     <string>${happyPath}</string>
                     <string>${scriptPath}</string>
-                    <string>daemon</string>
+                    <string>happy-daemon</string>
                 </array>
                 
                 <key>EnvironmentVariables</key>
@@ -47,10 +65,10 @@ export async function install(): Promise<void> {
                 <true/>
                 
                 <key>StandardErrorPath</key>
-                <string>/var/log/happy-cli-daemon.err</string>
+                <string>${USER_HOME}/.happy/daemon.err</string>
                 
                 <key>StandardOutPath</key>
-                <string>/var/log/happy-cli-daemon.log</string>
+                <string>${USER_HOME}/.happy/daemon.log</string>
                 
                 <key>WorkingDirectory</key>
                 <string>/tmp</string>
@@ -68,7 +86,7 @@ export async function install(): Promise<void> {
         execSync(`launchctl load ${PLIST_FILE}`, { stdio: 'inherit' });
         
         logger.info('Daemon installed and started successfully');
-        logger.info('Check logs at /var/log/happy-cli-daemon.log');
+        logger.info('Check logs at ~/.happy/daemon.log');
         
     } catch (error) {
         logger.debug('Failed to install daemon:', error);
