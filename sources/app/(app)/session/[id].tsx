@@ -19,6 +19,7 @@ import { formatPermissionParams } from '@/utils/formatPermissionParams';
 import { Deferred } from '@/components/Deferred';
 import { Session } from '@/sync/storageTypes';
 import { createRealtimeSession, zodToOpenAIFunction, type Tools, type Tool } from '@/realtime';
+import { sessionToRealtimePrompt } from '@/realtime/sessionToPrompt';
 import { z } from 'zod';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -45,6 +46,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const [message, setMessage] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [, forceUpdate] = React.useReducer(x => x + 1, 0);
+    const realtimeSessionRef = React.useRef<Awaited<ReturnType<typeof createRealtimeSession>> | null>(null);
 
     const [showConfigModal, setShowConfigModal] = useState(false);
     const sessionStatus = getSessionState(session);
@@ -53,50 +55,80 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     
     // Define tools for the realtime session
     const tools: Tools = useMemo(() => ({
-        helloWorld: zodToOpenAIFunction(
-            'helloWorld',
-            'Displays a hello world alert',
+        sendClaudeCodeMessage: zodToOpenAIFunction(
+            'sendClaudeCodeMessage',
+            'Send a message to Claude Code to perform coding tasks',
             z.object({
-                message: z.string().describe('The message to display in the alert').optional()
+                message: z.string().describe('The task or question to send to Claude Code')
             }),
             async ({ message }) => {
-                Alert.alert('Hello World', message || 'Hello from OpenAI!');
-                return { success: true, message: message || 'Hello from OpenAI!' };
+                // Send the message as if typed by the user
+                sync.sendMessage(sessionId, message);
+                
+                // Return acknowledgment
+                return { 
+                    success: true, 
+                    message: "I've sent your request to Claude Code. This may take some time to process. You can leave this chat as you won't receive a notification when it finishes. In the meantime, you can review other workstreams if you have any in progress."
+                };
             }
         )
-    }), []);
-    
-    // Create realtime session with memoization
-    const realtimeSession = useMemo(() => {
-        if (!isRecording) return null;
-        
-        return createRealtimeSession({
-            context: `You are a helpful assistant talking with ${getSessionName(session)}. You have access to a helloWorld function that can display alerts. Use it when the user asks you to say hello or demonstrate functionality.`,
-            tools
-        }).then(controls => {
-            // Set up update callback to trigger re-renders
-            (controls as any)._setUpdateCallback(() => forceUpdate());
-            return controls;
-        }).catch(error => {
-            console.error('Failed to create realtime session:', error);
-            Alert.alert('Error', 'Failed to start voice session');
-            setIsRecording(false);
-            return null;
-        });
-    }, [sessionId, isRecording, tools, forceUpdate]);
+    }), [sessionId]);
     
     // Handle microphone button press
     const handleMicrophonePress = useCallback(async () => {
         if (!isRecording) {
-            setIsRecording(true);
+            // Generate conversation context
+            const conversationContext = sessionToRealtimePrompt(session, messages);
+            
+            // System prompt for the real-time assistant
+            const systemPrompt = `You are a real-time coding assistant helping ${getSessionName(session)}. Your role is to:
+
+1. Help the user understand what changes Claude Code made or where it got stuck
+2. Be a proactive listener and help brainstorm new ideas or think through problems
+3. When the user formulates a change they want to make, use the sendClaudeCodeMessage function to send tasks to Claude Code
+
+Claude Code is a very smart coding model that can actually make changes to files. Once the user clearly articulates what they want, you will call the sendClaudeCodeMessage function to dispatch the task.
+
+Remember: You are the voice interface to Claude Code, helping the user think through problems and formulate clear requests.
+
+## Current Conversation Context
+
+${conversationContext}`;
+            
+            try {
+                const controls = await createRealtimeSession({
+                    context: systemPrompt,
+                    tools
+                });
+                
+                // Set up update callback to trigger re-renders
+                (controls as any)._setUpdateCallback(() => forceUpdate());
+                
+                realtimeSessionRef.current = controls;
+                setIsRecording(true);
+            } catch (error) {
+                console.error('Failed to create realtime session:', error);
+                Alert.alert('Error', 'Failed to start voice session');
+            }
         } else {
-            const session = await realtimeSession;
-            if (session) {
-                session.end();
+            // End the current session
+            if (realtimeSessionRef.current) {
+                realtimeSessionRef.current.end();
+                realtimeSessionRef.current = null;
             }
             setIsRecording(false);
         }
-    }, [isRecording, realtimeSession]);
+    }, [isRecording, tools, session, messages]);
+    
+    // Cleanup on unmount
+    React.useEffect(() => {
+        return () => {
+            if (realtimeSessionRef.current) {
+                realtimeSessionRef.current.end();
+                realtimeSessionRef.current = null;
+            }
+        };
+    }, []);
     
     const permissionRequest = React.useMemo(() => {
         let requests = session.agentState?.requests;
