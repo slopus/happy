@@ -19,7 +19,7 @@ import { formatPermissionParams } from '@/utils/formatPermissionParams';
 import { Deferred } from '@/components/Deferred';
 import { Session } from '@/sync/storageTypes';
 import { createRealtimeSession, zodToOpenAIFunction, type Tools, type Tool } from '@/realtime';
-import { sessionToRealtimePrompt } from '@/realtime/sessionToPrompt';
+import { sessionToRealtimePrompt, messagesToPrompt } from '@/realtime/sessionToPrompt';
 import { z } from 'zod';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -47,6 +47,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const [isRecording, setIsRecording] = useState(false);
     const [, forceUpdate] = React.useReducer(x => x + 1, 0);
     const realtimeSessionRef = React.useRef<Awaited<ReturnType<typeof createRealtimeSession>> | null>(null);
+    const isCreatingSessionRef = React.useRef(false);
 
     const [showConfigModal, setShowConfigModal] = useState(false);
     const sessionStatus = getSessionState(session);
@@ -55,9 +56,9 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     
     // Define tools for the realtime session
     const tools: Tools = useMemo(() => ({
-        sendClaudeCodeMessage: zodToOpenAIFunction(
-            'sendClaudeCodeMessage',
-            'Send a message to Claude Code to perform coding tasks',
+        askClaudeCode: zodToOpenAIFunction(
+            'askClaudeCode',
+            'This is your main tool to get any work done. You can use it to submit tasks to Claude Code.',
             z.object({
                 message: z.string().describe('The task or question to send to Claude Code')
             }),
@@ -68,7 +69,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 // Return acknowledgment
                 return { 
                     success: true, 
-                    message: "I've sent your request to Claude Code. This may take some time to process. You can leave this chat as you won't receive a notification when it finishes. In the meantime, you can review other workstreams if you have any in progress."
+                    message: "I've sent your request to Claude Code. This may take some time to process. You can leave this chat as will receive a notification when claude code is done. In the meantime, you can review other sessions"
                 };
             }
         )
@@ -76,18 +77,31 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     
     // Handle microphone button press
     const handleMicrophonePress = useCallback(async () => {
-        if (!isRecording) {
+        // Prevent multiple simultaneous session creations
+        if (isCreatingSessionRef.current) {
+            return;
+        }
+        
+        if (!isRecording && !realtimeSessionRef.current) {
+            // Mark that we're creating a session
+            isCreatingSessionRef.current = true;
+            setIsRecording(true); // Set this immediately to update UI
+            
             // Generate conversation context
-            const conversationContext = sessionToRealtimePrompt(session, messages);
+            const conversationContext = sessionToRealtimePrompt(session, messages, {
+                maxCharacters: 100_000,
+                maxMessages: 20,
+                excludeToolCalls: false
+            });
             
             // System prompt for the real-time assistant
-            const systemPrompt = `You are a real-time coding assistant helping ${getSessionName(session)}. Your role is to:
+            const systemPrompt = `You are a voice interface to Claude Code. Your role is to:
 
 1. Help the user understand what changes Claude Code made or where it got stuck
-2. Be a proactive listener and help brainstorm new ideas or think through problems
-3. When the user formulates a change they want to make, use the sendClaudeCodeMessage function to send tasks to Claude Code
+2. Help the user 
+3. When the user formulates a change they want to make, use the askClaudeCode function to send tasks to Claude Code
 
-Claude Code is a very smart coding model that can actually make changes to files. Once the user clearly articulates what they want, you will call the sendClaudeCodeMessage function to dispatch the task.
+Claude Code is an advanced coding agent that can actually make changes to files, do research, and more.
 
 Remember: You are the voice interface to Claude Code, helping the user think through problems and formulate clear requests.
 
@@ -105,17 +119,18 @@ ${conversationContext}`;
                 (controls as any)._setUpdateCallback(() => forceUpdate());
                 
                 realtimeSessionRef.current = controls;
-                setIsRecording(true);
             } catch (error) {
                 console.error('Failed to create realtime session:', error);
                 Alert.alert('Error', 'Failed to start voice session');
-            }
-        } else {
-            // End the current session
-            if (realtimeSessionRef.current) {
-                realtimeSessionRef.current.end();
+                setIsRecording(false); // Reset on error
                 realtimeSessionRef.current = null;
+            } finally {
+                isCreatingSessionRef.current = false;
             }
+        } else if (isRecording && realtimeSessionRef.current) {
+            // End the current session
+            realtimeSessionRef.current.end();
+            realtimeSessionRef.current = null;
             setIsRecording(false);
         }
     }, [isRecording, tools, session, messages]);
@@ -129,6 +144,21 @@ ${conversationContext}`;
             }
         };
     }, []);
+
+    // On new messages from claude, push them to the realtime session
+    React.useEffect(() => {
+        if (realtimeSessionRef.current) {
+            console.log('pushing content to realtime session, poorly assuming a single new message arrived');
+            realtimeSessionRef.current.pushContent(
+                // Assuming its reversed
+                messagesToPrompt(messages.slice(0, 1), {
+                    maxCharacters: 100_000,
+                    maxMessages: 20,
+                    excludeToolCalls: false
+                })
+            );
+        }
+    }, [messages.length]);
     
     const permissionRequest = React.useMemo(() => {
         let requests = session.agentState?.requests;
