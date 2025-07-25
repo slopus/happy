@@ -10,7 +10,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 
-export default function Account() {
+export default React.memo(() => {
     const auth = useAuth();
     const router = useRouter();
     const [showSecret, setShowSecret] = useState(false);
@@ -146,4 +146,4 @@ export default function Account() {
             </ItemList>
         </>
     );
-}
+});
