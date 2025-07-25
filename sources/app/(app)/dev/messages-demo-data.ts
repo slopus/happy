@@ -24,6 +24,11 @@ const createReadToolCall = (id: string, filePath: string, startLine: number, end
     ]
 });
 
+// Helper function to create user messages that serve as descriptions
+function createSectionTitle(id: string, text: string, timeOffset: number = 0): Message {
+    return { id, localId: null, createdAt: Date.now() - timeOffset, kind: 'user-text', text }
+}
+
 export const debugMessages: Message[] = [
     // User message
     {
@@ -158,6 +163,27 @@ export const debugMessages: Message[] = [
                     new_string: 'const newCode = false;'
                 },
                 result: 'Error: File not found - /src/components/NonExistent.tsx does not exist',
+                children: []
+            }
+        ]
+    },
+
+    createSectionTitle('edit-large-diff', 'Edit tool - large diff example'),
+    {
+        id: 'edit-large-diff',
+        localId: null,
+        createdAt: Date.now() - 125000,
+        kind: 'tool-call',
+        tools: [
+            {
+                name: 'Edit',
+                state: 'completed',
+                input: {
+                    file_path: '/src/data/large-file.txt',
+                    old_string: 'a\n'.repeat(50),
+                    new_string: 'a\nb\n'.repeat(50)
+                },
+                result: 'Successfully updated 50 lines in /src/data/large-file.txt',
                 children: []
             }
         ]
