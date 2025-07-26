@@ -1,11 +1,12 @@
 import { pubsub } from "@/services/pubsub";
 import { db } from "@/storage/db";
-import { backoff, delay } from "@/utils/delay";
+import { delay } from "@/utils/delay";
+import { forever } from "@/utils/forever";
+import { shutdownSignal } from "@/utils/shutdown";
 
 export function startTimeout() {
-    backoff(async () => {
+    forever('session-timeout', async () => {
         while (true) {
-
             // Find timed out sessions
             const sessions = await db.session.findMany({
                 where: {
@@ -30,7 +31,7 @@ export function startTimeout() {
             }
 
             // Wait for 1 minute
-            await delay(1000 * 60);
+            await delay(1000 * 60, shutdownSignal);
         }
     });
 }
