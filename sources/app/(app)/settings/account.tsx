@@ -60,12 +60,7 @@ export default React.memo(() => {
                         color: '#000',
                         fontSize: 17,
                         fontWeight: '600',
-                    },
-                    headerRight: Platform.OS === 'ios' ? () => (
-                        <Pressable onPress={() => router.back()} hitSlop={10}>
-                            <Ionicons name="close" size={24} color="#000" />
-                        </Pressable>
-                    ) : undefined,
+                    }
                 }}
             />
 

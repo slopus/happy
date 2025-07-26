@@ -94,6 +94,16 @@ export const Typography = {
     fontFamily: getLogoFont(),
   }),
   
+  // Header text style
+  header: () => ({
+    fontFamily: getDefaultFont('semiBold'),
+  }),
+  
+  // Body text style
+  body: () => ({
+    fontFamily: getDefaultFont('regular'),
+  }),
+  
   // Legacy font styles (for backward compatibility)
   legacy: {
     spaceMono: () => ({
