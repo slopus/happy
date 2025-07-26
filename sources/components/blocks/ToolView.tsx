@@ -9,12 +9,11 @@ import { ShimmerView } from '../ShimmerView';
 
 interface ToolViewProps {
     tool: ToolCall;
-    children?: React.ReactNode;
     onPress?: () => void;
 }
 
 export const ToolView = React.memo<ToolViewProps>((props) => {
-    const { tool, children, onPress } = props;
+    const { tool, onPress } = props;
 
     const getStatusIcon = () => {
         switch (tool.state) {
@@ -49,7 +48,6 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     const Container = onPress ? TouchableOpacity : View;
     const containerProps = onPress ? { onPress, activeOpacity: 0.8 } : {};
-    console.log('tool', tool.input);
 
     return (
         <Container style={styles.container} {...containerProps}>
@@ -86,17 +84,12 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
                 // Try to use a specific tool view component first
                 const SpecificToolView = getToolViewComponent(tool.name);
-                if (SpecificToolView && !children) {
+                if (SpecificToolView) {
                     return (
                         <View style={styles.content}>
                             <SpecificToolView tool={tool} />
                         </View>
                     );
-                }
-
-                // Use provided children if available
-                if (children) {
-                    return <View style={styles.content}>{children}</View>;
                 }
 
                 // Fall back to default view

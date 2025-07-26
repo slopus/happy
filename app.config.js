@@ -15,7 +15,7 @@ export default {
         name,
         slug: "happy",
         version: "1.0.5",
-        runtimeVersion: "11",
+        runtimeVersion: "12",
         orientation: "portrait",
         icon: "./sources/assets/images/happy-otter-icon.png",
         scheme: "happy",
@@ -69,7 +69,7 @@ export default {
             "react-native-vision-camera",
             "react-native-libsodium",
             [
-                "expo-av",
+                "expo-audio",
                 {
                     microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations."
                 }
