@@ -24,6 +24,7 @@ model Account {
     seq                 Int                   @default(0)
     createdAt           DateTime              @default(now())
     updatedAt           DateTime              @updatedAt
+    settings            String?
     Session             Session[]
     AccountPushToken    AccountPushToken[]
     TerminalAuthRequest TerminalAuthRequest[]
