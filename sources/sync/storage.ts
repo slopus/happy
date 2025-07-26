@@ -5,6 +5,10 @@ import { createReducer, reducer, ReducerState } from "./reducer";
 import { Message } from "./typesMessage";
 import { normalizeRawMessage } from "./typesRaw";
 import { isSessionActive, DISCONNECTED_TIMEOUT_MS } from '@/utils/sessionUtils';
+import { applySettings, Settings, settingsDefaults } from "./settings";
+import { loadSettings } from "./persistence";
+import React from "react";
+import { sync } from "./sync";
 
 // Session is considered online if it was active within this timeout
 export const ONLINE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
@@ -19,6 +23,8 @@ interface SessionMessages {
 export type SessionListItem = string | Session;
 
 interface StorageState {
+    settings: Settings;
+    settingsVersion: number | null;
     sessions: Record<string, Session>;
     sessionsData: SessionListItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
@@ -26,18 +32,23 @@ interface StorageState {
     applyLoaded: () => void;
     applyMessages: (sessionId: string, messages: DecryptedMessage[]) => void;
     applyMessagesLoaded: (sessionId: string) => void;
+    applySettings: (settings: Settings, version: number) => void;
+    applySettingsLocal: (settings: Partial<Settings>) => void;
     recalculateOnline: () => void;
 }
 
 export const storage = create<StorageState>()((set) => {
+    let { settings, version } = loadSettings();
     return {
+        settings,
+        settingsVersion: version,
         sessions: {},
         sessionsData: null,
         sessionMessages: {},
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
             const now = Date.now();
             const threshold = now - ONLINE_TIMEOUT_MS;
-            
+
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
 
@@ -46,7 +57,7 @@ export const storage = create<StorageState>()((set) => {
                 // Calculate presence based on active and activeAt
                 const isOnline = session.active && session.activeAt > threshold;
                 const presence: "online" | number = isOnline ? "online" : session.activeAt;
-                
+
                 mergedSessions[session.id] = {
                     ...session,
                     presence
@@ -113,7 +124,7 @@ export const storage = create<StorageState>()((set) => {
             return result;
         }),
         applyMessages: (sessionId: string, messages: DecryptedMessage[]) => set((state) => {
-            
+
             // Resolve session messages state
             const existingSession = state.sessionMessages[sessionId] || {
                 messages: [],
@@ -153,7 +164,7 @@ export const storage = create<StorageState>()((set) => {
         }),
         applyMessagesLoaded: (sessionId: string) => set((state) => {
             const existingSession = state.sessionMessages[sessionId];
-            let result;
+            let result: StorageState;
 
             if (!existingSession) {
                 result = {
@@ -165,7 +176,7 @@ export const storage = create<StorageState>()((set) => {
                             messages: [],
                             messagesMap: {},
                             isLoaded: true
-                        }
+                        } satisfies SessionMessages
                     }
                 };
             } else {
@@ -176,7 +187,7 @@ export const storage = create<StorageState>()((set) => {
                         [sessionId]: {
                             ...existingSession,
                             isLoaded: true
-                        }
+                        } satisfies SessionMessages
                     }
                 };
             }
@@ -193,7 +204,7 @@ export const storage = create<StorageState>()((set) => {
             Object.entries(state.sessions).forEach(([id, session]) => {
                 const isOnline = session.active && session.activeAt > threshold;
                 const isDisconnected = !session.activeAt || session.activeAt <= disconnectThreshold;
-                
+
                 // Update session with presence and clear thinking/active if disconnected
                 updatedSessions[id] = {
                     ...session,
@@ -277,6 +288,23 @@ export const storage = create<StorageState>()((set) => {
                 sessionsData: listData
             };
         }),
+        applySettingsLocal: (settings: Partial<Settings>) => set((state) => {
+            return {
+                ...state,
+                settings: applySettings(state.settings, settings)
+            };
+        }),
+        applySettings: (settings: Settings, version: number) => set((state) => {
+            if (state.settingsVersion === null || state.settingsVersion < version) {
+                return {
+                    ...state,
+                    settings,
+                    settingsVersion: version
+                };
+            } else {
+                return state;
+            }
+        }),
     }
 });
 
@@ -305,4 +333,20 @@ export function useMessage(sessionId: string, messageId: string): Message | null
         const session = state.sessionMessages[sessionId];
         return session?.messagesMap[messageId] ?? null;
     }));
+}
+
+export function useSettings(): Settings {
+    return storage(useShallow((state) => state.settings));
+}
+
+export function useSettingMutable<K extends keyof Settings>(name: K): [Settings[K], (value: Settings[K]) => void] {
+    const setValue = React.useCallback((value: Settings[K]) => {
+        sync.applySettings({ [name]: value });
+    }, [name]);
+    const value = useSetting(name);
+    return [value, setValue];
+}
+
+export function useSetting<K extends keyof Settings>(name: K): Settings[K] {
+    return storage(useShallow((state) => state.settings[name]));
 }

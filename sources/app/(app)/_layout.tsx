@@ -16,7 +16,7 @@ export default function RootLayout() {
     const isMac = isRunningOnMac();
     const insets = useSafeAreaInsets();
     // console.log('insets', insets);
-    
+
     return (
         <Stack
             initialRouteName='index'
@@ -48,10 +48,11 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="settings"
+                name="settings/index"
                 options={{
-                    presentation: 'modal',
-                    headerShown: false,
+                    headerShown: true,
+                    headerTitle: 'Settings',
+                    headerBackTitle: 'Home'
                 }}
             />
             <Stack.Screen
@@ -76,11 +77,21 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="account"
+                name="settings/account"
                 options={{
-                    presentation: 'modal',
-                    headerShown: true,
                     headerTitle: 'Account',
+                }}
+            />
+            <Stack.Screen
+                name="settings/appearance"
+                options={{
+                    headerTitle: 'Appearance',
+                }}
+            />
+            <Stack.Screen
+                name="settings/features"
+                options={{
+                    headerTitle: 'Features',
                 }}
             />
             <Stack.Screen
@@ -92,10 +103,46 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="dev"
+                name="dev/index"
                 options={{
-                    headerShown: false,
                     headerTitle: 'Developer Tools',
+                }}
+            />
+
+            <Stack.Screen
+                name="dev/list-demo"
+                options={{
+                    headerTitle: 'List Components Demo',
+                }}
+            />
+            <Stack.Screen
+                name="dev/typography"
+                options={{
+                    headerTitle: 'Typography',
+                }}
+            />
+            <Stack.Screen
+                name="dev/colors"
+                options={{
+                    headerTitle: 'Colors',
+                }}
+            />
+            <Stack.Screen
+                name="dev/tools2"
+                options={{
+                    headerTitle: 'Tool Views Demo',
+                }}
+            />
+            <Stack.Screen
+                name="dev/masked-progress"
+                options={{
+                    headerTitle: 'Masked Progress',
+                }}
+            />
+            <Stack.Screen
+                name="dev/shimmer-demo"
+                options={{
+                    headerTitle: 'Shimmer View Demo',
                 }}
             />
         </Stack>

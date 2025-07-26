@@ -13,6 +13,8 @@ import { Platform } from 'react-native';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { decodeBase64 } from '@/auth/base64';
 import { SessionEncryption } from './apiSessionEncryption';
+import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
+import { loadPendingSettings, savePendingSettings } from './persistence';
 
 const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
@@ -24,9 +26,12 @@ class Sync {
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionEncryption = new Map<string, SessionEncryption>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
+    private settingsSync: InvalidateSync;
+    private pendingSettings: Partial<Settings> = loadPendingSettings();
 
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
+        this.settingsSync = new InvalidateSync(this.syncSettings);
     }
 
     async initialize(credentials: AuthCredentials, encryption: ApiEncryption) {
@@ -38,6 +43,7 @@ class Sync {
 
         // Invalidate sync
         this.sessionsSync.invalidate();
+        this.settingsSync.invalidate();
 
         // Register push token
         this.registerPushToken();
@@ -97,6 +103,19 @@ class Sync {
 
         // Send message
         apiSocket.send('message', { sid: sessionId, message: encryptedRawRecord, localId });
+    }
+
+    applySettings = (delta: Partial<Settings>) => {
+        console.log('applySettings', delta);
+        storage.getState().applySettingsLocal(delta);
+
+        // Save pending settings
+        this.pendingSettings = { ...this.pendingSettings, ...delta };
+        savePendingSettings(this.pendingSettings);
+        console.log('pendingSettings', this.pendingSettings);
+
+        // Invalidate settings sync
+        this.settingsSync.invalidate();
     }
 
     //
@@ -192,6 +211,99 @@ class Sync {
 
         // Apply to storage
         storage.getState().applySessions(decryptedSessions);
+    }
+
+    private syncSettings = async () => {
+        if (!this.credentials) return;
+
+        // Apply pending settings
+        if (Object.keys(this.pendingSettings).length > 0) {
+
+            while (true) {
+                let version = storage.getState().settingsVersion;
+                let settings = applySettings(storage.getState().settings, this.pendingSettings);
+
+                console.log('applyPendingSettings', this.pendingSettings);
+                const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        settings: this.encryption.encryptRaw(settings),
+                        expectedVersion: version ?? 0
+                    }),
+                    headers: {
+                        'Authorization': `Bearer ${this.credentials.token}`,
+                        'Content-Type': 'application/json'
+                    }
+                });
+                const data = await response.json() as {
+                    success: false,
+                    error: string,
+                    currentVersion: number,
+                    currentSettings: string | null
+                } | {
+                    success: true
+                };
+                if (data.success) {
+                    break;
+                }
+                if (data.error === 'version-mismatch') {
+                    let parsedSettings: Settings;
+                    if (data.currentSettings) {
+                        parsedSettings = settingsParse(this.encryption.decryptRaw(data.currentSettings));
+                    } else {
+                        parsedSettings = { ...settingsDefaults };
+                    }
+
+                    // Log
+                    console.log('settings', JSON.stringify({
+                        settings: parsedSettings,
+                        version: data.currentVersion
+                    }));
+
+                    // Apply settings to storage
+                    storage.getState().applySettings(parsedSettings, data.currentVersion);
+
+                } else {
+                    throw new Error(`Failed to sync settings: ${data.error}`);
+                }
+
+                // Wait 1 second
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                break;
+            }
+        }
+
+        // Run request
+        const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
+            headers: {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        if (!response.ok) {
+            throw new Error(`Failed to fetch settings: ${response.status}`);
+        }
+        const data = await response.json() as {
+            settings: string | null,
+            settingsVersion: number
+        };
+
+        // Parse response
+        let parsedSettings: Settings;
+        if (data.settings) {
+            parsedSettings = settingsParse(this.encryption.decryptRaw(data.settings));
+        } else {
+            parsedSettings = { ...settingsDefaults };
+        }
+
+        // Log
+        console.log('settings', JSON.stringify({
+            settings: parsedSettings,
+            version: data.settingsVersion
+        }));
+
+        // Apply settings to storage
+        storage.getState().applySettings(parsedSettings, data.settingsVersion);
     }
 
     private fetchMessages = async (sessionId: string) => {
@@ -350,8 +462,8 @@ class Sync {
                 storage.getState().applySessions([{
                     ...session,
                     agentState: this.encryption.decryptAgentState(updateData.body.agentState?.value),
-                    metadata: updateData.body.metadata ? 
-                        this.encryption.decryptMetadata(updateData.body.metadata.value) : 
+                    metadata: updateData.body.metadata ?
+                        this.encryption.decryptMetadata(updateData.body.metadata.value) :
                         session.metadata,
                     updatedAt: updateData.createdAt,
                     seq: updateData.seq
@@ -368,12 +480,12 @@ class Sync {
             return;
         }
         const updateData = validatedUpdate.data;
-        
+
         // Only process activity updates
         if (updateData.type !== 'activity') {
             return;
         }
-        
+
         const session = storage.getState().sessions[updateData.id];
         if (session) {
             storage.getState().applySessions([{

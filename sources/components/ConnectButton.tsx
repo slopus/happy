@@ -1,69 +1,22 @@
 import * as React from 'react';
-import { Alert, View, TextInput, Text, StyleSheet } from 'react-native';
+import { View, TextInput, Text } from 'react-native';
 import { RoundButton } from './RoundButton';
-import { CameraView } from 'expo-camera';
-import { useAuth } from '@/auth/AuthContext';
-import { decodeBase64 } from '@/auth/base64';
-import { encryptBox } from '@/encryption/libsodium';
-import { authApprove } from '@/auth/authApprove';
-import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
+import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 
 export const ConnectButton = React.memo(() => {
-    const auth = useAuth();
-    const [isLoading, setIsLoading] = React.useState(false);
+    const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
     const [manualUrl, setManualUrl] = React.useState('');
     const isDevMode = process.env.EXPO_PUBLIC_DEBUG === '1';
-    const checkScannerPermissions = useCheckScannerPermissions();
 
-    const processAuthUrl = async (url: string) => {
-        if (!url.startsWith('happy://terminal?')) {
-            Alert.alert('Error', 'Invalid authentication URL', [{ text: 'OK' }]);
-            return;
-        }
-        
-        setIsLoading(true);
-        try {
-            const tail = url.slice('happy://terminal?'.length);
-            const publicKey = decodeBase64(tail, 'base64url');
-            const response = encryptBox(decodeBase64(auth.credentials!.secret, 'base64url'), publicKey);
-            await authApprove(auth.credentials!.token, publicKey, response);
-            Alert.alert('Success', 'Terminal connected successfully', [{ text: 'OK' }]);
-            setManualUrl('');
-        } catch (e) {
-            console.error(e);
-            Alert.alert('Error', 'Failed to connect terminal', [{ text: 'OK' }]);
-        } finally {
-            setIsLoading(false);
-        }
-    };
-
-    const connectTerminal = async () => {
+    const handleConnect = async () => {
         if (isDevMode && manualUrl.trim()) {
             // Process manual URL in dev mode
-            processAuthUrl(manualUrl.trim());
-        } else if (await checkScannerPermissions()) {
-            // Use camera scanner
-            CameraView.launchScanner({
-                barcodeTypes: ['qr']
-            });
+            connectWithUrl(manualUrl.trim());
         } else {
-            Alert.alert('Error', 'Camera permissions are required to connect terminal', [{ text: 'OK' }]);
+            // Use camera scanner
+            connectTerminal();
         }
-    }
-
-    React.useEffect(() => {
-        if (CameraView.isModernBarcodeScannerAvailable) {
-            const subscription = CameraView.onModernBarcodeScanned(async (event) => {
-                if (event.data.startsWith('happy://terminal?')) {
-                    await CameraView.dismissScanner();
-                    await processAuthUrl(event.data);
-                }
-            });
-            return () => {
-                subscription.remove();
-            };
-        }
-    }, []);
+    };
 
     return (
         <View>
@@ -100,7 +53,7 @@ export const ConnectButton = React.memo(() => {
             <RoundButton
                 title="Connect"
                 size="normal"
-                onPress={connectTerminal}
+                onPress={handleConnect}
                 loading={isLoading}
             />
         </View>

@@ -8,7 +8,7 @@ import {
   MediaStream,
   RTCView,
 } from 'react-native-webrtc';
-import { OpenAIKeyStorage } from '@/auth/openAIKeyStorage';
+import { Settings } from '@/sync/settings';
 
 // Helper to convert Zod schema to OpenAI function schema
 export function zodToOpenAIFunction<T extends z.ZodType>(
@@ -76,6 +76,7 @@ export type Tools = Record<string, Tool>;
 interface SessionConfig {
   context: string;
   tools: Tools;
+  settings: Settings
 }
 
 interface SessionControls {
@@ -97,7 +98,7 @@ export async function createRealtimeSession(config: SessionConfig): Promise<Sess
   
   if (!EPHEMERAL_KEY) {
     // Try to get from secure storage
-    const storedKey = await OpenAIKeyStorage.getAPIKey();
+    const storedKey = config.settings.inferenceOpenAIKey;
     if (storedKey) {
       EPHEMERAL_KEY = storedKey;
     }

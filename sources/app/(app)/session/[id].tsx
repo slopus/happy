@@ -8,7 +8,7 @@ import { MessageView } from "@/components/MessageView";
 import { Stack, useRouter } from "expo-router";
 import { formatLastSeen, getSessionName, getSessionState, isSessionOnline } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
-import { useSession, useSessionMessages } from '@/sync/storage';
+import { useSession, useSessionMessages, useSettings } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import LottieView from 'lottie-react-native';
 import { ConfigurationModal } from '@/components/ConfigurationModal';
@@ -40,6 +40,7 @@ export default React.memo(() => {
 });
 
 function SessionView({ sessionId, session }: { sessionId: string, session: Session }) {
+    const settings = useSettings();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const { messages, isLoaded } = useSessionMessages(sessionId);
@@ -53,7 +54,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const sessionStatus = getSessionState(session);
     const online = sessionStatus.isConnected;
     const lastSeenText = sessionStatus.isConnected ? 'Active now' : formatLastSeen(session.activeAt);
-    
+
     // Define tools for the realtime session
     const tools: Tools = useMemo(() => ({
         askClaudeCode: zodToOpenAIFunction(
@@ -65,35 +66,35 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             async ({ message }) => {
                 // Send the message as if typed by the user
                 sync.sendMessage(sessionId, message);
-                
+
                 // Return acknowledgment
-                return { 
-                    success: true, 
+                return {
+                    success: true,
                     message: "I've sent your request to Claude Code. This may take some time to process. You can leave this chat as will receive a notification when claude code is done. In the meantime, you can review other sessions"
                 };
             }
         )
     }), [sessionId]);
-    
+
     // Handle microphone button press
     const handleMicrophonePress = useCallback(async () => {
         // Prevent multiple simultaneous session creations
         if (isCreatingSessionRef.current) {
             return;
         }
-        
+
         if (!isRecording && !realtimeSessionRef.current) {
             // Mark that we're creating a session
             isCreatingSessionRef.current = true;
             setIsRecording(true); // Set this immediately to update UI
-            
+
             // Generate conversation context
             const conversationContext = sessionToRealtimePrompt(session, messages, {
                 maxCharacters: 100_000,
                 maxMessages: 20,
                 excludeToolCalls: false
             });
-            
+
             // System prompt for the real-time assistant
             const systemPrompt = `You are a voice interface to Claude Code. Your role is to:
 
@@ -108,16 +109,17 @@ Remember: You are the voice interface to Claude Code, helping the user think thr
 ## Current Conversation Context
 
 ${conversationContext}`;
-            
+
             try {
                 const controls = await createRealtimeSession({
                     context: systemPrompt,
-                    tools
+                    tools,
+                    settings
                 });
-                
+
                 // Set up update callback to trigger re-renders
                 (controls as any)._setUpdateCallback(() => forceUpdate());
-                
+
                 realtimeSessionRef.current = controls;
             } catch (error) {
                 console.error('Failed to create realtime session:', error);
@@ -133,8 +135,8 @@ ${conversationContext}`;
             realtimeSessionRef.current = null;
             setIsRecording(false);
         }
-    }, [isRecording, tools, session, messages]);
-    
+    }, [isRecording, tools, session, messages, settings]);
+
     // Cleanup on unmount
     React.useEffect(() => {
         return () => {
@@ -159,7 +161,7 @@ ${conversationContext}`;
             );
         }
     }, [messages.length]);
-    
+
     const permissionRequest = React.useMemo(() => {
         let requests = session.agentState?.requests;
         if (!requests) {
@@ -294,20 +296,20 @@ ${conversationContext}`;
                         sync.sendMessage(sessionId, message);
                     } : handleMicrophonePress}
                     sendIcon={message.trim() ? undefined : (
-                        <Ionicons 
-                            name={isRecording ? "stop-circle" : "mic"} 
-                            size={24} 
-                            color={isRecording ? "#FF3B30" : "#007AFF"} 
+                        <Ionicons
+                            name={isRecording ? "stop-circle" : "mic"}
+                            size={24}
+                            color={isRecording ? "#FF3B30" : "#007AFF"}
                         />
                     )}
                     status={
                         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 4 }}>
-                            {sessionStatus.state === 'thinking' && 
-                                <RoundButton 
-                                    size='normal' 
-                                    display='inverted' 
-                                    title={"Abort"} 
-                                    action={() => sync.abort(sessionId)} 
+                            {sessionStatus.state === 'thinking' &&
+                                <RoundButton
+                                    size='normal'
+                                    display='inverted'
+                                    title={"Abort"}
+                                    action={() => sync.abort(sessionId)}
                                 />
                             }
                             {status}
