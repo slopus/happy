@@ -6,10 +6,9 @@ import { z } from "zod";
 import * as privacyKit from "privacy-kit";
 import * as tweetnacl from "tweetnacl";
 import { db } from "@/storage/db";
-import { Account, Update } from "@prisma/client";
+import { Account } from "@prisma/client";
 import { onShutdown } from "@/utils/shutdown";
 import { allocateSessionSeq, allocateUserSeq } from "@/services/seq";
-import { randomKey } from "@/utils/randomKey";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 
 // Connection metadata types
@@ -334,31 +333,49 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 }
             });
         } else {
-            // Create new session with update
-            const result = await db.$transaction(async (tx) => {
-                // Get user for update sequence
-                const user = await tx.account.findUnique({
-                    where: { id: userId }
-                });
 
-                if (!user) {
-                    throw new Error('User not found');
+            // Resolve seq
+            const updSeq = await allocateUserSeq(userId);
+
+             // Create session
+             const session = await db.session.create({
+                data: {
+                    accountId: userId,
+                    tag: tag,
+                    metadata: metadata
                 }
+            });
 
-                const updSeq = user.seq + 1;
+            // Create update
+            const updContent: PrismaJson.UpdateBody = {
+                t: 'new-session',
+                id: session.id,
+                seq: session.seq,
+                metadata: session.metadata,
+                metadataVersion: session.metadataVersion,
+                agentState: session.agentState,
+                agentStateVersion: session.agentStateVersion,
+                active: session.active,
+                activeAt: session.lastActiveAt.getTime(),
+                createdAt: session.createdAt.getTime(),
+                updatedAt: session.updatedAt.getTime()
+            };
 
-                // Create session
-                const session = await tx.session.create({
-                    data: {
-                        accountId: userId,
-                        tag: tag,
-                        metadata: metadata
-                    }
-                });
+            // Emit update to connected sockets
+            emitUpdateToInterestedClients({
+                event: 'update',
+                userId,
+                sessionId: session.id,
+                payload: {
+                    id: randomKeyNaked(12),
+                    seq: updSeq,
+                    body: updContent,
+                    createdAt: Date.now()
+                }
+            });
 
-                // Create update
-                const updContent: PrismaJson.UpdateBody = {
-                    t: 'new-session',
+            return reply.send({
+                session: {
                     id: session.id,
                     seq: session.seq,
                     metadata: session.metadata,
@@ -369,50 +386,6 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
                     updatedAt: session.updatedAt.getTime()
-                };
-
-                const update = await tx.update.create({
-                    data: {
-                        accountId: userId,
-                        seq: updSeq,
-                        content: updContent
-                    }
-                });
-
-                // Update user sequence
-                await tx.account.update({
-                    where: { id: userId },
-                    data: { seq: updSeq }
-                });
-
-                return { session, update };
-            });
-
-            // Emit update to connected sockets
-            emitUpdateToInterestedClients({
-                event: 'update',
-                userId,
-                sessionId: result.session.id,
-                payload: {
-                    id: result.update.id,
-                    seq: result.update.seq,
-                    body: result.update.content,
-                    createdAt: result.update.createdAt.getTime()
-                }
-            });
-
-            return reply.send({
-                session: {
-                    id: result.session.id,
-                    seq: result.session.seq,
-                    metadata: result.session.metadata,
-                    metadataVersion: result.session.metadataVersion,
-                    agentState: result.session.agentState,
-                    agentStateVersion: result.session.agentStateVersion,
-                    active: result.session.active,
-                    activeAt: result.session.lastActiveAt.getTime(),
-                    createdAt: result.session.createdAt.getTime(),
-                    updatedAt: result.session.updatedAt.getTime()
                 }
             });
         }
