@@ -9,7 +9,6 @@ async function main() {
 
     // Storage
     await db.$connect();
-    await redis.connect();
     await redis.ping();
 
     //
