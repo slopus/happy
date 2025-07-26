@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Alert } from 'react-native';
-import { Audio } from 'expo-av';
+import * as Audio from 'expo-audio';
 import InCallManager from 'react-native-incall-manager';
 import {
   mediaDevices,
@@ -129,7 +129,7 @@ export async function createRealtimeSession(config: SessionConfig): Promise<Sess
   let muteTimeout: ReturnType<typeof setTimeout> | null = null;
 
   // Enable audio
-  await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+  await Audio.setAudioModeAsync({ playsInSilentMode: true, interruptionMode: 'doNotMix' });
   // Start InCallManager and force speaker
   InCallManager.start({ media: 'audio' });
   InCallManager.setForceSpeakerphoneOn(true);
