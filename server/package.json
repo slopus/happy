@@ -9,7 +9,7 @@
     "build": "tsc --noEmit",
     "start": "tsx ./sources/main.ts",
     "dev": "tsx --env-file=.env.example ./sources/main.ts",
-    "test": "vitest",
+    "test": "vitest run",
     "migrate": "dotenv -e .env.example -- prisma migrate dev",
     "generate": "prisma generate",
     "postinstall": "prisma generate",

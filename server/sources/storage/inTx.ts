@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { delay } from "@/utils/time";
+import { delay } from "@/utils/delay";
 import { db } from "@/storage/db";
 
 export type Tx = Prisma.TransactionClient;

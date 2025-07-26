@@ -7,6 +7,7 @@ import * as privacyKit from "privacy-kit";
 import * as tweetnacl from "tweetnacl";
 import { db } from "@/storage/db";
 import { Account, Update } from "@prisma/client";
+import { onShutdown } from "@/utils/shutdown";
 
 // Connection metadata types
 interface SessionScopedConnection {
@@ -566,17 +567,17 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             });
 
             // Aggregate data by time period
-            const aggregated = new Map<string, { 
-                tokens: Record<string, number>; 
-                cost: Record<string, number>; 
-                count: number; 
+            const aggregated = new Map<string, {
+                tokens: Record<string, number>;
+                cost: Record<string, number>;
+                count: number;
                 timestamp: number;
             }>();
 
             for (const report of reports) {
                 const data = report.data as PrismaJson.UsageReportData;
                 const date = new Date(report.createdAt);
-                
+
                 // Calculate timestamp based on groupBy
                 let timestamp: number;
                 if (actualGroupBy === 'hour') {
@@ -1046,7 +1047,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     callback({ result: 'error' });
                     return null;
                 }
-                
+
                 // Verify session belongs to user and lock it
                 const session = await tx.session.findFirst({
                     where: {
@@ -1142,7 +1143,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     callback({ result: 'error' });
                     return null;
                 }
-                
+
                 // Verify session belongs to user and lock it
                 const session = await tx.session.findFirst({
                     where: {
@@ -1470,8 +1471,8 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 }
 
                 if (callback) {
-                    callback({ 
-                        success: true, 
+                    callback({
+                        success: true,
                         reportId: report.id,
                         createdAt: report.createdAt.getTime(),
                         updatedAt: report.updatedAt.getTime()
@@ -1491,6 +1492,13 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
     // End
     log('API ready on port http://localhost:' + port);
-    
+
+    onShutdown('api', async () => {
+        await app.close();
+    });
+    onShutdown('api', async () => {
+        await io.close();
+    });
+
     return { app, io };
 }

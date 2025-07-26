@@ -1,6 +1,6 @@
 import { pubsub } from "@/services/pubsub";
 import { db } from "@/storage/db";
-import { backoff, delay } from "@/utils/time";
+import { backoff, delay } from "@/utils/delay";
 
 export function startTimeout() {
     backoff(async () => {
