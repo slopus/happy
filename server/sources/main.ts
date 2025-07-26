@@ -3,14 +3,19 @@ import { log } from "@/utils/log";
 import { awaitShutdown } from "@/utils/shutdown";
 import { db } from './storage/db';
 import { startTimeout } from "./app/timeout";
+import { redis } from "./services/redis";
 
 async function main() {
+
+    // Storage
+    await db.$connect();
+    await redis.connect();
+    await redis.ping();
 
     //
     // Start
     //
 
-    await db.$connect();
     const { app, io } = await startApi();
     startTimeout();
 

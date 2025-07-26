@@ -25,6 +25,8 @@ spec:
         env:
         - name: NODE_ENV
           value: production
+        - name: REDIS_URL
+          value: redis://happy-redis:6379
         envFrom:
         - secretRef:
             name: handy-secrets
