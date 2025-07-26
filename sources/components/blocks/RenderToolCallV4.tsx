@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 
 import { BashCompactView, BashDetailedView, type BashToolCall } from './tools/Bash';
-import { EditCompactView, EditDetailedView, type EditToolCall } from './tools/Edit';
+import { EditCompactView, type EditToolCall } from './tools/Edit';
 import { ReadCompactView, ReadDetailedView, type ReadToolCall } from './tools/Read';
 import { GrepCompactView, GrepDetailedView, type GrepToolCall } from './tools/Grep';
 import { TodoWriteCompactView, TodoWriteDetailedView, type TodoWriteToolCall } from './tools/TodoWrite';
@@ -57,8 +57,8 @@ export function CompactToolBlock({ tool, sessionId, messageId, metadata }: { too
 // Component that dispatches to different detailed tool renderers based on tool type
 export function DetailedToolBlock({ tool, metadata }: { tool: ToolCall, metadata: Metadata | null }) {
   switch (tool.name) {
-    case "Edit":
-      return <EditDetailedView tool={tool as EditToolCall} metadata={metadata} />;
+    // case "Edit":
+    //   return <EditDetailedView tool={tool as EditToolCall} metadata={metadata} />;
 
     case "Read":
       return <ReadDetailedView tool={tool as ReadToolCall} />;

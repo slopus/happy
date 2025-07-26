@@ -6,7 +6,6 @@ import { useRouter, Stack } from "expo-router";
 import { type ToolCallMessage } from "@/sync/typesMessage";
 import { DetailedToolBlock } from "@/components/blocks/RenderToolCallV4";
 import { useSession } from "@/sync/storage";
-import { EmptyToolCallView } from "./problems/EmptyToolsArrayView";
 
 interface ToolCallViewProps {
     message: ToolCallMessage;
@@ -34,7 +33,8 @@ export function ToolCallView({ message, sessionId }: ToolCallViewProps) {
     };
 
     if (tools.length === 0) {
-        return <EmptyToolCallView message={message} sessionId={sessionId} />;
+        // return <EmptyToolCallView message={message} sessionId={sessionId} />;
+        return null;
     }
 
     return (
