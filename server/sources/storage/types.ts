@@ -53,6 +53,13 @@ declare global {
                 value: string;
                 version: number;
             } | null | undefined
+        } | {
+            t: 'update-account';
+            id: string;
+            settings?: {
+                value: string | null;
+                version: number;
+            } | null | undefined;
         };
     }
 }

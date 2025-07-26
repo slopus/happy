@@ -241,7 +241,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
     // Sessions API
     typed.get('/v1/sessions', {
-        preHandler: app.authenticate
+        preHandler: app.authenticate,
     }, async (request, reply) => {
         const userId = request.user.id;
 
@@ -337,8 +337,8 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             // Resolve seq
             const updSeq = await allocateUserSeq(userId);
 
-             // Create session
-             const session = await db.session.create({
+            // Create session
+            const session = await db.session.create({
                 data: {
                     accountId: userId,
                     tag: tag,
@@ -396,7 +396,15 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         schema: {
             body: z.object({
                 token: z.string()
-            })
+            }),
+            response: {
+                200: z.object({
+                    success: z.literal(true)
+                }),
+                500: z.object({
+                    error: z.literal('Failed to register push token')
+                })
+            }
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
@@ -431,7 +439,15 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         schema: {
             params: z.object({
                 token: z.string()
-            })
+            }),
+            response: {
+                200: z.object({
+                    success: z.literal(true)
+                }),
+                500: z.object({
+                    error: z.literal('Failed to delete push token')
+                })
+            }
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
@@ -478,6 +494,133 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             });
         } catch (error) {
             return reply.code(500).send({ error: 'Failed to get push tokens' });
+        }
+    });
+
+    // Get Account Settings API
+    typed.get('/v1/account/settings', {
+        preHandler: app.authenticate,
+        schema: {
+            response: {
+                200: z.object({
+                    settings: z.string().nullable(),
+                    settingsVersion: z.number()
+                }),
+                500: z.object({
+                    error: z.literal('Failed to get account settings')
+                })
+            }
+        }
+    }, async (request, reply) => {
+        try {
+            return reply.send({
+                settings: request.user.settings,
+                settingsVersion: request.user.settingsVersion
+            });
+        } catch (error) {
+            return reply.code(500).send({ error: 'Failed to get account settings' });
+        }
+    });
+
+    // Update Account Settings API
+    typed.post('/v1/account/settings', {
+        schema: {
+            body: z.object({
+                settings: z.string().nullable(),
+                expectedVersion: z.number().int().min(0)
+            }),
+            response: {
+                200: z.union([z.object({
+                    success: z.literal(true),
+                    version: z.number()
+                }), z.object({
+                    success: z.literal(false),
+                    error: z.literal('version-mismatch'),
+                    currentVersion: z.number(),
+                    currentSettings: z.string().nullable()
+                })]),
+                500: z.object({
+                    success: z.literal(false),
+                    error: z.literal('Failed to update account settings')
+                })
+            }
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.user.id;
+        const { settings, expectedVersion } = request.body;
+
+        try {
+            // Check current version
+            if (request.user.settingsVersion !== expectedVersion) {
+                return reply.code(200).send({
+                    success: false,
+                    error: 'version-mismatch',
+                    currentVersion: request.user.settingsVersion,
+                    currentSettings: request.user.settings
+                });
+            }
+
+            // Update settings with version check
+            const { count } = await db.account.updateMany({
+                where: {
+                    id: userId,
+                    settingsVersion: expectedVersion
+                },
+                data: {
+                    settings: settings,
+                    settingsVersion: expectedVersion + 1,
+                    updatedAt: new Date()
+                }
+            });
+
+            if (count === 0) {
+                // Re-fetch to get current version
+                const account = await db.account.findUnique({
+                    where: { id: userId }
+                });
+                return reply.code(200).send({
+                    success: false,
+                    error: 'version-mismatch',
+                    currentVersion: account?.settingsVersion || 0,
+                    currentSettings: account?.settings || null
+                });
+            }
+
+            // Generate update for connected clients
+            const updSeq = await allocateUserSeq(userId);
+            const updContent: PrismaJson.UpdateBody = {
+                t: 'update-account',
+                id: userId,
+                settings: {
+                    value: settings,
+                    version: expectedVersion + 1
+                }
+            };
+
+            // Get all user connections (not session-specific)
+            const connections = userIdToClientConnections.get(userId);
+            if (connections) {
+                for (const connection of connections) {
+                    connection.socket.emit('update', {
+                        id: randomKeyNaked(12),
+                        seq: updSeq,
+                        body: updContent,
+                        createdAt: Date.now()
+                    });
+                }
+            }
+
+            return reply.send({
+                success: true,
+                version: expectedVersion + 1
+            });
+        } catch (error) {
+            log({ module: 'api', level: 'error' }, `Failed to update account settings: ${error}`);
+            return reply.code(500).send({
+                success: false,
+                error: 'Failed to update account settings'
+            });
         }
     });
 
