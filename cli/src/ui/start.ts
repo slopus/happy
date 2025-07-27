@@ -10,6 +10,7 @@ import { InterruptController } from '@/claude/InterruptController';
 // @ts-ignore
 import packageJson from '../../package.json';
 import { startAnthropicActivityProxy } from '@/claude/proxy/startAnthropicActivityProxy';
+import { registerHandlers } from '@/api/handlers';
 
 export interface StartOptions {
     model?: string
@@ -129,35 +130,8 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         
         return promise;
     });
-    session.setHandler<{ id: string, approved: boolean, reason?: string }, void>('permission', async (message) => {
-        logger.info('Permission response' + JSON.stringify(message));
-        const id = message.id;
-        const resolve = requests.get(id);
-        if (resolve) {
-            if (!message.approved) {
-                logger.debug('Permission denied, interrupting Claude');
-                await interruptController.interrupt();
-            }
-
-            resolve({ approved: message.approved, reason: message.reason });
-        } else {
-            logger.info('Permission request stale, likely timed out')
-            return
-        }
-        session.updateAgentState((currentState) => {
-            let r = { ...currentState.requests };
-            delete r[id];
-            return ({
-                ...currentState,
-                requests: r,
-            });
-        });
-    });
-
-    session.setHandler<{}, void>('abort', async () => {
-        logger.info('Abort request - interrupting Claude');
-        await interruptController.interrupt();
-    });
+    // Register all RPC handlers
+    registerHandlers(session, interruptController, { requests });
 
     // Notify mobile client when in remote mode & assistant finished
     const onAssistantResult: OnAssistantResultCallback = async (result) => {

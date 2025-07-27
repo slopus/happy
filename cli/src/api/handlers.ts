@@ -1,0 +1,398 @@
+/**
+ * RPC handlers for API session communication
+ * Handles remote procedure calls from mobile clients
+ */
+
+import { ApiSessionClient } from './apiSession';
+import { logger } from '@/ui/logger';
+import { exec, ExecOptions } from 'child_process';
+import { promisify } from 'util';
+import { InterruptController } from '@/claude/InterruptController';
+import { readFile, writeFile, readdir, stat } from 'fs/promises';
+import { createHash } from 'crypto';
+import { join } from 'path';
+
+const execAsync = promisify(exec);
+
+interface PermissionResponse {
+    id: string;
+    approved: boolean;
+    reason?: string;
+}
+
+interface BashRequest {
+    command: string;
+    cwd?: string;
+    timeout?: number; // timeout in milliseconds
+}
+
+interface BashResponse {
+    success: boolean;
+    stdout?: string;
+    stderr?: string;
+    exitCode?: number;
+    error?: string;
+}
+
+interface ReadFileRequest {
+    path: string;
+}
+
+interface ReadFileResponse {
+    success: boolean;
+    content?: string; // base64 encoded
+    error?: string;
+}
+
+interface WriteFileRequest {
+    path: string;
+    content: string; // base64 encoded
+    expectedHash?: string | null; // null for new files, hash for existing files
+}
+
+interface WriteFileResponse {
+    success: boolean;
+    hash?: string; // hash of written file
+    error?: string;
+}
+
+interface ListDirectoryRequest {
+    path: string;
+}
+
+interface DirectoryEntry {
+    name: string;
+    type: 'file' | 'directory' | 'other';
+    size?: number;
+    modified?: number; // timestamp
+}
+
+interface ListDirectoryResponse {
+    success: boolean;
+    entries?: DirectoryEntry[];
+    error?: string;
+}
+
+interface GetDirectoryTreeRequest {
+    path: string;
+    maxDepth: number;
+}
+
+interface TreeNode {
+    name: string;
+    path: string;
+    type: 'file' | 'directory';
+    size?: number;
+    modified?: number;
+    children?: TreeNode[]; // Only present for directories
+}
+
+interface GetDirectoryTreeResponse {
+    success: boolean;
+    tree?: TreeNode;
+    error?: string;
+}
+
+/**
+ * Register all RPC handlers with the session
+ */
+export function registerHandlers(
+    session: ApiSessionClient,
+    interruptController: InterruptController,
+    permissionCallbacks?: {
+        requests: Map<string, (response: { approved: boolean, reason?: string }) => void>;
+    }
+) {
+    // Abort handler - interrupts Claude execution
+    session.setHandler<{}, void>('abort', async () => {
+        logger.info('Abort request - interrupting Claude');
+        await interruptController.interrupt();
+    });
+
+    // Permission handler - handles permission responses from mobile
+    if (permissionCallbacks) {
+        session.setHandler<PermissionResponse, void>('permission', async (message) => {
+            logger.info('Permission response' + JSON.stringify(message));
+            const id = message.id;
+            const resolve = permissionCallbacks.requests.get(id);
+            if (resolve) {
+                if (!message.approved) {
+                    logger.debug('Permission denied, interrupting Claude');
+                    await interruptController.interrupt();
+                }
+                resolve({ approved: message.approved, reason: message.reason });
+                permissionCallbacks.requests.delete(id);
+            } else {
+                logger.info('Permission request stale, likely timed out');
+                return;
+            }
+            
+            // Update agent state to remove processed request
+            session.updateAgentState((currentState) => {
+                let r = { ...currentState.requests };
+                delete r[id];
+                return ({
+                    ...currentState,
+                    requests: r,
+                });
+            });
+        });
+    }
+
+    // Shell command handler - executes commands in the default shell
+    session.setHandler<BashRequest, BashResponse>('bash', async (data) => {
+        logger.info('Shell command request:', data.command);
+        
+        try {
+            // Build options with shell enabled by default
+            // Note: ExecOptions doesn't support boolean for shell, but exec() uses the default shell when shell is undefined
+            const options: ExecOptions = {
+                cwd: data.cwd,
+                timeout: data.timeout || 30000, // Default 30 seconds timeout
+            };
+            
+            const { stdout, stderr } = await execAsync(data.command, options);
+            
+            return {
+                success: true,
+                stdout: stdout || '',
+                stderr: stderr || '',
+                exitCode: 0
+            };
+        } catch (error) {
+            const execError = error as NodeJS.ErrnoException & { 
+                stdout?: string; 
+                stderr?: string; 
+                code?: number | string;
+                killed?: boolean;
+            };
+            
+            // Check if the error was due to timeout
+            if (execError.code === 'ETIMEDOUT' || execError.killed) {
+                return {
+                    success: false,
+                    stdout: execError.stdout || '',
+                    stderr: execError.stderr || '',
+                    exitCode: typeof execError.code === 'number' ? execError.code : -1,
+                    error: 'Command timed out'
+                };
+            }
+            
+            // If exec fails, it includes stdout/stderr in the error
+            return {
+                success: false,
+                stdout: execError.stdout || '',
+                stderr: execError.stderr || execError.message || 'Command failed',
+                exitCode: typeof execError.code === 'number' ? execError.code : 1,
+                error: execError.message || 'Command failed'
+            };
+        }
+    });
+
+    // Read file handler - returns base64 encoded content
+    session.setHandler<ReadFileRequest, ReadFileResponse>('readFile', async (data) => {
+        logger.info('Read file request:', data.path);
+        
+        try {
+            const buffer = await readFile(data.path);
+            const content = buffer.toString('base64');
+            return { success: true, content };
+        } catch (error) {
+            logger.debug('Failed to read file:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Failed to read file' };
+        }
+    });
+
+    // Write file handler - with hash verification
+    session.setHandler<WriteFileRequest, WriteFileResponse>('writeFile', async (data) => {
+        logger.info('Write file request:', data.path);
+        
+        try {
+            // If expectedHash is provided (not null), verify existing file
+            if (data.expectedHash !== null && data.expectedHash !== undefined) {
+                try {
+                    const existingBuffer = await readFile(data.path);
+                    const existingHash = createHash('sha256').update(existingBuffer).digest('hex');
+                    
+                    if (existingHash !== data.expectedHash) {
+                        return {
+                            success: false,
+                            error: `File hash mismatch. Expected: ${data.expectedHash}, Actual: ${existingHash}`
+                        };
+                    }
+                } catch (error) {
+                    const nodeError = error as NodeJS.ErrnoException;
+                    if (nodeError.code !== 'ENOENT') {
+                        throw error;
+                    }
+                    // File doesn't exist but hash was provided
+                    return {
+                        success: false,
+                        error: 'File does not exist but hash was provided'
+                    };
+                }
+            } else {
+                // expectedHash is null - expecting new file
+                try {
+                    await stat(data.path);
+                    // File exists but we expected it to be new
+                    return {
+                        success: false,
+                        error: 'File already exists but was expected to be new'
+                    };
+                } catch (error) {
+                    const nodeError = error as NodeJS.ErrnoException;
+                    if (nodeError.code !== 'ENOENT') {
+                        throw error;
+                    }
+                    // File doesn't exist - this is expected
+                }
+            }
+            
+            // Write the file
+            const buffer = Buffer.from(data.content, 'base64');
+            await writeFile(data.path, buffer);
+            
+            // Calculate and return hash of written file
+            const hash = createHash('sha256').update(buffer).digest('hex');
+            
+            return { success: true, hash };
+        } catch (error) {
+            logger.debug('Failed to write file:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Failed to write file' };
+        }
+    });
+
+    // List directory handler
+    session.setHandler<ListDirectoryRequest, ListDirectoryResponse>('listDirectory', async (data) => {
+        logger.info('List directory request:', data.path);
+        
+        try {
+            const entries = await readdir(data.path, { withFileTypes: true });
+            
+            const directoryEntries: DirectoryEntry[] = await Promise.all(
+                entries.map(async (entry) => {
+                    const fullPath = join(data.path, entry.name);
+                    let type: 'file' | 'directory' | 'other' = 'other';
+                    let size: number | undefined;
+                    let modified: number | undefined;
+                    
+                    if (entry.isDirectory()) {
+                        type = 'directory';
+                    } else if (entry.isFile()) {
+                        type = 'file';
+                    }
+                    
+                    try {
+                        const stats = await stat(fullPath);
+                        size = stats.size;
+                        modified = stats.mtime.getTime();
+                    } catch (error) {
+                        // Ignore stat errors for individual files
+                        logger.debug(`Failed to stat ${fullPath}:`, error);
+                    }
+                    
+                    return {
+                        name: entry.name,
+                        type,
+                        size,
+                        modified
+                    };
+                })
+            );
+            
+            // Sort entries: directories first, then files, alphabetically
+            directoryEntries.sort((a, b) => {
+                if (a.type === 'directory' && b.type !== 'directory') return -1;
+                if (a.type !== 'directory' && b.type === 'directory') return 1;
+                return a.name.localeCompare(b.name);
+            });
+            
+            return { success: true, entries: directoryEntries };
+        } catch (error) {
+            logger.debug('Failed to list directory:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Failed to list directory' };
+        }
+    });
+
+    // Get directory tree handler - recursive with depth control
+    session.setHandler<GetDirectoryTreeRequest, GetDirectoryTreeResponse>('getDirectoryTree', async (data) => {
+        logger.info('Get directory tree request:', data.path, 'maxDepth:', data.maxDepth);
+        
+        // Helper function to build tree recursively
+        async function buildTree(path: string, name: string, currentDepth: number): Promise<TreeNode | null> {
+            try {
+                const stats = await stat(path);
+                
+                // Base node information
+                const node: TreeNode = {
+                    name,
+                    path,
+                    type: stats.isDirectory() ? 'directory' : 'file',
+                    size: stats.size,
+                    modified: stats.mtime.getTime()
+                };
+                
+                // If it's a directory and we haven't reached max depth, get children
+                if (stats.isDirectory() && currentDepth < data.maxDepth) {
+                    const entries = await readdir(path, { withFileTypes: true });
+                    const children: TreeNode[] = [];
+                    
+                    // Process entries in parallel, filtering out symlinks
+                    await Promise.all(
+                        entries.map(async (entry) => {
+                            // Skip symbolic links completely
+                            if (entry.isSymbolicLink()) {
+                                logger.debug(`Skipping symlink: ${join(path, entry.name)}`);
+                                return;
+                            }
+                            
+                            const childPath = join(path, entry.name);
+                            const childNode = await buildTree(childPath, entry.name, currentDepth + 1);
+                            if (childNode) {
+                                children.push(childNode);
+                            }
+                        })
+                    );
+                    
+                    // Sort children: directories first, then files, alphabetically
+                    children.sort((a, b) => {
+                        if (a.type === 'directory' && b.type !== 'directory') return -1;
+                        if (a.type !== 'directory' && b.type === 'directory') return 1;
+                        return a.name.localeCompare(b.name);
+                    });
+                    
+                    node.children = children;
+                }
+                
+                return node;
+            } catch (error) {
+                // Log error but continue traversal
+                logger.debug(`Failed to process ${path}:`, error instanceof Error ? error.message : String(error));
+                return null;
+            }
+        }
+        
+        try {
+            // Validate maxDepth
+            if (data.maxDepth < 0) {
+                return { success: false, error: 'maxDepth must be non-negative' };
+            }
+            
+            // Get the base name for the root node
+            const baseName = data.path === '/' ? '/' : data.path.split('/').pop() || data.path;
+            
+            // Build the tree starting from the requested path
+            const tree = await buildTree(data.path, baseName, 0);
+            
+            if (!tree) {
+                return { success: false, error: 'Failed to access the specified path' };
+            }
+            
+            return { success: true, tree };
+        } catch (error) {
+            logger.debug('Failed to get directory tree:', error);
+            return { success: false, error: error instanceof Error ? error.message : 'Failed to get directory tree' };
+        }
+    });
+}
