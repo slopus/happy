@@ -2,9 +2,11 @@ import * as React from 'react';
 import { ToolViewProps } from './_all';
 import { ToolSectionView } from '../ToolSectionView';
 import { knownTools } from '@/components/blocks/knownTools';
-import { CodeView } from '../CodeView';
+import { DiffView } from '@/components/files/DiffView';
+import { useSetting } from '@/sync/storage';
 
 export const WriteView = React.memo<ToolViewProps>(({ tool }) => {
+    const showLineNumbers = useSetting('showLineNumbers');
 
     let contents: string = '<no contents>';
     const parsed = knownTools.Write.input.safeParse(tool.input);
@@ -15,7 +17,12 @@ export const WriteView = React.memo<ToolViewProps>(({ tool }) => {
     return (
         <>
             <ToolSectionView>
-                <CodeView code={contents} />
+                <DiffView 
+                    oldText={''} 
+                    newText={contents} 
+                    wrapLines={false}
+                    showLineNumbers={showLineNumbers}
+                />
             </ToolSectionView>
         </>
     );

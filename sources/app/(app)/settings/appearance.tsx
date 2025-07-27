@@ -10,6 +10,7 @@ import { useSettingMutable } from '@/sync/storage';
 export default function AppearanceSettingsScreen() {
     const [viewInline, setViewInline] = useSettingMutable('viewInline');
     const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
+    const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
     return (
         <ItemList style={{ paddingTop: 0 }}>
 
@@ -68,6 +69,19 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={expandTodos}
                             onValueChange={setExpandTodos}
+                            trackColor={{ false: '#767577', true: '#34C759' }}
+                            thumbColor="#fff"
+                        />
+                    }
+                />
+                <Item
+                    title="Show Line Numbers in Diffs"
+                    subtitle="Display line numbers in code diffs"
+                    icon={<Ionicons name="list-outline" size={29} color="#5856D6" />}
+                    rightElement={
+                        <Switch
+                            value={showLineNumbers}
+                            onValueChange={setShowLineNumbers}
                             trackColor={{ false: '#767577', true: '#34C759' }}
                             thumbColor="#fff"
                         />
