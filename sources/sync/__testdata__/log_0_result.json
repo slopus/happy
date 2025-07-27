@@ -1,0 +1,98 @@
+{
+  "fileName": "log_0.json",
+  "totalRawMessages": 33,
+  "normalizedMessages": 31,
+  "rootMessages": 4,
+  "totalTools": 14,
+  "messagesWithTools": 14,
+  "messagesWithChildren": 1,
+  "textMessagesWithParentId": 0,
+  "messageTree": [
+    {
+      "type": "text",
+      "preview": " Ey..."
+    },
+    {
+      "type": "text",
+      "preview": "I'll help you set up the handy-cli project for sha..."
+    },
+    {
+      "type": "text",
+      "preview": "The handy-cli project is already fully implemented..."
+    },
+    {
+      "type": "tool",
+      "name": "Task",
+      "state": "completed",
+      "children": [
+        {
+          "type": "tool",
+          "name": "LS",
+          "state": "completed"
+        },
+        {
+          "type": "tool",
+          "name": "Read",
+          "state": "completed"
+        },
+        {
+          "type": "tool",
+          "name": "Read",
+          "state": "completed"
+        },
+        {
+          "type": "tool",
+          "name": "Read",
+          "state": "completed"
+        },
+        {
+          "type": "tool",
+          "name": "Bash",
+          "state": "error"
+        },
+        {
+          "type": "tool",
+          "name": "Glob",
+          "state": "completed"
+        },
+        {
+          "type": "tool",
+          "name": "Read",
+          "state": "completed"
+        },
+        {
+          "type": "tool",
+          "name": "Read",
+          "state": "completed"
+        },
+        {
+          "type": "tool",
+          "name": "Read",
+          "state": "completed"
+        },
+        {
+          "type": "tool",
+          "name": "Read",
+          "state": "completed"
+        },
+        {
+          "type": "tool",
+          "name": "Read",
+          "state": "completed"
+        },
+        {
+          "type": "tool",
+          "name": "Read",
+          "state": "completed"
+        },
+        {
+          "type": "tool",
+          "name": "Read",
+          "state": "completed"
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "taskToolWithChildren": 13
+}

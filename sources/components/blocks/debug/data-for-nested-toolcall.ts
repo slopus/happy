@@ -1,6 +1,7 @@
 import { type ToolCall } from '@/sync/typesMessage';
 
-// Fake tool call object with nested children for testing the design.
+// Fake tool call object for testing the design.
+// Note: In the new architecture, children are at the message level, not the tool level
 export const fakeTool: ToolCall = {
     name: 'FileOperations',
     state: 'completed',
@@ -9,52 +10,9 @@ export const fakeTool: ToolCall = {
         files: ['src/components', 'src/utils'],
         options: { recursive: true, backup: true }
     },
-    children: [
-        {
-            name: 'ReadFile',
-            state: 'completed',
-            input: {
-                file_path: 'src/components/Button.tsx',
-                encoding: 'utf8'
-            },
-            children: []
-        },
-        {
-            name: 'ProcessDirectory',
-            state: 'running',
-            input: {
-                directory: 'src/utils',
-                pattern: '*.ts'
-            },
-            children: [
-                {
-                    name: 'ValidateFile',
-                    state: 'completed',
-                    input: {
-                        file: 'src/utils/helpers.ts',
-                        checks: ['syntax', 'types']
-                    },
-                    children: []
-                },
-                {
-                    name: 'FormatFile',
-                    state: 'error',
-                    input: {
-                        file: 'src/utils/api.ts',
-                        formatter: 'prettier'
-                    },
-                    children: []
-                }
-            ]
-        },
-        {
-            name: 'BackupFiles',
-            state: 'completed',
-            input: {
-                destination: './backup',
-                timestamp: '2024-01-15T10:30:00Z'
-            },
-            children: []
-        }
-    ]
+    createdAt: Date.now() - 10000,
+    startedAt: Date.now() - 9000,
+    completedAt: Date.now() - 5000,
+    description: 'Batch process files',
+    result: 'Successfully processed 5 files'
 };

@@ -69,6 +69,7 @@ type NormalizedAgentContent =
     {
         type: 'text';
         text: string;
+        parent_id: string | null;
     } | {
         type: 'tool-call';
         id: string;
@@ -81,6 +82,7 @@ type NormalizedAgentContent =
         tool_use_id: string;
         content: any;
         is_error: boolean;
+        parent_id: string | null;
     } | {
         type: 'summary',
         summary: string;
@@ -129,7 +131,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 const parentToolId = raw.content.data.parent_tool_use_id || null;
                 for (let c of raw.content.data.message.content) {
                     if (c.type === 'text') {
-                        content.push({ type: 'text', text: c.text });
+                        content.push({ type: 'text', text: c.text, parent_id: parentToolId });
                     } else if (c.type === 'tool_use') {
                         let description: string | null = null;
                         if (typeof c.input === 'object' && c.input !== null && 'description' in c.input && typeof c.input.description === 'string') {
@@ -146,10 +148,11 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     content
                 };
             } else if (raw.content.data.type === 'user') {
+                const parentToolId = raw.content.data.parent_tool_use_id || null;
                 let content: NormalizedAgentContent[] = [];
                 for (let c of raw.content.data.message.content) {
                     if (c.type === 'tool_result') {
-                        content.push({ type: 'tool-result', tool_use_id: c.tool_use_id, content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text), is_error: c.is_error || false });
+                        content.push({ type: 'tool-result', tool_use_id: c.tool_use_id, content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text), is_error: c.is_error || false, parent_id: parentToolId });
                     }
                 }
                 return {

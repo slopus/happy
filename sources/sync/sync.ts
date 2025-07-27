@@ -404,7 +404,6 @@ class Sync {
     }
 
     private handleUpdate = (update: unknown) => {
-        console.log('handleUpdate', update);
         const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
         if (!validatedUpdate.success) {
             console.log('Invalid update received:', validatedUpdate.error);

@@ -93,19 +93,28 @@ describe('settings', () => {
     describe('applySettings', () => {
         it('should apply delta to existing settings', () => {
             const currentSettings: Settings = {
-                viewInline: false
+                viewInline: false,
+                expandTodos: true,
+                showLineNumbers: true,
+                inferenceOpenAIKey: null
             };
             const delta: Partial<Settings> = {
                 viewInline: true
             };
             expect(applySettings(currentSettings, delta)).toEqual({
-                viewInline: true
+                viewInline: true,
+                expandTodos: true,
+                showLineNumbers: true,
+                inferenceOpenAIKey: null
             });
         });
 
         it('should merge with defaults', () => {
             const currentSettings: Settings = {
-                viewInline: true
+                viewInline: true,
+                expandTodos: true,
+                showLineNumbers: true,
+                inferenceOpenAIKey: null
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual({
@@ -116,19 +125,28 @@ describe('settings', () => {
 
         it('should override existing values with delta', () => {
             const currentSettings: Settings = {
-                viewInline: true
+                viewInline: true,
+                expandTodos: true,
+                showLineNumbers: true,
+                inferenceOpenAIKey: null
             };
             const delta: Partial<Settings> = {
                 viewInline: false
             };
             expect(applySettings(currentSettings, delta)).toEqual({
-                viewInline: false
+                viewInline: false,
+                expandTodos: true,
+                showLineNumbers: true,
+                inferenceOpenAIKey: null
             });
         });
 
         it('should handle empty delta', () => {
             const currentSettings: Settings = {
-                viewInline: true
+                viewInline: true,
+                expandTodos: true,
+                showLineNumbers: true,
+                inferenceOpenAIKey: null
             };
             expect(applySettings(currentSettings, {})).toEqual({
                 ...settingsDefaults,
@@ -153,7 +171,10 @@ describe('settings', () => {
 
         it('should handle extra fields in delta', () => {
             const currentSettings: Settings = {
-                viewInline: true
+                viewInline: true,
+                expandTodos: true,
+                showLineNumbers: true,
+                inferenceOpenAIKey: null
             };
             const delta: any = {
                 viewInline: false,
@@ -187,7 +208,10 @@ describe('settings', () => {
     describe('settingsDefaults', () => {
         it('should have correct default values', () => {
             expect(settingsDefaults).toEqual({
-                viewInline: false
+                viewInline: false,
+                expandTodos: true,
+                showLineNumbers: true,
+                inferenceOpenAIKey: null
             });
         });
 

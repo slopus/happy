@@ -23,28 +23,27 @@ export function EmptyToolsArrayView({ message, sessionId }: EmptyToolsArrayViewP
             messageId: message.id,
             sessionId: sessionId,
             messageKind: message.kind,
-            toolsLength: message.tools.length,
+            hasToolCall: message.tool !== null,
             createdAt: message.createdAt
         };
 
-        const title = "Bug Report: ToolCallMessage with Empty Tools Array";
+        const title = "Bug Report: ToolCallMessage with No Tool";
         const body = `## Bug Description
 A data model inconsistency was detected: A message with \`kind: "tool-call"\`
-exists but has an empty \`tools\` array.
+exists but has no tool.
 
 The application navigated to the message detail route
 \`(app)/session/[id]/message/[messageId].tsx\` to display details for a
-ToolCallMessage, but the message's \`tools\` array is empty. This should be
+ToolCallMessage, but the message's \`tool\` is null. This should be
 impossible according to the intended data model.
 
 ## Root Cause
-- The data model allows \`Message[kind] === "tool-call"\` to have zero concrete
-tool calls in the \`tools\` array
+- The data model allows \`Message[kind] === "tool-call"\` to have a null tool
 - This state should be impossible but is not currently enforced at the type level
 - Navigation to message details has no type checking, so invalid states can be reached
 
 ## What Should Happen
-- ToolCallMessage should never exist with an empty tools array
+- ToolCallMessage should never exist with a null tool
 
 ## Current Behavior
 - User navigates to a message detail view
