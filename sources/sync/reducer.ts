@@ -1,31 +1,25 @@
 import { Message, ToolCall } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
 
-export type ToolCallTree = {
+type ReducerMessage = {
     id: string;
-    name: string;
-    messageId: string;
-    state: 'running' | 'completed' | 'error';
-    arguments: any;
-    result?: unknown; // Add result field to store tool result data
-    parentId: string | null;
-    startedAt: number | null;
-    completedAt: number | null;
-    description: string | null;
     createdAt: number;
-    children: ToolCallTree[];
+    role: 'user' | 'agent';
+    text: string | null;
+    tool: ToolCall | null;
+    children: ReducerMessage[];
 }
 
 export type ReducerState = {
-    toolCalls: Map<string, ToolCallTree>;
+    toolIdToMessageId: Map<string, string>; // toolId -> messageId for result processing
     localIds: Map<string, string>;
     messageIds: Map<string, string>; // originalId -> internalId
-    messages: Map<string, { role: 'user' | 'agent', createdAt: number, text: string, tools: ToolCallTree[] }>;
+    messages: Map<string, ReducerMessage>;
 };
 
 export function createReducer(): ReducerState {
     return {
-        toolCalls: new Map(),
+        toolIdToMessageId: new Map(),
         messages: new Map(),
         localIds: new Map(),
         messageIds: new Map()
@@ -54,37 +48,41 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
             // Create a new message
             let mid = allocateId();
             state.messages.set(mid, {
+                id: mid,
                 role: 'user',
                 createdAt: msg.createdAt,
                 text: msg.content.text,
-                tools: []
+                tool: null,
+                children: []
             });
-            
+
             // Track both localId and messageId
             if (msg.localId) {
                 state.localIds.set(msg.localId, mid);
             }
             state.messageIds.set(msg.id, mid);
-            
+
             changed.add(mid);
         } else if (msg.role === 'agent') {
             // Check if we've seen this agent message before
             if (state.messageIds.has(msg.id)) {
                 continue;
             }
-            
+
             // Mark this message as seen
             state.messageIds.set(msg.id, msg.id);
-            
-            // Process text content only in this phase
+
+            // Process text content only if it doesn't have a parent
             for (let c of msg.content) {
-                if (c.type === 'text') {
+                if (c.type === 'text' && !c.parent_id) {
                     let mid = allocateId();
                     state.messages.set(mid, {
+                        id: mid,
                         role: 'agent',
                         createdAt: msg.createdAt,
                         text: c.text,
-                        tools: []
+                        tool: null,
+                        children: []
                     });
                     changed.add(mid);
                 }
@@ -100,25 +98,31 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
         if (msg.role === 'agent') {
             for (let c of msg.content) {
                 if (c.type === 'tool-call' && !c.parent_id) {
-                    let existing = state.toolCalls.get(c.id);
-                    if (!existing) {
+                    // Check if we've already processed this tool
+                    if (!state.toolIdToMessageId.has(c.id)) {
                         let mid = allocateId();
-                        let newTool = {
-                            id: c.id,
+                        let toolCall: ToolCall = {
                             name: c.name,
-                            messageId: mid, // This is the root message ID
                             state: 'running' as const,
-                            parentId: null,
-                            arguments: c.input,
-                            result: null,
-                            children: [],
+                            input: c.input,
+                            createdAt: msg.createdAt,
                             startedAt: null,
                             completedAt: null,
+                            description: c.description,
+                            result: undefined
+                        };
+                        
+                        state.messages.set(mid, {
+                            id: mid,
+                            role: 'agent',
                             createdAt: msg.createdAt,
-                            description: c.description
-                        }
-                        state.toolCalls.set(c.id, newTool);
-                        state.messages.set(mid, { role: 'agent', createdAt: msg.createdAt, text: '', tools: [newTool] });
+                            text: null,
+                            tool: toolCall,
+                            children: []
+                        });
+                        
+                        // Map tool ID to message ID for result processing
+                        state.toolIdToMessageId.set(c.id, mid);
                         changed.add(mid);
                     }
                 }
@@ -134,29 +138,47 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
         if (msg.role === 'agent') {
             for (let c of msg.content) {
                 if (c.type === 'tool-call' && c.parent_id) {
-                    let existing = state.toolCalls.get(c.id);
-                    if (!existing) {
-                        let parentTool = state.toolCalls.get(c.parent_id);
-                        if (!parentTool) { // Should not happen
+                    // Check if we've already processed this tool
+                    if (!state.toolIdToMessageId.has(c.id)) {
+                        // Find parent message
+                        let parentMessageId = state.toolIdToMessageId.get(c.parent_id);
+                        if (!parentMessageId) {
+                            continue; // Parent not found
+                        }
+                        
+                        let parentMessage = state.messages.get(parentMessageId);
+                        if (!parentMessage) {
                             continue;
                         }
-                        let newTool: ToolCallTree = {
-                            id: c.id,
+                        
+                        // Create child message
+                        let mid = allocateId();
+                        let toolCall: ToolCall = {
                             name: c.name,
-                            messageId: parentTool.messageId, // Use parent's message ID
                             state: 'running' as const,
-                            parentId: c.parent_id,
-                            arguments: c.input,
-                            result: null,
-                            children: [],
+                            input: c.input,
+                            createdAt: msg.createdAt,
                             startedAt: null,
                             completedAt: null,
                             description: c.description,
-                            createdAt: msg.createdAt
-                        }
-                        parentTool.children.push(newTool);
-                        state.toolCalls.set(c.id, newTool);
-                        changed.add(parentTool.messageId);
+                            result: undefined
+                        };
+                        
+                        let childMessage: ReducerMessage = {
+                            id: mid,
+                            role: 'agent',
+                            createdAt: msg.createdAt,
+                            text: null,
+                            tool: toolCall,
+                            children: []
+                        };
+                        
+                        state.messages.set(mid, childMessage);
+                        parentMessage.children.push(childMessage);
+                        
+                        // Map tool ID to message ID for result processing
+                        state.toolIdToMessageId.set(c.id, mid);
+                        changed.add(parentMessageId); // Mark parent as changed
                     }
                 }
             }
@@ -164,62 +186,100 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
     }
 
     //
-    // Phase 4: Process tool results
+    // Phase 4: Process text messages with parents
+    //
+
+    for (let msg of messages) {
+        if (msg.role === 'agent') {
+            for (let c of msg.content) {
+                if (c.type === 'text' && c.parent_id) {
+                    // Find parent message
+                    let parentMessageId = state.toolIdToMessageId.get(c.parent_id);
+                    if (!parentMessageId) {
+                        continue; // Parent not found
+                    }
+                    
+                    let parentMessage = state.messages.get(parentMessageId);
+                    if (!parentMessage) {
+                        continue;
+                    }
+                    
+                    // Create child text message
+                    let mid = allocateId();
+                    let childMessage: ReducerMessage = {
+                        id: mid,
+                        role: 'agent',
+                        createdAt: msg.createdAt,
+                        text: c.text,
+                        tool: null,
+                        children: []
+                    };
+                    
+                    state.messages.set(mid, childMessage);
+                    parentMessage.children.push(childMessage);
+                    changed.add(parentMessageId); // Mark parent as changed
+                }
+            }
+        }
+    }
+
+    //
+    // Phase 5: Process tool results
     //
 
     for (let msg of messages) {
         if (msg.role === 'agent') {
             for (let c of msg.content) {
                 if (c.type === 'tool-result') {
-                    let existing = state.toolCalls.get(c.tool_use_id);
-                    if (!existing) {
+                    // Find the message containing this tool
+                    let messageId = state.toolIdToMessageId.get(c.tool_use_id);
+                    if (!messageId) {
                         continue;
                     }
-                    if (existing.state !== 'running') {
+                    
+                    let message = state.messages.get(messageId);
+                    if (!message || !message.tool) {
                         continue;
                     }
-                    existing.state = c.is_error ? 'error' : 'completed';
-                    existing.result = c.content;
-                    existing.completedAt = msg.createdAt;
-                    changed.add(existing.messageId);
+                    
+                    if (message.tool.state !== 'running') {
+                        continue;
+                    }
+                    
+                    // Update tool state and result
+                    message.tool.state = c.is_error ? 'error' : 'completed';
+                    message.tool.result = c.content;
+                    message.tool.completedAt = msg.createdAt;
+                    changed.add(messageId);
                 }
             }
         }
     }
 
     //
-    // Collect changed messages
+    // Collect changed messages (only root-level messages)
     //
 
-    for (let id of changed) {
-        let existing = state.messages.get(id);
-        if (existing && existing.role === 'agent') {
-            if (existing.tools.length > 0) {
-                newMessages.push({
-                    id,
-                    localId: null,
-                    createdAt: existing.createdAt,
-                    kind: 'tool-call',
-                    tools: normalizeToolCalls(existing.tools)
-                });
-            } else {
-                newMessages.push({
-                    id,
-                    localId: null,
-                    createdAt: existing.createdAt,
-                    kind: 'agent-text',
-                    text: existing.text
-                });
-            }
+    // First, identify which messages are children
+    let childMessageIds = new Set<string>();
+    for (let msg of state.messages.values()) {
+        for (let child of msg.children) {
+            childMessageIds.add(child.id);
         }
-        if (existing && existing.role === 'user') {
-            newMessages.push({
-                id,
-                localId: null,
-                createdAt: existing.createdAt,
-                kind: 'user-text',
-                text: existing.text
-            });
+    }
+    
+    // Only add messages that are not children of other messages
+    for (let id of changed) {
+        if (childMessageIds.has(id)) {
+            continue; // Skip child messages
+        }
+        
+        let existing = state.messages.get(id);
+        if (!existing) continue;
+        
+        let message = convertReducerMessageToMessage(existing);
+        if (message) {
+            newMessages.push(message);
         }
     }
 
@@ -230,21 +290,46 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
 // Helpers
 //
 
-
 function allocateId() {
     return Math.random().toString(36).substring(2, 15);
 }
 
-function normalizeToolCalls(toolCalls: ToolCallTree[]): ToolCall[] {
-    return toolCalls.map(t => ({
-        name: t.name,
-        input: t.arguments,
-        state: t.state,
-        result: t.result, // Include result field
-        createdAt: t.createdAt,
-        startedAt: t.startedAt,
-        completedAt: t.completedAt,
-        description: t.description,
-        children: normalizeToolCalls(t.children)
-    }));
+function convertReducerMessageToMessage(reducerMsg: ReducerMessage): Message | null {
+    if (reducerMsg.role === 'user' && reducerMsg.text !== null) {
+        return {
+            id: reducerMsg.id,
+            localId: null,
+            createdAt: reducerMsg.createdAt,
+            kind: 'user-text',
+            text: reducerMsg.text
+        };
+    } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {
+        return {
+            id: reducerMsg.id,
+            localId: null,
+            createdAt: reducerMsg.createdAt,
+            kind: 'agent-text',
+            text: reducerMsg.text
+        };
+    } else if (reducerMsg.role === 'agent' && reducerMsg.tool !== null) {
+        // Convert children recursively
+        let childMessages: Message[] = [];
+        for (let child of reducerMsg.children) {
+            let childMessage = convertReducerMessageToMessage(child);
+            if (childMessage) {
+                childMessages.push(childMessage);
+            }
+        }
+        
+        return {
+            id: reducerMsg.id,
+            localId: null,
+            createdAt: reducerMsg.createdAt,
+            kind: 'tool-call',
+            tool: reducerMsg.tool,
+            children: childMessages
+        };
+    }
+    
+    return null;
 }

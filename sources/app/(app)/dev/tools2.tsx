@@ -245,6 +245,7 @@ export function formatTime(date: Date): string {
                 <Text style={styles.exampleTitle}>{key}</Text>
                 <ToolView 
                     tool={example} 
+                    metadata={null}
                     onPress={() => console.log(`Pressed tool: ${key}`)}
                 />
             </View>

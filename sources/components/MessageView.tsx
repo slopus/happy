@@ -1,9 +1,7 @@
 import * as React from "react";
 import { View } from "react-native";
 import { MarkdownView } from "./markdown/MarkdownView";
-import { CompactToolBlock as CompactToolBlock } from "./blocks/RenderToolCallV4";
-import { ToolCallGroupBlock } from "./blocks/ToolCallGroupBlock";
-import { Message, ToolCall, UserTextMessage, AgentTextMessage, ToolCallMessage, ToolCallGroupMessage } from "@/sync/typesMessage";
+import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 import { layout } from "./layout";
 import { ToolView } from "./blocks/ToolView";
@@ -55,16 +53,10 @@ function RenderBlock(props: {
       return <ToolCallBlock 
         message={props.message} 
         metadata={props.metadata} 
-        sessionId={props.sessionId} 
+        sessionId={props.sessionId}
+        getMessageById={props.getMessageById}
       />;
     
-    case 'tool-call-group':
-      return <ToolCallGroupBlock 
-        message={props.message} 
-        metadata={props.metadata} 
-        sessionId={props.sessionId}
-        getMessageById={props.getMessageById || (() => null)}
-      />;
     
     default:
       // Exhaustive check - TypeScript will error if we miss a case
@@ -118,19 +110,32 @@ function ToolCallBlock(props: {
   message: ToolCallMessage;
   metadata: Metadata | null;
   sessionId: string;
+  getMessageById?: (id: string) => Message | null;
 }) {
+  if (!props.message.tool) {
+    return null;
+  }
+  
   return (
-    <View style={{ marginHorizontal: 8 }}>
-      {props.message.tools.map((tool: ToolCall, index: number) => (
-        <ToolView tool={tool} metadata={props.metadata} />
-        // <CompactToolBlock
-        //   key={index}
-        //   tool={tool}
-        //   sessionId={props.sessionId}
-        //   messageId={props.message.id}
-        //   metadata={props.metadata}
-        // />
-      ))}
+    <View>
+      <View style={{ marginHorizontal: 8 }}>
+        <ToolView tool={props.message.tool} metadata={props.metadata} />
+      </View>
+      
+      {/* Render children recursively */}
+      {props.message.children && props.message.children.length > 0 && (
+        <View style={{ marginLeft: 16 }}>
+          {props.message.children.map((child) => (
+            <RenderBlock 
+              key={child.id}
+              message={child} 
+              metadata={props.metadata} 
+              sessionId={props.sessionId}
+              getMessageById={props.getMessageById}
+            />
+          ))}
+        </View>
+      )}
     </View>
   );
 }

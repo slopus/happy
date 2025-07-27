@@ -1,14 +1,14 @@
 import * as React from 'react';
 import { FlatList, View } from 'react-native';
 import { MessageView } from '@/components/MessageView';
-import { debugMessages, debugToolCallMessages } from './messages-demo-data';
+import { debugMessages } from './messages-demo-data';
 import { Message } from '@/sync/typesMessage';
 import { useDemoMessages } from '@/hooks/useDemoMessages';
 import { useMessage } from '@/sync/storage';
 
 export default function MessagesDemoScreen() {
     // Combine all demo messages
-    const allMessages = [...debugMessages, ...debugToolCallMessages];
+    const allMessages = [...debugMessages];
     
     // Load demo messages into session storage
     const sessionId = useDemoMessages(allMessages);

@@ -7,40 +7,32 @@ export type ToolCall = {
     completedAt: number | null;
     description: string | null;
     result?: any;
-    children: ToolCall[];
 }
 
 // Flattened message types - each message represents a single block
 export type UserTextMessage = {
+    kind: 'user-text';
     id: string;
     localId: string | null;
     createdAt: number;
-    kind: 'user-text';
     text: string;
 }
 
 export type AgentTextMessage = {
+    kind: 'agent-text';
     id: string;
     localId: string | null;
     createdAt: number;
-    kind: 'agent-text';
     text: string;
 }
 
 export type ToolCallMessage = {
-    id: string;
-    localId: string | null;
-    createdAt: number;
     kind: 'tool-call';
-    tools: ToolCall[];
-}
-
-export type ToolCallGroupMessage = {
     id: string;
     localId: string | null;
     createdAt: number;
-    kind: 'tool-call-group';
-    messageIds: string[]; // IDs of the tool call messages in this group
+    tool: ToolCall;
+    children: Message[];
 }
 
-export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage | ToolCallGroupMessage;
+export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage;

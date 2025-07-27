@@ -1,0 +1,50 @@
+{
+  "fileName": "log_3.json",
+  "totalRawMessages": 13,
+  "normalizedMessages": 13,
+  "rootMessages": 9,
+  "totalTools": 1,
+  "messagesWithTools": 1,
+  "messagesWithChildren": 0,
+  "textMessagesWithParentId": 0,
+  "messageTree": [
+    {
+      "type": "text",
+      "preview": "Hey..."
+    },
+    {
+      "type": "text",
+      "preview": "Hey! What can I help you with today?..."
+    },
+    {
+      "type": "text",
+      "preview": "What’s in my home folder?..."
+    },
+    {
+      "type": "text",
+      "preview": "I'll list the contents of your home folder...."
+    },
+    {
+      "type": "text",
+      "preview": "Your home folder contains various dotfiles, config..."
+    },
+    {
+      "type": "text",
+      "preview": "Aasdasd..."
+    },
+    {
+      "type": "text",
+      "preview": "I'll list the contents of your home folder...."
+    },
+    {
+      "type": "text",
+      "preview": "I'm not sure what you're trying to say. Could you ..."
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    }
+  ],
+  "errors": []
+}

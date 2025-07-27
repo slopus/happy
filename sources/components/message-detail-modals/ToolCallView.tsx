@@ -16,23 +16,18 @@ export function ToolCallView({ message, sessionId }: ToolCallViewProps) {
     const safeArea = useSafeAreaInsets();
     const session = useSession(sessionId);
     const router = useRouter();
-    const tools = message.tools;
+    const tool = message.tool;
 
-    // Determine title based on tools
+    // Determine title based on tool
     const getTitle = () => {
-        if (tools && tools.length > 0) {
-            // If there's only one tool, use that tool's name
-            if (tools.length === 1) {
-                const toolName = tools[0].name;
-                return `${toolName} Details`;
-            }
-            // If multiple tools, use generic "Tool Details"
-            return "Tool Details";
+        if (tool) {
+            const toolName = tool.name;
+            return `${toolName} Details`;
         }
         return "Tool Details";
     };
 
-    if (tools.length === 0) {
+    if (!tool) {
         // return <EmptyToolCallView message={message} sessionId={sessionId} />;
         return null;
     }
@@ -53,14 +48,24 @@ export function ToolCallView({ message, sessionId }: ToolCallViewProps) {
                 style={{ flex: 1 }}
                 contentContainerStyle={{ paddingBottom: safeArea.bottom + 20 }}
             >
-                {tools.map((tool, index) => (
-                    <View
-                        key={index}
-                        style={{ marginBottom: index < tools.length - 1 ? 20 : 0 }}
-                    >
-                        <DetailedToolBlock tool={tool} metadata={session?.metadata || null} />
+                <DetailedToolBlock tool={tool} metadata={session?.metadata || null} />
+                
+                {/* Render children if any */}
+                {message.children && message.children.length > 0 && (
+                    <View style={{ marginTop: 20 }}>
+                        <Text style={{ fontSize: 16, fontWeight: 'bold', marginBottom: 10 }}>Child Operations:</Text>
+                        {message.children.map((child, index) => (
+                            <View key={child.id} style={{ marginBottom: 10 }}>
+                                {child.kind === 'tool-call' && (
+                                    <Text>{child.tool.name}</Text>
+                                )}
+                                {child.kind === 'agent-text' && (
+                                    <Text numberOfLines={2}>{child.text}</Text>
+                                )}
+                            </View>
+                        ))}
                     </View>
-                ))}
+                )}
             </ScrollView>
         </View>
     );

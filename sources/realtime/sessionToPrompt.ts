@@ -38,15 +38,20 @@ export function messagesToPrompt(messages: Message[], options: {
                     break;
                 }
 
-                mainContentLines.push('**Assistant** executed tools:');
-                for (const tool of message.tools) {
-                    mainContentLines.push(`- ${tool.name}${tool.state === 'error' ? ' (failed)' : ''}`);
+                if (message.tool) {
+                    mainContentLines.push(`**Assistant** executed tool: ${message.tool.name}${message.tool.state === 'error' ? ' (failed)' : ''}`);
+                    
+                    // Include children if any
+                    if (message.children && message.children.length > 0) {
+                        mainContentLines.push('  with sub-operations:');
+                        for (const child of message.children) {
+                            if (child.kind === 'tool-call' && child.tool) {
+                                mainContentLines.push(`  - ${child.tool.name}${child.tool.state === 'error' ? ' (failed)' : ''}`);
+                            }
+                        }
+                    }
                 }
                 mainContentLines.push('');
-                break;
-                
-            case 'tool-call-group':
-                // Skip these as they're just grouping metadata
                 break;
         }
     }

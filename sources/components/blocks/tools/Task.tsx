@@ -109,7 +109,7 @@ export function TaskCompactView({ tool, sessionId, messageId }: { tool: TaskTool
               <Text className="text-sm text-gray-800 leading-5">{args.prompt}</Text>
               
               {/* Show child tools if any */}
-              {tool.children && tool.children.length > 0 && (
+              {/* {tool.children && tool.children.length > 0 && (
                 <View className="mt-3">
                   <Text className="text-sm text-gray-600 mb-2">Sub-tasks ({tool.children.length}):</Text>
                   {tool.children.map((child, index) => (
@@ -122,7 +122,7 @@ export function TaskCompactView({ tool, sessionId, messageId }: { tool: TaskTool
                     </View>
                   ))}
                 </View>
-              )}
+              )} */}
             </View>
           </View>
         )}
@@ -164,7 +164,7 @@ export const TaskDetailedView = ({ tool }: { tool: TaskToolCall }) => {
   
   // Apparently typescript can't infer the types inside the template expression,
   // so I manually specified the types here.
-  const toolCalls: ToolCall[] = tool.children;
+  // const toolCalls: ToolCall[] = tool.children;
   const weHaveResult: boolean = !!tool.result
 
   return (
@@ -204,7 +204,7 @@ export const TaskDetailedView = ({ tool }: { tool: TaskToolCall }) => {
 
 
           {/* Child Tools */}
-          <View>
+          {/* <View>
             {toolCalls.length > 0 && (
               <View className="mb-4">
                 <Text className="text-sm font-semibold text-gray-600 mb-2">Sub-tasks ({toolCalls.length})</Text>
@@ -221,7 +221,7 @@ export const TaskDetailedView = ({ tool }: { tool: TaskToolCall }) => {
                 ))}
               </View>
             )}
-          </View>
+          </View> */}
 
           {/* Result */}
           {weHaveResult && (

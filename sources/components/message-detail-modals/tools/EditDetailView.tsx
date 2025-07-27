@@ -101,8 +101,8 @@ export function EditDetailView({ message, metadata }: EditDetailViewProps) {
   const [wrapLines, setWrapLines] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
 
-  // Get the first tool (should be the edit tool)
-  const tool = message.tools[0];
+  // Get the tool (should be the edit tool)
+  const tool = message.tool;
   
   // Parse the tool arguments
   const parseResult = EditArgumentsSchema.safeParse(tool.input);

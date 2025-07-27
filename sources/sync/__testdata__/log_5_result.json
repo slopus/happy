@@ -1,0 +1,447 @@
+{
+  "fileName": "log_5.json",
+  "totalRawMessages": 150,
+  "normalizedMessages": 150,
+  "rootMessages": 96,
+  "totalTools": 50,
+  "messagesWithTools": 50,
+  "messagesWithChildren": 0,
+  "textMessagesWithParentId": 0,
+  "messageTree": [
+    {
+      "type": "text",
+      "preview": "Let me also fix the ToolCallBlock call in RenderBl..."
+    },
+    {
+      "type": "text",
+      "preview": "Now let me run the type check again to see if we'v..."
+    },
+    {
+      "type": "text",
+      "preview": "Good progress! Most errors are now in files we don..."
+    },
+    {
+      "type": "text",
+      "preview": "The ToolCallGroupBlock is not being imported anywh..."
+    },
+    {
+      "type": "text",
+      "preview": "This is a different Task.tsx file than the one I a..."
+    },
+    {
+      "type": "text",
+      "preview": "This component is still expecting children on the ..."
+    },
+    {
+      "type": "text",
+      "preview": "Good, this Task.tsx component is not being used an..."
+    },
+    {
+      "type": "text",
+      "preview": "Let me remove the unused import:..."
+    },
+    {
+      "type": "text",
+      "preview": "Let me also remove the unused imports in MessageVi..."
+    },
+    {
+      "type": "text",
+      "preview": "Now let me check the dev/tools2.tsx file:..."
+    },
+    {
+      "type": "text",
+      "preview": "Let me run typecheck again to see our progress:..."
+    },
+    {
+      "type": "text",
+      "preview": "Let me fix the messages-demo.tsx file:..."
+    },
+    {
+      "type": "text",
+      "preview": "This session is being continued from a previous co..."
+    },
+    {
+      "type": "text",
+      "preview": "I'll fix the remaining type error in `messages-dem..."
+    },
+    {
+      "type": "text",
+      "preview": "and remove ToolGroupView..."
+    },
+    {
+      "type": "text",
+      "preview": "check if reducer and typesRaw works correctly usin..."
+    },
+    {
+      "type": "text",
+      "preview": "I'll create a test script to verify that the reduc..."
+    },
+    {
+      "type": "text",
+      "preview": "Let me check the reducer exports and fix the impor..."
+    },
+    {
+      "type": "text",
+      "preview": "Let me check the bottom of the reducer file to see..."
+    },
+    {
+      "type": "text",
+      "preview": "Let me check what's actually exported from reducer..."
+    },
+    {
+      "type": "text",
+      "preview": "I see the issue - there's no `messageStreamToMessa..."
+    },
+    {
+      "type": "text",
+      "preview": "Now I understand. The reducer needs to be used wit..."
+    },
+    {
+      "type": "text",
+      "preview": "Now let me run the test again:..."
+    },
+    {
+      "type": "text",
+      "preview": "It seems all log files have 0 messages. Let me che..."
+    },
+    {
+      "type": "text",
+      "preview": "I see the issue - the log files don't have a `mess..."
+    },
+    {
+      "type": "text",
+      "preview": "Let me check what's exported from typesRaw:..."
+    },
+    {
+      "type": "text",
+      "preview": "I see - it's `normalizeRawMessage`, not `normalize..."
+    },
+    {
+      "type": "text",
+      "preview": "Great! The reducer and typesRaw are working correc..."
+    },
+    {
+      "type": "text",
+      "preview": "Let me clean up the test file:..."
+    },
+    {
+      "type": "text",
+      "preview": "keep the test file somewhere, also make it output ..."
+    },
+    {
+      "type": "text",
+      "preview": "I'll modify the test file to output results next t..."
+    },
+    {
+      "type": "text",
+      "preview": "Now let's move the test file to a more appropriate..."
+    },
+    {
+      "type": "text",
+      "preview": "Now let's run the test again to generate the resul..."
+    },
+    {
+      "type": "text",
+      "preview": "Let me fix the import paths since we moved the fil..."
+    },
+    {
+      "type": "text",
+      "preview": "Perfect! The test script now:\n1. Processes all log..."
+    },
+    {
+      "type": "text",
+      "preview": "Great! The test script successfully:\n- Verified th..."
+    },
+    {
+      "type": "text",
+      "preview": "run multiple test tasks for me to look at..."
+    },
+    {
+      "type": "text",
+      "preview": "I'll create and run multiple Task tools with diffe..."
+    },
+    {
+      "type": "text",
+      "preview": "Search for all React hooks (useState, useEffect, u..."
+    },
+    {
+      "type": "text",
+      "preview": "## Summary of React Hooks Usage in sources/compone..."
+    },
+    {
+      "type": "text",
+      "preview": "Now let me get more detailed information about whi..."
+    },
+    {
+      "type": "text",
+      "preview": "I'll search for React hooks usage in the sources/c..."
+    },
+    {
+      "type": "text",
+      "preview": "Thanks, can you add the long press on avatar in se..."
+    },
+    {
+      "type": "text",
+      "preview": "I'll add a long press handler to the avatar in the..."
+    },
+    {
+      "type": "text",
+      "preview": "Let me first find the session screen:..."
+    },
+    {
+      "type": "text",
+      "preview": "run tests..."
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Grep",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Read",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Read",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Grep",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Read",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Read",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "error"
+    },
+    {
+      "type": "tool",
+      "name": "Read",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Write",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Read",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Grep",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Read",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Grep",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Read",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Grep",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "TodoWrite",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "error"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "MultiEdit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "error"
+    },
+    {
+      "type": "tool",
+      "name": "Edit",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Read",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Task",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Grep",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Grep",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Task",
+      "state": "error"
+    },
+    {
+      "type": "tool",
+      "name": "TodoWrite",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Grep",
+      "state": "completed"
+    },
+    {
+      "type": "tool",
+      "name": "Bash",
+      "state": "error"
+    }
+  ],
+  "errors": []
+}
