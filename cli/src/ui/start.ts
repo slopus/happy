@@ -76,10 +76,10 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => { requests.set(id, resolve); });
         let timeout = setTimeout(async () => {
             // Interrupt claude execution on permission timeout
-            logger.info('Permission timeout - attempting to interrupt Claude');
+            logger.debug('Permission timeout - attempting to interrupt Claude');
             const interrupted = await interruptController.interrupt();
             if (interrupted) {
-                logger.info('Claude interrupted successfully');
+                logger.debug('Claude interrupted successfully');
             }
 
             // Delete callback we are awaiting on
@@ -95,7 +95,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                 });
             });
         }, 1000 * 60 * 4.5) // 4.5 minutes, 30 seconds before max timeout
-        logger.info('Permission request' + id + ' ' + JSON.stringify(request));
+        logger.debug('Permission request' + id + ' ' + JSON.stringify(request));
 
         // Send push notification for permission request
         try {
@@ -109,7 +109,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                     type: 'permission_request'
                 }
             );
-            logger.info('Push notification sent for permission request');
+            logger.debug('Push notification sent for permission request');
         } catch (error) {
             logger.debug('Failed to send push notification:', error);
         }
@@ -130,6 +130,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         
         return promise;
     });
+
     // Register all RPC handlers
     registerHandlers(session, interruptController, { requests });
 
@@ -185,17 +186,17 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         session.sendSessionDeath();
 
         // Wait for socket to flush
-        logger.info('Waiting for socket to flush...');
+        logger.debug('Waiting for socket to flush...');
         await session.flush();
 
         // Close session
-        logger.info('Closing session...');
+        logger.debug('Closing session...');
         await session.close();
     }
 
     // Exit
     if (antropicActivityProxy) {
-        logger.info('[AnthropicProxy] Shutting down activity monitoring proxy');
+        logger.debug('[AnthropicProxy] Shutting down activity monitoring proxy');
         antropicActivityProxy.cleanup();
     }
     process.exit(0);
