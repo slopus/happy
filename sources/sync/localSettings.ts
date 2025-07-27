@@ -1,0 +1,48 @@
+import * as z from 'zod';
+
+//
+// Schema
+//
+
+export const LocalSettingsSchema = z.object({
+    // Developer settings (device-specific)
+    debugMode: z.boolean().describe('Enable debug logging'),
+});
+
+//
+// NOTE: Local settings are device-specific and should NOT be synced.
+// These are preferences that make sense to be different on each device.
+//
+
+const LocalSettingsSchemaPartial = LocalSettingsSchema.loose().partial();
+
+export type LocalSettings = z.infer<typeof LocalSettingsSchema>;
+
+//
+// Defaults
+//
+
+export const localSettingsDefaults: LocalSettings = {
+    debugMode: false,
+};
+Object.freeze(localSettingsDefaults);
+
+//
+// Parsing
+//
+
+export function localSettingsParse(settings: unknown): LocalSettings {
+    const parsed = LocalSettingsSchemaPartial.safeParse(settings);
+    if (!parsed.success) {
+        return { ...localSettingsDefaults };
+    }
+    return { ...localSettingsDefaults, ...parsed.data };
+}
+
+//
+// Applying changes
+//
+
+export function applyLocalSettings(settings: LocalSettings, delta: Partial<LocalSettings>): LocalSettings {
+    return { ...localSettingsDefaults, ...settings, ...delta };
+}

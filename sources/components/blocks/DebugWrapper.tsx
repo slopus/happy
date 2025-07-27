@@ -1,4 +1,4 @@
-import { useConfigStore } from '@/store/configStore';
+import { useLocalSetting } from '@/sync/storage';
 import React from 'react';
 import { View, Text } from 'react-native';
 
@@ -9,7 +9,7 @@ interface DebugWrapperProps {
 }
 
 export const DebugWrapper: React.FC<DebugWrapperProps> = ({ debugId, debugLabel, children }) => {
-  const { showDebugInfo } = useConfigStore();
+  const showDebugInfo = useLocalSetting('debugMode');
 
   return (
     <View>

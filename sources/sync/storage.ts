@@ -6,7 +6,8 @@ import { Message } from "./typesMessage";
 import { normalizeRawMessage } from "./typesRaw";
 import { isSessionActive, DISCONNECTED_TIMEOUT_MS } from '@/utils/sessionUtils';
 import { applySettings, Settings, settingsDefaults } from "./settings";
-import { loadSettings } from "./persistence";
+import { LocalSettings, localSettingsDefaults, applyLocalSettings } from "./localSettings";
+import { loadSettings, loadLocalSettings, saveLocalSettings } from "./persistence";
 import React from "react";
 import { sync } from "./sync";
 
@@ -25,6 +26,7 @@ export type SessionListItem = string | Session;
 interface StorageState {
     settings: Settings;
     settingsVersion: number | null;
+    localSettings: LocalSettings;
     sessions: Record<string, Session>;
     sessionsData: SessionListItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
@@ -34,14 +36,17 @@ interface StorageState {
     applyMessagesLoaded: (sessionId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
+    applyLocalSettings: (settings: Partial<LocalSettings>) => void;
     recalculateOnline: () => void;
 }
 
 export const storage = create<StorageState>()((set) => {
     let { settings, version } = loadSettings();
+    let localSettings = loadLocalSettings();
     return {
         settings,
         settingsVersion: version,
+        localSettings,
         sessions: {},
         sessionsData: null,
         sessionMessages: {},
@@ -305,6 +310,14 @@ export const storage = create<StorageState>()((set) => {
                 return state;
             }
         }),
+        applyLocalSettings: (delta: Partial<LocalSettings>) => set((state) => {
+            const updatedLocalSettings = applyLocalSettings(state.localSettings, delta);
+            saveLocalSettings(updatedLocalSettings);
+            return {
+                ...state,
+                localSettings: updatedLocalSettings
+            };
+        }),
     }
 });
 
@@ -349,4 +362,20 @@ export function useSettingMutable<K extends keyof Settings>(name: K): [Settings[
 
 export function useSetting<K extends keyof Settings>(name: K): Settings[K] {
     return storage(useShallow((state) => state.settings[name]));
+}
+
+export function useLocalSettings(): LocalSettings {
+    return storage(useShallow((state) => state.localSettings));
+}
+
+export function useLocalSettingMutable<K extends keyof LocalSettings>(name: K): [LocalSettings[K], (value: LocalSettings[K]) => void] {
+    const setValue = React.useCallback((value: LocalSettings[K]) => {
+        storage.getState().applyLocalSettings({ [name]: value });
+    }, [name]);
+    const value = useLocalSetting(name);
+    return [value, setValue];
+}
+
+export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSettings[K] {
+    return storage(useShallow((state) => state.localSettings[name]));
 }

@@ -7,10 +7,11 @@ import { ItemList } from '@/components/ItemList';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
+import { useLocalSettingMutable } from '@/sync/storage';
 
 export default function DevScreen() {
     const router = useRouter();
-    const [debugMode, setDebugMode] = React.useState(false);
+    const [debugMode, setDebugMode] = useLocalSettingMutable('debugMode');
     const [verboseLogging, setVerboseLogging] = React.useState(false);
 
     const handleClearCache = () => {

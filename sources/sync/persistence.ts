@@ -1,5 +1,6 @@
 import { MMKV } from 'react-native-mmkv';
 import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
+import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 
 const mmkv = new MMKV();
 
@@ -37,6 +38,24 @@ export function loadPendingSettings(): Partial<Settings> {
 
 export function savePendingSettings(settings: Partial<Settings>) {
     mmkv.set('pending-settings', JSON.stringify(settings));
+}
+
+export function loadLocalSettings(): LocalSettings {
+    const localSettings = mmkv.getString('local-settings');
+    if (localSettings) {
+        try {
+            const parsed = JSON.parse(localSettings);
+            return localSettingsParse(parsed);
+        } catch (e) {
+            console.error('Failed to parse local settings', e);
+            return { ...localSettingsDefaults };
+        }
+    }
+    return { ...localSettingsDefaults };
+}
+
+export function saveLocalSettings(settings: LocalSettings) {
+    mmkv.set('local-settings', JSON.stringify(settings));
 }
 
 export function clearPersistence() {
