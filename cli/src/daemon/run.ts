@@ -8,24 +8,28 @@ import { join } from 'path'
 import { homedir } from 'os'
 import { doAuth } from '@/ui/auth'
 import crypto from 'crypto'
-
-const DAEMON_PID_FILE = join(homedir(), '.happy', 'daemon-pid');
+import { spawn } from 'child_process'
+import { configuration } from '@/configuration'
 
 export async function startDaemon(): Promise<void> {
-    if (isDaemonRunning()) {
+    console.log('[DAEMON] Starting daemon process...');
+    
+    if (await isDaemonRunning()) {
         console.log('Happy daemon is already running');
         process.exit(0);
     }
 
+    // Write PID file to claim daemon ownership
+    console.log('[DAEMON] Writing PID file with PID:', process.pid);
+    writePidFile();
+    console.log('[DAEMON] PID file written successfully');
+
     logger.info('Happy CLI daemon started successfully');
 
-    // Write PID file
-    writePidFile();
-
     // Setup cleanup handlers
-    process.on('SIGINT', stopDaemon);
-    process.on('SIGTERM', stopDaemon);
-    process.on('exit', stopDaemon);
+    process.on('SIGINT', () => { stopDaemon().catch(console.error); });
+    process.on('SIGTERM', () => { stopDaemon().catch(console.error); });
+    process.on('exit', () => { stopDaemon().catch(console.error); });
 
     try {
         // Load or create machine identity
@@ -97,26 +101,46 @@ export async function startDaemon(): Promise<void> {
     }
 }
 
-export function isDaemonRunning(): boolean {
+export async function isDaemonRunning(): Promise<boolean> {
     try {
-        if (!existsSync(DAEMON_PID_FILE)) {
-            console.log('No PID file found');
-            return false;
+        console.log('[isDaemonRunning] Checking if daemon is running...');
+        
+        // First check PID file
+        if (existsSync(configuration.daemonPidFile)) {
+            console.log('[isDaemonRunning] PID file exists');
+            const pid = parseInt(readFileSync(configuration.daemonPidFile, 'utf-8'));
+            console.log('[isDaemonRunning] PID from file:', pid);
+            
+            // Check if process exists
+            try {
+                process.kill(pid, 0);
+                console.log('[isDaemonRunning] Process exists, checking if it\'s a happy daemon...');
+                // Verify it's actually a happy daemon process
+                const isHappyDaemon = await isProcessHappyDaemon(pid);
+                console.log('[isDaemonRunning] isHappyDaemon:', isHappyDaemon);
+                if (isHappyDaemon) {
+                    return true;
+                } else {
+                    // PID file points to wrong process, clean it up
+                    console.log('[isDaemonRunning] PID is not a happy daemon, cleaning up');
+                    logger.debug(`[DAEMON] PID ${pid} is not a happy daemon, cleaning up`);
+                    unlinkSync(configuration.daemonPidFile);
+                }
+            } catch (error) {
+                // Process not running, clean up stale PID file
+                console.log('[isDaemonRunning] Process not running, cleaning up stale PID file');
+                logger.debug('[DAEMON] Process not running, cleaning up stale PID file');
+                unlinkSync(configuration.daemonPidFile);
+            }
+        } else {
+            console.log('[isDaemonRunning] No PID file found');
         }
         
-        const pid = parseInt(readFileSync(DAEMON_PID_FILE, 'utf-8'));
         
-        // Just check if process exists, don't kill
-        try {
-            process.kill(pid, 0);
-            return true;
-        } catch (error) {
-            console.log('Process not running', error);
-            // Process not running, clean up stale PID file
-            unlinkSync(DAEMON_PID_FILE);
-            return false;
-        }
-    } catch {
+        return false;
+    } catch (error) {
+        console.log('[isDaemonRunning] Error:', error);
+        logger.debug('[DAEMON] Error checking daemon status', error);
         return false;
     }
 }
@@ -126,17 +150,64 @@ function writePidFile() {
     if (!existsSync(happyDir)) {
         mkdirSync(happyDir, { recursive: true });
     }
-    writeFileSync(DAEMON_PID_FILE, process.pid.toString());
+    
+    // Atomic write with exclusive flag to prevent race conditions
+    try {
+        writeFileSync(configuration.daemonPidFile, process.pid.toString(), { flag: 'wx' });
+    } catch (error: any) {
+        if (error.code === 'EEXIST') {
+            logger.debug('[DAEMON] PID file already exists, another daemon may be starting');
+            throw new Error('Daemon PID file already exists');
+        }
+        throw error;
+    }
 }
 
-export function stopDaemon() {
+export async function stopDaemon() {
     try {
-        if (existsSync(DAEMON_PID_FILE)) {
-            logger.debug('[DAEMON] Stopping daemon');
-            process.kill(parseInt(readFileSync(DAEMON_PID_FILE, 'utf-8')), 'SIGTERM');
-            unlinkSync(DAEMON_PID_FILE);
+        // Stop daemon from PID file
+        if (existsSync(configuration.daemonPidFile)) {
+            const pid = parseInt(readFileSync(configuration.daemonPidFile, 'utf-8'));
+            logger.debug(`[DAEMON] Stopping daemon with PID ${pid}`);
+            try {
+                process.kill(pid, 'SIGTERM');
+                // Give it time to shutdown gracefully
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Force kill if still running
+                try {
+                    process.kill(pid, 0);
+                    process.kill(pid, 'SIGKILL');
+                } catch {
+                    // Process already dead
+                }
+            } catch (error) {
+                logger.debug('[DAEMON] Process already dead or inaccessible', error);
+            }
+            unlinkSync(configuration.daemonPidFile);
         }
     } catch (error) {
-        logger.debug('[DAEMON] Error cleaning up PID file', error);
+        logger.debug('[DAEMON] Error stopping daemon', error);
     }
+}
+
+// Helper function to check if a PID belongs to a happy daemon
+async function isProcessHappyDaemon(pid: number): Promise<boolean> {
+    return new Promise((resolve) => {
+        const ps = spawn('ps', ['-p', pid.toString(), '-o', 'command=']);
+        let output = '';
+        
+        ps.stdout.on('data', (data) => {
+            output += data.toString();
+        });
+        
+        ps.on('close', () => {
+            const isHappyDaemon = output.includes('daemon start') && 
+                                 (output.includes('happy') || output.includes('src/index'));
+            resolve(isHappyDaemon);
+        });
+        
+        ps.on('error', () => {
+            resolve(false);
+        });
+    });
 }
