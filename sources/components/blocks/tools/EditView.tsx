@@ -1,15 +1,11 @@
 import * as React from 'react';
 import { Text, View, ScrollView, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { ToolCall } from '@/sync/typesMessage';
 import { ToolSectionView } from '../ToolSectionView';
-import { DiffView } from '@/components/files/DiffView';
+import { ToolViewProps } from './_all';
 
-interface EditViewProps {
-    tool: ToolCall;
-}
 
-export const EditView = React.memo<EditViewProps>(({ tool }) => {
+export const EditView = React.memo<ToolViewProps>(({ tool }) => {
     const { input, result, state } = tool;
     const formatPath = (path: string) => {
         const parts = path.split('/');

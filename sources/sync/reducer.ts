@@ -9,6 +9,10 @@ export type ToolCallTree = {
     arguments: any;
     result?: unknown; // Add result field to store tool result data
     parentId: string | null;
+    startedAt: number | null;
+    completedAt: number | null;
+    description: string | null;
+    createdAt: number;
     children: ToolCallTree[];
 }
 
@@ -107,7 +111,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                             parentId: null,
                             arguments: c.input,
                             result: null,
-                            children: []
+                            children: [],
+                            startedAt: null,
+                            completedAt: null,
+                            createdAt: msg.createdAt,
+                            description: c.description
                         }
                         state.toolCalls.set(c.id, newTool);
                         state.messages.set(mid, { role: 'agent', createdAt: msg.createdAt, text: '', tools: [newTool] });
@@ -140,7 +148,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                             parentId: c.parent_id,
                             arguments: c.input,
                             result: null,
-                            children: []
+                            children: [],
+                            startedAt: null,
+                            completedAt: null,
+                            description: c.description,
+                            createdAt: msg.createdAt
                         }
                         parentTool.children.push(newTool);
                         state.toolCalls.set(c.id, newTool);
@@ -168,6 +180,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                     }
                     existing.state = c.is_error ? 'error' : 'completed';
                     existing.result = c.content;
+                    existing.completedAt = msg.createdAt;
                     changed.add(existing.messageId);
                 }
             }
@@ -228,6 +241,10 @@ function normalizeToolCalls(toolCalls: ToolCallTree[]): ToolCall[] {
         input: t.arguments,
         state: t.state,
         result: t.result, // Include result field
+        createdAt: t.createdAt,
+        startedAt: t.startedAt,
+        completedAt: t.completedAt,
+        description: t.description,
         children: normalizeToolCalls(t.children)
     }));
 }

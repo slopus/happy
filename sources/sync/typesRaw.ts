@@ -74,6 +74,7 @@ type NormalizedAgentContent =
         id: string;
         name: string;
         input: any;
+        description: string | null;
         parent_id: string | null;
     } | {
         type: 'tool-result'
@@ -130,7 +131,11 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     if (c.type === 'text') {
                         content.push({ type: 'text', text: c.text });
                     } else if (c.type === 'tool_use') {
-                        content.push({ type: 'tool-call', id: c.id, name: c.name, input: c.input, parent_id: parentToolId });
+                        let description: string | null = null;
+                        if (typeof c.input === 'object' && c.input !== null && 'description' in c.input && typeof c.input.description === 'string') {
+                            description = c.input.description;
+                        }
+                        content.push({ type: 'tool-call', id: c.id, name: c.name, input: c.input, description, parent_id: parentToolId });
                     }
                 }
                 return {
@@ -142,10 +147,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 };
             } else if (raw.content.data.type === 'user') {
                 let content: NormalizedAgentContent[] = [];
-                const parentToolId = raw.content.data.parent_tool_use_id || null;
                 for (let c of raw.content.data.message.content) {
                     if (c.type === 'tool_result') {
-
                         content.push({ type: 'tool-result', tool_use_id: c.tool_use_id, content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text), is_error: c.is_error || false });
                     }
                 }

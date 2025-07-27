@@ -122,7 +122,7 @@ function ToolCallBlock(props: {
   return (
     <View style={{ marginHorizontal: 8 }}>
       {props.message.tools.map((tool: ToolCall, index: number) => (
-        <ToolView tool={tool} />
+        <ToolView tool={tool} metadata={props.metadata} />
         // <CompactToolBlock
         //   key={index}
         //   tool={tool}

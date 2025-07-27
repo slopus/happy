@@ -9,6 +9,7 @@ import { useSettingMutable } from '@/sync/storage';
 
 export default function AppearanceSettingsScreen() {
     const [viewInline, setViewInline] = useSettingMutable('viewInline');
+    const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
     return (
         <ItemList style={{ paddingTop: 0 }}>
 
@@ -54,6 +55,19 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={viewInline}
                             onValueChange={setViewInline}
+                            trackColor={{ false: '#767577', true: '#34C759' }}
+                            thumbColor="#fff"
+                        />
+                    }
+                />
+                <Item
+                    title="Expand Todo Lists"
+                    subtitle="Show all todos instead of just changes"
+                    icon={<Ionicons name="checkmark-done-outline" size={29} color="#5856D6" />}
+                    rightElement={
+                        <Switch
+                            value={expandTodos}
+                            onValueChange={setExpandTodos}
                             trackColor={{ false: '#767577', true: '#34C759' }}
                             thumbColor="#fff"
                         />

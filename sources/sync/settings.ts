@@ -7,6 +7,7 @@ import * as z from 'zod';
 export const SettingsSchema = z.object({
     viewInline: z.boolean().describe('Whether to view inline tool calls'),
     inferenceOpenAIKey: z.string().nullish().describe('OpenAI API key for inference'),
+    expandTodos: z.boolean().describe('Whether to expand todo lists'),
 });
 
 //
@@ -30,7 +31,8 @@ export type Settings = z.infer<typeof SettingsSchema>;
 
 export const settingsDefaults: Settings = {
     viewInline: false,
-    inferenceOpenAIKey: null
+    inferenceOpenAIKey: null,
+    expandTodos: false
 };
 Object.freeze(settingsDefaults);
 

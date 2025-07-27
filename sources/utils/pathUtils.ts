@@ -18,6 +18,9 @@ export function resolvePath(path: string, metadata: Metadata | null): string {
         if (out.startsWith('/')) {
             out = out.slice(1);
         }
+        if (out === '') {
+            return '<root>';
+        }
         return out;
     }
     return path;
