@@ -133,7 +133,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
 
     // Fixed width for line numbers - just enough for 3 digits
     const lineNumberWidth = 25;
-    
+
     // Scroll past line numbers when not wrapping and showing line numbers
     useEffect(() => {
         if (!wrapLines && showLineNumbers) {
@@ -170,15 +170,15 @@ export const DiffView: React.FC<DiffViewProps> = ({
         // Just trim trailing spaces, we'll handle leading spaces in rendering
         return content.trimEnd();
     };
-    
+
     // Helper function to render line with styled leading space dots and inline highlighting
     const renderLineContent = (content: string, textStyle: any, tokens?: DiffToken[]) => {
         const formatted = formatLineContent(content);
-        
+
         if (tokens && tokens.length > 0) {
             // Render with inline highlighting
             let processedLeadingSpaces = false;
-            
+
             return (
                 <View style={{ flexDirection: 'row', flex: 1 }}>
                     <Text style={[textStyle, { transform: [{ scaleX: fontScaleX }] }]}>
@@ -190,12 +190,12 @@ export const DiffView: React.FC<DiffViewProps> = ({
                                     processedLeadingSpaces = true;
                                     const leadingDots = '\u00b7'.repeat(leadingMatch[0].length);
                                     const restOfToken = token.value.slice(leadingMatch[0].length);
-                                    
+
                                     if (token.added || token.removed) {
                                         return (
                                             <Text key={idx}>
                                                 <Text style={{ color: colors.leadingSpaceDot }}>{leadingDots}</Text>
-                                                <Text style={{ 
+                                                <Text style={{
                                                     backgroundColor: token.added ? colors.inlineAddedBg : colors.inlineRemovedBg,
                                                     color: token.added ? colors.inlineAddedText : colors.inlineRemovedText,
                                                 }}>
@@ -213,12 +213,12 @@ export const DiffView: React.FC<DiffViewProps> = ({
                                 }
                                 processedLeadingSpaces = true;
                             }
-                            
+
                             if (token.added || token.removed) {
                                 return (
-                                    <Text 
-                                        key={idx} 
-                                        style={{ 
+                                    <Text
+                                        key={idx}
+                                        style={{
                                             backgroundColor: token.added ? colors.inlineAddedBg : colors.inlineRemovedBg,
                                             color: token.added ? colors.inlineAddedText : colors.inlineRemovedText,
                                         }}
@@ -233,12 +233,12 @@ export const DiffView: React.FC<DiffViewProps> = ({
                 </View>
             );
         }
-        
+
         // Regular rendering without tokens
         const leadingSpaces = formatted.match(/^( +)/);
         const leadingDots = leadingSpaces ? '\u00b7'.repeat(leadingSpaces[0].length) : '';
         const mainContent = leadingSpaces ? formatted.slice(leadingSpaces[0].length) : formatted;
-        
+
         return (
             <View style={{ flexDirection: 'row', flex: 1 }}>
                 <Text style={[textStyle, { transform: [{ scaleX: fontScaleX }] }]}>
@@ -251,7 +251,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
 
     // Render content
     const content = (
-            <View>
+        <View>
             {hunks.map((hunk, hunkIndex) => (
                 <View key={hunkIndex}>
                     {hunkIndex > 0 && (
@@ -303,9 +303,9 @@ export const DiffView: React.FC<DiffViewProps> = ({
                             <View key={`${hunkIndex}-${lineIndex}`} style={lineStyle}>
                                 {showLineNumbers && (
                                     <Text style={[lineNumberStyle, { transform: [{ scaleX: fontScaleX }] }]}>
-                                        {line.type === 'remove' ? line.oldLineNumber : 
-                                         line.type === 'add' ? line.newLineNumber : 
-                                         line.oldLineNumber}
+                                        {line.type === 'remove' ? line.oldLineNumber :
+                                            line.type === 'add' ? line.newLineNumber :
+                                                line.oldLineNumber}
                                     </Text>
                                 )}
 
@@ -322,8 +322,8 @@ export const DiffView: React.FC<DiffViewProps> = ({
                                 </Text>
 
                                 {renderLineContent(line.content, [
-                                    lineContentStyle, 
-                                    { 
+                                    lineContentStyle,
+                                    {
                                         color: textColor,
                                         paddingRight: 20
                                     },
@@ -334,62 +334,59 @@ export const DiffView: React.FC<DiffViewProps> = ({
                     })}
                 </View>
             ))}
-            </View>
-        );
-
-        return (
-            <ScrollView 
-                style={{ flex: 1 }} 
-                nestedScrollEnabled 
-                showsVerticalScrollIndicator={true}
-            >
-                <ScrollView
-                    ref={scrollRef}
-                    horizontal={!wrapLines}
-                    showsHorizontalScrollIndicator={!wrapLines}
-                    contentContainerStyle={{ flexGrow: 1 }}
-                >
-                    {content}
-                </ScrollView>
-            </ScrollView>
-        );
+        </View>
+    );
 
     return (
         <View style={containerStyle} className={className}>
-            {/* Header */}
-            <View style={headerStyle}>
-                <Text style={titleStyle}>
-                    {`${oldTitle} → ${newTitle}`}
-                </Text>
-
-                {showDiffStats && (
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                        <Text style={[statsStyle, { color: colors.success }]}>
-                            +{stats.additions}
-                        </Text>
-                        <Text style={[statsStyle, { color: colors.error }]}>
-                            -{stats.deletions}
-                        </Text>
-                    </View>
-                )}
-            </View>
-
-            {/* Diff content */}
-            <ScrollView 
-                style={{ flex: 1 }} 
-                nestedScrollEnabled 
-                showsVerticalScrollIndicator={true}
+            <ScrollView
+                ref={scrollRef}
+                horizontal={!wrapLines}
+                showsHorizontalScrollIndicator={!wrapLines}
+                alwaysBounceHorizontal={false}
+                contentContainerStyle={{ flexGrow: 1 }}
             >
-                <ScrollView
-                    ref={scrollRef}
-                    horizontal={!wrapLines}
-                    showsHorizontalScrollIndicator={!wrapLines}
-                    contentContainerStyle={{ flexGrow: 1 }}
-                >
-                    {content}
-                </ScrollView>
+                {content}
             </ScrollView>
         </View>
     );
+
+    // return (
+    //     <View style={containerStyle} className={className}>
+    //         {/* Header */}
+    //         <View style={headerStyle}>
+    //             <Text style={titleStyle}>
+    //                 {`${oldTitle} → ${newTitle}`}
+    //             </Text>
+
+    //             {showDiffStats && (
+    //                 <View style={{ flexDirection: 'row', gap: 8 }}>
+    //                     <Text style={[statsStyle, { color: colors.success }]}>
+    //                         +{stats.additions}
+    //                     </Text>
+    //                     <Text style={[statsStyle, { color: colors.error }]}>
+    //                         -{stats.deletions}
+    //                     </Text>
+    //                 </View>
+    //             )}
+    //         </View>
+
+    //         {/* Diff content */}
+    //         <ScrollView
+    //             style={{ flex: 1 }}
+    //             nestedScrollEnabled
+    //             showsVerticalScrollIndicator={true}
+    //         >
+    //             <ScrollView
+    //                 ref={scrollRef}
+    //                 horizontal={!wrapLines}
+    //                 showsHorizontalScrollIndicator={!wrapLines}
+    //                 contentContainerStyle={{ flexGrow: 1 }}
+    //             >
+    //                 {content}
+    //             </ScrollView>
+    //         </ScrollView>
+    //     </View>
+    // );
 };
 

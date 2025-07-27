@@ -4325,7 +4325,7 @@ image-size@^1.0.2:
   dependencies:
     queue "6.0.2"
 
-immer@^10.0.3:
+immer@>=10.0.0, immer@^10.0.3:
   version "10.1.1"
   resolved "https://registry.yarnpkg.com/immer/-/immer-10.1.1.tgz#206f344ea372d8ea176891545ee53ccc062db7bc"
   integrity sha512-s2MPrmjovJcoMaHtx6K11Ra7oD05NT97w1IC5zpMkT6Atjr7H8LjaDd81iIxUYpMKSRRNMJE703M1Fhr/TctHw==
@@ -6018,6 +6018,13 @@ react-native-safe-area-context@5.4.0:
   version "5.4.0"
   resolved "https://registry.npmjs.org/react-native-safe-area-context/-/react-native-safe-area-context-5.4.0.tgz"
   integrity sha512-JaEThVyJcLhA+vU0NU8bZ0a1ih6GiF4faZ+ArZLqpYbL6j7R3caRqj+mE3lEtKCuHgwjLg3bCxLL1GPUJZVqUA==
+
+react-native-screen-transitions@^1.2.0:
+  version "1.2.0"
+  resolved "https://registry.yarnpkg.com/react-native-screen-transitions/-/react-native-screen-transitions-1.2.0.tgz#d68a62fa1b9f7f2a23750b3ae31f2b88b412583f"
+  integrity sha512-7RkuKri2niUTKk7fJjaQEvesp1bJO4jDxRQkEpjfD3Gy0QlCMSt3UETonYa4VGiPLOCp8/d8/5p5frCMQr1s8Q==
+  dependencies:
+    immer ">=10.0.0"
 
 react-native-screens@~4.11.1:
   version "4.11.1"

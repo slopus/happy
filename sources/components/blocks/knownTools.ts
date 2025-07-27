@@ -160,7 +160,7 @@ export const knownTools = {
         }
     },
     'MultiEdit': {
-        title: 'Multi Edit',
+        title: 'Edit File',
         icon: 'document-text',
         input: z.object({
             file_path: z.string().describe('The absolute path to the file to modify'),
@@ -170,10 +170,12 @@ export const knownTools = {
                 replace_all: z.boolean().optional().default(false).describe('Replace all occurrences')
             })).describe('Array of edit operations')
         }).partial().loose(),
-        // extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-        //     const input = tool.input as any;
-        //     return input?.file_path || null;
-        // }
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.file_path === 'string') {
+                return resolvePath(opts.tool.input.file_path, opts.metadata);
+            }
+            return null;
+        }
     },
     'Write': {
         title: 'Write File',
