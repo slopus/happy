@@ -36,11 +36,11 @@ export const UpdateSessionBodySchema = z.object({
   sid: z.string(),
   metadata: z.object({
     version: z.number(),
-    metadata: z.string()
+    value: z.string()
   }).nullish(),
   agentState: z.object({
     version: z.number(),
-    agentState: z.string()
+    value: z.string()
   }).nullish()
 })
 

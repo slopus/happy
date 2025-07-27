@@ -14,7 +14,7 @@ export class ApiSessionClient extends EventEmitter {
     private readonly token: string;
     private readonly secret: Uint8Array;
     private readonly sessionId: string;
-    private metadata: Metadata;
+    private metadata: Metadata | null;
     private metadataVersion: number;
     private agentState: AgentState | null;
     private agentStateVersion: number;
@@ -124,11 +124,11 @@ export class ApiSessionClient extends EventEmitter {
                 }
             } else if (data.body.t === 'update-session') {
                 if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
-                    this.metadata = decrypt(decodeBase64(data.body.metadata.metadata), this.secret);
+                    this.metadata = decrypt(decodeBase64(data.body.metadata.value), this.secret);
                     this.metadataVersion = data.body.metadata.version;
                 }
                 if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
-                    this.agentState = data.body.agentState.agentState ? decrypt(decodeBase64(data.body.agentState.agentState), this.secret) : null;
+                    this.agentState = data.body.agentState.value ? decrypt(decodeBase64(data.body.agentState.value), this.secret) : null;
                     this.agentStateVersion = data.body.agentState.version;
                 }
             }
@@ -264,7 +264,7 @@ export class ApiSessionClient extends EventEmitter {
      */
     updateMetadata(handler: (metadata: Metadata) => Metadata) {
         backoff(async () => {
-            let updated = handler(this.metadata);
+            let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
             const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(updated, this.secret)) });
             if (answer.result === 'success') {
                 this.metadata = decrypt(decodeBase64(answer.metadata), this.secret);
