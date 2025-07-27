@@ -28,7 +28,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Create a new session
     let state: AgentState = {};
-    let metadata: Metadata = { path: workingDirectory, host: os.hostname(), version: packageJson.version };
+    let metadata: Metadata = { path: workingDirectory, host: os.hostname(), version: packageJson.version, os: os.platform() };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);
 

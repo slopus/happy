@@ -109,7 +109,7 @@ export interface ClientToServerEvents {
     result?: string
     error?: string
   }) => void) => void
-  'usage-report': (data: { 
+  'usage-report': (data: {
     key: string
     sessionId: string
     tokens: {
@@ -202,19 +202,11 @@ export type Metadata = {
   host: string,
   version?: string,
   name?: string,
+  os?: string,
   summary?: {
     text: string,
     updatedAt: number
-  },
-  usage?: {
-    [model: string]: {
-      input?: number,
-      input_cache?: number,
-      output?: number,
-      output_reasoning?: number,
-      usd?: number
-    }
-  },
+  }
 };
 
 export type AgentState = {
