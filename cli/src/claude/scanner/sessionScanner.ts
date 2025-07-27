@@ -86,7 +86,7 @@ export function createSessionScanner(opts: {
                     logger.debug(`[SESSION_SCANNER] Message key (new): ${key}`)
 
                     // Check if this is a user message that should be deduplicated
-                    if (parsed.data.type === 'user' && typeof parsed.data.message.content === 'string' && !parsed.data.isSidechain && !parsed.data.isMeta) {
+                    if (parsed.data.type === 'user' && typeof parsed.data.message.content === 'string' && parsed.data.isSidechain !== true && parsed.data.isMeta !== true) {
                         const currentCounter = seenRemoteUserMessageCounters.get(parsed.data.message.content);
                         if (currentCounter && currentCounter > 0) {
                             // We have already seen this message from the remote session

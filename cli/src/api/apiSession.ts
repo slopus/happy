@@ -161,7 +161,7 @@ export class ApiSessionClient extends EventEmitter {
         let content: MessageContent;
         
         // Check if body is already a MessageContent (has role property)
-        if (body.type === 'user' && typeof body.message.content === 'string') {
+        if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
             content = {
                 role: 'user',
                 content: {
