@@ -7,6 +7,7 @@ import { WriteView } from './WriteView';
 import { TodoView } from './TodoView';
 import { ExitPlanToolView } from './ExitPlanToolView';
 import { MultiEditView } from './MultiEditView';
+import { TaskView } from './TaskView';
 
 export type ToolViewProps = {
     tool: ToolCall;
@@ -23,7 +24,8 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     Write: WriteView,
     TodoWrite: TodoView,
     ExitPlanMode: ExitPlanToolView,
-    MultiEdit: MultiEditView
+    MultiEdit: MultiEditView,
+    Task: TaskView
 };
 
 // Helper function to get the appropriate view component for a tool
@@ -36,3 +38,4 @@ export { EditView } from './EditView';
 export { BashView } from './BashView';
 export { ExitPlanToolView } from './ExitPlanToolView';
 export { MultiEditView } from './MultiEditView';
+export { TaskView } from './TaskView';
