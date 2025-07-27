@@ -104,33 +104,47 @@ export class ApiSessionClient extends EventEmitter {
 
         // Server events
         this.socket.on('update', (data: Update) => {
-            if (data.body.t === 'new-message' && data.body.message.content.t === 'encrypted') {
-                const body = decrypt(decodeBase64(data.body.message.content.c), this.secret);
+            try {
+                logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', data);
 
-                logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
+                if (!data.body) {
+                    logger.debug('[SOCKET] [UPDATE] [ERROR] No body in update!');
+                    return;
+                }
+                
+                if (data.body.t === 'new-message' && data.body.message.content.t === 'encrypted') {
+                    const body = decrypt(decodeBase64(data.body.message.content.c), this.secret);
 
-                // Try to parse as user message first
-                const userResult = UserMessageSchema.safeParse(body);
-                if (userResult.success) {
-                    // Server already filtered to only our session
-                    if (this.pendingMessageCallback) {
-                        this.pendingMessageCallback(userResult.data);
+                    logger.debugLargeJson('[SOCKET] [UPDATE] Received update:', body)
+
+                    // Try to parse as user message first
+                    const userResult = UserMessageSchema.safeParse(body);
+                    if (userResult.success) {
+                        // Server already filtered to only our session
+                        if (this.pendingMessageCallback) {
+                            this.pendingMessageCallback(userResult.data);
+                        } else {
+                            this.pendingMessages.push(userResult.data);
+                        }
                     } else {
-                        this.pendingMessages.push(userResult.data);
+                        // If not a user message, it might be a permission response or other message type
+                        this.emit('message', body);
+                    }
+                } else if (data.body.t === 'update-session') {
+                    if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
+                        this.metadata = decrypt(decodeBase64(data.body.metadata.value), this.secret);
+                        this.metadataVersion = data.body.metadata.version;
+                    }
+                    if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
+                        this.agentState = data.body.agentState.value ? decrypt(decodeBase64(data.body.agentState.value), this.secret) : null;
+                        this.agentStateVersion = data.body.agentState.version;
                     }
                 } else {
                     // If not a user message, it might be a permission response or other message type
-                    this.emit('message', body);
+                    this.emit('message', data.body);
                 }
-            } else if (data.body.t === 'update-session') {
-                if (data.body.metadata && data.body.metadata.version > this.metadataVersion) {
-                    this.metadata = decrypt(decodeBase64(data.body.metadata.value), this.secret);
-                    this.metadataVersion = data.body.metadata.version;
-                }
-                if (data.body.agentState && data.body.agentState.version > this.agentStateVersion) {
-                    this.agentState = data.body.agentState.value ? decrypt(decodeBase64(data.body.agentState.value), this.secret) : null;
-                    this.agentStateVersion = data.body.agentState.version;
-                }
+            } catch (error) {
+                logger.debug('[SOCKET] [UPDATE] [ERROR] Error handling update', { error });
             }
         });
 
