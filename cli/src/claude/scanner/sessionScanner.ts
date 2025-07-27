@@ -70,7 +70,7 @@ export function createSessionScanner(opts: {
                 try {
                     let message = JSON.parse(l);
                     let parsed = RawJSONLinesSchema.safeParse(message);
-                    if (!parsed.success) {
+                    if (!parsed.success) { // We can't deduplicate this message so we have to skip it
                         logger.debugLargeJson(`[SESSION_SCANNER] Failed to parse message`, message)
                         continue;
                     }
@@ -97,7 +97,7 @@ export function createSessionScanner(opts: {
                     }
 
                     // Notify
-                    opts.onMessage(parsed.data);
+                    opts.onMessage(message); // Send original message to the server
                 } catch (e) {
                     continue;
                 }
