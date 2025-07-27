@@ -2,7 +2,11 @@ export type ToolCall = {
     name: string;
     state: 'running' | 'completed' | 'error';
     input: any;
-    result?: unknown;
+    createdAt: number;
+    startedAt: number | null;
+    completedAt: number | null;
+    description: string | null;
+    result?: any;
     children: ToolCall[];
 }
 

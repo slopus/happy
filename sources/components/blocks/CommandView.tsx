@@ -4,25 +4,21 @@ import { Text, View, StyleSheet, Platform, ScrollView } from 'react-native';
 interface CommandViewProps {
     command: string;
     prompt?: string;
+    output?: string | null;
 }
 
-export const CommandView = React.memo<CommandViewProps>(({ 
-    command, 
-    prompt = '$' 
+export const CommandView = React.memo<CommandViewProps>(({
+    command,
+    prompt = '$',
+    output,
 }) => {
     return (
         <View style={styles.container}>
-            <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                style={styles.scrollView}
-                contentContainerStyle={styles.scrollContent}
-            >
-                <Text style={styles.commandText}>
-                    <Text style={styles.promptText}>{prompt} </Text>
-                    {command}
-                </Text>
-            </ScrollView>
+            <Text style={styles.commandText}>
+                <Text style={styles.promptText}>{prompt} </Text>
+                {command}
+                {output && ('\n---\n' + output)}
+            </Text>
         </View>
     );
 });
@@ -32,6 +28,8 @@ const styles = StyleSheet.create({
         backgroundColor: '#1E1E1E',
         borderRadius: 6,
         overflow: 'hidden',
+        paddingHorizontal: 10,
+        paddingVertical: 10,
     },
     scrollView: {
         maxHeight: 40,

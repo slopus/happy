@@ -1,20 +1,25 @@
 import * as React from 'react';
-import { ReadView } from './ReadView';
 import { EditView } from './EditView';
 import { BashView } from './BashView';
 import { ToolCall } from '@/sync/typesMessage';
+import { Metadata } from '@/sync/storageTypes';
+import { WriteView } from './WriteView';
+import { TodoView } from './TodoView';
+
+export type ToolViewProps = {
+    tool: ToolCall;
+    metadata: Metadata | null;
+}
 
 // Type for tool view components
-export type ToolViewComponent = React.ComponentType<{
-    tool: ToolCall
-}>;
+export type ToolViewComponent = React.ComponentType<ToolViewProps>;
 
 // Registry of tool-specific view components
 export const toolViewRegistry: Record<string, ToolViewComponent> = {
-    Read: ReadView,
     Edit: EditView,
     Bash: BashView,
-    // Add more tool views here as they are created
+    Write: WriteView,
+    TodoWrite: TodoView
 };
 
 // Helper function to get the appropriate view component for a tool
@@ -23,6 +28,5 @@ export function getToolViewComponent(toolName: string): ToolViewComponent | null
 }
 
 // Export individual components
-export { ReadView } from './ReadView';
 export { EditView } from './EditView';
 export { BashView } from './BashView';

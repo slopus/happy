@@ -1,13 +1,17 @@
 import * as React from 'react';
-import { Text, View, StyleSheet, TouchableOpacity } from 'react-native';
+import { Text, View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getToolViewComponent } from './tools/_all';
 import { ToolCall } from '@/sync/typesMessage';
 import { CodeView } from './CodeView';
 import { ToolSectionView } from './ToolSectionView';
-import { ShimmerView } from '../ShimmerView';
+import { useElapsedTime } from '@/hooks/useElapsedTime';
+import { ToolError } from './ToolError';
+import { knownTools } from '@/components/blocks/knownTools';
+import { Metadata } from '@/sync/storageTypes';
 
 interface ToolViewProps {
+    metadata: Metadata | null;
     tool: ToolCall;
     onPress?: () => void;
 }
@@ -16,80 +20,126 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress } = props;
 
     const getStatusIcon = () => {
-        switch (tool.state) {
-            case 'running':
-                // return <ActivityIndicator size="small" color="#007AFF" />;
-                return null;
-            case 'completed':
-                return <Ionicons name="checkmark-circle" size={20} color="#34C759" />;
-            case 'error':
-                return <Ionicons name="close-circle" size={20} color="#FF3B30" />;
-        }
+
     };
 
-    const getToolIcon = () => {
-        // Map tool names to appropriate icons
-        const iconMap: Record<string, string> = {
-            'Read': 'document-text',
-            'Write': 'create',
-            'Edit': 'pencil',
-            'Search': 'search',
-            'Bash': 'terminal',
-            'MultiEdit': 'duplicate',
-            'Grep': 'filter',
-            'Glob': 'folder-open',
-            'LS': 'list',
-            'Task': 'rocket',
-        };
+    // const getToolIcon = () => {
+    //     // Map tool names to appropriate icons
+    //     const iconMap: Record<string, string> = {
+    //         'Read': 'document-text',
+    //         'Write': 'document-text',
+    //         'Edit': 'document-text',
+    //         'Search': 'search',
+    //         'Bash': 'terminal',
+    //         'MultiEdit': 'duplicate',
+    //         'Grep': 'filter',
+    //         'Glob': 'folder-open',
+    //         'LS': 'list',
+    //         'Task': 'rocket',
+    //     };
 
-        const iconName = iconMap[tool.name] || 'construct';
-        return <Ionicons name={iconName as any} size={20} color="#5856D6" />;
-    };
+    //     const iconName = iconMap[tool.name] || 'construct';
+    //     return <Ionicons name={iconName as any} size={20} color="#5856D6" />;
+    // };
 
     const Container = onPress ? TouchableOpacity : View;
     const containerProps = onPress ? { onPress, activeOpacity: 0.8 } : {};
+    const toolTitle = tool.name in knownTools ? knownTools[tool.name as keyof typeof knownTools].title : tool.name;
+    let description = tool.description;
+    let status: string | null = null;
+    let minimal = false;
+    let icon = 'construct';
+    let noStatus = false;
+
+    let knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
+    if (knownTool && typeof knownTool.extractSubtitle === 'function') {
+        const subtitle = knownTool.extractSubtitle({ tool, metadata: props.metadata });
+        if (typeof subtitle === 'string' && subtitle) {
+            description = subtitle;
+        }
+    }
+    if (knownTool && typeof knownTool.extractStatus === 'function') {
+        const state = knownTool.extractStatus({ tool, metadata: props.metadata });
+        if (typeof state === 'string' && state) {
+            status = state;
+        }
+    }
+    if (knownTool && typeof knownTool.minimal === 'boolean') {
+        minimal = knownTool.minimal;
+    }
+    if (knownTool && typeof knownTool.icon === 'string') {
+        icon = knownTool.icon;
+    }
+    if (knownTool && typeof knownTool.noStatus === 'boolean') {
+        noStatus = knownTool.noStatus;
+    }
+
+    let statusIcon = null;
+    switch (tool.state) {
+        case 'running':
+            if (!noStatus) {
+                statusIcon = <ActivityIndicator size="small" color="black" style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }} />;
+            }
+            break;
+        case 'completed':
+            if (!noStatus) {
+                statusIcon = <Ionicons name="checkmark-circle" size={20} color="#34C759" />;
+            }
+            break;
+        case 'error':
+            statusIcon = <Ionicons name="close-circle" size={20} color="#FF3B30" />;
+            break;
+    }
 
     return (
         <Container style={styles.container} {...containerProps}>
             <View style={styles.header}>
                 <View style={styles.headerLeft}>
-                    {getToolIcon()}
+                    <Ionicons name={icon as any} size={20} color="#5856D6" />
                     <View style={styles.titleContainer}>
-                        {tool.state === 'running'
-                            ? <ShimmerView><Text style={styles.toolName}>{tool.name}</Text></ShimmerView>
-                            : <Text style={styles.toolName}>{tool.name}</Text>
-                        }
-                        {tool.input?.description && (
+                        <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
+                        {description && (
                             <Text style={styles.toolDescription} numberOfLines={1}>
-                                {tool.input.description}
+                                {description}
                             </Text>
                         )}
                     </View>
-                    {getStatusIcon()}
+                    {tool.state === 'running' && (
+                        <View style={styles.elapsedContainer}>
+                            <ElapsedView from={tool.createdAt} />
+                        </View>
+                    )}
+                    {statusIcon}
                 </View>
             </View>
 
             {/* Content area - either custom children or tool-specific view */}
             {(() => {
-                // Show error state if present
-                if (tool.state === 'error' && tool.result) {
-                    return (
-                        <View style={styles.content}>
-                            <View style={styles.errorContainer}>
-                                <Text style={styles.errorText}>{String(tool.result)}</Text>
-                            </View>
-                        </View>
-                    );
-                }
 
                 // Try to use a specific tool view component first
                 const SpecificToolView = getToolViewComponent(tool.name);
                 if (SpecificToolView) {
                     return (
                         <View style={styles.content}>
-                            <SpecificToolView tool={tool} />
+                            <SpecificToolView tool={tool} metadata={props.metadata} />
+                            {tool.state === 'error' && tool.result && (
+                                <ToolError message={String(tool.result)} />
+                            )}
                         </View>
                     );
+                }
+
+                // Show error state if present
+                if (tool.state === 'error' && tool.result) {
+                    return (
+                        <View style={styles.content}>
+                            <ToolError message={String(tool.result)} />
+                        </View>
+                    );
+                }
+
+                if (minimal) {
+                    return null;
                 }
 
                 // Fall back to default view
@@ -116,6 +166,12 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     );
 });
 
+function ElapsedView(props: { from: number }) {
+    const { from } = props;
+    const elapsed = useElapsedTime(from);
+    return <Text style={styles.elapsedText}>{elapsed.toFixed(1)}s</Text>;
+}
+
 const styles = StyleSheet.create({
     container: {
         backgroundColor: '#F8F8F8',
@@ -139,10 +195,23 @@ const styles = StyleSheet.create({
     titleContainer: {
         flex: 1,
     },
+    elapsedContainer: {
+        marginLeft: 8,
+    },
+    elapsedText: {
+        fontSize: 13,
+        color: '#666',
+        fontFamily: 'monospace',
+    },
     toolName: {
         fontSize: 15,
         fontWeight: '600',
         color: '#000',
+    },
+    status: {
+        fontWeight: '400',
+        opacity: 0.3,
+        fontSize: 15,
     },
     toolDescription: {
         fontSize: 13,
@@ -150,22 +219,7 @@ const styles = StyleSheet.create({
         marginTop: 2,
     },
     content: {
-        padding: 12,
+        paddingHorizontal: 12,
         paddingTop: 8,
-    },
-    errorContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 8,
-        backgroundColor: '#FFF0F0',
-        borderRadius: 6,
-        padding: 12,
-        borderWidth: 1,
-        borderColor: '#FF3B30',
-    },
-    errorText: {
-        fontSize: 13,
-        color: '#FF3B30',
-        flex: 1,
     },
 });
