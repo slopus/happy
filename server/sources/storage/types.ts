@@ -46,11 +46,11 @@ declare global {
             t: 'update-session'
             id: string;
             metadata?: {
-                value: string;
+                value: string | null;
                 version: number;
             } | null | undefined
             agentState?: {
-                value: string;
+                value: string | null;
                 version: number;
             } | null | undefined
         } | {
