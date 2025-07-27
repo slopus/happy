@@ -11,7 +11,6 @@ import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages, useSettings } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import LottieView from 'lottie-react-native';
-import { ConfigurationModal } from '@/components/ConfigurationModal';
 import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
 import { RoundButton } from '@/components/RoundButton';
@@ -50,7 +49,6 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const realtimeSessionRef = React.useRef<Awaited<ReturnType<typeof createRealtimeSession>> | null>(null);
     const isCreatingSessionRef = React.useRef(false);
 
-    const [showConfigModal, setShowConfigModal] = useState(false);
     const sessionStatus = getSessionState(session);
     const online = sessionStatus.isConnected;
     const lastSeenText = sessionStatus.isConnected ? 'Active now' : formatLastSeen(session.activeAt);
@@ -317,10 +315,6 @@ ${conversationContext}`;
                     }
                 />
             </KeyboardAvoidingView>
-            <ConfigurationModal
-                visible={showConfigModal}
-                onClose={() => setShowConfigModal(false)}
-            />
         </>
     )
 }
