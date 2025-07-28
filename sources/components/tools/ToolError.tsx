@@ -18,7 +18,8 @@ const styles = StyleSheet.create({
         padding: 12,
         borderWidth: 1,
         borderColor: '#FF3B30',
-        marginBottom: 12
+        marginBottom: 12,
+        maxHeight: 115,
     },
     errorText: {
         fontSize: 13,

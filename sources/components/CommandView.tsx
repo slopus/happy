@@ -9,6 +9,7 @@ interface CommandViewProps {
     error?: string | null;
     // Legacy prop for backward compatibility
     output?: string | null;
+    maxHeight?: number;
 }
 
 export const CommandView = React.memo<CommandViewProps>(({
@@ -18,12 +19,13 @@ export const CommandView = React.memo<CommandViewProps>(({
     stderr,
     error,
     output,
+    maxHeight,
 }) => {
     // Use legacy output if new props aren't provided
     const hasNewProps = stdout !== undefined || stderr !== undefined || error !== undefined;
     
     return (
-        <View style={styles.container}>
+        <View style={[styles.container, maxHeight ? { maxHeight } : undefined]}>
             {/* Command Line */}
             <View style={styles.line}>
                 <Text style={styles.promptText}>{prompt} </Text>
