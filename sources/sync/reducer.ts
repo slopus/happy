@@ -264,9 +264,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
         // Update the sidechain in state
         state.sidechains.set(msg.sidechainId, existingSidechain);
 
-        // Invalidate task message
+        // Update
         if (state.messageIds.has(msg.sidechainId)) {
-            changed.add(msg.sidechainId);
+            changed.add(state.messageIds.get(msg.sidechainId)!);
         }
     }
 
@@ -328,7 +328,7 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             localId: null,
             createdAt: reducerMsg.createdAt,
             kind: 'tool-call',
-            tool: reducerMsg.tool,
+            tool: { ...reducerMsg.tool },
             children: childMessages
         };
     }

@@ -1,0 +1,182 @@
+[
+    {
+        "id": "cmdmg1zqt079z1s1420vm4myd",
+        "seq": 1,
+        "localId": null,
+        "content": {
+            "role": "user",
+            "content": {
+                "type": "text",
+                "text": "show me some tool callilng, use Task, but make it not too long"
+            }
+        },
+        "createdAt": 1753667003189
+    },
+    {
+        "id": "cmdmg238407a31s14287ssvw6",
+        "seq": 2,
+        "localId": null,
+        "content": {
+            "role": "agent",
+            "content": {
+                "type": "output",
+                "data": {
+                    "parentUuid": "242da0d3-f398-4280-b158-c508ea39eb2b",
+                    "isSidechain": false,
+                    "userType": "external",
+                    "cwd": "/Users/steve/Develop/slopus/happy",
+                    "sessionId": "6b5b91a5-5a00-4635-9952-76d8ab886037",
+                    "version": "1.0.61",
+                    "gitBranch": "main",
+                    "message": {
+                        "id": "msg_01TvE5n9U9FgYbrbNMWLXVa9",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "claude-opus-4-20250514",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "I'll demonstrate tool calling with the Task tool by searching for some code patterns in your codebase."
+                            }
+                        ],
+                        "stop_reason": null,
+                        "stop_sequence": null,
+                        "usage": {
+                            "input_tokens": 4,
+                            "cache_creation_input_tokens": 21075,
+                            "cache_read_input_tokens": 0,
+                            "output_tokens": 3,
+                            "service_tier": "standard"
+                        }
+                    },
+                    "requestId": "req_011CRYZwf1PDUVshjsWPzcbr",
+                    "type": "assistant",
+                    "uuid": "05a9e32e-e808-4be1-9ecf-ae2082927231",
+                    "timestamp": "2025-07-28T01:43:27.590Z"
+                }
+            }
+        },
+        "createdAt": 1753667007700
+    },
+    {
+        "id": "cmdmg259e07a71s14ln4sfzw6",
+        "seq": 3,
+        "localId": null,
+        "content": {
+            "role": "agent",
+            "content": {
+                "type": "output",
+                "data": {
+                    "parentUuid": "05a9e32e-e808-4be1-9ecf-ae2082927231",
+                    "isSidechain": false,
+                    "userType": "external",
+                    "cwd": "/Users/steve/Develop/slopus/happy",
+                    "sessionId": "6b5b91a5-5a00-4635-9952-76d8ab886037",
+                    "version": "1.0.61",
+                    "gitBranch": "main",
+                    "message": {
+                        "id": "msg_01TvE5n9U9FgYbrbNMWLXVa9",
+                        "type": "message",
+                        "role": "assistant",
+                        "model": "claude-opus-4-20250514",
+                        "content": [
+                            {
+                                "type": "tool_use",
+                                "id": "toolu_01B3dLjLkkLqViKvxsJRwhCw",
+                                "name": "Task",
+                                "input": {
+                                    "description": "Search for socket.io usage",
+                                    "prompt": "Find all files that use socket.io or WebSocket connections in this codebase. Look for imports, socket creation, and event handling.",
+                                    "subagent_type": "general-purpose"
+                                }
+                            }
+                        ],
+                        "stop_reason": "tool_use",
+                        "stop_sequence": null,
+                        "usage": {
+                            "input_tokens": 4,
+                            "cache_creation_input_tokens": 21075,
+                            "cache_read_input_tokens": 0,
+                            "output_tokens": 145,
+                            "service_tier": "standard"
+                        }
+                    },
+                    "requestId": "req_011CRYZwf1PDUVshjsWPzcbr",
+                    "type": "assistant",
+                    "uuid": "a04c79f0-f303-4792-b3bf-1364b9b3bcf7",
+                    "timestamp": "2025-07-28T01:43:30.241Z"
+                }
+            }
+        },
+        "createdAt": 1753667010338
+    },
+    {
+        "id": "cmdmg2lf307a91s14mtk1srsf",
+        "seq": 4,
+        "localId": null,
+        "content": {
+            "role": "agent",
+            "content": {
+                "type": "output",
+                "data": {
+                    "parentUuid": "a04c79f0-f303-4792-b3bf-1364b9b3bcf7",
+                    "isSidechain": false,
+                    "userType": "external",
+                    "cwd": "/Users/steve/Develop/slopus/happy",
+                    "sessionId": "6b5b91a5-5a00-4635-9952-76d8ab886037",
+                    "version": "1.0.61",
+                    "gitBranch": "main",
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "tool_result",
+                                "content": "[Request interrupted by user for tool use]",
+                                "is_error": true,
+                                "tool_use_id": "toolu_01B3dLjLkkLqViKvxsJRwhCw"
+                            }
+                        ]
+                    },
+                    "uuid": "f5fac078-b786-420f-aa07-8d10c38064e5",
+                    "timestamp": "2025-07-28T01:43:51.187Z",
+                    "toolUseResult": "Error: [Request interrupted by user for tool use]"
+                }
+            }
+        },
+        "createdAt": 1753667031279
+    },
+    {
+        "id": "cmdmg2lfa07ab1s14m3ym9wb8",
+        "seq": 5,
+        "localId": null,
+        "content": {
+            "role": "agent",
+            "content": {
+                "type": "output",
+                "data": {
+                    "parentUuid": "f5fac078-b786-420f-aa07-8d10c38064e5",
+                    "isSidechain": false,
+                    "userType": "external",
+                    "cwd": "/Users/steve/Develop/slopus/happy",
+                    "sessionId": "6b5b91a5-5a00-4635-9952-76d8ab886037",
+                    "version": "1.0.61",
+                    "gitBranch": "main",
+                    "type": "user",
+                    "message": {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "text",
+                                "text": "[Request interrupted by user for tool use]"
+                            }
+                        ]
+                    },
+                    "uuid": "25721d4d-1ba0-4d10-9e9d-9bed87c46790",
+                    "timestamp": "2025-07-28T01:43:51.202Z"
+                }
+            }
+        },
+        "createdAt": 1753667031286
+    }
+]

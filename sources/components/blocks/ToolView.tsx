@@ -2,7 +2,7 @@ import * as React from 'react';
 import { Text, View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getToolViewComponent } from './tools/_all';
-import { ToolCall } from '@/sync/typesMessage';
+import { Message, ToolCall } from '@/sync/typesMessage';
 import { CodeView } from './CodeView';
 import { ToolSectionView } from './ToolSectionView';
 import { useElapsedTime } from '@/hooks/useElapsedTime';
@@ -13,35 +13,12 @@ import { Metadata } from '@/sync/storageTypes';
 interface ToolViewProps {
     metadata: Metadata | null;
     tool: ToolCall;
+    messages?: Message[];
     onPress?: () => void;
 }
 
 export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress } = props;
-
-    const getStatusIcon = () => {
-
-    };
-
-    // const getToolIcon = () => {
-    //     // Map tool names to appropriate icons
-    //     const iconMap: Record<string, string> = {
-    //         'Read': 'document-text',
-    //         'Write': 'document-text',
-    //         'Edit': 'document-text',
-    //         'Search': 'search',
-    //         'Bash': 'terminal',
-    //         'MultiEdit': 'duplicate',
-    //         'Grep': 'filter',
-    //         'Glob': 'folder-open',
-    //         'LS': 'list',
-    //         'Task': 'rocket',
-    //     };
-
-    //     const iconName = iconMap[tool.name] || 'construct';
-    //     return <Ionicons name={iconName as any} size={20} color="#5856D6" />;
-    // };
-
     const Container = onPress ? TouchableOpacity : View;
     const containerProps = onPress ? { onPress, activeOpacity: 0.8 } : {};
     const toolTitle = tool.name in knownTools ? knownTools[tool.name as keyof typeof knownTools].title : tool.name;
@@ -121,7 +98,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 if (SpecificToolView) {
                     return (
                         <View style={styles.content}>
-                            <SpecificToolView tool={tool} metadata={props.metadata} />
+                            <SpecificToolView tool={tool} metadata={props.metadata} messages={props.messages ?? []} />
                             {tool.state === 'error' && tool.result && (
                                 <ToolError message={String(tool.result)} />
                             )}
