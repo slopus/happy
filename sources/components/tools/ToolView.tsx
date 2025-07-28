@@ -9,18 +9,34 @@ import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { ToolError } from './ToolError';
 import { knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
+import { useRouter } from 'expo-router';
 
 interface ToolViewProps {
     metadata: Metadata | null;
     tool: ToolCall;
     messages?: Message[];
     onPress?: () => void;
+    sessionId?: string;
+    messageId?: string;
 }
 
 export const ToolView = React.memo<ToolViewProps>((props) => {
-    const { tool, onPress } = props;
-    const Container = onPress ? TouchableOpacity : View;
-    const containerProps = onPress ? { onPress, activeOpacity: 0.8 } : {};
+    const { tool, onPress, sessionId, messageId } = props;
+    const router = useRouter();
+    
+    // Create default onPress handler for navigation
+    const handlePress = React.useCallback(() => {
+        if (onPress) {
+            onPress();
+        } else if (sessionId && messageId) {
+            router.push(`/session/${sessionId}/message/${messageId}`);
+        }
+    }, [onPress, sessionId, messageId, router]);
+    
+    // Enable pressable if either onPress is provided or we have navigation params
+    const isPressable = !!(onPress || (sessionId && messageId));
+    const Container = isPressable ? TouchableOpacity : View;
+    const containerProps = isPressable ? { onPress: handlePress, activeOpacity: 0.8 } : {};
     const toolTitle = tool.name in knownTools ? knownTools[tool.name as keyof typeof knownTools].title : tool.name;
     let description = tool.description;
     let status: string | null = null;

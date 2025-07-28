@@ -8,6 +8,7 @@ import { TodoView } from './TodoView';
 import { ExitPlanToolView } from './ExitPlanToolView';
 import { MultiEditView } from './MultiEditView';
 import { TaskView } from './TaskView';
+import { BashViewFull } from './BashViewFull';
 
 export type ToolViewProps = {
     tool: ToolCall;
@@ -29,14 +30,24 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     Task: TaskView
 };
 
+export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
+    Bash: BashViewFull
+};
+
 // Helper function to get the appropriate view component for a tool
 export function getToolViewComponent(toolName: string): ToolViewComponent | null {
     return toolViewRegistry[toolName] || null;
 }
 
+// Helper function to get the full view component for a tool
+export function getToolFullViewComponent(toolName: string): ToolViewComponent | null {
+    return toolFullViewRegistry[toolName] || null;
+}
+
 // Export individual components
 export { EditView } from './EditView';
 export { BashView } from './BashView';
+export { BashViewFull } from './BashViewFull';
 export { ExitPlanToolView } from './ExitPlanToolView';
 export { MultiEditView } from './MultiEditView';
 export { TaskView } from './TaskView';
