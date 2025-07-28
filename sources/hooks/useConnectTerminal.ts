@@ -68,7 +68,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
             const subscription = CameraView.onModernBarcodeScanned(async (event) => {
                 if (event.data.startsWith('happy://terminal?')) {
                     // Dismiss scanner on Android is called automatically when barcode is scanned
-                    if (Platform.OS !== 'android') {
+                    if (Platform.OS === 'ios') {
                         await CameraView.dismissScanner();
                     }
                     await processAuthUrl(event.data);
