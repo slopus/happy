@@ -11,8 +11,7 @@ import { loadSettings, loadLocalSettings, saveLocalSettings } from "./persistenc
 import React from "react";
 import { sync } from "./sync";
 
-// Session is considered online if it was active within this timeout
-export const ONLINE_TIMEOUT_MS = 10 * 60 * 1000; // 10 minutes
+// Use the same timeout for both online status and disconnection detection
 
 interface SessionMessages {
     messages: Message[];
@@ -52,7 +51,7 @@ export const storage = create<StorageState>()((set) => {
         sessionMessages: {},
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
             const now = Date.now();
-            const threshold = now - ONLINE_TIMEOUT_MS;
+            const threshold = now - DISCONNECTED_TIMEOUT_MS;
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -70,7 +69,7 @@ export const storage = create<StorageState>()((set) => {
             });
 
             // Build active set from all sessions (including existing ones)
-            // Use 5-second timeout for consistency with UI
+            // Use 30-second timeout for consistency with UI
             const activeSet = new Set<string>();
             Object.values(mergedSessions).forEach(session => {
                 if (isSessionActive(session)) {
@@ -201,14 +200,13 @@ export const storage = create<StorageState>()((set) => {
         }),
         recalculateOnline: () => set((state) => {
             const now = Date.now();
-            const threshold = now - ONLINE_TIMEOUT_MS;
-            const disconnectThreshold = now - DISCONNECTED_TIMEOUT_MS;
+            const threshold = now - DISCONNECTED_TIMEOUT_MS;
 
             // Update presence for all sessions
             const updatedSessions: Record<string, Session> = {};
             Object.entries(state.sessions).forEach(([id, session]) => {
                 const isOnline = session.active && session.activeAt > threshold;
-                const isDisconnected = !session.activeAt || session.activeAt <= disconnectThreshold;
+                const isDisconnected = !session.activeAt || session.activeAt <= threshold;
 
                 // Update session with presence and clear thinking/active if disconnected
                 updatedSessions[id] = {
@@ -221,7 +219,7 @@ export const storage = create<StorageState>()((set) => {
             });
 
             // Build set of session IDs that should be active
-            // Use 5-second timeout for consistency with UI
+            // Use 30-second timeout for consistency with UI
             const shouldBeActiveSet = new Set<string>();
             Object.values(updatedSessions).forEach(session => {
                 if (isSessionActive(session)) {

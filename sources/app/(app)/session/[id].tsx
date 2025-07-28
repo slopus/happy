@@ -22,6 +22,7 @@ import { sessionToRealtimePrompt, messagesToPrompt } from '@/realtime/sessionToP
 import { z } from 'zod';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -215,16 +216,6 @@ ${conversationContext}`;
     }, [sessionId]);
 
 
-    // Animated value for floating toolbar
-    const toolbarAnim = useRef(new Animated.Value(0)).current;
-
-    useEffect(() => {
-        Animated.timing(toolbarAnim, {
-            toValue: sessionStatus.state === 'thinking' ? 1 : 0,
-            duration: 200,
-            useNativeDriver: true,
-        }).start();
-    }, [sessionStatus.state, toolbarAnim]);
 
     const footer = React.useMemo(() => {
         if (!permissionRequest) {
@@ -269,24 +260,24 @@ ${conversationContext}`;
                 options={{
                     headerTitle: () => (
                         <View style={{ flexDirection: 'column', alignItems: 'center', alignContent: 'center' }}>
-                            <Text 
+                            <Text
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
-                                style={{ 
-                                    fontSize: 14, 
-                                    fontWeight: '600', 
+                                style={{
+                                    fontSize: 14,
+                                    fontWeight: '600',
                                     color: sessionStatus.isConnected ? '#000' : '#8E8E93',
                                     marginBottom: 2,
                                     maxWidth: 200,
-                                    ...Typography.default('semiBold') 
+                                    ...Typography.default('semiBold')
                                 }}
                             >
                                 {getSessionName(session)}
                             </Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                                 <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
-                                <Text style={{ 
-                                    fontSize: 12, 
+                                <Text style={{
+                                    fontSize: 12,
                                     color: sessionStatus.statusColor,
                                     fontWeight: sessionStatus.shouldShowStatus ? '500' : '400',
                                     ...Typography.default()
@@ -348,46 +339,21 @@ ${conversationContext}`;
                             />
                         )}
                     </Deferred>
+                    {/* Gradient transition */}
+                    <LinearGradient
+                        colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']}
+                        locations={[0, 1]}
+                        style={{
+                            position: 'absolute',
+                            bottom: 0,
+                            left: 0,
+                            right: 0,
+                            height: 8,
+                            pointerEvents: 'none',
+                        }}
+                    />
                 </View>
-                {/* Floating toolbar */}
-                <Animated.View
-                    style={{
-                        position: 'absolute',
-                        bottom: 60,
-                        left: 0,
-                        right: 0,
-                        flexDirection: 'row',
-                        justifyContent: 'center',
-                        paddingHorizontal: 16,
-                        transform: [{
-                            translateY: toolbarAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: [100, 0],
-                            }),
-                        }],
-                        opacity: toolbarAnim,
-                    }}
-                    pointerEvents={sessionStatus.state === 'thinking' ? 'auto' : 'none'}
-                >
-                    <View style={{
-                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                        borderRadius: 20,
-                        paddingHorizontal: 16,
-                        paddingVertical: 8,
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.1,
-                        shadowRadius: 8,
-                        elevation: 5,
-                    }}>
-                        <RoundButton
-                            size='normal'
-                            display='inverted'
-                            title="Abort"
-                            action={() => sync.abort(sessionId)}
-                        />
-                    </View>
-                </Animated.View>
+
 
                 <AgentInput
                     placeholder="Type a message ..."
@@ -404,6 +370,18 @@ ${conversationContext}`;
                             color="#fff"
                         />
                     ) : undefined}
+                    status={{
+                        state: sessionStatus.state,
+                        text: sessionStatus.state === 'disconnected' ? 'disconnected' :
+                            sessionStatus.state === 'thinking' ? 'thinking...' :
+                                sessionStatus.state === 'idle' ? 'idle' :
+                                    sessionStatus.state === 'permission_required' ? 'permission required' :
+                                        sessionStatus.state === 'waiting' ? 'connected' : '',
+                        color: sessionStatus.statusColor,
+                        dotColor: sessionStatus.statusDotColor,
+                        isPulsing: sessionStatus.isPulsing,
+                    }}
+                    onAbort={() => sync.abort(sessionId)}
                 />
             </KeyboardAvoidingView>
         </>
