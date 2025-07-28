@@ -33,7 +33,7 @@ const batch1 = [
             }
         }
     })
-].filter(Boolean);
+].filter((msg): msg is NonNullable<typeof msg> => msg !== null);
 
 console.log('=== Batch 1: Initial tool call ===');
 const result1 = reducer(state, batch1);
@@ -69,7 +69,7 @@ const batch2 = [
             }
         }
     })
-].filter(Boolean);
+].filter((msg): msg is NonNullable<typeof msg> => msg !== null);
 
 console.log('\n=== Batch 2: Tool result ===');
 console.log('State before batch 2:');

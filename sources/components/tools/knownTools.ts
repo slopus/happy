@@ -1,4 +1,4 @@
-import { Metadata, Session } from '@/sync/storageTypes';
+import { Metadata } from '@/sync/storageTypes';
 import { ToolCall } from '@/sync/typesMessage';
 import { resolvePath } from '@/utils/pathUtils';
 import * as z from 'zod';

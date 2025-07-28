@@ -33,7 +33,7 @@ const batch1 = [
             }
         }
     })
-].filter(Boolean);
+].filter((msg): msg is NonNullable<typeof msg> => msg !== null);
 
 console.log('=== Batch 1: Initial tool call ===');
 const result1 = reducer(state, batch1);
@@ -52,9 +52,8 @@ const rawMsg2 = normalizeRawMessage('agent2', null, 3000, {
     content: {
         type: 'output',
         data: {
-            type: 'result',
+            type: 'assistant',
             uuid: 'agent-uuid-2',
-            toolUseResult: [{ type: 'text', text: 'Tool completed successfully!' }],
             message: {
                 role: 'assistant',
                 model: 'claude-3',
@@ -73,7 +72,7 @@ const rawMsg2 = normalizeRawMessage('agent2', null, 3000, {
 
 console.log('Normalized message:', JSON.stringify(rawMsg2, null, 2));
 
-const batch2 = [rawMsg2].filter(Boolean);
+const batch2 = [rawMsg2].filter((msg): msg is NonNullable<typeof msg> => msg !== null);
 
 console.log('\n=== Batch 2: Tool result ===');
 console.log('State before batch 2:');
@@ -114,7 +113,7 @@ const batch3 = [
             }
         }
     })
-].filter(Boolean);
+].filter((msg): msg is NonNullable<typeof msg> => msg !== null);
 
 console.log('\n=== Batch 3: Follow-up message ===');
 const result3 = reducer(state, batch3);

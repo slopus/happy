@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { normalizeRawMessage } from '../../typesRaw';
-import { createTracer, traceMessages } from '../../reducerTracer';
+import { normalizeRawMessage } from '../sync/typesRaw';
+import { createTracer, traceMessages } from '../sync/reducerTracer';
 
 // Load and process log_8.json
 const logPath = path.join(__dirname, '../log_8.json');
@@ -26,8 +26,8 @@ console.log(`Task tools found: ${tracerState.taskTools.size}`);
 console.log(`Orphan buffers remaining: ${tracerState.orphanMessages.size}`);
 
 // Analyze results
-const sidechainMessages = tracedMessages.filter(msg => msg.sidechainId);
-const nonSidechainMessages = tracedMessages.filter(msg => !msg.sidechainId);
+const sidechainMessages = tracedMessages.filter((msg: any) => msg.sidechainId);
+const nonSidechainMessages = tracedMessages.filter((msg: any) => !msg.sidechainId);
 
 console.log(`\nSidechain messages: ${sidechainMessages.length}`);
 console.log(`Non-sidechain messages: ${nonSidechainMessages.length}`);
@@ -46,7 +46,7 @@ console.log(`\nSidechain groups: ${sidechainGroups.size}`);
 
 // Show details for each sidechain
 for (const [taskId, messages] of sidechainGroups) {
-    const taskInfo = Array.from(tracerState.taskTools.values()).find(t => t.messageId === taskId);
+    const taskInfo = Array.from(tracerState.taskTools.values()).find((t: any) => t.messageId === taskId);
     console.log(`\nSidechain for Task "${taskInfo?.prompt?.substring(0, 50)}...":`);
     console.log(`  Task message ID: ${taskId}`);
     console.log(`  Messages in sidechain: ${messages.length}`);
