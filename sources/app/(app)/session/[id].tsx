@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
 import { useState, useMemo, useCallback } from "react";
-import { View, FlatList, Text, ActivityIndicator, Alert } from "react-native";
+import { View, FlatList, Text, ActivityIndicator, Alert, Animated } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
@@ -21,6 +21,46 @@ import { createRealtimeSession, zodToOpenAIFunction, type Tools, type Tool } fro
 import { sessionToRealtimePrompt, messagesToPrompt } from '@/realtime/sessionToPrompt';
 import { z } from 'zod';
 import { Ionicons } from '@expo/vector-icons';
+import { Typography } from '@/constants/Typography';
+
+// Animated status dot component
+function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
+    const pulseAnim = React.useRef(new Animated.Value(1)).current;
+
+    React.useEffect(() => {
+        if (isPulsing) {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.timing(pulseAnim, {
+                        toValue: 0.3,
+                        duration: 1000,
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(pulseAnim, {
+                        toValue: 1,
+                        duration: 1000,
+                        useNativeDriver: true,
+                    }),
+                ])
+            ).start();
+        } else {
+            pulseAnim.setValue(1);
+        }
+    }, [isPulsing, pulseAnim]);
+
+    return (
+        <Animated.View
+            style={{
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                backgroundColor: color,
+                opacity: pulseAnim,
+                marginRight: 4,
+            }}
+        />
+    );
+}
 
 export default React.memo(() => {
     const route = useRoute();
@@ -51,7 +91,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
 
     const sessionStatus = getSessionState(session);
     const online = sessionStatus.isConnected;
-    const lastSeenText = sessionStatus.isConnected ? 'Active now' : formatLastSeen(session.activeAt);
+    const lastSeenText = sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active';
 
     // Define tools for the realtime session
     const tools: Tools = useMemo(() => ({
@@ -228,8 +268,31 @@ ${conversationContext}`;
                 options={{
                     headerTitle: () => (
                         <View style={{ flexDirection: 'column', alignItems: 'center', alignContent: 'center' }}>
-                            <Text style={{ fontSize: 18, fontWeight: '600', lineHeight: 18 }}>{getSessionName(session)}</Text>
-                            <Text style={{ color: (online ? '#34C759' : '#999'), marginTop: 0, fontSize: 12 }}>{(online ? 'online' : lastSeenText)}</Text>
+                            <Text 
+                                numberOfLines={1}
+                                ellipsizeMode="tail"
+                                style={{ 
+                                    fontSize: 14, 
+                                    fontWeight: '600', 
+                                    color: sessionStatus.isConnected ? '#000' : '#8E8E93',
+                                    marginBottom: 2,
+                                    maxWidth: 200,
+                                    ...Typography.default('semiBold') 
+                                }}
+                            >
+                                {getSessionName(session)}
+                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                                <Text style={{ 
+                                    fontSize: 12, 
+                                    color: sessionStatus.statusColor,
+                                    fontWeight: sessionStatus.shouldShowStatus ? '500' : '400',
+                                    ...Typography.default()
+                                }}>
+                                    {sessionStatus.shouldShowStatus ? sessionStatus.statusText : lastSeenText}
+                                </Text>
+                            </View>
                         </View>
                     ),
                     headerRight(props) {
@@ -239,7 +302,7 @@ ${conversationContext}`;
                                 hitSlop={10}
                                 style={{ flexDirection: 'row', alignItems: 'center', marginRight: -4 }}
                             >
-                                <Avatar id={sessionId} size={32} monochrome={!online} />
+                                <Avatar id={sessionId} size={32} monochrome={!sessionStatus.isConnected} />
                             </Pressable>
                         )
                     },

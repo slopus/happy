@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
-import { View, Text, Alert, Pressable, Platform } from 'react-native';
+import { View, Text, Alert, Pressable, Platform, Animated } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -8,8 +8,47 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession } from '@/sync/storage';
-import { getSessionName, getSessionState, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
+import { getSessionName, getSessionState, formatOSPlatform } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
+
+// Animated status dot component
+function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
+    const pulseAnim = React.useRef(new Animated.Value(1)).current;
+
+    React.useEffect(() => {
+        if (isPulsing) {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.timing(pulseAnim, {
+                        toValue: 0.3,
+                        duration: 1000,
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(pulseAnim, {
+                        toValue: 1,
+                        duration: 1000,
+                        useNativeDriver: true,
+                    }),
+                ])
+            ).start();
+        } else {
+            pulseAnim.setValue(1);
+        }
+    }, [isPulsing, pulseAnim]);
+
+    return (
+        <Animated.View
+            style={{
+                width: size,
+                height: size,
+                borderRadius: size / 2,
+                backgroundColor: color,
+                opacity: pulseAnim,
+                marginRight: 4,
+            }}
+        />
+    );
+}
 
 export default React.memo(() => {
     const router = useRouter();
@@ -26,8 +65,6 @@ export default React.memo(() => {
 
     const sessionName = getSessionName(session);
     const sessionStatus = getSessionState(session);
-    const online = sessionStatus.isConnected; // Use 5-second timeout for consistency
-    const lastSeenText = sessionStatus.isConnected ? 'Active now' : formatLastSeen(session.activeAt);
 
     const handleCopySessionId = async () => {
         try {
@@ -83,7 +120,7 @@ export default React.memo(() => {
             <ItemList>
                 {/* Session Header */}
                 <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: 'white', marginBottom: 35 }}>
-                    <Avatar id={session.id} size={80} monochrome={!online} />
+                    <Avatar id={session.id} size={80} monochrome={!sessionStatus.isConnected} />
                     <Text style={{
                         fontSize: 20,
                         fontWeight: '600',
@@ -92,13 +129,17 @@ export default React.memo(() => {
                     }}>
                         {sessionName}
                     </Text>
-                    <Text style={{
-                        fontSize: 15,
-                        color: online ? '#34C759' : '#8E8E93',
-                        marginTop: 4
-                    }}>
-                        {online ? 'Online' : lastSeenText}
-                    </Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} size={10} />
+                        <Text style={{
+                            fontSize: 15,
+                            color: sessionStatus.statusColor,
+                            fontWeight: '500',
+                            ...Typography.default()
+                        }}>
+                            {sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active'}
+                        </Text>
+                    </View>
                 </View>
 
                 {/* Session Details */}
@@ -110,9 +151,9 @@ export default React.memo(() => {
                         onPress={handleCopySessionId}
                     />
                     <Item
-                        title="Status"
-                        detail={session.active ? "Active" : "Inactive"}
-                        icon={<Ionicons name="pulse-outline" size={29} color={session.active ? "#34C759" : "#8E8E93"} />}
+                        title="Connection Status"
+                        detail={sessionStatus.isConnected ? "Connected" : "Disconnected"}
+                        icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? "#34C759" : "#8E8E93"} />}
                         showChevron={false}
                     />
                     <Item
@@ -155,6 +196,14 @@ export default React.memo(() => {
                                 title="Version"
                                 subtitle={session.metadata.version}
                                 icon={<Ionicons name="git-branch-outline" size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
+                        {session.metadata.os && (
+                            <Item
+                                title="Operating System"
+                                subtitle={formatOSPlatform(session.metadata.os)}
+                                icon={<Ionicons name="hardware-chip-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
                             />
                         )}
