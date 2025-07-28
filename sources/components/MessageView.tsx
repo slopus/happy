@@ -115,7 +115,13 @@ function ToolCallBlock(props: {
   }
   return (
     <View style={{ marginHorizontal: 8 }}>
-      <ToolView tool={props.message.tool} metadata={props.metadata} messages={props.message.children} />
+      <ToolView 
+        tool={props.message.tool} 
+        metadata={props.metadata} 
+        messages={props.message.children}
+        sessionId={props.sessionId}
+        messageId={props.message.id}
+      />
     </View>
   );
 }
