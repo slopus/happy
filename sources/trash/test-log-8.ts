@@ -1,7 +1,8 @@
 import fs from 'fs';
 import path from 'path';
-import { normalizeRawMessage } from '../../typesRaw';
-import { createReducer, reducer } from '../../reducer';
+import { normalizeRawMessage } from '../sync/typesRaw';
+import { createReducer, reducer } from '../sync/reducer';
+import { ToolCallMessage } from '../sync/typesMessage';
 
 // Load and process log_8.json
 const logPath = path.join(__dirname, '../log_8.json');
@@ -27,27 +28,27 @@ console.log(`Total messages in state: ${state.messages.size}`);
 
 // Debug sidechains
 console.log('\nSidechain prompts:');
-for (let [prompt, info] of state.sidechainMessages) {
-    console.log(`  - "${prompt.substring(0, 50)}..." -> UUID: ${info.uuid}`);
+for (let [prompt, info] of state.tracerState.taskTools) {
+    console.log(`  - "${prompt.substring(0, 50)}..." -> Message ID: ${info.messageId}`);
 }
 
 // Check messages with matching parent UUIDs
 console.log('\nChecking sidechain linkage:');
-for (let [prompt, sidechain] of state.sidechainMessages) {
+for (let [prompt, sidechain] of state.tracerState.taskTools) {
     console.log(`\nSidechain: "${prompt.substring(0, 40)}..."`);
-    console.log(`  Root UUID: ${sidechain.uuid}`);
+    console.log(`  Root Message ID: ${sidechain.messageId}`);
     
     // Find all messages in this chain
     let chainMessages = [];
     for (let msg of state.messages.values()) {
-        if (msg.uuid === sidechain.uuid || msg.parentUUID === sidechain.uuid) {
+        if (msg.id === sidechain.messageId) {
             chainMessages.push(msg);
         }
     }
     
     console.log(`  Direct children found: ${chainMessages.length}`);
     for (let msg of chainMessages) {
-        console.log(`    - ${msg.role} (uuid: ${msg.uuid}, parent: ${msg.parentUUID})`);
+        console.log(`    - ${msg.role} (id: ${msg.id})`);
         if (msg.text) console.log(`      Text: "${msg.text.substring(0, 40)}..."`);
         if (msg.tool) console.log(`      Tool: ${msg.tool.name}`);
     }
@@ -63,7 +64,7 @@ for (const msg of processedMessages) {
         console.log(`  Children: ${msg.children.length}`);
         
         // Show all children recursively
-        function showChildren(children: any[], indent: string = '    ') {
+        function showChildren(children: any[], indent = '    ') {
             for (let i = 0; i < children.length; i++) {
                 const child = children[i];
                 if (child.kind === 'user-text') {
@@ -86,20 +87,20 @@ console.log(`\nTotal Task tools found: ${taskCount}`);
 
 // Debug: Check what's in the first task's children in detail
 if (processedMessages.length > 0) {
-    const firstTask = processedMessages.find(m => m.kind === 'tool-call' && m.tool.name === 'Task');
+    const firstTask = processedMessages.find((m): m is ToolCallMessage => m.kind === 'tool-call' && m.tool.name === 'Task') as ToolCallMessage | undefined;
     if (firstTask) {
         console.log('\n\nDetailed children of first Task:');
         console.log(`Task prompt: "${firstTask.tool.input.prompt}"`);
         console.log(`Total children: ${firstTask.children.length}`);
         
         // Check state for all messages with matching UUID chain
-        const sidechainInfo = Array.from(state.sidechainMessages.values()).find(s => s.prompt === firstTask.tool.input.prompt);
+        const sidechainInfo = Array.from(state.tracerState.taskTools.values()).find((s: any) => firstTask && s.prompt === firstTask.tool.input.prompt);
         if (sidechainInfo) {
-            console.log(`\nTracking chain from UUID: ${sidechainInfo.uuid}`);
+            console.log(`\nTracking chain from Message ID: ${sidechainInfo.messageId}`);
             
             // Manually trace the chain
             let visited = new Set();
-            let queue = [sidechainInfo.uuid];
+            let queue = [sidechainInfo.messageId];
             let chainLength = 0;
             
             while (queue.length > 0) {
@@ -108,10 +109,9 @@ if (processedMessages.length > 0) {
                 visited.add(currentUuid);
                 
                 for (let msg of state.messages.values()) {
-                    if (msg.parentUUID === currentUuid && !visited.has(msg.uuid)) {
+                    if (msg.id === currentUuid) {
                         chainLength++;
-                        console.log(`  Found child: ${msg.role} - ${msg.text?.substring(0, 30) || msg.tool?.name || 'unknown'} (uuid: ${msg.uuid})`);
-                        if (msg.uuid) queue.push(msg.uuid);
+                        console.log(`  Found child: ${msg.role} - ${msg.text?.substring(0, 30) || msg.tool?.name || 'unknown'} (id: ${msg.id})`);
                     }
                 }
             }
@@ -119,7 +119,7 @@ if (processedMessages.length > 0) {
             
             // Check what's actually in the Task's children
             console.log('\nActual Task children:');
-            firstTask.children.forEach((child, i) => {
+            firstTask.children.forEach((child: any, i: number) => {
                 //@ts-ignore
                 const childInternal = child as any;
                 console.log(`  [${i}] ${child.kind} - uuid: ${childInternal.uuid || 'none'} - parent: ${childInternal.parentUUID || 'none'}`);

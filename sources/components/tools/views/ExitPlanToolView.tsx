@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { ToolViewProps } from "./_all";
-import { ToolSectionView } from '../ToolSectionView';
+import { ToolSectionView } from '../../tools/ToolSectionView';
 import { MarkdownView } from '@/components/markdown/MarkdownView';
-import { knownTools } from '../knownTools';
+import { knownTools } from '../../tools/knownTools';
 
 export const ExitPlanToolView = React.memo<ToolViewProps>(({ tool }) => {
     let plan = '<empty>'

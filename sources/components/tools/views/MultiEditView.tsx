@@ -1,9 +1,9 @@
 import * as React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { ToolSectionView } from '../ToolSectionView';
+import { ToolSectionView } from '../../tools/ToolSectionView';
 import { ToolViewProps } from './_all';
-import { DiffView } from '@/components/files/DiffView';
-import { knownTools } from '../knownTools';
+import { DiffView } from '@/components/diff/DiffView';
+import { knownTools } from '../../tools/knownTools';
 import { trimIdent } from '@/utils/trimIdent';
 import { useSetting } from '@/sync/storage';
 

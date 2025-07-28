@@ -45,7 +45,7 @@ const batch1 = [
             }
         }
     })
-].filter(Boolean);
+].filter((msg): msg is NonNullable<typeof msg> => msg !== null);
 
 console.log('=== Batch 1: Initial tools ===');
 const result1 = reducer(state, batch1);
@@ -101,7 +101,7 @@ const batch2 = [
             }
         }
     })
-].filter(Boolean);
+].filter((msg): msg is NonNullable<typeof msg> => msg !== null);
 
 console.log('\n=== Batch 2: Tool results ===');
 const result2 = reducer(state, batch2);
@@ -139,7 +139,7 @@ const batch3 = [
             }
         }
     })
-].filter(Boolean);
+].filter((msg): msg is NonNullable<typeof msg> => msg !== null);
 
 console.log('\n=== Batch 3: Follow-up ===');
 const result3 = reducer(state, batch3);

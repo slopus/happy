@@ -6,7 +6,6 @@ import { FileIcon } from '@/components/atoms/FileIcon';
 import { TerminalBlock } from '@/components/atoms/TerminalBlock';
 import { DividerLine } from '@/components/atoms/DividerLine';
 import { EmptyState } from '@/components/atoms/EmptyState';
-import { MetadataText } from '@/components/atoms/MetadataText';
 import { ToolHeader } from '@/components/atoms/ToolHeader';
 import { InfoBox } from '@/components/atoms/InfoBox';
 import { Badge } from '@/components/atoms/Badge';
@@ -18,7 +17,7 @@ export default function AtomsShowcase() {
         <ScrollView className="flex-1 bg-white">
             <View className="p-4">
                 <Text className="text-2xl font-bold mb-6">Atomic Components Showcase</Text>
-                
+
                 {/* StatusBadge */}
                 <Section title="StatusBadge">
                     <View className="flex-row flex-wrap gap-2">
@@ -28,7 +27,7 @@ export default function AtomsShowcase() {
                         <StatusBadge state="pending" />
                     </View>
                 </Section>
-                
+
                 {/* FileIcon */}
                 <Section title="FileIcon">
                     <View className="flex-row flex-wrap gap-4">
@@ -58,10 +57,10 @@ export default function AtomsShowcase() {
                         </View>
                     </View>
                 </Section>
-                
+
                 {/* TerminalBlock */}
                 <Section title="TerminalBlock">
-                    <TerminalBlock 
+                    <TerminalBlock
                         command="npm run dev"
                         output={`> happy@1.0.0 dev
 > expo start
@@ -76,13 +75,13 @@ Starting Metro Bundler
 Metro waiting on exp://192.168.1.100:8081`}
                     />
                     <View className="mt-2">
-                        <TerminalBlock 
+                        <TerminalBlock
                             command="git status"
                             error="fatal: not a git repository"
                         />
                     </View>
                 </Section>
-                
+
                 {/* DividerLine */}
                 <Section title="DividerLine">
                     <DividerLine />
@@ -91,34 +90,25 @@ Metro waiting on exp://192.168.1.100:8081`}
                     <Text className="text-sm text-gray-500 my-2">Custom color:</Text>
                     <DividerLine color="border-blue-400" />
                 </Section>
-                
+
                 {/* EmptyState */}
                 <Section title="EmptyState">
-                    <EmptyState 
+                    <EmptyState
                         icon="search"
                         title="No results found"
                         description="Try adjusting your search criteria or broaden your search terms"
                     />
                 </Section>
-                
-                {/* MetadataText */}
-                <Section title="MetadataText">
-                    <View className="flex-row gap-4">
-                        <MetadataText>12 files</MetadataText>
-                        <MetadataText color="text-green-600">3 added</MetadataText>
-                        <MetadataText color="text-red-600">2 removed</MetadataText>
-                    </View>
-                </Section>
-                
+
                 {/* ToolHeader */}
                 <Section title="ToolHeader">
-                    <ToolHeader 
+                    <ToolHeader
                         icon="🔍"
                         title="Search Files"
                         state="completed"
                     />
                 </Section>
-                
+
                 {/* InfoBox */}
                 <Section title="InfoBox">
                     <InfoBox title="Search Parameters" variant="info">
@@ -141,7 +131,7 @@ Metro waiting on exp://192.168.1.100:8081`}
                         </InfoBox>
                     </View>
                 </Section>
-                
+
                 {/* Badge */}
                 <Section title="Badge">
                     <View className="mb-2">
@@ -165,10 +155,10 @@ Metro waiting on exp://192.168.1.100:8081`}
                         </View>
                     </View>
                 </Section>
-                
+
                 {/* SearchResultBlock */}
                 <Section title="SearchResultBlock">
-                    <SearchResultBlock 
+                    <SearchResultBlock
                         content={`sources/app/index.tsx
    42:  const [count, setCount] = useState(0);
    87:  const [isVisible, setIsVisible] = useState(true);

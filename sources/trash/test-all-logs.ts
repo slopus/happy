@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { createReducer, reducer } from '../../reducer';
-import { normalizeRawMessage } from '../../typesRaw';
+import { createReducer, reducer } from '../sync/reducer';
+import { normalizeRawMessage } from '../sync/typesRaw';
 
 const testDataDir = join(__dirname, '..');
 const logFiles = readdirSync(testDataDir).filter(f => f.startsWith('log_') && f.endsWith('.json'));
@@ -107,7 +107,7 @@ for (const logFile of logFiles) {
         for (const normalized of normalizedMessages) {
             if (normalized.role === 'agent' && normalized.content) {
                 for (const content of normalized.content) {
-                    if (content.type === 'text' && content.parent_id) {
+                    if (content.type === 'text' && content.parentUUID) {
                         textMessagesWithParentId++;
                     }
                 }

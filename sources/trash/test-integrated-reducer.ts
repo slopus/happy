@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
-import { normalizeRawMessage } from '../../typesRaw';
-import { createReducer, reducer } from '../../reducer';
+import { normalizeRawMessage } from '../sync/typesRaw';
+import { createReducer, reducer } from '../sync/reducer';
 
 // Load and process trace_0.json
 const logPath = path.join(__dirname, '../trace_0.json');

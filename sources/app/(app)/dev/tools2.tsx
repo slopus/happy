@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
 import { Stack } from 'expo-router';
-import { ToolView } from '@/components/blocks/ToolView';
+import { ToolView } from '@/components/tools/ToolView';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 

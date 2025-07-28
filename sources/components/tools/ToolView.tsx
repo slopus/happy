@@ -1,13 +1,13 @@
 import * as React from 'react';
 import { Text, View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { getToolViewComponent } from './tools/_all';
+import { getToolViewComponent } from './views/_all';
 import { Message, ToolCall } from '@/sync/typesMessage';
-import { CodeView } from './CodeView';
-import { ToolSectionView } from './ToolSectionView';
+import { CodeView } from '../CodeView';
+import { ToolSectionView } from './ToolSectionView'; 
 import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { ToolError } from './ToolError';
-import { knownTools } from '@/components/blocks/knownTools';
+import { knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
 
 interface ToolViewProps {

@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { ToolViewProps } from './_all';
-import { ToolSectionView } from '../ToolSectionView';
-import { knownTools } from '@/components/blocks/knownTools';
-import { DiffView } from '@/components/files/DiffView';
+import { ToolSectionView } from '../../tools/ToolSectionView';
+import { knownTools } from '@/components/tools/knownTools';
+import { DiffView } from '@/components/diff/DiffView';
 import { useSetting } from '@/sync/storage';
 
 export const WriteView = React.memo<ToolViewProps>(({ tool }) => {

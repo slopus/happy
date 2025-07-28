@@ -4,7 +4,7 @@ import { MarkdownView } from "./markdown/MarkdownView";
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 import { layout } from "./layout";
-import { ToolView } from "./blocks/ToolView";
+import { ToolView } from "./tools/ToolView";
 
 export const MessageView = (props: {
   message: Message;

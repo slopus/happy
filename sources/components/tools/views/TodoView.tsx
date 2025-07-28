@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { ToolViewProps } from "./_all";
-import { knownTools } from '../knownTools';
-import { ToolSectionView } from '../ToolSectionView';
+import { knownTools } from '../../tools/knownTools';
+import { ToolSectionView } from '../../tools/ToolSectionView';
 import { useSetting } from '@/sync/storage';
 
 export interface Todo {
@@ -70,7 +70,11 @@ export const TodoView = React.memo<ToolViewProps>(({ tool }) => {
     const expandTodos = useSetting('expandTodos');
     let oldTodosList: Todo[] = [];
     let newTodosList: Todo[] = [];
+    let parsedArguments = knownTools.TodoWrite.input.safeParse(tool.input);
     let parsed = knownTools.TodoWrite.result.safeParse(tool.result);
+    if (parsedArguments.success) {
+        newTodosList = parsedArguments.data.todos || [];
+    }
     if (parsed.success) {
         oldTodosList = parsed.data.oldTodos || [];
         newTodosList = parsed.data.newTodos || [];
