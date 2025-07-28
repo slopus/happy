@@ -76,5 +76,8 @@
     "tsx": "^4.20.3",
     "typescript": "^5",
     "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "whatwg-url": "14.2.0"
   }
 }
