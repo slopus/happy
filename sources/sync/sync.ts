@@ -397,7 +397,7 @@ class Sync {
             }
         });
 
-        // Recalculate online sessions every second (for 5-second disconnect timeout)
+        // Recalculate online sessions every second (for 30-second disconnect timeout)
         setInterval(() => {
             storage.getState().recalculateOnline();
         }, 1000);

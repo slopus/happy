@@ -1,7 +1,7 @@
 import { Session } from '@/sync/storageTypes';
 
-// Timeout for considering a session disconnected (5 seconds)
-export const DISCONNECTED_TIMEOUT_MS = 5000;
+// Timeout for considering a session disconnected (30 seconds)
+export const DISCONNECTED_TIMEOUT_MS = 30000;
 
 // Timeout for considering a session idle (30 seconds)
 export const IDLE_TIMEOUT_MS = 30000;
