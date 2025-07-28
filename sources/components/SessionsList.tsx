@@ -3,7 +3,7 @@ import { View, Pressable } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { SessionListItem } from '@/sync/storage';
-import { getSessionName, getSessionState, isSessionOnline, formatLastSeen } from '@/utils/sessionUtils';
+import { getSessionName, getSessionState, isSessionOnline, formatLastSeen, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isMessageFromAssistant } from '@/utils/messageUtils';
 import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -89,30 +89,11 @@ function SessionItem({ session, selectedSessionId, router }: {
     const sessionStatus = getSessionState(session);
     const online = sessionStatus.isConnected;
     const sessionName = getSessionName(session);
+    const sessionSubtitle = getSessionSubtitle(session);
     const lastSeenText = sessionStatus.isConnected ? 'Active now' : formatLastSeen(session.activeAt);
     const isFromAssistant = session.lastMessage?.role === 'agent' || sessionStatus.state === 'thinking';
     const isSelected = selectedSessionId === session.id;
-    let message: string | null = null;
-    if (session.lastMessage) {
-        if (session.lastMessage.role === 'user') {
-            message = session.lastMessage.content.text;
-        } else if (session.lastMessage.role === 'agent') {
-            for (let c of session.lastMessage.content) {
-                if (c.type === 'text') {
-                    message = c.text;
-                }
-                if (c.type === 'tool-call') {
-                    message = 'Tool call: ' + c.name;
-                }
-                if (c.type === 'tool-result') {
-                    message = 'Tool result received';
-                }
-                if (c.type === 'summary') {
-                    message = 'Summary: ' + c.summary;
-                }
-            }
-        }
-    }
+
 
     return (
         <Pressable
@@ -137,7 +118,13 @@ function SessionItem({ session, selectedSessionId, router }: {
                         {lastSeenText}
                     </Text>
                 </View>
-                {session.lastMessage ? (
+                <Text style={{ fontSize: 14, color: '#999' }} numberOfLines={1}>
+                    <Text style={{ color: online ? (isFromAssistant ? '#007AFF' : '#34C759') : '#999', fontWeight: '600', ...Typography.default() }}>
+                        {sessionSubtitle}
+                    </Text>
+                </Text>
+
+                {/* {session.lastMessage ? (
                     <Text style={{ fontSize: 14, color: '#999' }} numberOfLines={1}>
                         <Text style={{ color: online ? (isFromAssistant ? '#007AFF' : '#34C759') : '#999', fontWeight: '600', ...Typography.default() }}>
                             {isFromAssistant ? 'Claude' : 'You'}:
@@ -158,7 +145,7 @@ function SessionItem({ session, selectedSessionId, router }: {
                     </Text>
                 ) : (
                     <Text style={{ fontSize: 14, color: '#999' }}>No messages yet</Text>
-                )}
+                )} */}
             </View>
         </Pressable>
     );

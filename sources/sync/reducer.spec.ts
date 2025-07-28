@@ -142,6 +142,7 @@ describe('reducer', () => {
                         type: 'output',
                         data: {
                             type: 'assistant',
+                            uuid: 'test-uuid-1',
                             message: {
                                 role: 'assistant',
                                 model: 'claude-3',
@@ -172,6 +173,7 @@ describe('reducer', () => {
                         type: 'output',
                         data: {
                             type: 'assistant',
+                            uuid: 'test-uuid-2',
                             message: {
                                 role: 'assistant',
                                 model: 'claude-3',
@@ -210,6 +212,7 @@ describe('reducer', () => {
                         type: 'output',
                         data: {
                             type: 'assistant',
+                            uuid: 'test-uuid-3',
                             message: {
                                 role: 'assistant',
                                 model: 'claude-3',
@@ -228,6 +231,7 @@ describe('reducer', () => {
                         type: 'output',
                         data: {
                             type: 'assistant',
+                            uuid: 'test-uuid-4',
                             message: {
                                 role: 'assistant',
                                 model: 'claude-3',
@@ -275,6 +279,7 @@ describe('reducer', () => {
                         type: 'output',
                         data: {
                             type: 'assistant',
+                            uuid: 'test-uuid-5',
                             message: {
                                 role: 'assistant',
                                 model: 'claude-3',

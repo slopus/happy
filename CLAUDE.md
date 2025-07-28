@@ -54,6 +54,7 @@ sources/
 - TypeScript strict mode is enabled - ensure all code is properly typed
 - Follow existing component patterns when creating new UI components
 - Real-time sync operations are handled through SyncSocket and SyncSession classes
+- Store all temporary scripts and any test outside of unit tests in sources/trash folder
 
 ### Important Files
 

@@ -1,13 +1,14 @@
 import { Message, ToolCall } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
+import { createTracer, traceMessages, TracedMessage, TracerState } from "./reducerTracer";
 
 type ReducerMessage = {
     id: string;
+    realID: string | null;
     createdAt: number;
     role: 'user' | 'agent';
     text: string | null;
     tool: ToolCall | null;
-    children: ReducerMessage[];
 }
 
 export type ReducerState = {
@@ -15,6 +16,8 @@ export type ReducerState = {
     localIds: Map<string, string>;
     messageIds: Map<string, string>; // originalId -> internalId
     messages: Map<string, ReducerMessage>;
+    sidechains: Map<string, ReducerMessage[]>;
+    tracerState: TracerState; // Tracer state for sidechain processing
 };
 
 export function createReducer(): ReducerState {
@@ -22,7 +25,9 @@ export function createReducer(): ReducerState {
         toolIdToMessageId: new Map(),
         messages: new Map(),
         localIds: new Map(),
-        messageIds: new Map()
+        messageIds: new Map(),
+        sidechains: new Map(),
+        tracerState: createTracer()
     }
 };
 
@@ -30,11 +35,18 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
     let newMessages: Message[] = [];
     let changed: Set<string> = new Set();
 
+    // First, trace all messages to identify sidechains
+    const tracedMessages = traceMessages(state.tracerState, messages);
+
+    // Separate sidechain and non-sidechain messages
+    const nonSidechainMessages = tracedMessages.filter(msg => !msg.sidechainId);
+    const sidechainMessages = tracedMessages.filter(msg => msg.sidechainId);
+
     //
-    // Phase 1: Process user messages and text messages
+    // Phase 1: Process non-sidechain user messages and text messages
     // 
 
-    for (let msg of messages) {
+    for (let msg of nonSidechainMessages) {
         if (msg.role === 'user') {
             // Check if we've seen this localId before
             if (msg.localId && state.localIds.has(msg.localId)) {
@@ -49,11 +61,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
             let mid = allocateId();
             state.messages.set(mid, {
                 id: mid,
+                realID: msg.id,
                 role: 'user',
                 createdAt: msg.createdAt,
                 text: msg.content.text,
                 tool: null,
-                children: []
             });
 
             // Track both localId and messageId
@@ -72,17 +84,17 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
             // Mark this message as seen
             state.messageIds.set(msg.id, msg.id);
 
-            // Process text content only if it doesn't have a parent
+            // Process text content only (tool calls handled in Phase 2)
             for (let c of msg.content) {
-                if (c.type === 'text' && !c.parent_id) {
+                if (c.type === 'text') {
                     let mid = allocateId();
                     state.messages.set(mid, {
                         id: mid,
+                        realID: msg.id,
                         role: 'agent',
                         createdAt: msg.createdAt,
                         text: c.text,
                         tool: null,
-                        children: []
                     });
                     changed.add(mid);
                 }
@@ -91,13 +103,13 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
     }
 
     //
-    // Phase 2: Process tool calls without parents (root tools)
+    // Phase 2: Process non-sidechain tool calls
     //
 
-    for (let msg of messages) {
+    for (let msg of nonSidechainMessages) {
         if (msg.role === 'agent') {
             for (let c of msg.content) {
-                if (c.type === 'tool-call' && !c.parent_id) {
+                if (c.type === 'tool-call') {
                     // Check if we've already processed this tool
                     if (!state.toolIdToMessageId.has(c.id)) {
                         let mid = allocateId();
@@ -111,16 +123,16 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                             description: c.description,
                             result: undefined
                         };
-                        
+
                         state.messages.set(mid, {
                             id: mid,
+                            realID: msg.id,
                             role: 'agent',
                             createdAt: msg.createdAt,
                             text: null,
                             tool: toolCall,
-                            children: []
                         });
-                        
+
                         // Map tool ID to message ID for result processing
                         state.toolIdToMessageId.set(c.id, mid);
                         changed.add(mid);
@@ -131,103 +143,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
     }
 
     //
-    // Phase 3: Process tool calls with parents (child tools)
+    // Phase 3: Process non-sidechain tool results
     //
 
-    for (let msg of messages) {
-        if (msg.role === 'agent') {
-            for (let c of msg.content) {
-                if (c.type === 'tool-call' && c.parent_id) {
-                    // Check if we've already processed this tool
-                    if (!state.toolIdToMessageId.has(c.id)) {
-                        // Find parent message
-                        let parentMessageId = state.toolIdToMessageId.get(c.parent_id);
-                        if (!parentMessageId) {
-                            continue; // Parent not found
-                        }
-                        
-                        let parentMessage = state.messages.get(parentMessageId);
-                        if (!parentMessage) {
-                            continue;
-                        }
-                        
-                        // Create child message
-                        let mid = allocateId();
-                        let toolCall: ToolCall = {
-                            name: c.name,
-                            state: 'running' as const,
-                            input: c.input,
-                            createdAt: msg.createdAt,
-                            startedAt: null,
-                            completedAt: null,
-                            description: c.description,
-                            result: undefined
-                        };
-                        
-                        let childMessage: ReducerMessage = {
-                            id: mid,
-                            role: 'agent',
-                            createdAt: msg.createdAt,
-                            text: null,
-                            tool: toolCall,
-                            children: []
-                        };
-                        
-                        state.messages.set(mid, childMessage);
-                        parentMessage.children.push(childMessage);
-                        
-                        // Map tool ID to message ID for result processing
-                        state.toolIdToMessageId.set(c.id, mid);
-                        changed.add(parentMessageId); // Mark parent as changed
-                    }
-                }
-            }
-        }
-    }
-
-    //
-    // Phase 4: Process text messages with parents
-    //
-
-    for (let msg of messages) {
-        if (msg.role === 'agent') {
-            for (let c of msg.content) {
-                if (c.type === 'text' && c.parent_id) {
-                    // Find parent message
-                    let parentMessageId = state.toolIdToMessageId.get(c.parent_id);
-                    if (!parentMessageId) {
-                        continue; // Parent not found
-                    }
-                    
-                    let parentMessage = state.messages.get(parentMessageId);
-                    if (!parentMessage) {
-                        continue;
-                    }
-                    
-                    // Create child text message
-                    let mid = allocateId();
-                    let childMessage: ReducerMessage = {
-                        id: mid,
-                        role: 'agent',
-                        createdAt: msg.createdAt,
-                        text: c.text,
-                        tool: null,
-                        children: []
-                    };
-                    
-                    state.messages.set(mid, childMessage);
-                    parentMessage.children.push(childMessage);
-                    changed.add(parentMessageId); // Mark parent as changed
-                }
-            }
-        }
-    }
-
-    //
-    // Phase 5: Process tool results
-    //
-
-    for (let msg of messages) {
+    for (let msg of nonSidechainMessages) {
         if (msg.role === 'agent') {
             for (let c of msg.content) {
                 if (c.type === 'tool-result') {
@@ -236,16 +155,16 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                     if (!messageId) {
                         continue;
                     }
-                    
+
                     let message = state.messages.get(messageId);
                     if (!message || !message.tool) {
                         continue;
                     }
-                    
+
                     if (message.tool.state !== 'running') {
                         continue;
                     }
-                    
+
                     // Update tool state and result
                     message.tool.state = c.is_error ? 'error' : 'completed';
                     message.tool.result = c.content;
@@ -257,27 +176,109 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
     }
 
     //
+    // Phase 4: Process sidechains and store them in state
+    //
+
+    // For each sidechain message, store it in the state and mark the Task as changed
+    for (const msg of sidechainMessages) {
+        if (!msg.sidechainId) continue;
+
+        // Skip if we already processed this message
+        if (state.messageIds.has(msg.id)) continue;
+
+        // Mark as processed
+        state.messageIds.set(msg.id, msg.id);
+
+        // Get or create the sidechain array for this Task
+        const existingSidechain = state.sidechains.get(msg.sidechainId) || [];
+
+        // Process and add new sidechain messages
+        if (msg.role === 'agent' && msg.content[0]?.type === 'sidechain') {
+            // This is the sidechain root - create a user message
+            let mid = allocateId();
+            let userMsg: ReducerMessage = {
+                id: mid,
+                realID: msg.id,
+                role: 'user',
+                createdAt: msg.createdAt,
+                text: msg.content[0].prompt,
+                tool: null,
+            };
+            state.messages.set(mid, userMsg);
+            existingSidechain.push(userMsg);
+        } else if (msg.role === 'agent') {
+            // Process agent content in sidechain
+            for (let c of msg.content) {
+                if (c.type === 'text') {
+                    let mid = allocateId();
+                    let textMsg: ReducerMessage = {
+                        id: mid,
+                        realID: msg.id,
+                        role: 'agent',
+                        createdAt: msg.createdAt,
+                        text: c.text,
+                        tool: null,
+                    };
+                    state.messages.set(mid, textMsg);
+                    existingSidechain.push(textMsg);
+                } else if (c.type === 'tool-call') {
+                    let mid = allocateId();
+                    let toolCall: ToolCall = {
+                        name: c.name,
+                        state: 'running' as const,
+                        input: c.input,
+                        createdAt: msg.createdAt,
+                        startedAt: null,
+                        completedAt: null,
+                        description: c.description,
+                        result: undefined
+                    };
+                    let toolMsg: ReducerMessage = {
+                        id: mid,
+                        realID: msg.id,
+                        role: 'agent',
+                        createdAt: msg.createdAt,
+                        text: null,
+                        tool: toolCall,
+                    };
+                    state.messages.set(mid, toolMsg);
+                    existingSidechain.push(toolMsg);
+
+                    // Map for result processing
+                    state.toolIdToMessageId.set(c.id, mid);
+                } else if (c.type === 'tool-result') {
+                    // Process tool result in sidechain
+                    let messageId = state.toolIdToMessageId.get(c.tool_use_id);
+                    if (messageId) {
+                        let message = state.messages.get(messageId);
+                        if (message && message.tool && message.tool.state === 'running') {
+                            message.tool.state = c.is_error ? 'error' : 'completed';
+                            message.tool.result = c.content;
+                            message.tool.completedAt = msg.createdAt;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Update the sidechain in state
+        state.sidechains.set(msg.sidechainId, existingSidechain);
+
+        // Invalidate task message
+        if (state.messageIds.has(msg.sidechainId)) {
+            changed.add(msg.sidechainId);
+        }
+    }
+
+    //
     // Collect changed messages (only root-level messages)
     //
 
-    // First, identify which messages are children
-    let childMessageIds = new Set<string>();
-    for (let msg of state.messages.values()) {
-        for (let child of msg.children) {
-            childMessageIds.add(child.id);
-        }
-    }
-    
-    // Only add messages that are not children of other messages
     for (let id of changed) {
-        if (childMessageIds.has(id)) {
-            continue; // Skip child messages
-        }
-        
         let existing = state.messages.get(id);
         if (!existing) continue;
-        
-        let message = convertReducerMessageToMessage(existing);
+
+        let message = convertReducerMessageToMessage(existing, state);
         if (message) {
             newMessages.push(message);
         }
@@ -294,7 +295,7 @@ function allocateId() {
     return Math.random().toString(36).substring(2, 15);
 }
 
-function convertReducerMessageToMessage(reducerMsg: ReducerMessage): Message | null {
+function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: ReducerState): Message | null {
     if (reducerMsg.role === 'user' && reducerMsg.text !== null) {
         return {
             id: reducerMsg.id,
@@ -314,13 +315,14 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage): Message | n
     } else if (reducerMsg.role === 'agent' && reducerMsg.tool !== null) {
         // Convert children recursively
         let childMessages: Message[] = [];
-        for (let child of reducerMsg.children) {
-            let childMessage = convertReducerMessageToMessage(child);
+        let children = reducerMsg.realID ? state.sidechains.get(reducerMsg.realID) || [] : [];
+        for (let child of children) {
+            let childMessage = convertReducerMessageToMessage(child, state);
             if (childMessage) {
                 childMessages.push(childMessage);
             }
         }
-        
+
         return {
             id: reducerMsg.id,
             localId: null,
@@ -330,6 +332,6 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage): Message | n
             children: childMessages
         };
     }
-    
+
     return null;
 }

@@ -19,7 +19,7 @@ export interface SessionStatus {
 export function getSessionState(session: Session): SessionStatus {
     const now = Date.now();
     const isDisconnected = !session.activeAt || session.activeAt < now - DISCONNECTED_TIMEOUT_MS;
-    
+
     if (isDisconnected) {
         return {
             state: 'disconnected',
@@ -28,7 +28,7 @@ export function getSessionState(session: Session): SessionStatus {
             shouldShowStatus: true
         };
     }
-    
+
     if (session.thinking === true) {
         return {
             state: 'thinking',
@@ -37,7 +37,7 @@ export function getSessionState(session: Session): SessionStatus {
             shouldShowStatus: true
         };
     }
-    
+
     return {
         state: 'waiting',
         isConnected: true,
@@ -51,9 +51,25 @@ export function getSessionState(session: Session): SessionStatus {
  * Returns the last segment of the path, or 'unknown' if no path is available.
  */
 export function getSessionName(session: Session): string {
-    if (session.metadata?.path) {
+    if (session.metadata?.summary) {
+        return session.metadata.summary.text;
+    } else if (session.metadata) {
         const segments = session.metadata.path.split('/').filter(Boolean);
-        return segments.pop() || 'unknown';
+        const lastSegment = segments.pop()!;
+        return lastSegment;
+    }
+    return 'unknown';
+}
+
+/**
+ * Extracts a display name from a session's metadata path.
+ * Returns the last segment of the path, or 'unknown' if no path is available.
+ */
+export function getSessionSubtitle(session: Session): string {
+    if (session.metadata) {
+        const segments = session.metadata.path.split('/').filter(Boolean);
+        const lastSegment = segments.pop()!;
+        return session.metadata.path + '@' + session.metadata.host;
     }
     return 'unknown';
 }
