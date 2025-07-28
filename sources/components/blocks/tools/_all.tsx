@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { EditView } from './EditView';
 import { BashView } from './BashView';
-import { ToolCall } from '@/sync/typesMessage';
+import { Message, ToolCall } from '@/sync/typesMessage';
 import { Metadata } from '@/sync/storageTypes';
 import { WriteView } from './WriteView';
 import { TodoView } from './TodoView';
@@ -12,6 +12,7 @@ import { TaskView } from './TaskView';
 export type ToolViewProps = {
     tool: ToolCall;
     metadata: Metadata | null;
+    messages: Message[]
 }
 
 // Type for tool view components
