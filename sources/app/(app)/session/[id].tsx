@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { View, FlatList, Text, ActivityIndicator, Alert, Animated } from "react-native";
 import { KeyboardAvoidingView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -214,16 +214,17 @@ ${conversationContext}`;
         sync.onSessionVisible(sessionId);
     }, [sessionId]);
 
-    const status = React.useMemo(() => {
-        if (sessionStatus.shouldShowStatus) {
-            return (
-                <Text style={{ color: '#999', fontSize: 14, marginLeft: 8 }}>
-                    {sessionStatus.state === 'disconnected' ? 'Session disconnected' : 'Thinking...'}
-                </Text>
-            );
-        }
-        return null;
-    }, [sessionStatus]);
+
+    // Animated value for floating toolbar
+    const toolbarAnim = useRef(new Animated.Value(0)).current;
+
+    useEffect(() => {
+        Animated.timing(toolbarAnim, {
+            toValue: sessionStatus.state === 'thinking' ? 1 : 0,
+            duration: 200,
+            useNativeDriver: true,
+        }).start();
+    }, [sessionStatus.state, toolbarAnim]);
 
     const footer = React.useMemo(() => {
         if (!permissionRequest) {
@@ -348,6 +349,46 @@ ${conversationContext}`;
                         )}
                     </Deferred>
                 </View>
+                {/* Floating toolbar */}
+                <Animated.View
+                    style={{
+                        position: 'absolute',
+                        bottom: 60,
+                        left: 0,
+                        right: 0,
+                        flexDirection: 'row',
+                        justifyContent: 'center',
+                        paddingHorizontal: 16,
+                        transform: [{
+                            translateY: toolbarAnim.interpolate({
+                                inputRange: [0, 1],
+                                outputRange: [100, 0],
+                            }),
+                        }],
+                        opacity: toolbarAnim,
+                    }}
+                    pointerEvents={sessionStatus.state === 'thinking' ? 'auto' : 'none'}
+                >
+                    <View style={{
+                        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+                        borderRadius: 20,
+                        paddingHorizontal: 16,
+                        paddingVertical: 8,
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 2 },
+                        shadowOpacity: 0.1,
+                        shadowRadius: 8,
+                        elevation: 5,
+                    }}>
+                        <RoundButton
+                            size='normal'
+                            display='inverted'
+                            title="Abort"
+                            action={() => sync.abort(sessionId)}
+                        />
+                    </View>
+                </Animated.View>
+
                 <AgentInput
                     placeholder="Type a message ..."
                     value={message}
@@ -356,26 +397,13 @@ ${conversationContext}`;
                         setMessage('');
                         sync.sendMessage(sessionId, message);
                     } : handleMicrophonePress}
-                    sendIcon={message.trim() ? undefined : (
+                    sendIcon={message.trim() ? undefined : settings.inferenceOpenAIKey ? (
                         <Ionicons
-                            name={isRecording ? "stop-circle" : "mic"}
-                            size={24}
-                            color={isRecording ? "#FF3B30" : "#007AFF"}
+                            name={isRecording ? "stop" : "headset"}
+                            size={isRecording ? 20 : 22}
+                            color="#fff"
                         />
-                    )}
-                    status={
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12, paddingLeft: 4 }}>
-                            {sessionStatus.state === 'thinking' &&
-                                <RoundButton
-                                    size='normal'
-                                    display='inverted'
-                                    title={"Abort"}
-                                    action={() => sync.abort(sessionId)}
-                                />
-                            }
-                            {status}
-                        </View>
-                    }
+                    ) : undefined}
                 />
             </KeyboardAvoidingView>
         </>

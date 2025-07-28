@@ -1,19 +1,48 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, TextInput, NativeSyntheticEvent, TextInputKeyPressEventData, Platform } from 'react-native';
+import { View, TextInput, NativeSyntheticEvent, TextInputKeyPressEventData, Platform, Animated } from 'react-native';
 import { Pressable } from 'react-native-gesture-handler';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export const AgentInput = React.memo((props: {
     value: string,
     placeholder: string,
     onChangeText: (text: string) => void,
     onSend: () => void,
-    status?: React.ReactNode,
     sendIcon?: React.ReactNode
 }) => {
-
-    const safeArea = useSafeAreaInsets();
+    // Animation states
+    const scaleAnim = React.useRef(new Animated.Value(1)).current;
+    const prevStateRef = React.useRef<'add' | 'send' | 'custom'>('add');
+    
+    // Determine current state
+    const currentState = React.useMemo(() => {
+        if (props.sendIcon) return 'custom';
+        if (props.value.trim()) return 'send';
+        return 'add';
+    }, [props.value, props.sendIcon]);
+    
+    // Animate state changes
+    React.useEffect(() => {
+        const prevState = prevStateRef.current;
+        
+        if (prevState !== currentState) {
+            // Scale animation
+            Animated.sequence([
+                Animated.timing(scaleAnim, {
+                    toValue: 0.8,
+                    duration: 100,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(scaleAnim, {
+                    toValue: 1,
+                    duration: 100,
+                    useNativeDriver: true,
+                }),
+            ]).start();
+            
+            prevStateRef.current = currentState;
+        }
+    }, [currentState, scaleAnim]);
 
     // Handle Enter key on web
     const handleKeyPress = React.useCallback((e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
@@ -34,27 +63,43 @@ export const AgentInput = React.memo((props: {
     }, [props.onSend]);
 
     return (
-        <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+        <View style={{ 
+            flexDirection: 'row', 
+            justifyContent: 'center',
+            paddingHorizontal: 16,
+            paddingBottom: 8,
+            paddingTop: 8,
+        }}>
             <View
                 style={{
-                    paddingBottom: 0 + safeArea.bottom,
-                    marginBottom: -safeArea.bottom,
-                    flexDirection: 'column',
-                    borderTopEndRadius: 24,
-                    borderTopStartRadius: 24,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    borderRadius: 24,
+                    backgroundColor: '#fff',
+                    borderWidth: 1,
+                    borderColor: '#E5E5E7',
                     flexGrow: 1,
                     maxWidth: 700,
-                    boxShadow: '0px 0px 8px 0px rgba(0,0,0,0.2)',
+                    paddingLeft: 16,
+                    paddingRight: 5,
+                    paddingVertical: 5,
+                    minHeight: 48,
+                    shadowColor: '#000',
+                    shadowOffset: { width: 0, height: 2 },
+                    shadowOpacity: 0.08,
+                    shadowRadius: 6,
+                    elevation: 3,
                 }}
             >
                 <TextInput
                     style={{
-                        paddingTop: 24,
-                        paddingHorizontal: 24,
-                        paddingBottom: 12,
-                        textAlignVertical: 'top',
-                        fontSize: 18,
-                        maxHeight: 90,
+                        flex: 1,
+                        paddingVertical: 10,
+                        paddingRight: 8,
+                        textAlignVertical: 'center',
+                        fontSize: 16,
+                        maxHeight: 120,
+                        color: '#000',
                     }}
                     placeholder={props.placeholder}
                     placeholderTextColor={'#9D9FA3'}
@@ -70,26 +115,39 @@ export const AgentInput = React.memo((props: {
                     onKeyPress={handleKeyPress}
                     submitBehavior="newline"
                 />
-                <View style={{ height: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8 }}>
-                    <View style={{ flex: 1 }}>
-                        {props.status}
-                    </View>
+                <Animated.View
+                    style={{
+                        transform: [
+                            { scale: scaleAnim }
+                        ],
+                    }}
+                >
                     <Pressable
                         style={(p) => ({
-                            width: 36,
-                            height: 36,
-                            borderRadius: 24,
-                            backgroundColor: 'black',
+                            width: 38,
+                            height: 38,
+                            borderRadius: 19,
+                            backgroundColor: currentState !== 'add' ? '#007AFF' : 'transparent',
+                            borderWidth: currentState === 'add' ? 2 : 0,
+                            borderColor: '#E5E5E7',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            marginRight: 8
+                            opacity: p.pressed ? 0.7 : 1,
+                            transform: [{ scale: p.pressed ? 0.9 : 1 }],
                         })}
                         onPress={handlePress}
-                        hitSlop={10}
+                        hitSlop={8}
+                        disabled={!props.value.trim() && !props.sendIcon}
                     >
-                        {props.sendIcon || <Ionicons name="arrow-up" size={20} color="white" />}
+                        {props.sendIcon || (
+                            <Ionicons 
+                                name={currentState === 'send' ? "arrow-up" : "add"} 
+                                size={currentState === 'send' ? 20 : 24} 
+                                color={currentState !== 'add' ? "#fff" : "#8E8E93"}
+                            />
+                        )}
                     </Pressable>
-                </View>
+                </Animated.View>
             </View>
         </View>
     );

@@ -125,6 +125,7 @@ export default React.memo(() => {
                         fontSize: 20,
                         fontWeight: '600',
                         marginTop: 12,
+                        textAlign: 'center',
                         ...Typography.default('semiBold')
                     }}>
                         {sessionName}
