@@ -11,7 +11,8 @@
     "web": "expo start --web",
     "test": "vitest",
     "prebuild": "expo prebuild",
-    "ota": "eas update --branch production",
+    "ota": "eas update --branch preview",
+    "ota:production": "eas update --branch production",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package"
   },
