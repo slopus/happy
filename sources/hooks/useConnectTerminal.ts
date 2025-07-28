@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { useAuth } from '@/auth/AuthContext';
 import { decodeBase64 } from '@/auth/base64';
@@ -67,7 +67,10 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
         if (CameraView.isModernBarcodeScannerAvailable) {
             const subscription = CameraView.onModernBarcodeScanned(async (event) => {
                 if (event.data.startsWith('happy://terminal?')) {
-                    await CameraView.dismissScanner();
+                    // Dismiss scanner on Android is called automatically when barcode is scanned
+                    if (Platform.OS !== 'android') {
+                        await CameraView.dismissScanner();
+                    }
                     await processAuthUrl(event.data);
                 }
             });
