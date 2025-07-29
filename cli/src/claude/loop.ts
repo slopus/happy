@@ -12,7 +12,8 @@ interface LoopOptions {
     path: string
     model?: string
     permissionMode?: 'auto' | 'default' | 'plan'
-    startingMode?: 'interactive' | 'remote'
+    startingMode?: 'local' | 'remote'
+    onModeChange?: (mode: 'local' | 'remote') => void
     mcpServers?: Record<string, any>
     permissionPromptToolName?: string
     session: ApiSessionClient
@@ -31,7 +32,7 @@ interface LoopOptions {
 */
 
 export async function loop(opts: LoopOptions) {
-    let mode: 'interactive' | 'remote' = opts.startingMode ?? 'interactive';
+    let mode: 'local' | 'remote' = opts.startingMode ?? 'local';
     let currentMessageQueue: MessageQueue = new MessageQueue();
     let sessionId: string | null = null;
     let onMessage: (() => void) | null = null;
@@ -55,8 +56,6 @@ export async function loop(opts: LoopOptions) {
         }
     });
 
-
-
     let onSessionFound = (newSessionId: string) => {
         sessionId = newSessionId;
         sessionScanner.onNewSession(newSessionId);
@@ -65,25 +64,40 @@ export async function loop(opts: LoopOptions) {
     while (true) {
         // Switch to remote mode if there are messages waiting
         if (currentMessageQueue.size() > 0) {
-            mode = 'remote';
+            if (mode !== 'remote') {
+                mode = 'remote';
+                if (opts.onModeChange) {
+                    opts.onModeChange(mode);
+                }
+            }
             continue;
         }
 
         // Start local mode
-        if (mode === 'interactive') {
+        if (mode === 'local') {
             let abortedOutside = false;
             const interactiveAbortController = new AbortController();
             opts.session.setHandler('switch', () => {
                 if (!interactiveAbortController.signal.aborted) {
                     abortedOutside = true;
-                    mode = 'remote';
+                    if (mode !== 'remote') {
+                        mode = 'remote';
+                        if (opts.onModeChange) {
+                            opts.onModeChange(mode);
+                        }
+                    }
                     interactiveAbortController.abort();
                 }
             });
             onMessage = () => {
                 if (!interactiveAbortController.signal.aborted) {
                     abortedOutside = true;
-                    mode = 'remote';
+                    if (mode !== 'remote') {
+                        mode = 'remote';
+                        if (opts.onModeChange) {
+                            opts.onModeChange(mode);
+                        }
+                    }
                     interactiveAbortController.abort();
                 }
                 onMessage = null;
@@ -98,7 +112,7 @@ export async function loop(opts: LoopOptions) {
             if (!abortedOutside) {
                 return;
             }
-            if (mode !== 'interactive') {
+            if (mode !== 'local') {
                 console.log('Switching to remote mode...');
             }
         }
@@ -107,7 +121,7 @@ export async function loop(opts: LoopOptions) {
         if (mode === 'remote') {
             logger.debug('Starting ' + sessionId);
             const remoteAbortController = new AbortController();
-            
+
             // Use the current queue for this session
             opts.session.setHandler('abort', () => {
                 if (!remoteAbortController.signal.aborted) {
@@ -116,7 +130,12 @@ export async function loop(opts: LoopOptions) {
             });
             const abortHandler = () => {
                 if (!remoteAbortController.signal.aborted) {
-                    mode = 'interactive';
+                    if (mode !== 'local') {
+                        mode = 'local';
+                        if (opts.onModeChange) {
+                            opts.onModeChange(mode);
+                        }
+                    }
                     remoteAbortController.abort();
                 }
                 if (process.stdin.isTTY) {

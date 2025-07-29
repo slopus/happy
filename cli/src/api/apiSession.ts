@@ -6,6 +6,7 @@ import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { backoff } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
+import { randomUUID } from 'node:crypto';
 
 type RpcHandler<T = any, R = any> = (data: T) => R | Promise<R>;
 type RpcHandlerMap = Map<string, RpcHandler>;
@@ -62,13 +63,13 @@ export class ApiSessionClient extends EventEmitter {
             // Re-register all RPC handlers on reconnection
             this.reregisterHandlers();
         })
-        
+
         // Set up global RPC request handler
         this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
             try {
                 const method = data.method;
                 const handler = this.rpcHandlers.get(method);
-                
+
                 if (!handler) {
                     logger.debug('[SOCKET] [RPC] [ERROR] method not found', { method });
                     const errorResponse = { error: 'Method not found' };
@@ -76,13 +77,13 @@ export class ApiSessionClient extends EventEmitter {
                     callback(encryptedError);
                     return;
                 }
-                
+
                 // Decrypt the incoming params
                 const decryptedParams = decrypt(decodeBase64(data.params), this.secret);
-                
+
                 // Call the handler
                 const result = await handler(decryptedParams);
-                
+
                 // Encrypt and return the response
                 const encryptedResponse = encodeBase64(encrypt(result, this.secret));
                 callback(encryptedResponse);
@@ -111,7 +112,7 @@ export class ApiSessionClient extends EventEmitter {
                     logger.debug('[SOCKET] [UPDATE] [ERROR] No body in update!');
                     return;
                 }
-                
+
                 if (data.body.t === 'new-message' && data.body.message.content.t === 'encrypted') {
                     const body = decrypt(decodeBase64(data.body.message.content.c), this.secret);
 
@@ -173,7 +174,7 @@ export class ApiSessionClient extends EventEmitter {
      */
     sendClaudeSessionMessage(body: RawJSONLines) {
         let content: MessageContent;
-        
+
         // Check if body is already a MessageContent (has role property)
         if (body.type === 'user' && typeof body.message.content === 'string' && body.isSidechain !== true && body.isMeta !== true) {
             content = {
@@ -196,13 +197,13 @@ export class ApiSessionClient extends EventEmitter {
         }
 
         logger.debugLargeJson('[SOCKET] Sending message through socket:', content)
-        
+
         const encrypted = encodeBase64(encrypt(content, this.secret));
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted
         });
-        
+
         // Track usage from assistant messages
         if (body.type === 'assistant' && body.message.usage) {
             try {
@@ -211,7 +212,7 @@ export class ApiSessionClient extends EventEmitter {
                 logger.debug('[SOCKET] Failed to send usage data:', error);
             }
         }
-        
+
         // Update metadata with summary if this is a summary message
         if (body.type === 'summary' && 'summary' in body && 'leafUuid' in body) {
             this.updateMetadata((metadata) => ({
@@ -224,15 +225,32 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    sendSessionEvent(event: { type: 'switch', mode: 'local' | 'remote' }, id?: string) {
+        let content = {
+            role: 'agent',
+            content: {
+                id: id ?? randomUUID(),
+                type: 'event',
+                data: event
+            }
+        };
+        const encrypted = encodeBase64(encrypt(content, this.secret));
+        this.socket.emit('message', {
+            sid: this.sessionId,
+            message: encrypted
+        });
+    }
+
     /**
      * Send a ping message to keep the connection alive
      */
-    keepAlive(thinking: boolean) {
+    keepAlive(thinking: boolean, mode: 'local' | 'remote') {
         logger.debug(`[API] Sending keep alive message: ${thinking}`);
-        this.socket.volatile.emit('session-alive', { 
-            sid: this.sessionId, 
-            time: Date.now(), 
-            thinking
+        this.socket.volatile.emit('session-alive', {
+            sid: this.sessionId,
+            time: Date.now(),
+            thinking,
+            mode
         });
     }
 
@@ -249,7 +267,7 @@ export class ApiSessionClient extends EventEmitter {
     sendUsageData(usage: Usage) {
         // Calculate total tokens
         const totalTokens = usage.input_tokens + usage.output_tokens + (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0);
-        
+
         // Transform Claude usage format to backend expected format
         const usageReport = {
             key: 'claude-session',
@@ -330,24 +348,24 @@ export class ApiSessionClient extends EventEmitter {
     setHandler<T = any, R = any>(method: string, handler: RpcHandler<T, R>): void {
         // Prefix method with session ID to ensure isolation between sessions
         const prefixedMethod = `${this.sessionId}:${method}`;
-        
+
         // Store the handler
         this.rpcHandlers.set(prefixedMethod, handler);
-        
+
         // Register the method with the server
         this.socket.emit('rpc-register', { method: prefixedMethod });
-        
+
         logger.debug('Registered RPC handler', { method, prefixedMethod });
     }
-    
+
     /**
      * Re-register all RPC handlers after reconnection
      */
     private reregisterHandlers(): void {
-        logger.debug('Re-registering RPC handlers after reconnection', { 
-            totalMethods: this.rpcHandlers.size 
+        logger.debug('Re-registering RPC handlers after reconnection', {
+            totalMethods: this.rpcHandlers.size
         });
-        
+
         // Re-register all methods with the server
         for (const [prefixedMethod] of this.rpcHandlers) {
             this.socket.emit('rpc-register', { method: prefixedMethod });

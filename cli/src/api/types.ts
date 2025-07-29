@@ -77,7 +77,7 @@ export interface ServerToClientEvents {
  */
 export interface ClientToServerEvents {
   message: (data: { sid: string, message: any }) => void
-  'session-alive': (data: { sid: string, time: number, thinking: boolean }) => void
+  'session-alive': (data: { sid: string, time: number, thinking: boolean, mode: 'local' | 'remote' }) => void
   'session-end': (data: { sid: string, time: number }) => void,
   'update-metadata': (data: { sid: string, expectedVersion: number, metadata: string }, cb: (answer: {
     result: 'error'

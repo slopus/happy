@@ -15,7 +15,7 @@ import { startClaudeActivityTracker } from '@/claude/claudeActivityTracker';
 export interface StartOptions {
     model?: string
     permissionMode?: 'auto' | 'default' | 'plan'
-    startingMode?: 'interactive' | 'remote'
+    startingMode?: 'local' | 'remote'
     shouldStartDaemon?: boolean
 }
 
@@ -40,14 +40,15 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // If we have not recieved an update - that means session is disconnected
     // Either it was closed by user or the computer is offline
     let thinking = false;
+    let mode: 'local' | 'remote' = 'local';
     let pingInterval = setInterval(() => {
-        session.keepAlive(thinking);
+        session.keepAlive(thinking, mode);
     }, 2000);
 
     // Prepare proxy
     const proxyUrl = await startClaudeActivityTracker((newThinking) => {
         thinking = newThinking;
-        session.keepAlive(thinking);
+        session.keepAlive(thinking, mode);
     });
     process.env.ANTHROPIC_BASE_URL = proxyUrl;
 
@@ -155,6 +156,15 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         model: options.model,
         permissionMode: options.permissionMode,
         startingMode: options.startingMode,
+        onModeChange: (newMode) => {
+            mode = newMode;
+            session.sendSessionEvent({ type: 'switch', mode: newMode });
+            session.keepAlive(thinking, mode);
+            session.updateAgentState((currentState) => ({
+                ...currentState,
+                controlledByUser: newMode === 'local' ? true : false
+            }));
+        },
         mcpServers: {
             'permission': {
                 type: 'http' as const,

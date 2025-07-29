@@ -115,7 +115,7 @@ Currently only supported on macOS.
         // Already processed, skip the next arg
         i++
       } else if (arg === '--happy-starting-mode') {
-        options.startingMode = z.enum(['interactive', 'remote']).parse(args[++i])
+        options.startingMode = z.enum(['local', 'remote']).parse(args[++i])
       } else {
         console.error(chalk.red(`Unknown argument: ${arg}`))
         process.exit(1)
