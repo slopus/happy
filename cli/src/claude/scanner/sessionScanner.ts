@@ -45,6 +45,7 @@ export function createSessionScanner(opts: {
 
     // Main sync function
     const sync = new InvalidateSync(async () => {
+        logger.debug(`[SESSION_SCANNER] Syncing...`);
 
         // Collect session ids
         let sessions: string[] = [];
@@ -64,6 +65,7 @@ export function createSessionScanner(opts: {
                 // We will fix it later with a session file watcher on claude side.
                 file = await readFile(expectedSessionFile, 'utf-8');
             } catch (error) {
+                logger.debug(`[SESSION_SCANNER] Session file not found: ${expectedSessionFile}`);
                 return;
             }
             let lines = file.split('\n');
@@ -100,6 +102,7 @@ export function createSessionScanner(opts: {
                     // Notify
                     opts.onMessage(message); // Send original message to the server
                 } catch (e) {
+                    logger.debug(`[SESSION_SCANNER] Error processing message: ${e}`);
                     continue;
                 }
             }
@@ -127,6 +130,7 @@ export function createSessionScanner(opts: {
             }
         }
     });
+    sync.invalidate();
 
     // Periodic sync
     const intervalId = setInterval(() => { sync.invalidate(); }, 3000);
@@ -142,12 +146,15 @@ export function createSessionScanner(opts: {
         },
         onNewSession: (sessionId: string) => {
             if (currentSessionId === sessionId) {
+                logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is the same as the current session, skipping`);
                 return;
             }
             if (finishedSessions.has(sessionId)) {
+                logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already finished, skipping`);
                 return;
             }
             if (pendingSessions.has(sessionId)) {
+                logger.debug(`[SESSION_SCANNER] New session: ${sessionId} is already pending, skipping`);
                 return;
             }
             if (currentSessionId) {
