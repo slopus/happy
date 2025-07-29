@@ -3,8 +3,9 @@ import { RawJSONLines, RawJSONLinesSchema } from "../types";
 import { resolve } from "node:path";
 import { join } from "node:path";
 import { homedir } from "node:os";
-import { readFile, watch } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import { logger } from "@/ui/logger";
+import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
 
 export function createSessionScanner(opts: {
     workingDirectory: string
@@ -19,7 +20,7 @@ export function createSessionScanner(opts: {
     let finishedSessions = new Set<string>();
     let pendingSessions = new Set<string>();
     let currentSessionId: string | null = null;
-    let currentSessionWatcherAbortController: AbortController | null = null;
+    let watchers = new Map<string, (() => void)>();
     let processedMessages = new Set<string>();
 
     /*
@@ -117,25 +118,14 @@ export function createSessionScanner(opts: {
             }
         }
 
-        // Invalidate old watcher & start new one
-        currentSessionWatcherAbortController?.abort();
-        currentSessionWatcherAbortController = new AbortController();
-        void (async () => {
-            if (currentSessionId) {
-                const sessionFile = join(projectDir, `${currentSessionId}.jsonl`);
-                try {
-                    for await (const change of watch(sessionFile, { persistent: true, signal: currentSessionWatcherAbortController.signal })) {
-                        await processSessionFile(currentSessionId);
-                    }
-                } catch (error: any) {
-                    if (error.name !== 'AbortError') {
-                        logger.debug(`[SESSION_SCANNER] Watch error: ${error.message}`);
-                    }
-                }
+        // Update watchers
+        for (let p of sessions) {
+            if (!watchers.has(p)) {
+                watchers.set(p, startFileWatcher(join(projectDir, `${p}.jsonl`), () => {
+                    sync.invalidate();
+                }));
             }
-        })();
-
-        // We do not want to be creating a new watcher 
+        }
     });
 
     // Periodic sync
@@ -143,10 +133,12 @@ export function createSessionScanner(opts: {
 
     // Public interface
     return {
-        refresh: () => sync.invalidate(),
         cleanup: () => {
             clearInterval(intervalId);
-            currentSessionWatcherAbortController?.abort();
+            for (let w of watchers.values()) {
+                w();
+            }
+            watchers.clear();
         },
         onNewSession: (sessionId: string) => {
             if (currentSessionId === sessionId) {
