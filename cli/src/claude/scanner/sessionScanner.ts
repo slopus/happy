@@ -71,6 +71,9 @@ export function createSessionScanner(opts: {
             let lines = file.split('\n');
             for (let l of lines) {
                 try {
+                    if (l.trim() === '') {
+                        continue;
+                    }
                     let message = JSON.parse(l);
                     let parsed = RawJSONLinesSchema.safeParse(message);
                     if (!parsed.success) { // We can't deduplicate this message so we have to skip it

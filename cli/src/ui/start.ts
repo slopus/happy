@@ -9,8 +9,8 @@ import type { OnAssistantResultCallback } from '@/ui/messageFormatter';
 import { InterruptController } from '@/claude/InterruptController';
 // @ts-ignore
 import packageJson from '../../package.json';
-import { startAnthropicActivityProxy } from '@/claude/proxy/startAnthropicActivityProxy';
 import { registerHandlers } from '@/api/handlers';
+import { startClaudeActivityTracker } from '@/claude/claudeActivityTracker';
 
 export interface StartOptions {
     model?: string
@@ -44,23 +44,13 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         session.keepAlive(thinking);
     }, 2000);
 
-    // Start Anthropic activity monitoring proxy
-    const antropicActivityProxy = await startAnthropicActivityProxy(
-        (activity) => {
-            const newThinking = activity === 'working';
-            if (newThinking !== thinking) {
-                thinking = newThinking;
-                logger.debug(`[PING] Thinking state changed: ${thinking}`);
-                session.keepAlive(thinking);
-            }
-        }
-    );
+    // Prepare proxy
+    const proxyUrl = await startClaudeActivityTracker((newThinking) => {
+        thinking = newThinking;
+        session.keepAlive(thinking);
+    });
+    process.env.ANTHROPIC_BASE_URL = proxyUrl;
 
-    // Set the proxy URL for both HTTP and HTTPS traffic
-    process.env.HTTP_PROXY = antropicActivityProxy.url;
-    process.env.HTTPS_PROXY = antropicActivityProxy.url;
-    logger.debug(`[AnthropicProxy] Set HTTP_PROXY and HTTPS_PROXY to ${antropicActivityProxy.url}`);
-    
     // Print log file path
     const logPath = await logger.logFilePathPromise;
     logger.infoDeveloper(`Session: ${response.id}`);
@@ -124,10 +114,10 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                 }
             }
         }));
-        
+
         // Clear timeout when permission is resolved
         promise.then(() => clearTimeout(timeout)).catch(() => clearTimeout(timeout));
-        
+
         return promise;
     });
 
@@ -138,7 +128,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     const onAssistantResult: OnAssistantResultCallback = async (result) => {
         try {
             // Extract summary or create a default message
-            const summary = 'result' in result && result.result 
+            const summary = 'result' in result && result.result
                 ? result.result.substring(0, 100) + (result.result.length > 100 ? '...' : '')
                 : '';
 
@@ -195,9 +185,5 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     }
 
     // Exit
-    if (antropicActivityProxy) {
-        logger.debug('[AnthropicProxy] Shutting down activity monitoring proxy');
-        antropicActivityProxy.cleanup();
-    }
     process.exit(0);
 }
