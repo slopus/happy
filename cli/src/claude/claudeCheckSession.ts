@@ -1,12 +1,10 @@
 import { logger } from "@/ui/logger";
 import { existsSync, readFileSync } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
-import { resolve } from "node:path";
+import { getProjectPath } from "./path";
 
 export function claudeCheckSession(sessionId: string, path: string) {
-    const projectName = resolve(path).replace(/\//g, '-')
-    const projectDir = join(homedir(), '.claude', 'projects', projectName);
+    const projectDir = getProjectPath(path);
 
     // Check if session id is in the project dir
     const sessionFile = join(projectDir, `${sessionId}.jsonl`);

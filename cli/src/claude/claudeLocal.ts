@@ -7,6 +7,7 @@ import { mkdirSync } from "node:fs";
 import { watch } from "node:fs";
 import { logger } from "@/ui/logger";
 import { claudeCheckSession } from "./claudeCheckSession";
+import { getProjectPath } from "./path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -18,8 +19,7 @@ export async function claudeLocal(opts: {
 }) {
 
     // Start a watcher for to detect the session id
-    const projectName = resolve(opts.path).replace(/\//g, '-')
-    const projectDir = join(homedir(), '.claude', 'projects', projectName);
+    const projectDir = getProjectPath(opts.path);
     mkdirSync(projectDir, { recursive: true });
     const watcher = watch(projectDir);
     let resolvedSessionId: string | null = null;

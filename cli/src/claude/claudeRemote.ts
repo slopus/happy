@@ -8,6 +8,7 @@ import { resolve } from 'node:path';
 import { join } from 'node:path';
 import type { InterruptController } from './InterruptController';
 import { awaitFileExist } from '@/modules/watcher/awaitFileExist';
+import { getProjectPath } from './path';
 
 export async function claudeRemote(opts: {
     abort: AbortSignal,
@@ -104,8 +105,8 @@ export async function claudeRemote(opts: {
                 // Session id is still in memory, wait until session file is  written to disk
                 // Start a watcher for to detect the session id
                 logger.debug(`[claudeRemote] Waiting for session file to be written to disk: ${message.session_id}`);
-                const projectName = resolve(opts.path).replace(/\//g, '-');
-                const found = await awaitFileExist(join(homedir(), '.claude', 'projects', projectName, `${message.session_id}.jsonl`));
+                const projectDir = getProjectPath(opts.path);
+                const found = await awaitFileExist(join(projectDir, `${message.session_id}.jsonl`));
                 logger.debug(`[claudeRemote] Session file found: ${message.session_id} ${found}`);
                 opts.onSessionFound(message.session_id);
             }

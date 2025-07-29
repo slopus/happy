@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { readFile } from "node:fs/promises";
 import { logger } from "@/ui/logger";
 import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
+import { getProjectPath } from "../path";
 
 export function createSessionScanner(opts: {
     workingDirectory: string
@@ -13,8 +14,7 @@ export function createSessionScanner(opts: {
 }) {
 
     // Resolve project directory
-    const projectName = resolve(opts.workingDirectory).replace(/\//g, '-')
-    const projectDir = join(homedir(), '.claude', 'projects', projectName)
+    const projectDir = getProjectPath(opts.workingDirectory);
 
     // Finished, pending finishing and current session
     let finishedSessions = new Set<string>();
