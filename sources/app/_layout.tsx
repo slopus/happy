@@ -8,10 +8,11 @@ import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { AuthProvider } from '@/auth/AuthContext';
 import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { initialWindowMetrics, SafeAreaProvider } from 'react-native-safe-area-context';
+import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SidebarNavigator } from '@/components/SidebarNavigator';
 import sodium from 'react-native-libsodium';
+import { View } from 'react-native';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -24,6 +25,20 @@ SplashScreen.setOptions({
     duration: 300,
 })
 SplashScreen.preventAutoHideAsync();
+
+// Component to apply horizontal safe area padding
+function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) {
+    const insets = useSafeAreaInsets();
+    return (
+        <View style={{ 
+            flex: 1, 
+            paddingLeft: insets.left,
+            paddingRight: insets.right 
+        }}>
+            {children}
+        </View>
+    );
+}
 
 export default function RootLayout() {
 
@@ -89,7 +104,9 @@ export default function RootLayout() {
                 <GestureHandlerRootView style={{ flex: 1 }}>
                     <AuthProvider initialCredentials={initState.credentials}>
                         <ThemeProvider value={DefaultTheme}>
-                            <SidebarNavigator />
+                            <HorizontalSafeAreaWrapper>
+                                <SidebarNavigator />
+                            </HorizontalSafeAreaWrapper>
                         </ThemeProvider>
                     </AuthProvider>
                 </GestureHandlerRootView>

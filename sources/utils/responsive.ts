@@ -1,4 +1,4 @@
-import { Dimensions, Platform } from 'react-native';
+import { Dimensions, Platform, PixelRatio } from 'react-native';
 import { useWindowDimensions } from 'react-native';
 import { useEffect, useState } from 'react';
 
@@ -10,15 +10,38 @@ export const BREAKPOINTS = {
     xl: 1280,  // Large tablets
 } as const;
 
-// Device type detection
-export function getDeviceType(width: number): 'phone' | 'tablet' {
-    return width >= BREAKPOINTS.md ? 'tablet' : 'phone';
+// Device type detection based on screen size and aspect ratio
+export function getDeviceType(): 'phone' | 'tablet' {
+    const { width, height } = Dimensions.get('screen');
+    const pixelDensity = PixelRatio.get();
+    
+    // Calculate diagonal size in inches (approximate)
+    const widthInches = width / (pixelDensity * 160);
+    const heightInches = height / (pixelDensity * 160);
+    const diagonalInches = Math.sqrt(widthInches * widthInches + heightInches * heightInches);
+    
+    // Consider it a tablet if:
+    // 1. Diagonal is >= 7 inches (typical tablet size)
+    // 2. Or if it's an iPad (iOS specific check)
+    if (Platform.OS === 'ios' && Platform.isPad) {
+        return 'tablet';
+    }
+    
+    // For Android and other platforms, use diagonal size
+    // Most phones are under 7 inches diagonal
+    return diagonalInches >= 7 ? 'tablet' : 'phone';
 }
 
 // Hook to detect if device is tablet
 export function useIsTablet() {
-    const { width } = useWindowDimensions();
-    return getDeviceType(width) === 'tablet';
+    const [isTablet, setIsTablet] = useState(() => getDeviceType() === 'tablet');
+    
+    useEffect(() => {
+        // Re-check on mount in case of dynamic changes
+        setIsTablet(getDeviceType() === 'tablet');
+    }, []);
+    
+    return isTablet;
 }
 
 // Hook to get current breakpoint
@@ -46,6 +69,12 @@ export function useResponsiveValue<T>(values: {
         return values.phone;
     }
     return values.default;
+}
+
+// Hook to detect landscape orientation
+export function useIsLandscape() {
+    const { width, height } = useWindowDimensions();
+    return width > height;
 }
 
 // Check if running on web

@@ -25,7 +25,11 @@ export const ItemList = React.memo<ItemListProps>((props) => {
     } = props;
 
     const isIOS = Platform.OS === 'ios';
-    const backgroundColor = isIOS && insetGrouped ? '#F2F2F7' : '#FFFFFF';
+    const backgroundColor = Platform.select({
+        ios: isIOS && insetGrouped ? '#F2F2F7' : '#FFFFFF',
+        android: '#F5F5F5', // Light grey background
+        default: '#FFFFFF'
+    });
 
     return (
         <ScrollView 
@@ -39,11 +43,13 @@ export const ItemList = React.memo<ItemListProps>((props) => {
             contentContainerStyle={[
                 {
                     paddingBottom: isIOS ? 34 : 16,
-                    paddingTop: isIOS && insetGrouped ? 0 : 0,
+                    paddingTop: 0,
                 },
                 containerStyle
             ]}
-            showsVerticalScrollIndicator={isIOS ? true : scrollViewProps.showsVerticalScrollIndicator}
+            showsVerticalScrollIndicator={scrollViewProps.showsVerticalScrollIndicator !== undefined 
+                ? scrollViewProps.showsVerticalScrollIndicator 
+                : true}
             contentInsetAdjustmentBehavior={isIOS ? 'automatic' : undefined}
             {...scrollViewProps}
         >
@@ -65,7 +71,11 @@ export const ItemListStatic = React.memo<Omit<ItemListProps, keyof ScrollViewPro
         insetGrouped = true
     } = props;
 
-    const backgroundColor = Platform.OS === 'ios' && insetGrouped ? '#F2F2F7' : '#FFFFFF';
+    const backgroundColor = Platform.select({
+        ios: Platform.OS === 'ios' && insetGrouped ? '#F2F2F7' : '#FFFFFF',
+        android: '#F5F5F5', // Light grey background
+        default: '#FFFFFF'
+    });
 
     return (
         <View 

@@ -1,14 +1,14 @@
 import * as React from 'react';
 import { ToolSectionView } from '../../tools/ToolSectionView';
 import { ToolViewProps } from './_all';
-import { DiffView } from '@/components/diff/DiffView';
+import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { knownTools } from '../../tools/knownTools';
 import { trimIdent } from '@/utils/trimIdent';
 import { useSetting } from '@/sync/storage';
 
 
 export const EditView = React.memo<ToolViewProps>(({ tool }) => {
-    const showLineNumbers = useSetting('showLineNumbers');
+    const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
     
     let oldString = '';
     let newString = '';
@@ -20,12 +20,12 @@ export const EditView = React.memo<ToolViewProps>(({ tool }) => {
 
     return (
         <>
-            <ToolSectionView>
-                <DiffView 
+            <ToolSectionView fullWidth>
+                <ToolDiffView 
                     oldText={oldString} 
                     newText={newString} 
-                    wrapLines={false}
-                    showLineNumbers={showLineNumbers}
+                    showLineNumbers={showLineNumbersInToolViews}
+                    showPlusMinusSymbols={showLineNumbersInToolViews}
                 />
             </ToolSectionView>
         </>

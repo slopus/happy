@@ -52,8 +52,7 @@ export default function RootLayout() {
             <Stack.Screen
                 name="session/[id]"
                 options={{
-                    headerTitle: '',
-                    headerBackTitle: 'Home'
+                    headerShown: false
                 }}
             />
             <Stack.Screen

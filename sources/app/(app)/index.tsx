@@ -2,6 +2,7 @@ import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import { ActivityIndicator, Image, Platform, Pressable, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
 import { encodeBase64 } from "@/auth/base64";
 import { authGetToken } from "@/auth/authGetToken";
@@ -12,7 +13,7 @@ import { Stack, useRouter } from "expo-router";
 import { useSessions } from "@/sync/storage";
 import { getRandomBytesAsync } from "expo-crypto";
 import { ConnectButton } from "@/components/ConnectButton";
-import { useIsTablet } from "@/utils/responsive";
+import { useIsTablet, useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
 
 export default function Home() {
@@ -134,6 +135,8 @@ function Authenticated() {
 function NotAuthenticated() {
     const auth = useAuth();
     const router = useRouter();
+    const isLandscape = useIsLandscape();
+    const insets = useSafeAreaInsets();
 
     const createAccount = async () => {
         const secret = await getRandomBytesAsync(32);
@@ -143,28 +146,58 @@ function NotAuthenticated() {
         }
     }
 
-    return (
-        <>
-            <Stack.Screen
-                options={{
-                    headerRight: () => null
-                }}
-            />
-            <View className="flex-1 items-center justify-center">
+    const portraitLayout = (
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <Image source={require('@/assets/images/happy-otter-2.png')} style={{ width: 200, height: 140 }} />
+            <Text style={{ marginTop: 16, textAlign: 'center', fontSize: 24, ...Typography.default('semiBold') }}>
+                Claude Code mobile client
+            </Text>
+            <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>
+                End-to-end encrypted and your account is stored only on your device.
+            </Text>
+            <View style={{ maxWidth: 200, width: '100%', marginBottom: 16 }}>
+                <RoundButton
+                    title="Create account"
+                    action={createAccount}
+                />
+            </View>
+            <View style={{ maxWidth: 200, width: '100%' }}>
+                <RoundButton
+                    size="normal"
+                    title="Restore account"
+                    onPress={() => router.push('/restore')}
+                    display="inverted"
+                />
+            </View>
+        </View>
+    );
+
+    const landscapeLayout = (
+        <View style={{ 
+            flex: 1, 
+            flexDirection: 'row', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            paddingHorizontal: 48, 
+            paddingBottom: insets.bottom + 24
+        }}>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingRight: 24 }}>
                 <Image source={require('@/assets/images/happy-otter-2.png')} style={{ width: 200, height: 140 }} />
-                <Text style={{ marginTop: 16, textAlign: 'center', fontSize: 24, ...Typography.default('semiBold') }}>
-                    Claude Code mobile client.
+            </View>
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingLeft: 24, maxWidth: 400 }}>
+                <Text style={{ textAlign: 'center', fontSize: 24, ...Typography.default('semiBold') }}>
+                    Claude Code mobile client
                 </Text>
-                <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginHorizontal: 24, marginBottom: 64 }}>
+                <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)', marginTop: 16, textAlign: 'center', marginBottom: 32, paddingHorizontal: 16 }}>
                     End-to-end encrypted and your account is stored only on your device.
                 </Text>
-                <View className="max-w-[200px] w-full mb-4">
+                <View style={{ width: 240, marginBottom: 16 }}>
                     <RoundButton
                         title="Create account"
                         action={createAccount}
                     />
                 </View>
-                <View className="max-w-[200px] w-full pt-4">
+                <View style={{ width: 240 }}>
                     <RoundButton
                         size="normal"
                         title="Restore account"
@@ -173,6 +206,17 @@ function NotAuthenticated() {
                     />
                 </View>
             </View>
+        </View>
+    );
+
+    return (
+        <>
+            <Stack.Screen
+                options={{
+                    headerRight: () => null
+                }}
+            />
+            {isLandscape ? landscapeLayout : portraitLayout}
         </>
     )
 }

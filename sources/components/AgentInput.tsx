@@ -4,6 +4,7 @@ import { View, TextInput, NativeSyntheticEvent, TextInputKeyPressEventData, Plat
 import { Pressable } from 'react-native-gesture-handler';
 import { hapticsLight, hapticsError } from './haptics';
 import { Typography } from '@/constants/Typography';
+import { layout } from './layout';
 
 // Status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -61,6 +62,7 @@ export const AgentInput = React.memo((props: {
     // Animation states
     const scaleAnim = React.useRef(new Animated.Value(1)).current;
     const prevStateRef = React.useRef<'add' | 'send' | 'custom'>('add');
+    const [isFocused, setIsFocused] = React.useState(false);
 
     // Determine current state
     const currentState = React.useMemo(() => {
@@ -74,19 +76,21 @@ export const AgentInput = React.memo((props: {
         const prevState = prevStateRef.current;
 
         if (prevState !== currentState) {
-            // Scale animation
-            Animated.sequence([
-                Animated.timing(scaleAnim, {
-                    toValue: 0.8,
-                    duration: 100,
-                    useNativeDriver: true,
-                }),
-                Animated.timing(scaleAnim, {
-                    toValue: 1,
-                    duration: 100,
-                    useNativeDriver: true,
-                }),
-            ]).start();
+            // Scale animation - skip on Android for better performance
+            if (Platform.OS === 'ios') {
+                Animated.sequence([
+                    Animated.timing(scaleAnim, {
+                        toValue: 0.8,
+                        duration: 100,
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(scaleAnim, {
+                        toValue: 1,
+                        duration: 100,
+                        useNativeDriver: true,
+                    }),
+                ]).start();
+            }
 
             prevStateRef.current = currentState;
         }
@@ -192,7 +196,7 @@ export const AgentInput = React.memo((props: {
             {/* Status panel */}
             {props.status && (
                 <View style={{
-                    paddingHorizontal: 16,
+                    alignItems: 'center',
                     paddingTop: 4,
                     paddingBottom: 2,
                 }}>
@@ -200,9 +204,9 @@ export const AgentInput = React.memo((props: {
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'space-between',
-                        maxWidth: 700,
-                        marginLeft: 16,
-                        marginRight: 16,                        
+                        width: '100%',
+                        maxWidth: layout.maxWidth,
+                        paddingHorizontal: 16,
                     }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <StatusDot
@@ -226,9 +230,9 @@ export const AgentInput = React.memo((props: {
                                 style={{
                                     backgroundColor: abortButtonBgAnim.interpolate({
                                         inputRange: [0, 1],
-                                        outputRange: ['#F2F2F7', '#FF3B30']
+                                        outputRange: [Platform.select({ ios: '#F2F2F7', android: '#E0E0E0', default: '#F2F2F7' })!, Platform.select({ ios: '#FF3B30', android: '#F44336', default: '#FF3B30' })!]
                                     }),
-                                    borderRadius: 16,
+                                    borderRadius: Platform.select({ ios: 16, android: 20 }),
                                     overflow: 'hidden',
                                 }}
                             >
@@ -263,12 +267,12 @@ export const AgentInput = React.memo((props: {
                                                     left: 0,
                                                     bottom: 0,
                                                     width: `${abortProgress * 100}%`,
-                                                    backgroundColor: '#FF3B30',
+                                                    backgroundColor: Platform.select({ ios: '#FF3B30', android: '#F44336' }),
                                                     opacity: 0.2,
                                                 }} />
                                                 <Text style={{
                                                     fontSize: 13,
-                                                    color: abortProgress > 0 || isAborting ? '#FF3B30' : '#000',
+                                                    color: abortProgress > 0 || isAborting ? Platform.select({ ios: '#FF3B30', android: '#F44336' }) : '#000',
                                                     fontWeight: '600',
                                                     ...Typography.default('semiBold')
                                                 }}>
@@ -286,8 +290,7 @@ export const AgentInput = React.memo((props: {
 
             {/* Input field */}
             <View style={{
-                flexDirection: 'row',
-                justifyContent: 'center',
+                alignItems: 'center',
                 paddingHorizontal: 16,
                 paddingBottom: 8,
                 paddingTop: props.status ? 4 : 8,
@@ -296,21 +299,33 @@ export const AgentInput = React.memo((props: {
                     style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        borderRadius: 24,
-                        backgroundColor: '#fff',
-                        borderWidth: 1,
-                        borderColor: '#E5E5E7',
-                        flexGrow: 1,
-                        maxWidth: 700,
+                        borderRadius: Platform.select({ ios: 24, android: 28 }),
+                        backgroundColor: Platform.select({
+                            ios: '#fff',
+                            android: isFocused ? '#FFFFFF' : '#F5F5F5',
+                        }),
+                        borderWidth: Platform.select({ ios: 1, android: 1.5 }),
+                        borderColor: Platform.select({ 
+                            ios: '#E5E5E7', 
+                            android: isFocused ? '#E0E0E0' : 'transparent' 
+                        }),
+                        width: '100%',
+                        maxWidth: layout.maxWidth,
                         paddingLeft: 16,
                         paddingRight: 5,
                         paddingVertical: 5,
                         minHeight: 48,
-                        shadowColor: '#000',
-                        shadowOffset: { width: 0, height: 2 },
-                        shadowOpacity: 0.08,
-                        shadowRadius: 6,
-                        elevation: 3,
+                        ...Platform.select({
+                            ios: {
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: 0.08,
+                                shadowRadius: 6,
+                            },
+                            android: {
+                                elevation: isFocused ? 3 : 0,
+                            }
+                        }),
                     }}
                 >
                     <TextInput
@@ -321,10 +336,16 @@ export const AgentInput = React.memo((props: {
                             textAlignVertical: 'center',
                             fontSize: 16,
                             maxHeight: 120,
-                            color: '#000',
+                            color: Platform.select({ 
+                                ios: '#000',
+                                android: isFocused ? '#000' : '#424242'
+                            }),
                         }}
                         placeholder={props.placeholder}
-                        placeholderTextColor={'#9D9FA3'}
+                        placeholderTextColor={Platform.select({ 
+                            ios: '#9D9FA3', 
+                            android: isFocused ? '#757575' : '#9E9E9E' 
+                        })}
                         autoCapitalize="sentences"
                         autoCorrect={true}
                         keyboardType="default"
@@ -335,6 +356,8 @@ export const AgentInput = React.memo((props: {
                         textContentType="none"
                         onChangeText={props.onChangeText}
                         onKeyPress={handleKeyPress}
+                        onFocus={() => setIsFocused(true)}
+                        onBlur={() => setIsFocused(false)}
                         submitBehavior="newline"
                     />
                     <Animated.View
@@ -349,9 +372,14 @@ export const AgentInput = React.memo((props: {
                                 width: 38,
                                 height: 38,
                                 borderRadius: 19,
-                                backgroundColor: currentState !== 'add' ? '#007AFF' : 'transparent',
-                                borderWidth: currentState === 'add' ? 2 : 0,
-                                borderColor: '#E5E5E7',
+                                backgroundColor: currentState !== 'add' 
+                                    ? Platform.select({ ios: '#007AFF', android: '#2196F3' }) 
+                                    : Platform.select({ 
+                                        ios: 'transparent', 
+                                        android: isFocused ? '#F5F5F5' : 'transparent' 
+                                    }),
+                                borderWidth: currentState === 'add' ? Platform.select({ ios: 2, android: 0 }) : 0,
+                                borderColor: Platform.select({ ios: '#E5E5E7', android: 'transparent' }),
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 opacity: p.pressed ? 0.7 : 1,
@@ -365,7 +393,7 @@ export const AgentInput = React.memo((props: {
                                 <Ionicons
                                     name={currentState === 'send' ? "arrow-up" : "add"}
                                     size={currentState === 'send' ? 20 : 24}
-                                    color={currentState !== 'add' ? "#fff" : "#8E8E93"}
+                                    color={currentState !== 'add' ? "#fff" : Platform.select({ ios: "#8E8E93", android: "#757575" })}
                                 />
                             )}
                         </Pressable>

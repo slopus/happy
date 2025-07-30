@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useEffect } from 'react';
-import { View, ScrollView, Text, ViewStyle, TextStyle } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, ViewStyle } from 'react-native';
 import { useColorScheme } from '@/components/useColorScheme';
 import { calculateUnifiedDiff, DiffToken } from '@/components/diff/calculateDiff';
 import { Typography } from '@/constants/Typography';
@@ -10,6 +10,7 @@ interface DiffViewProps {
     newText: string;
     contextLines?: number;
     showLineNumbers?: boolean;
+    showPlusMinusSymbols?: boolean;
     showDiffStats?: boolean;
     oldTitle?: string;
     newTitle?: string;
@@ -83,21 +84,16 @@ export const DiffView: React.FC<DiffViewProps> = ({
     newText,
     contextLines = 3,
     showLineNumbers = true,
-    showDiffStats = true,
-    oldTitle = 'Original',
-    newTitle = 'Modified',
+    showPlusMinusSymbols = true,
     className = '',
     style,
-    maxHeight = 500,
-    wrapLines = true,
     fontScaleX = 1,
 }) => {
     const colorScheme = useColorScheme();
     const colors = COLORS[colorScheme ?? 'light'];
-    const scrollRef = useRef<ScrollView>(null);
 
     // Calculate diff with inline highlighting
-    const { hunks, stats } = useMemo(() => {
+    const { hunks } = useMemo(() => {
         return calculateUnifiedDiff(oldText, newText, contextLines);
     }, [oldText, newText, contextLines]);
 
@@ -109,61 +105,6 @@ export const DiffView: React.FC<DiffViewProps> = ({
         ...style,
     };
 
-    const headerStyle: ViewStyle = {
-        backgroundColor: colors.surfaceVariant,
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.outline,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-    };
-
-    const titleStyle: TextStyle = {
-        fontSize: 14,
-        fontWeight: '600',
-        color: colors.onSurface,
-    };
-
-    const statsStyle: TextStyle = {
-        fontSize: 12,
-        ...Typography.mono(),
-    };
-
-    // Fixed width for line numbers - just enough for 3 digits
-    const lineNumberWidth = 25;
-
-    // Scroll past line numbers when not wrapping and showing line numbers
-    useEffect(() => {
-        if (!wrapLines && showLineNumbers) {
-            // Delay to ensure layout is complete
-            setTimeout(() => {
-                if (scrollRef.current) {
-                    // Account for font scale when calculating scroll position
-                    const scaledWidth = lineNumberWidth * fontScaleX;
-                    scrollRef.current.scrollTo({ x: scaledWidth, animated: false });
-                }
-            }, 50);
-        }
-    }, [wrapLines, showLineNumbers, lineNumberWidth, fontScaleX]);
-
-    const lineNumberStyle: TextStyle = {
-        fontSize: 10,
-        ...Typography.mono(),
-        color: colors.lineNumberText,
-        minWidth: lineNumberWidth,
-        textAlign: 'right',
-        paddingRight: 3,
-        paddingLeft: 2,
-        backgroundColor: colors.lineNumberBg,
-    };
-
-    const lineContentStyle: TextStyle = {
-        fontSize: 13,
-        ...Typography.mono(),
-        flex: 1,
-    };
 
     // Helper function to format line content
     const formatLineContent = (content: string) => {
@@ -171,67 +112,61 @@ export const DiffView: React.FC<DiffViewProps> = ({
         return content.trimEnd();
     };
 
-    // Helper function to render line with styled leading space dots and inline highlighting
-    const renderLineContent = (content: string, textStyle: any, tokens?: DiffToken[]) => {
+    // Helper function to render line content with styled leading space dots and inline highlighting
+    const renderLineContent = (content: string, baseColor: string, tokens?: DiffToken[]) => {
         const formatted = formatLineContent(content);
 
         if (tokens && tokens.length > 0) {
             // Render with inline highlighting
             let processedLeadingSpaces = false;
 
-            return (
-                <View style={{ flexDirection: 'row', flex: 1 }}>
-                    <Text style={[textStyle, { transform: [{ scaleX: fontScaleX }] }]}>
-                        {tokens.map((token, idx) => {
-                            // Process leading spaces in the first token only
-                            if (!processedLeadingSpaces && token.value) {
-                                const leadingMatch = token.value.match(/^( +)/);
-                                if (leadingMatch) {
-                                    processedLeadingSpaces = true;
-                                    const leadingDots = '\u00b7'.repeat(leadingMatch[0].length);
-                                    const restOfToken = token.value.slice(leadingMatch[0].length);
+            return tokens.map((token, idx) => {
+                // Process leading spaces in the first token only
+                if (!processedLeadingSpaces && token.value) {
+                    const leadingMatch = token.value.match(/^( +)/);
+                    if (leadingMatch) {
+                        processedLeadingSpaces = true;
+                        const leadingDots = '\u00b7'.repeat(leadingMatch[0].length);
+                        const restOfToken = token.value.slice(leadingMatch[0].length);
 
-                                    if (token.added || token.removed) {
-                                        return (
-                                            <Text key={idx}>
-                                                <Text style={{ color: colors.leadingSpaceDot }}>{leadingDots}</Text>
-                                                <Text style={{
-                                                    backgroundColor: token.added ? colors.inlineAddedBg : colors.inlineRemovedBg,
-                                                    color: token.added ? colors.inlineAddedText : colors.inlineRemovedText,
-                                                }}>
-                                                    {restOfToken}
-                                                </Text>
-                                            </Text>
-                                        );
-                                    }
-                                    return (
-                                        <Text key={idx}>
-                                            <Text style={{ color: colors.leadingSpaceDot }}>{leadingDots}</Text>
-                                            {restOfToken}
-                                        </Text>
-                                    );
-                                }
-                                processedLeadingSpaces = true;
-                            }
-
-                            if (token.added || token.removed) {
-                                return (
-                                    <Text
-                                        key={idx}
-                                        style={{
-                                            backgroundColor: token.added ? colors.inlineAddedBg : colors.inlineRemovedBg,
-                                            color: token.added ? colors.inlineAddedText : colors.inlineRemovedText,
-                                        }}
-                                    >
-                                        {token.value}
+                        if (token.added || token.removed) {
+                            return (
+                                <Text key={idx}>
+                                    <Text style={{ color: colors.leadingSpaceDot }}>{leadingDots}</Text>
+                                    <Text style={{
+                                        backgroundColor: token.added ? colors.inlineAddedBg : colors.inlineRemovedBg,
+                                        color: token.added ? colors.inlineAddedText : colors.inlineRemovedText,
+                                    }}>
+                                        {restOfToken}
                                     </Text>
-                                );
-                            }
-                            return <Text key={idx}>{token.value}</Text>;
-                        })}
-                    </Text>
-                </View>
-            );
+                                </Text>
+                            );
+                        }
+                        return (
+                            <Text key={idx}>
+                                <Text style={{ color: colors.leadingSpaceDot }}>{leadingDots}</Text>
+                                <Text style={{ color: baseColor }}>{restOfToken}</Text>
+                            </Text>
+                        );
+                    }
+                    processedLeadingSpaces = true;
+                }
+
+                if (token.added || token.removed) {
+                    return (
+                        <Text
+                            key={idx}
+                            style={{
+                                backgroundColor: token.added ? colors.inlineAddedBg : colors.inlineRemovedBg,
+                                color: token.added ? colors.inlineAddedText : colors.inlineRemovedText,
+                            }}
+                        >
+                            {token.value}
+                        </Text>
+                    );
+                }
+                return <Text key={idx} style={{ color: baseColor }}>{token.value}</Text>;
+            });
         }
 
         // Regular rendering without tokens
@@ -240,114 +175,89 @@ export const DiffView: React.FC<DiffViewProps> = ({
         const mainContent = leadingSpaces ? formatted.slice(leadingSpaces[0].length) : formatted;
 
         return (
-            <View style={{ flexDirection: 'row', flex: 1 }}>
-                <Text style={[textStyle, { transform: [{ scaleX: fontScaleX }] }]}>
-                    {leadingDots && <Text style={{ color: colors.leadingSpaceDot }}>{leadingDots}</Text>}
-                    {mainContent}
-                </Text>
-            </View>
+            <>
+                {leadingDots && <Text style={{ color: colors.leadingSpaceDot }}>{leadingDots}</Text>}
+                <Text style={{ color: baseColor }}>{mainContent}</Text>
+            </>
         );
     };
 
-    // Render content
-    const content = (
-        <View>
-            {hunks.map((hunk, hunkIndex) => (
-                <View key={hunkIndex}>
-                    {hunkIndex > 0 && (
-                        <View style={{
+    // Render diff content as separate lines to prevent wrapping
+    const renderDiffContent = () => {
+        const lines: React.ReactNode[] = [];
+        
+        hunks.forEach((hunk, hunkIndex) => {
+            // Add hunk header for non-first hunks
+            if (hunkIndex > 0) {
+                lines.push(
+                    <Text 
+                        key={`hunk-header-${hunkIndex}`} 
+                        numberOfLines={1}
+                        style={{
+                            ...Typography.mono(),
+                            fontSize: 12,
+                            color: colors.hunkHeaderText,
                             backgroundColor: colors.hunkHeaderBg,
                             paddingVertical: 8,
                             paddingHorizontal: 16,
-                            borderTopWidth: 1,
-                            borderTopColor: colors.outline,
-                            borderBottomWidth: 1,
-                            borderBottomColor: colors.outline,
-                        }}>
+                            transform: [{ scaleX: fontScaleX }],
+                        }}
+                    >
+                        {`@@ -${hunk.oldStart},${hunk.oldLines} +${hunk.newStart},${hunk.newLines} @@`}
+                    </Text>
+                );
+            }
+
+            hunk.lines.forEach((line, lineIndex) => {
+                const isAdded = line.type === 'add';
+                const isRemoved = line.type === 'remove';
+                const textColor = isAdded ? colors.addedText : isRemoved ? colors.removedText : colors.contextText;
+                const bgColor = isAdded ? colors.addedBg : isRemoved ? colors.removedBg : colors.contextBg;
+                
+                // Render complete line in a single Text element
+                lines.push(
+                    <Text
+                        key={`line-${hunkIndex}-${lineIndex}`}
+                        numberOfLines={1}
+                        style={{
+                            ...Typography.mono(),
+                            fontSize: 13,
+                            lineHeight: 20,
+                            backgroundColor: bgColor,
+                            transform: [{ scaleX: fontScaleX }],
+                            paddingLeft: 8,
+                            paddingRight: 8,
+                        }}
+                    >
+                        {showLineNumbers && (
                             <Text style={{
-                                color: colors.hunkHeaderText,
-                                fontSize: 12,
-                                ...Typography.mono(),
+                                color: colors.lineNumberText,
+                                backgroundColor: colors.lineNumberBg,
                             }}>
-                                @@ -{hunk.oldStart},{hunk.oldLines} +{hunk.newStart},{hunk.newLines} @@
+                                {String(line.type === 'remove' ? line.oldLineNumber :
+                                       line.type === 'add' ? line.newLineNumber :
+                                       line.oldLineNumber).padStart(3, ' ')}
                             </Text>
-                        </View>
-                    )}
-
-                    {hunk.lines.map((line, lineIndex) => {
-                        const isAdded = line.type === 'add';
-                        const isRemoved = line.type === 'remove';
-
-                        const lineStyle: ViewStyle = {
-                            flexDirection: 'row',
-                            backgroundColor: isAdded
-                                ? colors.addedBg
-                                : isRemoved
-                                    ? colors.removedBg
-                                    : colors.contextBg,
-                            borderLeftWidth: 3,
-                            borderLeftColor: isAdded
-                                ? colors.addedBorder
-                                : isRemoved
-                                    ? colors.removedBorder
-                                    : 'transparent',
-                        };
-
-                        const textColor = isAdded
-                            ? colors.addedText
-                            : isRemoved
-                                ? colors.removedText
-                                : colors.contextText;
-
-                        return (
-                            <View key={`${hunkIndex}-${lineIndex}`} style={lineStyle}>
-                                {showLineNumbers && (
-                                    <Text style={[lineNumberStyle, { transform: [{ scaleX: fontScaleX }] }]}>
-                                        {line.type === 'remove' ? line.oldLineNumber :
-                                            line.type === 'add' ? line.newLineNumber :
-                                                line.oldLineNumber}
-                                    </Text>
-                                )}
-
-                                <Text style={{
-                                    transform: [{ scaleX: fontScaleX }],
-                                    width: 24,
-                                    textAlign: 'center',
-                                    color: textColor,
-                                    ...Typography.mono(),
-                                    fontSize: 13,
-                                    backgroundColor: isAdded ? colors.addedBg : isRemoved ? colors.removedBg : colors.contextBg,
-                                }}>
-                                    {isAdded ? '+' : isRemoved ? '-' : ' '}
-                                </Text>
-
-                                {renderLineContent(line.content, [
-                                    lineContentStyle,
-                                    {
-                                        color: textColor,
-                                        paddingRight: 20
-                                    },
-                                    !wrapLines && { flexWrap: 'nowrap' }
-                                ], line.tokens)}
-                            </View>
-                        );
-                    })}
-                </View>
-            ))}
-        </View>
-    );
+                        )}
+                        {showPlusMinusSymbols && (
+                            <Text style={{ color: textColor }}>
+                                {` ${isAdded ? '+' : isRemoved ? '-' : ' '} `}
+                            </Text>
+                        )}
+                        {renderLineContent(line.content, textColor, line.tokens)}
+                    </Text>
+                );
+            });
+        });
+        
+        return lines;
+    };
 
     return (
-        <View style={containerStyle} className={className}>
-            <ScrollView
-                ref={scrollRef}
-                horizontal={!wrapLines}
-                showsHorizontalScrollIndicator={!wrapLines}
-                alwaysBounceHorizontal={false}
-                contentContainerStyle={{ flexGrow: 1 }}
-            >
-                {content}
-            </ScrollView>
+        <View style={[containerStyle, { overflow: 'hidden' }]} className={className}>
+            <View style={{ paddingVertical: 4 }}>
+                {renderDiffContent()}
+            </View>
         </View>
     );
 

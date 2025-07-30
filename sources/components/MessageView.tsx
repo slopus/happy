@@ -13,7 +13,7 @@ export const MessageView = (props: {
   getMessageById?: (id: string) => Message | null;
 }) => {
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
+    <View style={{ flexDirection: 'row', justifyContent: 'center' }} renderToHardwareTextureAndroid={true}>
       <View
         style={{
           flexDirection: "column",

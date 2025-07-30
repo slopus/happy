@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Text, View, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { Text, View, StyleSheet, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { getToolViewComponent } from './views/_all';
 import { Message, ToolCall } from '@/sync/typesMessage';
@@ -35,8 +35,6 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     
     // Enable pressable if either onPress is provided or we have navigation params
     const isPressable = !!(onPress || (sessionId && messageId));
-    const Container = isPressable ? TouchableOpacity : View;
-    const containerProps = isPressable ? { onPress: handlePress, activeOpacity: 0.8 } : {};
     const toolTitle = tool.name in knownTools ? knownTools[tool.name as keyof typeof knownTools].title : tool.name;
     let description = tool.description;
     let status: string | null = null;
@@ -85,26 +83,48 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     }
 
     return (
-        <Container style={styles.container} {...containerProps}>
-            <View style={styles.header}>
-                <View style={styles.headerLeft}>
-                    <Ionicons name={icon as any} size={20} color="#5856D6" />
-                    <View style={styles.titleContainer}>
-                        <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
-                        {description && (
-                            <Text style={styles.toolDescription} numberOfLines={1}>
-                                {description}
-                            </Text>
-                        )}
-                    </View>
-                    {tool.state === 'running' && (
-                        <View style={styles.elapsedContainer}>
-                            <ElapsedView from={tool.createdAt} />
+        <View style={styles.container}>
+            {isPressable ? (
+                <TouchableOpacity style={styles.header} onPress={handlePress} activeOpacity={0.8}>
+                    <View style={styles.headerLeft}>
+                        <Ionicons name={icon as any} size={20} color="#5856D6" />
+                        <View style={styles.titleContainer}>
+                            <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
+                            {description && (
+                                <Text style={styles.toolDescription} numberOfLines={1}>
+                                    {description}
+                                </Text>
+                            )}
                         </View>
-                    )}
-                    {statusIcon}
+                        {tool.state === 'running' && (
+                            <View style={styles.elapsedContainer}>
+                                <ElapsedView from={tool.createdAt} />
+                            </View>
+                        )}
+                        {statusIcon}
+                    </View>
+                </TouchableOpacity>
+            ) : (
+                <View style={styles.header}>
+                    <View style={styles.headerLeft}>
+                        <Ionicons name={icon as any} size={20} color="#5856D6" />
+                        <View style={styles.titleContainer}>
+                            <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
+                            {description && (
+                                <Text style={styles.toolDescription} numberOfLines={1}>
+                                    {description}
+                                </Text>
+                            )}
+                        </View>
+                        {tool.state === 'running' && (
+                            <View style={styles.elapsedContainer}>
+                                <ElapsedView from={tool.createdAt} />
+                            </View>
+                        )}
+                        {statusIcon}
+                    </View>
                 </View>
-            </View>
+            )}
 
             {/* Content area - either custom children or tool-specific view */}
             {(() => {
@@ -155,7 +175,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                     </View>
                 );
             })()}
-        </Container>
+        </View>
     );
 });
 
@@ -170,7 +190,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#F8F8F8',
         borderRadius: 8,
         marginVertical: 4,
-        overflow: 'hidden',
+        overflow: 'hidden'
     },
     header: {
         flexDirection: 'row',
@@ -214,5 +234,6 @@ const styles = StyleSheet.create({
     content: {
         paddingHorizontal: 12,
         paddingTop: 8,
+        overflow: 'visible'
     },
 });

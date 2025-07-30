@@ -42,3 +42,4 @@ yarn-error.*
 .claude/settings.local.json
 .plan
 
+CLAUDE.local.md

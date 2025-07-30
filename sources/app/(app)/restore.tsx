@@ -7,6 +7,7 @@ import { Typography } from '@/constants/Typography';
 import { normalizeSecretKey } from '@/auth/secretKeyBackup';
 import { authGetToken } from '@/auth/authGetToken';
 import { decodeBase64 } from '@/auth/base64';
+import { layout } from '@/components/layout';
 
 export default function Restore() {
     const auth = useAuth();
@@ -50,39 +51,53 @@ export default function Restore() {
     };
 
     return (
-        <>
-            <ScrollView className="flex-1 bg-white">
-                <View className="p-6">
-                    <View className="mb-6">
-                        <Text style={{ fontSize: 16, color: '#666', marginBottom: 20, ...Typography.default() }}>
-                            Enter your secret key to restore access to your account.
-                        </Text>
+        <ScrollView style={{ flex: 1, backgroundColor: 'white' }}>
+            <View style={{ 
+                flex: 1, 
+                alignItems: 'center',
+                paddingHorizontal: 24
+            }}>
+                <View style={{ 
+                    width: '100%', 
+                    maxWidth: layout.maxWidth,
+                    paddingVertical: 24
+                }}>
+                    <Text style={{ 
+                        fontSize: 16, 
+                        color: '#666', 
+                        marginBottom: 20, 
+                        ...Typography.default() 
+                    }}>
+                        Enter your secret key to restore access to your account.
+                    </Text>
 
-                        <TextInput
-                            className="bg-gray-100 p-4 rounded-lg mb-6"
-                            style={{
-                                fontFamily: 'IBMPlexMono-Regular',
-                                fontSize: 14,
-                                minHeight: 120,
-                                textAlignVertical: 'top'
-                            }}
-                            placeholder="XXXXX-XXXXX-XXXXX..."
-                            placeholderTextColor="#999"
-                            value={restoreKey}
-                            onChangeText={setRestoreKey}
-                            autoCapitalize="characters"
-                            autoCorrect={false}
-                            multiline={true}
-                            numberOfLines={4}
-                        />
+                    <TextInput
+                        style={{
+                            backgroundColor: '#f3f4f6',
+                            padding: 16,
+                            borderRadius: 8,
+                            marginBottom: 24,
+                            fontFamily: 'IBMPlexMono-Regular',
+                            fontSize: 14,
+                            minHeight: 120,
+                            textAlignVertical: 'top'
+                        }}
+                        placeholder="XXXXX-XXXXX-XXXXX..."
+                        placeholderTextColor="#999"
+                        value={restoreKey}
+                        onChangeText={setRestoreKey}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                        multiline={true}
+                        numberOfLines={4}
+                    />
 
-                        <RoundButton
-                            title="Restore Account"
-                            action={handleRestore}
-                        />
-                    </View>
+                    <RoundButton
+                        title="Restore Account"
+                        action={handleRestore}
+                    />
                 </View>
-            </ScrollView>
-        </>
+            </View>
+        </ScrollView>
     );
 }

@@ -87,6 +87,12 @@ export default function DevScreen() {
             {/* Component Demos */}
             <ItemGroup title="Component Demos">
                 <Item 
+                    title="Device Info"
+                    subtitle="Safe area insets and device parameters"
+                    icon={<Ionicons name="phone-portrait-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/device-info')}
+                />
+                <Item 
                     title="List Components"
                     subtitle="Demo of Item, ItemGroup, and ItemList"
                     icon={<Ionicons name="list-outline" size={28} color="#007AFF" />}

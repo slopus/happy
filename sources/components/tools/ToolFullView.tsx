@@ -107,6 +107,10 @@ const styles = StyleSheet.create({
         marginBottom: 28,
         paddingHorizontal: 4,
     },
+    sectionFullWidth: {
+        marginBottom: 28,
+        paddingHorizontal: 0,
+    },
     sectionHeader: {
         flexDirection: 'row',
         alignItems: 'center',

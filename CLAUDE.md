@@ -55,6 +55,7 @@ sources/
 - Follow existing component patterns when creating new UI components
 - Real-time sync operations are handled through SyncSocket and SyncSession classes
 - Store all temporary scripts and any test outside of unit tests in sources/trash folder
+- When setting screen parameters ALWAYS set them in _layout.tsx if possible this avoids layout shifts
 
 ### Important Files
 
@@ -97,3 +98,9 @@ The custom header supports all standard React Navigation header options plus:
 - `headerSubtitleStyle`: Style object for the subtitle text
 
 This ensures consistent header appearance and behavior across iOS, Android, and web platforms.
+
+## Project Scope and Priorities
+
+- This project targets Android, iOS, and web platforms
+- Web is considered a secondary platform
+- Avoid web-specific implementations unless explicitly requested
