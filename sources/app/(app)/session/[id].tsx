@@ -386,8 +386,10 @@ ${conversationContext}`;
 
             {/* Main content area - no padding since header is overlay */}
             <AgentContentView
-                style={{ paddingTop: 0, marginBottom: safeArea.bottom }}
-                keyboardVerticalOffset={0}
+                style={{ paddingTop: 0 }}
+                keyboardVerticalOffset={(isLandscape && deviceType === 'phone')
+                    ? safeArea.top
+                    : safeArea.top + Platform.select({ ios: 44, default: 56 })}
             >
                 <Animated.View style={{ flexGrow: 1, flexBasis: 0 }}>
                     <Deferred>
@@ -412,6 +414,8 @@ ${conversationContext}`;
                                     minIndexForVisible: 0,
                                     autoscrollToTopThreshold: 100,
                                 }}
+                                keyboardShouldPersistTaps="handled"
+                                keyboardDismissMode="none"
                                 renderItem={({ item }) => (
                                     <MessageView
                                         message={item}
