@@ -11,6 +11,7 @@ export default function AppearanceSettingsScreen() {
     const [viewInline, setViewInline] = useSettingMutable('viewInline');
     const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
     const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
+    const [showLineNumbersInToolViews, setShowLineNumbersInToolViews] = useSettingMutable('showLineNumbersInToolViews');
     return (
         <ItemList style={{ paddingTop: 0 }}>
 
@@ -82,6 +83,19 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={showLineNumbers}
                             onValueChange={setShowLineNumbers}
+                            trackColor={{ false: '#767577', true: '#34C759' }}
+                            thumbColor="#fff"
+                        />
+                    }
+                />
+                <Item
+                    title="Show Line Numbers in Tool Views"
+                    subtitle="Display line numbers in tool view diffs"
+                    icon={<Ionicons name="code-working-outline" size={29} color="#5856D6" />}
+                    rightElement={
+                        <Switch
+                            value={showLineNumbersInToolViews}
+                            onValueChange={setShowLineNumbersInToolViews}
                             trackColor={{ false: '#767577', true: '#34C759' }}
                             thumbColor="#fff"
                         />

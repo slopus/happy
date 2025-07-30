@@ -4,9 +4,8 @@ import { ToolCall } from '@/sync/typesMessage';
 import { Metadata } from '@/sync/storageTypes';
 import { knownTools } from '@/components/tools/knownTools';
 import { toolFullViewStyles } from '../ToolFullView';
-import { DiffView } from '@/components/diff/DiffView';
+import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { trimIdent } from '@/utils/trimIdent';
-import { useSetting } from '@/sync/storage';
 
 interface EditViewFullProps {
     tool: ToolCall;
@@ -14,7 +13,6 @@ interface EditViewFullProps {
 }
 
 export const EditViewFull = React.memo<EditViewFullProps>(({ tool, metadata }) => {
-    const showLineNumbers = useSetting('showLineNumbers');
     const { input } = tool;
 
     // Parse the input
@@ -27,13 +25,13 @@ export const EditViewFull = React.memo<EditViewFullProps>(({ tool, metadata }) =
     }
 
     return (
-        <View style={toolFullViewStyles.section}>
-            <DiffView 
+        <View style={toolFullViewStyles.sectionFullWidth}>
+            <ToolDiffView 
                 oldText={oldString} 
                 newText={newString} 
-                wrapLines={false}
-                showLineNumbers={showLineNumbers}
                 style={{ width: '100%' }}
+                showLineNumbers={true}
+                showPlusMinusSymbols={true}
             />
         </View>
     );

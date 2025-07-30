@@ -16,7 +16,7 @@ export default {
         slug: "happy",
         version: "1.0.5",
         runtimeVersion: "12",
-        orientation: "portrait",
+        orientation: "default",
         icon: "./sources/assets/images/happy-otter-icon.png",
         scheme: "happy",
         userInterfaceStyle: "automatic",

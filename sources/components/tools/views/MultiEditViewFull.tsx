@@ -1,12 +1,11 @@
 import * as React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { ToolCall } from '@/sync/typesMessage';
 import { Metadata } from '@/sync/storageTypes';
 import { knownTools } from '@/components/tools/knownTools';
 import { toolFullViewStyles } from '../ToolFullView';
 import { DiffView } from '@/components/diff/DiffView';
 import { trimIdent } from '@/utils/trimIdent';
-import { useSetting } from '@/sync/storage';
 
 interface MultiEditViewFullProps {
     tool: ToolCall;
@@ -14,7 +13,6 @@ interface MultiEditViewFullProps {
 }
 
 export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, metadata }) => {
-    const showLineNumbers = useSetting('showLineNumbers');
     const { input } = tool;
 
     // Parse the input
@@ -30,34 +28,44 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
     }
 
     return (
-        <View style={toolFullViewStyles.section}>
-            {edits.map((edit, index) => {
-                const oldString = trimIdent(edit.old_string || '');
-                const newString = trimIdent(edit.new_string || '');
-                
-                return (
-                    <View key={index} style={{ width: '100%' }}>
-                        <View style={styles.editHeader}>
-                            <Text style={styles.editNumber}>
-                                Edit {index + 1} of {edits.length}
-                            </Text>
-                            {edit.replace_all && (
-                                <View style={styles.replaceAllBadge}>
-                                    <Text style={styles.replaceAllText}>Replace All</Text>
+        <View style={toolFullViewStyles.sectionFullWidth}>
+            <ScrollView 
+                horizontal 
+                showsHorizontalScrollIndicator={true}
+                showsVerticalScrollIndicator={true}
+                nestedScrollEnabled={true}
+                contentContainerStyle={{ flexGrow: 1 }}
+            >
+                <View style={{ flex: 1 }}>
+                    {edits.map((edit, index) => {
+                        const oldString = trimIdent(edit.old_string || '');
+                        const newString = trimIdent(edit.new_string || '');
+                        
+                        return (
+                            <View key={index}>
+                                <View style={styles.editHeader}>
+                                    <Text style={styles.editNumber}>
+                                        Edit {index + 1} of {edits.length}
+                                    </Text>
+                                    {edit.replace_all && (
+                                        <View style={styles.replaceAllBadge}>
+                                            <Text style={styles.replaceAllText}>Replace All</Text>
+                                        </View>
+                                    )}
                                 </View>
-                            )}
-                        </View>
-                        <DiffView 
-                            oldText={oldString} 
-                            newText={newString} 
-                            wrapLines={false}
-                            showLineNumbers={showLineNumbers}
-                            style={{ width: '100%' }}
-                        />
-                        {index < edits.length - 1 && <View style={styles.separator} />}
-                    </View>
-                );
-            })}
+                                <DiffView 
+                                    oldText={oldString} 
+                                    newText={newString} 
+                                    wrapLines={false}
+                                    showLineNumbers={true}
+                                    showPlusMinusSymbols={true}
+                                />
+                                {index < edits.length - 1 && <View style={styles.separator} />}
+                            </View>
+                        );
+                    })}
+                </View>
+            </ScrollView>
         </View>
     );
 });

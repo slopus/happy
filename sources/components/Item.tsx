@@ -36,6 +36,10 @@ export interface ItemProps {
 }
 
 export const Item = React.memo<ItemProps>((props) => {
+    // Platform-specific measurements
+    const isIOS = Platform.OS === 'ios';
+    const isAndroid = Platform.OS === 'android';
+    
     const {
         title,
         subtitle,
@@ -55,18 +59,16 @@ export const Item = React.memo<ItemProps>((props) => {
         detailStyle,
         showChevron = true,
         showDivider = true,
-        dividerInset = Platform.OS === 'ios' ? 15 : 16,
+        dividerInset = isIOS ? 15 : 16,
         pressableStyle
     } = props;
 
     const isInteractive = onPress || onLongPress;
     const showAccessory = isInteractive && showChevron && !rightElement;
-
-    // iOS-specific measurements
-    const horizontalPadding = Platform.OS === 'ios' ? 16 : 16;
-    const iconSize = 29; // Standard iOS icon size in table cells
-    const chevronSize = Platform.OS === 'ios' ? 17 : 20;
-    const minHeight = 44; // iOS standard touch target
+    const horizontalPadding = 16; // Same for both platforms per Material Design
+    const iconSize = isIOS ? 29 : 32; // iOS standard vs Material 3 icon container
+    const chevronSize = isIOS ? 17 : 24;
+    const minHeight = isIOS ? 44 : 56; // Material 3 list item height
 
     const content = (
         <>
@@ -77,7 +79,7 @@ export const Item = React.memo<ItemProps>((props) => {
                         alignItems: 'center',
                         paddingHorizontal: horizontalPadding,
                         minHeight: minHeight,
-                        paddingVertical: subtitle ? 11 : 12, // Adjust for subtitle
+                        paddingVertical: isIOS ? (subtitle ? 11 : 12) : 16, // Material 3 consistent padding
                     },
                     style
                 ]}
@@ -85,7 +87,7 @@ export const Item = React.memo<ItemProps>((props) => {
                 {/* Left Section */}
                 {(icon || leftElement) && (
                     <View style={{ 
-                        marginRight: Platform.OS === 'ios' ? 15 : 12,
+                        marginRight: 12,
                         width: iconSize,
                         height: iconSize,
                         alignItems: 'center',
@@ -101,10 +103,10 @@ export const Item = React.memo<ItemProps>((props) => {
                         style={[
                             Typography.default('regular'),
                             {
-                                color: destructive ? '#FF3B30' : (selected ? '#007AFF' : '#000000'),
-                                fontSize: 17,
-                                lineHeight: 22,
-                                letterSpacing: -0.41
+                                color: destructive ? (isIOS ? '#FF3B30' : '#F44336') : (selected ? (isIOS ? '#007AFF' : '#1976D2') : '#000000'),
+                                fontSize: isIOS ? 17 : 16,
+                                lineHeight: isIOS ? 22 : 24,
+                                letterSpacing: isIOS ? -0.41 : 0.15
                             },
                             titleStyle
                         ]}
@@ -117,11 +119,15 @@ export const Item = React.memo<ItemProps>((props) => {
                             style={[
                                 Typography.default('regular'),
                                 {
-                                    color: '#8E8E93',
-                                    fontSize: 15,
+                                    color: Platform.select({
+                                        ios: '#8E8E93',
+                                        android: '#49454F', // Material 3 onSurfaceVariant
+                                        default: '#8E8E93'
+                                    }),
+                                    fontSize: isIOS ? 15 : 14,
                                     lineHeight: 20,
-                                    letterSpacing: -0.24,
-                                    marginTop: 2
+                                    letterSpacing: isIOS ? -0.24 : 0.1,
+                                    marginTop: isIOS ? 2 : 0
                                 },
                                 subtitleStyle
                             ]}
@@ -143,7 +149,11 @@ export const Item = React.memo<ItemProps>((props) => {
                             style={[
                                 Typography.default('regular'),
                                 {
-                                    color: '#8E8E93',
+                                    color: Platform.select({
+                                        ios: '#8E8E93',
+                                        android: '#49454F', // Material 3 onSurfaceVariant
+                                        default: '#8E8E93'
+                                    }),
                                     fontSize: 17,
                                     letterSpacing: -0.41,
                                     marginRight: showAccessory ? 6 : 0
@@ -158,7 +168,11 @@ export const Item = React.memo<ItemProps>((props) => {
                     {loading && (
                         <ActivityIndicator 
                             size="small" 
-                            color="#8E8E93"
+                            color={Platform.select({
+                                ios: "#8E8E93",
+                                android: "#49454F", // Material 3 onSurfaceVariant
+                                default: "#8E8E93"
+                            })}
                             style={{ marginRight: showAccessory ? 6 : 0 }}
                         />
                     )}
@@ -167,7 +181,11 @@ export const Item = React.memo<ItemProps>((props) => {
                         <Ionicons 
                             name="chevron-forward" 
                             size={chevronSize} 
-                            color="#C7C7CC"
+                            color={Platform.select({
+                                ios: "#C7C7CC",
+                                android: "#49454F", // Material 3 onSurfaceVariant
+                                default: "#C7C7CC"
+                            })}
                             style={{ marginLeft: 4 }}
                         />
                     )}
@@ -178,9 +196,13 @@ export const Item = React.memo<ItemProps>((props) => {
             {showDivider && (
                 <View 
                     style={{ 
-                        height: Platform.OS === 'ios' ? 0.33 : 0.5,
-                        backgroundColor: '#C6C6C8',
-                        marginLeft: dividerInset + (icon || leftElement ? (horizontalPadding + iconSize + 15) : horizontalPadding)
+                        height: isIOS ? 0.33 : 0,
+                        backgroundColor: Platform.select({
+                            ios: '#C6C6C8',
+                            android: '#CAC4D0', // Material 3 outlineVariant
+                            default: '#C6C6C8'
+                        }),
+                        marginLeft: isAndroid ? 0 : (dividerInset + (icon || leftElement ? (horizontalPadding + iconSize + 15) : horizontalPadding))
                     }}
                 />
             )}
@@ -195,11 +217,16 @@ export const Item = React.memo<ItemProps>((props) => {
                 disabled={disabled || loading}
                 style={({ pressed }) => [
                     {
-                        backgroundColor: pressed ? '#D1D1D6' : 'transparent',
+                        backgroundColor: pressed && isIOS ? '#D1D1D6' : 'transparent',
                         opacity: disabled ? 0.5 : 1
                     },
                     pressableStyle
                 ]}
+                android_ripple={isAndroid ? {
+                    color: 'rgba(0, 0, 0, 0.08)',
+                    borderless: false,
+                    foreground: true
+                } : undefined}
             >
                 {content}
             </Pressable>

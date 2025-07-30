@@ -1,8 +1,8 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { View, FlatList, Text, ActivityIndicator, Alert, Animated } from "react-native";
-import { KeyboardAvoidingView } from "react-native-keyboard-controller";
+import { View, FlatList, Text, ActivityIndicator, Alert, Platform, ScrollView } from "react-native";
+import { KeyboardAvoidingView, KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
 import { Stack, useRouter } from "expo-router";
@@ -23,42 +23,45 @@ import { z } from 'zod';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useIsLandscape, getDeviceType } from '@/utils/responsive';
+import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
+import { StatusBar } from 'expo-status-bar';
+import { AgentContentView } from '@/components/AgentContentView';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
-    const pulseAnim = React.useRef(new Animated.Value(1)).current;
+    const opacity = useSharedValue(1);
 
     React.useEffect(() => {
         if (isPulsing) {
-            Animated.loop(
-                Animated.sequence([
-                    Animated.timing(pulseAnim, {
-                        toValue: 0.3,
-                        duration: 1000,
-                        useNativeDriver: true,
-                    }),
-                    Animated.timing(pulseAnim, {
-                        toValue: 1,
-                        duration: 1000,
-                        useNativeDriver: true,
-                    }),
-                ])
-            ).start();
+            opacity.value = withRepeat(
+                withTiming(0.3, { duration: 1000 }),
+                -1, // infinite
+                true // reverse
+            );
         } else {
-            pulseAnim.setValue(1);
+            opacity.value = withTiming(1, { duration: 200 });
         }
-    }, [isPulsing, pulseAnim]);
+    }, [isPulsing]);
+
+    const animatedStyle = useAnimatedStyle(() => {
+        return {
+            opacity: opacity.value,
+        };
+    });
 
     return (
         <Animated.View
-            style={{
-                width: size,
-                height: size,
-                borderRadius: size / 2,
-                backgroundColor: color,
-                opacity: pulseAnim,
-                marginRight: 4,
-            }}
+            style={[
+                {
+                    width: size,
+                    height: size,
+                    borderRadius: size / 2,
+                    backgroundColor: color,
+                    marginRight: 4,
+                },
+                animatedStyle
+            ]}
         />
     );
 }
@@ -83,12 +86,42 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const settings = useSettings();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
+    const isLandscape = useIsLandscape();
+    const deviceType = getDeviceType();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const [message, setMessage] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [, forceUpdate] = React.useReducer(x => x + 1, 0);
     const realtimeSessionRef = React.useRef<Awaited<ReturnType<typeof createRealtimeSession>> | null>(null);
     const isCreatingSessionRef = React.useRef(false);
+
+    // Test animation for moving list up and down
+    const translateY = useSharedValue(0);
+    const scale = useSharedValue(1);
+
+    React.useEffect(() => {
+        // Bounce animation with scaling
+        translateY.value = withRepeat(
+            withTiming(50, { duration: 1500 }),
+            -1, // infinite
+            true // reverse
+        );
+
+        scale.value = withRepeat(
+            withTiming(0.95, { duration: 1500 }),
+            -1, // infinite
+            true // reverse
+        );
+    }, []);
+
+    const animatedStyle = useAnimatedStyle(() => {
+        return {
+            transform: [
+                { translateY: translateY.value },
+                { scale: scale.value }
+            ],
+        };
+    });
 
     const sessionStatus = getSessionState(session);
     const online = sessionStatus.isConnected;
@@ -216,7 +249,6 @@ ${conversationContext}`;
     }, [sessionId]);
 
 
-
     const footer = React.useMemo(() => {
         if (!permissionRequest) {
             return <View style={{ flexDirection: 'row', alignItems: 'center', height: 32 }} />;
@@ -256,19 +288,66 @@ ${conversationContext}`;
 
     return (
         <>
-            <Stack.Screen
-                options={{
-                    headerTitle: () => (
-                        <View style={{ flexDirection: 'column', alignItems: 'center', alignContent: 'center' }}>
+            <StatusBar style="dark" translucent backgroundColor="transparent" />
+
+            {/* Custom header - hidden in landscape mode on phone */}
+            {!(isLandscape && deviceType === 'phone') && (
+                <View style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: safeArea.top + Platform.select({ ios: 44, default: 56 }),
+                    backgroundColor: Platform.select({
+                        ios: 'rgba(255, 255, 255, 0.85)',
+                        default: 'rgba(255, 255, 255, 0.95)'
+                    }),
+                    borderBottomWidth: 0.5,
+                    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+                    zIndex: 1000
+                }}>
+                    <View style={{
+                        flex: 1,
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        paddingTop: safeArea.top,
+                        paddingHorizontal: 16,
+                    }}>
+                        {/* Back button */}
+                        <Pressable
+                            onPress={() => router.back()}
+                            hitSlop={10}
+                            style={{
+                                width: 44,
+                                height: 44,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginLeft: Platform.select({ ios: -16, default: -12 }),
+                            }}
+                        >
+                            <Ionicons
+                                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                                size={Platform.select({ ios: 28, default: 24 })}
+                                color="#000"
+                            />
+                        </Pressable>
+
+                        {/* Title section */}
+                        <View style={{
+                            flex: 1,
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            paddingHorizontal: 8,
+                        }}>
                             <Text
                                 numberOfLines={1}
                                 ellipsizeMode="tail"
                                 style={{
-                                    fontSize: 14,
+                                    fontSize: 16,
                                     fontWeight: '600',
                                     color: sessionStatus.isConnected ? '#000' : '#8E8E93',
                                     marginBottom: 2,
-                                    maxWidth: 200,
                                     ...Typography.default('semiBold')
                                 }}
                             >
@@ -286,26 +365,31 @@ ${conversationContext}`;
                                 </Text>
                             </View>
                         </View>
-                    ),
-                    headerRight(props) {
-                        return (
-                            <Pressable
-                                onPress={() => router.push(`/session/${sessionId}/info`)}
-                                hitSlop={10}
-                                style={{ flexDirection: 'row', alignItems: 'center', marginRight: -4 }}
-                            >
-                                <Avatar id={sessionId} size={32} monochrome={!sessionStatus.isConnected} />
-                            </Pressable>
-                        )
-                    },
-                }}
-            />
-            <KeyboardAvoidingView
-                behavior="translate-with-padding"
-                keyboardVerticalOffset={safeArea.top + 44}
-                style={{ flexGrow: 1, flexBasis: 0, marginBottom: safeArea.bottom }}
+
+                        {/* Avatar button */}
+                        <Pressable
+                            onPress={() => router.push(`/session/${sessionId}/info`)}
+                            hitSlop={10}
+                            style={{
+                                width: 44,
+                                height: 44,
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                marginRight: Platform.select({ ios: -16, default: -12 }),
+                            }}
+                        >
+                            <Avatar id={sessionId} size={32} monochrome={!sessionStatus.isConnected} />
+                        </Pressable>
+                    </View>
+                </View>
+            )}
+
+            {/* Main content area - no padding since header is overlay */}
+            <AgentContentView
+                style={{ paddingTop: 0, marginBottom: safeArea.bottom }}
+                keyboardVerticalOffset={0}
             >
-                <View style={{ flexGrow: 1, flexBasis: 0 }}>
+                <Animated.View style={{ flexGrow: 1, flexBasis: 0 }}>
                     <Deferred>
                         {messages.length === 0 && isLoaded && (
                             <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
@@ -320,6 +404,7 @@ ${conversationContext}`;
                         )}
                         {messages.length > 0 && (
                             <FlatList
+                                removeClippedSubviews={true}
                                 data={messages}
                                 inverted={true}
                                 keyExtractor={(item) => item.id}
@@ -335,11 +420,14 @@ ${conversationContext}`;
                                     />
                                 )}
                                 ListHeaderComponent={footer}
-                                ListFooterComponent={() => <View style={{ height: 8 }} />}
+                                ListFooterComponent={() => <View style={{
+                                    height: (isLandscape && deviceType === 'phone')
+                                        ? 8
+                                        : Platform.select({ ios: 52, default: 64 })
+                                }} />}
                             />
                         )}
                     </Deferred>
-                    {/* Gradient transition */}
                     <LinearGradient
                         colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']}
                         locations={[0, 1]}
@@ -352,8 +440,7 @@ ${conversationContext}`;
                             pointerEvents: 'none',
                         }}
                     />
-                </View>
-
+                </Animated.View>
 
                 <AgentInput
                     placeholder="Type a message ..."
@@ -383,7 +470,43 @@ ${conversationContext}`;
                     }}
                     onAbort={() => sync.abort(sessionId)}
                 />
-            </KeyboardAvoidingView>
+            </AgentContentView>
+
+            {/* Back button for landscape phone mode when header is hidden */}
+            {isLandscape && deviceType === 'phone' && (
+                <Pressable
+                    onPress={() => router.back()}
+                    style={{
+                        position: 'absolute',
+                        top: safeArea.top + 8,
+                        left: 16,
+                        width: 44,
+                        height: 44,
+                        borderRadius: 22,
+                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        ...Platform.select({
+                            ios: {
+                                shadowColor: '#000',
+                                shadowOffset: { width: 0, height: 2 },
+                                shadowOpacity: 0.1,
+                                shadowRadius: 4,
+                            },
+                            android: {
+                                elevation: 2,
+                            }
+                        }),
+                    }}
+                    hitSlop={10}
+                >
+                    <Ionicons
+                        name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                        size={Platform.select({ ios: 28, default: 24 })}
+                        color="#000"
+                    />
+                </Pressable>
+            )}
         </>
     )
 }

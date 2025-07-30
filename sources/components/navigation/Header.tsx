@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import { layout } from '../layout';
 
 interface HeaderProps {
     title?: React.ReactNode;
@@ -102,7 +103,7 @@ const styles = StyleSheet.create({
         height: 56,
         paddingHorizontal: 16,
         width: '100%',
-        maxWidth: 768, // Standard max width for content
+        maxWidth: layout.maxWidth, // Standard max width for content
     },
     leftContainer: {
         flex: 1,

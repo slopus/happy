@@ -9,6 +9,7 @@ export const SettingsSchema = z.object({
     inferenceOpenAIKey: z.string().nullish().describe('OpenAI API key for inference'),
     expandTodos: z.boolean().describe('Whether to expand todo lists'),
     showLineNumbers: z.boolean().describe('Whether to show line numbers in diffs'),
+    showLineNumbersInToolViews: z.boolean().describe('Whether to show line numbers in tool view diffs'),
 });
 
 //
@@ -34,7 +35,8 @@ export const settingsDefaults: Settings = {
     viewInline: false,
     inferenceOpenAIKey: null,
     expandTodos: true,
-    showLineNumbers: true
+    showLineNumbers: true,
+    showLineNumbersInToolViews: false
 };
 Object.freeze(settingsDefaults);
 
