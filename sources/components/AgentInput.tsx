@@ -62,7 +62,6 @@ export const AgentInput = React.memo((props: {
     // Animation states
     const scaleAnim = React.useRef(new Animated.Value(1)).current;
     const prevStateRef = React.useRef<'add' | 'send' | 'custom'>('add');
-    const [isFocused, setIsFocused] = React.useState(false);
 
     // Determine current state
     const currentState = React.useMemo(() => {
@@ -300,15 +299,9 @@ export const AgentInput = React.memo((props: {
                         flexDirection: 'row',
                         alignItems: 'center',
                         borderRadius: Platform.select({ ios: 24, android: 28 }),
-                        backgroundColor: Platform.select({
-                            ios: '#fff',
-                            android: isFocused ? '#FFFFFF' : '#F5F5F5',
-                        }),
+                        backgroundColor: Platform.select({ ios: '#fff', android: '#F5F5F5' }),
                         borderWidth: Platform.select({ ios: 1, android: 1.5 }),
-                        borderColor: Platform.select({ 
-                            ios: '#E5E5E7', 
-                            android: isFocused ? '#E0E0E0' : 'transparent' 
-                        }),
+                        borderColor: Platform.select({ ios: '#E5E5E7', android: '#E0E0E0' }),
                         width: '100%',
                         maxWidth: layout.maxWidth,
                         paddingLeft: 16,
@@ -323,7 +316,7 @@ export const AgentInput = React.memo((props: {
                                 shadowRadius: 6,
                             },
                             android: {
-                                elevation: isFocused ? 3 : 0,
+                                elevation: 0,
                             }
                         }),
                     }}
@@ -336,16 +329,10 @@ export const AgentInput = React.memo((props: {
                             textAlignVertical: 'center',
                             fontSize: 16,
                             maxHeight: 120,
-                            color: Platform.select({ 
-                                ios: '#000',
-                                android: isFocused ? '#000' : '#424242'
-                            }),
+                            color: '#000',
                         }}
                         placeholder={props.placeholder}
-                        placeholderTextColor={Platform.select({ 
-                            ios: '#9D9FA3', 
-                            android: isFocused ? '#757575' : '#9E9E9E' 
-                        })}
+                        placeholderTextColor={Platform.select({ ios: '#9D9FA3', android: '#757575' })}
                         autoCapitalize="sentences"
                         autoCorrect={true}
                         keyboardType="default"
@@ -356,8 +343,6 @@ export const AgentInput = React.memo((props: {
                         textContentType="none"
                         onChangeText={props.onChangeText}
                         onKeyPress={handleKeyPress}
-                        onFocus={() => setIsFocused(true)}
-                        onBlur={() => setIsFocused(false)}
                         submitBehavior="newline"
                     />
                     <Animated.View
@@ -372,14 +357,9 @@ export const AgentInput = React.memo((props: {
                                 width: 38,
                                 height: 38,
                                 borderRadius: 19,
-                                backgroundColor: currentState !== 'add' 
-                                    ? Platform.select({ ios: '#007AFF', android: '#2196F3' }) 
-                                    : Platform.select({ 
-                                        ios: 'transparent', 
-                                        android: isFocused ? '#F5F5F5' : 'transparent' 
-                                    }),
-                                borderWidth: currentState === 'add' ? Platform.select({ ios: 2, android: 0 }) : 0,
-                                borderColor: Platform.select({ ios: '#E5E5E7', android: 'transparent' }),
+                                backgroundColor: currentState !== 'add' ? Platform.select({ ios: '#007AFF', android: '#1976D2' }) : 'transparent',
+                                borderWidth: currentState === 'add' ? Platform.select({ ios: 2, android: 1.5 }) : 0,
+                                borderColor: Platform.select({ ios: '#E5E5E7', android: '#E0E0E0' }),
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 opacity: p.pressed ? 0.7 : 1,

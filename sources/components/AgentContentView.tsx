@@ -51,10 +51,12 @@ const FallbackKeyboardAvoidingView: React.FC<AgentContentViewProps> = React.memo
     style,
     keyboardVerticalOffset
 }) => {
+    const safeArea = useSafeAreaInsets();
     const height = useReanimatedKeyboardAnimation();
     const animatedStyle = useAnimatedStyle(() => ({
-        transform: [{ translateY: height.height.value }]
-    }), []);
+        paddingTop: height.progress.value === 1 ? height.height.value : 0,
+        transform: [{ translateY: height.height.value - safeArea.bottom * (1 - height.progress.value) }]
+    }), [safeArea.bottom]);
     return (
         <Animated.View
             style={[{ flex: 1 }, style, animatedStyle]}
