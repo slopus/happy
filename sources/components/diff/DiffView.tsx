@@ -1,6 +1,5 @@
 import React, { useMemo } from 'react';
 import { View, Text, ViewStyle } from 'react-native';
-import { useColorScheme } from '@/components/useColorScheme';
 import { calculateUnifiedDiff, DiffToken } from '@/components/diff/calculateDiff';
 import { Typography } from '@/constants/Typography';
 
@@ -89,8 +88,8 @@ export const DiffView: React.FC<DiffViewProps> = ({
     style,
     fontScaleX = 1,
 }) => {
-    const colorScheme = useColorScheme();
-    const colors = COLORS[colorScheme ?? 'light'];
+    // Always use light theme colors
+    const colors = COLORS.light;
 
     // Calculate diff with inline highlighting
     const { hunks } = useMemo(() => {

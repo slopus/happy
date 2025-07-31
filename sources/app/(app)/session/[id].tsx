@@ -1,32 +1,32 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { View, FlatList, Text, ActivityIndicator, Alert, Platform, ScrollView } from "react-native";
-import { KeyboardAvoidingView, KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { useState, useMemo, useCallback } from "react";
+import { View, FlatList, Text, ActivityIndicator, Alert, Platform, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
-import { Stack, useRouter } from "expo-router";
-import { formatLastSeen, getSessionName, getSessionState, isSessionOnline } from "@/utils/sessionUtils";
+import { useRouter } from "expo-router";
+import { getSessionName, getSessionState } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages, useSettings } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import LottieView from 'lottie-react-native';
+import { EmptyMessages } from '@/components/EmptyMessages';
 import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
 import { RoundButton } from '@/components/RoundButton';
 import { formatPermissionParams } from '@/utils/formatPermissionParams';
 import { Deferred } from '@/components/Deferred';
 import { Session } from '@/sync/storageTypes';
-import { createRealtimeSession, zodToOpenAIFunction, type Tools, type Tool } from '@/realtime';
+import { createRealtimeSession, zodToOpenAIFunction, type Tools } from '@/realtime';
 import { sessionToRealtimePrompt, messagesToPrompt } from '@/realtime/sessionToPrompt';
 import { z } from 'zod';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useIsLandscape, getDeviceType } from '@/utils/responsive';
+import { useIsLandscape, getDeviceType, getHeaderHeight, useHeaderHeight } from '@/utils/responsive';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { AgentContentView } from '@/components/AgentContentView';
+import { isRunningOnMac } from '@/utils/platform';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -94,37 +94,9 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const [, forceUpdate] = React.useReducer(x => x + 1, 0);
     const realtimeSessionRef = React.useRef<Awaited<ReturnType<typeof createRealtimeSession>> | null>(null);
     const isCreatingSessionRef = React.useRef(false);
-
-    // Test animation for moving list up and down
-    const translateY = useSharedValue(0);
-    const scale = useSharedValue(1);
-
-    React.useEffect(() => {
-        // Bounce animation with scaling
-        translateY.value = withRepeat(
-            withTiming(50, { duration: 1500 }),
-            -1, // infinite
-            true // reverse
-        );
-
-        scale.value = withRepeat(
-            withTiming(0.95, { duration: 1500 }),
-            -1, // infinite
-            true // reverse
-        );
-    }, []);
-
-    const animatedStyle = useAnimatedStyle(() => {
-        return {
-            transform: [
-                { translateY: translateY.value },
-                { scale: scale.value }
-            ],
-        };
-    });
-
+    const screenWidth = useWindowDimensions().width;
+    const headerHeight = useHeaderHeight();
     const sessionStatus = getSessionState(session);
-    const online = sessionStatus.isConnected;
     const lastSeenText = sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active';
 
     // Define tools for the realtime session
@@ -290,6 +262,27 @@ ${conversationContext}`;
         <>
             <StatusBar style="dark" translucent backgroundColor="transparent" />
 
+            {/* Status bar shadow for landscape mode */}
+            {isLandscape && deviceType === 'phone' && (
+                <View style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: safeArea.top,
+                    backgroundColor: 'white',
+                    zIndex: 1000,
+                    shadowColor: '#000',
+                    shadowOffset: {
+                        width: 0,
+                        height: 2,
+                    },
+                    shadowOpacity: 0.1,
+                    shadowRadius: 3,
+                    elevation: 5,
+                }} />
+            )}
+
             {/* Custom header - hidden in landscape mode on phone */}
             {!(isLandscape && deviceType === 'phone') && (
                 <View style={{
@@ -297,11 +290,8 @@ ${conversationContext}`;
                     top: 0,
                     left: 0,
                     right: 0,
-                    height: safeArea.top + Platform.select({ ios: 44, default: 56 }),
-                    backgroundColor: Platform.select({
-                        ios: 'rgba(255, 255, 255, 0.85)',
-                        default: 'rgba(255, 255, 255, 0.95)'
-                    }),
+                    height: safeArea.top + getHeaderHeight(isLandscape, deviceType),
+                    backgroundColor: 'white',
                     borderBottomWidth: 0.5,
                     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
                     zIndex: 1000
@@ -354,11 +344,19 @@ ${conversationContext}`;
                                 {getSessionName(session)}
                             </Text>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                                <View style={{
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    height: 16,
+                                    marginTop: 2
+                                }}>
+                                    <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                                </View>
                                 <Text style={{
                                     fontSize: 12,
                                     color: sessionStatus.statusColor,
                                     fontWeight: sessionStatus.shouldShowStatus ? '500' : '400',
+                                    lineHeight: 16,
                                     ...Typography.default()
                                 }}>
                                     {sessionStatus.shouldShowStatus ? sessionStatus.statusText : lastSeenText}
@@ -375,7 +373,7 @@ ${conversationContext}`;
                                 height: 44,
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                marginRight: Platform.select({ ios: -16, default: -12 }),
+                                marginRight: Platform.select({ ios: -8, default: -12 }),
                             }}
                         >
                             <Avatar id={sessionId} size={32} monochrome={!sessionStatus.isConnected} />
@@ -385,96 +383,95 @@ ${conversationContext}`;
             )}
 
             {/* Main content area - no padding since header is overlay */}
-            <AgentContentView
-                style={{ paddingTop: 0 }}
-                keyboardVerticalOffset={(isLandscape && deviceType === 'phone')
-                    ? safeArea.top
-                    : safeArea.top + Platform.select({ ios: 44, default: 56 })}
-            >
-                <Animated.View style={{ flexGrow: 1, flexBasis: 0 }}>
-                    <Deferred>
-                        {messages.length === 0 && isLoaded && (
-                            <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
-                                <LottieView source={require('@/assets/animations/popcorn.json')} autoPlay={true} loop={false} style={{ width: 180, height: 180 }} />
-                                <Text style={{ color: '#666', fontSize: 20, marginTop: 16 }}>No messages yet</Text>
-                            </View>
-                        )}
-                        {messages.length === 0 && !isLoaded && (
-                            <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
-
-                            </View>
-                        )}
-                        {messages.length > 0 && (
-                            <FlatList
-                                removeClippedSubviews={true}
-                                data={messages}
-                                inverted={true}
-                                keyExtractor={(item) => item.id}
-                                maintainVisibleContentPosition={{
-                                    minIndexForVisible: 0,
-                                    autoscrollToTopThreshold: 100,
-                                }}
-                                keyboardShouldPersistTaps="handled"
-                                keyboardDismissMode="none"
-                                renderItem={({ item }) => (
-                                    <MessageView
-                                        message={item}
-                                        metadata={session.metadata}
-                                        sessionId={sessionId}
-                                    />
-                                )}
-                                ListHeaderComponent={footer}
-                                ListFooterComponent={() => <View style={{
-                                    height: (isLandscape && deviceType === 'phone')
-                                        ? 8
-                                        : Platform.select({ ios: 52, default: 64 })
-                                }} />}
-                            />
-                        )}
-                    </Deferred>
-                    <LinearGradient
-                        colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']}
-                        locations={[0, 1]}
-                        style={{
-                            position: 'absolute',
-                            bottom: 0,
-                            left: 0,
-                            right: 0,
-                            height: 8,
-                            pointerEvents: 'none',
-                        }}
-                    />
-                </Animated.View>
-
-                <AgentInput
-                    placeholder="Type a message ..."
-                    value={message}
-                    onChangeText={setMessage}
-                    onSend={message.trim() ? () => {
-                        setMessage('');
-                        sync.sendMessage(sessionId, message);
-                    } : handleMicrophonePress}
-                    sendIcon={message.trim() ? undefined : settings.inferenceOpenAIKey ? (
-                        <Ionicons
-                            name={isRecording ? "stop" : "headset"}
-                            size={isRecording ? 20 : 22}
-                            color="#fff"
+            <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + (isRunningOnMac() ? 32 : 0) }}>
+                <AgentContentView>
+                    <Animated.View style={{ flexGrow: 1, flexBasis: 0 }}>
+                        <Deferred>
+                            {messages.length === 0 && isLoaded && (
+                                <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center', marginTop: safeArea.top + headerHeight }}>
+                                    <EmptyMessages session={session} />
+                                </View>
+                            )}
+                            {messages.length === 0 && !isLoaded && (
+                                <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center', marginTop: safeArea.top + headerHeight }}>
+                                    <ActivityIndicator size="large" color="#C7C7CC" />
+                                </View>
+                            )}
+                            {messages.length > 0 && (
+                                <FlatList
+                                    removeClippedSubviews={true}
+                                    data={messages}
+                                    inverted={true}
+                                    keyExtractor={(item) => item.id}
+                                    maintainVisibleContentPosition={{
+                                        minIndexForVisible: 0,
+                                        autoscrollToTopThreshold: 100,
+                                    }}
+                                    keyboardShouldPersistTaps="handled"
+                                    keyboardDismissMode="none"
+                                    renderItem={({ item }) => (
+                                        <MessageView
+                                            message={item}
+                                            metadata={session.metadata}
+                                            sessionId={sessionId}
+                                        />
+                                    )}
+                                    contentContainerStyle={{
+                                        paddingHorizontal: screenWidth > 700 ? 16 : 0
+                                    }}
+                                    ListHeaderComponent={footer}
+                                    ListFooterComponent={() => <View style={{
+                                        height: (isLandscape && deviceType === 'phone')
+                                            ? 8
+                                            : Platform.select({ ios: 52, default: 64 })
+                                    }} />}
+                                />
+                            )}
+                        </Deferred>
+                        <LinearGradient
+                            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']}
+                            locations={[0, 1]}
+                            style={{
+                                position: 'absolute',
+                                bottom: 0,
+                                left: 0,
+                                right: 0,
+                                height: 8,
+                                pointerEvents: 'none',
+                            }}
                         />
-                    ) : undefined}
-                    status={{
-                        state: sessionStatus.state,
-                        text: sessionStatus.state === 'disconnected' ? 'disconnected' :
-                            sessionStatus.state === 'thinking' ? 'thinking...' :
-                                sessionStatus.state === 'idle' ? 'idle' :
-                                    sessionStatus.state === 'permission_required' ? 'permission required' :
-                                        sessionStatus.state === 'waiting' ? 'connected' : '',
-                        color: sessionStatus.statusColor,
-                        dotColor: sessionStatus.statusDotColor,
-                        isPulsing: sessionStatus.isPulsing,
-                    }}
-                    onAbort={() => sync.abort(sessionId)}
-                />
-            </AgentContentView>
+                    </Animated.View>
+
+                    <AgentInput
+                        placeholder="Type a message ..."
+                        value={message}
+                        onChangeText={setMessage}
+                        onSend={message.trim() ? () => {
+                            setMessage('');
+                            sync.sendMessage(sessionId, message);
+                        } : handleMicrophonePress}
+                        sendIcon={message.trim() ? undefined : settings.inferenceOpenAIKey ? (
+                            <Ionicons
+                                name={isRecording ? "stop" : "headset"}
+                                size={isRecording ? 20 : 22}
+                                color="#fff"
+                            />
+                        ) : undefined}
+                        status={{
+                            state: sessionStatus.state,
+                            text: sessionStatus.state === 'disconnected' ? 'disconnected' :
+                                sessionStatus.state === 'thinking' ? 'thinking...' :
+                                    sessionStatus.state === 'idle' ? 'idle' :
+                                        sessionStatus.state === 'permission_required' ? 'permission required' :
+                                            sessionStatus.state === 'waiting' ? 'connected' : '',
+                            color: sessionStatus.statusColor,
+                            dotColor: sessionStatus.statusDotColor,
+                            isPulsing: sessionStatus.isPulsing,
+                        }}
+                        onAbort={() => sync.abort(sessionId)}
+                    />
+                </AgentContentView>
+            </View>
 
             {/* Back button for landscape phone mode when header is hidden */}
             {isLandscape && deviceType === 'phone' && (

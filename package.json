@@ -94,6 +94,7 @@
     "react-dom": "19.0.0",
     "react-native": "0.79.5",
     "react-native-blurhash": "^2.1.1",
+    "react-native-device-info": "^14.0.4",
     "react-native-diff-view": "^1.1.2",
     "react-native-gesture-handler": "2.27.2",
     "react-native-incall-manager": "^4.2.1",

@@ -172,11 +172,19 @@ function SessionItem({ session, selectedSessionId, router }: {
                 {/* Status line with dot and OS info */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                        <View style={{
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            height: 16,
+                            marginTop: 2
+                        }}>
+                            <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                        </View>
                         <Text style={{ 
                             fontSize: 12, 
                             color: sessionStatus.statusColor,
                             fontWeight: '500',
+                            lineHeight: 16,
                             ...Typography.default()
                         }}>
                             {sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active'}

@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, TextInput, NativeSyntheticEvent, TextInputKeyPressEventData, Platform, Animated, Text, ActivityIndicator } from 'react-native';
+import { View, TextInput, NativeSyntheticEvent, TextInputKeyPressEventData, Platform, Animated, Text, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Pressable } from 'react-native-gesture-handler';
 import { hapticsLight, hapticsError } from './haptics';
 import { Typography } from '@/constants/Typography';
@@ -62,6 +62,7 @@ export const AgentInput = React.memo((props: {
     // Animation states
     const scaleAnim = React.useRef(new Animated.Value(1)).current;
     const prevStateRef = React.useRef<'add' | 'send' | 'custom'>('add');
+    const screenWidth = useWindowDimensions().width;
 
     // Determine current state
     const currentState = React.useMemo(() => {
@@ -205,7 +206,7 @@ export const AgentInput = React.memo((props: {
                         justifyContent: 'space-between',
                         width: '100%',
                         maxWidth: layout.maxWidth,
-                        paddingHorizontal: 16,
+                        paddingHorizontal: 32,
                     }}>
                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                             <StatusDot
@@ -290,7 +291,7 @@ export const AgentInput = React.memo((props: {
             {/* Input field */}
             <View style={{
                 alignItems: 'center',
-                paddingHorizontal: 16,
+                paddingHorizontal: screenWidth > 700 ? 16 : 8,
                 paddingBottom: 8,
                 paddingTop: props.status ? 4 : 8,
             }}>

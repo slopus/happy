@@ -5,17 +5,21 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { createHeader } from '@/components/navigation/Header';
 import { Platform } from 'react-native';
+import { isRunningOnMac } from '@/utils/platform';
 
 export const unstable_settings = {
     initialRouteName: 'index',
 };
 
 export default function RootLayout() {
+    // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
+    const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac();
+    
     return (
         <Stack
             initialRouteName='index'
             screenOptions={{
-                header: Platform.OS === 'ios' ? undefined : createHeader,
+                header: shouldUseCustomHeader ? createHeader : undefined,
                 headerBackTitle: 'Back',
                 headerShadowVisible: false,
                 contentStyle: {
@@ -66,8 +70,9 @@ export default function RootLayout() {
             <Stack.Screen
                 name="session/[id]/info"
                 options={{
-                    presentation: 'modal',
                     headerShown: true,
+                    headerTitle: 'Session Info',
+                    headerBackTitle: 'Back',
                 }}
             />
             <Stack.Screen
@@ -91,9 +96,9 @@ export default function RootLayout() {
             <Stack.Screen
                 name="restore"
                 options={{
-                    presentation: 'modal',
                     headerShown: true,
                     headerTitle: 'Restore Account',
+                    headerBackTitle: 'Back',
                 }}
             />
             <Stack.Screen

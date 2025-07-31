@@ -15,7 +15,7 @@ export default {
         name,
         slug: "happy",
         version: "1.0.5",
-        runtimeVersion: "12",
+        runtimeVersion: "13",
         orientation: "default",
         icon: "./sources/assets/images/happy-otter-icon.png",
         scheme: "happy",
@@ -50,7 +50,7 @@ export default {
         },
         web: {
             bundler: "metro",
-            output: "static",
+            output: "single",
             favicon: "./sources/assets/images/happy-otter-icon.png"
         },
         plugins: [

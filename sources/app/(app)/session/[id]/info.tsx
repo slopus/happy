@@ -105,12 +105,7 @@ export default React.memo(() => {
             color: '#000',
             fontSize: 17,
             fontWeight: '600' as const,
-        },
-        headerRight: Platform.OS === 'ios' ? () => (
-            <Pressable onPress={handleClose} hitSlop={10}>
-                <Ionicons name="close" size={24} color="#000" />
-            </Pressable>
-        ) : undefined,
+        }
     };
 
     return (
