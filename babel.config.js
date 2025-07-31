@@ -7,5 +7,8 @@ module.exports = function (api) {
         plugins: ["transform-remove-console"],
       },
     },
+    plugins: [
+      'react-native-worklets/plugin'
+    ],
   };
 };
