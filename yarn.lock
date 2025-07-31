@@ -6101,6 +6101,11 @@ react-native-css-interop@0.1.22:
     lightningcss "^1.27.0"
     semver "^7.6.3"
 
+react-native-device-info@^14.0.4:
+  version "14.0.4"
+  resolved "https://registry.yarnpkg.com/react-native-device-info/-/react-native-device-info-14.0.4.tgz#56b24ace9ff29a66bdfc667209086421ed6cfdce"
+  integrity sha512-NX0wMAknSDBeFnEnSFQ8kkAcQrFHrG4Cl0mVjoD+0++iaKrOupiGpBXqs8xR0SeJyPC5zpdPl4h/SaBGly6UxA==
+
 react-native-diff-view@^1.1.2:
   version "1.1.2"
   resolved "https://registry.yarnpkg.com/react-native-diff-view/-/react-native-diff-view-1.1.2.tgz#315204310c0d52cc2fadba38e0a32a33cb389a88"

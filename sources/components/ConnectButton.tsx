@@ -19,7 +19,7 @@ export const ConnectButton = React.memo(() => {
     };
 
     return (
-        <View>
+        <View style={{ width: 210 }}>
             {isDevMode && (
                 <View style={{
                     marginBottom: 16,
@@ -52,7 +52,7 @@ export const ConnectButton = React.memo(() => {
             )}
             <RoundButton
                 title="Connect"
-                size="normal"
+                size="large"
                 onPress={handleConnect}
                 loading={isLoading}
             />

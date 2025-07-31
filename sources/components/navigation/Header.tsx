@@ -5,6 +5,7 @@ import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { layout } from '../layout';
+import { useIsLandscape, getDeviceType, getHeaderHeight, useHeaderHeight } from '@/utils/responsive';
 
 interface HeaderProps {
     title?: React.ReactNode;
@@ -39,6 +40,7 @@ export const Header = React.memo((props: HeaderProps) => {
 
     const insets = useSafeAreaInsets();
     const paddingTop = safeAreaEnabled ? insets.top : 0;
+    const headerHeight = useHeaderHeight();
 
     const containerStyle = [
         styles.container,
@@ -69,7 +71,7 @@ export const Header = React.memo((props: HeaderProps) => {
                 backgroundColor={headerTransparent ? 'transparent' : headerBackgroundColor}
             />
             <View style={styles.contentWrapper}>
-                <View style={styles.content}>
+                <View style={[styles.content, { height: headerHeight }]}>
                     <View style={styles.leftContainer}>
                         {headerLeft && headerLeft()}
                     </View>
@@ -100,10 +102,9 @@ const styles = StyleSheet.create({
     content: {
         flexDirection: 'row',
         alignItems: 'center',
-        height: 56,
         paddingHorizontal: 16,
         width: '100%',
-        maxWidth: layout.maxWidth, // Standard max width for content
+        maxWidth: layout.headerMaxWidth, // Standard max width for content
     },
     leftContainer: {
         flex: 1,
@@ -157,7 +158,11 @@ interface ExtendedNavigationOptions extends Partial<NativeStackHeaderProps['opti
 const DefaultBackButton: React.FC<{ tintColor?: string; onPress: () => void }> = ({ tintColor = '#000', onPress }) => {
     return (
         <Pressable onPress={onPress} hitSlop={8}>
-            <Ionicons name="arrow-back" size={24} color={tintColor} />
+            <Ionicons 
+                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} 
+                size={24} 
+                color={tintColor} 
+            />
         </Pressable>
     );
 };

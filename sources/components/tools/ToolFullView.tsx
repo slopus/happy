@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Text, View, StyleSheet, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import { Text, View, StyleSheet, ScrollView, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
@@ -15,9 +15,10 @@ interface ToolFullViewProps {
 export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProps) {
     // Check if there's a specialized content view for this tool
     const SpecializedFullView = getToolFullViewComponent(tool.name);
+    const screenWidth = useWindowDimensions().width;
 
     return (
-        <ScrollView style={styles.container}>
+        <ScrollView style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
             {/* Tool-specific content or generic fallback */}
             {SpecializedFullView ? (
                 <SpecializedFullView tool={tool} metadata={metadata || null} messages={messages} />

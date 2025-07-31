@@ -7,8 +7,9 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { ItemList } from '@/components/ItemList';
 import Constants from 'expo-constants';
-import { useIsTablet, getDeviceType } from '@/utils/responsive';
+import { useIsTablet, getDeviceType, calculateDeviceDimensions, useHeaderHeight } from '@/utils/responsive';
 import { layout } from '@/components/layout';
+import { isRunningOnMac } from '@/utils/platform';
 
 export default function DeviceInfo() {
     const insets = useSafeAreaInsets();
@@ -16,11 +17,18 @@ export default function DeviceInfo() {
     const screenDimensions = Dimensions.get('screen');
     const pixelDensity = PixelRatio.get();
     const isTablet = useIsTablet();
+    const deviceType = getDeviceType();
+    const headerHeight = useHeaderHeight();
+    const isRunningOnMacCatalyst = isRunningOnMac();
     
-    // Calculate diagonal size
-    const widthInches = screenDimensions.width / (pixelDensity * 160);
-    const heightInches = screenDimensions.height / (pixelDensity * 160);
-    const diagonalInches = Math.sqrt(widthInches * widthInches + heightInches * heightInches);
+    // Calculate device dimensions using the correct function
+    const dimensions = calculateDeviceDimensions({
+        widthPoints: screenDimensions.width,
+        heightPoints: screenDimensions.height,
+        pointsPerInch: Platform.OS === 'ios' ? 163 : 160
+    });
+    
+    const { widthInches, heightInches, diagonalInches } = dimensions;
     
     return (
         <>
@@ -53,23 +61,40 @@ export default function DeviceInfo() {
                 <ItemGroup title="Device Detection">
                     <Item
                         title="Device Type"
-                        detail={isTablet ? 'Tablet' : 'Phone'}
+                        detail={deviceType === 'tablet' ? 'Tablet' : 'Phone'}
+                    />
+                    <Item
+                        title="Detection Method"
+                        // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
+                        detail={Platform.OS === 'ios' && Platform.isPad ? 'iOS isPad' : `${diagonalInches.toFixed(1)}" diagonal`}
+                    />
+                    <Item
+                        title="Mac Catalyst"
+                        detail={isRunningOnMacCatalyst ? 'Yes' : 'No'}
+                    />
+                    <Item
+                        title="Header Height"
+                        detail={`${headerHeight} points`}
                     />
                     <Item
                         title="Diagonal Size"
-                        detail={`${diagonalInches.toFixed(1)} inches`}
+                        detail={`${diagonalInches.toFixed(2)} inches`}
+                    />
+                    <Item
+                        title="Width (inches)"
+                        detail={`${widthInches.toFixed(2)}"`}
+                    />
+                    <Item
+                        title="Height (inches)"
+                        detail={`${heightInches.toFixed(2)}"`}
                     />
                     <Item
                         title="Pixel Density"
                         detail={`${pixelDensity}x`}
                     />
                     <Item
-                        title="Width (inches)"
-                        detail={`${widthInches.toFixed(1)}"`}
-                    />
-                    <Item
-                        title="Height (inches)"
-                        detail={`${heightInches.toFixed(1)}"`}
+                        title="Points per Inch"
+                        detail={Platform.OS === 'ios' ? '163' : '160'}
                     />
                     <Item
                         title="Layout Max Width"
@@ -80,19 +105,27 @@ export default function DeviceInfo() {
                 <ItemGroup title="Screen Dimensions">
                     <Item
                         title="Window Width"
-                        detail={`${width}px`}
+                        detail={`${width} points`}
                     />
                     <Item
                         title="Window Height"
-                        detail={`${height}px`}
+                        detail={`${height} points`}
                     />
                     <Item
                         title="Screen Width"
-                        detail={`${screenDimensions.width}px`}
+                        detail={`${screenDimensions.width} points`}
                     />
                     <Item
                         title="Screen Height"
-                        detail={`${screenDimensions.height}px`}
+                        detail={`${screenDimensions.height} points`}
+                    />
+                    <Item
+                        title="Physical Pixels (width)"
+                        detail={`${Math.round(screenDimensions.width * pixelDensity)}px`}
+                    />
+                    <Item
+                        title="Physical Pixels (height)"
+                        detail={`${Math.round(screenDimensions.height * pixelDensity)}px`}
                     />
                     <Item
                         title="Aspect Ratio"
@@ -113,6 +146,7 @@ export default function DeviceInfo() {
                         <>
                             <Item
                                 title="iOS Interface"
+                                // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
                                 detail={Platform.isPad ? 'iPad' : 'iPhone'}
                             />
                             <Item
