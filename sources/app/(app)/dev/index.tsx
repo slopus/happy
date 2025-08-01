@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Switch, View, Alert } from 'react-native';
+import { Switch, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -8,24 +8,23 @@ import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { useLocalSettingMutable } from '@/sync/storage';
+import { Modal } from '@/modal';
 
 export default function DevScreen() {
     const router = useRouter();
     const [debugMode, setDebugMode] = useLocalSettingMutable('debugMode');
     const [verboseLogging, setVerboseLogging] = React.useState(false);
 
-    const handleClearCache = () => {
-        Alert.alert(
+    const handleClearCache = async () => {
+        const confirmed = await Modal.confirm(
             'Clear Cache',
             'Are you sure you want to clear all cached data?',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Clear', style: 'destructive', onPress: () => {
-                    console.log('Cache cleared');
-                    Alert.alert('Success', 'Cache has been cleared');
-                }},
-            ]
+            { confirmText: 'Clear', destructive: true }
         );
+        if (confirmed) {
+            console.log('Cache cleared');
+            Modal.alert('Success', 'Cache has been cleared');
+        }
     };
 
     return (
@@ -146,6 +145,12 @@ export default function DevScreen() {
                     icon={<Ionicons name="sparkles-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/shimmer-demo')}
                 />
+                <Item 
+                    title="Modal System"
+                    subtitle="Alert, confirm, and custom modals"
+                    icon={<Ionicons name="albums-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/modal-demo')}
+                />
             </ItemGroup>
 
             {/* Test Features */}
@@ -155,17 +160,15 @@ export default function DevScreen() {
                     subtitle="Trigger a test crash"
                     destructive={true}
                     icon={<Ionicons name="warning-outline" size={28} color="#FF3B30" />}
-                    onPress={() => {
-                        Alert.alert(
+                    onPress={async () => {
+                        const confirmed = await Modal.confirm(
                             'Test Crash',
                             'This will crash the app. Continue?',
-                            [
-                                { text: 'Cancel', style: 'cancel' },
-                                { text: 'Crash', style: 'destructive', onPress: () => {
-                                    throw new Error('Test crash triggered from dev menu');
-                                }},
-                            ]
+                            { confirmText: 'Crash', destructive: true }
                         );
+                        if (confirmed) {
+                            throw new Error('Test crash triggered from dev menu');
+                        }
                     }}
                 />
                 <Item 
@@ -179,17 +182,15 @@ export default function DevScreen() {
                     subtitle="Clear all user data and preferences"
                     destructive={true}
                     icon={<Ionicons name="refresh-outline" size={28} color="#FF3B30" />}
-                    onPress={() => {
-                        Alert.alert(
+                    onPress={async () => {
+                        const confirmed = await Modal.confirm(
                             'Reset App',
                             'This will delete all data. Are you sure?',
-                            [
-                                { text: 'Cancel', style: 'cancel' },
-                                { text: 'Reset', style: 'destructive', onPress: () => {
-                                    console.log('App state reset');
-                                }},
-                            ]
+                            { confirmText: 'Reset', destructive: true }
                         );
+                        if (confirmed) {
+                            console.log('App state reset');
+                        }
                     }}
                 />
             </ItemGroup>

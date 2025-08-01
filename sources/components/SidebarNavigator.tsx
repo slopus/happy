@@ -28,7 +28,7 @@ export const SidebarNavigator = React.memo(() => {
                 swipeEnabled: false,
                 drawerStyle: {
                     width: 0,
-                    display: 'none',
+                    display: 'none' as const,
                 },
             };
         }
@@ -46,8 +46,8 @@ export const SidebarNavigator = React.memo(() => {
             swipeEnabled: false,
             drawerActiveTintColor: 'transparent',
             drawerInactiveTintColor: 'transparent',
-            drawerItemStyle: { display: 'none' },
-            drawerLabelStyle: { display: 'none' },
+            drawerItemStyle: { display: 'none' as const },
+            drawerLabelStyle: { display: 'none' as const },
         };
     }, [showPermanentDrawer, drawerWidth]);
 

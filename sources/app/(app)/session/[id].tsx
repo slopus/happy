@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
 import { useState, useMemo, useCallback } from "react";
-import { View, FlatList, Text, ActivityIndicator, Alert, Platform, useWindowDimensions } from "react-native";
+import { View, FlatList, Text, ActivityIndicator, Platform, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
 import { useRouter } from "expo-router";
@@ -27,6 +27,7 @@ import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming } fr
 import { StatusBar } from 'expo-status-bar';
 import { AgentContentView } from '@/components/AgentContentView';
 import { isRunningOnMac } from '@/utils/platform';
+import { Modal } from '@/modal';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -184,7 +185,7 @@ ${conversationContext}`;
                 realtimeSessionRef.current = controls;
             } catch (error) {
                 console.error('Failed to create realtime session:', error);
-                Alert.alert('Error', 'Failed to start voice session');
+                Modal.alert('Error', 'Failed to start voice session');
                 setIsRecording(false); // Reset on error
                 realtimeSessionRef.current = null;
             } finally {

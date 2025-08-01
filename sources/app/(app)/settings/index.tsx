@@ -1,4 +1,4 @@
-import { View, ScrollView, Pressable, Platform, Image, Alert, Linking } from 'react-native';
+import { View, ScrollView, Pressable, Platform, Image, Linking } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';

@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { Alert } from 'react-native';
 import * as Audio from 'expo-audio';
 import InCallManager from 'react-native-incall-manager';
 import {
@@ -9,6 +8,7 @@ import {
   RTCView,
 } from 'react-native-webrtc-web-shim';
 import { Settings } from '@/sync/settings';
+import { Modal } from '@/modal';
 
 // Helper to convert Zod schema to OpenAI function schema
 export function zodToOpenAIFunction<T extends z.ZodType>(
@@ -105,7 +105,7 @@ export async function createRealtimeSession(config: SessionConfig): Promise<Sess
   }
   
   if (!EPHEMERAL_KEY) {
-    Alert.alert(
+    Modal.alert(
       'OpenAI API Key Required',
       'Please set your OpenAI API key in Settings to use voice control.',
       [{ text: 'OK' }]
@@ -244,7 +244,7 @@ export async function createRealtimeSession(config: SessionConfig): Promise<Sess
     if (dataChannel) dataChannel.close();
     if (peerConnection) peerConnection.close();
     if (localMediaStream) {
-      localMediaStream.getTracks().forEach(track => track.stop());
+      localMediaStream.getTracks().forEach((track: MediaStreamTrack) => track.stop());
     }
     isActive = false;
     // Clear global reference

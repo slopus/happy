@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
-import { View, Text, Alert, Pressable, Platform, Animated } from 'react-native';
+import { View, Text, Pressable, Platform, Animated } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -10,6 +10,7 @@ import { Avatar } from '@/components/Avatar';
 import { useSession } from '@/sync/storage';
 import { getSessionName, getSessionState, formatOSPlatform } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
+import { Modal } from '@/modal';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -55,6 +56,34 @@ export default React.memo(() => {
     const { id } = useLocalSearchParams<{ id: string }>();
     const session = useSession(id);
 
+    const handleClose = useCallback(() => {
+        router.back();
+    }, [router]);
+
+    const handleCopySessionId = useCallback(async () => {
+        if (!session) return;
+        try {
+            await Clipboard.setStringAsync(session.id);
+            Modal.alert('Success', 'Session ID copied to clipboard');
+        } catch (error) {
+            Modal.alert('Error', 'Failed to copy session ID');
+        }
+    }, [session]);
+
+    const handleCopyMetadata = useCallback(async () => {
+        if (!session?.metadata) return;
+        try {
+            await Clipboard.setStringAsync(JSON.stringify(session.metadata, null, 2));
+            Modal.alert('Success', 'Metadata copied to clipboard');
+        } catch (error) {
+            Modal.alert('Error', 'Failed to copy metadata');
+        }
+    }, [session]);
+
+    const formatDate = useCallback((timestamp: number) => {
+        return new Date(timestamp).toLocaleString();
+    }, []);
+
     if (!session) {
         return (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -65,34 +94,6 @@ export default React.memo(() => {
 
     const sessionName = getSessionName(session);
     const sessionStatus = getSessionState(session);
-
-    const handleCopySessionId = async () => {
-        try {
-            await Clipboard.setStringAsync(session.id);
-            Alert.alert('Success', 'Session ID copied to clipboard');
-        } catch (error) {
-            Alert.alert('Error', 'Failed to copy session ID');
-        }
-    };
-
-    const handleCopyMetadata = async () => {
-        if (session.metadata) {
-            try {
-                await Clipboard.setStringAsync(JSON.stringify(session.metadata, null, 2));
-                Alert.alert('Success', 'Metadata copied to clipboard');
-            } catch (error) {
-                Alert.alert('Error', 'Failed to copy metadata');
-            }
-        }
-    };
-
-    const formatDate = (timestamp: number) => {
-        return new Date(timestamp).toLocaleString();
-    };
-
-    const handleClose = useCallback(() => {
-        router.back();
-    }, [router]);
 
     const screenOptions = {
         // headerShown: true,

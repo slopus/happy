@@ -1,4 +1,4 @@
-import { View, Switch, TextInput, Pressable, Alert } from 'react-native';
+import { View, Switch, TextInput, Pressable } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
@@ -7,6 +7,7 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { useSettingMutable } from '@/sync/storage';
 import { useState } from 'react';
+import { Modal } from '@/modal';
 
 export default function FeaturesSettingsScreen() {
     const [openAIKey, setOpenAIKey] = useSettingMutable('inferenceOpenAIKey');
@@ -17,7 +18,7 @@ export default function FeaturesSettingsScreen() {
         const trimmedKey = tempOpenAIKey.trim();
         setOpenAIKey(trimmedKey || null);
         setIsEditingAPIKey(false);
-        Alert.alert('Success', trimmedKey ? 'OpenAI API key saved successfully' : 'OpenAI API key removed');
+        Modal.alert('Success', trimmedKey ? 'OpenAI API key saved successfully' : 'OpenAI API key removed');
     };
 
     const handleCancelEdit = () => {

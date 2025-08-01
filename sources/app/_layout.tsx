@@ -13,6 +13,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SidebarNavigator } from '@/components/SidebarNavigator';
 import sodium from 'react-native-libsodium';
 import { View } from 'react-native';
+import { ModalProvider } from '@/modal';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -104,9 +105,11 @@ export default function RootLayout() {
                 <GestureHandlerRootView style={{ flex: 1 }}>
                     <AuthProvider initialCredentials={initState.credentials}>
                         <ThemeProvider value={DefaultTheme}>
-                            <HorizontalSafeAreaWrapper>
-                                <SidebarNavigator />
-                            </HorizontalSafeAreaWrapper>
+                            <ModalProvider>
+                                <HorizontalSafeAreaWrapper>
+                                    <SidebarNavigator />
+                                </HorizontalSafeAreaWrapper>
+                            </ModalProvider>
                         </ThemeProvider>
                     </AuthProvider>
                 </GestureHandlerRootView>

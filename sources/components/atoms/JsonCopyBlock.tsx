@@ -1,8 +1,9 @@
 import React from 'react';
-import { View, Text, Pressable, Alert } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Typography } from '@/constants/Typography';
+import { Modal } from '@/modal';
 
 interface JsonCopyBlockProps {
     data: any;
@@ -14,9 +15,9 @@ export function JsonCopyBlock({ data, title = "Debug Information" }: JsonCopyBlo
         try {
             const jsonString = JSON.stringify(data, null, 2);
             await Clipboard.setStringAsync(jsonString);
-            Alert.alert('Success', 'JSON data copied to clipboard');
+            Modal.alert('Success', 'JSON data copied to clipboard');
         } catch (error) {
-            Alert.alert('Error', 'Failed to copy JSON data');
+            Modal.alert('Error', 'Failed to copy JSON data');
         }
     };
 

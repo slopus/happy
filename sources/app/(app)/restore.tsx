@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Alert, ScrollView } from 'react-native';
+import { View, Text, TextInput, ScrollView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
@@ -8,6 +8,7 @@ import { normalizeSecretKey } from '@/auth/secretKeyBackup';
 import { authGetToken } from '@/auth/authGetToken';
 import { decodeBase64 } from '@/auth/base64';
 import { layout } from '@/components/layout';
+import { Modal } from '@/modal';
 
 export default function Restore() {
     const auth = useAuth();
@@ -18,7 +19,7 @@ export default function Restore() {
         const trimmedKey = restoreKey.trim();
 
         if (!trimmedKey) {
-            Alert.alert('Error', 'Please enter a secret key');
+            Modal.alert('Error', 'Please enter a secret key');
             return;
         }
 
@@ -46,7 +47,7 @@ export default function Restore() {
 
         } catch (error) {
             console.error('Restore error:', error);
-            Alert.alert('Error', 'Invalid secret key. Please check and try again.');
+            Modal.alert('Error', 'Invalid secret key. Please check and try again.');
         }
     };
 
