@@ -28,6 +28,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AgentContentView } from '@/components/AgentContentView';
 import { isRunningOnMac } from '@/utils/platform';
 import { Modal } from '@/modal';
+import { Header } from '@/components/navigation/Header';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -301,102 +302,85 @@ ${conversationContext}`;
                 }} />
             )}
 
-            {/* Custom header - hidden in landscape mode on phone */}
+            {/* Header - hidden in landscape mode on phone */}
             {!(isLandscape && deviceType === 'phone') && (
                 <View style={{
                     position: 'absolute',
                     top: 0,
                     left: 0,
                     right: 0,
-                    height: safeArea.top + headerHeight,
-                    backgroundColor: 'white',
-                    borderBottomWidth: 0.5,
-                    borderBottomColor: 'rgba(0, 0, 0, 0.1)',
                     zIndex: 1000
                 }}>
-                    <View style={{
-                        flex: 1,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingTop: safeArea.top,
-                        paddingHorizontal: 16,
-                    }}>
-                        {/* Back button */}
-                        <Pressable
-                            onPress={() => router.back()}
-                            hitSlop={10}
-                            style={{
-                                width: 44,
-                                height: 44,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginLeft: Platform.select({ ios: -16, default: -12 }),
-                            }}
-                        >
-                            <Ionicons
-                                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
-                                size={Platform.select({ ios: 28, default: 24 })}
-                                color="#000"
-                            />
-                        </Pressable>
-
-                        {/* Title section */}
-                        <View style={{
-                            flex: 1,
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            paddingHorizontal: 8,
-                        }}>
-                            <Text
-                                numberOfLines={1}
-                                ellipsizeMode="tail"
-                                style={{
-                                    fontSize: 16,
-                                    fontWeight: '600',
-                                    color: sessionStatus.isConnected ? '#000' : '#8E8E93',
-                                    marginBottom: 2,
-                                    ...Typography.default('semiBold')
-                                }}
+                    <Header
+                        title={
+                            <View style={{ alignItems: 'center' }}>
+                                <Text
+                                    numberOfLines={1}
+                                    ellipsizeMode="tail"
+                                    style={{
+                                        fontSize: 16,
+                                        fontWeight: '600',
+                                        color: sessionStatus.isConnected ? '#000' : '#8E8E93',
+                                        marginBottom: 2,
+                                        ...Typography.default('semiBold')
+                                    }}
+                                >
+                                    {getSessionName(session)}
+                                </Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    <View style={{
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        height: 16,
+                                        marginTop: 2
+                                    }}>
+                                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                                    </View>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: sessionStatus.statusColor,
+                                        fontWeight: sessionStatus.shouldShowStatus ? '500' : '400',
+                                        lineHeight: 16,
+                                        ...Typography.default()
+                                    }}>
+                                        {sessionStatus.shouldShowStatus ? sessionStatus.statusText : lastSeenText}
+                                    </Text>
+                                </View>
+                            </View>
+                        }
+                        headerLeft={() => (
+                            <Pressable
+                                onPress={() => router.back()}
+                                hitSlop={10}
                             >
-                                {getSessionName(session)}
-                            </Text>
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <View style={{
+                                <Ionicons
+                                    name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                                    size={Platform.select({ ios: 28, default: 24 })}
+                                    color="#000"
+                                />
+                            </Pressable>
+                        )}
+                        headerRight={() => (
+                            <Pressable
+                                onPress={() => router.push(`/session/${sessionId}/info`)}
+                                hitSlop={10}
+                                style={{
+                                    width: 44,
+                                    height: 44,
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    height: 16,
-                                    marginTop: 2
-                                }}>
-                                    <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
-                                </View>
-                                <Text style={{
-                                    fontSize: 12,
-                                    color: sessionStatus.statusColor,
-                                    fontWeight: sessionStatus.shouldShowStatus ? '500' : '400',
-                                    lineHeight: 16,
-                                    ...Typography.default()
-                                }}>
-                                    {sessionStatus.shouldShowStatus ? sessionStatus.statusText : lastSeenText}
-                                </Text>
-                            </View>
-                        </View>
-
-                        {/* Avatar button */}
-                        <Pressable
-                            onPress={() => router.push(`/session/${sessionId}/info`)}
-                            hitSlop={10}
-                            style={{
-                                width: 44,
-                                height: 44,
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                marginRight: Platform.select({ ios: -8, default: -8 }),
-                            }}
-                        >
-                            <Avatar id={sessionId} size={32} monochrome={!sessionStatus.isConnected} />
-                        </Pressable>
-                    </View>
+                                    marginRight: Platform.select({ ios: -8, default: -8 }),
+                                }}
+                            >
+                                <Avatar id={sessionId} size={32} monochrome={!sessionStatus.isConnected} />
+                            </Pressable>
+                        )}
+                        headerShadowVisible={false}
+                        // headerStyle={{
+                        //     borderBottomWidth: 0.5,
+                        //     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+                        // }}
+                    />
                 </View>
             )}
 
