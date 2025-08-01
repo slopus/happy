@@ -3,6 +3,7 @@ import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
 import { syncInit } from '@/sync/sync';
 import * as Updates from 'expo-updates';
 import { clearPersistence } from '@/sync/persistence';
+import { Platform } from 'react-native';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -37,9 +38,13 @@ export function AuthProvider({ children, initialCredentials }: { children: React
     const logout = async () => {
         clearPersistence();
         await TokenStorage.removeCredentials();
-        await Updates.reloadAsync(); // Never resolves after this point
-        while (true) {
-            await new Promise(resolve => setTimeout(resolve, 1000));
+        if (Platform.OS === 'web') {
+            window.location.reload();
+        } else {
+            await Updates.reloadAsync(); // Never resolves after this point
+            while (true) {
+                await new Promise(resolve => setTimeout(resolve, 1000));
+            }
         }
     };
 

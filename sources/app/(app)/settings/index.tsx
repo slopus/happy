@@ -52,17 +52,19 @@ export default function SettingsScreen() {
                 </Text>
             </View>
 
-            {/* Terminal */}
-            <ItemGroup title="Terminal">
-                <Item
-                    title="Connect Terminal"
-                    subtitle="Scan QR code to connect Claude Code"
-                    icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
-                    onPress={connectTerminal}
-                    loading={isLoading}
-                    showChevron={false}
-                />
-            </ItemGroup>
+            {/* Terminal - Only show on native platforms */}
+            {Platform.OS !== 'web' && (
+                <ItemGroup title="Terminal">
+                    <Item
+                        title="Connect Terminal"
+                        subtitle="Scan QR code to connect Claude Code"
+                        icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
+                        onPress={connectTerminal}
+                        loading={isLoading}
+                        showChevron={false}
+                    />
+                </ItemGroup>
+            )}
 
             {/* Features */}
             <ItemGroup title="Features">
