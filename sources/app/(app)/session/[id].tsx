@@ -373,7 +373,7 @@ ${conversationContext}`;
                                 height: 44,
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                marginRight: Platform.select({ ios: -8, default: -12 }),
+                                marginRight: Platform.select({ ios: -8, default: -8 }),
                             }}
                         >
                             <Avatar id={sessionId} size={32} monochrome={!sessionStatus.isConnected} />

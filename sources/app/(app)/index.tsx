@@ -195,6 +195,7 @@ function HeaderRight() {
         <Pressable
             onPress={() => router.push('/settings')}
             hitSlop={10}
+            style={{ marginRight: 16 }}
         >
             <Ionicons name="settings-outline" size={24} color="#000" />
         </Pressable>
