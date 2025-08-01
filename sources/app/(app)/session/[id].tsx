@@ -22,7 +22,7 @@ import { z } from 'zod';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { LinearGradient } from 'expo-linear-gradient';
-import { useIsLandscape, getDeviceType, getHeaderHeight, useHeaderHeight } from '@/utils/responsive';
+import { useIsLandscape, useDeviceType, useHeaderHeight } from '@/utils/responsive';
 import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { AgentContentView } from '@/components/AgentContentView';
@@ -87,7 +87,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
-    const deviceType = getDeviceType();
+    const deviceType = useDeviceType();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const [message, setMessage] = useState('');
     const [isRecording, setIsRecording] = useState(false);
@@ -98,6 +98,23 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const headerHeight = useHeaderHeight();
     const sessionStatus = getSessionState(session);
     const lastSeenText = sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active';
+    
+    // Memoize header-dependent styles to prevent re-renders
+    const headerDependentStyles = React.useMemo(() => ({
+        emptyMessageContainer: { 
+            flexGrow: 1, 
+            flexBasis: 0, 
+            justifyContent: 'center' as const, 
+            alignItems: 'center' as const, 
+            marginTop: safeArea.top + headerHeight 
+        },
+        flatListStyle: { 
+            marginTop: Platform.OS === 'web' ? headerHeight + safeArea.top : 0 
+        },
+        listFooterHeight: { 
+            height: headerHeight + safeArea.top 
+        }
+    }), [headerHeight, safeArea.top]);
 
     // Define tools for the realtime session
     const tools: Tools = useMemo(() => ({
@@ -290,7 +307,7 @@ ${conversationContext}`;
                     top: 0,
                     left: 0,
                     right: 0,
-                    height: safeArea.top + getHeaderHeight(isLandscape, deviceType),
+                    height: safeArea.top + headerHeight,
                     backgroundColor: 'white',
                     borderBottomWidth: 0.5,
                     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
@@ -388,12 +405,12 @@ ${conversationContext}`;
                     <Animated.View style={{ flexGrow: 1, flexBasis: 0 }}>
                         <Deferred>
                             {messages.length === 0 && isLoaded && (
-                                <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center', marginTop: safeArea.top + headerHeight }}>
+                                <View style={headerDependentStyles.emptyMessageContainer}>
                                     <EmptyMessages session={session} />
                                 </View>
                             )}
                             {messages.length === 0 && !isLoaded && (
-                                <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center', marginTop: safeArea.top + headerHeight }}>
+                                <View style={headerDependentStyles.emptyMessageContainer}>
                                     <ActivityIndicator size="large" color="#C7C7CC" />
                                 </View>
                             )}
@@ -403,7 +420,7 @@ ${conversationContext}`;
                                     data={messages}
                                     inverted={true}
                                     keyExtractor={(item) => item.id}
-                                    style={{ marginTop: Platform.OS === 'web' ? headerHeight + safeArea.top : 0 }}
+                                    style={headerDependentStyles.flatListStyle}
                                     maintainVisibleContentPosition={{
                                         minIndexForVisible: 0,
                                         autoscrollToTopThreshold: 100,
@@ -421,7 +438,7 @@ ${conversationContext}`;
                                         paddingHorizontal: screenWidth > 700 ? 16 : 0
                                     }}
                                     ListHeaderComponent={footer}
-                                    ListFooterComponent={() => <View style={{ height: headerHeight + safeArea.top }} />}
+                                    ListFooterComponent={() => <View style={headerDependentStyles.listFooterHeight} />}
                                 />
                             )}
                         </Deferred>

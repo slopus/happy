@@ -4,38 +4,63 @@ import { Drawer } from 'expo-router/drawer';
 import { useIsTablet } from '@/utils/responsive';
 import { SidebarView } from './SidebarView';
 import { Slot } from 'expo-router';
-import { Dimensions } from 'react-native';
+import { useWindowDimensions } from 'react-native';
 
 export const SidebarNavigator = React.memo(() => {
     const auth = useAuth();
     const isTablet = useIsTablet();
-    const enabled = auth.isAuthenticated && isTablet;
-    const windowWidth = Dimensions.get('window').width;
+    const showPermanentDrawer = auth.isAuthenticated && isTablet;
+    const { width: windowWidth } = useWindowDimensions();
 
-    const drawerNavigationOptions = (p: any) => {
+    // Calculate drawer width only when needed
+    const drawerWidth = React.useMemo(() => {
+        if (!showPermanentDrawer) return 280; // Default width for hidden drawer
+        return Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360);
+    }, [windowWidth, showPermanentDrawer]);
+
+    const drawerNavigationOptions = React.useMemo(() => {
+        if (!showPermanentDrawer) {
+            // When drawer is hidden, use minimal configuration
+            return {
+                lazy: false,
+                headerShown: false,
+                drawerType: 'front' as const,
+                swipeEnabled: false,
+                drawerStyle: {
+                    width: 0,
+                    display: 'none',
+                },
+            };
+        }
+        
+        // When drawer is permanent
         return {
             lazy: false,
             headerShown: false,
-            drawerType: enabled ? 'permanent' : 'front',
+            drawerType: 'permanent' as const,
             drawerStyle: {
                 backgroundColor: 'white',
                 borderRightWidth: 0,
-                width: Math.min(Math.max(Math.floor(windowWidth * 0.3), 250), 360),
+                width: drawerWidth,
             },
-            swipeEnabled: false
-        } as any;
-    };
+            swipeEnabled: false,
+            drawerActiveTintColor: 'transparent',
+            drawerInactiveTintColor: 'transparent',
+            drawerItemStyle: { display: 'none' },
+            drawerLabelStyle: { display: 'none' },
+        };
+    }, [showPermanentDrawer, drawerWidth]);
 
-    if (!enabled) {
-        return (
-            <Slot />
-        )
-    }
+    // Always render SidebarView but hide it when not needed
+    const drawerContent = React.useCallback(
+        () => <SidebarView />,
+        []
+    );
 
     return (
         <Drawer
             screenOptions={drawerNavigationOptions}
-            drawerContent={() => <SidebarView />}
+            drawerContent={showPermanentDrawer ? drawerContent : undefined}
         />
     )
 });
