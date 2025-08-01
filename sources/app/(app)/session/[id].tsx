@@ -403,6 +403,7 @@ ${conversationContext}`;
                                     data={messages}
                                     inverted={true}
                                     keyExtractor={(item) => item.id}
+                                    style={{ marginTop: Platform.OS === 'web' ? headerHeight + safeArea.top : 0 }}
                                     maintainVisibleContentPosition={{
                                         minIndexForVisible: 0,
                                         autoscrollToTopThreshold: 100,
@@ -420,11 +421,7 @@ ${conversationContext}`;
                                         paddingHorizontal: screenWidth > 700 ? 16 : 0
                                     }}
                                     ListHeaderComponent={footer}
-                                    ListFooterComponent={() => <View style={{
-                                        height: (isLandscape && deviceType === 'phone')
-                                            ? 8
-                                            : Platform.select({ ios: 52, default: 64 })
-                                    }} />}
+                                    ListFooterComponent={() => <View style={{ height: headerHeight + safeArea.top }} />}
                                 />
                             )}
                         </Deferred>
