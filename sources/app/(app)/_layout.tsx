@@ -32,6 +32,7 @@ export default function RootLayout() {
                 headerTitleStyle: {
                     color: '#000',
                 },
+                
             }}
         >
             <Stack.Screen
