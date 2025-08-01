@@ -14,8 +14,10 @@ RUN yarn install --frozen-lockfile --ignore-engines
 COPY sources ./sources
 COPY * ./
 
-# Build the Next.js application for web
-RUN yarn expo export --platform web
+# Build the application for web in production mode
+ENV NODE_ENV=production
+ENV APP_ENV=production
+RUN yarn expo export --platform web --output-dir dist
 
 # Stage 2: Runtime with Nginx
 FROM nginx:alpine AS runner
