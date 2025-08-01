@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { FlashList } from '@shopify/flash-list';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
+import { LegendList } from '@legendapp/list';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing }: { color: string; isPulsing?: boolean }) {
@@ -108,11 +109,10 @@ export function SessionsList({ data, selectedSessionId, onSessionPress }: Sessio
 
     return (
         <View style={{ flex: 1, backgroundColor: '#F2F2F7' }}>
-            <FlashList
+            <LegendList
                 data={data}
                 renderItem={renderItem}
                 keyExtractor={keyExtractor}
-                getItemType={getItemType}
                 estimatedItemSize={88}
                 contentContainerStyle={{ paddingBottom: safeArea.bottom + 16 }}
                 ItemSeparatorComponent={ItemSeparatorComponent}
