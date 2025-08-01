@@ -7,7 +7,7 @@ import {
   RTCPeerConnection,
   MediaStream,
   RTCView,
-} from 'react-native-webrtc';
+} from 'react-native-webrtc-web-shim';
 import { Settings } from '@/sync/settings';
 
 // Helper to convert Zod schema to OpenAI function schema
