@@ -92,11 +92,9 @@ function AgentTextBlock(props: {
     <View
       style={{
         marginHorizontal: 16,
+        marginBottom: 12,
         borderRadius: 16,
         alignSelf: "flex-start",
-        flexGrow: 1,
-        flexBasis: 0,
-        flexDirection: "column",
       }}
     >
       <MarkdownView markdown={props.message.text} />

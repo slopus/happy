@@ -383,7 +383,7 @@ ${conversationContext}`;
             )}
 
             {/* Main content area - no padding since header is overlay */}
-            <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + (isRunningOnMac() ? 32 : 0) }}>
+            <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 32 : 0) }}>
                 <AgentContentView>
                     <Animated.View style={{ flexGrow: 1, flexBasis: 0 }}>
                         <Deferred>
