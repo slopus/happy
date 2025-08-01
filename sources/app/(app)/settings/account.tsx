@@ -10,6 +10,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Modal } from '@/modal';
+import { layout } from '@/components/layout';
 
 export default React.memo(() => {
     const auth = useAuth();
@@ -85,21 +86,23 @@ export default React.memo(() => {
                         subtitle={showSecret ? "Tap to hide" : "Tap to reveal"}
                         icon={<Ionicons name={showSecret ? "eye-off-outline" : "eye-outline"} size={29} color="#FF9500" />}
                         onPress={handleShowSecret}
+                        showChevron={false}
                     />
                 </ItemGroup>
 
                 {/* Secret Key Display */}
                 {showSecret && (
-                    <View style={{ paddingHorizontal: 16, paddingBottom: 35 }}>
+                    <ItemGroup>
                         <Pressable onPress={handleCopySecret}>
                             <View style={{
-                                backgroundColor: '#F2F2F7',
-                                padding: 16,
-                                borderRadius: 10,
-                                borderWidth: 1,
-                                borderColor: copiedRecently ? '#34C759' : '#E5E5EA'
+                                backgroundColor: '#fff',
+                                paddingHorizontal: 16,
+                                paddingVertical: 14,
+                                width: '100%',
+                                maxWidth: layout.maxWidth,
+                                alignSelf: 'center'
                             }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                     <Text style={{
                                         fontSize: 11,
                                         color: '#8E8E93',
@@ -116,9 +119,9 @@ export default React.memo(() => {
                                     />
                                 </View>
                                 <Text style={{
-                                    fontSize: 14,
-                                    letterSpacing: 1,
-                                    lineHeight: 22,
+                                    fontSize: 13,
+                                    letterSpacing: 0.5,
+                                    lineHeight: 20,
                                     color: '#000',
                                     ...Typography.mono()
                                 }}>
@@ -126,7 +129,7 @@ export default React.memo(() => {
                                 </Text>
                             </View>
                         </Pressable>
-                    </View>
+                    </ItemGroup>
                 )}
 
                 {/* Danger Zone */}
