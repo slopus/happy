@@ -1,6 +1,6 @@
 import { useSessions } from '@/sync/storage';
 import * as React from 'react';
-import { Text, View, Pressable, ActivityIndicator } from 'react-native';
+import { Text, View, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionsList } from './SessionsList';
 import { Ionicons } from '@expo/vector-icons';
@@ -18,7 +18,10 @@ export const SidebarView = React.memo(() => {
         <View style={{ flex: 1, paddingTop: safeArea.top, borderRightWidth: 1, borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.05)' }}>
             <View style={{ height: headerHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 }}>
                 <View style={{ flex: 1 }} />
-                <Text style={{ fontWeight: '600' }}>Happy Coder</Text>
+                <Text style={{ 
+                    fontWeight: '600',
+                    fontSize: Platform.OS === 'web' ? 18 : 16
+                }}>Happy Coder</Text>
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
                     <Pressable
                         onPress={() => router.push('/settings')}

@@ -43,16 +43,17 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
     // Platform-specific measurements
     const isIOS = Platform.OS === 'ios';
     const isAndroid = Platform.OS === 'android';
-    const headerPaddingTop = isIOS ? 35 : 16;
-    const headerPaddingBottom = isIOS ? 6 : 8;
-    const footerPaddingTop = isIOS ? 6 : 8;
-    const footerPaddingBottom = isIOS ? 8 : 16;
-    const horizontalMargin = isIOS ? 16 : 12;
-    const borderRadius = isIOS ? 10 : 16; // Material 3 Expressive rounded corners
+    const isWeb = Platform.OS === 'web';
+    const headerPaddingTop = (isIOS && !isWeb) ? 35 : 16;
+    const headerPaddingBottom = (isIOS && !isWeb) ? 6 : 8;
+    const footerPaddingTop = (isIOS && !isWeb) ? 6 : 8;
+    const footerPaddingBottom = (isIOS && !isWeb) ? 8 : 16;
+    const horizontalMargin = (isIOS && !isWeb) ? 16 : 12;
+    const borderRadius = (isIOS && !isWeb) ? 10 : 16; // Material 3 Expressive rounded corners
 
     return (
         <View style={[{ alignItems: 'center' }, style]}>
-            <View style={{ width: '100%', maxWidth: layout.maxWidth, paddingHorizontal: isAndroid ? 4 : 0 }}>
+            <View style={{ width: '100%', maxWidth: layout.maxWidth, paddingHorizontal: (isAndroid || isWeb) ? 4 : 0 }}>
                 {/* Header */}
                 {title && (
                     <View 
@@ -60,7 +61,7 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
                             {
                                 paddingTop: headerPaddingTop,
                                 paddingBottom: headerPaddingBottom,
-                                paddingHorizontal: isIOS ? 32 : 24,
+                                paddingHorizontal: (isIOS && !isWeb) ? 32 : 24,
                             },
                             headerStyle
                         ]}
@@ -74,11 +75,11 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
                                         android: '#49454F', // Material 3 onSurfaceVariant
                                         default: '#8E8E93'
                                     }),
-                                    fontSize: isIOS ? 13 : 14,
-                                    lineHeight: isIOS ? 18 : 20,
-                                    letterSpacing: isIOS ? -0.08 : 0.1,
+                                    fontSize: (isIOS && !isWeb) ? 13 : 14,
+                                    lineHeight: (isIOS && !isWeb) ? 18 : 20,
+                                    letterSpacing: (isIOS && !isWeb) ? -0.08 : 0.1,
                                     textTransform: 'uppercase',
-                                    fontWeight: isAndroid ? '500' : 'normal'
+                                    fontWeight: (isAndroid || isWeb) ? '500' : 'normal'
                                 },
                                 titleStyle
                             ]}
@@ -96,13 +97,13 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
                             marginHorizontal: horizontalMargin,
                             borderRadius: borderRadius,
                             overflow: 'hidden',
-                            ...(isIOS && {
+                            ...((isIOS && !isWeb) && {
                                 shadowColor: '#000',
                                 shadowOffset: { width: 0, height: 0.33 },
                                 shadowOpacity: 0.05,
                                 shadowRadius: 0
                             }),
-                            ...(isAndroid && {
+                            ...((isAndroid || isWeb) && {
                                 elevation: 1, // Subtle elevation for Android
                             })
                         },
@@ -129,7 +130,7 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
                             {
                                 paddingTop: footerPaddingTop,
                                 paddingBottom: footerPaddingBottom,
-                                paddingHorizontal: isIOS ? 32 : 24,
+                                paddingHorizontal: (isIOS && !isWeb) ? 32 : 24,
                             },
                             footerStyle
                         ]}
@@ -143,9 +144,9 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
                                         android: '#49454F', // Material 3 onSurfaceVariant
                                         default: '#8E8E93'
                                     }),
-                                    fontSize: isIOS ? 13 : 14,
-                                    lineHeight: isIOS ? 18 : 20,
-                                    letterSpacing: isIOS ? -0.08 : 0
+                                    fontSize: (isIOS && !isWeb) ? 13 : 14,
+                                    lineHeight: (isIOS && !isWeb) ? 18 : 20,
+                                    letterSpacing: (isIOS && !isWeb) ? -0.08 : 0
                                 },
                                 footerTextStyle
                             ]}
