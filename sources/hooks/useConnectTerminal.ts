@@ -1,11 +1,12 @@
 import * as React from 'react';
-import { Alert, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { CameraView } from 'expo-camera';
 import { useAuth } from '@/auth/AuthContext';
 import { decodeBase64 } from '@/auth/base64';
 import { encryptBox } from '@/encryption/libsodium';
 import { authApprove } from '@/auth/authApprove';
 import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
+import { Modal } from '@/modal';
 
 interface UseConnectTerminalOptions {
     onSuccess?: () => void;
@@ -19,7 +20,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
 
     const processAuthUrl = React.useCallback(async (url: string) => {
         if (!url.startsWith('happy://terminal?')) {
-            Alert.alert('Error', 'Invalid authentication URL', [{ text: 'OK' }]);
+            Modal.alert('Error', 'Invalid authentication URL', [{ text: 'OK' }]);
             return false;
         }
         
@@ -30,7 +31,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
             const response = encryptBox(decodeBase64(auth.credentials!.secret, 'base64url'), publicKey);
             await authApprove(auth.credentials!.token, publicKey, response);
             
-            Alert.alert('Success', 'Terminal connected successfully', [
+            Modal.alert('Success', 'Terminal connected successfully', [
                 { 
                     text: 'OK', 
                     onPress: () => options?.onSuccess?.()
@@ -39,7 +40,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
             return true;
         } catch (e) {
             console.error(e);
-            Alert.alert('Error', 'Failed to connect terminal', [{ text: 'OK' }]);
+            Modal.alert('Error', 'Failed to connect terminal', [{ text: 'OK' }]);
             options?.onError?.(e);
             return false;
         } finally {
@@ -54,7 +55,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
                 barcodeTypes: ['qr']
             });
         } else {
-            Alert.alert('Error', 'Camera permissions are required to connect terminal', [{ text: 'OK' }]);
+            Modal.alert('Error', 'Camera permissions are required to connect terminal', [{ text: 'OK' }]);
         }
     }, [checkScannerPermissions]);
 

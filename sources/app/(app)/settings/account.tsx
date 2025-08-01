@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Alert, Pressable, Platform } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { formatSecretKeyForBackup } from '@/auth/secretKeyBackup';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
+import { Modal } from '@/modal';
 
 export default React.memo(() => {
     const auth = useAuth();
@@ -29,21 +30,21 @@ export default React.memo(() => {
             await Clipboard.setStringAsync(formattedSecret);
             setCopiedRecently(true);
             setTimeout(() => setCopiedRecently(false), 2000);
-            Alert.alert('Success', 'Secret key copied to clipboard. Store it in a safe place!');
+            Modal.alert('Success', 'Secret key copied to clipboard. Store it in a safe place!');
         } catch (error) {
-            Alert.alert('Error', 'Failed to copy secret key');
+            Modal.alert('Error', 'Failed to copy secret key');
         }
     };
 
-    const handleLogout = () => {
-        Alert.alert(
+    const handleLogout = async () => {
+        const confirmed = await Modal.confirm(
             'Logout',
             'Are you sure you want to logout? Make sure you have backed up your secret key!',
-            [
-                { text: 'Cancel', style: 'cancel' },
-                { text: 'Logout', style: 'destructive', onPress: () => auth.logout() }
-            ]
+            { confirmText: 'Logout', destructive: true }
         );
+        if (confirmed) {
+            auth.logout();
+        }
     };
 
     return (

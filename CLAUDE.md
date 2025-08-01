@@ -56,6 +56,7 @@ sources/
 - Real-time sync operations are handled through SyncSocket and SyncSession classes
 - Store all temporary scripts and any test outside of unit tests in sources/trash folder
 - When setting screen parameters ALWAYS set them in _layout.tsx if possible this avoids layout shifts
+- **Never use Alert module from React Native, always use @sources/modal/index.ts instead**
 
 ### Important Files
 
