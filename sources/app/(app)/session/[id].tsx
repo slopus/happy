@@ -29,6 +29,7 @@ import { AgentContentView } from '@/components/AgentContentView';
 import { isRunningOnMac } from '@/utils/platform';
 import { Modal } from '@/modal';
 import { Header } from '@/components/navigation/Header';
+import { trackMessageSent, trackVoiceRecording, trackPermissionResponse } from '@/track';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -150,6 +151,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             // Mark that we're creating a session
             isCreatingSessionRef.current = true;
             setIsRecording(true); // Set this immediately to update UI
+            trackVoiceRecording('start');
 
             // Generate conversation context
             const conversationContext = sessionToRealtimePrompt(session, messages, {
@@ -197,6 +199,7 @@ ${conversationContext}`;
             realtimeSessionRef.current.end();
             realtimeSessionRef.current = null;
             setIsRecording(false);
+            trackVoiceRecording('stop');
         }
     }, [isRecording, tools, session, messages, settings]);
 
@@ -269,8 +272,14 @@ ${conversationContext}`;
                         {formatPermissionParams(permissionRequest?.call.arguments, 2, 20)}
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
-                        <RoundButton size='normal' title={"Deny"} onPress={() => sync.deny(sessionId, permissionRequest?.id ?? '')} />
-                        <RoundButton size='normal' title={"Allow"} onPress={() => sync.allow(sessionId, permissionRequest?.id ?? '')} />
+                        <RoundButton size='normal' title={"Deny"} onPress={() => {
+                            sync.deny(sessionId, permissionRequest?.id ?? '');
+                            trackPermissionResponse(false);
+                        }} />
+                        <RoundButton size='normal' title={"Allow"} onPress={() => {
+                            sync.allow(sessionId, permissionRequest?.id ?? '');
+                            trackPermissionResponse(true);
+                        }} />
                     </View>
                 </View>
             </View>
@@ -449,6 +458,7 @@ ${conversationContext}`;
                             if (message.trim()) {
                                 setMessage('');
                                 sync.sendMessage(sessionId, message);
+                                trackMessageSent();
                             }
                         }}
                         onMicPress={settings.inferenceOpenAIKey ? handleMicrophonePress : undefined}

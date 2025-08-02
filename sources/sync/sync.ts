@@ -15,13 +15,14 @@ import { decodeBase64 } from '@/auth/base64';
 import { SessionEncryption } from './apiSessionEncryption';
 import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
 import { loadPendingSettings, savePendingSettings } from './persistence';
+import { initializeTracking } from '@/track';
 
 const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
 class Sync {
 
+    encryption!: ApiEncryption;
     private credentials!: AuthCredentials;
-    private encryption!: ApiEncryption;
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionEncryption = new Map<string, SessionEncryption>();
@@ -513,7 +514,10 @@ export async function syncInit(credentials: AuthCredentials) {
     }
 
     // Initialize sync engine
-    const encryption = new ApiEncryption(credentials.secret);
+    const encryption = await ApiEncryption.create(credentials.secret);
+
+    // Initialize tracking
+    initializeTracking(encryption.anonID);
 
     // Initialize socket connection
     apiSocket.initialize({ endpoint: API_ENDPOINT, token: credentials.token }, encryption);

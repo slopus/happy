@@ -4,6 +4,7 @@ import { syncInit } from '@/sync/sync';
 import * as Updates from 'expo-updates';
 import { clearPersistence } from '@/sync/persistence';
 import { Platform } from 'react-native';
+import { trackLogout } from '@/track';
 
 interface AuthContextType {
     isAuthenticated: boolean;
@@ -18,16 +19,11 @@ export function AuthProvider({ children, initialCredentials }: { children: React
     const [isAuthenticated, setIsAuthenticated] = useState(!!initialCredentials);
     const [credentials, setCredentials] = useState<AuthCredentials | null>(initialCredentials);
 
-    useEffect(() => {
-        if (credentials) {
-            syncInit(credentials);
-        }
-    }, [credentials]);
-
     const login = async (token: string, secret: string) => {
         const newCredentials: AuthCredentials = { token, secret };
         const success = await TokenStorage.setCredentials(newCredentials);
         if (success) {
+            await syncInit(newCredentials);
             setCredentials(newCredentials);
             setIsAuthenticated(true);
         } else {
@@ -36,6 +32,7 @@ export function AuthProvider({ children, initialCredentials }: { children: React
     };
 
     const logout = async () => {
+        trackLogout();
         clearPersistence();
         await TokenStorage.removeCredentials();
         if (Platform.OS === 'web') {

@@ -14,6 +14,10 @@ import { SidebarNavigator } from '@/components/SidebarNavigator';
 import sodium from 'react-native-libsodium';
 import { View } from 'react-native';
 import { ModalProvider } from '@/modal';
+import { PostHogProvider } from 'posthog-react-native';
+import { tracking } from '@/track/tracking';
+import { useGlobalSearchParams, usePathname } from 'expo-router';
+import { syncInit } from '@/sync/sync';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -31,10 +35,10 @@ SplashScreen.preventAutoHideAsync();
 function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) {
     const insets = useSafeAreaInsets();
     return (
-        <View style={{ 
-            flex: 1, 
+        <View style={{
+            flex: 1,
             paddingLeft: insets.left,
-            paddingRight: insets.right 
+            paddingRight: insets.right
         }}>
             {children}
         </View>
@@ -75,6 +79,9 @@ export default function RootLayout() {
             });
             await sodium.ready;
             const credentials = await TokenStorage.getCredentials();
+            if (credentials) {
+                await syncInit(credentials);
+            }
             setInitState({ credentials });
         })();
     }, []);
@@ -86,6 +93,13 @@ export default function RootLayout() {
             }, 100);
         }
     }, [initState]);
+
+
+    // Track the location in your analytics provider here.
+    if (tracking) {
+        const pathname = usePathname();
+        React.useEffect(() => { tracking?.screen(pathname); }, [pathname]); // NOTE: NO PARAMS HERE - we dont want to leak anything at all, except very basic stuff
+    }
 
     //
     // Not inited
@@ -99,7 +113,7 @@ export default function RootLayout() {
     // Boot
     //
 
-    return (
+    let providers = (
         <SafeAreaProvider initialMetrics={initialWindowMetrics}>
             <KeyboardProvider>
                 <GestureHandlerRootView style={{ flex: 1 }}>
@@ -115,5 +129,14 @@ export default function RootLayout() {
                 </GestureHandlerRootView>
             </KeyboardProvider>
         </SafeAreaProvider>
-    )
+    );
+    if (tracking) {
+        providers = (
+            <PostHogProvider client={tracking}>
+                {providers}
+            </PostHogProvider>
+        );
+    }
+
+    return providers;
 }

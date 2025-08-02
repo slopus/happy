@@ -2,6 +2,7 @@ import * as React from 'react';
 import { View, TextInput, Text } from 'react-native';
 import { RoundButton } from './RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
+import { trackConnectAttempt } from '@/track';
 
 export const ConnectButton = React.memo(() => {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
@@ -9,6 +10,7 @@ export const ConnectButton = React.memo(() => {
     const isDevMode = process.env.EXPO_PUBLIC_DEBUG === '1';
 
     const handleConnect = async () => {
+        trackConnectAttempt();
         if (isDevMode && manualUrl.trim()) {
             // Process manual URL in dev mode
             connectWithUrl(manualUrl.trim());

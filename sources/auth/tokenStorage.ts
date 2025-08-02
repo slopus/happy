@@ -57,25 +57,4 @@ export const TokenStorage = {
             return false;
         }
     },
-
-    // Legacy methods for backward compatibility
-    async getToken(): Promise<string | null> {
-        const credentials = await this.getCredentials();
-        return credentials?.token || null;
-    },
-
-    async setToken(token: string): Promise<boolean> {
-        // This is now deprecated, but kept for compatibility
-        console.warn('setToken is deprecated, use setCredentials instead');
-        return false;
-    },
-
-    async removeToken(): Promise<boolean> {
-        return this.removeCredentials();
-    },
-
-    // Synchronous access (only use when you know credentials are loaded)
-    getCredentialsSync(): string | null {
-        return credentialsCache;
-    }
 };
