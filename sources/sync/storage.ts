@@ -7,7 +7,7 @@ import { normalizeRawMessage } from "./typesRaw";
 import { isSessionActive, DISCONNECTED_TIMEOUT_MS } from '@/utils/sessionUtils';
 import { applySettings, Settings, settingsDefaults } from "./settings";
 import { LocalSettings, localSettingsDefaults, applyLocalSettings } from "./localSettings";
-import { loadSettings, loadLocalSettings, saveLocalSettings } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings } from "./persistence";
 import React from "react";
 import { sync } from "./sync";
 
@@ -292,6 +292,7 @@ export const storage = create<StorageState>()((set) => {
             };
         }),
         applySettingsLocal: (settings: Partial<Settings>) => set((state) => {
+            saveSettings(applySettings(state.settings, settings), state.settingsVersion ?? 0);
             return {
                 ...state,
                 settings: applySettings(state.settings, settings)
@@ -299,6 +300,7 @@ export const storage = create<StorageState>()((set) => {
         }),
         applySettings: (settings: Settings, version: number) => set((state) => {
             if (state.settingsVersion === null || state.settingsVersion < version) {
+                saveSettings(settings, version);
                 return {
                     ...state,
                     settings,
