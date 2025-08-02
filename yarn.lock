@@ -6084,6 +6084,11 @@ react-is@^19.0.0, react-is@^19.1.0:
   resolved "https://registry.npmjs.org/react-is/-/react-is-19.1.0.tgz"
   integrity sha512-Oe56aUPnkHyyDxxkvqtd7KkdQP5uIUfHxd5XTb3wE9d/kRnZLmKbDB0GWk919tdQ+mxxPtG6EAs6RMT6i1qtHg==
 
+react-native-audio-api@^0.6.5:
+  version "0.6.5"
+  resolved "https://registry.yarnpkg.com/react-native-audio-api/-/react-native-audio-api-0.6.5.tgz#2cfaad00433c7c5d58212d7149704b6ced280ad9"
+  integrity sha512-F0+J0db5trSIscIEIV5uJkfdOclY8nxWxUXMCuiPyr11VUd5W8CKxhAv0/luFp7EG/1EuITyyeGF2twxQhyvow==
+
 react-native-blurhash@^2.1.1:
   version "2.1.1"
   resolved "https://registry.yarnpkg.com/react-native-blurhash/-/react-native-blurhash-2.1.1.tgz#c8079881422664691b387e43b020b846dfd196e6"
