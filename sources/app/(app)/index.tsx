@@ -17,6 +17,7 @@ import { useIsTablet, useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
 import { EmptyMainScreen } from "@/components/EmptyMainScreen";
 import { EmptySessionsTablet } from "@/components/EmptySessionsTablet";
+import { trackAccountCreated, trackAccountRestored } from '@/track';
 
 export default function Home() {
     const auth = useAuth();
@@ -99,6 +100,7 @@ function NotAuthenticated() {
         const token = await authGetToken(secret);
         if (token && secret) {
             await auth.login(token, encodeBase64(secret, 'base64url'));
+            trackAccountCreated();
         }
     }
 
@@ -121,7 +123,10 @@ function NotAuthenticated() {
                 <RoundButton
                     size="normal"
                     title="Restore account"
-                    onPress={() => router.push('/restore')}
+                    onPress={() => {
+                        trackAccountRestored();
+                        router.push('/restore');
+                    }}
                     display="inverted"
                 />
             </View>
@@ -167,7 +172,10 @@ function NotAuthenticated() {
                         <RoundButton
                             size="normal"
                             title="Restore account"
-                            onPress={() => router.push('/restore')}
+                            onPress={() => {
+                                trackAccountRestored();
+                                router.push('/restore');
+                            }}
                             display="inverted"
                         />
                     </View>

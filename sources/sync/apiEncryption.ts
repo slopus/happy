@@ -2,18 +2,32 @@ import sodium from 'react-native-libsodium';
 import { decodeBase64, encodeBase64 } from '@/auth/base64';
 import { AgentState, AgentStateSchema, Metadata, MetadataSchema } from './storageTypes';
 import { decryptSecretBox, encryptSecretBox } from '@/encryption/libsodium';
+import { deriveKey } from '@/encryption/deriveKey';
+import { encodeHex } from '@/encryption/hex';
 
 export class ApiEncryption {
-    secretKey: Uint8Array;
 
-    constructor(secretKeyBase64url: string) {
-        // Decode the secret key from base64url
-        this.secretKey = decodeBase64(secretKeyBase64url, 'base64url');
+    static async create(secretKeyBase64url: string) {
 
-        // Ensure the key is the correct length for secretbox (32 bytes)
-        if (this.secretKey.length !== sodium.crypto_secretbox_KEYBYTES) {
-            throw new Error(`Invalid secret key length: ${this.secretKey.length}, expected ${sodium.crypto_secretbox_KEYBYTES}`);
+        // Load key
+        const secretKey = decodeBase64(secretKeyBase64url, 'base64url');
+        if (secretKey.length !== 32) {
+            throw new Error(`Invalid secret key length: ${secretKey.length}, expected 32`);
         }
+
+        // Derive anonymous ID
+        const anonID = encodeHex((await deriveKey(secretKey, 'Happy Analytics', ['analytics', 'id']))).slice(0, 16).toLowerCase();
+
+        return new ApiEncryption(secretKey, anonID);
+    }
+
+    secretKey: Uint8Array;
+    anonID: string;
+
+    constructor(secretKey: Uint8Array, anonID: string) {
+        this.secretKey = secretKey;
+        this.anonID = anonID;
+        Object.freeze(this);
     }
 
     decryptMetadata(encryptedMetadata: string): Metadata | null {

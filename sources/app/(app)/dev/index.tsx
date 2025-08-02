@@ -9,11 +9,13 @@ import Constants from 'expo-constants';
 import * as Application from 'expo-application';
 import { useLocalSettingMutable } from '@/sync/storage';
 import { Modal } from '@/modal';
+import { sync } from '@/sync/sync';
 
 export default function DevScreen() {
     const router = useRouter();
     const [debugMode, setDebugMode] = useLocalSettingMutable('debugMode');
     const [verboseLogging, setVerboseLogging] = React.useState(false);
+    const anonymousId = sync.encryption!.anonID;
 
     const handleClearCache = async () => {
         const confirmed = await Modal.confirm(
@@ -46,6 +48,10 @@ export default function DevScreen() {
                 <Item 
                     title="Platform"
                     detail={`${Constants.platform?.ios ? 'iOS' : 'Android'} ${Constants.systemVersion || ''}`}
+                />
+                <Item 
+                    title="Anonymous ID"
+                    detail={anonymousId}
                 />
             </ItemGroup>
 
@@ -150,6 +156,12 @@ export default function DevScreen() {
                     subtitle="Alert, confirm, and custom modals"
                     icon={<Ionicons name="albums-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/modal-demo')}
+                />
+                <Item 
+                    title="Unit Tests"
+                    subtitle="Run tests in the app environment"
+                    icon={<Ionicons name="flask-outline" size={28} color="#34C759" />}
+                    onPress={() => router.push('/dev/tests')}
                 />
             </ItemGroup>
 
