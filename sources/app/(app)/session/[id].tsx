@@ -445,17 +445,14 @@ ${conversationContext}`;
                         placeholder="Type a message ..."
                         value={message}
                         onChangeText={setMessage}
-                        onSend={message.trim() ? () => {
-                            setMessage('');
-                            sync.sendMessage(sessionId, message);
-                        } : handleMicrophonePress}
-                        sendIcon={message.trim() ? undefined : settings.inferenceOpenAIKey ? (
-                            <Ionicons
-                                name={isRecording ? "stop" : "headset"}
-                                size={isRecording ? 20 : 22}
-                                color="#fff"
-                            />
-                        ) : undefined}
+                        onSend={() => {
+                            if (message.trim()) {
+                                setMessage('');
+                                sync.sendMessage(sessionId, message);
+                            }
+                        }}
+                        onMicPress={settings.inferenceOpenAIKey ? handleMicrophonePress : undefined}
+                        isMicActive={isRecording}
                         status={{
                             state: sessionStatus.state,
                             text: sessionStatus.state === 'disconnected' ? 'disconnected' :
