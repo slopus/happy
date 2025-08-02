@@ -50,6 +50,8 @@ export const AgentInput = React.memo((props: {
     onChangeText: (text: string) => void,
     onSend: () => void,
     sendIcon?: React.ReactNode,
+    onMicPress?: () => void,
+    isMicActive?: boolean,
     status?: {
         state: string,
         text: string,
@@ -61,15 +63,16 @@ export const AgentInput = React.memo((props: {
 }) => {
     // Animation states
     const scaleAnim = React.useRef(new Animated.Value(1)).current;
-    const prevStateRef = React.useRef<'add' | 'send' | 'custom'>('add');
+    const prevStateRef = React.useRef<'add' | 'send' | 'custom' | 'mic'>('add');
     const screenWidth = useWindowDimensions().width;
 
     // Determine current state
     const currentState = React.useMemo(() => {
         if (props.sendIcon) return 'custom';
         if (props.value.trim()) return 'send';
+        if (props.onMicPress && !props.value.trim()) return 'mic';
         return 'add';
-    }, [props.value, props.sendIcon]);
+    }, [props.value, props.sendIcon, props.onMicPress]);
 
     // Animate state changes
     React.useEffect(() => {
@@ -111,8 +114,12 @@ export const AgentInput = React.memo((props: {
         }
     }, [props.value, props.onSend]);
     const handlePress = React.useCallback(() => {
-        props.onSend();
-    }, [props.onSend]);
+        if (currentState === 'mic' && props.onMicPress) {
+            props.onMicPress();
+        } else {
+            props.onSend();
+        }
+    }, [props.onSend, currentState, props.onMicPress]);
 
     // Long press abort button states
     const [abortProgress, setAbortProgress] = React.useState(0);
@@ -358,7 +365,8 @@ export const AgentInput = React.memo((props: {
                                 width: 38,
                                 height: 38,
                                 borderRadius: 19,
-                                backgroundColor: currentState !== 'add' ? Platform.select({ ios: '#007AFF', android: '#1976D2' }) : 'transparent',
+                                backgroundColor: currentState === 'mic' ? (props.isMicActive ? '#FF6B35' : '#FF8C42') : 
+                                    currentState !== 'add' ? Platform.select({ ios: '#007AFF', android: '#1976D2' }) : 'transparent',
                                 borderWidth: currentState === 'add' ? Platform.select({ ios: 2, android: 1.5 }) : 0,
                                 borderColor: Platform.select({ ios: '#E5E5E7', android: '#E0E0E0' }),
                                 alignItems: 'center',
@@ -368,13 +376,14 @@ export const AgentInput = React.memo((props: {
                             })}
                             onPress={handlePress}
                             hitSlop={8}
-                            disabled={!props.value.trim() && !props.sendIcon}
+                            disabled={!props.value.trim() && !props.sendIcon && !props.onMicPress}
                         >
                             {props.sendIcon || (
                                 <Ionicons
-                                    name={currentState === 'send' ? "arrow-up" : "add"}
-                                    size={currentState === 'send' ? 20 : 24}
-                                    color={currentState !== 'add' ? "#fff" : Platform.select({ ios: "#8E8E93", android: "#757575" })}
+                                    name={currentState === 'send' ? "arrow-up" : 
+                                         currentState === 'mic' ? (props.isMicActive ? "stop" : "mic") : "add"}
+                                    size={currentState === 'send' ? 20 : currentState === 'mic' ? 22 : 24}
+                                    color={currentState === 'mic' || currentState === 'send' ? "#fff" : Platform.select({ ios: "#8E8E93", android: "#757575" })}
                                 />
                             )}
                         </Pressable>
