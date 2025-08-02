@@ -93,6 +93,7 @@
     "react": "19.0.0",
     "react-dom": "19.0.0",
     "react-native": "0.79.5",
+    "react-native-audio-api": "^0.6.5",
     "react-native-blurhash": "^2.1.1",
     "react-native-device-info": "^14.0.4",
     "react-native-diff-view": "^1.1.2",

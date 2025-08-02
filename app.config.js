@@ -15,7 +15,7 @@ export default {
         name,
         slug: "happy",
         version: "1.0.5",
-        runtimeVersion: "13",
+        runtimeVersion: "14",
         orientation: "default",
         icon: "./sources/assets/images/happy-otter-icon.png",
         scheme: "happy",
@@ -70,6 +70,7 @@ export default {
             "expo-web-browser",
             "react-native-vision-camera",
             "react-native-libsodium",
+            "react-native-audio-api",
             [
                 "expo-audio",
                 {
