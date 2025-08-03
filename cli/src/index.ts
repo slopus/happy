@@ -116,6 +116,19 @@ Currently only supported on macOS.
         i++
       } else if (arg === '--happy-starting-mode') {
         options.startingMode = z.enum(['local', 'remote']).parse(args[++i])
+      } else if (arg === '--claude-env') {
+        // Format: --claude-env KEY=VALUE
+        const envVar = args[++i]
+        const [key, value] = envVar.split('=', 2)
+        if (!key || value === undefined) {
+          console.error(chalk.red(`Invalid environment variable format: ${envVar}. Use KEY=VALUE`))
+          process.exit(1)
+        }
+        options.claudeEnvVars = { ...options.claudeEnvVars, [key]: value }
+      } else if (arg === '--claude-arg') {
+        // Pass additional arguments to Claude CLI
+        const claudeArg = args[++i]
+        options.claudeArgs = [...(options.claudeArgs || []), claudeArg]
       } else {
         console.error(chalk.red(`Unknown argument: ${arg}`))
         process.exit(1)
@@ -138,6 +151,8 @@ ${chalk.bold('Options:')}
   -m, --model <model>     Claude model to use (default: sonnet)
   -p, --permission-mode   Permission mode: auto, default, or plan
   --auth, --login         Force re-authentication
+  --claude-env KEY=VALUE  Set environment variable for Claude Code
+  --claude-arg ARG        Pass additional argument to Claude CLI
 
   [Daemon Management]
   --happy-daemon-start    Start the daemon in background
@@ -157,6 +172,10 @@ ${chalk.bold('Examples:')}
   happy -m opus           Use Claude Opus model
   happy -p plan           Use plan permission mode
   happy --auth            Force re-authentication before starting session
+  happy --claude-env KEY=VALUE
+                          Set environment variable for Claude Code
+  happy --claude-arg --option
+                          Pass argument to Claude CLI
   happy logout            Logs out of your account and removes data directory
 `)
       process.exit(0)

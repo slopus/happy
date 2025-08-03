@@ -70,7 +70,7 @@
   },
   "devDependencies": {
     "@eslint/compat": "^1",
-    "@types/node": "^18",
+    "@types/node": ">=18",
     "eslint": "^9",
     "eslint-config-prettier": "^10",
     "pkgroll": "^2.14.2",

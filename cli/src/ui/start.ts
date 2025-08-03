@@ -17,6 +17,8 @@ export interface StartOptions {
     permissionMode?: 'auto' | 'default' | 'plan'
     startingMode?: 'local' | 'remote'
     shouldStartDaemon?: boolean
+    claudeEnvVars?: Record<string, string>
+    claudeArgs?: string[]
 }
 
 export async function start(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
@@ -174,7 +176,9 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         permissionPromptToolName: 'mcp__permission__' + permissionServer.toolName,
         session,
         onAssistantResult,
-        interruptController
+        interruptController,
+        claudeEnvVars: options.claudeEnvVars,
+        claudeArgs: options.claudeArgs,
     });
 
     clearInterval(pingInterval);

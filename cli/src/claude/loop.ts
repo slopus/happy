@@ -19,6 +19,8 @@ interface LoopOptions {
     session: ApiSessionClient
     onAssistantResult?: OnAssistantResultCallback
     interruptController?: InterruptController
+    claudeEnvVars?: Record<string, string>
+    claudeArgs?: string[]
 }
 
 /*
@@ -107,6 +109,8 @@ export async function loop(opts: LoopOptions) {
                 sessionId: sessionId,
                 onSessionFound: onSessionFound,
                 abort: interactiveAbortController.signal,
+                claudeEnvVars: opts.claudeEnvVars,
+                claudeArgs: opts.claudeArgs,
             });
             onMessage = null;
             if (!abortedOutside) {
@@ -159,7 +163,9 @@ export async function loop(opts: LoopOptions) {
                     onSessionFound: onSessionFound,
                     messages: currentMessageQueue,
                     onAssistantResult: opts.onAssistantResult,
-                    interruptController: opts.interruptController
+                    interruptController: opts.interruptController,
+                    claudeEnvVars: opts.claudeEnvVars,
+                    claudeArgs: opts.claudeArgs,
                 });
             } finally {
                 process.stdin.off('data', abortHandler);

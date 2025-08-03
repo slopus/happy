@@ -15,7 +15,9 @@ export async function claudeLocal(opts: {
     abort: AbortSignal,
     sessionId: string | null,
     path: string,
-    onSessionFound: (id: string) => void
+    onSessionFound: (id: string) => void,
+    claudeEnvVars?: Record<string, string>,
+    claudeArgs?: string[]
 }) {
 
     // Start a watcher for to detect the session id
@@ -62,16 +64,28 @@ export async function claudeLocal(opts: {
             if (startFrom) {
                 args.push('--resume', startFrom)
             }
+            
+            // Add custom Claude arguments
+            if (opts.claudeArgs) {
+                args.push(...opts.claudeArgs)
+            }
 
             // Check for custom Claude CLI path
             // Running with tsx path to cli is different
             const claudeCliPath = process.env.HAPPY_CLAUDE_CLI_PATH 
                 || resolve(join(__dirname, '..', 'scripts', 'claudeInteractiveLaunch.cjs')) 
 
+            // Prepare environment variables
+            const env = {
+                ...process.env,
+                ...opts.claudeEnvVars
+            }
+
             const child = spawn('node', [claudeCliPath, ...args], {
                 stdio: ['inherit', 'inherit', 'inherit', 'pipe'],
                 signal: opts.abort,
                 cwd: opts.path,
+                env,
             });
 
             // Listen to the custom fd (fd 3) line by line

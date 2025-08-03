@@ -9,7 +9,7 @@ export async function startClaudeActivityTracker(onThinking: (thinking: boolean)
     let isThinking = false;
 
     const proxyUrl = await startHTTPDirectProxy({
-        target: 'https://api.anthropic.com',
+        target: process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com',
         onRequest: (req, proxyReq) => {
             if (req.method === 'POST' && req.url?.startsWith('/v1/messages')) {
                 const requestId = ++requestCounter;

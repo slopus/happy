@@ -19,12 +19,21 @@ export async function claudeRemote(opts: {
     onSessionFound: (id: string) => void,
     messages: AsyncIterable<SDKUserMessage>,
     onAssistantResult?: OnAssistantResultCallback,
-    interruptController?: InterruptController
+    interruptController?: InterruptController,
+    claudeEnvVars?: Record<string, string>,
+    claudeArgs?: string[]
 }) {
     // Check if session is valid
     let startFrom = opts.sessionId;
     if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
         startFrom = null;
+    }
+
+    // Set environment variables for Claude Code SDK
+    if (opts.claudeEnvVars) {
+        Object.entries(opts.claudeEnvVars).forEach(([key, value]) => {
+            process.env[key] = value;
+        });
     }
 
     // Prepare SDK options
@@ -36,6 +45,11 @@ export async function claudeRemote(opts: {
         permissionPromptToolName: opts.permissionPromptToolName,
         executable: 'node',
         abortController: abortController,
+    }
+
+    // Add Claude CLI arguments to executableArgs
+    if (opts.claudeArgs && opts.claudeArgs.length > 0) {
+        sdkOptions.executableArgs = [...(sdkOptions.executableArgs || []), ...opts.claudeArgs];
     }
 
     // Query Claude
