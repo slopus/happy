@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, ScrollView, Pressable, Platform } from 'react-native';
+import { View, Text, ScrollView, Pressable, Platform, NativeModules } from 'react-native';
 import { Stack } from 'expo-router';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
@@ -10,6 +10,7 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
+import { requireOptionalNativeModule } from 'expo-modules-core';
 
 interface JsonViewerProps {
     title: string;
@@ -94,7 +95,57 @@ function JsonViewer({ title, data, defaultExpanded = false }: JsonViewerProps) {
 }
 
 export default function ExpoConstantsScreen() {
-    // Get various manifest types
+    // Get ExponentConstants native module directly
+    const ExponentConstants = requireOptionalNativeModule('ExponentConstants');
+    const ExpoUpdates = requireOptionalNativeModule('ExpoUpdates');
+    
+    // Get raw manifests from native modules (replicating Constants.ts logic)
+    let rawExponentManifest = null;
+    let parsedExponentManifest = null;
+    if (ExponentConstants && ExponentConstants.manifest) {
+        rawExponentManifest = ExponentConstants.manifest;
+        // On Android, manifest is passed as JSON string
+        if (typeof rawExponentManifest === 'string') {
+            try {
+                parsedExponentManifest = JSON.parse(rawExponentManifest);
+            } catch (e) {
+                parsedExponentManifest = { parseError: e instanceof Error ? e.message : String(e) };
+            }
+        } else {
+            parsedExponentManifest = rawExponentManifest;
+        }
+    }
+    
+    // Get Updates manifest from native module
+    let rawUpdatesManifest = null;
+    let parsedUpdatesManifest = null;
+    if (ExpoUpdates) {
+        if (ExpoUpdates.manifest) {
+            rawUpdatesManifest = ExpoUpdates.manifest;
+            parsedUpdatesManifest = rawUpdatesManifest;
+        } else if (ExpoUpdates.manifestString) {
+            rawUpdatesManifest = ExpoUpdates.manifestString;
+            try {
+                parsedUpdatesManifest = JSON.parse(ExpoUpdates.manifestString);
+            } catch (e) {
+                parsedUpdatesManifest = { parseError: e instanceof Error ? e.message : String(e) };
+            }
+        }
+    }
+    
+    // Get DevLauncher manifest if available
+    let rawDevLauncherManifest = null;
+    let parsedDevLauncherManifest = null;
+    if (NativeModules.EXDevLauncher && NativeModules.EXDevLauncher.manifestString) {
+        rawDevLauncherManifest = NativeModules.EXDevLauncher.manifestString;
+        try {
+            parsedDevLauncherManifest = JSON.parse(rawDevLauncherManifest);
+        } catch (e) {
+            parsedDevLauncherManifest = { parseError: e instanceof Error ? e.message : String(e) };
+        }
+    }
+    
+    // Get various manifest types from Constants API
     const expoConfig = Constants.expoConfig;
     const manifest = Constants.manifest;
     const manifest2 = Constants.manifest2;
@@ -112,6 +163,7 @@ export default function ExpoConstantsScreen() {
     let updateId = null;
     let releaseChannel = null;
     let channel = null;
+    let isEmbeddedLaunch = null;
     try {
         // @ts-ignore
         updateId = Updates.updateId;
@@ -119,9 +171,14 @@ export default function ExpoConstantsScreen() {
         releaseChannel = Updates.releaseChannel;
         // @ts-ignore
         channel = Updates.channel;
+        // @ts-ignore
+        isEmbeddedLaunch = Updates.isEmbeddedLaunch;
     } catch (e) {
         // Properties might not be available
     }
+    
+    // Check if running embedded update
+    const isEmbedded = ExpoUpdates?.isEmbeddedLaunch;
     
     return (
         <>
@@ -133,7 +190,7 @@ export default function ExpoConstantsScreen() {
             />
             <ItemList>
                 {/* Main Configuration */}
-                <ItemGroup title="Configuration">
+                <ItemGroup title="Configuration from Constants API">
                     <JsonViewer
                         title="expoConfig (Current)"
                         data={expoConfig}
@@ -149,8 +206,57 @@ export default function ExpoConstantsScreen() {
                     />
                     {updatesManifest && (
                         <JsonViewer
-                            title="Updates Manifest"
+                            title="Updates.manifest"
                             data={updatesManifest}
+                        />
+                    )}
+                </ItemGroup>
+                
+                {/* Raw Native Module Manifests */}
+                <ItemGroup title="Raw Native Module Manifests">
+                    <Item
+                        title="Is Embedded Launch"
+                        detail={isEmbedded !== undefined ? (isEmbedded ? 'Yes' : 'No') : 'Not available'}
+                        showChevron={false}
+                    />
+                    {parsedExponentManifest && (
+                        <JsonViewer
+                            title="ExponentConstants.manifest (Embedded)"
+                            data={parsedExponentManifest}
+                        />
+                    )}
+                    {parsedUpdatesManifest && (
+                        <JsonViewer
+                            title="ExpoUpdates.manifest (OTA)"
+                            data={parsedUpdatesManifest}
+                        />
+                    )}
+                    {parsedDevLauncherManifest && (
+                        <JsonViewer
+                            title="DevLauncher.manifest"
+                            data={parsedDevLauncherManifest}
+                        />
+                    )}
+                </ItemGroup>
+                
+                {/* Raw String Manifests (for debugging) */}
+                <ItemGroup title="Raw Manifest Strings">
+                    {typeof rawExponentManifest === 'string' && (
+                        <JsonViewer
+                            title="ExponentConstants.manifest (raw string)"
+                            data={{ raw: rawExponentManifest }}
+                        />
+                    )}
+                    {typeof rawUpdatesManifest === 'string' && (
+                        <JsonViewer
+                            title="ExpoUpdates.manifestString (raw)"
+                            data={{ raw: rawUpdatesManifest }}
+                        />
+                    )}
+                    {rawDevLauncherManifest && (
+                        <JsonViewer
+                            title="DevLauncher.manifestString (raw)"
+                            data={{ raw: rawDevLauncherManifest }}
                         />
                     )}
                 </ItemGroup>
@@ -213,8 +319,7 @@ export default function ExpoConstantsScreen() {
                     />
                     <Item
                         title="Is Embedded Launch"
-                        // @ts-ignore
-                        detail={Updates.isEmbeddedLaunch !== undefined ? (Updates.isEmbeddedLaunch ? 'Yes' : 'No') : 'Not available'}
+                        detail={isEmbeddedLaunch !== undefined ? (isEmbeddedLaunch ? 'Yes' : 'No') : 'Not available'}
                         showChevron={false}
                     />
                 </ItemGroup>
@@ -233,6 +338,37 @@ export default function ExpoConstantsScreen() {
                         title="Available Fonts"
                         data={Constants.systemFonts}
                     />
+                </ItemGroup>
+                
+                {/* Native Modules Info */}
+                <ItemGroup title="Native Modules">
+                    <Item
+                        title="ExponentConstants"
+                        detail={ExponentConstants ? 'Available' : 'Not available'}
+                        showChevron={false}
+                    />
+                    <Item
+                        title="ExpoUpdates"
+                        detail={ExpoUpdates ? 'Available' : 'Not available'}
+                        showChevron={false}
+                    />
+                    <Item
+                        title="EXDevLauncher"
+                        detail={NativeModules.EXDevLauncher ? 'Available' : 'Not available'}
+                        showChevron={false}
+                    />
+                    {ExponentConstants && (
+                        <JsonViewer
+                            title="ExponentConstants (full module)"
+                            data={ExponentConstants}
+                        />
+                    )}
+                    {ExpoUpdates && (
+                        <JsonViewer
+                            title="ExpoUpdates (full module)"
+                            data={ExpoUpdates}
+                        />
+                    )}
                 </ItemGroup>
                 
                 {/* Raw Constants Object */}
