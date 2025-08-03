@@ -1,5 +1,5 @@
-import { 
-    Package, 
+import {
+    Package,
     Purchases,
     CustomerInfo as WebCustomerInfo,
     Product as WebProduct,
@@ -62,11 +62,8 @@ class RevenueCatWeb implements RevenueCatInterface {
         // Search through all offerings for the requested products
         Object.values(offerings.all || {}).forEach(offering => {
             offering.availablePackages.forEach(pkg => {
-                // Debug: log the package structure
-                console.log('Package structure:', JSON.stringify(pkg, null, 2));
-                
-                // Use rcBillingProduct as fallback if webBillingProduct doesn't exist
-                const product = pkg.webBillingProduct || pkg.rcBillingProduct;
+                // Use webBillingProduct (or rcBillingProduct as fallback)
+                const product = pkg.webBillingProduct || (pkg as any).rcBillingProduct;
                 if (product && productIds.includes(product.identifier)) {
                     products.push(this.transformProduct(product));
                 }
@@ -85,22 +82,20 @@ class RevenueCatWeb implements RevenueCatInterface {
         // Find the package that contains this product
         const offerings = await this.purchases.getOfferings();
         let targetPackage: Package | null = null;
-
-        Object.values(offerings.all || {}).forEach(offering => {
-            offering.availablePackages.forEach(pkg => {
-                // Use rcBillingProduct as fallback if webBillingProduct doesn't exist
-                const pkgProduct = pkg.webBillingProduct || pkg.rcBillingProduct;
+        for (const offering of Object.values(offerings.all || {})) {
+            for (const pkg of offering.availablePackages) {
+                const pkgProduct = pkg.webBillingProduct;
                 if (pkgProduct && pkgProduct.identifier === product.identifier) {
                     targetPackage = pkg;
+                    break;
                 }
-            });
-        });
-
+            }
+            if (targetPackage) break;
+        }
         if (!targetPackage) {
             throw new Error(`Package for product ${product.identifier} not found`);
         }
-
-        const result = await this.purchases.purchase(targetPackage);
+        const result = await this.purchases.purchase({ rcPackage: targetPackage });
         return {
             customerInfo: this.transformCustomerInfo(result.customerInfo)
         };
@@ -125,13 +120,7 @@ class RevenueCatWeb implements RevenueCatInterface {
 
     // Transform web types to our common types
     private transformCustomerInfo(webInfo: WebCustomerInfo): CustomerInfo {
-        console.log('Web CustomerInfo:', JSON.stringify(webInfo, null, 2));
-
-        // Transform active subscriptions from Set to object
-        const activeSubscriptions: Record<string, any> = {};
-        webInfo.activeSubscriptions.forEach(subId => {
-            activeSubscriptions[subId] = webInfo.subscriptionsByProductIdentifier?.[subId] || {};
-        });
+        const activeSubscriptions: Record<string, any> = webInfo.activeSubscriptions || {};
 
         // Transform entitlements
         const entitlements: Record<string, { isActive: boolean; identifier: string }> = {};
@@ -146,7 +135,7 @@ class RevenueCatWeb implements RevenueCatInterface {
             activeSubscriptions,
             entitlements: { all: entitlements },
             originalAppUserId: webInfo.originalAppUserId,
-            requestDate: webInfo.requestDate
+            requestDate: new Date(webInfo.requestDate)
         };
     }
 
@@ -165,8 +154,7 @@ class RevenueCatWeb implements RevenueCatInterface {
         const transformPackages = (packages: Package[]) => {
             return packages
                 .map(pkg => {
-                    // Use rcBillingProduct as fallback if webBillingProduct doesn't exist
-                    const product = pkg.webBillingProduct || pkg.rcBillingProduct;
+                    const product = pkg.webBillingProduct;
                     if (!product) {
                         console.error('Package has no product:', pkg);
                         return null;
