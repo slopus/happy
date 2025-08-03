@@ -55,6 +55,18 @@ export enum LogLevel {
     ERROR = 4
 }
 
+export enum PaywallResult {
+    NOT_PRESENTED = 'NOT_PRESENTED',
+    ERROR = 'ERROR',
+    CANCELLED = 'CANCELLED',
+    PURCHASED = 'PURCHASED',
+    RESTORED = 'RESTORED'
+}
+
+export interface PaywallOptions {
+    offering?: Offering;
+}
+
 // Main interface that all platform implementations must follow
 export interface RevenueCatInterface {
     configure(config: RevenueCatConfig): void;
@@ -64,4 +76,6 @@ export interface RevenueCatInterface {
     purchaseStoreProduct(product: Product): Promise<PurchaseResult>;
     syncPurchases(): Promise<void>;
     setLogLevel(level: LogLevel): void;
+    presentPaywall(options?: PaywallOptions): Promise<PaywallResult>;
+    presentPaywallIfNeeded(options?: PaywallOptions & { requiredEntitlementIdentifier: string }): Promise<PaywallResult>;
 }

@@ -14,7 +14,9 @@ import {
     Offerings,
     PurchaseResult,
     RevenueCatConfig,
-    LogLevel
+    LogLevel,
+    PaywallResult,
+    PaywallOptions
 } from './types';
 
 class RevenueCatWeb implements RevenueCatInterface {
@@ -116,6 +118,63 @@ class RevenueCatWeb implements RevenueCatInterface {
         // Web SDK doesn't support log levels
         // This is a no-op on web
         console.log(`RevenueCat log level set to ${LogLevel[level]} (not supported on web)`);
+    }
+
+    async presentPaywall(options?: PaywallOptions): Promise<PaywallResult> {
+        // Web doesn't have native paywall support
+        // We'll attempt to purchase the first available product in the current offering
+        try {
+            if (!this.purchases) {
+                throw new Error('RevenueCat not configured');
+            }
+
+            // Get the offering to use (provided or current)
+            const offerings = await this.getOfferings();
+            const offering = options?.offering || offerings.current;
+            
+            if (!offering || offering.availablePackages.length === 0) {
+                console.error('No offerings available');
+                return PaywallResult.ERROR;
+            }
+
+            // Get the first available package
+            const firstPackage = offering.availablePackages[0];
+            
+            try {
+                // Attempt to purchase
+                const result = await this.purchaseStoreProduct(firstPackage.product);
+                return PaywallResult.PURCHASED;
+            } catch (purchaseError: any) {
+                // Check if user cancelled
+                if (purchaseError.message?.includes('cancelled') || purchaseError.code === 'UserCancelled') {
+                    return PaywallResult.CANCELLED;
+                }
+                console.error('Purchase failed:', purchaseError);
+                return PaywallResult.ERROR;
+            }
+        } catch (error) {
+            console.error('Error presenting paywall on web:', error);
+            return PaywallResult.ERROR;
+        }
+    }
+
+    async presentPaywallIfNeeded(options?: PaywallOptions & { requiredEntitlementIdentifier: string }): Promise<PaywallResult> {
+        // Check if user has the required entitlement
+        try {
+            const customerInfo = await this.getCustomerInfo();
+            const hasEntitlement = customerInfo.entitlements.all[options?.requiredEntitlementIdentifier || 'pro']?.isActive;
+            
+            if (hasEntitlement) {
+                // User already has the entitlement, no need to show paywall
+                return PaywallResult.NOT_PRESENTED;
+            }
+            
+            // User doesn't have entitlement, present paywall
+            return this.presentPaywall(options);
+        } catch (error) {
+            console.error('Error checking entitlement:', error);
+            return PaywallResult.ERROR;
+        }
     }
 
     // Transform web types to our common types

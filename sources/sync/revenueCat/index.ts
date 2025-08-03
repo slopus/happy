@@ -8,7 +8,11 @@ export {
     Offerings,
     PurchaseResult,
     RevenueCatConfig,
-    LogLevel
+    LogLevel,
+    PaywallResult,
+    PaywallOptions,
+    Offering,
+    Package
 } from './types';
 
 // This will be resolved to either revenueCat.native.ts or revenueCat.web.ts

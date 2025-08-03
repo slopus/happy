@@ -107,6 +107,7 @@
     "react-native-localize": "^3.5.1",
     "react-native-mmkv": "^3.3.0",
     "react-native-purchases": "^9.1.0",
+    "react-native-purchases-ui": "^9.1.0",
     "react-native-quick-base64": "^2.2.1",
     "react-native-reanimated": "4.0.1",
     "react-native-safe-area-context": "5.4.0",

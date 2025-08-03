@@ -1,7 +1,7 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
 import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Image, Pressable, Text, View, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
 import { encodeBase64 } from "@/auth/base64";
@@ -201,7 +201,7 @@ function HeaderRight() {
         <Pressable
             onPress={() => router.push('/settings')}
             hitSlop={10}
-            style={{ marginRight: 16 }}
+            style={{ marginRight: Platform.OS === 'ios' ? 0 : 16 }}
         >
             <Ionicons name="settings-outline" size={24} color="#000" />
         </Pressable>

@@ -4,6 +4,7 @@ import Purchases, {
     PurchasesStoreProduct,
     LOG_LEVEL
 } from 'react-native-purchases';
+import RevenueCatUI, { PAYWALL_RESULT } from 'react-native-purchases-ui';
 import { 
     RevenueCatInterface, 
     CustomerInfo, 
@@ -11,7 +12,9 @@ import {
     Offerings, 
     PurchaseResult,
     RevenueCatConfig,
-    LogLevel 
+    LogLevel,
+    PaywallResult,
+    PaywallOptions
 } from './types';
 
 // Map native log levels to our common ones
@@ -68,6 +71,77 @@ class RevenueCatNative implements RevenueCatInterface {
         const nativeLevel = logLevelMap[level];
         if (nativeLevel !== undefined) {
             Purchases.setLogLevel(nativeLevel);
+        }
+    }
+
+    async presentPaywall(options?: PaywallOptions): Promise<PaywallResult> {
+        try {
+            // If offering is provided, we need to get the native offering object
+            let nativeOffering = undefined;
+            if (options?.offering) {
+                // Get all native offerings and find the matching one
+                const nativeOfferings = await Purchases.getOfferings();
+                nativeOffering = nativeOfferings.all[options.offering.identifier];
+            }
+            
+            const nativeResult = await RevenueCatUI.presentPaywall(nativeOffering ? {
+                offering: nativeOffering
+            } : undefined);
+            
+            // Map native paywall result to our enum
+            switch (nativeResult) {
+                case PAYWALL_RESULT.NOT_PRESENTED:
+                    return PaywallResult.NOT_PRESENTED;
+                case PAYWALL_RESULT.ERROR:
+                    return PaywallResult.ERROR;
+                case PAYWALL_RESULT.CANCELLED:
+                    return PaywallResult.CANCELLED;
+                case PAYWALL_RESULT.PURCHASED:
+                    return PaywallResult.PURCHASED;
+                case PAYWALL_RESULT.RESTORED:
+                    return PaywallResult.RESTORED;
+                default:
+                    return PaywallResult.ERROR;
+            }
+        } catch (error) {
+            console.error('Error presenting paywall:', error);
+            return PaywallResult.ERROR;
+        }
+    }
+
+    async presentPaywallIfNeeded(options?: PaywallOptions & { requiredEntitlementIdentifier: string }): Promise<PaywallResult> {
+        try {
+            // If offering is provided, we need to get the native offering object
+            let nativeOffering = undefined;
+            if (options?.offering) {
+                // Get all native offerings and find the matching one
+                const nativeOfferings = await Purchases.getOfferings();
+                nativeOffering = nativeOfferings.all[options.offering.identifier];
+            }
+            
+            const nativeResult = await RevenueCatUI.presentPaywallIfNeeded({
+                offering: nativeOffering,
+                requiredEntitlementIdentifier: options?.requiredEntitlementIdentifier || 'pro'
+            });
+            
+            // Map native paywall result to our enum
+            switch (nativeResult) {
+                case PAYWALL_RESULT.NOT_PRESENTED:
+                    return PaywallResult.NOT_PRESENTED;
+                case PAYWALL_RESULT.ERROR:
+                    return PaywallResult.ERROR;
+                case PAYWALL_RESULT.CANCELLED:
+                    return PaywallResult.CANCELLED;
+                case PAYWALL_RESULT.PURCHASED:
+                    return PaywallResult.PURCHASED;
+                case PAYWALL_RESULT.RESTORED:
+                    return PaywallResult.RESTORED;
+                default:
+                    return PaywallResult.ERROR;
+            }
+        } catch (error) {
+            console.error('Error presenting paywall if needed:', error);
+            return PaywallResult.ERROR;
         }
     }
 

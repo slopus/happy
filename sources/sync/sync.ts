@@ -17,7 +17,7 @@ import { applySettings, Settings, settingsDefaults, settingsParse } from './sett
 import { loadPendingSettings, savePendingSettings } from './persistence';
 import { initializeTracking, tracking } from '@/track';
 import { parseToken } from '@/utils/parseToken';
-import { RevenueCat, LogLevel } from './revenueCat';
+import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
 
 const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
@@ -231,6 +231,36 @@ class Sync {
             };
         } catch (error: any) {
             return { success: false, error: error.message || 'Failed to fetch offerings' };
+        }
+    }
+
+    presentPaywall = async (): Promise<{ success: boolean; purchased?: boolean; error?: string }> => {
+        try {
+            // Check if RevenueCat is initialized
+            if (!this.revenueCatInitialized) {
+                return { success: false, error: 'RevenueCat not initialized' };
+            }
+
+            // Present the paywall
+            const result = await RevenueCat.presentPaywall();
+            
+            // Handle the result
+            switch (result) {
+                case PaywallResult.PURCHASED:
+                case PaywallResult.RESTORED:
+                    // Refresh customer info after purchase
+                    await this.syncPurchases();
+                    return { success: true, purchased: true };
+                case PaywallResult.CANCELLED:
+                    return { success: true, purchased: false };
+                case PaywallResult.NOT_PRESENTED:
+                    return { success: false, error: 'Paywall not available on this platform' };
+                case PaywallResult.ERROR:
+                default:
+                    return { success: false, error: 'Failed to present paywall' };
+            }
+        } catch (error: any) {
+            return { success: false, error: error.message || 'Failed to present paywall' };
         }
     }
 

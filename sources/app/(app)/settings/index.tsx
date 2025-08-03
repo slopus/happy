@@ -9,12 +9,15 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
+import { useEntitlement } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 
 export default function SettingsScreen() {
     const router = useRouter();
     const appVersion = Constants.expoConfig?.version || '1.0.0';
     const auth = useAuth();
     const isDev = __DEV__;
+    const isPro = useEntitlement('pro');
 
     const { connectTerminal, isLoading } = useConnectTerminal();
 
@@ -31,6 +34,15 @@ export default function SettingsScreen() {
         const supported = await Linking.canOpenURL(url);
         if (supported) {
             await Linking.openURL(url);
+        }
+    };
+
+    const handleSubscribe = async () => {
+        const result = await sync.presentPaywall();
+        if (!result.success) {
+            console.error('Failed to present paywall:', result.error);
+        } else if (result.purchased) {
+            console.log('Purchase successful!');
         }
     };
 
@@ -54,7 +66,7 @@ export default function SettingsScreen() {
 
             {/* Terminal - Only show on native platforms */}
             {Platform.OS !== 'web' && (
-                <ItemGroup title="Terminal">
+                <ItemGroup>
                     <Item
                         title="Connect Terminal"
                         subtitle="Scan QR code to connect Claude Code"
@@ -65,6 +77,18 @@ export default function SettingsScreen() {
                     />
                 </ItemGroup>
             )}
+
+            {/* Support Us */}
+            <ItemGroup>
+                <Item
+                    title="Support us"
+                    subtitle={isPro ? 'Thank you for your support!' : '$20/month'}
+                    icon={<Ionicons name="heart" size={29} color="#FF3B30" />}
+                    showChevron={false}
+                    onPress={isPro ? undefined : handleSubscribe}
+                    detail={isPro ? '✓' : undefined}
+                />
+            </ItemGroup>
 
             {/* Features */}
             <ItemGroup title="Features">
