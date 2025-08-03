@@ -6207,6 +6207,13 @@ react-native-mmkv@^3.3.0:
   resolved "https://registry.yarnpkg.com/react-native-mmkv/-/react-native-mmkv-3.3.0.tgz#a0816babdf68afd2bfd881a48e28c8815795286b"
   integrity sha512-2iPjIJ+IAODXN35wm53EN6nv+hR/0NXLLiLWOdPA/0gXDB2dYVrr6MqvoiFpxhLhdj0B8fkf5ARNVavJaSvuuQ==
 
+react-native-purchases-ui@^9.1.0:
+  version "9.1.0"
+  resolved "https://registry.yarnpkg.com/react-native-purchases-ui/-/react-native-purchases-ui-9.1.0.tgz#87b2be23242692a20f56c888dbe0ddf36ec760a2"
+  integrity sha512-uQnpt7NZbQNsMR5G/BXr07RE4gS37ZFirq1KzA3w2lu/yU4oQhsfA2/pajaY5AA+qumLrNY7JPCMsKcgIgtP+A==
+  dependencies:
+    "@revenuecat/purchases-typescript-internal" "16.0.2"
+
 react-native-purchases@^9.1.0:
   version "9.1.0"
   resolved "https://registry.yarnpkg.com/react-native-purchases/-/react-native-purchases-9.1.0.tgz#ba54d3bdc603eca7b3edd3389c1860a6e737c3d4"

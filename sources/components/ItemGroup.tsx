@@ -55,7 +55,7 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
         <View style={[{ alignItems: 'center' }, style]}>
             <View style={{ width: '100%', maxWidth: layout.maxWidth, paddingHorizontal: (isAndroid || isWeb) ? 4 : 0 }}>
                 {/* Header */}
-                {title && (
+                {title ? (
                     <View 
                         style={[
                             {
@@ -87,6 +87,9 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
                             {title}
                         </Text>
                     </View>
+                ) : (
+                    // Add top margin when there's no title
+                    <View style={{ paddingTop: (isIOS && !isWeb) ? 20 : 16 }} />
                 )}
 
                 {/* Content Container */}

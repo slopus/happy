@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
     content: {
         flexDirection: 'row',
         alignItems: 'center',
-        paddingHorizontal: 16,
+        paddingHorizontal: Platform.OS === 'ios' ? 8 : 16,
         width: '100%',
         maxWidth: layout.headerMaxWidth, // Standard max width for content
     },
