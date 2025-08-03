@@ -32,13 +32,13 @@ export const MarkdownView = React.memo((props: { markdown: string }) => {
 });
 
 function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean }) {
-    return <Text style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} /></Text>;
+    return <Text selectable style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} /></Text>;
 }
 
 function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: MarkdownSpan[], first: boolean, last: boolean }) {
     const s = (style as any)[`header${props.level}`];
     const headerStyle = [style.header, s, props.first && style.first, props.last && style.last];
-    return <Text style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} /></Text>;
+    return <Text selectable style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} /></Text>;
 }
 
 function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean }) {
@@ -46,7 +46,7 @@ function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last:
     return (
         <View className="list-none" style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text className="list-none" style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} /></Text>
+                <Text selectable className="list-none" style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} /></Text>
             ))}
         </View>
     );
@@ -57,7 +57,7 @@ function RenderNumberedListBlock(props: { items: { number: number, spans: Markdo
     return (
         <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} /></Text>
+                <Text selectable style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} /></Text>
             ))}
         </View>
     );
@@ -66,7 +66,7 @@ function RenderNumberedListBlock(props: { items: { number: number, spans: Markdo
 function RenderCodeBlock(props: { content: string, language: string | null, first: boolean, last: boolean }) {
     return (
         <View style={[style.codeBlock, props.first && style.first, props.last && style.last]}>
-            {props.language && <Text style={style.codeLanguage}>{props.language}</Text>}
+            {props.language && <Text selectable style={style.codeLanguage}>{props.language}</Text>}
             <ScrollView
                 style={{ flexGrow: 0, flexShrink: 0 }}
                 horizontal={true}

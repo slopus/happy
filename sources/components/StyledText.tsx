@@ -8,18 +8,24 @@ interface StyledTextProps extends RNTextProps {
    * Useful when you want to use a different typography style.
    */
   useDefaultTypography?: boolean;
+  /**
+   * Whether the text should be selectable. Defaults to false.
+   */
+  selectable?: boolean;
 }
 
 export const Text: React.FC<StyledTextProps> = ({ 
   style, 
-  useDefaultTypography = true, 
+  useDefaultTypography = true,
+  selectable = false,
   ...props 
 }) => {
   const defaultStyle = useDefaultTypography ? Typography.default() : {};
   
   return (
     <RNText 
-      style={[defaultStyle, style]} 
+      style={[defaultStyle, style]}
+      selectable={selectable}
       {...props} 
     />
   );

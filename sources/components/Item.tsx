@@ -11,6 +11,8 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
+import * as Clipboard from 'expo-clipboard';
+import { Modal } from '@/modal';
 
 export interface ItemProps {
     title: string;
@@ -33,6 +35,7 @@ export interface ItemProps {
     showDivider?: boolean;
     dividerInset?: number;
     pressableStyle?: StyleProp<ViewStyle>;
+    copy?: boolean | string;
 }
 
 export const Item = React.memo<ItemProps>((props) => {
@@ -40,6 +43,9 @@ export const Item = React.memo<ItemProps>((props) => {
     const isIOS = Platform.OS === 'ios';
     const isAndroid = Platform.OS === 'android';
     const isWeb = Platform.OS === 'web';
+    
+    // Timer ref for long press copy functionality
+    const longPressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     
     const {
         title,
@@ -61,10 +67,63 @@ export const Item = React.memo<ItemProps>((props) => {
         showChevron = true,
         showDivider = true,
         dividerInset = isIOS ? 15 : 16,
-        pressableStyle
+        pressableStyle,
+        copy
     } = props;
 
-    const isInteractive = onPress || onLongPress;
+    // Handle copy functionality
+    const handleCopy = React.useCallback(async () => {
+        if (!copy || isWeb) return;
+        
+        let textToCopy: string;
+        
+        if (typeof copy === 'string') {
+            // If copy is a string, use it directly
+            textToCopy = copy;
+        } else {
+            // If copy is true, try to figure out what to copy
+            // Priority: detail > subtitle > title
+            textToCopy = detail || subtitle || title;
+        }
+        
+        try {
+            await Clipboard.setStringAsync(textToCopy);
+            Modal.alert('Copied', `${title} copied to clipboard`);
+        } catch (error) {
+            console.error('Failed to copy:', error);
+        }
+    }, [copy, isWeb, title, subtitle, detail]);
+    
+    // Handle long press for copy functionality
+    const handlePressIn = React.useCallback(() => {
+        if (copy && !isWeb && !onPress) {
+            longPressTimer.current = setTimeout(() => {
+                handleCopy();
+            }, 500); // 500ms delay for long press
+        }
+    }, [copy, isWeb, onPress, handleCopy]);
+    
+    const handlePressOut = React.useCallback(() => {
+        if (longPressTimer.current) {
+            clearTimeout(longPressTimer.current);
+            longPressTimer.current = null;
+        }
+    }, []);
+    
+    // Clean up timer on unmount
+    React.useEffect(() => {
+        return () => {
+            if (longPressTimer.current) {
+                clearTimeout(longPressTimer.current);
+            }
+        };
+    }, []);
+    
+    // If copy is enabled and no onPress is provided, don't set a regular press handler
+    // The copy will be handled by long press instead
+    const handlePress = onPress;
+    
+    const isInteractive = handlePress || onLongPress || (copy && !isWeb);
     const showAccessory = isInteractive && showChevron && !rightElement;
     const horizontalPadding = 16; // Same for both platforms per Material Design
     const iconSize = (isIOS && !isWeb) ? 29 : 32; // iOS standard vs Material 3 icon container
@@ -213,8 +272,10 @@ export const Item = React.memo<ItemProps>((props) => {
     if (isInteractive) {
         return (
             <Pressable
-                onPress={onPress}
+                onPress={handlePress}
                 onLongPress={onLongPress}
+                onPressIn={handlePressIn}
+                onPressOut={handlePressOut}
                 disabled={disabled || loading}
                 style={({ pressed }) => [
                     {
