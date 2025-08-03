@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
+import { View, Text, Pressable, Platform, Switch } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -11,12 +11,15 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
+import { tracking } from '@/track/tracking';
+import { useSettingMutable } from '@/sync/storage';
 
 export default React.memo(() => {
     const auth = useAuth();
     const router = useRouter();
     const [showSecret, setShowSecret] = useState(false);
     const [copiedRecently, setCopiedRecently] = useState(false);
+    const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
 
     // Get the current secret key
     const currentSecret = auth.credentials?.secret || '';
@@ -131,6 +134,29 @@ export default React.memo(() => {
                         </Pressable>
                     </ItemGroup>
                 )}
+
+                {/* Analytics Section */}
+                <ItemGroup 
+                    title="Privacy"
+                    footer="Help improve the app by sharing anonymous usage data. No personal information is collected."
+                >
+                    <Item
+                        title="Analytics"
+                        subtitle={analyticsOptOut ? "No data is shared" : "Anonymous usage data is shared"}
+                        rightElement={
+                            <Switch
+                                value={!analyticsOptOut}
+                                onValueChange={(value) => {
+                                    const optOut = !value;
+                                    setAnalyticsOptOut(optOut);
+                                }}
+                                trackColor={{ false: '#767577', true: '#34C759' }}
+                                thumbColor="#FFFFFF"
+                            />
+                        }
+                        showChevron={false}
+                    />
+                </ItemGroup>
 
                 {/* Danger Zone */}
                 <ItemGroup title="Danger Zone">

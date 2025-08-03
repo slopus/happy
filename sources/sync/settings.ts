@@ -10,6 +10,7 @@ export const SettingsSchema = z.object({
     expandTodos: z.boolean().describe('Whether to expand todo lists'),
     showLineNumbers: z.boolean().describe('Whether to show line numbers in diffs'),
     showLineNumbersInToolViews: z.boolean().describe('Whether to show line numbers in tool view diffs'),
+    analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
 });
 
 //
@@ -36,7 +37,8 @@ export const settingsDefaults: Settings = {
     inferenceOpenAIKey: null,
     expandTodos: true,
     showLineNumbers: true,
-    showLineNumbersInToolViews: false
+    showLineNumbersInToolViews: false,
+    analyticsOptOut: false
 };
 Object.freeze(settingsDefaults);
 

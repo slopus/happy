@@ -1,5 +1,8 @@
 import { tracking } from './tracking';
 
+// Re-export tracking for direct access
+export { tracking } from './tracking';
+
 /**
  * Initialize tracking with an anonymous user ID.
  * Should be called once during auth initialization.
