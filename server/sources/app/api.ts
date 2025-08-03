@@ -62,7 +62,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         methods: ['GET', 'POST']
     });
     app.get('/', function (request, reply) {
-        reply.send('Welcome to Everything API!');
+        reply.send('Welcome to Happy Server!');
     });
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
