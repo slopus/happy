@@ -45,3 +45,30 @@ export function trackPermissionResponse(allowed: boolean) {
     tracking?.capture('permission_response', { allowed });
 }
 
+/**
+ * Paywall events
+ */
+export function trackPaywallButtonClicked() {
+    tracking?.capture('paywall_button_clicked');
+}
+
+export function trackPaywallPresented() {
+    tracking?.capture('paywall_presented');
+}
+
+export function trackPaywallPurchased() {
+    tracking?.capture('paywall_purchased');
+}
+
+export function trackPaywallCancelled() {
+    tracking?.capture('paywall_cancelled');
+}
+
+export function trackPaywallRestored() {
+    tracking?.capture('paywall_restored');
+}
+
+export function trackPaywallError(error: string) {
+    tracking?.capture('paywall_error', { error });
+}
+

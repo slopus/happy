@@ -11,6 +11,7 @@ import { ItemList } from '@/components/ItemList';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { useEntitlement } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { trackPaywallButtonClicked } from '@/track';
 
 export default function SettingsScreen() {
     const router = useRouter();
@@ -38,6 +39,7 @@ export default function SettingsScreen() {
     };
 
     const handleSubscribe = async () => {
+        trackPaywallButtonClicked();
         const result = await sync.presentPaywall();
         if (!result.success) {
             console.error('Failed to present paywall:', result.error);

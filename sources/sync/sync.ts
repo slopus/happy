@@ -18,12 +18,13 @@ import { loadPendingSettings, savePendingSettings } from './persistence';
 import { initializeTracking, tracking } from '@/track';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
+import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, trackPaywallRestored, trackPaywallError } from '@/track';
 import { getServerUrl } from './serverConfig';
 
 class Sync {
 
     encryption!: ApiEncryption;
-    pubID!: string;
+    serverID!: string;
     anonID!: string;
     private credentials!: AuthCredentials;
     private sessionsSync: InvalidateSync;
@@ -52,7 +53,7 @@ class Sync {
         this.credentials = credentials;
         this.encryption = encryption;
         this.anonID = encryption.anonID;
-        this.pubID = parseToken(credentials.token);
+        this.serverID = parseToken(credentials.token);
         await this.#init();
 
         // Await settings sync to have fresh settings
@@ -67,7 +68,7 @@ class Sync {
         this.credentials = credentials;
         this.encryption = encryption;
         this.anonID = encryption.anonID;
-        this.pubID = parseToken(credentials.token);
+        this.serverID = parseToken(credentials.token);
         await this.#init();
     }
 
@@ -237,8 +238,13 @@ class Sync {
         try {
             // Check if RevenueCat is initialized
             if (!this.revenueCatInitialized) {
-                return { success: false, error: 'RevenueCat not initialized' };
+                const error = 'RevenueCat not initialized';
+                trackPaywallError(error);
+                return { success: false, error };
             }
+
+            // Track paywall presentation
+            trackPaywallPresented();
 
             // Present the paywall
             const result = await RevenueCat.presentPaywall();
@@ -246,20 +252,31 @@ class Sync {
             // Handle the result
             switch (result) {
                 case PaywallResult.PURCHASED:
-                case PaywallResult.RESTORED:
+                    trackPaywallPurchased();
                     // Refresh customer info after purchase
                     await this.syncPurchases();
                     return { success: true, purchased: true };
+                case PaywallResult.RESTORED:
+                    trackPaywallRestored();
+                    // Refresh customer info after restore
+                    await this.syncPurchases();
+                    return { success: true, purchased: true };
                 case PaywallResult.CANCELLED:
+                    trackPaywallCancelled();
                     return { success: true, purchased: false };
                 case PaywallResult.NOT_PRESENTED:
+                    // Don't track error for NOT_PRESENTED as it's a platform limitation
                     return { success: false, error: 'Paywall not available on this platform' };
                 case PaywallResult.ERROR:
                 default:
-                    return { success: false, error: 'Failed to present paywall' };
+                    const errorMsg = 'Failed to present paywall';
+                    trackPaywallError(errorMsg);
+                    return { success: false, error: errorMsg };
             }
         } catch (error: any) {
-            return { success: false, error: error.message || 'Failed to present paywall' };
+            const errorMessage = error.message || 'Failed to present paywall';
+            trackPaywallError(errorMessage);
+            return { success: false, error: errorMessage };
         }
     }
 
@@ -497,9 +514,9 @@ class Sync {
                 }
 
                 // Initialize with the public ID as user ID
-                await RevenueCat.configure({
+                RevenueCat.configure({
                     apiKey,
-                    appUserID: this.pubID,
+                    appUserID: this.serverID, // In server this is a CUID, which we can assume is globaly unique even between servers
                     useAmazon: false,
                 });
 

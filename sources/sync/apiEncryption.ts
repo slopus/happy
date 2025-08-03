@@ -16,7 +16,7 @@ export class ApiEncryption {
         }
 
         // Derive anonymous ID
-        const anonID = encodeHex((await deriveKey(secretKey, 'Happy Analytics', ['analytics', 'id']))).slice(0, 16).toLowerCase();
+        const anonID = encodeHex((await deriveKey(secretKey, 'Happy Coder', ['analytics', 'id']))).slice(0, 16).toLowerCase();
 
         return new ApiEncryption(secretKey, anonID);
     }
