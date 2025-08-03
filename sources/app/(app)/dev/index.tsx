@@ -215,6 +215,12 @@ export default function DevScreen() {
                     icon={<Ionicons name="card-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/purchases')}
                 />
+                <Item 
+                    title="Expo Constants"
+                    subtitle="View expoConfig, manifests, and system constants"
+                    icon={<Ionicons name="information-circle-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/expo-constants')}
+                />
             </ItemGroup>
 
             {/* Network */}
