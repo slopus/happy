@@ -89,7 +89,7 @@ export default React.memo(() => {
                     />
                     <Item
                         title="Public ID"
-                        detail={sync.pubID || "Not available"}
+                        detail={sync.serverID || "Not available"}
                         showChevron={false}
                     />
                 </ItemGroup>

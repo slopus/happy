@@ -218,7 +218,7 @@ export default function PurchasesDevScreen() {
                     />
                     <Item
                         title="User ID"
-                        detail={sync.pubID || "Not available"}
+                        detail={sync.serverID || "Not available"}
                         showChevron={false}
                     />
                 </ItemGroup>

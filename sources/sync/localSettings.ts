@@ -7,6 +7,7 @@ import * as z from 'zod';
 export const LocalSettingsSchema = z.object({
     // Developer settings (device-specific)
     debugMode: z.boolean().describe('Enable debug logging'),
+    devModeEnabled: z.boolean().describe('Enable developer menu in settings'),
 });
 
 //
@@ -24,6 +25,7 @@ export type LocalSettings = z.infer<typeof LocalSettingsSchema>;
 
 export const localSettingsDefaults: LocalSettings = {
     debugMode: false,
+    devModeEnabled: false,
 };
 Object.freeze(localSettingsDefaults);
 
