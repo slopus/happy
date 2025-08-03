@@ -297,11 +297,14 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
 
   return (
     <View>
-      <Text style={{ 
-        fontFamily: Typography.mono().fontFamily,
-        fontSize: 14,
-        lineHeight: 20,
-      }}>
+      <Text 
+        selectable
+        style={{ 
+          fontFamily: Typography.mono().fontFamily,
+          fontSize: 14,
+          lineHeight: 20,
+        }}
+      >
         {tokens.map((token, index) => (
           <Text
             key={index}

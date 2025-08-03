@@ -86,11 +86,13 @@ export default React.memo(() => {
                         title="Anonymous ID"
                         detail={sync.anonID || "Not available"}
                         showChevron={false}
+                        copy={!!sync.anonID}
                     />
                     <Item
                         title="Public ID"
                         detail={sync.serverID || "Not available"}
                         showChevron={false}
+                        copy={!!sync.serverID}
                     />
                 </ItemGroup>
 
