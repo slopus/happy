@@ -179,6 +179,38 @@ class Sync {
         this.purchasesSync.invalidate();
     }
 
+    purchaseProduct = async (productId: string): Promise<{ success: boolean; error?: string }> => {
+        try {
+            // Check if RevenueCat is initialized
+            if (!this.revenueCatInitialized) {
+                return { success: false, error: 'RevenueCat not initialized' };
+            }
+
+            // Fetch the product
+            const products = await Purchases.getProducts([productId]);
+            if (products.length === 0) {
+                return { success: false, error: `Product '${productId}' not found` };
+            }
+
+            // Purchase the product
+            const product = products[0];
+            const { customerInfo } = await Purchases.purchaseStoreProduct(product);
+            
+            // Update local purchases data
+            storage.getState().applyPurchases(customerInfo);
+            
+            return { success: true };
+        } catch (error: any) {
+            // Check if user cancelled
+            if (error.userCancelled) {
+                return { success: false, error: 'Purchase cancelled' };
+            }
+            
+            // Return the error message
+            return { success: false, error: error.message || 'Purchase failed' };
+        }
+    }
+
     //
     // Private
     //
