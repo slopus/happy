@@ -19,12 +19,22 @@ Happy Coder is committed to protecting your privacy. This policy explains how we
 - **Session IDs**: Identifiers for your Claude Code terminal sessions
 - **Push Notification Tokens**: Device tokens for sending push notifications via Expo's push notification service
 
+### Analytics (PostHog)
+- **Anonymous Events**: We collect basic app usage events through PostHog to improve the app experience
+- **Privacy by Design**: All analytics events use an anonymized ID derived from a secret key - we cannot match this back to any user or account
+- **No Content Tracking**: We only track basic app usage events, never any message content, code, or personal information
+- **Opt-Out Available**: You can disable analytics collection at any time in the app settings
+
+### Subscription Management (Revenue Cat)
+- **Account ID**: Revenue Cat uses your account ID to manage subscriptions and enable premium features
+- **Backend Integration**: This ID allows us to provide additional features from our backend while maintaining end-to-end encryption for your content
+- **Data Separation**: Purchase analytics sent to PostHog use the anonymized ID instead - we cannot match Revenue Cat data with PostHog analytics
+
 ## What We Don't Collect
 - Your actual code or conversation content (we can't decrypt it)
 - Personal information beyond what you voluntarily include in encrypted messages
 - Device information beyond anonymous IDs
 - Location data
-- Analytics or tracking data
 
 ## How We Use Data
 
