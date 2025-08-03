@@ -62,8 +62,13 @@ class RevenueCatWeb implements RevenueCatInterface {
         // Search through all offerings for the requested products
         Object.values(offerings.all || {}).forEach(offering => {
             offering.availablePackages.forEach(pkg => {
-                if (productIds.includes(pkg.webBillingProduct.identifier)) {
-                    products.push(this.transformProduct(pkg.webBillingProduct));
+                // Debug: log the package structure
+                console.log('Package structure:', JSON.stringify(pkg, null, 2));
+                
+                // Use rcBillingProduct as fallback if webBillingProduct doesn't exist
+                const product = pkg.webBillingProduct || pkg.rcBillingProduct;
+                if (product && productIds.includes(product.identifier)) {
+                    products.push(this.transformProduct(product));
                 }
             });
         });
@@ -83,7 +88,9 @@ class RevenueCatWeb implements RevenueCatInterface {
 
         Object.values(offerings.all || {}).forEach(offering => {
             offering.availablePackages.forEach(pkg => {
-                if (pkg.webBillingProduct.identifier === product.identifier) {
+                // Use rcBillingProduct as fallback if webBillingProduct doesn't exist
+                const pkgProduct = pkg.webBillingProduct || pkg.rcBillingProduct;
+                if (pkgProduct && pkgProduct.identifier === product.identifier) {
                     targetPackage = pkg;
                 }
             });
@@ -156,11 +163,21 @@ class RevenueCatWeb implements RevenueCatInterface {
 
     private transformOfferings(webOfferings: WebOfferings): Offerings {
         const transformPackages = (packages: Package[]) => {
-            return packages.map(pkg => ({
-                identifier: pkg.identifier,
-                packageType: 'custom', // Web SDK doesn't expose packageType
-                product: this.transformProduct(pkg.webBillingProduct)
-            }));
+            return packages
+                .map(pkg => {
+                    // Use rcBillingProduct as fallback if webBillingProduct doesn't exist
+                    const product = pkg.webBillingProduct || pkg.rcBillingProduct;
+                    if (!product) {
+                        console.error('Package has no product:', pkg);
+                        return null;
+                    }
+                    return {
+                        identifier: pkg.identifier,
+                        packageType: 'custom', // Web SDK doesn't expose packageType
+                        product: this.transformProduct(product)
+                    };
+                })
+                .filter((pkg): pkg is NonNullable<typeof pkg> => pkg !== null);
         };
 
         return {
