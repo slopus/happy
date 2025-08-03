@@ -11,6 +11,7 @@ import { Typography } from '@/constants/Typography';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { requireOptionalNativeModule } from 'expo-modules-core';
+import { config } from '@/config';
 
 interface JsonViewerProps {
     title: string;
@@ -259,6 +260,15 @@ export default function ExpoConstantsScreen() {
                             data={{ raw: rawDevLauncherManifest }}
                         />
                     )}
+                </ItemGroup>
+                
+                {/* Resolved App Config */}
+                <ItemGroup title="Resolved App Config">
+                    <JsonViewer
+                        title="Loaded App Config (from @/config)"
+                        data={config}
+                        defaultExpanded={true}
+                    />
                 </ItemGroup>
                 
                 {/* System Constants */}

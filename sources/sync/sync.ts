@@ -20,6 +20,7 @@ import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
 import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, trackPaywallRestored, trackPaywallError } from '@/track';
 import { getServerUrl } from './serverConfig';
+import { config } from '@/config';
 
 class Sync {
 
@@ -496,11 +497,11 @@ class Sync {
                 let apiKey: string | undefined;
                 
                 if (Platform.OS === 'ios') {
-                    apiKey = process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE;
+                    apiKey = config.revenueCatAppleKey;
                 } else if (Platform.OS === 'android') {
-                    apiKey = process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE;
+                    apiKey = config.revenueCatGoogleKey;
                 } else if (Platform.OS === 'web') {
-                    apiKey = process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE;
+                    apiKey = config.revenueCatStripeKey;
                 }
 
                 if (!apiKey) {
