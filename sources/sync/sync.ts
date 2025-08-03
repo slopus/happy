@@ -211,6 +211,29 @@ class Sync {
         }
     }
 
+    getOfferings = async (): Promise<{ success: boolean; offerings?: any; error?: string }> => {
+        try {
+            // Check if RevenueCat is initialized
+            if (!this.revenueCatInitialized) {
+                return { success: false, error: 'RevenueCat not initialized' };
+            }
+
+            // Fetch offerings
+            const offerings = await Purchases.getOfferings();
+            
+            // Return the offerings data
+            return { 
+                success: true, 
+                offerings: {
+                    current: offerings.current,
+                    all: offerings.all
+                }
+            };
+        } catch (error: any) {
+            return { success: false, error: error.message || 'Failed to fetch offerings' };
+        }
+    }
+
     //
     // Private
     //

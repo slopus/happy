@@ -18,6 +18,7 @@ import { PostHogProvider } from 'posthog-react-native';
 import { tracking } from '@/track/tracking';
 import { usePathname, useSegments } from 'expo-router';
 import { syncRestore } from '@/sync/sync';
+import { useTrackScreens } from '@/track/useTrackScreens';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -99,11 +100,8 @@ export default function RootLayout() {
     }, [initState]);
 
 
-    // Track the location in your analytics provider here.
-    if (tracking) {
-        const route = useSegments().join('/'); // Using segments before normalizing to avoid leaking any params
-        React.useEffect(() => { tracking?.screen(route); }, [route]); // NOTE: NO PARAMS HERE - we dont want to leak anything at all, except very basic stuff
-    }
+    // Track the screens
+    useTrackScreens()
 
     //
     // Not inited

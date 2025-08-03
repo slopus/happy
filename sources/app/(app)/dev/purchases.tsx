@@ -17,6 +17,8 @@ export default function PurchasesDevScreen() {
     // State for purchase form
     const [productId, setProductId] = React.useState('');
     const [isPurchasing, setIsPurchasing] = React.useState(false);
+    const [offerings, setOfferings] = React.useState<any>(null);
+    const [loadingOfferings, setLoadingOfferings] = React.useState(false);
     
     // Sort entitlements alphabetically
     const sortedEntitlements = React.useMemo(() => {
@@ -40,6 +42,39 @@ export default function PurchasesDevScreen() {
             }
         } finally {
             setIsPurchasing(false);
+        }
+    };
+    
+    const fetchOfferings = async () => {
+        setLoadingOfferings(true);
+        try {
+            const result = await sync.getOfferings();
+            if (result.success) {
+                setOfferings(result.offerings);
+                
+                // Log full offerings data
+                console.log('=== RevenueCat Offerings ===');
+                console.log('Current offering:', result.offerings.current?.identifier || 'None');
+                
+                if (result.offerings.current) {
+                    console.log('\nCurrent Offering Packages:');
+                    Object.entries(result.offerings.current.availablePackages || {}).forEach(([key, pkg]: [string, any]) => {
+                        console.log(`  - ${key}: ${pkg.product.identifier} (${pkg.product.priceString})`);
+                    });
+                }
+                
+                console.log('\nAll Offerings:');
+                Object.entries(result.offerings.all || {}).forEach(([id, offering]: [string, any]) => {
+                    console.log(`  - ${id} (${Object.keys(offering.availablePackages || {}).length} packages)`);
+                });
+                
+                console.log('\nFull JSON:', JSON.stringify(result.offerings, null, 2));
+                console.log('===========================');
+            } else {
+                Modal.alert('Error', result.error || 'Failed to fetch offerings');
+            }
+        } finally {
+            setLoadingOfferings(false);
         }
     };
     
@@ -138,7 +173,39 @@ export default function PurchasesDevScreen() {
                             icon={<Ionicons name="refresh-outline" size={29} color="#007AFF" />}
                             onPress={() => sync.refreshPurchases()}
                         />
+                        <Item
+                            title={loadingOfferings ? "Loading Offerings..." : "Log Offerings"}
+                            icon={loadingOfferings ? 
+                                <ActivityIndicator size="small" color="#007AFF" /> :
+                                <Ionicons name="document-text-outline" size={29} color="#007AFF" />
+                            }
+                            onPress={fetchOfferings}
+                            disabled={loadingOfferings}
+                        />
                     </ItemGroup>
+                    
+                    {/* Offerings Info */}
+                    {offerings && (
+                        <ItemGroup title="Offerings" footer="Check console logs for full details">
+                            <Item
+                                title="Current Offering"
+                                detail={offerings.current?.identifier || "None"}
+                                showChevron={false}
+                            />
+                            <Item
+                                title="Total Offerings"
+                                detail={Object.keys(offerings.all || {}).length.toString()}
+                                showChevron={false}
+                            />
+                            {offerings.current && (
+                                <Item
+                                    title="Available Packages"
+                                    detail={Object.keys(offerings.current.availablePackages || {}).length.toString()}
+                                    showChevron={false}
+                                />
+                            )}
+                        </ItemGroup>
+                    )}
                     
                     {/* Debug Info */}
                     <ItemGroup title="Debug Info">
