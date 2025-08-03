@@ -40,6 +40,7 @@
     "dist",
     "bin",
     "scripts",
+    "ripgrep",
     "package.json"
   ],
   "scripts": {
