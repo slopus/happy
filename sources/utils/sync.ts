@@ -36,6 +36,15 @@ export class InvalidateSync {
         });
     }
 
+    async awaitQueue() {
+        if (this._stopped || (!this._invalidated && this._pendings.length === 0)) {
+            return;
+        }
+        await new Promise<void>(resolve => {
+            this._pendings.push(resolve);
+        });
+    }
+
     stop() {
         if (this._stopped) {
             return;

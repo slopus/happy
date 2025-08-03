@@ -207,6 +207,22 @@ export default function DevScreen() {
                 />
             </ItemGroup>
 
+            {/* System */}
+            <ItemGroup title="System">
+                <Item 
+                    title="Purchases"
+                    subtitle="View subscriptions and entitlements"
+                    icon={<Ionicons name="card-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/purchases')}
+                />
+                <Item 
+                    title="Tests"
+                    subtitle="Run app tests"
+                    icon={<Ionicons name="flask-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/tests')}
+                />
+            </ItemGroup>
+
             {/* Network */}
             <ItemGroup title="Network">
                 <Item 

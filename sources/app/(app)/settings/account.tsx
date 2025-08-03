@@ -13,6 +13,7 @@ import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
 import { tracking } from '@/track/tracking';
 import { useSettingMutable } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 
 export default React.memo(() => {
     const auth = useAuth();
@@ -75,6 +76,16 @@ export default React.memo(() => {
                     <Item
                         title="Status"
                         detail={auth.isAuthenticated ? "Active" : "Not Authenticated"}
+                        showChevron={false}
+                    />
+                    <Item
+                        title="Anonymous ID"
+                        detail={sync.anonID || "Not available"}
+                        showChevron={false}
+                    />
+                    <Item
+                        title="Public ID"
+                        detail={sync.pubID || "Not available"}
                         showChevron={false}
                     />
                 </ItemGroup>
