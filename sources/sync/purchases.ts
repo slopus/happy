@@ -1,5 +1,5 @@
 import * as z from 'zod';
-import type { CustomerInfo } from 'react-native-purchases';
+import type { CustomerInfo } from './revenueCat/types';
 
 //
 // Schema

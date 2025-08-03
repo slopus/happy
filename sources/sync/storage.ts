@@ -9,7 +9,7 @@ import { applySettings, Settings, settingsDefaults } from "./settings";
 import { LocalSettings, localSettingsDefaults, applyLocalSettings } from "./localSettings";
 import { Purchases, purchasesDefaults, customerInfoToPurchases } from "./purchases";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases } from "./persistence";
-import type { CustomerInfo } from 'react-native-purchases';
+import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
 

@@ -1,12 +1,20 @@
-import { Purchases } from '@revenuecat/purchases-js';
 import { 
-    RevenueCatInterface, 
-    CustomerInfo, 
-    Product, 
-    Offerings, 
+    Package, 
+    Purchases,
+    CustomerInfo as WebCustomerInfo,
+    Product as WebProduct,
+    Offerings as WebOfferings,
+    Offering as WebOffering,
+    Price as WebPrice
+} from '@revenuecat/purchases-js';
+import {
+    RevenueCatInterface,
+    CustomerInfo,
+    Product,
+    Offerings,
     PurchaseResult,
     RevenueCatConfig,
-    LogLevel 
+    LogLevel
 } from './types';
 
 class RevenueCatWeb implements RevenueCatInterface {
@@ -18,7 +26,7 @@ class RevenueCatWeb implements RevenueCatInterface {
             apiKey: config.apiKey,
             appUserId: config.appUserID
         });
-        
+
         // Web SDK doesn't have the same async configuration
         // It's initialized synchronously
     }
@@ -54,8 +62,8 @@ class RevenueCatWeb implements RevenueCatInterface {
         // Search through all offerings for the requested products
         Object.values(offerings.all || {}).forEach(offering => {
             offering.availablePackages.forEach(pkg => {
-                if (productIds.includes(pkg.rcBillingProduct.identifier)) {
-                    products.push(this.transformProduct(pkg.rcBillingProduct));
+                if (productIds.includes(pkg.webBillingProduct.identifier)) {
+                    products.push(this.transformProduct(pkg.webBillingProduct));
                 }
             });
         });
@@ -71,11 +79,11 @@ class RevenueCatWeb implements RevenueCatInterface {
         // Web purchases work differently - they require a package, not just a product
         // Find the package that contains this product
         const offerings = await this.purchases.getOfferings();
-        let targetPackage: any = null;
+        let targetPackage: Package | null = null;
 
         Object.values(offerings.all || {}).forEach(offering => {
             offering.availablePackages.forEach(pkg => {
-                if (pkg.rcBillingProduct.identifier === product.identifier) {
+                if (pkg.webBillingProduct.identifier === product.identifier) {
                     targetPackage = pkg;
                 }
             });
@@ -85,7 +93,7 @@ class RevenueCatWeb implements RevenueCatInterface {
             throw new Error(`Package for product ${product.identifier} not found`);
         }
 
-        const result = await this.purchases.purchasePackage(targetPackage);
+        const result = await this.purchases.purchase(targetPackage);
         return {
             customerInfo: this.transformCustomerInfo(result.customerInfo)
         };
@@ -97,7 +105,7 @@ class RevenueCatWeb implements RevenueCatInterface {
         if (!this.purchases) {
             throw new Error('RevenueCat not configured');
         }
-        
+
         // Just fetch customer info to ensure sync
         await this.getCustomerInfo();
     }
@@ -109,49 +117,49 @@ class RevenueCatWeb implements RevenueCatInterface {
     }
 
     // Transform web types to our common types
-    private transformCustomerInfo(webInfo: any): CustomerInfo {
-        // Transform active subscriptions
+    private transformCustomerInfo(webInfo: WebCustomerInfo): CustomerInfo {
+        console.log('Web CustomerInfo:', JSON.stringify(webInfo, null, 2));
+
+        // Transform active subscriptions from Set to object
         const activeSubscriptions: Record<string, any> = {};
-        Object.entries(webInfo.subscriber.subscriptions || {}).forEach(([key, sub]: [string, any]) => {
-            if (sub.isActive) {
-                activeSubscriptions[key] = sub;
-            }
+        webInfo.activeSubscriptions.forEach(subId => {
+            activeSubscriptions[subId] = webInfo.subscriptionsByProductIdentifier?.[subId] || {};
         });
 
         // Transform entitlements
         const entitlements: Record<string, { isActive: boolean; identifier: string }> = {};
-        Object.entries(webInfo.subscriber.entitlements || {}).forEach(([key, ent]: [string, any]) => {
+        Object.entries(webInfo.entitlements.all || {}).forEach(([key, entitlement]) => {
             entitlements[key] = {
-                isActive: ent.isActive,
-                identifier: key
+                isActive: entitlement.isActive,
+                identifier: entitlement.identifier
             };
         });
 
         return {
             activeSubscriptions,
             entitlements: { all: entitlements },
-            originalAppUserId: webInfo.subscriber.originalAppUserId,
-            requestDate: new Date()
+            originalAppUserId: webInfo.originalAppUserId,
+            requestDate: webInfo.requestDate
         };
     }
 
-    private transformProduct(webProduct: any): Product {
+    private transformProduct(webProduct: WebProduct): Product {
         return {
             identifier: webProduct.identifier,
-            priceString: webProduct.priceString,
-            price: webProduct.price,
-            currencyCode: webProduct.currency,
-            title: webProduct.displayName,
+            priceString: webProduct.currentPrice.formattedPrice,
+            price: webProduct.currentPrice.amountMicros / 1000000,
+            currencyCode: webProduct.currentPrice.currency,
+            title: webProduct.title,
             description: webProduct.description || ''
         };
     }
 
-    private transformOfferings(webOfferings: any): Offerings {
-        const transformPackages = (packages: any[]) => {
+    private transformOfferings(webOfferings: WebOfferings): Offerings {
+        const transformPackages = (packages: Package[]) => {
             return packages.map(pkg => ({
                 identifier: pkg.identifier,
-                packageType: pkg.packageType || 'custom',
-                product: this.transformProduct(pkg.rcBillingProduct)
+                packageType: 'custom', // Web SDK doesn't expose packageType
+                product: this.transformProduct(pkg.webBillingProduct)
             }));
         };
 
@@ -160,7 +168,7 @@ class RevenueCatWeb implements RevenueCatInterface {
                 identifier: webOfferings.current.identifier,
                 availablePackages: transformPackages(webOfferings.current.availablePackages)
             } : null,
-            all: Object.entries(webOfferings.all || {}).reduce((acc, [key, offering]: [string, any]) => {
+            all: Object.entries(webOfferings.all || {}).reduce((acc, [key, offering]) => {
                 acc[key] = {
                     identifier: offering.identifier,
                     availablePackages: transformPackages(offering.availablePackages)
