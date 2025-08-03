@@ -54,10 +54,9 @@ function StatusDot({ color, isPulsing }: { color: string; isPulsing?: boolean })
 interface SessionsListProps {
     data: SessionListItem[];
     selectedSessionId?: string | null;
-    onSessionPress?: (sessionId: string) => void;
 }
 
-export function SessionsList({ data, selectedSessionId, onSessionPress }: SessionsListProps) {
+export function SessionsList({ data, selectedSessionId }: SessionsListProps) {
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
 
@@ -84,11 +83,10 @@ export function SessionsList({ data, selectedSessionId, onSessionPress }: Sessio
             <SessionItem
                 session={session}
                 selectedSessionId={selectedSessionId}
-                onSessionPress={onSessionPress}
                 router={router}
             />
         );
-    }, [router, selectedSessionId, onSessionPress]);
+    }, [router, selectedSessionId]);
 
     const getItemType = React.useCallback((item: SessionListItem) => {
         return typeof item === 'string' ? 'header' : 'session';
@@ -122,12 +120,11 @@ export function SessionsList({ data, selectedSessionId, onSessionPress }: Sessio
 }
 
 // Sub-component that handles session message logic
-function SessionItem({ session, selectedSessionId, router }: {
+const SessionItem = React.memo(({ session, selectedSessionId, router }: {
     session: Session;
     selectedSessionId?: string | null;
-    onSessionPress?: (sessionId: string) => void;
     router: any;
-}) {
+}) => {
     const sessionStatus = getSessionState(session);
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
@@ -203,4 +200,4 @@ function SessionItem({ session, selectedSessionId, router }: {
             </View>
         </Pressable>
     );
-}
+});

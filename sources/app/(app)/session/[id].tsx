@@ -284,7 +284,29 @@ ${conversationContext}`;
                 </View>
             </View>
         )
-    }, [permissionRequest]);
+    }, [permissionRequest, sessionId]);
+
+    // Memoize FlatList props
+    const keyExtractor = useCallback((item: any) => item.id, []);
+    
+    const renderItem = useCallback(({ item }: { item: any }) => (
+        <MessageView
+            message={item}
+            metadata={session.metadata}
+            sessionId={sessionId}
+        />
+    ), [session.metadata, sessionId]);
+    
+    const contentContainerStyle = useMemo(() => ({
+        paddingHorizontal: screenWidth > 700 ? 16 : 0
+    }), [screenWidth]);
+    
+    const maintainVisibleContentPosition = useMemo(() => ({
+        minIndexForVisible: 0,
+        autoscrollToTopThreshold: 100,
+    }), []);
+    
+    const ListFooterComponent = useCallback(() => <View style={headerDependentStyles.listFooterHeight} />, [headerDependentStyles.listFooterHeight]);
 
     return (
         <>
@@ -413,26 +435,15 @@ ${conversationContext}`;
                                     removeClippedSubviews={true}
                                     data={messages}
                                     inverted={true}
-                                    keyExtractor={(item) => item.id}
+                                    keyExtractor={keyExtractor}
                                     style={headerDependentStyles.flatListStyle}
-                                    maintainVisibleContentPosition={{
-                                        minIndexForVisible: 0,
-                                        autoscrollToTopThreshold: 100,
-                                    }}
+                                    maintainVisibleContentPosition={maintainVisibleContentPosition}
                                     keyboardShouldPersistTaps="handled"
                                     keyboardDismissMode="none"
-                                    renderItem={({ item }) => (
-                                        <MessageView
-                                            message={item}
-                                            metadata={session.metadata}
-                                            sessionId={sessionId}
-                                        />
-                                    )}
-                                    contentContainerStyle={{
-                                        paddingHorizontal: screenWidth > 700 ? 16 : 0
-                                    }}
+                                    renderItem={renderItem}
+                                    contentContainerStyle={contentContainerStyle}
                                     ListHeaderComponent={footer}
-                                    ListFooterComponent={() => <View style={headerDependentStyles.listFooterHeight} />}
+                                    ListFooterComponent={ListFooterComponent}
                                 />
                             )}
                         </Deferred>

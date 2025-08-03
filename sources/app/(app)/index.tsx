@@ -100,7 +100,6 @@ function Authenticated() {
                 {sessionsData.length === 0 ? emptyState : (
                     <SessionsList
                         data={sessionsData}
-                        onSessionPress={(sessionId) => router.push(`/session/${sessionId}`)}
                     />
                 )}
             </View>
