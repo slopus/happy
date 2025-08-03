@@ -10,6 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `yarn android` - Run the app on Android emulator  
 - `yarn web` - Run the app in web browser
 - `yarn prebuild` - Generate native iOS and Android directories
+- `yarn typecheck` - Run TypeScript type checking after all changes
 
 ### Testing
 - `yarn test` - Run tests in watch mode (Jest with jest-expo preset)
@@ -57,6 +58,7 @@ sources/
 - Store all temporary scripts and any test outside of unit tests in sources/trash folder
 - When setting screen parameters ALWAYS set them in _layout.tsx if possible this avoids layout shifts
 - **Never use Alert module from React Native, always use @sources/modal/index.ts instead**
+- Always run `yarn typecheck` after all changes to ensure type safety
 
 ### Important Files
 

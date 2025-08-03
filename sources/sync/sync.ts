@@ -18,8 +18,7 @@ import { loadPendingSettings, savePendingSettings } from './persistence';
 import { initializeTracking, tracking } from '@/track';
 import { parseToken } from '@/utils/parseToken';
 import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
-
-const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
+import { getServerUrl } from './serverConfig';
 
 class Sync {
 
@@ -271,6 +270,7 @@ class Sync {
     private fetchSessions = async () => {
         if (!this.credentials) return;
 
+        const API_ENDPOINT = getServerUrl();
         const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
             headers: {
                 'Authorization': `Bearer ${this.credentials.token}`,
@@ -362,6 +362,7 @@ class Sync {
     private syncSettings = async () => {
         if (!this.credentials) return;
 
+        const API_ENDPOINT = getServerUrl();
         // Apply pending settings
         if (Object.keys(this.pendingSettings).length > 0) {
 
@@ -748,6 +749,7 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
     initializeTracking(encryption.anonID);
 
     // Initialize socket connection
+    const API_ENDPOINT = getServerUrl();
     apiSocket.initialize({ endpoint: API_ENDPOINT, token: credentials.token }, encryption);
 
     // Initialize sessions engine

@@ -14,6 +14,7 @@ import { layout } from '@/components/layout';
 import { tracking } from '@/track/tracking';
 import { useSettingMutable } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { getServerInfo, isUsingCustomServer } from '@/sync/serverConfig';
 
 export default React.memo(() => {
     const auth = useAuth();
@@ -25,6 +26,9 @@ export default React.memo(() => {
     // Get the current secret key
     const currentSecret = auth.credentials?.secret || '';
     const formattedSecret = currentSecret ? formatSecretKeyForBackup(currentSecret) : '';
+
+    // Get server info
+    const serverInfo = getServerInfo();
 
     const handleShowSecret = () => {
         setShowSecret(!showSecret);
@@ -90,6 +94,17 @@ export default React.memo(() => {
                     />
                 </ItemGroup>
 
+                {/* Server Info */}
+                {serverInfo.isCustom && (
+                    <ItemGroup title="Server">
+                        <Item
+                            title="Server"
+                            detail={serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '')}
+                            showChevron={false}
+                        />
+                    </ItemGroup>
+                )}
+
                 {/* Backup Section */}
                 <ItemGroup
                     title="Backup"
@@ -147,7 +162,7 @@ export default React.memo(() => {
                 )}
 
                 {/* Analytics Section */}
-                <ItemGroup 
+                <ItemGroup
                     title="Privacy"
                     footer="Help improve the app by sharing anonymous usage data. No personal information is collected."
                 >

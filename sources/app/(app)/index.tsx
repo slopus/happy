@@ -16,6 +16,26 @@ import { useIsTablet, useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
 import { EmptyMainScreen } from "@/components/EmptyMainScreen";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
+import { getServerInfo } from "@/sync/serverConfig";
+
+// Header title component with subtitle
+function HeaderTitleWithSubtitle({ subtitle }: { subtitle?: string }) {
+    const hasSubtitle = !!subtitle;
+    const titleFontSize = hasSubtitle ? 20 : 24;
+    
+    return (
+        <View style={{ alignItems: 'center' }}>
+            <Text style={{ fontSize: titleFontSize, color: '#000', ...Typography.logo() }}>
+                Happy Coder
+            </Text>
+            {hasSubtitle && (
+                <Text style={{ fontSize: 12, color: '#007AFF', marginTop: 2 }}>
+                    {subtitle}
+                </Text>
+            )}
+        </View>
+    );
+}
 
 export default function Home() {
     const auth = useAuth();
@@ -71,6 +91,7 @@ function Authenticated() {
         <>
             <Stack.Screen
                 options={{
+                    headerTitle: () => <HeaderTitleWithSubtitle />,
                     headerRight: () => <HeaderRight />
                 }}
             />
@@ -182,11 +203,13 @@ function NotAuthenticated() {
         </View>
     );
 
+    const serverInfo = getServerInfo(); // Re-rendered automatically when screen navigates back
     return (
         <>
             <Stack.Screen
                 options={{
-                    headerRight: () => null
+                    headerTitle: () => <HeaderTitleWithSubtitle subtitle={serverInfo.isCustom ? serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '') : undefined} />,
+                    headerRight: () => <HeaderRightNotAuth />
                 }}
             />
             {isLandscape ? landscapeLayout : portraitLayout}
@@ -204,6 +227,20 @@ function HeaderRight() {
             style={{ marginRight: Platform.OS === 'ios' ? 0 : 16 }}
         >
             <Ionicons name="settings-outline" size={24} color="#000" />
+        </Pressable>
+    );
+}
+
+function HeaderRightNotAuth() {
+    const router = useRouter();
+
+    return (
+        <Pressable
+            onPress={() => router.push('/server')}
+            hitSlop={10}
+            style={{ marginRight: Platform.OS === 'ios' ? 0 : 16 }}
+        >
+            <Ionicons name="server-outline" size={24} color="#000" />
         </Pressable>
     );
 }
