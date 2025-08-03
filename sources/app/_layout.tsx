@@ -6,7 +6,7 @@ import '@/global.css';
 import { FontAwesome } from '@expo/vector-icons';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { AuthProvider } from '@/auth/AuthContext';
-import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DefaultTheme, ThemeProvider, useRoute } from '@react-navigation/native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -16,7 +16,7 @@ import { View } from 'react-native';
 import { ModalProvider } from '@/modal';
 import { PostHogProvider } from 'posthog-react-native';
 import { tracking } from '@/track/tracking';
-import { usePathname } from 'expo-router';
+import { usePathname, useSegments } from 'expo-router';
 import { syncRestore } from '@/sync/sync';
 
 export {
@@ -101,8 +101,8 @@ export default function RootLayout() {
 
     // Track the location in your analytics provider here.
     if (tracking) {
-        const pathname = usePathname();
-        React.useEffect(() => { tracking?.screen(pathname); }, [pathname]); // NOTE: NO PARAMS HERE - we dont want to leak anything at all, except very basic stuff
+        const route = useSegments().join('/'); // Using segments before normalizing to avoid leaking any params
+        React.useEffect(() => { tracking?.screen(route); }, [route]); // NOTE: NO PARAMS HERE - we dont want to leak anything at all, except very basic stuff
     }
 
     //
