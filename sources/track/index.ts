@@ -8,7 +8,7 @@ export { tracking } from './tracking';
  * Should be called once during auth initialization.
  */
 export function initializeTracking(anonymousUserId: string) {
-    tracking?.identify(anonymousUserId);
+    tracking?.identify(anonymousUserId, { name: anonymousUserId });
 }
 
 /**
