@@ -97,6 +97,7 @@ describe('settings', () => {
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
+                analyticsOptOut: false,
                 inferenceOpenAIKey: null
             };
             const delta: Partial<Settings> = {
@@ -107,6 +108,7 @@ describe('settings', () => {
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
+                analyticsOptOut: false,
                 inferenceOpenAIKey: null
             });
         });
@@ -117,6 +119,7 @@ describe('settings', () => {
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
+                analyticsOptOut: false,
                 inferenceOpenAIKey: null
             };
             const delta: Partial<Settings> = {};
@@ -132,6 +135,7 @@ describe('settings', () => {
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
+                analyticsOptOut: false,
                 inferenceOpenAIKey: null
             };
             const delta: Partial<Settings> = {
@@ -142,6 +146,7 @@ describe('settings', () => {
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
+                analyticsOptOut: false,
                 inferenceOpenAIKey: null
             });
         });
@@ -152,6 +157,7 @@ describe('settings', () => {
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
+                analyticsOptOut: false,
                 inferenceOpenAIKey: null
             };
             expect(applySettings(currentSettings, {})).toEqual({
@@ -181,6 +187,7 @@ describe('settings', () => {
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
+                analyticsOptOut: false,
                 inferenceOpenAIKey: null
             };
             const delta: any = {
@@ -219,6 +226,7 @@ describe('settings', () => {
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
+                analyticsOptOut: false,
                 inferenceOpenAIKey: null
             });
         });

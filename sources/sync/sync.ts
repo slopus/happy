@@ -15,7 +15,7 @@ import { decodeBase64 } from '@/auth/base64';
 import { SessionEncryption } from './apiSessionEncryption';
 import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
 import { loadPendingSettings, savePendingSettings } from './persistence';
-import { initializeTracking } from '@/track';
+import { initializeTracking, tracking } from '@/track';
 
 const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
@@ -41,6 +41,16 @@ class Sync {
 
         // Subscribe to updates
         this.subscribeToUpdates();
+
+        // Sync initial PostHog opt-out state with stored settings
+        if (tracking) {
+            const currentSettings = storage.getState().settings;
+            if (currentSettings.analyticsOptOut) {
+                tracking.optOut();
+            } else {
+                tracking.optIn();
+            }
+        }
 
         // Invalidate sync
         this.sessionsSync.invalidate();
@@ -114,6 +124,16 @@ class Sync {
         this.pendingSettings = { ...this.pendingSettings, ...delta };
         savePendingSettings(this.pendingSettings);
         console.log('pendingSettings', this.pendingSettings);
+
+        // Sync PostHog opt-out state if it was changed
+        if (tracking && 'analyticsOptOut' in delta) {
+            const currentSettings = storage.getState().settings;
+            if (currentSettings.analyticsOptOut) {
+                tracking.optOut();
+            } else {
+                tracking.optIn();
+            }
+        }
 
         // Invalidate settings sync
         this.settingsSync.invalidate();
@@ -264,6 +284,15 @@ class Sync {
                     // Apply settings to storage
                     storage.getState().applySettings(parsedSettings, data.currentVersion);
 
+                    // Sync PostHog opt-out state with settings
+                    if (tracking) {
+                        if (parsedSettings.analyticsOptOut) {
+                            tracking.optOut();
+                        } else {
+                            tracking.optIn();
+                        }
+                    }
+
                 } else {
                     throw new Error(`Failed to sync settings: ${data.error}`);
                 }
@@ -305,6 +334,15 @@ class Sync {
 
         // Apply settings to storage
         storage.getState().applySettings(parsedSettings, data.settingsVersion);
+
+        // Sync PostHog opt-out state with settings
+        if (tracking) {
+            if (parsedSettings.analyticsOptOut) {
+                tracking.optOut();
+            } else {
+                tracking.optIn();
+            }
+        }
     }
 
     private fetchMessages = async (sessionId: string) => {
