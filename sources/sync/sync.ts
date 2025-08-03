@@ -34,7 +34,7 @@ class Sync {
     private settingsSync: InvalidateSync;
     private purchasesSync: InvalidateSync;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
-    private revenueCatInitialized = false;
+    revenueCatInitialized = false;
 
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);

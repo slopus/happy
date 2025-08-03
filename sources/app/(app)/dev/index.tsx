@@ -215,12 +215,6 @@ export default function DevScreen() {
                     icon={<Ionicons name="card-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/purchases')}
                 />
-                <Item 
-                    title="Tests"
-                    subtitle="Run app tests"
-                    icon={<Ionicons name="flask-outline" size={28} color="#007AFF" />}
-                    onPress={() => router.push('/dev/tests')}
-                />
             </ItemGroup>
 
             {/* Network */}
