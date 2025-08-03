@@ -38,12 +38,7 @@ export default function RootLayout() {
             <Stack.Screen
                 name="index"
                 options={{
-                    headerShown: true,
-                    headerTitle: () => (
-                        <Text useDefaultTypography={false} style={{ fontSize: 24, color: '#000', ...Typography.logo() }}>
-                            Happy Coder
-                        </Text>
-                    )
+                    headerShown: true
                 }}
             />
             <Stack.Screen
