@@ -9,15 +9,17 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
-import { useEntitlement } from '@/sync/storage';
+import { useEntitlement, useLocalSettingMutable } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { trackPaywallButtonClicked } from '@/track';
+import { Modal } from '@/modal';
+import { useMultiClick } from '@/hooks/useMultiClick';
 
 export default function SettingsScreen() {
     const router = useRouter();
     const appVersion = Constants.expoConfig?.version || '1.0.0';
     const auth = useAuth();
-    const isDev = __DEV__;
+    const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
     const isPro = useEntitlement('pro');
 
     const { connectTerminal, isLoading } = useConnectTerminal();
@@ -47,6 +49,20 @@ export default function SettingsScreen() {
             console.log('Purchase successful!');
         }
     };
+    
+    // Use the multi-click hook for version clicks
+    const handleVersionClick = useMultiClick(() => {
+        // Toggle dev mode
+        const newDevMode = !devModeEnabled;
+        setDevModeEnabled(newDevMode);
+        Modal.alert(
+            'Developer Mode',
+            newDevMode ? 'Developer mode enabled' : 'Developer mode disabled'
+        );
+    }, {
+        requiredClicks: 10,
+        resetTimeout: 2000
+    });
 
 
     return (
@@ -61,9 +77,11 @@ export default function SettingsScreen() {
                 <Text style={{ ...Typography.logo(), fontSize: 24, fontWeight: 'bold', marginBottom: 4 }}>
                     Happy Coder
                 </Text>
-                <Text style={{ ...Typography.mono(), fontSize: 14, color: '#8E8E93' }}>
-                    Version {appVersion}
-                </Text>
+                <Pressable onPress={handleVersionClick} hitSlop={20}>
+                    <Text style={{ ...Typography.mono(), fontSize: 14, color: '#8E8E93' }}>
+                        Version {appVersion}
+                    </Text>
+                </Pressable>
             </View>
 
             {/* Terminal - Only show on native platforms */}
@@ -115,7 +133,7 @@ export default function SettingsScreen() {
             </ItemGroup>
 
             {/* Developer */}
-            {isDev && (
+            {(__DEV__ || devModeEnabled) && (
                 <ItemGroup title="Developer">
                     <Item
                         title="Developer Tools"
