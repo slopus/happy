@@ -14,13 +14,14 @@ import { sync } from '@/sync/sync';
 import { trackPaywallButtonClicked } from '@/track';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
+import { PlusPlus } from '@/components/PlusPlus';
 
 export default function SettingsScreen() {
     const router = useRouter();
     const appVersion = Constants.expoConfig?.version || '1.0.0';
     const auth = useAuth();
     const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
-    const isPro = useEntitlement('pro');
+    const isPro = __DEV__ || useEntitlement('pro');
 
     const { connectTerminal, isLoading } = useConnectTerminal();
 
@@ -74,9 +75,12 @@ export default function SettingsScreen() {
                     source={require('@/assets/images/happy-otter-2.png')}
                     style={{ width: 100, height: 70, marginBottom: 12 }}
                 />
-                <Text style={{ ...Typography.logo(), fontSize: 24, fontWeight: 'bold', marginBottom: 4 }}>
-                    Happy Coder
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <Text style={{ ...Typography.logo(), fontSize: 24, fontWeight: 'bold' }}>
+                        Happy Coder
+                    </Text>
+                    {isPro && <PlusPlus fontSize={24} />}
+                </View>
                 <Pressable onPress={handleVersionClick} hitSlop={20}>
                     <Text style={{ ...Typography.mono(), fontSize: 14, color: '#8E8E93' }}>
                         Version {appVersion}
