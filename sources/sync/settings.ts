@@ -11,6 +11,7 @@ export const SettingsSchema = z.object({
     showLineNumbers: z.boolean().describe('Whether to show line numbers in diffs'),
     showLineNumbersInToolViews: z.boolean().describe('Whether to show line numbers in tool view diffs'),
     analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
+    experiments: z.boolean().describe('Whether to enable experimental features'),
 });
 
 //
@@ -38,7 +39,8 @@ export const settingsDefaults: Settings = {
     expandTodos: true,
     showLineNumbers: true,
     showLineNumbersInToolViews: false,
-    analyticsOptOut: false
+    analyticsOptOut: false,
+    experiments: false
 };
 Object.freeze(settingsDefaults);
 
