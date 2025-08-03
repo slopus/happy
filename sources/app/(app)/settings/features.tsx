@@ -11,6 +11,7 @@ import { Modal } from '@/modal';
 
 export default function FeaturesSettingsScreen() {
     const [openAIKey, setOpenAIKey] = useSettingMutable('inferenceOpenAIKey');
+    const [experiments, setExperiments] = useSettingMutable('experiments');
     const [isEditingAPIKey, setIsEditingAPIKey] = useState(false);
     const [tempOpenAIKey, setTempOpenAIKey] = useState(openAIKey || '');
 
@@ -79,80 +80,23 @@ export default function FeaturesSettingsScreen() {
 
 
             {/* Experimental Features */}
-            <ItemGroup title="Experimental" footer="These features are in beta and may not work as expected">
+            <ItemGroup 
+                title="Experiments" 
+                footer="Enable experimental features that are still in development. These features may be unstable or change without notice."
+            >
                 <Item
-                    title="Real-time Responses"
-                    subtitle="Stream responses as they're generated"
-                    icon={<Ionicons name="flash-outline" size={29} color="#FF9500" />}
-                    disabled
+                    title="Experimental Features"
+                    subtitle={experiments ? "Experimental features enabled" : "Using stable features only"}
+                    icon={<Ionicons name="flask-outline" size={29} color="#5856D6" />}
                     rightElement={
                         <Switch
-                            value={false}
-                            disabled
+                            value={experiments}
+                            onValueChange={setExperiments}
                             trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
+                            thumbColor="#FFFFFF"
                         />
                     }
-                />
-                <Item
-                    title="Voice Input"
-                    subtitle="Use voice commands to interact"
-                    icon={<Ionicons name="mic-outline" size={29} color="#FF9500" />}
-                    disabled
-                    rightElement={
-                        <Switch
-                            value={false}
-                            disabled
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
-                        />
-                    }
-                />
-                <Item
-                    title="Code Execution"
-                    subtitle="Run code snippets directly in the app"
-                    icon={<Ionicons name="play-circle-outline" size={29} color="#FF9500" />}
-                    disabled
-                    rightElement={
-                        <Switch
-                            value={false}
-                            disabled
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
-                        />
-                    }
-                />
-            </ItemGroup>
-
-            {/* Performance Features */}
-            <ItemGroup title="Performance" footer="Optimize app performance and battery life">
-                <Item
-                    title="Aggressive Caching"
-                    subtitle="Cache more data for offline use"
-                    icon={<Ionicons name="speedometer-outline" size={29} color="#34C759" />}
-                    disabled
-                    rightElement={
-                        <Switch
-                            value={false}
-                            disabled
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
-                        />
-                    }
-                />
-                <Item
-                    title="Background Sync"
-                    subtitle="Sync messages in the background"
-                    icon={<Ionicons name="sync-outline" size={29} color="#34C759" />}
-                    disabled
-                    rightElement={
-                        <Switch
-                            value={false}
-                            disabled
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
-                        />
-                    }
+                    showChevron={false}
                 />
             </ItemGroup>
         </ItemList>

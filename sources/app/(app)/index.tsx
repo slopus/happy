@@ -78,9 +78,17 @@ function Authenticated() {
 
     if (sessionsData === null) {
         return (
-            <View className="flex-1 items-center justify-center mb-8">
-                <ActivityIndicator size="small" color="#000000" />
-            </View>
+            <>
+                <Stack.Screen
+                    options={{
+                        headerTitle: () => <HeaderTitleWithSubtitle />,
+                        headerRight: () => <HeaderRight />
+                    }}
+                />
+                <View className="flex-1 items-center justify-center mb-8">
+                    <ActivityIndicator size="small" color="#000000" />
+                </View>
+            </>
         )
     }
 
@@ -223,7 +231,6 @@ function HeaderRight() {
         <Pressable
             onPress={() => router.push('/settings')}
             hitSlop={10}
-            style={{ marginRight: Platform.OS === 'ios' ? 0 : 16 }}
         >
             <Ionicons name="settings-outline" size={24} color="#000" />
         </Pressable>
@@ -237,7 +244,6 @@ function HeaderRightNotAuth() {
         <Pressable
             onPress={() => router.push('/server')}
             hitSlop={10}
-            style={{ marginRight: Platform.OS === 'ios' ? 0 : 16 }}
         >
             <Ionicons name="server-outline" size={24} color="#000" />
         </Pressable>

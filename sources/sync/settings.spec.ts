@@ -98,7 +98,8 @@ describe('settings', () => {
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
-                inferenceOpenAIKey: null
+                inferenceOpenAIKey: null,
+                experiments: false
             };
             const delta: Partial<Settings> = {
                 viewInline: true
@@ -109,7 +110,8 @@ describe('settings', () => {
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
-                inferenceOpenAIKey: null
+                inferenceOpenAIKey: null,
+                experiments: false
             });
         });
 
@@ -120,7 +122,8 @@ describe('settings', () => {
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
-                inferenceOpenAIKey: null
+                inferenceOpenAIKey: null,
+                experiments: false
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual({
@@ -136,7 +139,8 @@ describe('settings', () => {
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
-                inferenceOpenAIKey: null
+                inferenceOpenAIKey: null,
+                experiments: false
             };
             const delta: Partial<Settings> = {
                 viewInline: false
@@ -158,7 +162,8 @@ describe('settings', () => {
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
-                inferenceOpenAIKey: null
+                inferenceOpenAIKey: null,
+                experiments: false
             };
             expect(applySettings(currentSettings, {})).toEqual({
                 ...settingsDefaults,
@@ -188,7 +193,8 @@ describe('settings', () => {
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
-                inferenceOpenAIKey: null
+                inferenceOpenAIKey: null,
+                experiments: false
             };
             const delta: any = {
                 viewInline: false,
