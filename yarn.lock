@@ -1823,6 +1823,11 @@
     redux-thunk "^3.1.0"
     reselect "^5.1.0"
 
+"@revenuecat/purchases-js@^1.11.1":
+  version "1.11.1"
+  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-js/-/purchases-js-1.11.1.tgz#49ff154a7175539803eb877f2fd1f181b6076d65"
+  integrity sha512-P0jxwUBWOIFSZQ1/NIMpbOXG3brraNDGYoCnES1r5w97yonhAw1brpKwhFKUhlq+DvAUDCG1q1d8FdTzI+MgXg==
+
 "@revenuecat/purchases-typescript-internal@16.0.2":
   version "16.0.2"
   resolved "https://registry.yarnpkg.com/@revenuecat/purchases-typescript-internal/-/purchases-typescript-internal-16.0.2.tgz#4fc9ed8749de469589d92c6c79636784da6194bc"
