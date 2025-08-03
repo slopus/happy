@@ -9,35 +9,70 @@ import { InvalidateSync } from '@/utils/sync';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
-import { Platform } from 'react-native';
+import { Platform, AppState } from 'react-native';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { decodeBase64 } from '@/auth/base64';
 import { SessionEncryption } from './apiSessionEncryption';
 import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
 import { loadPendingSettings, savePendingSettings } from './persistence';
 import { initializeTracking, tracking } from '@/track';
+import { parseToken } from '@/utils/parseToken';
+import Purchases, { LOG_LEVEL } from 'react-native-purchases';
 
 const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
 class Sync {
 
     encryption!: ApiEncryption;
+    pubID!: string;
+    anonID!: string;
     private credentials!: AuthCredentials;
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionEncryption = new Map<string, SessionEncryption>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
     private settingsSync: InvalidateSync;
+    private purchasesSync: InvalidateSync;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
+    private revenueCatInitialized = false;
 
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
         this.settingsSync = new InvalidateSync(this.syncSettings);
+        this.purchasesSync = new InvalidateSync(this.syncPurchases);
+        
+        // Listen for app state changes to refresh purchases
+        AppState.addEventListener('change', (nextAppState) => {
+            if (nextAppState === 'active') {
+                this.purchasesSync.invalidate();
+            }
+        });
     }
 
-    async initialize(credentials: AuthCredentials, encryption: ApiEncryption) {
+    async create(credentials: AuthCredentials, encryption: ApiEncryption) {
         this.credentials = credentials;
         this.encryption = encryption;
+        this.anonID = encryption.anonID;
+        this.pubID = parseToken(credentials.token);
+        await this.#init();
+
+        // Await settings sync to have fresh settings
+        await this.settingsSync.awaitQueue();
+
+        // Await purchases sync to have fresh purchases
+        await this.purchasesSync.awaitQueue();
+    }
+
+    async restore(credentials: AuthCredentials, encryption: ApiEncryption) {
+        // NOTE: No awaiting anything here, we're restoring from a disk (ie app restarted)
+        this.credentials = credentials;
+        this.encryption = encryption;
+        this.anonID = encryption.anonID;
+        this.pubID = parseToken(credentials.token);
+        await this.#init();
+    }
+
+    async #init() {
 
         // Subscribe to updates
         this.subscribeToUpdates();
@@ -55,6 +90,7 @@ class Sync {
         // Invalidate sync
         this.sessionsSync.invalidate();
         this.settingsSync.invalidate();
+        this.purchasesSync.invalidate();
 
         // Register push token
         this.registerPushToken();
@@ -137,6 +173,10 @@ class Sync {
 
         // Invalidate settings sync
         this.settingsSync.invalidate();
+    }
+
+    refreshPurchases = () => {
+        this.purchasesSync.invalidate();
     }
 
     //
@@ -345,6 +385,57 @@ class Sync {
         }
     }
 
+    private syncPurchases = async () => {
+        try {
+            // Initialize RevenueCat if not already done
+            if (!this.revenueCatInitialized) {
+                // Get the appropriate API key based on platform
+                let apiKey: string | undefined;
+                
+                if (Platform.OS === 'ios') {
+                    apiKey = process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE;
+                } else if (Platform.OS === 'android') {
+                    apiKey = process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE;
+                } else if (Platform.OS === 'web') {
+                    apiKey = process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE;
+                }
+
+                if (!apiKey) {
+                    console.log(`RevenueCat: No API key found for platform ${Platform.OS}`);
+                    return;
+                }
+
+                // Configure RevenueCat
+                if (__DEV__) {
+                    Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+                }
+
+                // Initialize with the public ID as user ID
+                Purchases.configure({
+                    apiKey,
+                    appUserID: this.pubID,
+                    useAmazon: false,
+                });
+
+                this.revenueCatInitialized = true;
+                console.log('RevenueCat initialized successfully');
+            }
+
+            // Sync purchases
+            await Purchases.syncPurchases();
+
+            // Fetch customer info
+            const customerInfo = await Purchases.getCustomerInfo();
+            
+            // Apply to storage (storage handles the transformation)
+            storage.getState().applyPurchases(customerInfo);
+            
+        } catch (error) {
+            console.error('Failed to sync purchases:', error);
+            // Don't throw - purchases are optional
+        }
+    }
+
     private fetchMessages = async (sessionId: string) => {
 
         // Get encryption
@@ -545,11 +636,25 @@ export const sync = new Sync();
 //
 
 let isInitialized = false;
-export async function syncInit(credentials: AuthCredentials) {
+export async function syncCreate(credentials: AuthCredentials) {
     if (isInitialized) {
         console.warn('Sync already initialized: ignoring');
         return;
     }
+    isInitialized = true;
+    await syncInit(credentials, false);
+}
+
+export async function syncRestore(credentials: AuthCredentials) {
+    if (isInitialized) {
+        console.warn('Sync already initialized: ignoring');
+        return;
+    }
+    isInitialized = true;
+    await syncInit(credentials, true);
+}
+
+async function syncInit(credentials: AuthCredentials, restore: boolean) {
 
     // Initialize sync engine
     const encryption = await ApiEncryption.create(credentials.secret);
@@ -561,7 +666,9 @@ export async function syncInit(credentials: AuthCredentials) {
     apiSocket.initialize({ endpoint: API_ENDPOINT, token: credentials.token }, encryption);
 
     // Initialize sessions engine
-    await sync.initialize(credentials, encryption);
-
-    isInitialized = true;
+    if (restore) {
+        await sync.restore(credentials, encryption);
+    } else {
+        await sync.create(credentials, encryption);
+    }
 }

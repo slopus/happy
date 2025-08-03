@@ -7,11 +7,16 @@ import { normalizeRawMessage } from "./typesRaw";
 import { isSessionActive, DISCONNECTED_TIMEOUT_MS } from '@/utils/sessionUtils';
 import { applySettings, Settings, settingsDefaults } from "./settings";
 import { LocalSettings, localSettingsDefaults, applyLocalSettings } from "./localSettings";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings } from "./persistence";
+import { Purchases, purchasesDefaults, customerInfoToPurchases } from "./purchases";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases } from "./persistence";
+import type { CustomerInfo } from 'react-native-purchases';
 import React from "react";
 import { sync } from "./sync";
 
 // Use the same timeout for both online status and disconnection detection
+
+// Known entitlement IDs
+export type KnownEntitlements = 'pro';
 
 interface SessionMessages {
     messages: Message[];
@@ -26,6 +31,7 @@ interface StorageState {
     settings: Settings;
     settingsVersion: number | null;
     localSettings: LocalSettings;
+    purchases: Purchases;
     sessions: Record<string, Session>;
     sessionsData: SessionListItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
@@ -36,16 +42,19 @@ interface StorageState {
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
+    applyPurchases: (customerInfo: CustomerInfo) => void;
     recalculateOnline: () => void;
 }
 
 export const storage = create<StorageState>()((set) => {
     let { settings, version } = loadSettings();
     let localSettings = loadLocalSettings();
+    let purchases = loadPurchases();
     return {
         settings,
         settingsVersion: version,
         localSettings,
+        purchases,
         sessions: {},
         sessionsData: null,
         sessionMessages: {},
@@ -318,6 +327,17 @@ export const storage = create<StorageState>()((set) => {
                 localSettings: updatedLocalSettings
             };
         }),
+        applyPurchases: (customerInfo: CustomerInfo) => set((state) => {
+            // Transform CustomerInfo to our Purchases format
+            const purchases = customerInfoToPurchases(customerInfo);
+            
+            // Always save and update - no need for version checks
+            savePurchases(purchases);
+            return {
+                ...state,
+                purchases
+            };
+        }),
     }
 });
 
@@ -378,4 +398,8 @@ export function useLocalSettingMutable<K extends keyof LocalSettings>(name: K): 
 
 export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSettings[K] {
     return storage(useShallow((state) => state.localSettings[name]));
+}
+
+export function useEntitlement(id: KnownEntitlements): boolean {
+    return storage(useShallow((state) => state.purchases.entitlements[id] ?? false));
 }

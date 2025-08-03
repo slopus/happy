@@ -3,6 +3,7 @@ FROM node:20-alpine AS builder
 
 # Build argument for PostHog API key with default empty value
 ARG POSTHOG_API_KEY=""
+ARG REVENUE_CAT_STRIPE=""
 
 WORKDIR /app
 
@@ -21,6 +22,7 @@ COPY * ./
 ENV NODE_ENV=production
 ENV APP_ENV=production
 ENV EXPO_PUBLIC_POSTHOG_API_KEY=$POSTHOG_API_KEY
+ENV EXPO_PUBLIC_REVENUE_CAT_STRIPE=$REVENUE_CAT_STRIPE
 RUN yarn expo export --platform web --output-dir dist
 
 # Stage 2: Runtime with Nginx

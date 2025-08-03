@@ -16,8 +16,8 @@ import { View } from 'react-native';
 import { ModalProvider } from '@/modal';
 import { PostHogProvider } from 'posthog-react-native';
 import { tracking } from '@/track/tracking';
-import { useGlobalSearchParams, usePathname } from 'expo-router';
-import { syncInit } from '@/sync/sync';
+import { usePathname } from 'expo-router';
+import { syncRestore } from '@/sync/sync';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -56,33 +56,37 @@ export default function RootLayout() {
     React.useEffect(() => {
         (async () => {
 
-            let promises: Promise<void>[] = [];
+            try {
 
-            await Fonts.loadAsync({
-                // Keep existing font
-                SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
+                await Fonts.loadAsync({
+                    // Keep existing font
+                    SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
 
-                // IBM Plex Sans family
-                'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
-                'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
-                'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
+                    // IBM Plex Sans family
+                    'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
+                    'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
+                    'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
 
-                // IBM Plex Mono family  
-                'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
-                'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
-                'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
+                    // IBM Plex Mono family  
+                    'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
+                    'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
+                    'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
 
-                // Bricolage Grotesque  
-                'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
+                    // Bricolage Grotesque  
+                    'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
 
-                ...FontAwesome.font,
-            });
-            await sodium.ready;
-            const credentials = await TokenStorage.getCredentials();
-            if (credentials) {
-                await syncInit(credentials);
+                    ...FontAwesome.font,
+                });
+                await sodium.ready;
+                const credentials = await TokenStorage.getCredentials();
+                console.log('credentials', credentials);
+                if (credentials) {
+                    await syncRestore(credentials);
+                }
+                setInitState({ credentials });
+            } catch (error) {
+                console.error('Error initializing:', error);
             }
-            setInitState({ credentials });
         })();
     }, []);
 

@@ -1,7 +1,7 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { MaterialIcons, Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Image, Platform, Pressable, Text, View } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
+import { ActivityIndicator, Image, Pressable, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
 import { encodeBase64 } from "@/auth/base64";
@@ -12,11 +12,9 @@ import { SessionsList } from "@/components/SessionsList";
 import { Stack, useRouter } from "expo-router";
 import { useSessions } from "@/sync/storage";
 import { getRandomBytesAsync } from "expo-crypto";
-import { ConnectButton } from "@/components/ConnectButton";
 import { useIsTablet, useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
 import { EmptyMainScreen } from "@/components/EmptyMainScreen";
-import { EmptySessionsTablet } from "@/components/EmptySessionsTablet";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
 
 export default function Home() {
