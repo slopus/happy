@@ -1,6 +1,9 @@
 # Stage 1: Building the application
 FROM node:20-alpine AS builder
 
+# Build argument for PostHog API key with default empty value
+ARG POSTHOG_API_KEY=""
+
 WORKDIR /app
 
 # Copy package.json and yarn.lock
@@ -17,6 +20,7 @@ COPY * ./
 # Build the application for web in production mode
 ENV NODE_ENV=production
 ENV APP_ENV=production
+ENV EXPO_PUBLIC_POSTHOG_API_KEY=$POSTHOG_API_KEY
 RUN yarn expo export --platform web --output-dir dist
 
 # Stage 2: Runtime with Nginx
