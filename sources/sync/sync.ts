@@ -17,7 +17,7 @@ import { applySettings, Settings, settingsDefaults, settingsParse } from './sett
 import { loadPendingSettings, savePendingSettings } from './persistence';
 import { initializeTracking, tracking } from '@/track';
 import { parseToken } from '@/utils/parseToken';
-import Purchases, { LOG_LEVEL } from 'react-native-purchases';
+import { RevenueCat, LogLevel } from './revenueCat';
 
 const API_ENDPOINT = process.env.EXPO_PUBLIC_API_ENDPOINT || 'https://handy-api.korshakov.org';
 
@@ -187,14 +187,14 @@ class Sync {
             }
 
             // Fetch the product
-            const products = await Purchases.getProducts([productId]);
+            const products = await RevenueCat.getProducts([productId]);
             if (products.length === 0) {
                 return { success: false, error: `Product '${productId}' not found` };
             }
 
             // Purchase the product
             const product = products[0];
-            const { customerInfo } = await Purchases.purchaseStoreProduct(product);
+            const { customerInfo } = await RevenueCat.purchaseStoreProduct(product);
             
             // Update local purchases data
             storage.getState().applyPurchases(customerInfo);
@@ -219,7 +219,7 @@ class Sync {
             }
 
             // Fetch offerings
-            const offerings = await Purchases.getOfferings();
+            const offerings = await RevenueCat.getOfferings();
             
             // Return the offerings data
             return { 
@@ -462,11 +462,11 @@ class Sync {
 
                 // Configure RevenueCat
                 if (__DEV__) {
-                    Purchases.setLogLevel(LOG_LEVEL.DEBUG);
+                    RevenueCat.setLogLevel(LogLevel.DEBUG);
                 }
 
                 // Initialize with the public ID as user ID
-                Purchases.configure({
+                await RevenueCat.configure({
                     apiKey,
                     appUserID: this.pubID,
                     useAmazon: false,
@@ -477,10 +477,10 @@ class Sync {
             }
 
             // Sync purchases
-            await Purchases.syncPurchases();
+            await RevenueCat.syncPurchases();
 
             // Fetch customer info
-            const customerInfo = await Purchases.getCustomerInfo();
+            const customerInfo = await RevenueCat.getCustomerInfo();
             
             // Apply to storage (storage handles the transformation)
             storage.getState().applyPurchases(customerInfo);

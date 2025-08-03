@@ -32,6 +32,7 @@
     "@react-native-picker/picker": "2.11.1",
     "@react-navigation/drawer": "^7.5.3",
     "@react-navigation/native": "^7.1.6",
+    "@revenuecat/purchases-js": "^1.11.1",
     "@shopify/flash-list": "^2.0.0-rc.11",
     "@shopify/react-native-skia": "^2.1.1",
     "@types/react-syntax-highlighter": "^15.5.13",
