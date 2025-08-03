@@ -10,24 +10,29 @@ import { useUpdates } from "@/hooks/useUpdates";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
 import { Stack, useRouter } from "expo-router";
-import { useSessions } from "@/sync/storage";
+import { useSessions, useEntitlement } from "@/sync/storage";
 import { getRandomBytesAsync } from "expo-crypto";
 import { useIsTablet, useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
 import { EmptyMainScreen } from "@/components/EmptyMainScreen";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { getServerInfo } from "@/sync/serverConfig";
+import { PlusPlus } from '@/components/PlusPlus';
 
 // Header title component with subtitle
 function HeaderTitleWithSubtitle({ subtitle }: { subtitle?: string }) {
     const hasSubtitle = !!subtitle;
     const titleFontSize = hasSubtitle ? 20 : 24;
+    const isPro = __DEV__ || useEntitlement('pro');
     
     return (
         <View style={{ alignItems: 'center' }}>
-            <Text style={{ fontSize: titleFontSize, color: '#000', ...Typography.logo() }}>
-                Happy Coder
-            </Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={{ fontSize: titleFontSize, color: '#000', ...Typography.logo() }}>
+                    Happy Coder
+                </Text>
+                {isPro && <PlusPlus fontSize={titleFontSize} />}
+            </View>
             {hasSubtitle && (
                 <Text style={{ fontSize: 12, color: '#007AFF', marginTop: 2 }}>
                     {subtitle}
@@ -51,9 +56,8 @@ function Authenticated() {
     const sessionsData = useSessions();
     const { updateAvailable, reloadApp } = useUpdates();
     const isTablet = useIsTablet();
-    const router = useRouter();
-
-    // Empty state in tabled view
+    
+    // Empty state in tablet view
     if (isTablet) {
         return (
             <>
@@ -81,6 +85,7 @@ function Authenticated() {
             <>
                 <Stack.Screen
                     options={{
+                        headerShown: true,
                         headerTitle: () => <HeaderTitleWithSubtitle />,
                         headerRight: () => <HeaderRight />
                     }}
@@ -99,6 +104,7 @@ function Authenticated() {
         <>
             <Stack.Screen
                 options={{
+                    headerShown: true,
                     headerTitle: () => <HeaderTitleWithSubtitle />,
                     headerRight: () => <HeaderRight />
                 }}
@@ -215,6 +221,7 @@ function NotAuthenticated() {
         <>
             <Stack.Screen
                 options={{
+                    headerShown: true,
                     headerTitle: () => <HeaderTitleWithSubtitle subtitle={serverInfo.isCustom ? serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '') : undefined} />,
                     headerRight: () => <HeaderRightNotAuth />
                 }}
