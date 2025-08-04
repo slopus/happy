@@ -11,6 +11,7 @@ import { InterruptController } from '@/claude/InterruptController';
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { createHash } from 'crypto';
 import { join } from 'path';
+import { run as runRipgrep } from '@/ripgrep/index';
 
 const execAsync = promisify(exec);
 
@@ -90,6 +91,19 @@ interface TreeNode {
 interface GetDirectoryTreeResponse {
     success: boolean;
     tree?: TreeNode;
+    error?: string;
+}
+
+interface RipgrepRequest {
+    args: string[];
+    cwd?: string;
+}
+
+interface RipgrepResponse {
+    success: boolean;
+    exitCode?: number;
+    stdout?: string;
+    stderr?: string;
     error?: string;
 }
 
@@ -405,6 +419,27 @@ export function registerHandlers(
         } catch (error) {
             logger.debug('Failed to get directory tree:', error);
             return { success: false, error: error instanceof Error ? error.message : 'Failed to get directory tree' };
+        }
+    });
+
+    // Ripgrep handler - raw interface to ripgrep
+    session.setHandler<RipgrepRequest, RipgrepResponse>('ripgrep', async (data) => {
+        logger.info('Ripgrep request with args:', data.args, 'cwd:', data.cwd);
+
+        try {
+            const result = await runRipgrep(data.args, { cwd: data.cwd });
+            return {
+                success: true,
+                exitCode: result.exitCode,
+                stdout: result.stdout,
+                stderr: result.stderr
+            };
+        } catch (error) {
+            logger.debug('Failed to run ripgrep:', error);
+            return { 
+                success: false, 
+                error: error instanceof Error ? error.message : 'Failed to run ripgrep' 
+            };
         }
     });
 }
