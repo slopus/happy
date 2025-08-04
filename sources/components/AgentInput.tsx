@@ -1,10 +1,11 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, TextInput, NativeSyntheticEvent, TextInputKeyPressEventData, Platform, Animated, Text, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { View, Platform, Animated, Text, ActivityIndicator, useWindowDimensions } from 'react-native';
 import { Pressable } from 'react-native-gesture-handler';
 import { hapticsLight, hapticsError } from './haptics';
 import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
+import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 
 // Status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -99,19 +100,17 @@ export const AgentInput = React.memo((props: {
         }
     }, [currentState, scaleAnim]);
 
-    // Handle Enter key on web
-    const handleKeyPress = React.useCallback((e: NativeSyntheticEvent<TextInputKeyPressEventData>) => {
+    // Handle Enter key
+    const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
         if (Platform.OS === 'web') {
-            let isShift = (e.nativeEvent as any).shiftKey as boolean;
-
-            // Check if the pressed key is Enter/Return and Shift is not pressed
-            if (e.nativeEvent.key === 'Enter' && !isShift) {
-                e.preventDefault(); // Prevent new line
+            if (event.key === 'Enter' && !event.shiftKey) {
                 if (props.value.trim()) {
                     props.onSend();
+                    return true; // Key was handled
                 }
             }
         }
+        return false; // Key was not handled
     }, [props.value, props.onSend]);
     const handlePress = React.useCallback(() => {
         if (currentState === 'mic' && props.onMicPress) {
@@ -239,7 +238,7 @@ export const AgentInput = React.memo((props: {
                                         inputRange: [0, 1],
                                         outputRange: [Platform.select({ ios: '#F2F2F7', android: '#E0E0E0', default: '#F2F2F7' })!, Platform.select({ ios: '#FF3B30', android: '#F44336', default: '#FF3B30' })!]
                                     }),
-                                    borderRadius: Platform.select({ ios: 16, android: 20 }),
+                                    borderRadius: Platform.select({ default: 16, android: 20 }),
                                     overflow: 'hidden',
                                 }}
                             >
@@ -306,18 +305,18 @@ export const AgentInput = React.memo((props: {
                     style={{
                         flexDirection: 'row',
                         alignItems: 'center',
-                        borderRadius: Platform.select({ ios: 24, android: 28 }),
-                        backgroundColor: Platform.select({ ios: '#fff', android: '#F5F5F5' }),
-                        borderWidth: Platform.select({ ios: 1, android: 1.5 }),
-                        borderColor: Platform.select({ ios: '#E5E5E7', android: '#E0E0E0' }),
+                        borderRadius: Platform.select({ default: 24, android: 28 }),
+                        backgroundColor: Platform.select({ default: '#fff', android: '#F5F5F5' }),
+                        borderWidth: Platform.select({ default: 1, android: 1.5 }),
+                        borderColor: Platform.select({ default: '#E5E5E7', android: '#E0E0E0' }),
                         width: '100%',
                         maxWidth: layout.maxWidth,
                         paddingLeft: 16,
                         paddingRight: 5,
-                        paddingVertical: 5,
+                        paddingVertical: 0,
                         minHeight: 48,
                         ...Platform.select({
-                            ios: {
+                            default: {
                                 shadowColor: '#000',
                                 shadowOffset: { width: 0, height: 2 },
                                 shadowOpacity: 0.08,
@@ -325,50 +324,29 @@ export const AgentInput = React.memo((props: {
                             },
                             android: {
                                 elevation: 0,
-                            }
+                            },
                         }),
                     }}
                 >
-                    <TextInput
-                        style={{
-                            flex: 1,
-                            paddingVertical: 10,
-                            paddingRight: 8,
-                            textAlignVertical: 'center',
-                            fontSize: 16,
-                            maxHeight: 120,
-                            color: '#000',
-                        }}
-                        placeholder={props.placeholder}
-                        placeholderTextColor={Platform.select({ ios: '#9D9FA3', android: '#757575' })}
-                        autoCapitalize="sentences"
-                        autoCorrect={true}
-                        keyboardType="default"
-                        returnKeyType='default'
-                        autoComplete="off"
-                        multiline={true}
-                        value={props.value}
-                        textContentType="none"
-                        onChangeText={props.onChangeText}
-                        onKeyPress={handleKeyPress}
-                        submitBehavior="newline"
-                    />
-                    <Animated.View
-                        style={{
-                            transform: [
-                                { scale: scaleAnim }
-                            ],
-                        }}
-                    >
+                    <View style={{ flex: 1, paddingVertical: 10, paddingRight: 8, paddingLeft: 4 }}>
+                        <MultiTextInput
+                            value={props.value}
+                            onChangeText={props.onChangeText}
+                            placeholder={props.placeholder}
+                            onKeyPress={handleKeyPress}
+                            maxHeight={120}
+                        />
+                    </View>
+                    <Animated.View style={{ transform: [{ scale: scaleAnim }], alignSelf: "flex-end", paddingBottom: 4 }}>
                         <Pressable
                             style={(p) => ({
                                 width: 38,
                                 height: 38,
                                 borderRadius: 19,
-                                backgroundColor: currentState === 'mic' ? (props.isMicActive ? '#FF6B35' : '#FF8C42') : 
-                                    currentState !== 'add' ? Platform.select({ ios: '#007AFF', android: '#1976D2' }) : 'transparent',
-                                borderWidth: currentState === 'add' ? Platform.select({ ios: 2, android: 1.5 }) : 0,
-                                borderColor: Platform.select({ ios: '#E5E5E7', android: '#E0E0E0' }),
+                                backgroundColor: currentState === 'mic' ? (props.isMicActive ? '#FF6B35' : '#FF8C42') :
+                                    currentState !== 'add' ? Platform.select({ default: '#007AFF', android: '#1976D2' }) : 'transparent',
+                                borderWidth: currentState === 'add' ? Platform.select({ default: 2, android: 1.5 }) : 0,
+                                borderColor: Platform.select({ default: '#E5E5E7', android: '#E0E0E0' }),
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 opacity: p.pressed ? 0.7 : 1,
@@ -380,10 +358,10 @@ export const AgentInput = React.memo((props: {
                         >
                             {props.sendIcon || (
                                 <Ionicons
-                                    name={currentState === 'send' ? "arrow-up" : 
-                                         currentState === 'mic' ? (props.isMicActive ? "stop" : "mic") : "add"}
+                                    name={currentState === 'send' ? "arrow-up" :
+                                        currentState === 'mic' ? (props.isMicActive ? "stop" : "mic") : "add"}
                                     size={currentState === 'send' ? 20 : currentState === 'mic' ? 22 : 24}
-                                    color={currentState === 'mic' || currentState === 'send' ? "#fff" : Platform.select({ ios: "#8E8E93", android: "#757575" })}
+                                    color={currentState === 'mic' || currentState === 'send' ? "#fff" : Platform.select({ default: "#8E8E93", android: "#757575" })}
                                 />
                             )}
                         </Pressable>

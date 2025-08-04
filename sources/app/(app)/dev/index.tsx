@@ -152,6 +152,12 @@ export default function DevScreen() {
                     onPress={() => router.push('/dev/shimmer-demo')}
                 />
                 <Item 
+                    title="Multi Text Input"
+                    subtitle="Auto-growing multiline text input"
+                    icon={<Ionicons name="create-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/multi-text-input')}
+                />
+                <Item 
                     title="Modal System"
                     subtitle="Alert, confirm, and custom modals"
                     icon={<Ionicons name="albums-outline" size={28} color="#007AFF" />}
