@@ -199,7 +199,7 @@ ${chalk.bold('Examples:')}
 
     // Onboarding flow for daemon installation
     const settings = await readSettings() || { onboardingCompleted: false };
-    if (settings.daemonAutoStartWhenRunningHappy === undefined) {
+    if (false && settings.daemonAutoStartWhenRunningHappy === undefined) {
 
       console.log(chalk.cyan('\n🚀 Happy Daemon Setup\n'));
       // Ask about daemon auto-start
@@ -232,7 +232,7 @@ ${chalk.bold('Examples:')}
     }
 
     // Auto-start daemon if enabled
-    if (settings.daemonAutoStartWhenRunningHappy) {
+    if (false && settings.daemonAutoStartWhenRunningHappy) {
       console.log('Starting Happy background service...');
       if (!(await isDaemonRunning())) {
         console.log('Not running, starting...');
