@@ -9,6 +9,7 @@ import { getSessionName, getSessionState } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages, useSettings } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { sessionAbort, sessionAllow, sessionDeny } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
@@ -273,11 +274,11 @@ ${conversationContext}`;
                     </Text>
                     <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
                         <RoundButton size='normal' title={"Deny"} onPress={() => {
-                            sync.deny(sessionId, permissionRequest?.id ?? '');
+                            sessionDeny(sessionId, permissionRequest?.id ?? '');
                             trackPermissionResponse(false);
                         }} />
                         <RoundButton size='normal' title={"Allow"} onPress={() => {
-                            sync.allow(sessionId, permissionRequest?.id ?? '');
+                            sessionAllow(sessionId, permissionRequest?.id ?? '');
                             trackPermissionResponse(true);
                         }} />
                     </View>
@@ -485,7 +486,7 @@ ${conversationContext}`;
                             dotColor: sessionStatus.statusDotColor,
                             isPulsing: sessionStatus.isPulsing,
                         }}
-                        onAbort={() => sync.abort(sessionId)}
+                        onAbort={() => sessionAbort(sessionId)}
                     />
                 </AgentContentView>
             </View>
