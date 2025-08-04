@@ -97,17 +97,6 @@ class Sync {
         this.registerPushToken();
     }
 
-    abort = async (sessionId: string) => {
-        await apiSocket.rpc(sessionId, 'abort', {});
-    }
-
-    allow = async (sessionId: string, id: string) => {
-        await apiSocket.rpc(sessionId, 'permission', { id, approved: true });
-    }
-
-    deny = async (sessionId: string, id: string) => {
-        await apiSocket.rpc(sessionId, 'permission', { id, approved: false });
-    }
 
     onSessionVisible = (sessionId: string) => {
         let ex = this.messagesSync.get(sessionId);
