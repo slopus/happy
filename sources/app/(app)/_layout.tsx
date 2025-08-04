@@ -141,6 +141,12 @@ export default function RootLayout() {
                     headerTitle: 'Shimmer View Demo',
                 }}
             />
+            <Stack.Screen
+                name="dev/multi-text-input"
+                options={{
+                    headerTitle: 'Multi Text Input',
+                }}
+            />
         </Stack>
     );
 }

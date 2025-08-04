@@ -31,6 +31,8 @@ import { isRunningOnMac } from '@/utils/platform';
 import { Modal } from '@/modal';
 import { Header } from '@/components/navigation/Header';
 import { trackMessageSent, trackVoiceRecording, trackPermissionResponse } from '@/track';
+import { useAutocompleteSession } from '@/hooks/useAutocompleteSession';
+import { AutoCompleteView } from '@/components/AutoCompleteView';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -102,21 +104,22 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const headerHeight = useHeaderHeight();
     const sessionStatus = getSessionState(session);
     const lastSeenText = sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active';
-    
+    const autocomplete = useAutocompleteSession(message, message.length);
+
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
-        emptyMessageContainer: { 
-            flexGrow: 1, 
-            flexBasis: 0, 
-            justifyContent: 'center' as const, 
-            alignItems: 'center' as const, 
-            marginTop: safeArea.top + headerHeight 
+        emptyMessageContainer: {
+            flexGrow: 1,
+            flexBasis: 0,
+            justifyContent: 'center' as const,
+            alignItems: 'center' as const,
+            marginTop: safeArea.top + headerHeight
         },
-        flatListStyle: { 
-            marginTop: Platform.OS === 'web' ? headerHeight + safeArea.top : 0 
+        flatListStyle: {
+            marginTop: Platform.OS === 'web' ? headerHeight + safeArea.top : 0
         },
-        listFooterHeight: { 
-            height: headerHeight + safeArea.top 
+        listFooterHeight: {
+            height: headerHeight + safeArea.top
         }
     }), [headerHeight, safeArea.top]);
 
@@ -289,7 +292,7 @@ ${conversationContext}`;
 
     // Memoize FlatList props
     const keyExtractor = useCallback((item: any) => item.id, []);
-    
+
     const renderItem = useCallback(({ item }: { item: any }) => (
         <MessageView
             message={item}
@@ -297,16 +300,16 @@ ${conversationContext}`;
             sessionId={sessionId}
         />
     ), [session.metadata, sessionId]);
-    
+
     const contentContainerStyle = useMemo(() => ({
         paddingHorizontal: screenWidth > 700 ? 16 : 0
     }), [screenWidth]);
-    
+
     const maintainVisibleContentPosition = useMemo(() => ({
         minIndexForVisible: 0,
         autoscrollToTopThreshold: 100,
     }), []);
-    
+
     const ListFooterComponent = useCallback(() => <View style={headerDependentStyles.listFooterHeight} />, [headerDependentStyles.listFooterHeight]);
 
     return (
@@ -408,10 +411,10 @@ ${conversationContext}`;
                             </Pressable>
                         )}
                         headerShadowVisible={false}
-                        // headerStyle={{
-                        //     borderBottomWidth: 0.5,
-                        //     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
-                        // }}
+                    // headerStyle={{
+                    //     borderBottomWidth: 0.5,
+                    //     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
+                    // }}
                     />
                 </View>
             )}
@@ -448,18 +451,15 @@ ${conversationContext}`;
                                 />
                             )}
                         </Deferred>
-                        <LinearGradient
-                            colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']}
-                            locations={[0, 1]}
-                            style={{
-                                position: 'absolute',
-                                bottom: 0,
-                                left: 0,
-                                right: 0,
-                                height: 8,
-                                pointerEvents: 'none',
-                            }}
-                        />
+                        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 1000 }}>
+                            <LinearGradient
+                                colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']}
+                                locations={[0, 1]}
+                                style={{ alignSelf: 'stretch', height: 8, pointerEvents: 'none' }}
+                            />
+                            <AutoCompleteView results={autocomplete} onSelect={() => { }} />
+                        </View>
+
                     </Animated.View>
 
                     <AgentInput
