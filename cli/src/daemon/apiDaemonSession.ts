@@ -12,22 +12,17 @@ export class ApiDaemonSession extends EventEmitter {
   private keepAliveInterval: NodeJS.Timeout | null = null;
   private token: string;
   private secret: Uint8Array;
-  private daemonHttpPort: number;
-  private sessionCallbacks: Map<string, (sessionId: string) => void>;
+  private spawnedProcesses: Set<any> = new Set();
 
   constructor(
     token: string, 
     secret: Uint8Array, 
-    machineIdentity: MachineIdentity,
-    daemonHttpPort: number,
-    sessionCallbacks: Map<string, (sessionId: string) => void>
+    machineIdentity: MachineIdentity
   ) {
     super();
     this.token = token;
     this.secret = secret;
     this.machineIdentity = machineIdentity;
-    this.daemonHttpPort = daemonHttpPort;
-    this.sessionCallbacks = sessionCallbacks;
 
     logger.daemonDebug(`Connecting to server: ${configuration.serverUrl}`);
     const socket = io(configuration.serverUrl, {
@@ -75,27 +70,10 @@ export class ApiDaemonSession extends EventEmitter {
               throw new Error('Directory is required');
             }
             
-            // Platform check - daemon only works on macOS
-            if (process.platform !== 'darwin') {
-              throw new Error('Session spawning is only supported on macOS');
-            }
-            
-            const nonce = crypto.randomBytes(16).toString('hex');
-            
-            // Setup callback promise
-            const sessionPromise = new Promise<string>((resolve) => {
-              this.sessionCallbacks.set(nonce, resolve);
-              setTimeout(() => {
-                this.sessionCallbacks.delete(nonce);
-                resolve(''); // timeout
-              }, 30000);
-            });
-            
-            // Build command
+            // Build command arguments
             const args = [
-              '--happy-starting-mode', 'remote',
-              '--happy-daemon-port', String(this.daemonHttpPort),
-              '--happy-daemon-new-session-nonce', nonce
+              '--daemon-spawn',
+              '--happy-starting-mode', 'remote'  // ALWAYS force remote mode for daemon spawns
             ];
             
             // Add --local if needed
@@ -103,34 +81,114 @@ export class ApiDaemonSession extends EventEmitter {
               args.push('--local');
             }
             
-            // Spawn with AppleScript
-            const script = `
-              tell application "Terminal"
-                activate
-                do script "cd ${directory} && happy ${args.join(' ')}"
-              end tell
-            `;
-            
-            logger.daemonDebug(`Spawning happy in directory: ${directory}`);
-            spawn('osascript', ['-e', script], { detached: true });
-            
-            // Wait for callback
-            const sessionId = await sessionPromise;
-            
-            if (sessionId) {
-              logger.daemonDebug(`Session spawned successfully: ${sessionId}`);
-              callback({ ok: true, result: { sessionId } });
-            } else {
-              logger.daemonDebug('Timeout waiting for session callback');
-              callback({ ok: false, error: 'Timeout waiting for session' });
+            // Add server URL if not default
+            if (configuration.serverUrl !== 'https://handy-api.korshakov.org') {
+              args.push('--happy-server-url', configuration.serverUrl);
             }
+            
+            logger.daemonDebug(`Spawning happy in directory: ${directory} with args: ${args.join(' ')}`);
+            
+            // TODO: In the future, we should disable local mode entirely for daemon-spawned sessions
+            // For now, we force remote mode since interactive mode requires a terminal
+            
+            // Determine the happy executable path
+            const happyPath = process.argv[1]; // Path to the CLI script
+            const isTypeScript = happyPath.endsWith('.ts');
+            
+            // Spawn the process
+            const happyProcess = isTypeScript
+              ? spawn('npx', ['tsx', happyPath, ...args], {
+                  cwd: directory,
+                  env: { ...process.env, EXPERIMENTAL_FEATURES: '1' },
+                  detached: true,
+                  stdio: ['ignore', 'pipe', 'pipe'] // We need stdout
+                })
+              : spawn(process.argv[0], [happyPath, ...args], {
+                  cwd: directory,
+                  env: { ...process.env, EXPERIMENTAL_FEATURES: '1' },
+                  detached: true,
+                  stdio: ['ignore', 'pipe', 'pipe'] // We need stdout
+                });
+            
+            // Track this process
+            this.spawnedProcesses.add(happyProcess);
+            
+            let sessionId: string | null = null;
+            let output = '';
+            let timeoutId: NodeJS.Timeout | null = null;
+            
+            // Cleanup function to remove listeners and timeout
+            const cleanup = () => {
+              happyProcess.stdout.removeAllListeners('data');
+              happyProcess.stderr.removeAllListeners('data');
+              happyProcess.removeAllListeners('error');
+              happyProcess.removeAllListeners('exit');
+              if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+              }
+            };
+            
+            // Parse stdout for session ID
+            happyProcess.stdout.on('data', (data) => {
+              output += data.toString();
+              const match = output.match(/daemon:sessionIdCreated:(.+?)[\n\r]/);
+              if (match && !sessionId) {
+                sessionId = match[1];
+                logger.daemonDebug(`Session spawned successfully: ${sessionId}`);
+                callback({ sessionId });
+                
+                // Stop listening to this process but keep it tracked
+                cleanup();
+                
+                // Detach the process
+                happyProcess.unref();
+              }
+            });
+            
+            // Log stderr for debugging
+            happyProcess.stderr.on('data', (data) => {
+              logger.daemonDebug(`Spawned process stderr: ${data.toString()}`);
+            });
+            
+            // Handle errors
+            happyProcess.on('error', (error) => {
+              logger.daemonDebug('Error spawning session:', error);
+              if (!sessionId) {
+                callback({ error: `Failed to spawn: ${error.message}` });
+                cleanup();
+                this.spawnedProcesses.delete(happyProcess);
+              }
+            });
+            
+            // Clean up when process exits
+            happyProcess.on('exit', (code, signal) => {
+              logger.daemonDebug(`Spawned process exited with code ${code}, signal ${signal}`);
+              this.spawnedProcesses.delete(happyProcess);
+              if (!sessionId) {
+                callback({ error: `Process exited before session ID received` });
+                cleanup();
+              }
+            });
+            
+            // Timeout after 10 seconds
+            timeoutId = setTimeout(() => {
+              if (!sessionId) {
+                logger.daemonDebug('Timeout waiting for session ID');
+                callback({ error: 'Timeout waiting for session' });
+                cleanup();
+                happyProcess.kill();
+                this.spawnedProcesses.delete(happyProcess);
+              }
+            }, 10000);
+            
           } catch (error) {
             logger.daemonDebug('Error spawning session:', error);
-            callback({ ok: false, error: error instanceof Error ? error.message : 'Unknown error' });
+            callback({ error: error instanceof Error ? error.message : 'Unknown error' });
           }
         } else {
           logger.daemonDebug(`Unknown RPC method: ${data.method}`);
-          callback({ ok: false, error: `Unknown method: ${data.method}` });
+          callback({ error: `Unknown method: ${data.method}` });
         }
       });
 
@@ -169,8 +227,7 @@ export class ApiDaemonSession extends EventEmitter {
     
     socket.on('connect_error', (error) => {
       logger.daemonDebug(`Connection error: ${error.message}`);
-      logger.daemonDebug(`Error type: ${error.type}`);
-      logger.daemonDebug(`Error data: ${JSON.stringify(error.data)}`);
+      logger.daemonDebug(`Error: ${JSON.stringify(error, null, 2)}`);
     });
     
     socket.on('error', (error) => {
@@ -214,6 +271,27 @@ export class ApiDaemonSession extends EventEmitter {
   }
 
   shutdown() {
+    logger.daemonDebug(`Shutting down daemon, killing ${this.spawnedProcesses.size} spawned processes`);
+    
+    // Kill all spawned processes
+    for (const process of this.spawnedProcesses) {
+      try {
+        logger.daemonDebug(`Killing spawned process with PID: ${process.pid}`);
+        process.kill('SIGTERM');
+        // Give it a moment to terminate gracefully
+        setTimeout(() => {
+          try {
+            process.kill('SIGKILL');
+          } catch (e) {
+            // Process might already be dead
+          }
+        }, 1000);
+      } catch (error) {
+        logger.daemonDebug(`Error killing process: ${error}`);
+      }
+    }
+    this.spawnedProcesses.clear();
+    
     this.stopKeepAlive();
     this.socket.close();
     this.emit('shutdown');

@@ -103,8 +103,6 @@ Currently only supported on macOS.
     let showHelp = false
     let showVersion = false
     let forceAuth = false
-    let daemonPort: number | undefined
-    let daemonNonce: string | undefined
 
     for (let i = 0; i < args.length; i++) {
       const arg = args[i]
@@ -137,10 +135,8 @@ Currently only supported on macOS.
         // Pass additional arguments to Claude CLI
         const claudeArg = args[++i]
         options.claudeArgs = [...(options.claudeArgs || []), claudeArg]
-      } else if (arg === '--happy-daemon-port') {
-        daemonPort = parseInt(args[++i])
-      } else if (arg === '--happy-daemon-new-session-nonce') {
-        daemonNonce = args[++i]
+      } else if (arg === '--daemon-spawn') {
+        options.daemonSpawn = true
       } else if (arg === '--happy-server-url') {
         // Already processed in global options, skip the value
         i++
@@ -299,31 +295,6 @@ ${chalk.bold('Examples:')}
 
     // Start the CLI
     try {
-      // This session was started from the daemon, 
-      // so we need to call back to the daemon to notify it about the new session
-      if (daemonPort && daemonNonce) {
-        options.onSessionCreated = async (sessionId) => {
-          logger.debug(`[CLI] Calling back to daemon on port ${daemonPort}`);
-          try {
-            const response = await fetch(`http://127.0.0.1:${daemonPort}/on-new-session`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                nonce: daemonNonce,
-                happySessionId: sessionId,
-                happyProcessId: process.pid
-              })
-            });
-            
-            if (!response.ok) {
-              logger.debug('[CLI] Daemon callback failed:', await response.text());
-            }
-          } catch (error) {
-            logger.debug('[CLI] Daemon callback error:', error);
-          }
-        };
-      }
-      
       await start(credentials, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')

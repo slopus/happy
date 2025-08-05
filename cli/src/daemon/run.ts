@@ -10,8 +10,6 @@ import { doAuth } from '@/ui/auth'
 import crypto from 'crypto'
 import { spawn } from 'child_process'
 import { configuration } from '@/configuration'
-import * as http from 'http'
-import * as net from 'net'
 
 // Store the file descriptor globally to keep the lock
 let pidFileFd: number | null = null;
@@ -27,7 +25,7 @@ export async function startDaemon(): Promise<void> {
     logger.daemonDebug(`Server URL: ${configuration.serverUrl}`);
     
     if (await isDaemonRunning()) {
-        console.log('Happy daemon is already running');
+        logger.daemonDebug('Happy daemon is already running');
         process.exit(0);
     }
 
@@ -41,28 +39,6 @@ export async function startDaemon(): Promise<void> {
     process.on('exit', () => { stopDaemon().catch(console.error); });
 
     try {
-        /*
-         * HTTP Callback Server
-         * 
-         * When the daemon receives an RPC call to spawn a new session, it needs to:
-         * 1. Spawn a new happy process in a terminal
-         * 2. Wait for that process to create its session
-         * 3. Return the session ID back via RPC
-         * 
-         * Since we spawn in a separate terminal process, we can't directly get the session ID.
-         * So we create this HTTP server that the spawned process will callback to with its session ID.
-         * 
-         * Flow:
-         * 1. RPC arrives -> generate unique nonce
-         * 2. Spawn happy with --happy-daemon-port and --happy-daemon-new-session-nonce
-         * 3. Happy process starts, creates session, callbacks to this server
-         * 4. Server receives callback with nonce + sessionId
-         * 5. RPC response sent back with sessionId
-         */
-        const sessionCallbacks = new Map<string, (sessionId: string) => void>();
-        const httpServer = await createDaemonHttpServer(sessionCallbacks);
-        const daemonHttpPort = (httpServer.address() as net.AddressInfo).port;
-        logger.daemonDebug(`HTTP callback server listening on port ${daemonHttpPort}`);
         // Load or create machine identity
         const settings = await readSettings() || { onboardingCompleted: false };
         if (!settings.machineId) {
@@ -92,21 +68,19 @@ export async function startDaemon(): Promise<void> {
 
         const { token, secret } = credentials;
 
-        // Create daemon session with HTTP port
+        // Create daemon session
         const daemon = new ApiDaemonSession(
             token, 
             secret, 
-            machineIdentity,
-            daemonHttpPort,
-            sessionCallbacks
+            machineIdentity
         );
 
         daemon.on('connected', () => {
-            logger.daemonDebug('[DAEMON RUN] Connected to server event received');
+            logger.daemonDebug('Connected to server event received');
         });
 
         daemon.on('disconnected', () => {
-            logger.daemonDebug('[DAEMON RUN] Disconnected from server event received');
+            logger.daemonDebug('Disconnected from server event received');
         });
 
         daemon.on('shutdown', () => {
@@ -133,43 +107,43 @@ export async function startDaemon(): Promise<void> {
 
 export async function isDaemonRunning(): Promise<boolean> {
     try {
-        console.log('[isDaemonRunning] Checking if daemon is running...');
+        logger.daemonDebug('[isDaemonRunning] Checking if daemon is running...');
         
         // First check PID file
         if (existsSync(configuration.daemonPidFile)) {
-            console.log('[isDaemonRunning] PID file exists');
+            logger.daemonDebug('[isDaemonRunning] PID file exists');
             const pid = parseInt(readFileSync(configuration.daemonPidFile, 'utf-8'));
-            console.log('[isDaemonRunning] PID from file:', pid);
+            logger.daemonDebug('[isDaemonRunning] PID from file:', pid);
             
             // Check if process exists
             try {
                 process.kill(pid, 0);
-                console.log('[isDaemonRunning] Process exists, checking if it\'s a happy daemon...');
+                logger.daemonDebug('[isDaemonRunning] Process exists, checking if it\'s a happy daemon...');
                 // Verify it's actually a happy daemon process
                 const isHappyDaemon = await isProcessHappyDaemon(pid);
-                console.log('[isDaemonRunning] isHappyDaemon:', isHappyDaemon);
+                logger.daemonDebug('[isDaemonRunning] isHappyDaemon:', isHappyDaemon);
                 if (isHappyDaemon) {
                     return true;
                 } else {
                     // PID file points to wrong process, clean it up
-                    console.log('[isDaemonRunning] PID is not a happy daemon, cleaning up');
+                    logger.daemonDebug('[isDaemonRunning] PID is not a happy daemon, cleaning up');
                     logger.debug(`PID ${pid} is not a happy daemon, cleaning up`);
                     unlinkSync(configuration.daemonPidFile);
                 }
             } catch (error) {
                 // Process not running, clean up stale PID file
-                console.log('[isDaemonRunning] Process not running, cleaning up stale PID file');
+                logger.daemonDebug('[isDaemonRunning] Process not running, cleaning up stale PID file');
                 logger.debug('Process not running, cleaning up stale PID file');
                 unlinkSync(configuration.daemonPidFile);
             }
         } else {
-            console.log('[isDaemonRunning] No PID file found');
+            logger.daemonDebug('[isDaemonRunning] No PID file found');
         }
         
         
         return false;
     } catch (error) {
-        console.log('[isDaemonRunning] Error:', error);
+        logger.daemonDebug('[isDaemonRunning] Error:', error);
         logger.debug('Error checking daemon status', error);
         return false;
     }
@@ -201,7 +175,7 @@ function writePidFile(): number {
                     process.kill(parseInt(existingPid), 0);
                     // Process exists
                     logger.daemonDebug('PID file exists and process is running');
-                    console.log('Happy daemon is already running');
+                    logger.daemonDebug('Happy daemon is already running');
                     process.exit(0);
                 } catch {
                     // Process doesn't exist, clean up stale PID file
@@ -213,7 +187,7 @@ function writePidFile(): number {
             } catch (lockError: any) {
                 // Can't get write access, daemon must be running with lock held
                 logger.daemonDebug('Cannot acquire write lock on PID file, daemon is running');
-                console.log('Happy daemon is already running');
+                logger.daemonDebug('Happy daemon is already running');
                 process.exit(0);
             }
         }
@@ -278,47 +252,3 @@ async function isProcessHappyDaemon(pid: number): Promise<boolean> {
     });
 }
 
-async function createDaemonHttpServer(
-    sessionCallbacks: Map<string, (sessionId: string) => void>
-): Promise<http.Server> {
-    return new Promise((resolve, reject) => {
-        const server = http.createServer((req, res) => {
-            if (req.method === 'POST' && req.url === '/on-new-session') {
-                let body = '';
-                req.on('data', chunk => body += chunk);
-                req.on('end', () => {
-                    try {
-                        const { nonce, happySessionId, happyProcessId } = JSON.parse(body);
-                        logger.daemonDebug(`Received callback: nonce=${nonce}, sessionId=${happySessionId}`);
-                        
-                        const callback = sessionCallbacks.get(nonce);
-                        if (callback) {
-                            callback(happySessionId);
-                            sessionCallbacks.delete(nonce);
-                            res.writeHead(200);
-                            res.end(JSON.stringify({ success: true }));
-                        } else {
-                            logger.daemonDebug(`Invalid nonce: ${nonce}`);
-                            res.writeHead(401);
-                            res.end(JSON.stringify({ error: 'Invalid nonce' }));
-                        }
-                    } catch (error) {
-                        logger.daemonDebug('Bad request:', error);
-                        res.writeHead(400);
-                        res.end(JSON.stringify({ error: 'Bad request' }));
-                    }
-                });
-            } else {
-                res.writeHead(404);
-                res.end();
-            }
-        });
-        
-        // Let OS assign random port
-        server.listen(0, '127.0.0.1', () => {
-            resolve(server);
-        });
-        
-        server.on('error', reject);
-    });
-}

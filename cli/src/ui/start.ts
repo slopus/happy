@@ -20,12 +20,20 @@ export interface StartOptions {
     shouldStartDaemon?: boolean
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
-    onSessionCreated?: (sessionId: string) => void
+    daemonSpawn?: boolean
 }
 
 export async function start(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
     const workingDirectory = process.cwd();
     const sessionTag = randomUUID();
+    
+    // Validate daemon spawn requirements
+    if (options.daemonSpawn && options.startingMode === 'local') {
+        logger.debug('Daemon spawn requested with local mode - forcing remote mode');
+        options.startingMode = 'remote';
+        // TODO: Eventually we should error here instead of silently switching
+        // throw new Error('Daemon-spawned sessions cannot use local/interactive mode');
+    }
 
     // Create session service
     const api = new ApiClient(credentials.token, credentials.secret);
@@ -43,9 +51,9 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);
     
-    // Call callback if provided (for daemon)
-    if (options.onSessionCreated) {
-        options.onSessionCreated(response.id);
+    // Output session ID for daemon to parse when spawned with --daemon-spawn
+    if (options.daemonSpawn) {
+        console.log(`daemon:sessionIdCreated:${response.id}`);
     }
 
     // Create realtime session

@@ -30,11 +30,11 @@ export async function doAuth(): Promise<{ secret: Uint8Array, token: string } | 
     const authUrl = 'happy://terminal?' + encodeBase64Url(keypair.publicKey);
     displayQRCode(authUrl);
     
-    // For dev mode - show the URL for manual entry
-    if (process.env.DEBUG === '1') {
-        console.log('\n📋 For manual entry, copy this URL:');
-        console.log(authUrl);
-    }
+    // NOTE: For local development for now
+    // In the future this will be a deep link to our website you can click
+    // to either download the app or open the web app.
+    console.log('\n📋 For manual entry, copy this URL:');
+    console.log(authUrl);
 
     // Wait for authentication
     let credentials: { secret: Uint8Array, token: string } | null = null;
