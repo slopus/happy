@@ -70,6 +70,7 @@ export async function startClaudeActivityTracker(onThinking: (thinking: boolean)
                 const cleanupRequest = () => {
                     if (!cleaned) {
                         cleaned = true;
+                        activeRequests.delete(requestId);
                         checkAndStopThinking();
                     }
                 };
