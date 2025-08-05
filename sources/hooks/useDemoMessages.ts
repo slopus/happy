@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { storage } from '@/sync/storage';
 import { Message } from '@/sync/typesMessage';
-import { createReducer } from '@/sync/reducer';
+import { createReducer } from '@/sync/reducer/reducer';
 
 const DEMO_SESSION_ID = 'demo-messages-session';
 

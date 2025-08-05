@@ -151,7 +151,8 @@ describe('settings', () => {
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
-                inferenceOpenAIKey: null
+                inferenceOpenAIKey: null,
+                experiments: false
             });
         });
 
@@ -233,7 +234,8 @@ describe('settings', () => {
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
-                inferenceOpenAIKey: null
+                inferenceOpenAIKey: null,
+                experiments: false
             });
         });
 

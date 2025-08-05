@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { createTracer, traceMessages, TracedMessage, TracerState } from './reducerTracer';
-import { NormalizedMessage } from './typesRaw';
+import { createTracer, traceMessages } from './reducerTracer';
+import { NormalizedMessage } from '../typesRaw';
 
 describe('reducerTracer', () => {
     describe('createTracer', () => {
@@ -68,7 +68,7 @@ describe('reducerTracer', () => {
             traceMessages(state, messages);
             
             expect(state.taskTools.size).toBe(1);
-            expect(state.taskTools.get('tool1')).toEqual({
+            expect(state.taskTools.get('msg1')).toEqual({
                 messageId: 'msg1',
                 prompt: 'Search for files'
             });

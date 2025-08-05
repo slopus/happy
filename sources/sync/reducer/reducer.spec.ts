@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeRawMessage, RawRecordSchema, NormalizedMessage } from './typesRaw';
+import { normalizeRawMessage, NormalizedMessage } from '../typesRaw';
 import { createReducer } from './reducer';
 import { reducer } from './reducer';
 

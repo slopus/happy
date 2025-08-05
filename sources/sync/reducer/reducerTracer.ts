@@ -1,27 +1,85 @@
-import { NormalizedMessage } from './typesRaw';
+// ============================================================================
+// Reducer Tracer - Message Relationship Tracking for Sidechains
+// ============================================================================
+//
+// This module is responsible for tracking relationships between messages,
+// specifically focusing on linking sidechain messages to their originating
+// Task tool calls. This is crucial for understanding the flow of AI agent
+// interactions where Task tools spawn separate execution contexts (sidechains).
+//
+// Key Concepts:
+// -------------
+// 1. Task Tools: When the AI uses a Task tool, it initiates a separate
+//    execution context that produces its own message stream (a sidechain).
+//
+// 2. Sidechains: These are message sequences that occur in a separate context
+//    but need to be linked back to the Task that spawned them. Messages in
+//    sidechains have isSidechain=true.
+//
+// 3. Message Relationships: Each message can have:
+//    - A UUID: Unique identifier for the message
+//    - A parentUUID: Reference to its parent message (for nested responses)
+//    - A sidechainId: The message ID of the Task tool call that spawned it
+//
+// How It Works:
+// -------------
+// 1. Task Detection: When a Task tool call is encountered, we store it in
+//    taskTools indexed by the message ID (not the tool ID). We also index
+//    by prompt for quick lookup when matching sidechain roots.
+//
+// 2. Sidechain Root Matching: When a sidechain message arrives with a prompt
+//    that matches a known Task prompt, it's identified as a sidechain root
+//    and assigned the Task's message ID as its sidechainId.
+//
+// 3. Parent-Child Linking: Sidechain messages can reference parent messages
+//    via parentUUID. Children inherit the sidechainId from their parent.
+//
+// 4. Orphan Handling: Messages may arrive out of order. If a child arrives
+//    before its parent, it's buffered as an "orphan" until the parent
+//    arrives, then processed recursively.
+//
+// 5. Propagation: Once a sidechain root is identified, all its descendants
+//    (direct children and their children) inherit the same sidechainId.
+//
+// Example Flow:
+// -------------
+// 1. Message "msg1" contains Task tool call with prompt "Search for files"
+// 2. Sidechain message "sc1" arrives with type="sidechain" and same prompt
+//    -> sc1 gets sidechainId="msg1"
+// 3. Message "sc2" arrives with parentUUID="sc1"
+//    -> sc2 inherits sidechainId="msg1" from its parent
+// 4. Any orphans waiting for "sc1" or "sc2" are processed recursively
+//
+// This tracking enables the UI to group related messages together and show
+// the complete context of Task executions, even when messages arrive out
+// of order or from different execution contexts.
+//
+// ============================================================================
 
-// Extended message type with sidechain ID
+import { NormalizedMessage } from '../typesRaw';
+
+// Extended message type with sidechain ID for tracking message relationships
 export type TracedMessage = NormalizedMessage & {
-    sidechainId?: string;  // ID of the Task message this belongs to
+    sidechainId?: string;  // ID of the Task message that initiated this sidechain
 }
 
-// Tracer state for incremental processing
+// Tracer state for tracking message relationships and sidechain processing
 export interface TracerState {
-    // Task tracking
-    taskTools: Map<string, { messageId: string; prompt: string }>;  // toolId -> info
-    promptToTaskId: Map<string, string>;  // prompt -> task message ID
+    // Task tracking - stores Task tool calls by their message ID
+    taskTools: Map<string, { messageId: string; prompt: string }>;  // messageId -> Task info
+    promptToTaskId: Map<string, string>;  // prompt -> task message ID (for matching sidechains)
     
-    // Sidechain tracking
-    uuidToSidechainId: Map<string, string>;  // uuid -> sidechain ID (task message ID)
+    // Sidechain tracking - maps message UUIDs to their originating Task message ID
+    uuidToSidechainId: Map<string, string>;  // uuid -> sidechain ID (originating task message ID)
     
-    // Buffering for out-of-order messages
-    orphanMessages: Map<string, NormalizedMessage[]>;  // parentUuid -> orphan messages waiting
+    // Buffering for out-of-order messages that arrive before their parent
+    orphanMessages: Map<string, NormalizedMessage[]>;  // parentUuid -> orphan messages waiting for parent
     
-    // Already processed
+    // Track already processed messages to avoid duplicates
     processedIds: Set<string>;
 }
 
-// Create a new tracer state
+// Create a new tracer state with empty collections
 export function createTracer(): TracerState {
     return {
         taskTools: new Map(),
@@ -32,7 +90,7 @@ export function createTracer(): TracerState {
     };
 }
 
-// Get UUID from message content
+// Extract UUID from the first content item of an agent message
 function getMessageUuid(message: NormalizedMessage): string | null {
     if (message.role === 'agent' && message.content.length > 0) {
         const firstContent = message.content[0];
@@ -43,7 +101,7 @@ function getMessageUuid(message: NormalizedMessage): string | null {
     return null;
 }
 
-// Get parent UUID from message content
+// Extract parent UUID from the first content item of an agent message
 function getParentUuid(message: NormalizedMessage): string | null {
     if (message.role === 'agent' && message.content.length > 0) {
         const firstContent = message.content[0];
@@ -54,7 +112,7 @@ function getParentUuid(message: NormalizedMessage): string | null {
     return null;
 }
 
-// Process orphan messages recursively
+// Process orphan messages recursively when their parent becomes available
 function processOrphans(state: TracerState, parentUuid: string, sidechainId: string): TracedMessage[] {
     const results: TracedMessage[] = [];
     const orphans = state.orphanMessages.get(parentUuid);
@@ -95,7 +153,7 @@ function processOrphans(state: TracerState, parentUuid: string, sidechainId: str
     return results;
 }
 
-// Main tracer function
+// Main tracer function - processes messages and assigns sidechain IDs based on Task relationships
 export function traceMessages(state: TracerState, messages: NormalizedMessage[]): TracedMessage[] {
     const results: TracedMessage[] = [];
     
@@ -105,12 +163,12 @@ export function traceMessages(state: TracerState, messages: NormalizedMessage[])
             continue;
         }
         
-        // Extract Task tools
+        // Extract Task tools and index them by message ID for later sidechain matching
         if (message.role === 'agent') {
             for (const content of message.content) {
                 if (content.type === 'tool-call' && content.name === 'Task') {
                     if (content.input && typeof content.input === 'object' && 'prompt' in content.input) {
-                        // Use message.id as the key and store both the tool ID and prompt
+                        // Store Task info indexed by message ID (not tool ID)
                         state.taskTools.set(message.id, {
                             messageId: message.id,
                             prompt: content.input.prompt
@@ -121,7 +179,7 @@ export function traceMessages(state: TracerState, messages: NormalizedMessage[])
             }
         }
         
-        // Check if non-sidechain - return immediately
+        // Non-sidechain messages are returned immediately without sidechain ID
         if (!message.isSidechain) {
             state.processedIds.add(message.id);
             const tracedMessage: TracedMessage = {
@@ -131,15 +189,15 @@ export function traceMessages(state: TracerState, messages: NormalizedMessage[])
             continue;
         }
         
-        // Handle sidechain messages
+        // Handle sidechain messages - these need to be linked to their originating Task
         const uuid = getMessageUuid(message);
         const parentUuid = getParentUuid(message);
         
-        // Check if this is a sidechain root (matches a Task prompt)
+        // Check if this is a sidechain root by matching its prompt to a known Task
         let isSidechainRoot = false;
         let sidechainId: string | undefined;
         
-        // Check for sidechain content type (explicit sidechain marker)
+        // Look for sidechain content type with a prompt that matches a Task
         if (message.role === 'agent') {
             for (const content of message.content) {
                 if (content.type === 'sidechain' && content.prompt) {
@@ -154,7 +212,7 @@ export function traceMessages(state: TracerState, messages: NormalizedMessage[])
         }
         
         if (isSidechainRoot && uuid && sidechainId) {
-            // This is a sidechain root
+            // This is a sidechain root - mark it and process any waiting orphans
             state.processedIds.add(message.id);
             state.uuidToSidechainId.set(uuid, sidechainId);
             
@@ -164,15 +222,15 @@ export function traceMessages(state: TracerState, messages: NormalizedMessage[])
             };
             results.push(tracedMessage);
             
-            // Process any orphans waiting for this UUID
+            // Process any orphan messages that were waiting for this parent
             const orphanResults = processOrphans(state, uuid, sidechainId);
             results.push(...orphanResults);
         } else if (parentUuid) {
-            // This message has a parent
+            // This message has a parent - check if parent's sidechain ID is known
             const parentSidechainId = state.uuidToSidechainId.get(parentUuid);
             
             if (parentSidechainId) {
-                // Parent is known - assign same sidechain ID
+                // Parent is known - inherit the same sidechain ID
                 state.processedIds.add(message.id);
                 if (uuid) {
                     state.uuidToSidechainId.set(uuid, parentSidechainId);
@@ -190,13 +248,13 @@ export function traceMessages(state: TracerState, messages: NormalizedMessage[])
                     results.push(...orphanResults);
                 }
             } else {
-                // Parent unknown - buffer as orphan
+                // Parent not yet processed - buffer this message as an orphan
                 const orphans = state.orphanMessages.get(parentUuid) || [];
                 orphans.push(message);
                 state.orphanMessages.set(parentUuid, orphans);
             }
         } else {
-            // No parent UUID and not a sidechain root - return as-is
+            // Sidechain message with no parent and not a root - process as standalone
             state.processedIds.add(message.id);
             const tracedMessage: TracedMessage = {
                 ...message
