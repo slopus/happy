@@ -261,17 +261,6 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 agentStateVersion: true,
                 active: true,
                 lastActiveAt: true,
-                messages: {
-                    orderBy: { seq: 'desc' },
-                    take: 1,
-                    select: {
-                        id: true,
-                        seq: true,
-                        content: true,
-                        localId: true,
-                        createdAt: true
-                    }
-                }
             }
         });
 
@@ -287,13 +276,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 metadataVersion: v.metadataVersion,
                 agentState: v.agentState,
                 agentStateVersion: v.agentStateVersion,
-                lastMessage: v.messages[0] ? {
-                    id: v.messages[0].id,
-                    seq: v.messages[0].seq,
-                    localId: v.messages[0].localId,
-                    content: v.messages[0].content,
-                    createdAt: v.messages[0].createdAt.getTime()
-                } : null
+                lastMessage: null
             }))
         });
     });
@@ -330,7 +313,8 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
-                    updatedAt: session.updatedAt.getTime()
+                    updatedAt: session.updatedAt.getTime(),
+                    lastMessage: null
                 }
             });
         } else {
@@ -386,7 +370,8 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
-                    updatedAt: session.updatedAt.getTime()
+                    updatedAt: session.updatedAt.getTime(),
+                    lastMessage: null
                 }
             });
         }
