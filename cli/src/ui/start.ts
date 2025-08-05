@@ -48,11 +48,11 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     }, 2000);
 
     // Prepare proxy
-    const proxyUrl = await startClaudeActivityTracker((newThinking) => {
+    const activityTracker = await startClaudeActivityTracker((newThinking) => {
         thinking = newThinking;
         session.keepAlive(thinking, mode);
     });
-    process.env.ANTHROPIC_BASE_URL = proxyUrl;
+    process.env.ANTHROPIC_BASE_URL = activityTracker.proxyUrl;
 
     // Print log file path
     const logPath = await logger.logFilePathPromise;
@@ -85,7 +85,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
                 let r = { ...currentState.requests };
                 delete r[id];
-                
+
                 return ({
                     ...currentState,
                     requests: r,
@@ -176,23 +176,23 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             mode = newMode;
             session.sendSessionEvent({ type: 'switch', mode: newMode });
             session.keepAlive(thinking, mode);
-            
+
             // If switching from remote to local, clear all pending permission requests
             if (newMode === 'local') {
                 logger.debug('Switching to local mode - clearing pending permission requests');
-                
+
                 // Reject all pending permission requests
                 for (const [id, resolve] of requests) {
                     logger.debug(`Rejecting pending permission request: ${id}`);
                     resolve({ approved: false, reason: 'Session switched to local mode' });
                 }
                 requests.clear();
-                
+
                 // Move all pending requests to completedRequests with canceled status
                 session.updateAgentState((currentState) => {
                     const pendingRequests = currentState.requests || {};
                     const completedRequests = { ...currentState.completedRequests };
-                    
+
                     // Move each pending request to completed with canceled status
                     for (const [id, request] of Object.entries(pendingRequests)) {
                         completedRequests[id] = {
@@ -202,7 +202,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                             reason: 'Session switched to local mode'
                         };
                     }
-                    
+
                     return {
                         ...currentState,
                         controlledByUser: true,
@@ -217,6 +217,33 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                     controlledByUser: false
                 }));
             }
+        },
+        onProcessStart: (processMode) => {
+            logger.debug(`[Process Lifecycle] Starting ${processMode} mode`);
+
+            // Reset activity tracker when starting any process
+            activityTracker.reset();
+
+            // Clear permission requests when starting local mode
+            logger.debug('Starting process - clearing any stale permission requests');
+            for (const [id, resolve] of requests) {
+                logger.debug(`Rejecting stale permission request: ${id}`);
+                resolve({ approved: false, reason: 'Process restarted' });
+            }
+            requests.clear();
+        },
+        onProcessStop: (processMode) => {
+            logger.debug(`[Process Lifecycle] Stopped ${processMode} mode`);
+
+            // Ensure activity tracker is reset when any process stops
+            activityTracker.reset();
+
+            logger.debug('Stopping process - clearing any stale permission requests');
+            for (const [id, resolve] of requests) {
+                logger.debug(`Rejecting stale permission request: ${id}`);
+                resolve({ approved: false, reason: 'Process restarted' });
+            }
+            requests.clear();
         },
         mcpServers: {
             'permission': {

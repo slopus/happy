@@ -2,7 +2,6 @@ import { ApiSessionClient } from "@/api/apiSession"
 import { claudeRemote } from "./claudeRemote"
 import { claudeLocal } from "./claudeLocal"
 import { MessageQueue } from "@/utils/MessageQueue"
-import { RawJSONLines } from "./types"
 import { logger } from "@/ui/logger"
 import { createSessionScanner } from "./scanner/sessionScanner"
 import type { OnAssistantResultCallback } from "@/ui/messageFormatter"
@@ -14,6 +13,8 @@ interface LoopOptions {
     permissionMode?: 'auto' | 'default' | 'plan'
     startingMode?: 'local' | 'remote'
     onModeChange?: (mode: 'local' | 'remote') => void
+    onProcessStart?: (mode: 'local' | 'remote') => void
+    onProcessStop?: (mode: 'local' | 'remote') => void
     mcpServers?: Record<string, any>
     permissionPromptToolName?: string
     session: ApiSessionClient
@@ -91,6 +92,11 @@ export async function loop(opts: LoopOptions) {
                     interactiveAbortController.abort();
                 }
             });
+            opts.session.setHandler('abort', () => {
+                if (onMessage) {
+                    onMessage();
+                }
+            });
             onMessage = () => {
                 if (!interactiveAbortController.signal.aborted) {
                     abortedOutside = true;
@@ -100,18 +106,37 @@ export async function loop(opts: LoopOptions) {
                             opts.onModeChange(mode);
                         }
                     }
+                    opts.session.sendSessionEvent({ type: 'message', message: 'Inference aborted' });
                     interactiveAbortController.abort();
                 }
                 onMessage = null;
             };
-            await claudeLocal({
-                path: opts.path,
-                sessionId: sessionId,
-                onSessionFound: onSessionFound,
-                abort: interactiveAbortController.signal,
-                claudeEnvVars: opts.claudeEnvVars,
-                claudeArgs: opts.claudeArgs,
-            });
+
+            // Call onProcessStart before starting local mode
+            try {
+                if (opts.onProcessStart) {
+                    opts.onProcessStart('local');
+                }
+
+                await claudeLocal({
+                    path: opts.path,
+                    sessionId: sessionId,
+                    onSessionFound: onSessionFound,
+                    abort: interactiveAbortController.signal,
+                    claudeEnvVars: opts.claudeEnvVars,
+                    claudeArgs: opts.claudeArgs,
+                });
+            } catch (e) {
+                if (!interactiveAbortController.signal.aborted) {
+                    opts.session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                }
+            } finally {
+                // Call onProcessStop after local mode completes
+                if (opts.onProcessStop) {
+                    opts.onProcessStop('local');
+                }
+            }
+
             onMessage = null;
             if (!abortedOutside) {
                 return;
@@ -140,6 +165,7 @@ export async function loop(opts: LoopOptions) {
                             opts.onModeChange(mode);
                         }
                     }
+                    opts.session.sendSessionEvent({ type: 'message', message: 'Inference aborted' });
                     remoteAbortController.abort();
                 }
                 if (process.stdin.isTTY) {
@@ -154,6 +180,12 @@ export async function loop(opts: LoopOptions) {
             process.stdin.on('data', abortHandler);
             try {
                 logger.debug(`Starting claudeRemote with messages: ${currentMessageQueue.size()}`);
+
+                // Call onProcessStart before starting remote mode
+                if (opts.onProcessStart) {
+                    opts.onProcessStart('remote');
+                }
+
                 await claudeRemote({
                     abort: remoteAbortController.signal,
                     sessionId: sessionId,
@@ -167,7 +199,16 @@ export async function loop(opts: LoopOptions) {
                     claudeEnvVars: opts.claudeEnvVars,
                     claudeArgs: opts.claudeArgs,
                 });
+            } catch (e) {
+                if (!remoteAbortController.signal.aborted) {
+                    opts.session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                }
             } finally {
+                // Call onProcessStop after remote mode completes
+                if (opts.onProcessStop) {
+                    opts.onProcessStop('remote');
+                }
+
                 process.stdin.off('data', abortHandler);
                 if (process.stdin.isTTY) {
                     process.stdin.setRawMode(false);
