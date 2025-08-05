@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
+    "start:local-server": "EXPO_PUBLIC_DEBUG=1 EXPO_PUBLIC_API_ENDPOINT=http://localhost:3005 expo start -c",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "ios:local-server": "EXPO_PUBLIC_DEBUG=1 EXPO_PUBLIC_API_ENDPOINT=http://localhost:3005 expo run:ios",
@@ -121,7 +122,7 @@
     "react-native-webrtc": "^124.0.5",
     "react-native-webrtc-web-shim": "^1.0.7",
     "react-native-webview": "13.13.5",
-    "react-native-worklets": "^0.4.1",
+    "react-native-worklets": "0.4.1",
     "react-syntax-highlighter": "^15.6.1",
     "react-textarea-autosize": "^8.5.9",
     "resolve-path": "^1.4.0",
