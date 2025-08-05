@@ -26,7 +26,14 @@ interface UserScopedConnection {
     userId: string;
 }
 
-type ClientConnection = SessionScopedConnection | UserScopedConnection;
+interface MachineScopedConnection {
+    connectionType: 'machine-scoped';
+    socket: Socket;
+    userId: string;
+    machineId: string;
+}
+
+type ClientConnection = SessionScopedConnection | UserScopedConnection | MachineScopedConnection;
 
 declare module 'fastify' {
     interface FastifyRequest {
@@ -131,6 +138,12 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     log({ module: 'websocket' }, `Sending ${event} to session-scoped connection ${connection.socket.id}`);
                     connection.socket.emit(event, payload);
                 }
+            }
+            
+            // Send to all machine-scoped connections - they get all user updates
+            if (connection.connectionType === 'machine-scoped') {
+                log({ module: 'websocket' }, `Sending ${event} to machine-scoped connection ${connection.socket.id}`);
+                connection.socket.emit(event, payload);
             }
         }
     }
@@ -854,8 +867,9 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
     io.on("connection", async (socket) => {
         log({ module: 'websocket' }, `New connection attempt from socket: ${socket.id}`);
         const token = socket.handshake.auth.token as string;
-        const clientType = socket.handshake.auth.clientType as 'session-scoped' | 'user-scoped' | undefined;
+        const clientType = socket.handshake.auth.clientType as 'session-scoped' | 'user-scoped' | 'machine-scoped' | undefined;
         const sessionId = socket.handshake.auth.sessionId as string | undefined;
+        const machineId = socket.handshake.auth.machineId as string | undefined;
 
         if (!token) {
             log({ module: 'websocket' }, `No token provided`);
@@ -871,6 +885,14 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             socket.disconnect();
             return;
         }
+        
+        // Validate machine-scoped clients have machineId
+        if (clientType === 'machine-scoped' && !machineId) {
+            log({ module: 'websocket' }, `Machine-scoped client missing machineId`);
+            socket.emit('error', { message: 'Machine ID required for machine-scoped clients' });
+            socket.disconnect();
+            return;
+        }
 
         const verified = await tokenVerifier.verify(token);
         if (!verified) {
@@ -881,10 +903,10 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         }
 
         const userId = verified.user as string;
-        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, socketId: ${socket.id}`);
+        log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
 
         // Store connection based on type
-        const metadata = { clientType: clientType || 'user-scoped', sessionId };
+        const metadata = { clientType: clientType || 'user-scoped', sessionId, machineId };
         let connection: ClientConnection;
         if (metadata.clientType === 'session-scoped' && sessionId) {
             connection = {
@@ -892,6 +914,13 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 socket,
                 userId,
                 sessionId
+            };
+        } else if (metadata.clientType === 'machine-scoped' && machineId) {
+            connection = {
+                connectionType: 'machine-scoped',
+                socket,
+                userId,
+                machineId
             };
         } else {
             connection = {
@@ -904,6 +933,22 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             userIdToClientConnections.set(userId, new Set());
         }
         userIdToClientConnections.get(userId)!.add(connection);
+        
+        // Broadcast daemon online status
+        if (connection.connectionType === 'machine-scoped') {
+            // Broadcast daemon online
+            emitUpdateToInterestedClients({
+                event: 'ephemeral',
+                userId,
+                sessionId: '', // No specific session
+                payload: {
+                    type: 'daemon-status',
+                    machineId,
+                    status: 'online',
+                    timestamp: Date.now()
+                }
+            });
+        }
 
         // Lock
         const receiveMessageLock = new AsyncLock();
@@ -942,6 +987,21 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             }
 
             log({ module: 'websocket' }, `User disconnected: ${userId}`);
+            
+            // Broadcast daemon offline status
+            if (connection.connectionType === 'machine-scoped') {
+                emitUpdateToInterestedClients({
+                    event: 'ephemeral',
+                    userId,
+                    sessionId: '', // No specific session
+                    payload: {
+                        type: 'daemon-status',
+                        machineId: connection.machineId,
+                        status: 'offline',
+                        timestamp: Date.now()
+                    }
+                });
+            }
         });
 
         socket.on('session-alive', async (data: any) => {
