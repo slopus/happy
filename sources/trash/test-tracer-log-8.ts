@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { normalizeRawMessage } from '../sync/typesRaw';
-import { createTracer, traceMessages } from '../sync/reducerTracer';
+import { createTracer, traceMessages } from '../sync/reducer/reducerTracer';
 
 // Load and process log_8.json
 const logPath = path.join(__dirname, '../log_8.json');
@@ -33,7 +33,7 @@ console.log(`\nSidechain messages: ${sidechainMessages.length}`);
 console.log(`Non-sidechain messages: ${nonSidechainMessages.length}`);
 
 // Group by sidechain
-const sidechainGroups = new Map<string, typeof tracedMessages>();
+const sidechainGroups = new Map<string, any[]>();
 for (const msg of sidechainMessages) {
     if (msg.sidechainId) {
         const group = sidechainGroups.get(msg.sidechainId) || [];

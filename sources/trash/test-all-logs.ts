@@ -1,6 +1,6 @@
 import { readFileSync, readdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { createReducer, reducer } from '../sync/reducer';
+import { createReducer, reducer } from '../sync/reducer/reducer';
 import { normalizeRawMessage } from '../sync/typesRaw';
 
 const testDataDir = join(__dirname, '..');

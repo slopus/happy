@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
 import { DecryptedMessage, Session } from "./storageTypes";
-import { createReducer, reducer, ReducerState } from "./reducer";
+import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { normalizeRawMessage } from "./typesRaw";
 import { isSessionActive, DISCONNECTED_TIMEOUT_MS } from '@/utils/sessionUtils';

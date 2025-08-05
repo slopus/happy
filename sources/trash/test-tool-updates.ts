@@ -1,4 +1,4 @@
-import { createReducer, reducer } from '../sync/reducer';
+import { createReducer, reducer } from '../sync/reducer/reducer';
 import { normalizeRawMessage } from '../sync/typesRaw';
 
 // Create a simple test case with a tool call and its result
