@@ -109,7 +109,7 @@ export async function claudeRemote(opts: {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
         for await (const message of response) {
-            logger.debug(`[claudeRemote] Received message from SDK: ${message.type}`);
+            logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
             // Always format and display the message
             formatClaudeMessage(message, opts.onAssistantResult);
 

@@ -19,7 +19,7 @@ export function createSessionScanner(opts: {
     let pendingSessions = new Set<string>();
     let currentSessionId: string | null = null;
     let watchers = new Map<string, (() => void)>();
-    let processedMessages = new Set<string>();
+    let processedMessageKeys = new Set<string>();
 
     /*
         NOTE: User messages that come to us from the remote session, will be
@@ -41,7 +41,6 @@ export function createSessionScanner(opts: {
         
         Solution: Track matched messages by UUID and unmatched server messages by content.
     */
-    let matchedMessageUUIDs = new Set<string>();
     let unmatchedServerMessageContents = new Set<string>();
 
     // Main sync function
@@ -84,19 +83,13 @@ export function createSessionScanner(opts: {
 
                     // Hash
                     let key = getMessageKey(parsed.data);
-                    if (processedMessages.has(key)) {
+                    if (processedMessageKeys.has(key)) {
                         continue;
                     }
-                    processedMessages.add(key);
+                    processedMessageKeys.add(key);
 
                     logger.debugLargeJson(`[SESSION_SCANNER] Processing message`, parsed.data)
                     logger.debug(`[SESSION_SCANNER] Message key (new): ${key}`)
-
-                    // Check if already matched by UUID (only user messages have uuid at top level)
-                    if (parsed.data.type === 'user' && parsed.data.uuid && matchedMessageUUIDs.has(parsed.data.uuid)) {
-                        logger.debug(`[SESSION_SCANNER] Skipping already matched message with UUID: ${parsed.data.uuid}`);
-                        continue;
-                    }
 
                     // Check if this is a user message that should be deduplicated
                     if (parsed.data.type === 'user' && typeof parsed.data.message.content === 'string' && 
@@ -105,7 +98,6 @@ export function createSessionScanner(opts: {
                         if (unmatchedServerMessageContents.has(parsed.data.message.content)) {
                             // This is the echo of a server message
                             logger.debug(`[SESSION_SCANNER] Matched server message echo: ${parsed.data.uuid}`);
-                            matchedMessageUUIDs.add(parsed.data.uuid);
                             unmatchedServerMessageContents.delete(parsed.data.message.content);
                             continue;
                         }
@@ -184,9 +176,25 @@ export function createSessionScanner(opts: {
     }
 }
 
+/*
+  Duplication of messages has won.
+  Particularly user message duplication is hard to resolve.
+  This seems like a bug with claude code - so we fixed it in the most robust hacky way - ignore repeat user content.
+
+  Failure mode:
+  - User sends the same message in local mode they had already sent before.
+  - The message will not show up in the history.
+
+  Why this is okay?
+  - Repeat messages are not that likely
+  - In local mode even if mobile client does not render the user message, its not a big deal funtionality wise
+  - Claude will fix this eventually - why bother?
+
+  https://github.com/anthropics/claude-code/issues/5034
+*/
 function getMessageKey(message: RawJSONLines): string {
     if (message.type === 'user') {
-        return `user:${message.uuid}`
+        return `user-message-content:${stableStringify(message.message.content)}`
     } else if (message.type === 'assistant') {
         // Usage will sometimes change, but otherwise the message will be 
         // exactly the same
@@ -205,6 +213,9 @@ function getMessageKey(message: RawJSONLines): string {
 }
 
 function stableStringify(obj: any): string {
+    if (!obj) {
+        return 'null';
+    }
     return JSON.stringify(sortKeys(obj), null, 2);
 }
 

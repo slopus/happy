@@ -112,8 +112,7 @@ Currently only supported on macOS.
         // Use zod to validate the permission mode
         options.permissionMode = z.enum(['auto', 'default', 'plan']).parse(args[++i])
       } else if (arg === '--local') {
-        // Already processed, skip the next arg
-        i++
+        // Already processed, skip
       } else if (arg === '--happy-starting-mode') {
         options.startingMode = z.enum(['local', 'remote']).parse(args[++i])
       } else if (arg === '--claude-env') {
