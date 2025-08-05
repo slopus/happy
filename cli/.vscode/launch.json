@@ -14,6 +14,37 @@
         "${workspaceFolder}/src/index.ts"
       ],
       "console": "integratedTerminal",
-    }
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run Tests",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vitest",
+        "run"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
+    {
+      "type": "node",
+      "request": "launch",
+      "name": "Run tests in current file",
+      "skipFiles": [
+        "<node_internals>/**"
+      ],
+      "runtimeExecutable": "npx",
+      "runtimeArgs": [
+        "vitest",
+        "run",
+        "${file}"
+      ],
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}"
+    },
   ]
 }

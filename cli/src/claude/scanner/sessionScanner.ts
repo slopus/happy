@@ -194,7 +194,15 @@ export function createSessionScanner(opts: {
 */
 function getMessageKey(message: RawJSONLines): string {
     if (message.type === 'user') {
-        return `user-message-content:${stableStringify(message.message.content)}`
+        // Sometimes message will be a single object like { role: user, content: '...' }
+        // othertimes it will be an array of objects like { role: user, content: [{ type: 'text', text: '...' }] }
+        // Based on what I have seen, there will be single object in the array.
+        // Just use that.
+        if (Array.isArray(message.message.content) && message.message.content.length > 0 && typeof message.message.content[0] === 'object' && 'text' in message.message.content[0]) {
+            return `user-message-content:${stableStringify(message.message.content[0].text)}`
+        } else {
+            return `user-message-content:${stableStringify(message.message.content)}`
+        }
     } else if (message.type === 'assistant') {
         // Usage will sometimes change, but otherwise the message will be 
         // exactly the same
