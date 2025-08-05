@@ -212,8 +212,8 @@ ${chalk.bold('Examples:')}
 
     // Onboarding flow for daemon installation
     const settings = await readSettings() || { onboardingCompleted: false };
-    const experimentalFeatures = process.env.EXPERIMENTAL_FEATURES === '1' || process.env.EXPERIMENTAL_FEATURES === 'true';
-    if (experimentalFeatures && settings.daemonAutoStartWhenRunningHappy === undefined) {
+    const experimentalFeatures = process.env.EXPERIMENTAL_FEATURES !== undefined
+    if (settings.daemonAutoStartWhenRunningHappy === undefined) {
 
       console.log(chalk.cyan('\n🚀 Happy Daemon Setup\n'));
       // Ask about daemon auto-start
@@ -246,7 +246,7 @@ ${chalk.bold('Examples:')}
     }
 
     // Auto-start daemon if enabled
-    if (experimentalFeatures && settings.daemonAutoStartWhenRunningHappy) {
+    if (settings.daemonAutoStartWhenRunningHappy) {
       console.log('Starting Happy background service...');
       
       if (!(await isDaemonRunning())) {
