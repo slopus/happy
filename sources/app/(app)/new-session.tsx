@@ -9,6 +9,7 @@ import { useSessions, useAllDaemonStatuses } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { spawnRemoteSession } from '@/sync/ops';
+import { storage } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router';
 import { Modal } from '@/modal';
@@ -42,10 +43,17 @@ export default function NewSessionScreen() {
         
         // Then, enrich with session data
         if (sessions) {
+            console.log('[new-session] Total sessions:', sessions.length);
             sessions.forEach(item => {
                 if (typeof item === 'string') return; // Skip section headers
                 
                 const session = item as Session;
+                console.log('[new-session] Session:', {
+                    id: session.id,
+                    machineId: session.metadata?.machineId,
+                    host: session.metadata?.host,
+                    path: session.metadata?.path
+                });
                 if (session.metadata?.machineId) {
                     const machineId = session.metadata.machineId;
                     if (!groups[machineId]) {
@@ -73,6 +81,14 @@ export default function NewSessionScreen() {
             });
         }
         
+        console.log('[new-session] Machine groups:', Object.entries(groups).map(([id, data]) => ({
+            machineId: id,
+            host: data.machineHost,
+            pathCount: data.paths.size,
+            paths: Array.from(data.paths),
+            isOnline: data.isOnline
+        })));
+        
         return groups;
     }, [sessions, daemonStatuses]);
 
@@ -81,12 +97,42 @@ export default function NewSessionScreen() {
             setIsSpawning(true);
             try {
                 const result = await spawnRemoteSession(machineId, path);
+                console.log('daemon result', result);
                 if (result.sessionId) {
-                    router.replace(`/session/${result.sessionId}`);
+                    // NOTE: This does not really work for some reason : D
+                    console.log('Session spawned:', result.sessionId);
+                    
+                    // Poll for the session to appear in our local state
+                    const pollInterval = 100; // Poll every 100ms
+                    const maxAttempts = 20; // Max 2 seconds
+                    let attempts = 0;
+                    
+                    const pollForSession = () => {
+                        const state = storage.getState();
+                        const newSession = Object.values(state.sessions).find((s: Session) => s.id === result.sessionId);
+                        
+                        if (newSession) {
+                            // Session found! Navigate to it using replace to remove new-session screen from stack
+                            router.replace(`/session/${result.sessionId}`);
+                            return;
+                        }
+                        
+                        attempts++;
+                        if (attempts < maxAttempts) {
+                            setTimeout(pollForSession, pollInterval);
+                        } else {
+                            // Timeout - session didn't appear
+                            setIsSpawning(false);
+                            Modal.alert('Session started', 'The session was started but may take a moment to appear. Pull to refresh on the main screen.');
+                            router.back();
+                        }
+                    };
+                    
+                    // Start polling
+                    pollForSession();
                 }
             } catch (error) {
                 Modal.alert('Error', 'Failed to start session. Make sure the daemon is running on the target machine.');
-            } finally {
                 setIsSpawning(false);
             }
         }

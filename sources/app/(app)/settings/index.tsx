@@ -11,6 +11,7 @@ import { ItemList } from '@/components/ItemList';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { useEntitlement, useLocalSettingMutable } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackPaywallButtonClicked } from '@/track';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
@@ -22,8 +23,9 @@ export default function SettingsScreen() {
     const auth = useAuth();
     const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
     const isPro = __DEV__ || useEntitlement('pro');
+    const isCustomServer = isUsingCustomServer();
 
-    const { connectTerminal, isLoading } = useConnectTerminal();
+    const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
 
     const handleGitHub = async () => {
         const url = 'https://github.com/slopus/happy';
@@ -99,6 +101,18 @@ export default function SettingsScreen() {
                         loading={isLoading}
                         showChevron={false}
                     />
+                    {isCustomServer && (
+                        <Item
+                            title="Connect Terminal Manually"
+                            subtitle="Paste authentication link"
+                            icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
+                            onPress={() => {
+                                router.push('/settings/connect-manual');
+                            }}
+                            loading={isLoading}
+                            showChevron={false}
+                        />
+                    )}
                 </ItemGroup>
             )}
 

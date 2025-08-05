@@ -107,19 +107,6 @@ class Sync {
         ex.invalidate();
     }
 
-    async spawnRemoteSession(machineId: string, directory: string): Promise<{ sessionId: string }> {
-        // Make RPC call to spawn session on specified machine
-        try {
-            const result = await apiSocket.daemonRpc<{ sessionId: string }>(
-                'spawn-happy-session',
-                { directory },
-                machineId
-            );
-            return result;
-        } catch (error) {
-            throw new Error(`Failed to spawn session: ${error instanceof Error ? error.message : 'Unknown error'}`);
-        }
-    }
 
     sendMessage(sessionId: string, text: string) {
 

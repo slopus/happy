@@ -117,7 +117,12 @@ interface SessionRipgrepResponse {
  * Spawn a new remote session on a specific machine
  */
 export async function spawnRemoteSession(machineId: string, directory: string): Promise<{ sessionId: string }> {
-    return sync.spawnRemoteSession(machineId, directory);
+    const result = await apiSocket.daemonRpc<{ sessionId: string }>(
+        'spawn-happy-session',
+        { directory },
+        machineId
+    );
+    return result;
 }
 
 /**
