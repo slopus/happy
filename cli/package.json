@@ -52,7 +52,7 @@
     "dev:local-server": "HANDY_SERVER_URL=http://localhost:3005 npx tsx --env-file .env.sample src/index.ts"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^1.0.51",
+    "@anthropic-ai/claude-code": "^1.0.68",
     "@anthropic-ai/sdk": "^0.56.0",
     "@modelcontextprotocol/sdk": "^1.15.1",
     "@stablelib/base64": "^2.0.1",
