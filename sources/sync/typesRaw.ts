@@ -4,6 +4,15 @@ import * as z from 'zod';
 // Raw types
 //
 
+const agentEventSchema = z.discriminatedUnion('type', [z.object({
+    type: z.literal('switch'),
+    mode: z.enum(['local', 'remote'])
+}), z.object({
+    type: z.literal('message'),
+    message: z.string(),
+})]);
+export type AgentEvent = z.infer<typeof agentEventSchema>;
+
 const rawTextContentSchema = z.object({
     type: z.literal('text'),
     text: z.string(),
@@ -29,11 +38,11 @@ export type RawToolResultContent = z.infer<typeof rawToolResultContentSchema>;
 const rawAgentContentSchema = z.discriminatedUnion('type', [
     rawTextContentSchema,
     rawToolUseContentSchema,
-    rawToolResultContentSchema,
+    rawToolResultContentSchema
 ]);
 export type RawAgentContent = z.infer<typeof rawAgentContentSchema>;
 
-const rawAgentRecordSchema = z.object({
+const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('output'),
     data: z.intersection(z.discriminatedUnion('type', [
         z.object({ type: z.literal('system') }),
@@ -48,7 +57,11 @@ const rawAgentRecordSchema = z.object({
         uuid: z.string().nullish(),
         parentUuid: z.string().nullish(),
     })),
-});
+}), z.object({
+    type: z.literal('event'),
+    id: z.string(),
+    data: agentEventSchema
+})]);
 
 const rawRecordSchema = z.discriminatedUnion('role', [
     z.object({
@@ -58,7 +71,7 @@ const rawRecordSchema = z.discriminatedUnion('role', [
     z.object({
         role: z.literal('user'),
         content: z.object({ type: z.literal('text'), text: z.string() })
-    }),
+    })
 ]);
 
 export type RawRecord = z.infer<typeof rawRecordSchema>;
@@ -110,6 +123,9 @@ export type NormalizedMessage = ({
 } | {
     role: 'agent'
     content: NormalizedAgentContent[]
+} | {
+    role: 'event'
+    content: AgentEvent
 }) & {
     id: string,
     localId: string | null,
@@ -233,6 +249,16 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     content
                 };
             }
+        }
+        if (raw.content.type === 'event') {
+            return {
+                id,
+                localId,
+                createdAt,
+                role: 'event',
+                content: raw.content.data,
+                isSidechain: false,
+            };
         }
     }
     return null;

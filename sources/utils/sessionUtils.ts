@@ -39,7 +39,7 @@ export function getSessionState(session: Session): SessionStatus {
     }
 
     // Check if permission is required (controlledByUser is true)
-    if (session.agentState?.controlledByUser === true) {
+    if (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0) {
         return {
             state: 'permission_required',
             isConnected: true,

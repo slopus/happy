@@ -248,14 +248,6 @@ export default React.memo(() => {
                             showChevron={false}
                         />
                     )}
-                    {session.lastMessage && (
-                        <Item
-                            title="Last Message"
-                            subtitle={`${session.lastMessage.role === 'user' ? 'You' : 'Claude'} • ${formatDate(session.lastMessage.createdAt)}`}
-                            icon={<Ionicons name="chatbubble-outline" size={29} color="#007AFF" />}
-                            onPress={() => router.push(`/session/${id}`)}
-                        />
-                    )}
                 </ItemGroup>
             </ItemList>
         </>

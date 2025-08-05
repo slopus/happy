@@ -5,9 +5,9 @@ import { createReducer, reducer, ReducerState } from "./reducer";
 import { Message } from "./typesMessage";
 import { normalizeRawMessage } from "./typesRaw";
 import { isSessionActive, DISCONNECTED_TIMEOUT_MS } from '@/utils/sessionUtils';
-import { applySettings, Settings, settingsDefaults } from "./settings";
-import { LocalSettings, localSettingsDefaults, applyLocalSettings } from "./localSettings";
-import { Purchases, purchasesDefaults, customerInfoToPurchases } from "./purchases";
+import { applySettings, Settings } from "./settings";
+import { LocalSettings, applyLocalSettings } from "./localSettings";
+import { Purchases, customerInfoToPurchases } from "./purchases";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases } from "./persistence";
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -99,16 +99,9 @@ export const storage = create<StorageState>()((set) => {
                 }
             });
 
-            // Sort both arrays by lastMessage time or createdAt if no messages
-            const getSortTime = (session: Session) => {
-                if (session.lastMessage) {
-                    return session.lastMessage.createdAt;
-                }
-                return session.createdAt;
-            };
-
-            activeSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
-            inactiveSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
+            // Sort both arrays by updatedAt
+            activeSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+            inactiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
 
             // Build flat list data for FlashList
             const listData: SessionListItem[] = [];
@@ -270,16 +263,9 @@ export const storage = create<StorageState>()((set) => {
                 }
             });
 
-            // Sort both arrays by lastMessage time or createdAt if no messages
-            const getSortTime = (session: Session) => {
-                if (session.lastMessage) {
-                    return session.lastMessage.createdAt;
-                }
-                return session.createdAt;
-            };
-
-            newActiveSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
-            newInactiveSessions.sort((a, b) => getSortTime(b) - getSortTime(a));
+            // Sort both arrays by updatedAt
+            newActiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+            newInactiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
 
             // Build flat list data for FlashList
             const listData: SessionListItem[] = [];

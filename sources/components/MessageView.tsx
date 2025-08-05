@@ -1,10 +1,11 @@
 import * as React from "react";
-import { View } from "react-native";
+import { View, Text } from "react-native";
 import { MarkdownView } from "./markdown/MarkdownView";
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 import { layout } from "./layout";
 import { ToolView } from "./tools/ToolView";
+import { AgentEvent } from "@/sync/typesRaw";
 
 export const MessageView = (props: {
   message: Message;
@@ -55,6 +56,9 @@ function RenderBlock(props: {
         getMessageById={props.getMessageById}
       />;
 
+    case 'agent-event':
+      return <AgentEventBlock event={props.message.event} metadata={props.metadata} />;
+
 
     default:
       // Exhaustive check - TypeScript will error if we miss a case
@@ -102,6 +106,24 @@ function AgentTextBlock(props: {
   );
 }
 
+function AgentEventBlock(props: {
+  event: AgentEvent;
+  metadata: Metadata | null;
+}) {
+  if (props.event.type === 'switch') {
+    return (
+      <View style={{
+        marginHorizontal: 8,
+        alignItems: 'center',
+        paddingVertical: 8,
+      }}>
+        <Text style={{ color: '#666666', fontSize: 14 }}>Switched to {props.event.mode} mode</Text>
+      </View>
+    );
+  }
+  return null;
+}
+
 function ToolCallBlock(props: {
   message: ToolCallMessage;
   metadata: Metadata | null;
@@ -113,9 +135,9 @@ function ToolCallBlock(props: {
   }
   return (
     <View style={{ marginHorizontal: 8 }}>
-      <ToolView 
-        tool={props.message.tool} 
-        metadata={props.metadata} 
+      <ToolView
+        tool={props.message.tool}
+        metadata={props.metadata}
         messages={props.message.children}
         sessionId={props.sessionId}
         messageId={props.message.id}
