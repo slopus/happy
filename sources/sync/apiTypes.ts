@@ -110,9 +110,16 @@ export const ApiEphemeralUsageUpdateSchema = z.object({
     }),
 });
 
+export const ApiEphemeralDaemonStatusUpdateSchema = z.object({
+    type: z.literal('daemon-status'),
+    machineId: z.string(),
+    status: z.enum(['online', 'offline']),
+});
+
 export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralActivityUpdateSchema,
     ApiEphemeralUsageUpdateSchema,
+    ApiEphemeralDaemonStatusUpdateSchema,
 ]);
 
 export type ApiEphemeralUpdate = z.infer<typeof ApiEphemeralUpdateSchema>;

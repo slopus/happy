@@ -27,6 +27,12 @@ interface SessionMessages {
 
 export type SessionListItem = string | Session;
 
+interface DaemonStatus {
+    machineId: string;
+    online: boolean;
+    lastSeen: number;
+}
+
 interface StorageState {
     settings: Settings;
     settingsVersion: number | null;
@@ -35,6 +41,7 @@ interface StorageState {
     sessions: Record<string, Session>;
     sessionsData: SessionListItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
+    daemons: Record<string, DaemonStatus>;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyLoaded: () => void;
     applyMessages: (sessionId: string, messages: DecryptedMessage[]) => void;
@@ -44,6 +51,7 @@ interface StorageState {
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
     applyPurchases: (customerInfo: CustomerInfo) => void;
     recalculateOnline: () => void;
+    applyDaemonStatus: (machineId: string, status: 'online' | 'offline') => void;
 }
 
 export const storage = create<StorageState>()((set) => {
@@ -56,6 +64,7 @@ export const storage = create<StorageState>()((set) => {
         localSettings,
         purchases,
         sessions: {},
+        daemons: {},
         sessionsData: null,
         sessionMessages: {},
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
@@ -324,6 +333,29 @@ export const storage = create<StorageState>()((set) => {
                 purchases
             };
         }),
+        applyDaemonStatus: (machineId: string, status: 'online' | 'offline') => set((state) => {
+            const now = Date.now();
+            if (status === 'online') {
+                return {
+                    ...state,
+                    daemons: {
+                        ...state.daemons,
+                        [machineId]: {
+                            machineId,
+                            online: true,
+                            lastSeen: now
+                        }
+                    }
+                };
+            } else {
+                // Remove offline daemons
+                const { [machineId]: removed, ...remainingDaemons } = state.daemons;
+                return {
+                    ...state,
+                    daemons: remainingDaemons
+                };
+            }
+        }),
     }
 });
 
@@ -372,6 +404,28 @@ export function useSetting<K extends keyof Settings>(name: K): Settings[K] {
 
 export function useLocalSettings(): LocalSettings {
     return storage(useShallow((state) => state.localSettings));
+}
+
+export function useDaemonStatus(): DaemonStatus | null {
+    return storage(useShallow((state) => {
+        // Return the first online daemon if any
+        const onlineDaemons = Object.values(state.daemons).filter(d => d.online);
+        return onlineDaemons.length > 0 ? onlineDaemons[0] : null;
+    }));
+}
+
+export function useAllDaemonStatuses(): DaemonStatus[] {
+    return storage(useShallow((state) => {
+        // Return all online daemons
+        return Object.values(state.daemons).filter(d => d.online);
+    }));
+}
+
+export function useDaemonStatusByMachine(machineId: string): DaemonStatus | null {
+    return storage(useShallow((state) => {
+        const daemon = state.daemons[machineId];
+        return daemon?.online ? daemon : null;
+    }));
 }
 
 export function useLocalSettingMutable<K extends keyof LocalSettings>(name: K): [LocalSettings[K], (value: LocalSettings[K]) => void] {

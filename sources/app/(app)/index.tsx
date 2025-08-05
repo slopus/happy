@@ -18,6 +18,8 @@ import { EmptyMainScreen } from "@/components/EmptyMainScreen";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { getServerInfo } from "@/sync/serverConfig";
 import { PlusPlus } from '@/components/PlusPlus';
+import { Modal } from '@/modal';
+import * as Clipboard from 'expo-clipboard';
 
 // Header title component with subtitle
 function HeaderTitleWithSubtitle({ subtitle }: { subtitle?: string }) {
@@ -56,8 +58,44 @@ function Authenticated() {
     const sessionsData = useSessions();
     const { updateAvailable, reloadApp } = useUpdates();
     const isTablet = useIsTablet();
+
+    const auth = useAuth();
+    const [showLogoutButton, setShowLogoutButton] = React.useState(false);
     
-    // Empty state in tablet view
+    // Show logout button after 2 seconds if still loading
+    React.useEffect(() => {
+        if (sessionsData === null) {
+            const timer = setTimeout(() => {
+                setShowLogoutButton(true);
+            }, 2000);
+            
+            return () => clearTimeout(timer);
+        } else {
+            setShowLogoutButton(false);
+        }
+    }, [sessionsData]);
+    
+    const handleCopyAndLogout = async () => {
+        const currentSecret = auth.credentials?.secret || '';
+        
+        const confirmed = await Modal.confirm(
+            'Copy backup login phrase and logout',
+            'This will copy your backup phrase to clipboard and log you out. Make sure to save your backup phrase in a secure place!',
+            { confirmText: 'Copy and Logout', destructive: true }
+        );
+        
+        if (confirmed) {
+            try {
+                await Clipboard.setStringAsync(currentSecret);
+                Modal.alert('Success', 'Backup phrase copied to clipboard. Logging out now...');
+                auth.logout();
+            } catch (error) {
+                Modal.alert('Error', 'Failed to copy backup phrase. Please try again.');
+            }
+        }
+    };
+
+    // Empty state in tabled view
     if (isTablet) {
         return (
             <>
@@ -70,6 +108,16 @@ function Authenticated() {
                     {sessionsData === null && (
                         <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}>
                             <ActivityIndicator />
+                            {showLogoutButton && (
+                                <View style={{ marginTop: 32 }}>
+                                    <RoundButton
+                                        title="Copy backup login phrase and logout"
+                                        onPress={handleCopyAndLogout}
+                                        display="inverted"
+                                        size="normal"
+                                    />
+                                </View>
+                            )}
                         </View>
                     )}
                     {sessionsData !== null && sessionsData.length === 0 && (
@@ -92,6 +140,16 @@ function Authenticated() {
                 />
                 <View className="flex-1 items-center justify-center mb-8">
                     <ActivityIndicator size="small" color="#000000" />
+                    {showLogoutButton && (
+                    <View style={{ marginTop: 32, paddingHorizontal: 32, width: '100%', maxWidth: 300 }}>
+                        <RoundButton
+                            title="Copy backup login phrase and logout"
+                            onPress={handleCopyAndLogout}
+                            display="inverted"
+                            size="normal"
+                        />
+                    </View>
+                )}
                 </View>
             </>
         )
@@ -106,6 +164,7 @@ function Authenticated() {
                 options={{
                     headerShown: true,
                     headerTitle: () => <HeaderTitleWithSubtitle />,
+                    headerLeft: () => <HeaderLeft />,
                     headerRight: () => <HeaderRight />
                 }}
             />
@@ -231,7 +290,7 @@ function NotAuthenticated() {
     )
 }
 
-function HeaderRight() {
+function HeaderLeft() {
     const router = useRouter();
 
     return (
@@ -240,6 +299,19 @@ function HeaderRight() {
             hitSlop={10}
         >
             <Ionicons name="settings-outline" size={24} color="#000" />
+        </Pressable>
+    );
+}
+
+function HeaderRight() {
+    const router = useRouter();
+    
+    return (
+        <Pressable
+            onPress={() => router.push('/new-session')}
+            hitSlop={10}
+        >
+            <Ionicons name="add-circle-outline" size={28} color="#000" />
         </Pressable>
     );
 }

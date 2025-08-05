@@ -4,6 +4,7 @@
  */
 
 import { apiSocket } from './apiSocket';
+import { sync } from './sync';
 
 // Strict type definitions for all operations
 
@@ -111,6 +112,13 @@ interface SessionRipgrepResponse {
 }
 
 // Exported session operation functions
+
+/**
+ * Spawn a new remote session on a specific machine
+ */
+export async function spawnRemoteSession(machineId: string, directory: string): Promise<{ sessionId: string }> {
+    return sync.spawnRemoteSession(machineId, directory);
+}
 
 /**
  * Abort the current session operation

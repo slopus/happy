@@ -106,6 +106,22 @@ class ApiSocket {
         }
         throw new Error('RPC call failed');
     }
+    
+    async daemonRpc<R = any, A = any>(method: string, params: A, machineId?: string): Promise<R> {
+        if (!this.socket) {
+            throw new Error('Socket not connected');
+        }
+        // For daemon RPCs, we don't prefix with sessionId and don't encrypt params
+        // The machineId can be optionally specified to target a specific daemon
+        const result = await this.socket.emitWithAck('rpc-call', {
+            method: machineId ? `${machineId}:${method}` : method,
+            params: params
+        });
+        if (result.ok) {
+            return result.result as R;
+        }
+        throw new Error(result.error || 'Daemon RPC call failed');
+    }
 
     send(event: string, data: any) {
         this.socket!.emit(event, data);

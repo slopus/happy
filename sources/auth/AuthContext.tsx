@@ -35,12 +35,19 @@ export function AuthProvider({ children, initialCredentials }: { children: React
         trackLogout();
         clearPersistence();
         await TokenStorage.removeCredentials();
+        
+        // Update React state to ensure UI consistency
+        setCredentials(null);
+        setIsAuthenticated(false);
+        
         if (Platform.OS === 'web') {
             window.location.reload();
         } else {
-            await Updates.reloadAsync(); // Never resolves after this point
-            while (true) {
-                await new Promise(resolve => setTimeout(resolve, 1000));
+            try {
+                await Updates.reloadAsync();
+            } catch (error) {
+                // In dev mode, reloadAsync will throw ERR_UPDATES_DISABLED
+                console.log('Reload failed (expected in dev mode):', error);
             }
         }
     };

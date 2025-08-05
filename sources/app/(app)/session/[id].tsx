@@ -168,8 +168,9 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             const systemPrompt = `You are a voice interface to Claude Code. Your role is to:
 
 1. Help the user understand what changes Claude Code made or where it got stuck
-2. Help the user 
-3. When the user formulates a change they want to make, use the askClaudeCode function to send tasks to Claude Code
+2. On behalf of the user submit new messages to Claude Code. If the customer asks you a question, assume they are trying to ask this to claude code.
+3. Proactively offer to send message to claude code, but ask the user to confirm we are ready to send the request to claude code.
+4. When the user formulates a change they want to make, use the askClaudeCode function to send tasks to Claude Code
 
 Claude Code is an advanced coding agent that can actually make changes to files, do research, and more.
 
