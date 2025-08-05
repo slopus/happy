@@ -8,7 +8,7 @@ const SERVER_KEY = 'custom-server-url';
 
 export function getServerUrl(): string {
     const customServer = serverConfigStorage.getString(SERVER_KEY);
-    return customServer || DEFAULT_SERVER;
+    return customServer || process.env.EXPO_PUBLIC_API_ENDPOINT || DEFAULT_SERVER;
 }
 
 export function setServerUrl(url: string | null): void {

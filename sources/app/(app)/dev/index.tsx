@@ -10,6 +10,7 @@ import * as Application from 'expo-application';
 import { useLocalSettingMutable } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
+import { getServerUrl } from '@/sync/serverConfig';
 
 export default function DevScreen() {
     const router = useRouter();
@@ -233,14 +234,7 @@ export default function DevScreen() {
             <ItemGroup title="Network">
                 <Item 
                     title="API Endpoint"
-                    detail="Production"
-                    onPress={() => console.log('Switch endpoint')}
-                />
-                <Item 
-                    title="Force Refresh"
-                    subtitle="Reload all data from server"
-                    icon={<Ionicons name="cloud-download-outline" size={28} color="#007AFF" />}
-                    onPress={() => console.log('Force refresh')}
+                    detail={getServerUrl()}
                 />
             </ItemGroup>
         </ItemList>
