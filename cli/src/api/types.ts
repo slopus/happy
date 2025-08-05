@@ -206,7 +206,8 @@ export type Metadata = {
   summary?: {
     text: string,
     updatedAt: number
-  }
+  },
+  machineId?: string,
 };
 
 export type AgentState = {

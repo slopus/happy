@@ -11,6 +11,7 @@ import { InterruptController } from '@/claude/InterruptController';
 import packageJson from '../../package.json';
 import { registerHandlers } from '@/api/handlers';
 import { startClaudeActivityTracker } from '@/claude/claudeActivityTracker';
+import { readSettings } from '@/persistence/persistence';
 
 export interface StartOptions {
     model?: string
@@ -19,6 +20,7 @@ export interface StartOptions {
     shouldStartDaemon?: boolean
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
+    onSessionCreated?: (sessionId: string) => void
 }
 
 export async function start(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
@@ -30,9 +32,21 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Create a new session
     let state: AgentState = {};
-    let metadata: Metadata = { path: workingDirectory, host: os.hostname(), version: packageJson.version, os: os.platform() };
+    const settings = await readSettings() || { onboardingCompleted: false };
+    let metadata: Metadata = { 
+        path: workingDirectory, 
+        host: os.hostname(), 
+        version: packageJson.version, 
+        os: os.platform(),
+        machineId: settings.machineId
+    };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);
+    
+    // Call callback if provided (for daemon)
+    if (options.onSessionCreated) {
+        options.onSessionCreated(response.id);
+    }
 
     // Create realtime session
     const session = api.session(response);

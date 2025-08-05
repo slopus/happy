@@ -6,21 +6,17 @@
  */
 
 import chalk from 'chalk'
-import { appendFileSync } from 'fs'
+import { appendFileSync, mkdirSync } from 'fs'
 import { configuration } from '@/configuration'
 import { mkdir } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 
-async function getSessionLogPath(): Promise<string> {
-  if (!existsSync(configuration.logsDir)) {
-    await mkdir(configuration.logsDir, { recursive: true })
-  }
-  
-  // Create timestamp in local time, filename-safe format
-  const now = new Date()
-  // Weird format to get a format like 2025-07-16-12-34-56
-  const timestamp = now.toLocaleString('sv-SE', { 
+/**
+ * Consistent date/time formatting functions
+ */
+function createTimestampForFilename(date: Date = new Date()): string {
+  return date.toLocaleString('sv-SE', { 
     timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     year: 'numeric',
     month: '2-digit', 
@@ -29,8 +25,27 @@ async function getSessionLogPath(): Promise<string> {
     minute: '2-digit',
     second: '2-digit'
   }).replace(/[: ]/g, '-').replace(/,/g, '')
+}
+
+function createTimestampForLogEntry(date: Date = new Date()): string {
+  return date.toLocaleTimeString('en-US', { 
+    timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    hour12: false,
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    fractionalSecondDigits: 3
+  })
+}
+
+async function getSessionLogPath(): Promise<string> {
+  if (!existsSync(configuration.logsDir)) {
+    await mkdir(configuration.logsDir, { recursive: true })
+  }
   
-  return join(configuration.logsDir, `${timestamp}.log`)
+  const timestamp = createTimestampForFilename()
+  const filename = configuration.isDaemonProcess ? `${timestamp}-daemon.log` : `${timestamp}.log`
+  return join(configuration.logsDir, filename)
 }
 
 class Logger {
@@ -41,14 +56,7 @@ class Logger {
   // Use local timezone for simplicity of locating the logs,
   // in practice you will not need absolute timestamps
   localTimezoneTimestamp(): string {
-    return new Date().toLocaleTimeString('en-US', { 
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      hour12: false,
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      fractionalSecondDigits: 3
-    })
+    return createTimestampForLogEntry()
   }
 
   debug(message: string, ...args: unknown[]): void {
@@ -123,6 +131,11 @@ class Logger {
     if (process.env.DEBUG) {
       this.logToConsole('info', '[DEV]', message, ...args)
     }
+  }
+  
+  daemonDebug(message: string, ...args: unknown[]): void {
+    // Just use regular debug logging - the logger instance will handle the file path
+    this.debug(`[DAEMON] ${message}`, ...args)
   }
   
   private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {

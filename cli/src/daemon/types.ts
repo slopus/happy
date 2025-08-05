@@ -12,8 +12,7 @@ export interface MachineIdentity {
 export interface EncryptedNewSessionRequest {
   requestId: string;
   directory: string;
-  startingMode: 'interactive' | 'remote';
-  metadata?: string; // encrypted
+  startingMode: 'local' | 'remote';
 }
 
 export interface DaemonToServerEvents {
@@ -28,6 +27,13 @@ export interface DaemonToServerEvents {
     requestId: string;
     result: string; // encrypted result
   }) => void;
+  'rpc-register': (data: { method: string }) => void;
+  'rpc-unregister': (data: { method: string }) => void;
+  'rpc-call': (data: { method: string, params: any }, callback: (response: {
+    ok: boolean
+    result?: any
+    error?: string
+  }) => void) => void;
 }
 
 export interface ServerToDaemonEvents {
@@ -38,4 +44,10 @@ export interface ServerToDaemonEvents {
   'daemon-command': (data: {
     command: 'shutdown' | 'status';
   }) => void;
+  'rpc-request': (data: { method: string, params: any }, callback: (response: any) => void) => void;
+  'rpc-registered': (data: { method: string }) => void;
+  'rpc-unregistered': (data: { method: string }) => void;
+  'rpc-error': (data: { type: string, error: string }) => void;
+  'ephemeral': (data: any) => void;
+  'auth': (data: { success: boolean, user: string }) => void;
 }

@@ -9,7 +9,7 @@
 
 import chalk from 'chalk'
 import { start, StartOptions } from '@/ui/start'
-import { existsSync, rmSync } from 'node:fs'
+import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
@@ -32,8 +32,15 @@ import { uninstall } from './daemon/uninstall'
   // Parse global options first
   let installationLocation: 'global' | 'local'
     = (args.includes('--local') || process.env.HANDY_LOCAL) ? 'local' : 'global'
+  
+  // Parse server URL if provided
+  let serverUrl: string | undefined
+  const serverUrlIndex = args.indexOf('--happy-server-url')
+  if (serverUrlIndex !== -1 && serverUrlIndex + 1 < args.length) {
+    serverUrl = args[serverUrlIndex + 1]
+  }
 
-  initializeConfiguration(installationLocation)
+  initializeConfiguration(installationLocation, serverUrl)
   initLoggerWithGlobalConfiguration()
 
   logger.debug('Starting happy CLI with args: ', process.argv)
@@ -96,6 +103,8 @@ Currently only supported on macOS.
     let showHelp = false
     let showVersion = false
     let forceAuth = false
+    let daemonPort: number | undefined
+    let daemonNonce: string | undefined
 
     for (let i = 0; i < args.length; i++) {
       const arg = args[i]
@@ -128,6 +137,13 @@ Currently only supported on macOS.
         // Pass additional arguments to Claude CLI
         const claudeArg = args[++i]
         options.claudeArgs = [...(options.claudeArgs || []), claudeArg]
+      } else if (arg === '--happy-daemon-port') {
+        daemonPort = parseInt(args[++i])
+      } else if (arg === '--happy-daemon-new-session-nonce') {
+        daemonNonce = args[++i]
+      } else if (arg === '--happy-server-url') {
+        // Already processed in global options, skip the value
+        i++
       } else {
         console.error(chalk.red(`Unknown argument: ${arg}`))
         process.exit(1)
@@ -165,6 +181,8 @@ ${chalk.bold('Options:')}
       You will require re-login each time you run this in a new directory.
   --happy-starting-mode <interactive|remote>
       Set the starting mode for new sessions (default: remote)
+  --happy-server-url <url>
+      Set the server URL (overrides HANDY_SERVER_URL environment variable)
 
 ${chalk.bold('Examples:')}
   happy                   Start a session with default settings
@@ -198,7 +216,8 @@ ${chalk.bold('Examples:')}
 
     // Onboarding flow for daemon installation
     const settings = await readSettings() || { onboardingCompleted: false };
-    if (false && settings.daemonAutoStartWhenRunningHappy === undefined) {
+    const experimentalFeatures = process.env.EXPERIMENTAL_FEATURES === '1' || process.env.EXPERIMENTAL_FEATURES === 'true';
+    if (experimentalFeatures && settings.daemonAutoStartWhenRunningHappy === undefined) {
 
       console.log(chalk.cyan('\n🚀 Happy Daemon Setup\n'));
       // Ask about daemon auto-start
@@ -231,24 +250,80 @@ ${chalk.bold('Examples:')}
     }
 
     // Auto-start daemon if enabled
-    if (false && settings.daemonAutoStartWhenRunningHappy) {
+    if (experimentalFeatures && settings.daemonAutoStartWhenRunningHappy) {
       console.log('Starting Happy background service...');
+      
       if (!(await isDaemonRunning())) {
-        console.log('Not running, starting...');
         // Make sure to start detached
         const happyPath = process.argv[1];
-        const daemonProcess = spawn('node', [happyPath, 'daemon', 'start'], {
-          detached: true,
-          stdio: 'ignore',
-          env: process.env,
-        });
+        
+        // When running with tsx, happyPath is the TypeScript file
+        // When running the built binary, happyPath is the binary itself
+        // We need to determine which case we're in
+        const isBuiltBinary = happyPath.endsWith('/bin/happy') || happyPath.endsWith('\\bin\\happy');
+        
+        // Build daemon args
+        const daemonArgs = ['daemon', 'start'];
+        if (serverUrl) {
+          daemonArgs.push('--happy-server-url', serverUrl);
+        }
+        if (installationLocation === 'local') {
+          daemonArgs.push('--local');
+        }
+        
+        const daemonProcess = isBuiltBinary 
+          ? spawn(happyPath, daemonArgs, {
+              detached: true,
+              stdio: ['ignore', 'inherit', 'inherit'], // Show stdout/stderr for debugging
+              env: {
+                ...process.env,
+                HANDY_SERVER_URL: serverUrl || process.env.HANDY_SERVER_URL, // Pass through server URL
+                HANDY_LOCAL: process.env.HANDY_LOCAL, // Pass through local flag
+              },
+            })
+          : spawn('npx', ['tsx', happyPath, ...daemonArgs], {
+              detached: true,
+              stdio: ['ignore', 'inherit', 'inherit'], // Show stdout/stderr for debugging
+              env: {
+                ...process.env,
+                HANDY_SERVER_URL: serverUrl || process.env.HANDY_SERVER_URL, // Pass through server URL
+                HANDY_LOCAL: process.env.HANDY_LOCAL, // Pass through local flag
+              },
+            });
         daemonProcess.unref();
-        console.log('Starting Happy background service... with pid: ', daemonProcess.pid);
+        
+        // Give daemon a moment to write PID file
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
     }
 
     // Start the CLI
     try {
+      // This session was started from the daemon, 
+      // so we need to call back to the daemon to notify it about the new session
+      if (daemonPort && daemonNonce) {
+        options.onSessionCreated = async (sessionId) => {
+          logger.debug(`[CLI] Calling back to daemon on port ${daemonPort}`);
+          try {
+            const response = await fetch(`http://127.0.0.1:${daemonPort}/on-new-session`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                nonce: daemonNonce,
+                happySessionId: sessionId,
+                happyProcessId: process.pid
+              })
+            });
+            
+            if (!response.ok) {
+              logger.debug('[CLI] Daemon callback failed:', await response.text());
+            }
+          } catch (error) {
+            logger.debug('[CLI] Daemon callback error:', error);
+          }
+        };
+      }
+      
       await start(credentials, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
