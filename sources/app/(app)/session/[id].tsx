@@ -7,9 +7,9 @@ import { MessageView } from "@/components/MessageView";
 import { useRouter } from "expo-router";
 import { getSessionName, getSessionState } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
-import { useSession, useSessionMessages, useSettings } from '@/sync/storage';
+import { useSession, useSessionMessages, useSettings, useDaemonStatusByMachine } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { sessionAbort, sessionAllow, sessionDeny } from '@/sync/ops';
+import { sessionAbort, sessionAllow, sessionDeny, spawnRemoteSession } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
@@ -97,6 +97,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const [message, setMessage] = useState('');
     const [isRecording, setIsRecording] = useState(false);
+    const [isReviving, setIsReviving] = useState(false);
     const [, forceUpdate] = React.useReducer(x => x + 1, 0);
     const realtimeSessionRef = React.useRef<Awaited<ReturnType<typeof createRealtimeSession>> | null>(null);
     const isCreatingSessionRef = React.useRef(false);
@@ -105,6 +106,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const sessionStatus = getSessionState(session);
     const lastSeenText = sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active';
     const autocomplete = useAutocompleteSession(message, message.length);
+    const daemonStatus = useDaemonStatusByMachine(session.metadata?.machineId || '');
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
@@ -463,32 +465,59 @@ ${conversationContext}`;
 
                     </Animated.View>
 
-                    <AgentInput
-                        placeholder="Type a message ..."
-                        value={message}
-                        onChangeText={setMessage}
-                        onSend={() => {
-                            if (message.trim()) {
-                                setMessage('');
-                                sync.sendMessage(sessionId, message);
-                                trackMessageSent();
-                            }
-                        }}
-                        onMicPress={settings.inferenceOpenAIKey ? handleMicrophonePress : undefined}
-                        isMicActive={isRecording}
-                        status={{
-                            state: sessionStatus.state,
-                            text: sessionStatus.state === 'disconnected' ? 'disconnected' :
-                                sessionStatus.state === 'thinking' ? 'thinking...' :
-                                    sessionStatus.state === 'idle' ? 'idle' :
-                                        sessionStatus.state === 'permission_required' ? 'permission required' :
-                                            sessionStatus.state === 'waiting' ? 'connected' : '',
-                            color: sessionStatus.statusColor,
-                            dotColor: sessionStatus.statusDotColor,
-                            isPulsing: sessionStatus.isPulsing,
-                        }}
-                        onAbort={() => sessionAbort(sessionId)}
-                    />
+                    {sessionStatus.state === 'disconnected' && daemonStatus?.online && (
+                        <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+                            <RoundButton
+                                title={isReviving ? "Reviving..." : "Revive session"}
+                                onPress={async () => {
+                                    if (!isReviving && session.metadata?.machineId && session.metadata?.path) {
+                                        setIsReviving(true);
+                                        try {
+                                            const result = await spawnRemoteSession(session.metadata.machineId, session.metadata.path);
+                                            if (result.sessionId && result.sessionId !== sessionId) {
+                                                router.replace(`/session/${result.sessionId}`);
+                                            }
+                                        } catch (error) {
+                                            Modal.alert('Error', 'Failed to revive session');
+                                        } finally {
+                                            setIsReviving(false);
+                                        }
+                                    }
+                                }}
+                                size="normal"
+                                disabled={isReviving}
+                                loading={isReviving}
+                            />
+                        </View>
+                    )}
+                    {(sessionStatus.state !== 'disconnected' || !daemonStatus?.online) && (
+                        <AgentInput
+                            placeholder="Type a message ..."
+                            value={message}
+                            onChangeText={setMessage}
+                            onSend={() => {
+                                if (message.trim()) {
+                                    setMessage('');
+                                    sync.sendMessage(sessionId, message);
+                                    trackMessageSent();
+                                }
+                            }}
+                            onMicPress={settings.inferenceOpenAIKey ? handleMicrophonePress : undefined}
+                            isMicActive={isRecording}
+                            status={{
+                                state: sessionStatus.state,
+                                text: sessionStatus.state === 'disconnected' ? 'disconnected' :
+                                    sessionStatus.state === 'thinking' ? 'thinking...' :
+                                        sessionStatus.state === 'idle' ? 'idle' :
+                                            sessionStatus.state === 'permission_required' ? 'permission required' :
+                                                sessionStatus.state === 'waiting' ? 'connected' : '',
+                                color: sessionStatus.statusColor,
+                                dotColor: sessionStatus.statusDotColor,
+                                isPulsing: sessionStatus.isPulsing,
+                            }}
+                            onAbort={() => sessionAbort(sessionId)}
+                        />
+                    )}
                 </AgentContentView>
             </View>
 
