@@ -1,3 +1,5 @@
+import { AgentEvent } from "./typesRaw";
+
 export type ToolCall = {
     name: string;
     state: 'running' | 'completed' | 'error';
@@ -18,6 +20,13 @@ export type UserTextMessage = {
     text: string;
 }
 
+export type ModeSwitchMessage = {
+    kind: 'agent-event';
+    id: string;
+    createdAt: number;
+    event: AgentEvent;  
+}
+
 export type AgentTextMessage = {
     kind: 'agent-text';
     id: string;
@@ -35,4 +44,4 @@ export type ToolCallMessage = {
     children: Message[];
 }
 
-export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage;
+export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage | ModeSwitchMessage;

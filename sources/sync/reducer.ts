@@ -1,5 +1,5 @@
 import { Message, ToolCall } from "./typesMessage";
-import { NormalizedMessage } from "./typesRaw";
+import { AgentEvent, NormalizedMessage } from "./typesRaw";
 import { createTracer, traceMessages, TracedMessage, TracerState } from "./reducerTracer";
 
 type ReducerMessage = {
@@ -8,6 +8,7 @@ type ReducerMessage = {
     createdAt: number;
     role: 'user' | 'agent';
     text: string | null;
+    event: AgentEvent | null;
     tool: ToolCall | null;
 }
 
@@ -66,6 +67,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                 createdAt: msg.createdAt,
                 text: msg.content.text,
                 tool: null,
+                event: null,
             });
 
             // Track both localId and messageId
@@ -95,6 +97,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                         createdAt: msg.createdAt,
                         text: c.text,
                         tool: null,
+                        event: null,
                     });
                     changed.add(mid);
                 }
@@ -131,6 +134,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                             createdAt: msg.createdAt,
                             text: null,
                             tool: toolCall,
+                            event: null,
                         });
 
                         // Map tool ID to message ID for result processing
@@ -203,6 +207,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                 createdAt: msg.createdAt,
                 text: msg.content[0].prompt,
                 tool: null,
+                event: null,
             };
             state.messages.set(mid, userMsg);
             existingSidechain.push(userMsg);
@@ -218,6 +223,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                         createdAt: msg.createdAt,
                         text: c.text,
                         tool: null,
+                        event: null,
                     };
                     state.messages.set(mid, textMsg);
                     existingSidechain.push(textMsg);
@@ -240,6 +246,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
                         createdAt: msg.createdAt,
                         text: null,
                         tool: toolCall,
+                        event: null,
                     };
                     state.messages.set(mid, toolMsg);
                     existingSidechain.push(toolMsg);
@@ -267,6 +274,26 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[]): Mes
         // Update
         if (state.messageIds.has(msg.sidechainId)) {
             changed.add(state.messageIds.get(msg.sidechainId)!);
+        }
+    }
+
+    //
+    // Phase 5: Process mode-switch messages
+    //
+
+    for (let msg of nonSidechainMessages) {
+        if (msg.role === 'event') {
+            let mid = allocateId();
+            state.messages.set(mid, {
+                id: mid,
+                realID: msg.id,
+                role: 'agent',
+                createdAt: msg.createdAt,
+                event: msg.content,
+                tool: null,
+                text: null,
+            });
+            changed.add(mid);
         }
     }
 
@@ -330,6 +357,13 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             kind: 'tool-call',
             tool: { ...reducerMsg.tool },
             children: childMessages
+        };
+    } else if (reducerMsg.role === 'agent' && reducerMsg.event !== null) {
+        return {
+            id: reducerMsg.id,
+            createdAt: reducerMsg.createdAt,
+            kind: 'agent-event',
+            event: reducerMsg.event
         };
     }
 

@@ -41,7 +41,7 @@ class Sync {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
         this.settingsSync = new InvalidateSync(this.syncSettings);
         this.purchasesSync = new InvalidateSync(this.syncPurchases);
-        
+
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
             if (nextAppState === 'active') {
@@ -185,17 +185,17 @@ class Sync {
             // Purchase the product
             const product = products[0];
             const { customerInfo } = await RevenueCat.purchaseStoreProduct(product);
-            
+
             // Update local purchases data
             storage.getState().applyPurchases(customerInfo);
-            
+
             return { success: true };
         } catch (error: any) {
             // Check if user cancelled
             if (error.userCancelled) {
                 return { success: false, error: 'Purchase cancelled' };
             }
-            
+
             // Return the error message
             return { success: false, error: error.message || 'Purchase failed' };
         }
@@ -210,10 +210,10 @@ class Sync {
 
             // Fetch offerings
             const offerings = await RevenueCat.getOfferings();
-            
+
             // Return the offerings data
-            return { 
-                success: true, 
+            return {
+                success: true,
                 offerings: {
                     current: offerings.current,
                     all: offerings.all
@@ -238,7 +238,7 @@ class Sync {
 
             // Present the paywall
             const result = await RevenueCat.presentPaywall();
-            
+
             // Handle the result
             switch (result) {
                 case PaywallResult.PURCHASED:
@@ -295,7 +295,9 @@ class Sync {
             tag: string;
             seq: number;
             metadata: string;
+            metadataVersion: number;
             agentState: string | null;
+            agentStateVersion: number;
             active: boolean;
             activeAt: number;
             createdAt: number;
@@ -330,18 +332,6 @@ class Sync {
             }
 
             //
-            // Decrypt last message
-            //
-
-            let lastMessage: NormalizedMessage | null = null;
-            if (session.lastMessage) {
-                const decrypted = encryption.decryptMessage(session.lastMessage);
-                if (decrypted) {
-                    lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
-                }
-            }
-
-            //
             // Decrypt agent state
             //
 
@@ -356,8 +346,7 @@ class Sync {
                 thinking: false,
                 thinkingAt: 0,
                 metadata,
-                agentState,
-                lastMessage
+                agentState
             };
             decryptedSessions.push(processedSession);
         }
@@ -376,8 +365,6 @@ class Sync {
             while (true) {
                 let version = storage.getState().settingsVersion;
                 let settings = applySettings(storage.getState().settings, this.pendingSettings);
-
-                console.log('applyPendingSettings', this.pendingSettings);
                 const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
                     method: 'POST',
                     body: JSON.stringify({
@@ -484,7 +471,7 @@ class Sync {
             if (!this.revenueCatInitialized) {
                 // Get the appropriate API key based on platform
                 let apiKey: string | undefined;
-                
+
                 if (Platform.OS === 'ios') {
                     apiKey = config.revenueCatAppleKey;
                 } else if (Platform.OS === 'android') {
@@ -519,10 +506,10 @@ class Sync {
 
             // Fetch customer info
             const customerInfo = await RevenueCat.getCustomerInfo();
-            
+
             // Apply to storage (storage handles the transformation)
             storage.getState().applyPurchases(customerInfo);
-            
+
         } catch (error) {
             console.error('Failed to sync purchases:', error);
             // Don't throw - purchases are optional
@@ -657,7 +644,6 @@ class Sync {
                     if (session) {
                         storage.getState().applySessions([{
                             ...session,
-                            lastMessage,
                             updatedAt: updateData.createdAt,
                             seq: updateData.seq
                         }])
@@ -683,10 +669,18 @@ class Sync {
             if (session) {
                 storage.getState().applySessions([{
                     ...session,
-                    agentState: this.encryption.decryptAgentState(updateData.body.agentState?.value),
-                    metadata: updateData.body.metadata ?
-                        this.encryption.decryptMetadata(updateData.body.metadata.value) :
-                        session.metadata,
+                    agentState: updateData.body.agentState
+                        ? this.encryption.decryptAgentState(updateData.body.agentState.value)
+                        : session.agentState,
+                    agentStateVersion: updateData.body.agentState
+                        ? updateData.body.agentState.version
+                        : session.agentStateVersion,
+                    metadata: updateData.body.metadata
+                        ? this.encryption.decryptMetadata(updateData.body.metadata.value)
+                        : session.metadata,
+                    metadataVersion: updateData.body.metadata
+                        ? updateData.body.metadata.version
+                        : session.metadataVersion,
                     updatedAt: updateData.createdAt,
                     seq: updateData.seq
                 }])

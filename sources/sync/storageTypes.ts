@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { NormalizedMessage } from "./typesRaw";
 
 //
 // Agent states
@@ -9,6 +8,7 @@ export const MetadataSchema = z.object({
     path: z.string(),
     host: z.string(),
     version: z.string().optional(),
+    name: z.string().optional(),
     os: z.string().optional(),
     encryption: z.object({
         type: z.literal('aes-gcm-256'),
@@ -17,7 +17,7 @@ export const MetadataSchema = z.object({
     summary: z.object({
         text: z.string(),
         updatedAt: z.number()
-    }).nullish()
+    }).optional()
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
@@ -27,7 +27,16 @@ export const AgentStateSchema = z.object({
     requests: z.record(z.string(), z.object({
         tool: z.string(),
         arguments: z.any(),
+        createdAt: z.number().nullish()
     })).nullish(),
+    completedRequests: z.record(z.string(), z.object({
+        tool: z.string(),
+        arguments: z.any(),
+        createdAt: z.number().nullish(),
+        completedAt: z.number().nullish(),
+        status: z.enum(['canceled', 'denied', 'approved']),
+        reason: z.string().nullish()
+    })).nullish()
 });
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
@@ -40,8 +49,9 @@ export interface Session {
     active: boolean,
     activeAt: number,
     metadata: Metadata | null,
+    metadataVersion: number,
     agentState: AgentState | null,
-    lastMessage: NormalizedMessage | null,
+    agentStateVersion: number,
     thinking: boolean,
     thinkingAt: number,
     presence: "online" | number, // "online" when active, timestamp when last seen
