@@ -17,7 +17,8 @@ export const MetadataSchema = z.object({
     summary: z.object({
         text: z.string(),
         updatedAt: z.number()
-    }).optional()
+    }).optional(),
+    machineId: z.string().optional()
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

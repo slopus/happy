@@ -16,7 +16,7 @@ interface ItemChildProps {
 }
 
 export interface ItemGroupProps {
-    title?: string;
+    title?: string | React.ReactNode;
     footer?: string;
     children: React.ReactNode;
     style?: StyleProp<ViewStyle>;
@@ -66,26 +66,30 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
                             headerStyle
                         ]}
                     >
-                        <Text 
-                            style={[
-                                Typography.default('regular'),
-                                {
-                                    color: Platform.select({
-                                        ios: '#8E8E93',
-                                        android: '#49454F', // Material 3 onSurfaceVariant
-                                        default: '#8E8E93'
-                                    }),
-                                    fontSize: (isIOS && !isWeb) ? 13 : 14,
-                                    lineHeight: (isIOS && !isWeb) ? 18 : 20,
-                                    letterSpacing: (isIOS && !isWeb) ? -0.08 : 0.1,
-                                    textTransform: 'uppercase',
-                                    fontWeight: (isAndroid || isWeb) ? '500' : 'normal'
-                                },
-                                titleStyle
-                            ]}
-                        >
-                            {title}
-                        </Text>
+                        {typeof title === 'string' ? (
+                            <Text 
+                                style={[
+                                    Typography.default('regular'),
+                                    {
+                                        color: Platform.select({
+                                            ios: '#8E8E93',
+                                            android: '#49454F', // Material 3 onSurfaceVariant
+                                            default: '#8E8E93'
+                                        }),
+                                        fontSize: (isIOS && !isWeb) ? 13 : 14,
+                                        lineHeight: (isIOS && !isWeb) ? 18 : 20,
+                                        letterSpacing: (isIOS && !isWeb) ? -0.08 : 0.1,
+                                        textTransform: 'uppercase',
+                                        fontWeight: (isAndroid || isWeb) ? '500' : 'normal'
+                                    },
+                                    titleStyle
+                                ]}
+                            >
+                                {title}
+                            </Text>
+                        ) : (
+                            title
+                        )}
                     </View>
                 ) : (
                     // Add top margin when there's no title

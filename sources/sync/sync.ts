@@ -107,6 +107,20 @@ class Sync {
         ex.invalidate();
     }
 
+    async spawnRemoteSession(machineId: string, directory: string): Promise<{ sessionId: string }> {
+        // Make RPC call to spawn session on specified machine
+        try {
+            const result = await apiSocket.daemonRpc<{ sessionId: string }>(
+                'spawn-happy-session',
+                { directory },
+                machineId
+            );
+            return result;
+        } catch (error) {
+            throw new Error(`Failed to spawn session: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+    }
+
     sendMessage(sessionId: string, text: string) {
 
         // Get encryption
@@ -697,20 +711,23 @@ class Sync {
         }
         const updateData = validatedUpdate.data;
 
-        // Only process activity updates
-        if (updateData.type !== 'activity') {
-            return;
+        // Process activity updates
+        if (updateData.type === 'activity') {
+            const session = storage.getState().sessions[updateData.id];
+            if (session) {
+                storage.getState().applySessions([{
+                    ...session,
+                    active: updateData.active,
+                    activeAt: updateData.activeAt,
+                    thinking: updateData.thinking ?? false,
+                    thinkingAt: updateData.activeAt // Always use activeAt for consistency
+                }])
+            }
         }
-
-        const session = storage.getState().sessions[updateData.id];
-        if (session) {
-            storage.getState().applySessions([{
-                ...session,
-                active: updateData.active,
-                activeAt: updateData.activeAt,
-                thinking: updateData.thinking ?? false,
-                thinkingAt: updateData.activeAt // Always use activeAt for consistency
-            }])
+        
+        // Process daemon status updates
+        if (updateData.type === 'daemon-status') {
+            storage.getState().applyDaemonStatus(updateData.machineId, updateData.status);
         }
     }
 }
