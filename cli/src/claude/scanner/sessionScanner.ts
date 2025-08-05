@@ -1,8 +1,6 @@
 import { InvalidateSync } from "@/utils/sync";
 import { RawJSONLines, RawJSONLinesSchema } from "../types";
-import { resolve } from "node:path";
 import { join } from "node:path";
-import { homedir } from "node:os";
 import { readFile } from "node:fs/promises";
 import { logger } from "@/ui/logger";
 import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
@@ -39,9 +37,12 @@ export function createSessionScanner(opts: {
         - Local user (through claude terminal session): Run 'yarn build'
         - Scanner emits 'user: Run 'yarn build''
         
-        So if we were to ignore messages with the same content we have seen, we would not emit this message to the server. The counter solution addresses this.
+        So if we were to ignore messages with the same content we have seen, we would not emit this message to the server.
+        
+        Solution: Track matched messages by UUID and unmatched server messages by content.
     */
-    let seenRemoteUserMessageCounters: Map<string, number> = new Map();
+    let matchedMessageUUIDs = new Set<string>();
+    let unmatchedServerMessageContents = new Set<string>();
 
     // Main sync function
     const sync = new InvalidateSync(async () => {
@@ -91,18 +92,26 @@ export function createSessionScanner(opts: {
                     logger.debugLargeJson(`[SESSION_SCANNER] Processing message`, parsed.data)
                     logger.debug(`[SESSION_SCANNER] Message key (new): ${key}`)
 
+                    // Check if already matched by UUID (only user messages have uuid at top level)
+                    if (parsed.data.type === 'user' && parsed.data.uuid && matchedMessageUUIDs.has(parsed.data.uuid)) {
+                        logger.debug(`[SESSION_SCANNER] Skipping already matched message with UUID: ${parsed.data.uuid}`);
+                        continue;
+                    }
+
                     // Check if this is a user message that should be deduplicated
-                    if (parsed.data.type === 'user' && typeof parsed.data.message.content === 'string' && parsed.data.isSidechain !== true && parsed.data.isMeta !== true) {
-                        const currentCounter = seenRemoteUserMessageCounters.get(parsed.data.message.content);
-                        if (currentCounter && currentCounter > 0) {
-                            // We have already seen this message from the remote session
-                            // Lets decrement the counter & skip
-                            seenRemoteUserMessageCounters.set(parsed.data.message.content, currentCounter - 1);
+                    if (parsed.data.type === 'user' && typeof parsed.data.message.content === 'string' && 
+                        parsed.data.isSidechain !== true && parsed.data.isMeta !== true) {
+                        
+                        if (unmatchedServerMessageContents.has(parsed.data.message.content)) {
+                            // This is the echo of a server message
+                            logger.debug(`[SESSION_SCANNER] Matched server message echo: ${parsed.data.uuid}`);
+                            matchedMessageUUIDs.add(parsed.data.uuid);
+                            unmatchedServerMessageContents.delete(parsed.data.message.content);
                             continue;
                         }
                     }
 
-                    // Notify
+                    // Notify - this is a new message that should be sent to the server
                     opts.onMessage(message); // Send original message to the server
                 } catch (e) {
                     logger.debug(`[SESSION_SCANNER] Error processing message: ${e}`);
@@ -168,8 +177,9 @@ export function createSessionScanner(opts: {
             sync.invalidate();
         },
         onRemoteUserMessageForDeduplication: (messageContent: string) => {
-            // Increment the counter for this remote user message
-            seenRemoteUserMessageCounters.set(messageContent, (seenRemoteUserMessageCounters.get(messageContent) || 0) + 1);
+            // Add this message content to the set of unmatched server messages
+            logger.debug(`[SESSION_SCANNER] Adding unmatched server message content: ${messageContent.substring(0, 50)}...`);
+            unmatchedServerMessageContents.add(messageContent);
         },
     }
 }

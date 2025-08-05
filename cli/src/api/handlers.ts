@@ -153,13 +153,26 @@ export function registerHandlers(
                 return;
             }
 
-            // Update agent state to remove processed request
+            // Move processed request to completedRequests
             session.updateAgentState((currentState) => {
+                const request = currentState.requests?.[id];
+                if (!request) return currentState;
+
                 let r = { ...currentState.requests };
                 delete r[id];
+                
                 return ({
                     ...currentState,
                     requests: r,
+                    completedRequests: {
+                        ...currentState.completedRequests,
+                        [id]: {
+                            ...request,
+                            completedAt: Date.now(),
+                            status: message.approved ? 'approved' : 'denied',
+                            reason: message.reason
+                        }
+                    }
                 });
             });
         });

@@ -78,13 +78,26 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             // Delete callback we are awaiting on
             requests.delete(id);
 
-            // Delete the permission request itself from the agent state
+            // Move the permission request to completedRequests with canceled status
             session.updateAgentState((currentState) => {
+                const request = currentState.requests?.[id];
+                if (!request) return currentState;
+
                 let r = { ...currentState.requests };
                 delete r[id];
+                
                 return ({
                     ...currentState,
                     requests: r,
+                    completedRequests: {
+                        ...currentState.completedRequests,
+                        [id]: {
+                            ...request,
+                            completedAt: Date.now(),
+                            status: 'canceled',
+                            reason: 'Timeout'
+                        }
+                    }
                 });
             });
         }, 1000 * 60 * 4.5) // 4.5 minutes, 30 seconds before max timeout
@@ -114,6 +127,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                 [id]: {
                     tool: request.name,
                     arguments: request.arguments,
+                    createdAt: Date.now()
                 }
             }
         }));
@@ -162,10 +176,47 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             mode = newMode;
             session.sendSessionEvent({ type: 'switch', mode: newMode });
             session.keepAlive(thinking, mode);
-            session.updateAgentState((currentState) => ({
-                ...currentState,
-                controlledByUser: newMode === 'local' ? true : false
-            }));
+            
+            // If switching from remote to local, clear all pending permission requests
+            if (newMode === 'local') {
+                logger.debug('Switching to local mode - clearing pending permission requests');
+                
+                // Reject all pending permission requests
+                for (const [id, resolve] of requests) {
+                    logger.debug(`Rejecting pending permission request: ${id}`);
+                    resolve({ approved: false, reason: 'Session switched to local mode' });
+                }
+                requests.clear();
+                
+                // Move all pending requests to completedRequests with canceled status
+                session.updateAgentState((currentState) => {
+                    const pendingRequests = currentState.requests || {};
+                    const completedRequests = { ...currentState.completedRequests };
+                    
+                    // Move each pending request to completed with canceled status
+                    for (const [id, request] of Object.entries(pendingRequests)) {
+                        completedRequests[id] = {
+                            ...request,
+                            completedAt: Date.now(),
+                            status: 'canceled',
+                            reason: 'Session switched to local mode'
+                        };
+                    }
+                    
+                    return {
+                        ...currentState,
+                        controlledByUser: true,
+                        requests: {}, // Clear all pending requests
+                        completedRequests
+                    };
+                });
+            } else {
+                // Remote mode
+                session.updateAgentState((currentState) => ({
+                    ...currentState,
+                    controlledByUser: false
+                }));
+            }
         },
         mcpServers: {
             'permission': {

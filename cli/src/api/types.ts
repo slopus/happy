@@ -214,7 +214,18 @@ export type AgentState = {
   requests?: {
     [id: string]: {
       tool: string,
-      arguments: any
+      arguments: any,
+      createdAt: number
+    }
+  }
+  completedRequests?: {
+    [id: string]: {
+      tool: string,
+      arguments: any,
+      createdAt: number,
+      completedAt: number,
+      status: 'canceled' | 'denied' | 'approved',
+      reason?: string
     }
   }
 }
