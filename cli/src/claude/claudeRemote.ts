@@ -1,4 +1,4 @@
-import { query, type Options, type SDKUserMessage, type SDKMessage, AbortError } from '@anthropic-ai/claude-code'
+import { query, type Options, type SDKUserMessage, type SDKMessage, type SDKAssistantMessage, AbortError } from '@anthropic-ai/claude-code'
 import { formatClaudeMessage, printDivider, type OnAssistantResultCallback } from '@/ui/messageFormatter'
 import { claudeCheckSession } from './claudeCheckSession';
 import { logger } from '@/ui/logger';
@@ -9,6 +9,25 @@ import { join } from 'node:path';
 import type { InterruptController } from './InterruptController';
 import { awaitFileExist } from '@/modules/watcher/awaitFileExist';
 import { getProjectPath } from './path';
+
+// Deep equality helper for comparing tool arguments
+function deepEqual(a: any, b: any): boolean {
+    if (a === b) return true;
+    if (a == null || b == null) return false;
+    if (typeof a !== 'object' || typeof b !== 'object') return false;
+    
+    const keysA = Object.keys(a);
+    const keysB = Object.keys(b);
+    
+    if (keysA.length !== keysB.length) return false;
+    
+    for (const key of keysA) {
+        if (!keysB.includes(key)) return false;
+        if (!deepEqual(a[key], b[key])) return false;
+    }
+    
+    return true;
+}
 
 export async function claudeRemote(opts: {
     abort: AbortSignal,
@@ -22,7 +41,8 @@ export async function claudeRemote(opts: {
     onAssistantResult?: OnAssistantResultCallback,
     interruptController?: InterruptController,
     claudeEnvVars?: Record<string, string>,
-    claudeArgs?: string[]
+    claudeArgs?: string[],
+    onToolCallResolver?: (resolver: ((name: string, args: any) => string | null) | null) => void
 }) {
     // Check if session is valid
     let startFrom = opts.sessionId;
@@ -119,6 +139,37 @@ export async function claudeRemote(opts: {
         }
     };
     
+    // Track tool calls with usage flag
+    const toolCalls: Array<{id: string, name: string, input: any, used: boolean}> = [];
+    
+    // Resolver function with usage marking
+    const resolveToolCallId = (name: string, args: any): string | null => {
+        // Search in reverse (most recent first)
+        for (let i = toolCalls.length - 1; i >= 0; i--) {
+            const call = toolCalls[i];
+            if (call.name === name && deepEqual(call.input, args)) {
+                if (call.used) {
+                    // Found already used match - return null immediately
+                    logger.debug('[claudeRemote] Warning: Permission request matched an already-used tool call');
+                    return null;
+                }
+                // Found unused match - mark as used and return
+                call.used = true;
+                logger.debug(`[claudeRemote] Resolved tool call ID: ${call.id} for ${name}`);
+                return call.id;
+            }
+        }
+        
+        // No match found
+        logger.debug(`[claudeRemote] No matching tool call found for permission request: ${name}`);
+        return null;
+    };
+    
+    // Provide resolver to caller
+    if (opts.onToolCallResolver) {
+        opts.onToolCallResolver(resolveToolCallId);
+    }
+    
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
@@ -126,6 +177,24 @@ export async function claudeRemote(opts: {
             logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
             // Always format and display the message
             formatClaudeMessage(message, opts.onAssistantResult);
+
+            // Extract tool calls from assistant messages
+            if (message.type === 'assistant') {
+                const assistantMsg = message as SDKAssistantMessage;
+                if (assistantMsg.message && assistantMsg.message.content) {
+                    for (const block of assistantMsg.message.content) {
+                        if (block.type === 'tool_use') {
+                            toolCalls.push({
+                                id: block.id,
+                                name: block.name,
+                                input: block.input,
+                                used: false
+                            });
+                            logger.debug(`[claudeRemote] Tracked tool call: ${block.id} - ${block.name}`);
+                        }
+                    }
+                }
+            }
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
@@ -161,6 +230,14 @@ export async function claudeRemote(opts: {
     } finally {
         // Stop thinking when exiting
         updateThinking(false);
+        
+        // Clear tool calls array
+        toolCalls.length = 0;
+        
+        // Notify caller to clear resolver reference
+        if (opts.onToolCallResolver) {
+            opts.onToolCallResolver(null);
+        }
         
         // Clean up interrupt registration
         if (opts.interruptController) {

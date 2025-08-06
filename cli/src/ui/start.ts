@@ -79,8 +79,25 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Start MCP permission server
     let requests = new Map<string, (response: { approved: boolean, reason?: string }) => void>();
+    let toolCallResolver: ((name: string, args: any) => string | null) | null = null;
+    
     const permissionServer = await startPermissionServerV2(async (request) => {
         const id = randomUUID();
+        
+        // Resolve tool call ID - throw if resolver not available
+        if (!toolCallResolver) {
+            const error = `Tool call resolver not available for permission request: ${request.name}`;
+            logger.info(`ERROR: ${error}`);
+            throw new Error(error);
+        }
+        
+        const toolCallId = toolCallResolver(request.name, request.arguments);
+        if (!toolCallId) {
+            logger.debug(`Could not resolve tool call ID for permission request: ${request.name}`);
+        } else {
+            logger.debug(`Resolved tool call ID: ${toolCallId} for permission request: ${request.name}`);
+        }
+        
         let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => { requests.set(id, resolve); });
         let timeout = setTimeout(async () => {
             // Interrupt claude execution on permission timeout
@@ -142,6 +159,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                 [id]: {
                     tool: request.name,
                     arguments: request.arguments,
+                    toolCallId: toolCallId,
                     createdAt: Date.now()
                 }
             }
@@ -195,6 +213,9 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             // If switching from remote to local, clear all pending permission requests
             if (newMode === 'local') {
                 logger.debug('Switching to local mode - clearing pending permission requests');
+
+                // Clear tool call resolver since we're switching to local mode
+                toolCallResolver = null;
 
                 // Reject all pending permission requests
                 for (const [id, resolve] of requests) {
@@ -272,6 +293,9 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         onThinkingChange: (newThinking) => {
             thinking = newThinking;
             session.keepAlive(thinking, mode);
+        },
+        onToolCallResolver: (resolver) => {
+            toolCallResolver = resolver;
         },
     });
 

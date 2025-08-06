@@ -23,6 +23,7 @@ interface LoopOptions {
     interruptController?: InterruptController
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
+    onToolCallResolver?: (resolver: ((name: string, args: any) => string | null) | null) => void
 }
 
 /*
@@ -201,6 +202,7 @@ export async function loop(opts: LoopOptions) {
                     interruptController: opts.interruptController,
                     claudeEnvVars: opts.claudeEnvVars,
                     claudeArgs: opts.claudeArgs,
+                    onToolCallResolver: opts.onToolCallResolver,
                 });
             } catch (e) {
                 if (!remoteAbortController.signal.aborted) {
