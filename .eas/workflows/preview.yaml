@@ -1,0 +1,13 @@
+name: Branch-based Updates
+
+on:
+  push:
+    branches: ['main']
+jobs:
+  preview_ota:
+    type: update
+    params:
+      message: "Internal Preview Build"
+      platform: "all"
+      branch: "preview"
+      channel: "preview"
