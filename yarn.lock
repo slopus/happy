@@ -6317,7 +6317,7 @@ react-native-webview@13.13.5:
     escape-string-regexp "^4.0.0"
     invariant "2.2.4"
 
-react-native-worklets@^0.4.1:
+react-native-worklets@0.4.1:
   version "0.4.1"
   resolved "https://registry.yarnpkg.com/react-native-worklets/-/react-native-worklets-0.4.1.tgz#563d39160195101d9cf236b54b383d6950508263"
   integrity sha512-QXAMZ8jz0sLEoNrc3ej050z6Sd+UJ/Gef4SACeMuoLRinwHIy4uel7XtMPJZMqKhFerkwXZ7Ips5vIjnNyPDBA==
