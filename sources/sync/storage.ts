@@ -125,10 +125,45 @@ export const storage = create<StorageState>()((set) => {
                 listData.push(...inactiveSessions);
             }
 
+            // Process AgentState updates for sessions that already have messages loaded
+            const updatedSessionMessages = { ...state.sessionMessages };
+            
+            sessions.forEach(session => {
+                const oldSession = state.sessions[session.id];
+                const newSession = mergedSessions[session.id];
+                
+                // Check if sessionMessages exists AND agentStateVersion is newer
+                const existingSessionMessages = updatedSessionMessages[session.id];
+                if (existingSessionMessages && newSession.agentState && 
+                    (!oldSession || newSession.agentStateVersion > (oldSession.agentStateVersion || 0))) {
+                    
+                    // Process new AgentState through reducer
+                    const processedMessages = reducer(existingSessionMessages.reducerState, [], newSession.agentState);
+                    
+                    // Always update the session messages, even if no new messages were created
+                    // This ensures the reducer state is updated with the new AgentState
+                    const mergedMessagesMap = { ...existingSessionMessages.messagesMap };
+                    processedMessages.forEach(message => {
+                        mergedMessagesMap[message.id] = message;
+                    });
+                    
+                    const messagesArray = Object.values(mergedMessagesMap)
+                        .sort((a, b) => b.createdAt - a.createdAt);
+                    
+                    updatedSessionMessages[session.id] = {
+                        messages: messagesArray,
+                        messagesMap: mergedMessagesMap,
+                        reducerState: existingSessionMessages.reducerState, // The reducer modifies state in-place, so this has the updates
+                        isLoaded: existingSessionMessages.isLoaded
+                    };
+                }
+            });
+
             return {
                 ...state,
                 sessions: mergedSessions,
-                sessionsData: listData
+                sessionsData: listData,
+                sessionMessages: updatedSessionMessages
             };
         }),
         applyLoaded: () => set((state) => {
@@ -148,11 +183,15 @@ export const storage = create<StorageState>()((set) => {
                 isLoaded: false
             };
 
+            // Get the session's agentState if available
+            const session = state.sessions[sessionId];
+            const agentState = session?.agentState;
+
             // Normalize messages
             let normalizedMessages = messages.map(m => normalizeRawMessage(m.id, m.localId, m.createdAt, m.content)).filter(m => m !== null);
 
-            // Run reducer
-            const processedMessages = reducer(existingSession.reducerState, normalizedMessages);
+            // Run reducer with agentState
+            const processedMessages = reducer(existingSession.reducerState, normalizedMessages, agentState);
 
             // Merge messages
             const mergedMessagesMap = { ...existingSession.messagesMap };
@@ -182,14 +221,37 @@ export const storage = create<StorageState>()((set) => {
             let result: StorageState;
 
             if (!existingSession) {
+                // First time loading - check for AgentState
+                const session = state.sessions[sessionId];
+                const agentState = session?.agentState;
+                
+                // Create new reducer state
+                const reducerState = createReducer();
+                
+                // Process AgentState if it exists
+                let messages: Message[] = [];
+                let messagesMap: Record<string, Message> = {};
+                
+                if (agentState) {
+                    // Process AgentState through reducer to get initial permission messages
+                    const processedMessages = reducer(reducerState, [], agentState);
+                    
+                    processedMessages.forEach(message => {
+                        messagesMap[message.id] = message;
+                    });
+                    
+                    messages = Object.values(messagesMap)
+                        .sort((a, b) => b.createdAt - a.createdAt);
+                }
+                
                 result = {
                     ...state,
                     sessionMessages: {
                         ...state.sessionMessages,
                         [sessionId]: {
-                            reducerState: createReducer(),
-                            messages: [],
-                            messagesMap: {},
+                            reducerState,
+                            messages,
+                            messagesMap,
                             isLoaded: true
                         } satisfies SessionMessages
                     }

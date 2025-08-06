@@ -120,11 +120,10 @@ export default function SettingsScreen() {
             <ItemGroup>
                 <Item
                     title="Support us"
-                    subtitle={isPro ? 'Thank you for your support!' : '$20/month'}
+                    subtitle={isPro ? 'Thank you for your support!' : 'Support project development'}
                     icon={<Ionicons name="heart" size={29} color="#FF3B30" />}
                     showChevron={false}
                     onPress={isPro ? undefined : handleSubscribe}
-                    detail={isPro ? '✓' : undefined}
                 />
             </ItemGroup>
 
@@ -173,6 +172,28 @@ export default function SettingsScreen() {
                     title="Report an Issue"
                     icon={<Ionicons name="bug-outline" size={29} color="#FF3B30" />}
                     onPress={handleReportIssue}
+                />
+                <Item
+                    title="Terms of Service"
+                    icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
+                    onPress={async () => {
+                        const url = 'https://github.com/slopus/happy/blob/main/TERMS.md';
+                        const supported = await Linking.canOpenURL(url);
+                        if (supported) {
+                            await Linking.openURL(url);
+                        }
+                    }}
+                />
+                <Item
+                    title="Privacy Policy"
+                    icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
+                    onPress={async () => {
+                        const url = 'https://happy.engineering/privacy/';
+                        const supported = await Linking.canOpenURL(url);
+                        if (supported) {
+                            await Linking.openURL(url);
+                        }
+                    }}
                 />
             </ItemGroup>
         </ItemList>

@@ -9,6 +9,11 @@ export type ToolCall = {
     completedAt: number | null;
     description: string | null;
     result?: any;
+    permission?: {
+        id: string;
+        status: 'pending' | 'approved' | 'denied' | 'canceled';
+        reason?: string;
+    };
 }
 
 // Flattened message types - each message represents a single block
