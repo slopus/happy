@@ -252,7 +252,6 @@ export class ApiDaemonSession extends EventEmitter {
   private startKeepAlive() {
     this.stopKeepAlive();
     this.keepAliveInterval = setInterval(() => {
-      logger.daemonDebug('Sending keep-alive ping');
       this.socket.volatile.emit('machine-alive', {
         time: Date.now()
       });

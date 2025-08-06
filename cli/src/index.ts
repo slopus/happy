@@ -247,7 +247,7 @@ ${chalk.bold('Examples:')}
 
     // Auto-start daemon if enabled
     if (settings.daemonAutoStartWhenRunningHappy) {
-      console.log('Starting Happy background service...');
+      console.debug('Starting Happy background service...');
       
       if (!(await isDaemonRunning())) {
         // Make sure to start detached
