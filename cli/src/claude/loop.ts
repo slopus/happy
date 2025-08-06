@@ -15,6 +15,7 @@ interface LoopOptions {
     onModeChange?: (mode: 'local' | 'remote') => void
     onProcessStart?: (mode: 'local' | 'remote') => void
     onProcessStop?: (mode: 'local' | 'remote') => void
+    onThinkingChange?: (thinking: boolean) => void
     mcpServers?: Record<string, any>
     permissionPromptToolName?: string
     session: ApiSessionClient
@@ -122,6 +123,7 @@ export async function loop(opts: LoopOptions) {
                     path: opts.path,
                     sessionId: sessionId,
                     onSessionFound: onSessionFound,
+                    onThinkingChange: opts.onThinkingChange,
                     abort: interactiveAbortController.signal,
                     claudeEnvVars: opts.claudeEnvVars,
                     claudeArgs: opts.claudeArgs,
@@ -193,6 +195,7 @@ export async function loop(opts: LoopOptions) {
                     mcpServers: opts.mcpServers,
                     permissionPromptToolName: opts.permissionPromptToolName,
                     onSessionFound: onSessionFound,
+                    onThinkingChange: opts.onThinkingChange,
                     messages: currentMessageQueue,
                     onAssistantResult: opts.onAssistantResult,
                     interruptController: opts.interruptController,

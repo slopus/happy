@@ -17,6 +17,7 @@ export async function claudeRemote(opts: {
     mcpServers?: Record<string, any>,
     permissionPromptToolName?: string,
     onSessionFound: (id: string) => void,
+    onThinkingChange?: (thinking: boolean) => void,
     messages: AsyncIterable<SDKUserMessage>,
     onAssistantResult?: OnAssistantResultCallback,
     interruptController?: InterruptController,
@@ -105,6 +106,19 @@ export async function claudeRemote(opts: {
     }
 
     printDivider();
+    
+    // Track thinking state
+    let thinking = false;
+    const updateThinking = (newThinking: boolean) => {
+        if (thinking !== newThinking) {
+            thinking = newThinking;
+            logger.debug(`[claudeRemote] Thinking state changed to: ${thinking}`);
+            if (opts.onThinkingChange) {
+                opts.onThinkingChange(thinking);
+            }
+        }
+    };
+    
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
@@ -115,6 +129,8 @@ export async function claudeRemote(opts: {
 
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
+                // Start thinking when session initializes
+                updateThinking(true);
 
                 // Session id is still in memory, wait until session file is  written to disk
                 // Start a watcher for to detect the session id
@@ -123,6 +139,11 @@ export async function claudeRemote(opts: {
                 const found = await awaitFileExist(join(projectDir, `${message.session_id}.jsonl`));
                 logger.debug(`[claudeRemote] Session file found: ${message.session_id} ${found}`);
                 opts.onSessionFound(message.session_id);
+            }
+            
+            // Stop thinking when result is received
+            if (message.type === 'result') {
+                updateThinking(false);
             }
         }
         logger.debug(`[claudeRemote] Finished iterating over response`);
@@ -138,6 +159,9 @@ export async function claudeRemote(opts: {
             throw e;
         }
     } finally {
+        // Stop thinking when exiting
+        updateThinking(false);
+        
         // Clean up interrupt registration
         if (opts.interruptController) {
             opts.interruptController.unregister();

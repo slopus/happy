@@ -16,6 +16,7 @@ export async function claudeLocal(opts: {
     sessionId: string | null,
     path: string,
     onSessionFound: (id: string) => void,
+    onThinkingChange?: (thinking: boolean) => void,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[]
 }) {
@@ -95,24 +96,88 @@ export async function claudeLocal(opts: {
                     crlfDelay: Infinity
                 });
 
+                // Track active fetches for thinking state
+                const activeFetches = new Map<number, { hostname: string, path: string, startTime: number }>();
+                let thinking = false;
+                let stopThinkingTimeout: NodeJS.Timeout | null = null;
+
+                const updateThinking = (newThinking: boolean) => {
+                    if (thinking !== newThinking) {
+                        thinking = newThinking;
+                        logger.debug(`[ClaudeLocal] Thinking state changed to: ${thinking}`);
+                        if (opts.onThinkingChange) {
+                            opts.onThinkingChange(thinking);
+                        }
+                    }
+                };
+
                 rl.on('line', (line) => {
-                    const sessionMatch = line.match(/[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}/i);
-                    if (sessionMatch) {
-                        detectedIdsRandomUUID.add(sessionMatch[0]);
-
-                        if (resolvedSessionId) {
-                            return;
+                    try {
+                        // Try to parse as JSON
+                        const message = JSON.parse(line);
+                        
+                        switch (message.type) {
+                            case 'uuid':
+                                detectedIdsRandomUUID.add(message.value);
+                                
+                                if (!resolvedSessionId && detectedIdsFileSystem.has(message.value)) {
+                                    resolvedSessionId = message.value;
+                                    opts.onSessionFound(message.value);
+                                }
+                                break;
+                                
+                            case 'fetch-start':
+                                logger.debug(`[ClaudeLocal] Fetch start: ${message.method} ${message.hostname}${message.path} (id: ${message.id})`);
+                                activeFetches.set(message.id, {
+                                    hostname: message.hostname,
+                                    path: message.path,
+                                    startTime: message.timestamp
+                                });
+                                
+                                // Clear any pending stop timeout
+                                if (stopThinkingTimeout) {
+                                    clearTimeout(stopThinkingTimeout);
+                                    stopThinkingTimeout = null;
+                                }
+                                
+                                // Start thinking
+                                updateThinking(true);
+                                break;
+                                
+                            case 'fetch-end':
+                                logger.debug(`[ClaudeLocal] Fetch end: id ${message.id}`);
+                                activeFetches.delete(message.id);
+                                
+                                // Stop thinking when no active fetches
+                                if (activeFetches.size === 0 && thinking && !stopThinkingTimeout) {
+                                    stopThinkingTimeout = setTimeout(() => {
+                                        if (activeFetches.size === 0) {
+                                            updateThinking(false);
+                                        }
+                                        stopThinkingTimeout = null;
+                                    }, 500); // Small delay to avoid flickering
+                                }
+                                break;
+                                
+                            default:
+                                logger.debug(`[ClaudeLocal] Unknown message type: ${message.type}`);
                         }
-
-                        if (detectedIdsFileSystem.has(sessionMatch[0])) {
-                            resolvedSessionId = sessionMatch[0];
-                            opts.onSessionFound(sessionMatch[0]);
-                        }
+                    } catch (e) {
+                        // Not JSON, ignore (could be other output)
+                        logger.debug(`[ClaudeLocal] Non-JSON line from fd3: ${line}`);
                     }
                 });
 
                 rl.on('error', (err) => {
                     console.error('Error reading from fd 3:', err);
+                });
+                
+                // Cleanup on child exit
+                child.on('exit', () => {
+                    if (stopThinkingTimeout) {
+                        clearTimeout(stopThinkingTimeout);
+                    }
+                    updateThinking(false);
                 });
             }
             child.on('error', (error) => {

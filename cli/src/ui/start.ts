@@ -10,7 +10,6 @@ import { InterruptController } from '@/claude/InterruptController';
 // @ts-ignore
 import packageJson from '../../package.json';
 import { registerHandlers } from '@/api/handlers';
-import { startClaudeActivityTracker } from '@/claude/claudeActivityTracker';
 import { readSettings } from '@/persistence/persistence';
 
 export interface StartOptions {
@@ -26,7 +25,7 @@ export interface StartOptions {
 export async function start(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
     const workingDirectory = process.cwd();
     const sessionTag = randomUUID();
-    
+
     // Validate daemon spawn requirements
     if (options.daemonSpawn && options.startingMode === 'local') {
         logger.debug('Daemon spawn requested with local mode - forcing remote mode');
@@ -41,16 +40,16 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // Create a new session
     let state: AgentState = {};
     const settings = await readSettings() || { onboardingCompleted: false };
-    let metadata: Metadata = { 
-        path: workingDirectory, 
-        host: os.hostname(), 
-        version: packageJson.version, 
+    let metadata: Metadata = {
+        path: workingDirectory,
+        host: os.hostname(),
+        version: packageJson.version,
         os: os.platform(),
         machineId: settings.machineId
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);
-    
+
     // Output session ID for daemon to parse when spawned with --daemon-spawn
     if (options.daemonSpawn) {
         console.log(`daemon:sessionIdCreated:${response.id}`);
@@ -69,12 +68,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         session.keepAlive(thinking, mode);
     }, 2000);
 
-    // Prepare proxy
-    const activityTracker = await startClaudeActivityTracker((newThinking) => {
-        thinking = newThinking;
-        session.keepAlive(thinking, mode);
-    });
-    process.env.ANTHROPIC_BASE_URL = activityTracker.proxyUrl;
 
     // Print log file path
     const logPath = await logger.logFilePathPromise;
@@ -243,9 +236,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         onProcessStart: (processMode) => {
             logger.debug(`[Process Lifecycle] Starting ${processMode} mode`);
 
-            // Reset activity tracker when starting any process
-            activityTracker.reset();
-
             // Clear permission requests when starting local mode
             logger.debug('Starting process - clearing any stale permission requests');
             for (const [id, resolve] of requests) {
@@ -257,15 +247,15 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         onProcessStop: (processMode) => {
             logger.debug(`[Process Lifecycle] Stopped ${processMode} mode`);
 
-            // Ensure activity tracker is reset when any process stops
-            activityTracker.reset();
-
             logger.debug('Stopping process - clearing any stale permission requests');
             for (const [id, resolve] of requests) {
                 logger.debug(`Rejecting stale permission request: ${id}`);
                 resolve({ approved: false, reason: 'Process restarted' });
             }
             requests.clear();
+
+            thinking = false;
+            session.keepAlive(thinking, mode);
         },
         mcpServers: {
             'permission': {
@@ -279,6 +269,10 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         interruptController,
         claudeEnvVars: options.claudeEnvVars,
         claudeArgs: options.claudeArgs,
+        onThinkingChange: (newThinking) => {
+            thinking = newThinking;
+            session.keepAlive(thinking, mode);
+        },
     });
 
     clearInterval(pingInterval);
