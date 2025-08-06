@@ -23,7 +23,7 @@ export const CommandView = React.memo<CommandViewProps>(({
 }) => {
     // Use legacy output if new props aren't provided
     const hasNewProps = stdout !== undefined || stderr !== undefined || error !== undefined;
-    
+
     return (
         <View style={[styles.container, maxHeight ? { maxHeight } : undefined]}>
             {/* Command Line */}
@@ -31,24 +31,24 @@ export const CommandView = React.memo<CommandViewProps>(({
                 <Text style={styles.promptText}>{prompt} </Text>
                 <Text style={styles.commandText}>{command}</Text>
             </View>
-            
+
             {hasNewProps ? (
                 <>
                     {/* Standard Output */}
                     {stdout && stdout.trim() && (
                         <Text style={styles.stdout}>{stdout}</Text>
                     )}
-                    
+
                     {/* Standard Error */}
                     {stderr && stderr.trim() && (
                         <Text style={styles.stderr}>{stderr}</Text>
                     )}
-                    
+
                     {/* Error Message */}
                     {error && (
                         <Text style={styles.error}>{error}</Text>
                     )}
-                    
+
                     {/* Empty output indicator */}
                     {!stdout && !stderr && !error && (
                         <Text style={styles.emptyOutput}>[Command completed with no output]</Text>
@@ -70,14 +70,18 @@ const styles = StyleSheet.create({
         borderRadius: 8,
         overflow: 'hidden',
         padding: 16,
+        alignItems: 'flex-start',
+        justifyContent: 'flex-start',
     },
     line: {
+        alignItems: 'baseline',
         flexDirection: 'row',
         flexWrap: 'wrap',
     },
     promptText: {
         fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
         fontSize: 14,
+        lineHeight: 20,
         color: '#34C759',
         fontWeight: '600',
     },

@@ -11,7 +11,7 @@ export function ToolError(props: { message: string }) {
 const styles = StyleSheet.create({
     errorContainer: {
         flexDirection: 'row',
-        alignItems: 'center',
+        alignItems: 'flex-start',
         gap: 8,
         backgroundColor: '#FFF0F0',
         borderRadius: 6,
@@ -20,6 +20,7 @@ const styles = StyleSheet.create({
         borderColor: '#FF3B30',
         marginBottom: 12,
         maxHeight: 115,
+        overflow: 'hidden',
     },
     errorText: {
         fontSize: 13,
