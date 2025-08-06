@@ -9,5 +9,4 @@ jobs:
     params:
       message: "Internal Preview Build"
       platform: "all"
-      branch: "preview"
       channel: "preview"
