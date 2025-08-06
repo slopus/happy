@@ -9,6 +9,9 @@ import {
 } from 'react-native-webrtc-web-shim';
 import { Settings } from '@/sync/settings';
 import { Modal } from '@/modal';
+import { getServerUrl } from '@/sync/serverConfig';
+import { TokenStorage } from '@/auth/tokenStorage';
+import { tracking } from '@/track';
 
 // Helper to convert Zod schema to OpenAI function schema
 export function zodToOpenAIFunction<T extends z.ZodType>(
@@ -93,18 +96,72 @@ interface SessionControls {
 let globalActiveSession: SessionControls | null = null;
 
 export async function createRealtimeSession(config: SessionConfig): Promise<SessionControls> {
-  // Check for API key in environment variable first, then in secure storage
-  let EPHEMERAL_KEY = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+  let ephemeralKey: string | undefined;
   
-  if (!EPHEMERAL_KEY) {
-    // Try to get from secure storage
-    const storedKey = config.settings.inferenceOpenAIKey;
-    if (storedKey) {
-      EPHEMERAL_KEY = storedKey;
+  // Track session start
+  tracking?.capture('realtime_session_start');
+  
+  // Priority 1: Check settings-based key
+  if (config.settings.inferenceOpenAIKey) {
+    ephemeralKey = config.settings.inferenceOpenAIKey;
+    tracking?.capture('realtime_token_source', { source: 'settings' });
+  }
+  
+  // Priority 2: Check environment variable
+  if (!ephemeralKey && process.env.EXPO_PUBLIC_OPENAI_API_KEY) {
+    ephemeralKey = process.env.EXPO_PUBLIC_OPENAI_API_KEY;
+    tracking?.capture('realtime_token_source', { source: 'environment' });
+  }
+  
+  // Priority 3: Try to get ephemeral token from backend
+  if (!ephemeralKey) {
+    const serverUrl = getServerUrl();
+    try {
+      tracking?.capture('realtime_token_fetch_start', { serverUrl });
+      
+      const credentials = await TokenStorage.getCredentials();
+      if (credentials) {
+        const response = await fetch(`${serverUrl}/v1/openai/realtime-token`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          ephemeralKey = data.token;
+          tracking?.capture('realtime_token_fetch_success', { 
+            source: 'backend'
+          });
+        } else {
+          const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+          tracking?.capture('realtime_token_fetch_failed', { 
+            error: errorData.error,
+            status: response.status 
+          });
+          throw new Error(errorData.error || `Server error: ${response.status}`);
+        }
+      } else {
+        throw new Error('Not authenticated');
+      }
+    } catch (error) {
+      console.error('Failed to get ephemeral token from backend:', error);
+      tracking?.capture('realtime_token_fetch_error', { 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
+      
+      Modal.alert(
+        'OpenAI API Key Required',
+        'Please set your OpenAI API key in Settings to use voice control.',
+        [{ text: 'OK' }]
+      );
+      throw new Error('OpenAI API key not configured');
     }
   }
   
-  if (!EPHEMERAL_KEY) {
+  if (!ephemeralKey) {
     Modal.alert(
       'OpenAI API Key Required',
       'Please set your OpenAI API key in Settings to use voice control.',
@@ -221,10 +278,19 @@ export async function createRealtimeSession(config: SessionConfig): Promise<Sess
     method: 'POST',
     body: offer.sdp,
     headers: {
-      Authorization: `Bearer ${EPHEMERAL_KEY}`,
+      Authorization: `Bearer ${ephemeralKey}`,
       'Content-Type': 'application/sdp',
     },
   });
+
+  if (!sdpResponse.ok) {
+    tracking?.capture('realtime_session_failed', { 
+      status: sdpResponse.status
+    });
+    throw new Error(`Failed to establish WebRTC connection: ${sdpResponse.status}`);
+  }
+  
+  tracking?.capture('realtime_session_established');
 
   const answer = {
     type: 'answer' as const,
