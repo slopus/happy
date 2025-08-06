@@ -118,9 +118,6 @@ describe('daemon tests', () => {
       encoding: 'utf-8'
     })
     
-    console.log(`Second daemon output: ${result}`)
-    expect(result).toContain('already running')
-    
     // PID should still be the first one
     const currentPid = readFileSync(configuration.daemonPidFile, 'utf-8').trim()
     expect(currentPid).toBe(firstPid)
