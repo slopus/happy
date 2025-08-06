@@ -251,47 +251,8 @@ ${conversationContext}`;
 
 
     const footer = React.useMemo(() => {
-        if (!permissionRequest) {
-            return <View style={{ flexDirection: 'row', alignItems: 'center', height: 32 }} />;
-        }
-        return (
-            <View style={{ flexDirection: 'row', justifyContent: 'center', paddingBottom: 24, paddingTop: 16, paddingHorizontal: 16 }}>
-                <View style={{
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: 12,
-                    flexGrow: 1,
-                    flexBasis: 0,
-                    maxWidth: 700,
-                    paddingHorizontal: 12,
-                    borderRadius: 12,
-                    backgroundColor: 'white',
-                    paddingVertical: 12,
-                    boxShadow: '0px 0px 8px 0px rgba(0,0,0,0.2)',
-                }}>
-                    <Text style={{ fontSize: 18, color: '#666', fontWeight: '600' }}>
-                        Permission request
-                    </Text>
-                    <Text style={{ fontSize: 24, color: '#666' }}>
-                        {permissionRequest?.call.tool}
-                    </Text>
-                    <Text style={{ fontSize: 24, color: '#666' }}>
-                        {formatPermissionParams(permissionRequest?.call.arguments, 2, 20)}
-                    </Text>
-                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 12 }}>
-                        <RoundButton size='normal' title={"Deny"} onPress={() => {
-                            sessionDeny(sessionId, permissionRequest?.id ?? '');
-                            trackPermissionResponse(false);
-                        }} />
-                        <RoundButton size='normal' title={"Allow"} onPress={() => {
-                            sessionAllow(sessionId, permissionRequest?.id ?? '');
-                            trackPermissionResponse(true);
-                        }} />
-                    </View>
-                </View>
-            </View>
-        )
-    }, [permissionRequest, sessionId]);
+        return <View style={{ flexDirection: 'row', alignItems: 'center', height: 32 }} />;
+    }, []);
 
     // Memoize FlatList props
     const keyExtractor = useCallback((item: any) => item.id, []);

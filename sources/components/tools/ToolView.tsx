@@ -4,12 +4,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { getToolViewComponent } from './views/_all';
 import { Message, ToolCall } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
-import { ToolSectionView } from './ToolSectionView'; 
+import { ToolSectionView } from './ToolSectionView';
 import { useElapsedTime } from '@/hooks/useElapsedTime';
 import { ToolError } from './ToolError';
 import { knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
 import { useRouter } from 'expo-router';
+import { PermissionBadge } from './PermissionBadge';
+import { PermissionActions } from './PermissionActions';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -23,7 +25,7 @@ interface ToolViewProps {
 export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
     const router = useRouter();
-    
+
     // Create default onPress handler for navigation
     const handlePress = React.useCallback(() => {
         if (onPress) {
@@ -32,7 +34,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             router.push(`/session/${sessionId}/message/${messageId}`);
         }
     }, [onPress, sessionId, messageId, router]);
-    
+
     // Enable pressable if either onPress is provided or we have navigation params
     const isPressable = !!(onPress || (sessionId && messageId));
     const toolTitle = tool.name in knownTools ? knownTools[tool.name as keyof typeof knownTools].title : tool.name;
@@ -101,6 +103,10 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 <ElapsedView from={tool.createdAt} />
                             </View>
                         )}
+                        {tool.permission && tool.permission.status !== 'pending' && <PermissionBadge permission={tool.permission} />}
+                        {tool.permission && sessionId && tool.permission.status === 'pending' && (
+                            <PermissionActions permission={tool.permission} sessionId={sessionId} />
+                        )}
                         {statusIcon}
                     </View>
                 </TouchableOpacity>
@@ -120,6 +126,10 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                             <View style={styles.elapsedContainer}>
                                 <ElapsedView from={tool.createdAt} />
                             </View>
+                        )}
+                        {tool.permission && <PermissionBadge permission={tool.permission} />}
+                        {tool.permission && sessionId && (
+                            <PermissionActions permission={tool.permission} sessionId={sessionId} />
                         )}
                         {statusIcon}
                     </View>
