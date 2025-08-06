@@ -253,6 +253,65 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         return reply.send({ success: true });
     });
 
+    // OpenAI Realtime ephemeral token generation
+    typed.post('/v1/openai/realtime-token', {
+        preHandler: app.authenticate,
+        schema: {
+            response: {
+                200: z.object({
+                    token: z.string()
+                }),
+                500: z.object({
+                    error: z.string()
+                })
+            }
+        }
+    }, async (request, reply) => {
+        try {
+            // Check if OpenAI API key is configured on server
+            const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+            if (!OPENAI_API_KEY) {
+                return reply.code(500).send({ 
+                    error: 'OpenAI API key not configured on server' 
+                });
+            }
+            
+            // Generate ephemeral token from OpenAI
+            const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4o-realtime-preview-2024-12-17',
+                    voice: 'verse',
+                }),
+            });
+            
+            if (!response.ok) {
+                throw new Error(`OpenAI API error: ${response.status}`);
+            }
+            
+            const data = await response.json() as {
+                client_secret: {
+                    value: string;
+                    expires_at: number;
+                };
+                id: string;
+            };
+            
+            return reply.send({
+                token: data.client_secret.value
+            });
+        } catch (error) {
+            log({ module: 'openai', level: 'error' }, 'Failed to generate ephemeral token', error);
+            return reply.code(500).send({ 
+                error: 'Failed to generate ephemeral token' 
+            });
+        }
+    });
+
     // Sessions API
     typed.get('/v1/sessions', {
         preHandler: app.authenticate,
