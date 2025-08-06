@@ -129,7 +129,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const tools: Tools = useMemo(() => ({
         askClaudeCode: zodToOpenAIFunction(
             'askClaudeCode',
-            'This is your main tool to get any work done. You can use it to submit tasks to Claude Code.',
+            'This is your main tool to get any work done. Make sure you have confirmation from the user to submit the next task for claude',
             z.object({
                 message: z.string().describe('The task or question to send to Claude Code')
             }),
@@ -140,7 +140,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 // Return acknowledgment
                 return {
                     success: true,
-                    message: "I've sent your request to Claude Code. This may take some time to process. You can leave this chat as will receive a notification when claude code is done. In the meantime, you can review other sessions"
+                    message: "Simply say a single word 'sent' to confirm the task has been sent to claude code"
                 };
             }
         )
@@ -170,13 +170,14 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             const systemPrompt = `You are a voice interface to Claude Code. Your role is to:
 
 1. Help the user understand what changes Claude Code made or where it got stuck
-2. On behalf of the user submit new messages to Claude Code. If the customer asks you a question, assume they are trying to ask this to claude code.
+2. On behalf of the user submit new messages to Claude Code.
+3. You are not a powerful model. You must not attempt to make your own hard decisions, and by default assume the user is just narrating what they will eventually want to ask of claude code. Claude Code is an advanced coding agent that can actually make changes to files, do research, and more. You are a mere voice interface to Claude Code.
 3. Proactively offer to send message to claude code, but ask the user to confirm we are ready to send the request to claude code.
 4. When the user formulates a change they want to make, use the askClaudeCode function to send tasks to Claude Code
 
-Claude Code is an advanced coding agent that can actually make changes to files, do research, and more.
-
-Remember: You are the voice interface to Claude Code, helping the user think through problems and formulate clear requests.
+- You keep your statements short. You do not repeat what the user just told you, or what you just submitted. When the user complains about the code or is providing feedback, your job by default is to keep track of that almost silently. Only acknowledge with phrases like 'ok' 'yes bossmang' 'ay ay captain' and so on. You let the user do the talking unless they ask you directly.
+- You speak fast. 2x your normal speed.
+- When submitting request to claude, keep the original wording of the user's request. Keep rephrasing to a minimum.
 
 ## Current Conversation Context
 
@@ -221,17 +222,19 @@ ${conversationContext}`;
     }, []);
 
     // On new messages from claude, push them to the realtime session
+    const lastProcessedMessageIndexRef = React.useRef(0);
     React.useEffect(() => {
-        if (realtimeSessionRef.current) {
-            console.log('pushing content to realtime session, poorly assuming a single new message arrived');
+        if (realtimeSessionRef.current && messages.length > lastProcessedMessageIndexRef.current) {
+            const newMessages = messages.slice(lastProcessedMessageIndexRef.current);
+            console.log(`pushing ${newMessages.length} new messages to realtime session (from index ${lastProcessedMessageIndexRef.current})`);
             realtimeSessionRef.current.pushContent(
-                // Assuming its reversed
-                messagesToPrompt(messages.slice(0, 1), {
+                messagesToPrompt(newMessages, {
                     maxCharacters: 100_000,
                     maxMessages: 20,
                     excludeToolCalls: false
                 })
             );
+            lastProcessedMessageIndexRef.current = messages.length;
         }
     }, [messages.length]);
 
@@ -463,7 +466,7 @@ ${conversationContext}`;
                                     trackMessageSent();
                                 }
                             }}
-                            onMicPress={settings.inferenceOpenAIKey ? handleMicrophonePress : undefined}
+                            onMicPress={handleMicrophonePress}
                             isMicActive={isRecording}
                             status={{
                                 state: sessionStatus.state,

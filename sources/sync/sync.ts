@@ -695,6 +695,8 @@ class Sync {
             console.log('Invalid ephemeral update received:', validatedUpdate.error);
             console.error('Invalid ephemeral update received:', update);
             return;
+        } else {
+            console.log('Ephemeral update received:', update);
         }
         const updateData = validatedUpdate.data;
 
