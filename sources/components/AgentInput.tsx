@@ -6,6 +6,7 @@ import { hapticsLight, hapticsError } from './haptics';
 import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
+import { PermissionModeSelector, PermissionMode } from './PermissionModeSelector';
 
 // Status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -61,6 +62,8 @@ export const AgentInput = React.memo((props: {
         isPulsing?: boolean,
     },
     onAbort?: () => void | Promise<void>,
+    permissionMode?: PermissionMode,
+    onPermissionModeChange?: (mode: PermissionMode) => void,
 }) => {
     // Animation states
     const scaleAnim = React.useRef(new Animated.Value(1)).current;
@@ -214,7 +217,7 @@ export const AgentInput = React.memo((props: {
                         maxWidth: layout.maxWidth,
                         paddingHorizontal: 32,
                     }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                             <StatusDot
                                 color={props.status.dotColor}
                                 isPulsing={props.status.isPulsing}
@@ -229,6 +232,16 @@ export const AgentInput = React.memo((props: {
                                 {props.status.text}
                             </Text>
                         </View>
+
+                        {/* Permission Mode Selector */}
+                        {props.onPermissionModeChange && props.status.state !== 'disconnected' && (
+                            <View style={{ marginRight: 8 }}>
+                                <PermissionModeSelector
+                                    mode={props.permissionMode || 'default'}
+                                    onModeChange={props.onPermissionModeChange}
+                                />
+                            </View>
+                        )}
 
                         {/* Abort button */}
                         {props.onAbort && (

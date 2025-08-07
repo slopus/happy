@@ -1,4 +1,5 @@
 import * as z from 'zod';
+import { MessageMetaSchema, MessageMeta } from './typesMessageMeta';
 
 //
 // Raw types
@@ -66,11 +67,16 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
 const rawRecordSchema = z.discriminatedUnion('role', [
     z.object({
         role: z.literal('agent'),
-        content: rawAgentRecordSchema
+        content: rawAgentRecordSchema,
+        meta: MessageMetaSchema.optional()
     }),
     z.object({
         role: z.literal('user'),
-        content: z.object({ type: z.literal('text'), text: z.string() })
+        content: z.object({ 
+            type: z.literal('text'), 
+            text: z.string()
+        }),
+        meta: MessageMetaSchema.optional()
     })
 ]);
 
@@ -131,6 +137,7 @@ export type NormalizedMessage = ({
     localId: string | null,
     createdAt: number,
     isSidechain: boolean,
+    meta?: MessageMeta,
 };
 
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
@@ -142,6 +149,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
             role: 'user',
             content: raw.content,
             isSidechain: false,
+            meta: raw.meta,
         };
     }
     if (raw.role === 'agent') {
@@ -187,7 +195,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     createdAt,
                     role: 'agent',
                     isSidechain: raw.content.data.isSidechain ?? false,
-                    content
+                    content,
+                    meta: raw.meta
                 };
             } else if (raw.content.data.type === 'user') {
                 if (!raw.content.data.uuid) {
@@ -246,7 +255,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     createdAt,
                     role: 'agent',
                     isSidechain: raw.content.data.isSidechain ?? false,
-                    content
+                    content,
+                    meta: raw.meta
                 };
             }
         }

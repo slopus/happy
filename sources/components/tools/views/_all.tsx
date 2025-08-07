@@ -28,6 +28,7 @@ export const toolViewRegistry: Record<string, ToolViewComponent> = {
     Write: WriteView,
     TodoWrite: TodoView,
     ExitPlanMode: ExitPlanToolView,
+    exit_plan_mode: ExitPlanToolView,
     MultiEdit: MultiEditView,
     Task: TaskView
 };

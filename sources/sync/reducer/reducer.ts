@@ -108,6 +108,7 @@ import { Message, ToolCall } from "../typesMessage";
 import { AgentEvent, NormalizedMessage } from "../typesRaw";
 import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState } from "../storageTypes";
+import { MessageMeta } from "../typesMessageMeta";
 
 type ReducerMessage = {
     id: string;
@@ -117,6 +118,7 @@ type ReducerMessage = {
     text: string | null;
     event: AgentEvent | null;
     tool: ToolCall | null;
+    meta?: MessageMeta;
 }
 
 type StoredPermission = {
@@ -418,6 +420,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 text: msg.content.text,
                 tool: null,
                 event: null,
+                meta: msg.meta,
             });
 
             // Track both localId and messageId
@@ -448,6 +451,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         text: c.text,
                         tool: null,
                         event: null,
+                        meta: msg.meta,
                     });
                     changed.add(mid);
                 }
@@ -527,6 +531,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             text: null,
                             tool: toolCall,
                             event: null,
+                            meta: msg.meta,
                         });
                         
                         state.toolIdToMessageId.set(c.id, mid);
@@ -599,6 +604,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 text: msg.content[0].prompt,
                 tool: null,
                 event: null,
+                meta: msg.meta,
             };
             state.messages.set(mid, userMsg);
             existingSidechain.push(userMsg);
@@ -615,6 +621,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         text: c.text,
                         tool: null,
                         event: null,
+                        meta: msg.meta,
                     };
                     state.messages.set(mid, textMsg);
                     existingSidechain.push(textMsg);
@@ -638,6 +645,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         text: null,
                         tool: toolCall,
                         event: null,
+                        meta: msg.meta,
                     };
                     state.messages.set(mid, toolMsg);
                     existingSidechain.push(toolMsg);
@@ -683,6 +691,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 event: msg.content,
                 tool: null,
                 text: null,
+                meta: msg.meta,
             });
             changed.add(mid);
         }
@@ -721,7 +730,8 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             localId: null,
             createdAt: reducerMsg.createdAt,
             kind: 'user-text',
-            text: reducerMsg.text
+            text: reducerMsg.text,
+            meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.text !== null) {
         return {
@@ -729,7 +739,8 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             localId: null,
             createdAt: reducerMsg.createdAt,
             kind: 'agent-text',
-            text: reducerMsg.text
+            text: reducerMsg.text,
+            meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.tool !== null) {
         // Convert children recursively
@@ -748,14 +759,16 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
             createdAt: reducerMsg.createdAt,
             kind: 'tool-call',
             tool: { ...reducerMsg.tool },
-            children: childMessages
+            children: childMessages,
+            meta: reducerMsg.meta
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.event !== null) {
         return {
             id: reducerMsg.id,
             createdAt: reducerMsg.createdAt,
             kind: 'agent-event',
-            event: reducerMsg.event
+            event: reducerMsg.event,
+            meta: reducerMsg.meta
         };
     }
 

@@ -1,4 +1,5 @@
 import { AgentEvent } from "./typesRaw";
+import { MessageMeta } from "./typesMessageMeta";
 
 export type ToolCall = {
     name: string;
@@ -23,13 +24,15 @@ export type UserTextMessage = {
     localId: string | null;
     createdAt: number;
     text: string;
+    meta?: MessageMeta;
 }
 
 export type ModeSwitchMessage = {
     kind: 'agent-event';
     id: string;
     createdAt: number;
-    event: AgentEvent;  
+    event: AgentEvent;
+    meta?: MessageMeta;
 }
 
 export type AgentTextMessage = {
@@ -38,6 +41,7 @@ export type AgentTextMessage = {
     localId: string | null;
     createdAt: number;
     text: string;
+    meta?: MessageMeta;
 }
 
 export type ToolCallMessage = {
@@ -47,6 +51,7 @@ export type ToolCallMessage = {
     createdAt: number;
     tool: ToolCall;
     children: Message[];
+    meta?: MessageMeta;
 }
 
 export type Message = UserTextMessage | AgentTextMessage | ToolCallMessage | ModeSwitchMessage;
