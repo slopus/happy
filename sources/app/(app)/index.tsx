@@ -10,7 +10,7 @@ import { useUpdates } from "@/hooks/useUpdates";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
 import { Stack, useRouter } from "expo-router";
-import { useSessions, useEntitlement } from "@/sync/storage";
+import { useSessions, useEntitlement, useSettings } from "@/sync/storage";
 import { getRandomBytesAsync } from "expo-crypto";
 import { useIsTablet, useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
@@ -305,6 +305,12 @@ function HeaderLeft() {
 
 function HeaderRight() {
     const router = useRouter();
+    const settings = useSettings();
+    
+    // Only show the plus button if experiments flag is enabled
+    if (!settings?.experiments) {
+        return null;
+    }
     
     return (
         <Pressable
