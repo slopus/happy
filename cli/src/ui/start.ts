@@ -82,8 +82,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     let toolCallResolver: ((name: string, args: any) => string | null) | null = null;
     
     const permissionServer = await startPermissionServerV2(async (request) => {
-        const id = randomUUID();
-        
         // Resolve tool call ID - throw if resolver not available
         if (!toolCallResolver) {
             const error = `Tool call resolver not available for permission request: ${request.name}`;
@@ -93,10 +91,14 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         
         const toolCallId = toolCallResolver(request.name, request.arguments);
         if (!toolCallId) {
-            logger.debug(`Could not resolve tool call ID for permission request: ${request.name}`);
-        } else {
-            logger.debug(`Resolved tool call ID: ${toolCallId} for permission request: ${request.name}`);
+            const error = `Could not resolve tool call ID for permission request: ${request.name}`;
+            logger.info(`ERROR: ${error}`);
+            throw new Error(error);
         }
+        
+        // Use tool call ID as the permission request ID
+        const id = toolCallId;
+        logger.debug(`Using tool call ID as permission request ID: ${id} for ${request.name}`);
         
         let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => { requests.set(id, resolve); });
         let timeout = setTimeout(async () => {
@@ -159,7 +161,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                 [id]: {
                     tool: request.name,
                     arguments: request.arguments,
-                    toolCallId: toolCallId,
                     createdAt: Date.now()
                 }
             }

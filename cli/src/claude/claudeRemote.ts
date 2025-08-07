@@ -196,6 +196,24 @@ export async function claudeRemote(opts: {
                 }
             }
 
+            // Mark tool calls as used when we see their results
+            if (message.type === 'user') {
+                const userMsg = message as SDKUserMessage;
+                
+                // Check content for tool_result blocks
+                if (userMsg.message && userMsg.message.content && Array.isArray(userMsg.message.content)) {
+                    for (const block of userMsg.message.content) {
+                        if (block.type === 'tool_result' && block.tool_use_id) {
+                            const toolCall = toolCalls.find(tc => tc.id === block.tool_use_id);
+                            if (toolCall && !toolCall.used) {
+                                toolCall.used = true;
+                                logger.debug(`[claudeRemote] Tool completed execution, marked as used: ${block.tool_use_id}`);
+                            }
+                        }
+                    }
+                }
+            }
+
             // Handle special system messages
             if (message.type === 'system' && message.subtype === 'init') {
                 // Start thinking when session initializes
