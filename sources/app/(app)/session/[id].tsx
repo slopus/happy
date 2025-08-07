@@ -98,6 +98,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const [message, setMessage] = useState('');
     const [isRecording, setIsRecording] = useState(false);
     const [isReviving, setIsReviving] = useState(false);
+    const [permissionMode, setPermissionMode] = useState<'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'>('default');
     const [, forceUpdate] = React.useReducer(x => x + 1, 0);
     const realtimeSessionRef = React.useRef<Awaited<ReturnType<typeof createRealtimeSession>> | null>(null);
     const isCreatingSessionRef = React.useRef(false);
@@ -135,7 +136,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             }),
             async ({ message }) => {
                 // Send the message as if typed by the user
-                sync.sendMessage(sessionId, message);
+                sync.sendMessage(sessionId, message, permissionMode);
 
                 // Return acknowledgment
                 return {
@@ -462,7 +463,7 @@ ${conversationContext}`;
                             onSend={() => {
                                 if (message.trim()) {
                                     setMessage('');
-                                    sync.sendMessage(sessionId, message);
+                                    sync.sendMessage(sessionId, message, permissionMode);
                                     trackMessageSent();
                                 }
                             }}
@@ -480,6 +481,8 @@ ${conversationContext}`;
                                 isPulsing: sessionStatus.isPulsing,
                             }}
                             onAbort={() => sessionAbort(sessionId)}
+                            permissionMode={permissionMode}
+                            onPermissionModeChange={setPermissionMode}
                         />
                     )}
                 </AgentContentView>

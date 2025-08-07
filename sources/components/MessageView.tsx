@@ -84,6 +84,9 @@ function UserTextBlock(props: {
       }}
     >
       <MarkdownView markdown={props.message.text} />
+      {__DEV__ && (
+        <Text style={{ color: '#666666', fontSize: 12 }}>{JSON.stringify(props.message.meta)}</Text>
+      )}
     </View>
   );
 }

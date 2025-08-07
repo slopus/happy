@@ -10,6 +10,7 @@ import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
+import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { decodeBase64 } from '@/auth/base64';
 import { SessionEncryption } from './apiSessionEncryption';
@@ -108,7 +109,7 @@ class Sync {
     }
 
 
-    sendMessage(sessionId: string, text: string) {
+    sendMessage(sessionId: string, text: string, permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') {
 
         // Get encryption
         const encryption = this.sessionEncryption.get(sessionId);
@@ -120,12 +121,33 @@ class Sync {
         // Generate local ID
         const localId = randomUUID();
 
-        // Create user message content
+        // Determine sentFrom based on platform
+        let sentFrom: string;
+        if (Platform.OS === 'web') {
+            sentFrom = 'web';
+        } else if (Platform.OS === 'android') {
+            sentFrom = 'android';
+        } else if (Platform.OS === 'ios') {
+            // Check if running on Mac (Catalyst or Designed for iPad on Mac)
+            if (isRunningOnMac()) {
+                sentFrom = 'mac';
+            } else {
+                sentFrom = 'ios';
+            }
+        } else {
+            sentFrom = 'web'; // fallback
+        }
+
+        // Create user message content with metadata
         const content: RawRecord = {
             role: 'user',
             content: {
                 type: 'text',
                 text
+            },
+            meta: {
+                sentFrom,
+                permissionMode: permissionMode || 'default'
             }
         };
         const encryptedRawRecord = encryption.encryptRawRecord(content);
@@ -139,8 +161,14 @@ class Sync {
             content
         }]);
 
-        // Send message
-        apiSocket.send('message', { sid: sessionId, message: encryptedRawRecord, localId });
+        // Send message with optional permission mode and source identifier
+        apiSocket.send('message', { 
+            sid: sessionId, 
+            message: encryptedRawRecord, 
+            localId,
+            sentFrom,
+            permissionMode: permissionMode || 'default'
+        });
     }
 
     applySettings = (delta: Partial<Settings>) => {

@@ -151,7 +151,14 @@ export const knownTools = {
         },
     },
     'ExitPlanMode': {
-        title: 'Exit Plan Mode',
+        title: 'Plan proposal',
+        icon: 'exit',
+        input: z.object({
+            plan: z.string().describe('The plan you came up with')
+        }).partial().loose()
+    },
+    'exit_plan_mode': {
+        title: 'Plan proposal',
         icon: 'exit',
         input: z.object({
             plan: z.string().describe('The plan you came up with')
