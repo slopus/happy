@@ -139,6 +139,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@expo/ngrok": "^4.1.0",
     "@stablelib/hex": "^2.0.1",
     "@types/react": "~19.0.10",
     "babel-plugin-transform-remove-console": "^6.9.4",
