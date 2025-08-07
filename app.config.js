@@ -17,7 +17,7 @@ export default {
         version: "1.2.0",
         runtimeVersion: "14",
         orientation: "default",
-        icon: "./sources/assets/images/happy-otter-iconhttps://static-production.npmjs.com/255a118f56f5346b97e56325a1217a16.svg.png",
+        icon: "./sources/assets/images/happy-otter-icon.png",
         scheme: "happy",
         userInterfaceStyle: "automatic",
         newArchEnabled: true,
