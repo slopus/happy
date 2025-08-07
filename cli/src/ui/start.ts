@@ -11,6 +11,8 @@ import { InterruptController } from '@/claude/InterruptController';
 import packageJson from '../../package.json';
 import { registerHandlers } from '@/api/handlers';
 import { readSettings } from '@/persistence/persistence';
+import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from '@/claude/sdk/prompts';
+import { createSessionScanner } from '@/claude/scanner/sessionScanner';
 
 export interface StartOptions {
     model?: string
@@ -77,10 +79,25 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // Create interrupt controller
     const interruptController = new InterruptController();
 
+    // Import MessageQueue2 and create message queue
+    const { MessageQueue2 } = await import('@/utils/MessageQueue2');
+    type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+    const messageQueue = new MessageQueue2<PermissionMode>(
+        mode => mode  // Simple string hasher since modes are already strings
+    );
+
     // Start MCP permission server
     let requests = new Map<string, (response: { approved: boolean, reason?: string }) => void>();
     let toolCallResolver: ((name: string, args: any) => string | null) | null = null;
     
+    // Create session scanner
+    const sessionScanner = createSessionScanner({
+        workingDirectory: workingDirectory,
+        onMessage: (message) => {
+            session.sendClaudeSessionMessage(message);
+        }
+    });
+
     const permissionServer = await startPermissionServerV2(async (request) => {
         // Resolve tool call ID - throw if resolver not available
         if (!toolCallResolver) {
@@ -100,7 +117,31 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         const id = toolCallId;
         logger.debug(`Using tool call ID as permission request ID: ${id} for ${request.name}`);
         
-        let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => { requests.set(id, resolve); });
+        // Hack for exit_plan_mode
+        let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => { 
+            if (request.name === 'exit_plan_mode') {
+                // Intercept exit_plan_mode approval
+                const wrappedResolve = (response: { approved: boolean, reason?: string }) => {
+                    if (response.approved) {
+                        logger.debug('[HACK] exit_plan_mode approved - injecting approval message and denying');
+                        // Inject the approval message at the beginning of the queue
+                        sessionScanner.onRemoteUserMessageForDeduplication(PLAN_FAKE_RESTART); // Deduplicate
+                        messageQueue.unshift(PLAN_FAKE_RESTART, 'default');
+                        logger.debug(`[HACK] Message queue size after unshift: ${messageQueue.size()}`);
+                        // Return denied to cause Claude to stop
+                        resolve({ 
+                            approved: false, 
+                            reason: PLAN_FAKE_REJECT
+                        });
+                    } else {
+                        resolve(response);
+                    }
+                };
+                requests.set(id, wrappedResolve);
+            } else {
+                requests.set(id, resolve);
+            }
+        });
         let timeout = setTimeout(async () => {
             // Interrupt claude execution on permission timeout
             logger.debug('Permission timeout - attempting to interrupt Claude');
@@ -206,6 +247,8 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         model: options.model,
         permissionMode: options.permissionMode,
         startingMode: options.startingMode,
+        messageQueue,
+        sessionScanner,
         onModeChange: (newMode) => {
             mode = newMode;
             session.sendSessionEvent({ type: 'switch', mode: newMode });

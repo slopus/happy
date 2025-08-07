@@ -5,6 +5,43 @@ import { readFile } from "node:fs/promises";
 import { logger } from "@/ui/logger";
 import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
 import { getProjectPath } from "../path";
+import { PLAN_FAKE_REJECT } from "@/claude/sdk/prompts";
+
+// Custom tool response hacker function
+function hackToolResponse(message: any): any {
+    console.log('hackToolResponse', JSON.stringify(message, null, 2));
+    // Check if this is an assistant message with tool_result
+    if (message.type === 'user' && message.message?.role === 'user' && message.message?.content && Array.isArray(message.message.content)) {
+        let modified = false;
+        const hackedContent = message.message.content.map((item: any) => {
+            if (item.type === 'tool_result' && item.is_error === true) {
+                // Check if this is an exit_plan_mode tool result with PLAN_FAKE_REJECT
+                if (item.content === PLAN_FAKE_REJECT) {
+                    logger.debug(`[SESSION_SCANNER] Hacking exit_plan_mode tool_result: flipping is_error from true to false`);
+                    modified = true;
+                    return {
+                        ...item,
+                        is_error: false,
+                        content: 'Plan approved'
+                    };
+                }
+            }
+            return item;
+        });
+        
+        if (modified) {
+            return {
+                ...message,
+                message: {
+                    ...message.message,
+                    content: hackedContent
+                }
+            };
+        }
+    }
+    
+    return message;
+}
 
 export function createSessionScanner(opts: {
     workingDirectory: string
@@ -103,8 +140,11 @@ export function createSessionScanner(opts: {
                         }
                     }
 
+                    // Apply custom hacker function before sending
+                    const hackedMessage = hackToolResponse(message);
+                    
                     // Notify - this is a new message that should be sent to the server
-                    opts.onMessage(message); // Send original message to the server
+                    opts.onMessage(hackedMessage); // Send hacked message to the server
                 } catch (e) {
                     logger.debug(`[SESSION_SCANNER] Error processing message: ${e}`);
                     continue;

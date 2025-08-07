@@ -12,6 +12,7 @@ import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { createHash } from 'crypto';
 import { join } from 'path';
 import { run as runRipgrep } from '@/ripgrep/index';
+import { PLAN_FAKE_REJECT } from '@/claude/sdk/prompts';
 
 const execAsync = promisify(exec);
 
@@ -161,6 +162,11 @@ export function registerHandlers(
                 let r = { ...currentState.requests };
                 delete r[id];
                 
+                // Check for PLAN_FAKE_REJECT to report as success
+                const isExitPlanModeSuccess = request.tool === 'exit_plan_mode' && 
+                                             !message.approved && 
+                                             message.reason === PLAN_FAKE_REJECT;
+                
                 return ({
                     ...currentState,
                     requests: r,
@@ -169,8 +175,8 @@ export function registerHandlers(
                         [id]: {
                             ...request,
                             completedAt: Date.now(),
-                            status: message.approved ? 'approved' : 'denied',
-                            reason: message.reason
+                            status: isExitPlanModeSuccess ? 'approved' : (message.approved ? 'approved' : 'denied'),
+                            reason: isExitPlanModeSuccess ? 'Plan approved' : message.reason
                         }
                     }
                 });

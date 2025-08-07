@@ -20,12 +20,14 @@ interface LoopOptions {
     onThinkingChange?: (thinking: boolean) => void
     mcpServers?: Record<string, any>
     permissionPromptToolName?: string
+    sessionScanner?: ReturnType<typeof createSessionScanner>
     session: ApiSessionClient
     onAssistantResult?: OnAssistantResultCallback
     interruptController?: InterruptController
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     onToolCallResolver?: (resolver: ((name: string, args: any) => string | null) | null) => void
+    messageQueue?: MessageQueue2<PermissionMode>
 }
 
 /*
@@ -41,13 +43,14 @@ interface LoopOptions {
 export async function loop(opts: LoopOptions) {
     let mode: 'local' | 'remote' = opts.startingMode ?? 'local';
     let currentPermissionMode: PermissionMode = opts.permissionMode ?? 'default';
-    let currentMessageQueue = new MessageQueue2<PermissionMode>(
+    logger.debug(`[loop] Starting with permission mode: ${currentPermissionMode}`);
+    let currentMessageQueue = opts.messageQueue || new MessageQueue2<PermissionMode>(
         mode => mode  // Simple string hasher since modes are already strings
     );
     let sessionId: string | null = null;
     let onMessage: (() => void) | null = null;
 
-    const sessionScanner = createSessionScanner({
+    const sessionScanner = opts.sessionScanner || createSessionScanner({
         workingDirectory: opts.path,
         onMessage: (message) => {
             opts.session.sendClaudeSessionMessage(message);
@@ -65,10 +68,13 @@ export async function loop(opts: LoopOptions) {
             if (validModes.includes(message.meta.permissionMode as PermissionMode)) {
                 messagePermissionMode = message.meta.permissionMode as PermissionMode;
                 currentPermissionMode = messagePermissionMode;
-                logger.debug(`[loop] Permission mode updated to: ${currentPermissionMode}`);
+                logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
+
             } else {
                 logger.info(`[loop] Invalid permission mode received: ${message.meta.permissionMode}`);
             }
+        } else {
+            logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
         }
 
         // Push with resolved permission mode
@@ -86,6 +92,8 @@ export async function loop(opts: LoopOptions) {
     }
 
     while (true) {
+        logger.debug(`[loop] Starting loop iteration, queue size: ${currentMessageQueue.size()}, mode: ${mode}`);
+
         // Switch to remote mode if there are messages waiting
         if (currentMessageQueue.size() > 0) {
             if (mode !== 'remote') {
@@ -94,7 +102,6 @@ export async function loop(opts: LoopOptions) {
                     opts.onModeChange(mode);
                 }
             }
-            continue;
         }
 
         // Start local mode
@@ -206,15 +213,15 @@ export async function loop(opts: LoopOptions) {
 
                 // Wait for messages and get as string
                 logger.debug('[loop] Waiting for messages before starting claudeRemote...');
-                // console.log('waiting for messages');
                 const messageData = await currentMessageQueue.waitForMessagesAndGetAsString(remoteAbortController.signal);
-                
+
                 if (!messageData) {
                     // console.log('no message data');
+                    console.log('[LOOP] No message received (queue closed or aborted), continuing loop');
                     logger.debug('[loop] No message received (queue closed or aborted), skipping remote mode');
                     continue;
                 }
-                
+
                 // Update current permission mode from queue
                 currentPermissionMode = messageData.mode;
                 logger.debug(`[loop] Using permission mode from queue: ${currentPermissionMode}`);
@@ -226,8 +233,7 @@ export async function loop(opts: LoopOptions) {
 
                 // Emit permission mode change event before starting claudeRemote
                 opts.session.sendSessionEvent({ type: 'permission-mode-changed', mode: currentPermissionMode });
-
-                // console.log('messageData.message', messageData.message, 'currentPermissionMode', messageData.mode);
+                logger.debug(`[loop] Sent permission-mode-changed event to app: ${currentPermissionMode}`);
 
                 await claudeRemote({
                     abort: remoteAbortController.signal,
@@ -246,32 +252,25 @@ export async function loop(opts: LoopOptions) {
                     onToolCallResolver: opts.onToolCallResolver,
                 });
 
-                // console.log('claudeRemote done');
             } catch (e) {
-                // console.log('claudeRemote error', e);
                 if (!remoteAbortController.signal.aborted) {
                     opts.session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                 }
             } finally {
-                // console.log('finally');
                 // Call onProcessStop after remote mode completes
                 if (opts.onProcessStop) {
                     opts.onProcessStop('remote');
                 }
-                // console.log('finally 2');
-
                 process.stdin.off('data', abortHandler);
                 if (process.stdin.isTTY) {
                     process.stdin.setRawMode(false);
                 }
-                // console.log('finally 3');
-                
+
                 // MessageQueue2 automatically handles mode changes, no need to manually close/recreate
             }
             if (mode !== 'remote') {
                 console.log('Switching back to good old claude...');
             }
-            // console.log('remote mode done');
         }
     }
 }
