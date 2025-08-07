@@ -14,10 +14,10 @@ export default {
     expo: {
         name,
         slug: "happy",
-        version: "1.1.0",
+        version: "1.2.0",
         runtimeVersion: "14",
         orientation: "default",
-        icon: "./sources/assets/images/happy-otter-icon.png",
+        icon: "./sources/assets/images/happy-otter-iconhttps://static-production.npmjs.com/255a118f56f5346b97e56325a1217a16.svg.png",
         scheme: "happy",
         userInterfaceStyle: "automatic",
         newArchEnabled: true,
@@ -43,6 +43,11 @@ export default {
                 foregroundImage: "./sources/assets/images/adaptive-icon.png",
                 backgroundColor: "#ffffff"
             },
+            permissions: [
+                "android.permission.RECORD_AUDIO",
+                "android.permission.MODIFY_AUDIO_SETTINGS",
+                "android.permission.ACCESS_NETWORK_STATE",
+            ],
             blockedPermissions: [
                 "android.permission.ACTIVITY_RECOGNITION"
             ],
@@ -71,6 +76,8 @@ export default {
             "react-native-vision-camera",
             "react-native-libsodium",
             "react-native-audio-api",
+            "@livekit/react-native-expo-plugin",
+            "@config-plugins/react-native-webrtc",
             [
                 "expo-audio",
                 {
@@ -91,13 +98,6 @@ export default {
                     "calendarPermission": "Allow $(PRODUCT_NAME) to access your calendar to improve AI quality."
                 }
             ],
-            [
-                "@config-plugins/react-native-webrtc",
-                {
-                    cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to talk to AI.",
-                    microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone to talk to AI.",
-                }
-            ]
         ],
         updates: {
             url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",
