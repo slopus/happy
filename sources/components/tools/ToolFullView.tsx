@@ -5,6 +5,7 @@ import { ToolCall, Message } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
 import { Metadata } from '@/sync/storageTypes';
 import { getToolFullViewComponent } from './views/_all';
+import { layout } from '../layout';
 
 interface ToolFullViewProps {
     tool: ToolCall;
@@ -19,11 +20,12 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
 
     return (
         <ScrollView style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
-            {/* Tool-specific content or generic fallback */}
-            {SpecializedFullView ? (
-                <SpecializedFullView tool={tool} metadata={metadata || null} messages={messages} />
-            ) : (
-                <>
+            <View style={styles.contentWrapper}>
+                {/* Tool-specific content or generic fallback */}
+                {SpecializedFullView ? (
+                    <SpecializedFullView tool={tool} metadata={metadata || null} messages={messages} />
+                ) : (
+                    <>
                     {/* Generic fallback for tools without specialized views */}
                     {/* Tool Description */}
                     {tool.description && (
@@ -93,7 +95,8 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                         </View>
                     )}
                 </>
-            )}
+                )}
+            </View>
         </ScrollView>
     );
 }
@@ -103,6 +106,11 @@ const styles = StyleSheet.create({
         flex: 1,
         backgroundColor: '#fff',
         paddingTop: 12,
+    },
+    contentWrapper: {
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+        width: '100%',
     },
     section: {
         marginBottom: 28,

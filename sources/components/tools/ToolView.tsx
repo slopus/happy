@@ -10,8 +10,7 @@ import { ToolError } from './ToolError';
 import { knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
 import { useRouter } from 'expo-router';
-import { PermissionBadge } from './PermissionBadge';
-import { PermissionActions } from './PermissionActions';
+import { PermissionFooter } from './PermissionFooter';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -68,20 +67,26 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     }
 
     let statusIcon = null;
-    switch (tool.state) {
-        case 'running':
-            if (!noStatus) {
-                statusIcon = <ActivityIndicator size="small" color="black" style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }} />;
-            }
-            break;
-        case 'completed':
-            if (!noStatus) {
-                statusIcon = <Ionicons name="checkmark-circle" size={20} color="#34C759" />;
-            }
-            break;
-        case 'error':
-            statusIcon = <Ionicons name="close-circle" size={20} color="#FF3B30" />;
-            break;
+    
+    // Check permission status first for denied/canceled states
+    if (tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) {
+        statusIcon = <Ionicons name="remove-circle-outline" size={20} color="#8E8E93" />;
+    } else {
+        switch (tool.state) {
+            case 'running':
+                if (!noStatus) {
+                    statusIcon = <ActivityIndicator size="small" color="black" style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }} />;
+                }
+                break;
+            case 'completed':
+                if (!noStatus) {
+                    statusIcon = <Ionicons name="checkmark-circle" size={20} color="#34C759" />;
+                }
+                break;
+            case 'error':
+                statusIcon = <Ionicons name="alert-circle-outline" size={20} color="#FF9500" />;
+                break;
+        }
     }
 
     return (
@@ -103,10 +108,6 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 <ElapsedView from={tool.createdAt} />
                             </View>
                         )}
-                        {tool.permission && tool.permission.status !== 'pending' && <PermissionBadge permission={tool.permission} />}
-                        {tool.permission && sessionId && tool.permission.status === 'pending' && (
-                            <PermissionActions permission={tool.permission} sessionId={sessionId} />
-                        )}
                         {statusIcon}
                     </View>
                 </TouchableOpacity>
@@ -127,10 +128,6 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                                 <ElapsedView from={tool.createdAt} />
                             </View>
                         )}
-                        {tool.permission && <PermissionBadge permission={tool.permission} />}
-                        {tool.permission && sessionId && (
-                            <PermissionActions permission={tool.permission} sessionId={sessionId} />
-                        )}
                         {statusIcon}
                     </View>
                 </View>
@@ -145,15 +142,17 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                     return (
                         <View style={styles.content}>
                             <SpecificToolView tool={tool} metadata={props.metadata} messages={props.messages ?? []} />
-                            {tool.state === 'error' && tool.result && (
+                            {tool.state === 'error' && tool.result && 
+                             !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) && (
                                 <ToolError message={String(tool.result)} />
                             )}
                         </View>
                     );
                 }
 
-                // Show error state if present
-                if (tool.state === 'error' && tool.result) {
+                // Show error state if present (but not for denied/canceled permissions)
+                if (tool.state === 'error' && tool.result && 
+                    !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled'))) {
                     return (
                         <View style={styles.content}>
                             <ToolError message={String(tool.result)} />
@@ -185,6 +184,11 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                     </View>
                 );
             })()}
+            
+            {/* Permission footer - always renders when permission exists to maintain consistent height */}
+            {tool.permission && sessionId && (
+                <PermissionFooter permission={tool.permission} sessionId={sessionId} />
+            )}
         </View>
     );
 });
