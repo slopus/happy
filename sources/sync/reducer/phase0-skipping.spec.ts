@@ -63,7 +63,7 @@ describe('Phase 0 permission skipping issue', () => {
         const agentState: AgentState = {
             requests: {
                 // Pending permission for WebFetch (tool1)
-                'perm1': {
+                'tool1': {
                     tool: 'WebFetch',
                     arguments: { url: 'https://example.com', prompt: 'test' },
                     createdAt: 900
@@ -71,7 +71,7 @@ describe('Phase 0 permission skipping issue', () => {
             },
             completedRequests: {
                 // Completed (approved) permission for Write (tool2)
-                'perm2': {
+                'tool2': {
                     tool: 'Write',
                     arguments: { file_path: '/test.txt', content: 'hello' },
                     status: 'approved',
@@ -79,7 +79,7 @@ describe('Phase 0 permission skipping issue', () => {
                     completedAt: 1950
                 },
                 // Completed (denied) permission for Read (tool3)
-                'perm3': {
+                'tool3': {
                     tool: 'Read',
                     arguments: { file_path: '/test.txt' },
                     status: 'denied',
@@ -96,8 +96,6 @@ describe('Phase 0 permission skipping issue', () => {
         // Log what happened (for debugging)
         console.log('Result messages:', result.length);
         console.log('Permission mappings:', {
-            permissionIdToMessageId: Array.from(state.permissionIdToMessageId.entries()),
-            permissionIdToToolId: Array.from(state.permissionIdToToolId.entries()),
             toolIdToMessageId: Array.from(state.toolIdToMessageId.entries())
         });
         
@@ -113,7 +111,7 @@ describe('Phase 0 permission skipping issue', () => {
         expect(webFetchTool?.kind).toBe('tool-call');
         if (webFetchTool?.kind === 'tool-call') {
             expect(webFetchTool.tool?.permission).toBeDefined();
-            expect(webFetchTool.tool?.permission?.id).toBe('perm1');
+            expect(webFetchTool.tool?.permission?.id).toBe('tool1');
             expect(webFetchTool.tool?.permission?.status).toBe('pending');
         }
         
@@ -122,7 +120,7 @@ describe('Phase 0 permission skipping issue', () => {
         expect(writeTool?.kind).toBe('tool-call');
         if (writeTool?.kind === 'tool-call') {
             expect(writeTool.tool?.permission).toBeDefined();
-            expect(writeTool.tool?.permission?.id).toBe('perm2');
+            expect(writeTool.tool?.permission?.id).toBe('tool2');
             expect(writeTool.tool?.permission?.status).toBe('approved');
             expect(writeTool.tool?.state).toBe('running'); // Approved tools should be running
         }
@@ -132,16 +130,20 @@ describe('Phase 0 permission skipping issue', () => {
         expect(readTool?.kind).toBe('tool-call');
         if (readTool?.kind === 'tool-call') {
             expect(readTool.tool?.permission).toBeDefined();
-            expect(readTool.tool?.permission?.id).toBe('perm3');
+            expect(readTool.tool?.permission?.id).toBe('tool3');
             expect(readTool.tool?.permission?.status).toBe('denied');
             expect(readTool.tool?.permission?.reason).toBe('Access denied');
             expect(readTool.tool?.state).toBe('error'); // Denied tools should be in error state
         }
         
-        // Verify that permissions were properly linked
-        expect(state.permissionIdToToolId.has('perm1')).toBe(true);
-        expect(state.permissionIdToToolId.has('perm2')).toBe(true);
-        expect(state.permissionIdToToolId.has('perm3')).toBe(true);
+        // Verify that permissions were properly linked (IDs now match)
+        expect(state.toolIdToMessageId.has('tool1')).toBe(true);
+        expect(state.toolIdToMessageId.has('tool2')).toBe(true);
+        expect(state.toolIdToMessageId.has('tool3')).toBe(true);
+        // All tool IDs should be in the map
+        expect(state.toolIdToMessageId.has('tool1')).toBe(true);
+        expect(state.toolIdToMessageId.has('tool2')).toBe(true);
+        expect(state.toolIdToMessageId.has('tool3')).toBe(true);
     });
     
     it('should handle case where tools arrive first, then AgentState arrives later', () => {
@@ -180,7 +182,7 @@ describe('Phase 0 permission skipping issue', () => {
         const agentState: AgentState = {
             requests: {},
             completedRequests: {
-                'perm1': {
+                'tool1': {
                     tool: 'Write',
                     arguments: { file_path: '/test.txt', content: 'hello' },
                     status: 'approved',
@@ -198,7 +200,7 @@ describe('Phase 0 permission skipping issue', () => {
         
         expect(toolAfterPermission).toBeDefined();
         expect(toolAfterPermission?.tool?.permission).toBeDefined();
-        expect(toolAfterPermission?.tool?.permission?.id).toBe('perm1');
+        expect(toolAfterPermission?.tool?.permission?.id).toBe('tool1');
         expect(toolAfterPermission?.tool?.permission?.status).toBe('approved');
     });
 });
