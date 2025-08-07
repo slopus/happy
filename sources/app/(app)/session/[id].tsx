@@ -17,9 +17,9 @@ import { RoundButton } from '@/components/RoundButton';
 import { formatPermissionParams } from '@/utils/formatPermissionParams';
 import { Deferred } from '@/components/Deferred';
 import { Session } from '@/sync/storageTypes';
-import { createRealtimeSession, zodToOpenAIFunction, type Tools } from '@/realtime';
+import { ElevenLabsProvider, useConversation } from '@elevenlabs/react-native';
+import type { ConversationStatus, ConversationEvent, Role } from '@elevenlabs/react-native';
 import { sessionToRealtimePrompt, messagesToPrompt } from '@/realtime/sessionToPrompt';
-import { z } from 'zod';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -30,9 +30,11 @@ import { AgentContentView } from '@/components/AgentContentView';
 import { isRunningOnMac } from '@/utils/platform';
 import { Modal } from '@/modal';
 import { Header } from '@/components/navigation/Header';
-import { trackMessageSent, trackVoiceRecording, trackPermissionResponse } from '@/track';
+import { trackMessageSent, trackPermissionResponse } from '@/track';
+import { tracking } from '@/track';
 import { useAutocompleteSession } from '@/hooks/useAutocompleteSession';
 import { AutoCompleteView } from '@/components/AutoCompleteView';
+import { z } from 'zod';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -85,8 +87,19 @@ export default React.memo(() => {
         )
     }
 
-    return <SessionView sessionId={sessionId} session={session} />;
+    return (
+        <ElevenLabsProvider>
+            <SessionView sessionId={sessionId} session={session} />
+        </ElevenLabsProvider>
+    );
 });
+
+// Voice session state management
+type VoiceSessionState = 
+    | 'idle'           // Not connected, not attempting to connect
+    | 'connecting'     // Starting connection to ElevenLabs
+    | 'connected'      // Active voice session
+    | 'disconnecting'; // Ending session
 
 function SessionView({ sessionId, session }: { sessionId: string, session: Session }) {
     const settings = useSettings();
@@ -94,20 +107,18 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
-    const { messages, isLoaded } = useSessionMessages(sessionId);
+    const { messages: messagesRecentFirst, isLoaded } = useSessionMessages(sessionId);
     const [message, setMessage] = useState('');
-    const [isRecording, setIsRecording] = useState(false);
+    const [voiceState, setVoiceState] = useState<VoiceSessionState>('idle');
     const [isReviving, setIsReviving] = useState(false);
     const [permissionMode, setPermissionMode] = useState<'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'>('default');
-    const [, forceUpdate] = React.useReducer(x => x + 1, 0);
-    const realtimeSessionRef = React.useRef<Awaited<ReturnType<typeof createRealtimeSession>> | null>(null);
-    const isCreatingSessionRef = React.useRef(false);
     const screenWidth = useWindowDimensions().width;
     const headerHeight = useHeaderHeight();
     const sessionStatus = getSessionState(session);
     const lastSeenText = sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active';
     const autocomplete = useAutocompleteSession(message, message.length);
     const daemonStatus = useDaemonStatusByMachine(session.metadata?.machineId || '');
+
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
@@ -126,118 +137,203 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         }
     }), [headerHeight, safeArea.top]);
 
-    // Define tools for the realtime session
-    const tools: Tools = useMemo(() => ({
-        askClaudeCode: zodToOpenAIFunction(
-            'askClaudeCode',
-            'This is your main tool to get any work done. Make sure you have confirmation from the user to submit the next task for claude',
-            z.object({
-                message: z.string().describe('The task or question to send to Claude Code')
-            }),
-            async ({ message }) => {
-                // Send the message as if typed by the user
-                sync.sendMessage(sessionId, message, permissionMode);
+    // Define client tool function
+    const messageClaudeCode = async (parameters: unknown) => {
+        // Parse and validate the message parameter using Zod
+        const messageSchema = z.object({
+            message: z.string().min(1, 'Message cannot be empty')
+        });
+        const parsedMessage = messageSchema.safeParse(parameters);
 
-                // Return acknowledgment
-                return {
-                    success: true,
-                    message: "Simply say a single word 'sent' to confirm the task has been sent to claude code"
-                };
+        if (!parsedMessage.success) {
+            console.error('❌ Invalid message parameter:', parsedMessage.error);
+            return "error (invalid message parameter)";
+        }
+
+        const message = parsedMessage.data.message;
+        console.log('🔍 askClaudeCode called with:', message);
+        sync.sendMessage(sessionId, message);
+        return "success";
+    };
+
+    const processPermissionRequest = async (parameters: unknown) => {
+        const messageSchema = z.object({
+            decision: z.enum(['allow', 'deny'])
+        });
+        const parsedMessage = messageSchema.safeParse(parameters);
+
+        if (!parsedMessage.success) {
+            console.error('❌ Invalid decision parameter:', parsedMessage.error);
+            return "error (invalid decision parameter, expected 'allow' or 'deny')";
+        }
+
+        const decision = parsedMessage.data.decision;
+        console.log('🔍 processPermissionRequest called with:', decision);
+        
+        // Check if there's an active permission request
+        if (!permissionRequest) {
+            console.error('❌ No active permission request');
+            return "error (no active permission request)";
+        }
+        
+        try {
+            if (decision === 'allow') {
+                await sessionAllow(sessionId, permissionRequest.id);
+                trackPermissionResponse(true);
+            } else {
+                await sessionDeny(sessionId, permissionRequest.id);
+                trackPermissionResponse(false);
             }
-        )
-    }), [sessionId]);
+            return "success";
+        } catch (error) {
+            console.error('❌ Failed to process permission:', error);
+            return `error (failed to ${decision} permission)`;
+        }
+    }
+
+    // ElevenLabs conversation hook
+    const conversation = useConversation({
+        clientTools: {
+            messageClaudeCode,
+            processPermissionRequest
+        },
+
+        onConnect: ({ conversationId }: { conversationId: string }) => {
+            console.log('✅ Connected to ElevenLabs conversation', conversationId);
+            setVoiceState('connected');
+            tracking?.capture('voice_session_started', { conversationId });
+        },
+        onDisconnect: () => {
+            console.log('❌ Disconnected from ElevenLabs conversation');
+            setVoiceState('idle');
+            tracking?.capture('voice_session_stopped');
+        },
+        onError: (message: string) => {
+            console.error('❌ ElevenLabs conversation error:', message);
+            Modal.alert('Error', 'Failed to start voice session');
+            setVoiceState('idle');
+            tracking?.capture('voice_session_error', { error: message });
+        },
+        onMessage: ({ message, source }: { message: ConversationEvent; source: Role }) => {
+            console.log(`💬 Message from ${source}:`, message);
+        },
+        onModeChange: ({ mode }: { mode: 'speaking' | 'listening' }) => {
+            console.log(`🔊 Mode: ${mode}`);
+        },
+        onStatusChange: ({ status }: { status: ConversationStatus }) => {
+            console.log(`📡 Status: ${status}`);
+            // Map ElevenLabs status to our state
+            if (status === 'disconnected') {
+                setVoiceState('idle');
+            } else if (status === 'connecting') {
+                setVoiceState('connecting');
+            } else if (status === 'connected') {
+                setVoiceState('connected');
+            }
+        }
+    });
+
+    // On new messages from claude, push them to the realtime session
+    const lengthOfMessagesAlreadyProcessed = React.useRef(0);
 
     // Handle microphone button press
     const handleMicrophonePress = useCallback(async () => {
-        // Prevent multiple simultaneous session creations
-        if (isCreatingSessionRef.current) {
-            return;
+        if (voiceState === 'connecting' || voiceState === 'disconnecting') {
+            return; // Prevent actions during transitions
         }
 
-        if (!isRecording && !realtimeSessionRef.current) {
-            // Mark that we're creating a session
-            isCreatingSessionRef.current = true;
-            setIsRecording(true); // Set this immediately to update UI
-            trackVoiceRecording('start');
-
-            // Generate conversation context
-            const conversationContext = sessionToRealtimePrompt(session, messages, {
-                maxCharacters: 100_000,
-                maxMessages: 20,
-                excludeToolCalls: false
-            });
-
-            // System prompt for the real-time assistant
-            const systemPrompt = `You are a voice interface to Claude Code. Your role is to:
-
-1. Help the user understand what changes Claude Code made or where it got stuck
-2. On behalf of the user submit new messages to Claude Code.
-3. You are not a powerful model. You must not attempt to make your own hard decisions, and by default assume the user is just narrating what they will eventually want to ask of claude code. Claude Code is an advanced coding agent that can actually make changes to files, do research, and more. You are a mere voice interface to Claude Code.
-3. Proactively offer to send message to claude code, but ask the user to confirm we are ready to send the request to claude code.
-4. When the user formulates a change they want to make, use the askClaudeCode function to send tasks to Claude Code
-
-- You keep your statements short. You do not repeat what the user just told you, or what you just submitted. When the user complains about the code or is providing feedback, your job by default is to keep track of that almost silently. Only acknowledge with phrases like 'ok' 'yes bossmang' 'ay ay captain' and so on. You let the user do the talking unless they ask you directly.
-- You speak fast. 2x your normal speed.
-- When submitting request to claude, keep the original wording of the user's request. Keep rephrasing to a minimum.
-
-## Current Conversation Context
-
-${conversationContext}`;
+        if (voiceState === 'idle') {
+            setVoiceState('connecting');
 
             try {
-                const controls = await createRealtimeSession({
-                    context: systemPrompt,
-                    tools,
-                    settings
+                // Send initial context - all of the conversation so far
+                const conversationContext = sessionToRealtimePrompt(session, messagesRecentFirst, {
+                    maxCharacters: 100_000,
+                    maxMessages: 20,
+                    excludeToolCalls: false
                 });
+                console.log('🔍 setting initial context:', conversationContext);
+                // Update the last processed message index to the current length of messages
+                lengthOfMessagesAlreadyProcessed.current = messagesRecentFirst.length;
 
-                // Set up update callback to trigger re-renders
-                (controls as any)._setUpdateCallback(() => forceUpdate());
-
-                realtimeSessionRef.current = controls;
+                await conversation.startSession({
+                    agentId: 'agent_6701k211syvvegba4kt7m68nxjmw',
+                    userId: sync.anonID, // Use the same anonymous user ID used for analytics
+                    dynamicVariables: {
+                        initialConversationContext: conversationContext
+                    }
+                });
+                
+                // This for some reason was not being picked up in time by the agent? Lets try the other way
+                // conversation.sendContextualUpdate(conversationContext);
             } catch (error) {
-                console.error('Failed to create realtime session:', error);
+                console.error('Failed to start ElevenLabs session:', error);
                 Modal.alert('Error', 'Failed to start voice session');
-                setIsRecording(false); // Reset on error
-                realtimeSessionRef.current = null;
-            } finally {
-                isCreatingSessionRef.current = false;
+                setVoiceState('idle');
+                tracking?.capture('voice_session_error', { error: error instanceof Error ? error.message : 'Unknown error' });
             }
-        } else if (isRecording && realtimeSessionRef.current) {
-            // End the current session
-            realtimeSessionRef.current.end();
-            realtimeSessionRef.current = null;
-            setIsRecording(false);
-            trackVoiceRecording('stop');
+        } else if (voiceState === 'connected') {
+            setVoiceState('disconnecting');
+            await conversation.endSession();
+            // State will be updated by onDisconnect callback
         }
-    }, [isRecording, tools, session, messages, settings]);
+    }, [voiceState, conversation, session, messagesRecentFirst]);
 
     // Cleanup on unmount
     React.useEffect(() => {
         return () => {
-            if (realtimeSessionRef.current) {
-                realtimeSessionRef.current.end();
-                realtimeSessionRef.current = null;
+            if (conversation.status === 'connected') {
+                conversation.endSession();
             }
         };
     }, []);
 
-    // On new messages from claude, push them to the realtime session
-    const lastProcessedMessageIndexRef = React.useRef(0);
+    
     React.useEffect(() => {
-        if (realtimeSessionRef.current && messages.length > lastProcessedMessageIndexRef.current) {
-            const newMessages = messages.slice(lastProcessedMessageIndexRef.current);
-            console.log(`pushing ${newMessages.length} new messages to realtime session (from index ${lastProcessedMessageIndexRef.current})`);
-            realtimeSessionRef.current.pushContent(
-                messagesToPrompt(newMessages, {
-                    maxCharacters: 100_000,
-                    maxMessages: 20,
-                    excludeToolCalls: false
-                })
-            );
-            lastProcessedMessageIndexRef.current = messages.length;
+        if (conversation.status === 'connected' 
+            && messagesRecentFirst.length > lengthOfMessagesAlreadyProcessed.current
+        ) {
+            console.log(`Messages so far: ${JSON.stringify(messagesRecentFirst, null, 2)}`);
+            
+            const newMessages = messagesRecentFirst.slice(0, messagesRecentFirst.length - lengthOfMessagesAlreadyProcessed.current);
+            console.log(`pushing ${newMessages.length} new messages to ElevenLabs session`);
+            
+            // TODO: Control whether agent should respond based on message finality
+            // If the message is final (Claude stopped thinking), we might want the agent to respond
+            // Otherwise, this is a silent push of context - the agent won't respond unless the user asks something
+            const update = messagesToPrompt(newMessages, {
+                maxCharacters: 100_000,
+                maxMessages: 20,
+                excludeToolCalls: false
+            })
+            const updateWithContext = `[New messages arrived]:\n\n${update}`;
+            console.log('🔍 sending update:', updateWithContext);
+            conversation.sendContextualUpdate(updateWithContext);
+            lengthOfMessagesAlreadyProcessed.current = messagesRecentFirst.length;
         }
-    }, [messages.length]);
+    }, [messagesRecentFirst.length, conversation.status]);
+
+    // When claude changes state from thinking -> idle, with a debounce of 300ms, lets prompt the user claude finished its work and summarize what it did and ask for any next steps (offer smart next steps based on the latest update)
+    React.useEffect(() => {
+        if (conversation.status !== 'connected') {
+            return;
+        }
+
+        console.log('🔍 sessionStatus.state:', sessionStatus.state);
+
+        if (sessionStatus.state === 'permission_required' && permissionRequest) {
+            const permissionDetails = formatPermissionParams(permissionRequest.call);
+            conversation.sendUserMessage(
+                `Claude is requesting permission: ${permissionDetails}. Tell me briefly what the permission request is, and ask me if I want to allow or deny]`
+            )
+        }
+
+        if (sessionStatus.state === 'waiting') {
+            conversation.sendUserMessage(
+                `What is the latest update from claude? Only tell me new information since the last user message`
+            )
+        }
+    }, [conversation.status, sessionStatus.state]);
 
     const permissionRequest = React.useMemo(() => {
         let requests = session.agentState?.requests;
@@ -392,20 +488,20 @@ ${conversationContext}`;
                 <AgentContentView>
                     <Animated.View style={{ flexGrow: 1, flexBasis: 0 }}>
                         <Deferred>
-                            {messages.length === 0 && isLoaded && (
+                            {messagesRecentFirst.length === 0 && isLoaded && (
                                 <View style={headerDependentStyles.emptyMessageContainer}>
                                     <EmptyMessages session={session} />
                                 </View>
                             )}
-                            {messages.length === 0 && !isLoaded && (
+                            {messagesRecentFirst.length === 0 && !isLoaded && (
                                 <View style={headerDependentStyles.emptyMessageContainer}>
                                     <ActivityIndicator size="large" color="#C7C7CC" />
                                 </View>
                             )}
-                            {messages.length > 0 && (
+                            {messagesRecentFirst.length > 0 && (
                                 <FlatList
                                     removeClippedSubviews={true}
-                                    data={messages}
+                                    data={messagesRecentFirst}
                                     inverted={true}
                                     keyExtractor={keyExtractor}
                                     style={headerDependentStyles.flatListStyle}
@@ -468,7 +564,7 @@ ${conversationContext}`;
                                 }
                             }}
                             onMicPress={handleMicrophonePress}
-                            isMicActive={isRecording}
+                            isMicActive={voiceState === 'connected' || voiceState === 'connecting'}
                             status={{
                                 state: sessionStatus.state,
                                 text: sessionStatus.state === 'disconnected' ? 'disconnected' :

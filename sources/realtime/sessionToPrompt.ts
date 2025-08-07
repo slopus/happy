@@ -1,27 +1,27 @@
 import { Session } from '@/sync/storageTypes';
 import { Message } from '@/sync/typesMessage';
-import { getSessionName } from '@/utils/sessionUtils';
 
 /**
  * Convert slice of a conversation to a prompt for the realtime session.
  */
-export function messagesToPrompt(messages: Message[], options: {
+export function messagesToPrompt(messagesFromMostRecentToOldest: Message[], options: {
     maxCharacters?: number
     maxMessages?: number
     excludeToolCalls?: boolean
 }): string {
     const lines: string[] = [];
-    
-    let messagesToInclude = messages;
+
+    let messages = [...messagesFromMostRecentToOldest];
+
     if (options.maxMessages && options.maxMessages < messages.length) {
-        messagesToInclude = messages.slice(0, options.maxMessages);
+        console.log('🔍 truncating messages to', options.maxMessages);
+        console.log(`Oldest message being dropped: ${JSON.stringify(messages[messages.length - 1], null, 2)}`);
+
+        messages = messages.slice(0, options.maxMessages);
     }
 
-    // Process messages in chronological order (reverse the array since it's sorted newest first)
-    const chronologicalMessages = [...messagesToInclude].reverse();
-    
     const mainContentLines = [];
-    for (const message of chronologicalMessages) {
+    for (const message of messages) {
         switch (message.kind) {
             case 'user-text':
                 mainContentLines.push(`**User**: ${message.text}`);
@@ -29,7 +29,7 @@ export function messagesToPrompt(messages: Message[], options: {
                 break;
                 
             case 'agent-text':
-                mainContentLines.push(`**Assistant**: ${message.text}`);
+                mainContentLines.push(`**Claude Code**: ${message.text}`);
                 mainContentLines.push('');
                 break;
                 
@@ -39,7 +39,7 @@ export function messagesToPrompt(messages: Message[], options: {
                 }
 
                 if (message.tool) {
-                    mainContentLines.push(`**Assistant** executed tool: ${message.tool.name}${message.tool.state === 'error' ? ' (failed)' : ''}`);
+                    mainContentLines.push(`**Claude Code** executed tool: ${message.tool.name}${message.tool.state === 'error' ? ' (failed)' : ''}`);
                     
                     // Include children if any
                     if (message.children && message.children.length > 0) {
@@ -67,17 +67,18 @@ export function messagesToPrompt(messages: Message[], options: {
     return lines.join('\n').trim();
 }
 
-export function sessionToRealtimePrompt(session: Session, messages: Message[], options: {
+export function sessionToRealtimePrompt(session: Session, messagesFromMostRecentToOldest: Message[], options: {
     maxCharacters?: number
     maxMessages?: number
     excludeToolCalls?: boolean
 }): string {
-    const sessionName = getSessionName(session);
+    const sessionName = session.metadata?.summary?.text;
+    const sessionPath = session.metadata?.path;
     const lines: string[] = [];
     
     // Add session context
-    lines.push(`# Conversation with ${sessionName}`);
-    lines.push('');
+    lines.push(`# Project path: ${sessionPath}`);
+    lines.push(`# Session summary:\n${sessionName}`);
     
     // Add session metadata if available
     if (session.metadata?.summary?.text) {
@@ -86,10 +87,10 @@ export function sessionToRealtimePrompt(session: Session, messages: Message[], o
         lines.push('');
     }
     
-    lines.push('## Conversation History');
+    lines.push('## Our interaction history so far');
     lines.push('');
     
-    lines.push(messagesToPrompt(messages, options));
+    lines.push(messagesToPrompt(messagesFromMostRecentToOldest, options));
     
     // Add current session state
     if (session.thinking) {
