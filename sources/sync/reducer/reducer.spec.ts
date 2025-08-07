@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeRawMessage, NormalizedMessage } from '../typesRaw';
+import { NormalizedMessage } from '../typesRaw';
 import { createReducer } from './reducer';
 import { reducer } from './reducer';
 import { AgentState } from '../storageTypes';
@@ -34,12 +34,16 @@ describe('reducer', () => {
     describe('user message handling', () => {
         it('should process user messages with localId', () => {
             const state = createReducer();
-            const messages = [
-                normalizeRawMessage('msg1', 'local123', 1000, {
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'msg1',
+                    localId: 'local123',
+                    createdAt: 1000,
                     role: 'user',
-                    content: { type: 'text', text: 'Hello' }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: { type: 'text', text: 'Hello' },
+                    isSidechain: false
+                }
+            ];
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(1);
@@ -54,23 +58,31 @@ describe('reducer', () => {
             const state = createReducer();
             
             // First message with localId
-            const messages1 = [
-                normalizeRawMessage('msg1', 'local123', 1000, {
+            const messages1: NormalizedMessage[] = [
+                {
+                    id: 'msg1',
+                    localId: 'local123',
+                    createdAt: 1000,
                     role: 'user',
-                    content: { type: 'text', text: 'First' }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: { type: 'text', text: 'First' },
+                    isSidechain: false
+                }
+            ];
             
             const result1 = reducer(state, messages1);
             expect(result1).toHaveLength(1);
 
             // Second message with same localId should be ignored
-            const messages2 = [
-                normalizeRawMessage('msg2', 'local123', 2000, {
+            const messages2: NormalizedMessage[] = [
+                {
+                    id: 'msg2',
+                    localId: 'local123',
+                    createdAt: 2000,
                     role: 'user',
-                    content: { type: 'text', text: 'Second' }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: { type: 'text', text: 'Second' },
+                    isSidechain: false
+                }
+            ];
             
             const result2 = reducer(state, messages2);
             expect(result2).toHaveLength(0);
@@ -80,23 +92,31 @@ describe('reducer', () => {
             const state = createReducer();
             
             // First message without localId
-            const messages1 = [
-                normalizeRawMessage('msg1', null, 1000, {
+            const messages1: NormalizedMessage[] = [
+                {
+                    id: 'msg1',
+                    localId: null,
+                    createdAt: 1000,
                     role: 'user',
-                    content: { type: 'text', text: 'First' }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: { type: 'text', text: 'First' },
+                    isSidechain: false
+                }
+            ];
             
             const result1 = reducer(state, messages1);
             expect(result1).toHaveLength(1);
 
             // Second message with same id should be ignored
-            const messages2 = [
-                normalizeRawMessage('msg1', null, 2000, {
+            const messages2: NormalizedMessage[] = [
+                {
+                    id: 'msg1',
+                    localId: null,
+                    createdAt: 2000,
                     role: 'user',
-                    content: { type: 'text', text: 'Second' }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: { type: 'text', text: 'Second' },
+                    isSidechain: false
+                }
+            ];
             
             const result2 = reducer(state, messages2);
             expect(result2).toHaveLength(0);
@@ -104,20 +124,32 @@ describe('reducer', () => {
 
         it('should process multiple user messages with different localIds', () => {
             const state = createReducer();
-            const messages = [
-                normalizeRawMessage('msg1', 'local123', 1000, {
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'msg1',
+                    localId: 'local123',
+                    createdAt: 1000,
                     role: 'user',
-                    content: { type: 'text', text: 'First' }
-                }),
-                normalizeRawMessage('msg2', 'local456', 2000, {
+                    content: { type: 'text', text: 'First' },
+                    isSidechain: false
+                },
+                {
+                    id: 'msg2',
+                    localId: 'local456',
+                    createdAt: 2000,
                     role: 'user',
-                    content: { type: 'text', text: 'Second' }
-                }),
-                normalizeRawMessage('msg3', null, 3000, {
+                    content: { type: 'text', text: 'Second' },
+                    isSidechain: false
+                },
+                {
+                    id: 'msg3',
+                    localId: null,
+                    createdAt: 3000,
                     role: 'user',
-                    content: { type: 'text', text: 'Third' }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: { type: 'text', text: 'Third' },
+                    isSidechain: false
+                }
+            ];
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(3);
@@ -136,26 +168,21 @@ describe('reducer', () => {
     describe('agent text message handling', () => {
         it('should process agent text messages', () => {
             const state = createReducer();
-            const messages = [
-                normalizeRawMessage('agent1', null, 1000, {
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent1',
+                    localId: null,
+                    createdAt: 1000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'test-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'text',
-                                    text: 'Hello from Claude!'
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    isSidechain: false,
+                    content: [{
+                        type: 'text',
+                        text: 'Hello from Claude!',
+                        uuid: 'test-uuid-1',
+                        parentUUID: null
+                    }]
+                }
+            ];
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(1);
@@ -167,26 +194,29 @@ describe('reducer', () => {
 
         it('should process multiple text blocks in one agent message', () => {
             const state = createReducer();
-            const messages = [
-                normalizeRawMessage('agent1', null, 1000, {
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent1',
+                    localId: null,
+                    createdAt: 1000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
+                    isSidechain: false,
+                    content: [
+                        {
+                            type: 'text',
+                            text: 'Part 1',
                             uuid: 'test-uuid-2',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [
-                                    { type: 'text', text: 'Part 1' },
-                                    { type: 'text', text: 'Part 2' }
-                                ]
-                            }
+                            parentUUID: null
+                        },
+                        {
+                            type: 'text',
+                            text: 'Part 2',
+                            uuid: 'test-uuid-2',
+                            parentUUID: null
                         }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    ]
+                }
+            ];
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(2);
@@ -202,46 +232,50 @@ describe('reducer', () => {
     describe('mixed message processing', () => {
         it('should handle interleaved user and agent messages', () => {
             const state = createReducer();
-            const messages = [
-                normalizeRawMessage('user1', 'local1', 1000, {
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'user1',
+                    localId: 'local1',
+                    createdAt: 1000,
                     role: 'user',
-                    content: { type: 'text', text: 'Question 1' }
-                }),
-                normalizeRawMessage('agent1', null, 2000, {
+                    content: { type: 'text', text: 'Question 1' },
+                    isSidechain: false
+                },
+                {
+                    id: 'agent1',
+                    localId: null,
+                    createdAt: 2000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'test-uuid-3',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{ type: 'text', text: 'Answer 1' }]
-                            }
-                        }
-                    }
-                }),
-                normalizeRawMessage('user2', 'local2', 3000, {
+                    content: [{
+                        type: 'text',
+                        text: 'Answer 1',
+                        uuid: 'test-uuid-3',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                },
+                {
+                    id: 'user2',
+                    localId: 'local2',
+                    createdAt: 3000,
                     role: 'user',
-                    content: { type: 'text', text: 'Question 2' }
-                }),
-                normalizeRawMessage('agent2', null, 4000, {
+                    content: { type: 'text', text: 'Question 2' },
+                    isSidechain: false
+                },
+                {
+                    id: 'agent2',
+                    localId: null,
+                    createdAt: 4000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'test-uuid-4',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{ type: 'text', text: 'Answer 2' }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'text',
+                        text: 'Answer 2',
+                        uuid: 'test-uuid-4',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(4);
@@ -273,26 +307,21 @@ describe('reducer', () => {
 
         it('should not duplicate agent messages when applied multiple times', () => {
             const state = createReducer();
-            const messages = [
-                normalizeRawMessage('agent1', null, 1000, {
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent1',
+                    localId: null,
+                    createdAt: 1000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'test-uuid-5',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'text',
-                                    text: 'Hello world!'
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'text',
+                        text: 'Hello world!',
+                        uuid: 'test-uuid-5',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
 
             // Apply the same messages multiple times
             const result1 = reducer(state, messages);
@@ -307,14 +336,16 @@ describe('reducer', () => {
 
         it('should filter out null normalized messages', () => {
             const state = createReducer();
-            const messages = [
-                normalizeRawMessage('user1', 'local1', 1000, {
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'user1',
+                    localId: 'local1',
+                    createdAt: 1000,
                     role: 'user',
-                    content: { type: 'text', text: 'Valid' }
-                }),
-                null,
-                null
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: { type: 'text', text: 'Valid' },
+                    isSidechain: false
+                }
+            ];
 
             const result = reducer(state, messages);
             expect(result).toHaveLength(1);
@@ -325,18 +356,19 @@ describe('reducer', () => {
 
         it('should handle summary messages', () => {
             const state = createReducer();
-            const messages = [
-                normalizeRawMessage('agent1', null, 1000, {
-                    role: 'agent',
+            const messages: NormalizedMessage[] = [
+                {
+                    id: 'agent1',
+                    localId: null,
+                    createdAt: 1000,
+                    role: 'event',
                     content: {
-                        type: 'output',
-                        data: {
-                            type: 'summary',
-                            summary: 'This is a summary'
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                        type: 'message',
+                        message: 'This is a summary'
+                    },
+                    isSidechain: false
+                }
+            ];
 
             const result = reducer(state, messages);
             // Summary messages should be processed but may not appear in output
@@ -349,7 +381,7 @@ describe('reducer', () => {
             const state = createReducer();
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000
@@ -365,7 +397,7 @@ describe('reducer', () => {
                 expect(result[0].tool.name).toBe('Bash');
                 expect(result[0].tool.state).toBe('running');
                 expect(result[0].tool.permission).toEqual({
-                    id: 'perm-1',
+                    id: 'tool-1',
                     status: 'pending'
                 });
             }
@@ -377,7 +409,7 @@ describe('reducer', () => {
             // First create a pending permission
             const agentState1: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000
@@ -391,7 +423,7 @@ describe('reducer', () => {
             // Then mark it as completed
             const agentState2: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000,
@@ -417,7 +449,7 @@ describe('reducer', () => {
             // First create an approved permission
             const agentState: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000,
@@ -432,27 +464,23 @@ describe('reducer', () => {
             
             // Then receive the actual tool call from the agent
             const messages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-1', null, 3000, {
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 3000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'msg-1-uuid',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-1',
-                                    name: 'Bash',
-                                    input: { command: 'ls -la' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Bash',
+                        input: { command: 'ls -la' },
+                        description: null,
+                        uuid: 'msg-1-uuid',
+                        parentUUID: null
+                    }]
+                }
+            ];
 
             const result2 = reducer(state, messages, agentState);
             
@@ -466,18 +494,18 @@ describe('reducer', () => {
             }
         });
 
-        it('should not match a single request to multiple messages', () => {
+        it('should match tool calls by ID regardless of arguments', () => {
             const state = createReducer();
             
             // Create multiple pending permission requests
             const agentState1: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000
                     },
-                    'perm-2': {
+                    'tool-2': {
                         tool: 'Bash',
                         arguments: { command: 'pwd' },
                         createdAt: 2000
@@ -491,14 +519,14 @@ describe('reducer', () => {
             // Approve both permissions
             const agentState2: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000,
                         completedAt: 3000,
                         status: 'approved'
                     },
-                    'perm-2': {
+                    'tool-2': {
                         tool: 'Bash',
                         arguments: { command: 'pwd' },
                         createdAt: 2000,
@@ -512,44 +540,39 @@ describe('reducer', () => {
 
             // Now receive a tool call from the agent
             const messages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-1', null, 4000, {
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 4000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'msg-2-uuid',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-1',
-                                    name: 'Bash',
-                                    input: { command: 'pwd' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Bash',
+                        input: { command: 'pwd' },
+                        description: null,
+                        uuid: 'msg-2-uuid',
+                        parentUUID: null
+                    }]
+                }
+            ];
 
             // Pass agentState2 - it's always provided as current state
             const result3 = reducer(state, messages, agentState2);
             
-            // Should only return the updated message that matched the tool call
+            // Should return the updated permission message (ID match)
             expect(result3).toHaveLength(1);
             expect(result3[0].kind).toBe('tool-call');
             if (result3[0].kind === 'tool-call') {
-                expect(result3[0].tool.input).toEqual({ command: 'pwd' });
+                // With ID matching, keeps original permission arguments
+                expect(result3[0].tool.input).toEqual({ command: 'ls -la' });
             }
             
-            // Verify that only one permission is linked to a tool
-            let linkedCount = 0;
-            for (const [_, toolId] of state.permissionIdToToolId) {
-                if (toolId === 'tool-1') linkedCount++;
-            }
-            expect(linkedCount).toBe(1);
+            // Verify that tool-1 is in the map
+            expect(state.toolIdToMessageId.has('tool-1')).toBe(true);
+            // Should have both tool IDs in the map
+            expect(state.toolIdToMessageId.size).toBe(2);
         });
 
         it('should not create new message when tool can be matched to existing permission (priority to newest)', () => {
@@ -558,14 +581,14 @@ describe('reducer', () => {
             // Create multiple approved permissions with same tool but different times
             const agentState: AgentState = {
                 completedRequests: {
-                    'perm-old': {
+                    'tool-old': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
                     },
-                    'perm-new': {
+                    'tool-new': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
                         createdAt: 3000,
@@ -579,32 +602,28 @@ describe('reducer', () => {
             expect(result1).toHaveLength(2);
             
             // Store the message IDs
-            const oldMessageId = state.permissionIdToMessageId.get('perm-old');
-            const newMessageId = state.permissionIdToMessageId.get('perm-new');
+            const oldMessageId = state.toolIdToMessageId.get('tool-old');
+            const newMessageId = state.toolIdToMessageId.get('tool-new');
             
             // Now receive a tool call that matches both
             const messages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-1', null, 5000, {
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 5000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'msg-3-uuid',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-1',
-                                    name: 'Bash',
-                                    input: { command: 'ls' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Bash',
+                        input: { command: 'ls' },
+                        description: null,
+                        uuid: 'msg-3-uuid',
+                        parentUUID: null
+                    }]
+                }
+            ];
 
             // Pass agentState - it's always provided as current state
             const result2 = reducer(state, messages, agentState);
@@ -616,15 +635,15 @@ describe('reducer', () => {
                 expect(result2[0].tool.input).toEqual({ command: 'ls' });
             }
             
-            // Verify it matched to the newer permission
-            expect(state.permissionIdToToolId.get('perm-new')).toBe('tool-1');
-            expect(state.permissionIdToToolId.get('perm-old')).toBeUndefined();
+            // With new design, tool-1 creates a new message since it doesn't match tool-old or tool-new
+            expect(state.toolIdToMessageId.has('tool-1')).toBe(true);
+            expect(state.toolIdToMessageId.has('tool-old')).toBe(true);
+            expect(state.toolIdToMessageId.has('tool-new')).toBe(true);
             
-            // Verify the newer message was updated
+            // Verify that old messages were not updated (tool-1 is different ID)
             const newMessage = state.messages.get(newMessageId!);
-            expect(newMessage?.tool?.startedAt).toBe(5000);
+            expect(newMessage?.tool?.startedAt).toBeNull();
             
-            // Verify the older message was not updated
             const oldMessage = state.messages.get(oldMessageId!);
             expect(oldMessage?.tool?.startedAt).toBeNull();
         });
@@ -635,14 +654,14 @@ describe('reducer', () => {
             // AgentState with both pending and completed permissions
             const agentState: AgentState = {
                 requests: {
-                    'perm-pending': {
+                    'tool-pending': {
                         tool: 'Read',
                         arguments: { file: 'test.txt' },
                         createdAt: 1000
                     }
                 },
                 completedRequests: {
-                    'perm-completed': {
+                    'tool-completed': {
                         tool: 'Write',
                         arguments: { file: 'output.txt', content: 'hello' },
                         createdAt: 2000,
@@ -657,30 +676,34 @@ describe('reducer', () => {
             expect(result1).toHaveLength(2);
             
             // Verify the messages were created
-            expect(state.permissionIdToMessageId.has('perm-pending')).toBe(true);
-            expect(state.permissionIdToMessageId.has('perm-completed')).toBe(true);
+            expect(state.toolIdToMessageId.has('tool-pending')).toBe(true);
+            expect(state.toolIdToMessageId.has('tool-completed')).toBe(true);
             
             // Second call with same AgentState - should not create duplicates
             const result2 = reducer(state, [], agentState);
             expect(result2).toHaveLength(0); // No new messages
             
             // Verify the mappings still exist and haven't changed
-            expect(state.permissionIdToMessageId.size).toBe(2);
+            expect(state.toolIdToMessageId.size).toBe(2);
             
             // Third call with a message and same AgentState - still no duplicates
             const messages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-1', null, 4000, {
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 4000,
                     role: 'user',
-                    content: { type: 'text', text: 'Hello' }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: { type: 'text', text: 'Hello' },
+                    isSidechain: false
+                }
+            ];
             
             const result3 = reducer(state, messages, agentState);
             expect(result3).toHaveLength(1); // Only the user message
             expect(result3[0].kind).toBe('user-text');
             
             // Verify permission messages weren't duplicated
-            expect(state.permissionIdToMessageId.size).toBe(2);
+            expect(state.toolIdToMessageId.size).toBe(2);
         });
 
         it('should prioritize tool call over permission request when both provided simultaneously', () => {
@@ -689,7 +712,7 @@ describe('reducer', () => {
             // AgentState with approved permission
             const agentState: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
                         createdAt: 1000,
@@ -701,27 +724,23 @@ describe('reducer', () => {
             
             // Tool call message with different timestamp
             const messages: NormalizedMessage[] = [
-                normalizeRawMessage('tool-msg-1', null, 5000, {
+                {
+                    id: 'tool-msg-1',
+                    localId: null,
+                    createdAt: 5000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-1',
-                                    name: 'Bash',
-                                    input: { command: 'ls' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Bash',
+                        input: { command: 'ls' },
+                        description: null,
+                        uuid: 'tool-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             // Process both simultaneously
             const result = reducer(state, messages, agentState);
@@ -736,15 +755,16 @@ describe('reducer', () => {
                 
                 // Should have permission info from AgentState (it was skipped in Phase 0 but attached in Phase 2)
                 expect(result[0].tool.permission).toBeDefined();
-                expect(result[0].tool.permission?.id).toBe('perm-1');
+                expect(result[0].tool.permission?.id).toBe('tool-1');
                 expect(result[0].tool.permission?.status).toBe('approved');
             }
             
             // Verify only the tool message was created, not a separate permission message
             expect(state.toolIdToMessageId.has('tool-1')).toBe(true);
-            expect(state.permissionIdToMessageId.has('perm-1')).toBe(true);
-            // Both should point to the same message
-            expect(state.toolIdToMessageId.get('tool-1')).toBe(state.permissionIdToMessageId.get('perm-1'));
+            expect(state.toolIdToMessageId.has('tool-1')).toBe(true);
+            // Tool ID maps to message ID
+            const toolMsgId = state.toolIdToMessageId.get('tool-1');
+            expect(toolMsgId).toBeDefined();
         });
 
         it('should preserve original timestamps when request received first, then tool call', () => {
@@ -753,7 +773,7 @@ describe('reducer', () => {
             // First: Process permission request
             const agentState1: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
                         createdAt: 1000
@@ -764,7 +784,7 @@ describe('reducer', () => {
             const result1 = reducer(state, [], agentState1);
             expect(result1).toHaveLength(1);
             
-            const permMessageId = state.permissionIdToMessageId.get('perm-1');
+            const permMessageId = state.toolIdToMessageId.get('tool-1');
             const originalMessage = state.messages.get(permMessageId!);
             expect(originalMessage?.createdAt).toBe(1000);
             expect(originalMessage?.realID).toBeNull();
@@ -772,7 +792,7 @@ describe('reducer', () => {
             // Then: Approve the permission
             const agentState2: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
                         createdAt: 1000,
@@ -787,27 +807,23 @@ describe('reducer', () => {
             
             // Finally: Receive the actual tool call
             const messages: NormalizedMessage[] = [
-                normalizeRawMessage('tool-msg-1', null, 5000, {
+                {
+                    id: 'tool-msg-1',
+                    localId: null,
+                    createdAt: 5000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-1',
-                                    name: 'Bash',
-                                    input: { command: 'ls' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Bash',
+                        input: { command: 'ls' },
+                        description: null,
+                        uuid: 'tool-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result3 = reducer(state, messages, agentState2);
             expect(result3).toHaveLength(1); // Same message, updated
@@ -827,7 +843,6 @@ describe('reducer', () => {
             
             // Verify the tool is properly linked
             expect(state.toolIdToMessageId.get('tool-1')).toBe(permMessageId);
-            expect(state.permissionIdToToolId.get('perm-1')).toBe('tool-1');
         });
 
         it('should create separate messages for same tool name with different arguments', () => {
@@ -836,14 +851,14 @@ describe('reducer', () => {
             // AgentState with two approved permissions for same tool but different arguments
             const agentState: AgentState = {
                 completedRequests: {
-                    'perm-ls': {
+                    'tool-ls': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000,
                         completedAt: 2000,
                         status: 'approved'
                     },
-                    'perm-pwd': {
+                    'tool-pwd': {
                         tool: 'Bash',
                         arguments: { command: 'pwd' },
                         createdAt: 1500,
@@ -858,8 +873,8 @@ describe('reducer', () => {
             expect(result1).toHaveLength(2);
             
             // Both should be separate messages
-            const lsMessageId = state.permissionIdToMessageId.get('perm-ls');
-            const pwdMessageId = state.permissionIdToMessageId.get('perm-pwd');
+            const lsMessageId = state.toolIdToMessageId.get('tool-ls');
+            const pwdMessageId = state.toolIdToMessageId.get('tool-pwd');
             expect(lsMessageId).toBeDefined();
             expect(pwdMessageId).toBeDefined();
             expect(lsMessageId).not.toBe(pwdMessageId);
@@ -872,70 +887,59 @@ describe('reducer', () => {
             
             // Now receive the first tool call (pwd)
             const messages1: NormalizedMessage[] = [
-                normalizeRawMessage('msg-1', null, 3000, {
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 3000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-pwd',
-                                    name: 'Bash',
-                                    input: { command: 'pwd' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-pwd',
+                        name: 'Bash',
+                        input: { command: 'pwd' },
+                        description: null,
+                        uuid: 'tool-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result2 = reducer(state, messages1, agentState);
             expect(result2).toHaveLength(1);
             
             // Should match to the pwd permission (newer one, matching arguments)
             expect(state.toolIdToMessageId.get('tool-pwd')).toBe(pwdMessageId);
-            expect(state.permissionIdToToolId.get('perm-pwd')).toBe('tool-pwd');
-            // ls permission should remain unmatched
-            expect(state.permissionIdToToolId.get('perm-ls')).toBeUndefined();
+            // ls permission should have its own message
+            expect(state.toolIdToMessageId.has('tool-ls')).toBe(true);
             
             // Now receive the second tool call (ls)
             const messages2: NormalizedMessage[] = [
-                normalizeRawMessage('msg-2', null, 4000, {
+                {
+                    id: 'msg-2',
+                    localId: null,
+                    createdAt: 4000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-2',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-ls',
-                                    name: 'Bash',
-                                    input: { command: 'ls -la' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-ls',
+                        name: 'Bash',
+                        input: { command: 'ls -la' },
+                        description: null,
+                        uuid: 'tool-uuid-2',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result3 = reducer(state, messages2, agentState);
             expect(result3).toHaveLength(1);
             
             // Should match to the ls permission
             expect(state.toolIdToMessageId.get('tool-ls')).toBe(lsMessageId);
-            expect(state.permissionIdToToolId.get('perm-ls')).toBe('tool-ls');
             
-            // Both permissions should now be matched to their respective tools
-            expect(state.permissionIdToToolId.size).toBe(2);
+            // Both tools should be in the map
             expect(state.toolIdToMessageId.size).toBe(2);
             
             // Verify final states
@@ -945,13 +949,13 @@ describe('reducer', () => {
             expect(finalPwdMessage?.tool?.startedAt).toBe(3000);
         });
 
-        it('should create separate messages for pending request and tool call with same name but different arguments', () => {
+        it('should update permission message when tool call has matching ID', () => {
             const state = createReducer();
             
             // AgentState with a pending permission request
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000
@@ -959,73 +963,56 @@ describe('reducer', () => {
                 }
             };
             
-            // Tool call with same tool name but different arguments
+            // Tool call with matching ID (arguments don't matter with ID matching)
             const messages: NormalizedMessage[] = [
-                normalizeRawMessage('tool-msg-1', null, 2000, {
+                {
+                    id: 'tool-msg-1',
+                    localId: null,
+                    createdAt: 2000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-1',
-                                    name: 'Bash',
-                                    input: { command: 'pwd' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Bash',
+                        input: { command: 'pwd' },
+                        description: null,
+                        uuid: 'tool-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             // Process both simultaneously
             const result = reducer(state, messages, agentState);
             
-            // Should create two separate messages
-            expect(result).toHaveLength(2);
+            // Should update the existing permission message
+            expect(result).toHaveLength(1);
             
-            // Find which message is which
-            const permissionMessage = result.find(m => 
-                m.kind === 'tool-call' && m.tool.permission?.id === 'perm-1'
-            );
-            const toolMessage = result.find(m => 
-                m.kind === 'tool-call' && !m.tool.permission
-            );
-            
-            expect(permissionMessage).toBeDefined();
-            expect(toolMessage).toBeDefined();
-            
-            // Verify they have different arguments
-            if (permissionMessage?.kind === 'tool-call') {
-                expect(permissionMessage.tool.input).toEqual({ command: 'ls -la' });
-                expect(permissionMessage.tool.permission?.status).toBe('pending');
-                expect(permissionMessage.createdAt).toBe(1000);
+            // Verify the message was updated with tool execution details
+            if (result[0].kind === 'tool-call') {
+                // Should keep original permission data
+                expect(result[0].tool.permission?.id).toBe('tool-1');
+                expect(result[0].tool.permission?.status).toBe('pending');
+                // Should keep original arguments from permission
+                expect(result[0].tool.input).toEqual({ command: 'ls -la' });
+                // Should keep original timestamp
+                expect(result[0].createdAt).toBe(1000);
             }
             
-            if (toolMessage?.kind === 'tool-call') {
-                expect(toolMessage.tool.input).toEqual({ command: 'pwd' });
-                expect(toolMessage.tool.permission).toBeUndefined();
-                expect(toolMessage.createdAt).toBe(2000);
-            }
-            
-            // Verify internal state
-            expect(state.permissionIdToMessageId.has('perm-1')).toBe(true);
+            // Verify internal state - should be the same message
+            expect(state.toolIdToMessageId.has('tool-1')).toBe(true);
             expect(state.toolIdToMessageId.has('tool-1')).toBe(true);
             
-            // They should be different messages
-            const permMsgId = state.permissionIdToMessageId.get('perm-1');
+            // They should be the same message now
+            const permMsgId = state.toolIdToMessageId.get('tool-1');
             const toolMsgId = state.toolIdToMessageId.get('tool-1');
-            expect(permMsgId).not.toBe(toolMsgId);
+            expect(permMsgId).toBe(toolMsgId);
             
             // Now approve the permission and send its tool call
             const agentState2: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000,
@@ -1036,27 +1023,23 @@ describe('reducer', () => {
             };
             
             const messages2: NormalizedMessage[] = [
-                normalizeRawMessage('tool-msg-2', null, 4000, {
+                {
+                    id: 'tool-msg-2',
+                    localId: null,
+                    createdAt: 4000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-2',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-2',
-                                    name: 'Bash',
-                                    input: { command: 'ls -la' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',  // Must match permission ID
+                        name: 'Bash',
+                        input: { command: 'ls -la' },
+                        description: null,
+                        uuid: 'tool-uuid-2',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result2 = reducer(state, messages2, agentState2);
             
@@ -1068,13 +1051,9 @@ describe('reducer', () => {
                 expect(result2[0].tool.permission?.status).toBe('approved');
             }
             
-            // Verify it matched to the correct permission
-            expect(state.permissionIdToToolId.get('perm-1')).toBe('tool-2');
-            expect(state.toolIdToMessageId.get('tool-2')).toBe(permMsgId);
-            
-            // The original tool-1 should still be separate
-            expect(state.toolIdToMessageId.get('tool-1')).toBe(toolMsgId);
-            expect(state.toolIdToMessageId.get('tool-1')).not.toBe(state.toolIdToMessageId.get('tool-2'));
+            // Verify it matched to the correct permission (same ID now)
+            // Should resolve to the permission message since it was created first
+            expect(state.toolIdToMessageId.get('tool-1')).toBe(permMsgId);
         });
 
         it('should handle full permission lifecycle: pending -> approved -> tool execution -> completion', () => {
@@ -1083,7 +1062,7 @@ describe('reducer', () => {
             // Step 1: Create pending permission
             const agentState1: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Read',
                         arguments: { file: '/test.txt' },
                         createdAt: 1000
@@ -1102,7 +1081,7 @@ describe('reducer', () => {
             // Step 2: Approve permission
             const agentState2: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Read',
                         arguments: { file: '/test.txt' },
                         createdAt: 1000,
@@ -1121,27 +1100,23 @@ describe('reducer', () => {
             
             // Step 3: Tool call arrives
             const toolMessages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-1', null, 3000, {
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 3000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-1',
-                                    name: 'Read',
-                                    input: { file: '/test.txt' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Read',
+                        input: { file: '/test.txt' },
+                        description: null,
+                        uuid: 'tool-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result3 = reducer(state, toolMessages, agentState2);
             expect(result3).toHaveLength(1);
@@ -1151,27 +1126,22 @@ describe('reducer', () => {
             
             // Step 4: Tool result arrives
             const resultMessages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-2', null, 4000, {
+                {
+                    id: 'msg-2',
+                    localId: null,
+                    createdAt: 4000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'user',
-                            uuid: 'result-uuid-1',
-                            message: {
-                                role: 'user',
-                                content: [{
-                                    type: 'tool_result',
-                                    tool_use_id: 'tool-1',
-                                    content: 'File contents',
-                                    is_error: false
-                                }]
-                            },
-                            toolUseResult: 'File contents'
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-1',
+                        content: 'File contents',
+                        is_error: false,
+                        uuid: 'result-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result4 = reducer(state, resultMessages, agentState2);
             expect(result4).toHaveLength(1);
@@ -1188,12 +1158,12 @@ describe('reducer', () => {
             // Create two permissions
             const agentState1: AgentState = {
                 requests: {
-                    'perm-deny': {
+                    'tool-deny': {
                         tool: 'Write',
                         arguments: { file: '/secure.txt', content: 'hack' },
                         createdAt: 1000
                     },
-                    'perm-cancel': {
+                    'tool-cancel': {
                         tool: 'Delete',
                         arguments: { file: '/important.txt' },
                         createdAt: 1500
@@ -1207,7 +1177,7 @@ describe('reducer', () => {
             // Deny first, cancel second
             const agentState2: AgentState = {
                 completedRequests: {
-                    'perm-deny': {
+                    'tool-deny': {
                         tool: 'Write',
                         arguments: { file: '/secure.txt', content: 'hack' },
                         createdAt: 1000,
@@ -1215,7 +1185,7 @@ describe('reducer', () => {
                         status: 'denied',
                         reason: 'Unauthorized access'
                     },
-                    'perm-cancel': {
+                    'tool-cancel': {
                         tool: 'Delete',
                         arguments: { file: '/important.txt' },
                         createdAt: 1500,
@@ -1256,54 +1226,45 @@ describe('reducer', () => {
             
             // Tool result arrives first
             const resultMessages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-1', null, 1000, {
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 1000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'user',
-                            uuid: 'result-uuid-1',
-                            message: {
-                                role: 'user',
-                                content: [{
-                                    type: 'tool_result',
-                                    tool_use_id: 'tool-1',
-                                    content: 'Success',
-                                    is_error: false
-                                }]
-                            },
-                            toolUseResult: 'Success'
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-1',
+                        content: 'Success',
+                        is_error: false,
+                        uuid: 'result-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result1 = reducer(state, resultMessages);
             expect(result1).toHaveLength(0); // Should not create anything
             
             // Tool call arrives later
             const toolMessages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-2', null, 2000, {
+                {
+                    id: 'msg-2',
+                    localId: null,
+                    createdAt: 2000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-1',
-                                    name: 'Test',
-                                    input: { test: true }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Test',
+                        input: { test: true },
+                        description: null,
+                        uuid: 'tool-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result2 = reducer(state, toolMessages);
             expect(result2).toHaveLength(1);
@@ -1314,27 +1275,22 @@ describe('reducer', () => {
             
             // Result arrives again (with different message ID since it's a new message)
             const resultMessages2: NormalizedMessage[] = [
-                normalizeRawMessage('msg-3', null, 3000, {
+                {
+                    id: 'msg-3',
+                    localId: null,
+                    createdAt: 3000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'user',
-                            uuid: 'result-uuid-2',
-                            message: {
-                                role: 'user',
-                                content: [{
-                                    type: 'tool_result',
-                                    tool_use_id: 'tool-1',
-                                    content: 'Success',
-                                    is_error: false
-                                }]
-                            },
-                            toolUseResult: 'Success'
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-1',
+                        content: 'Success',
+                        is_error: false,
+                        uuid: 'result-uuid-2',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result3 = reducer(state, resultMessages2, null);
             
@@ -1359,27 +1315,23 @@ describe('reducer', () => {
             
             // Main flow: Task tool call that will spawn a sidechain
             const mainToolMessages: NormalizedMessage[] = [
-                normalizeRawMessage('main-msg-1', null, 1000, {
+                {
+                    id: 'main-msg-1',
+                    localId: null,
+                    createdAt: 1000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'main-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'main-tool-1',
-                                    name: 'Task',  // Use Task which creates sidechains
-                                    input: { prompt: 'Do something in sidechain' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'main-tool-1',
+                        name: 'Task',  // Use Task which creates sidechains
+                        input: { prompt: 'Do something in sidechain' },
+                        description: null,
+                        uuid: 'main-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result1 = reducer(state, mainToolMessages, agentState);
             expect(result1).toHaveLength(1);
@@ -1393,45 +1345,36 @@ describe('reducer', () => {
             // The tracer will automatically link these to the Task tool
             const sidechainMessages: NormalizedMessage[] = [
                 // Sidechain root message (user prompt in sidechain)
-                normalizeRawMessage('sidechain-1', null, 2000, {
+                {
+                    id: 'sidechain-1',
+                    localId: null,
+                    createdAt: 2000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'user',
-                            uuid: 'sidechain-uuid-1',
-                            isSidechain: true,
-                            message: {
-                                role: 'user',
-                                content: 'Do something in sidechain' as any
-                            }
-                        }
-                    }
-                }),
+                    content: [{
+                        type: 'sidechain',
+                        uuid: 'sidechain-uuid-1',
+                        prompt: 'Do something in sidechain'
+                    }],
+                    isSidechain: true
+                },
                 // Tool call within the sidechain
-                normalizeRawMessage('sidechain-2', null, 3000, {
+                {
+                    id: 'sidechain-2',
+                    localId: null,
+                    createdAt: 3000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'sidechain-uuid-2',
-                            parentUuid: 'sidechain-uuid-1',
-                            isSidechain: true,
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'sidechain-tool-1',
-                                    name: 'SidechainTool',
-                                    input: { action: 'sidechain' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'sidechain-tool-1',
+                        name: 'SidechainTool',
+                        input: { action: 'sidechain' },
+                        description: null,
+                        uuid: 'sidechain-uuid-2',
+                        parentUUID: 'sidechain-uuid-1'
+                    }],
+                    isSidechain: true
+                }
+            ];
             
             const result2 = reducer(state, sidechainMessages, agentState);
             // Sidechain messages shouldn't appear in main flow (they're stored in children)
@@ -1445,27 +1388,22 @@ describe('reducer', () => {
             
             // Tool results for main Task tool
             const mainResultMessages: NormalizedMessage[] = [
-                normalizeRawMessage('main-result-1', null, 4000, {
+                {
+                    id: 'main-result-1',
+                    localId: null,
+                    createdAt: 4000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'user',
-                            uuid: 'main-result-uuid',
-                            message: {
-                                role: 'user',
-                                content: [{
-                                    type: 'tool_result',
-                                    tool_use_id: 'main-tool-1',
-                                    content: 'Task completed successfully',
-                                    is_error: false
-                                }]
-                            },
-                            toolUseResult: 'Task completed successfully'
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'main-tool-1',
+                        content: 'Task completed successfully',
+                        is_error: false,
+                        uuid: 'main-result-uuid',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result3 = reducer(state, mainResultMessages, agentState);
             expect(result3).toHaveLength(1);
@@ -1477,29 +1415,22 @@ describe('reducer', () => {
             
             // Tool results for sidechain tool (should update sidechain, not main)
             const sidechainResultMessages: NormalizedMessage[] = [
-                normalizeRawMessage('sidechain-result-1', null, 5000, {
+                {
+                    id: 'sidechain-result-1',
+                    localId: null,
+                    createdAt: 5000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'user',
-                            uuid: 'sidechain-result-uuid',
-                            parentUuid: 'sidechain-uuid-2',
-                            isSidechain: true,
-                            message: {
-                                role: 'user',
-                                content: [{
-                                    type: 'tool_result',
-                                    tool_use_id: 'sidechain-tool-1',
-                                    content: 'Sidechain tool success',
-                                    is_error: false
-                                }]
-                            },
-                            toolUseResult: 'Sidechain tool success'
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'sidechain-tool-1',
+                        content: 'Sidechain tool success',
+                        is_error: false,
+                        uuid: 'sidechain-result-uuid',
+                        parentUUID: 'sidechain-uuid-2'
+                    }],
+                    isSidechain: true
+                }
+            ];
             
             const result4 = reducer(state, sidechainResultMessages, agentState);
             // Sidechain result shouldn't create new main messages
@@ -1525,14 +1456,14 @@ describe('reducer', () => {
             // Mix of user messages, permissions, and tool calls
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'echo "hello"' },
                         createdAt: 1500
                     }
                 },
                 completedRequests: {
-                    'perm-2': {
+                    'tool-2': {
                         tool: 'Read',
                         arguments: { file: 'test.txt' },
                         createdAt: 500,
@@ -1544,51 +1475,46 @@ describe('reducer', () => {
             
             const messages: NormalizedMessage[] = [
                 // User message
-                normalizeRawMessage('user-1', 'local-1', 1000, {
+                {
+                    id: 'user-1',
+                    localId: 'local-1',
+                    createdAt: 1000,
                     role: 'user',
-                    content: { type: 'text', text: 'Do something' }
-                }),
+                    content: { type: 'text', text: 'Do something' },
+                    isSidechain: false
+                },
                 // Agent text
-                normalizeRawMessage('agent-1', null, 2000, {
+                {
+                    id: 'agent-1',
+                    localId: null,
+                    createdAt: 2000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'agent-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'text',
-                                    text: 'I will help you'
-                                }]
-                            }
-                        }
-                    }
-                }),
+                    content: [{
+                        type: 'text',
+                        text: 'I will help you',
+                        uuid: 'agent-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                },
                 // Tool call
-                normalizeRawMessage('tool-1', null, 3000, {
+                {
+                    id: 'tool-1',
+                    localId: null,
+                    createdAt: 3000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-new',
-                                    name: 'Write',
-                                    input: { file: 'output.txt', content: 'data' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-new',
+                        name: 'Write',
+                        input: { file: 'output.txt', content: 'data' },
+                        description: null,
+                        uuid: 'tool-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result = reducer(state, messages, agentState);
             
@@ -1619,53 +1545,44 @@ describe('reducer', () => {
             
             // Create a tool call
             const toolMessages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-1', null, 1000, {
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 1000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-1',
-                                    name: 'Test',
-                                    input: {}
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Test',
+                        input: {},
+                        description: null,
+                        uuid: 'tool-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             reducer(state, toolMessages);
             
             // First result
             const result1Messages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-2', null, 2000, {
+                {
+                    id: 'msg-2',
+                    localId: null,
+                    createdAt: 2000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'user',
-                            uuid: 'result-uuid-1',
-                            message: {
-                                role: 'user',
-                                content: [{
-                                    type: 'tool_result',
-                                    tool_use_id: 'tool-1',
-                                    content: 'First result',
-                                    is_error: false
-                                }]
-                            },
-                            toolUseResult: 'First result'
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-1',
+                        content: 'First result',
+                        is_error: false,
+                        uuid: 'result-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result1 = reducer(state, result1Messages);
             expect(result1).toHaveLength(1);
@@ -1676,27 +1593,22 @@ describe('reducer', () => {
             
             // Second result (should be ignored)
             const result2Messages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-3', null, 3000, {
+                {
+                    id: 'msg-3',
+                    localId: null,
+                    createdAt: 3000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'user',
-                            uuid: 'result-uuid-2',
-                            message: {
-                                role: 'user',
-                                content: [{
-                                    type: 'tool_result',
-                                    tool_use_id: 'tool-1',
-                                    content: 'Should not override',
-                                    is_error: true
-                                }]
-                            },
-                            toolUseResult: 'Should not override'
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: 'tool-1',
+                        content: 'Should not override',
+                        is_error: true,
+                        uuid: 'result-uuid-2',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result2 = reducer(state, result2Messages);
             expect(result2).toHaveLength(0); // No changes
@@ -1714,7 +1626,7 @@ describe('reducer', () => {
             // Create approved permission
             const agentState1: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
                         createdAt: 1000,
@@ -1728,34 +1640,30 @@ describe('reducer', () => {
             
             // Tool call arrives and matches
             const toolMessages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-1', null, 3000, {
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 3000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-1',
-                                    name: 'Bash',
-                                    input: { command: 'ls' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Bash',
+                        input: { command: 'ls' },
+                        description: null,
+                        uuid: 'tool-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             reducer(state, toolMessages, agentState1);
             
             // Try to change permission status (should not affect running tool)
             const agentState2: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
                         createdAt: 1000,
@@ -1770,7 +1678,7 @@ describe('reducer', () => {
             expect(result).toHaveLength(0); // No changes, tool already started
             
             // Verify tool is still running
-            const permMsgId = state.permissionIdToMessageId.get('perm-1');
+            const permMsgId = state.toolIdToMessageId.get('tool-1');
             const permMsg = state.messages.get(permMsgId!);
             expect(permMsg?.tool?.state).toBe('running');
             expect(permMsg?.tool?.permission?.status).toBe('approved'); // Status unchanged
@@ -1801,13 +1709,13 @@ describe('reducer', () => {
             expect(result4).toHaveLength(0);
         });
 
-        it('should handle completed permissions and tool calls with same name but different arguments', () => {
+        it('should match completed permissions and tool calls by ID even with different arguments', () => {
             const state = createReducer();
             
             // AgentState has completed permission for Bash with 'ls' command
             const agentState: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls' },
                         createdAt: 1000,
@@ -1819,58 +1727,37 @@ describe('reducer', () => {
             
             // Incoming messages have tool call for Bash with 'pwd' command
             const messages: NormalizedMessage[] = [
-                normalizeRawMessage('msg-1', null, 2000, {
+                {
+                    id: 'msg-1',
+                    localId: null,
+                    createdAt: 2000,
                     role: 'agent',
-                    content: {
-                        type: 'output',
-                        data: {
-                            type: 'assistant',
-                            uuid: 'tool-uuid-1',
-                            message: {
-                                role: 'assistant',
-                                model: 'claude-3',
-                                content: [{
-                                    type: 'tool_use',
-                                    id: 'tool-1',
-                                    name: 'Bash',
-                                    input: { command: 'pwd' }
-                                }]
-                            }
-                        }
-                    }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: [{
+                        type: 'tool-call',
+                        id: 'tool-1',
+                        name: 'Bash',
+                        input: { command: 'pwd' },
+                        description: null,
+                        uuid: 'tool-uuid-1',
+                        parentUUID: null
+                    }],
+                    isSidechain: false
+                }
+            ];
             
             const result = reducer(state, messages, agentState);
             
-            // Should create TWO separate tool messages:
-            // 1. One for the approved permission (Bash with 'ls')
-            // 2. One for the incoming tool call (Bash with 'pwd')
-            expect(result).toHaveLength(2);
+            // Should update the existing permission message (ID match)
+            expect(result).toHaveLength(1);
             
-            const bashLs = result.find(m => 
-                m.kind === 'tool-call' && 
-                m.tool.name === 'Bash' && 
-                JSON.stringify(m.tool.input) === JSON.stringify({ command: 'ls' })
-            );
-            const bashPwd = result.find(m => 
-                m.kind === 'tool-call' && 
-                m.tool.name === 'Bash' && 
-                JSON.stringify(m.tool.input) === JSON.stringify({ command: 'pwd' })
-            );
-            
-            expect(bashLs).toBeDefined();
-            expect(bashPwd).toBeDefined();
-            
-            // The permission one should have permission info
-            if (bashLs?.kind === 'tool-call') {
-                expect(bashLs.tool.permission?.status).toBe('approved');
-                expect(bashLs.tool.permission?.id).toBe('perm-1');
-            }
-            
-            // The tool call one should not have permission info
-            if (bashPwd?.kind === 'tool-call') {
-                expect(bashPwd.tool.permission).toBeUndefined();
+            // The message should have the permission's arguments
+            const toolMessage = result[0];
+            expect(toolMessage.kind).toBe('tool-call');
+            if (toolMessage.kind === 'tool-call') {
+                expect(toolMessage.tool.name).toBe('Bash');
+                // Keeps original permission arguments
+                expect(toolMessage.tool.input).toEqual({ command: 'ls' });
+                expect(toolMessage.tool.permission?.status).toBe('approved');
             }
         });
 
@@ -1882,11 +1769,15 @@ describe('reducer', () => {
             for (let i = 0; i < 10; i++) {
                 // Add user message
                 const userMsg: NormalizedMessage[] = [
-                    normalizeRawMessage(`user-${i}`, `local-${i}`, i * 1000, {
+                    {
+                        id: `user-${i}`,
+                        localId: `local-${i}`,
+                        createdAt: i * 1000,
                         role: 'user',
-                        content: { type: 'text', text: `Message ${i}` }
-                    })
-                ].filter(Boolean) as NormalizedMessage[];
+                        content: { type: 'text', text: `Message ${i}` },
+                        isSidechain: false
+                    }
+                ];
                 
                 const userResult = reducer(state, userMsg);
                 expect(userResult).toHaveLength(1);
@@ -1925,16 +1816,20 @@ describe('reducer', () => {
             
             // Verify state integrity
             expect(state.messages.size).toBe(totalMessages);
-            expect(state.permissionIdToMessageId.size).toBe(10);
+            expect(state.toolIdToMessageId.size).toBe(10);
             expect(state.localIds.size).toBe(10);
             
             // Try to add duplicates (should not increase count)
             const duplicateUser: NormalizedMessage[] = [
-                normalizeRawMessage('user-0', 'local-0', 0, {
+                {
+                    id: 'user-0',
+                    localId: 'local-0',
+                    createdAt: 0,
                     role: 'user',
-                    content: { type: 'text', text: 'Duplicate' }
-                })
-            ].filter(Boolean) as NormalizedMessage[];
+                    content: { type: 'text', text: 'Duplicate' },
+                    isSidechain: false
+                }
+            ];
             
             const dupResult = reducer(state, duplicateUser);
             expect(dupResult).toHaveLength(0);
@@ -1947,7 +1842,7 @@ describe('reducer', () => {
             // AgentState with a pending permission request
             const agentState: AgentState = {
                 requests: {
-                    'perm-pending-1': {
+                    'tool-pending-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000
@@ -1961,7 +1856,7 @@ describe('reducer', () => {
             expect(result1[0].kind).toBe('tool-call');
             
             // Verify only one message exists
-            const pendingMessageId = state.permissionIdToMessageId.get('perm-pending-1');
+            const pendingMessageId = state.toolIdToMessageId.get('tool-pending-1');
             expect(pendingMessageId).toBeDefined();
             expect(state.messages.size).toBe(1);
             
@@ -1973,35 +1868,31 @@ describe('reducer', () => {
             // Verify the message has correct permission status
             const message = state.messages.get(pendingMessageId!);
             expect(message?.tool?.permission?.status).toBe('pending');
-            expect(message?.tool?.permission?.id).toBe('perm-pending-1');
+            expect(message?.tool?.permission?.id).toBe('tool-pending-1');
         });
 
         it('should match permissions when tool messages are loaded BEFORE AgentState', () => {
             const state = createReducer();
             
             // First, process the tool call message (as if loaded from storage)
-            const toolMessage = normalizeRawMessage('msg-1', null, 1000, {
+            const toolMessage: NormalizedMessage = {
+                id: 'msg-1',
+                localId: null,
+                createdAt: 1000,
                 role: 'agent',
-                content: {
-                    type: 'output',
-                    data: {
-                        type: 'assistant',
-                        uuid: 'tool-uuid-1',
-                        message: {
-                            role: 'assistant',
-                            model: 'claude-3',
-                            content: [{
-                                type: 'tool_use',
-                                id: 'tool-1',
-                                name: 'Bash',
-                                input: { command: 'ls -la' }
-                            }]
-                        }
-                    }
-                }
-            });
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-1',
+                    name: 'Bash',
+                    input: { command: 'ls -la' },
+                    description: null,
+                    uuid: 'tool-uuid-1',
+                    parentUUID: null
+                }],
+                isSidechain: false
+            };
             
-            const messages = [toolMessage].filter(Boolean) as NormalizedMessage[];
+            const messages = [toolMessage];
             const result1 = reducer(state, messages);
             
             // Should create the tool message
@@ -2011,7 +1902,7 @@ describe('reducer', () => {
             // Now process the AgentState with pending permission
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 900  // Permission requested before the tool call
@@ -2032,7 +1923,7 @@ describe('reducer', () => {
             const message = state.messages.get(messageId!);
             expect(message?.tool?.name).toBe('Bash');
             expect(message?.tool?.permission?.status).toBe('pending');
-            expect(message?.tool?.permission?.id).toBe('perm-1');
+            expect(message?.tool?.permission?.id).toBe('tool-1');
         });
 
         it('should match permissions when tool messages are loaded AFTER AgentState', () => {
@@ -2041,7 +1932,7 @@ describe('reducer', () => {
             // First, process the AgentState with pending permission
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 900
@@ -2056,28 +1947,24 @@ describe('reducer', () => {
             expect(state.messages.size).toBe(1);
             
             // Now process the tool call message
-            const toolMessage = normalizeRawMessage('msg-1', null, 1000, {
+            const toolMessage: NormalizedMessage = {
+                id: 'msg-1',
+                localId: null,
+                createdAt: 1000,
                 role: 'agent',
-                content: {
-                    type: 'output',
-                    data: {
-                        type: 'assistant',
-                        uuid: 'tool-uuid-1',
-                        message: {
-                            role: 'assistant',
-                            model: 'claude-3',
-                            content: [{
-                                type: 'tool_use',
-                                id: 'tool-1',
-                                name: 'Bash',
-                                input: { command: 'ls -la' }
-                            }]
-                        }
-                    }
-                }
-            });
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-1',
+                    name: 'Bash',
+                    input: { command: 'ls -la' },
+                    description: null,
+                    uuid: 'tool-uuid-1',
+                    parentUUID: null
+                }],
+                isSidechain: false
+            };
             
-            const messages = [toolMessage].filter(Boolean) as NormalizedMessage[];
+            const messages = [toolMessage];
             const result2 = reducer(state, messages, agentState);
             
             // Should NOT create a new message, but update the existing permission message
@@ -2091,7 +1978,7 @@ describe('reducer', () => {
             const message = state.messages.get(messageId!);
             expect(message?.tool?.name).toBe('Bash');
             expect(message?.tool?.permission?.status).toBe('pending');
-            expect(message?.tool?.permission?.id).toBe('perm-1');
+            expect(message?.tool?.permission?.id).toBe('tool-1');
             expect(message?.tool?.startedAt).toBe(1000); // From the tool message
         });
 
@@ -2102,14 +1989,14 @@ describe('reducer', () => {
             // This can happen when server sends stale data
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash', 
                         arguments: { command: 'ls -la' },
                         createdAt: 1000
                     }
                 },
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000,
@@ -2120,28 +2007,24 @@ describe('reducer', () => {
             };
             
             // Process tool message
-            const toolMessage = normalizeRawMessage('msg-1', null, 1500, {
+            const toolMessage: NormalizedMessage = {
+                id: 'msg-1',
+                localId: null,
+                createdAt: 1500,
                 role: 'agent',
-                content: {
-                    type: 'output',
-                    data: {
-                        type: 'assistant',
-                        uuid: 'tool-uuid-1',
-                        message: {
-                            role: 'assistant',
-                            model: 'claude-3',
-                            content: [{
-                                type: 'tool_use',
-                                id: 'tool-1',
-                                name: 'Bash',
-                                input: { command: 'ls -la' }
-                            }]
-                        }
-                    }
-                }
-            });
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-1',
+                    name: 'Bash',
+                    input: { command: 'ls -la' },
+                    description: null,
+                    uuid: 'tool-uuid-1',
+                    parentUUID: null
+                }],
+                isSidechain: false
+            };
             
-            const messages = [toolMessage].filter(Boolean) as NormalizedMessage[];
+            const messages = [toolMessage];
             const result = reducer(state, messages, agentState);
             
             // Should create one message
@@ -2163,7 +2046,7 @@ describe('reducer', () => {
             // First, create a tool message with pending permission
             const agentState1: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000
@@ -2171,29 +2054,25 @@ describe('reducer', () => {
                 }
             };
             
-            const toolMessage = normalizeRawMessage('msg-1', null, 1500, {
+            const toolMessage: NormalizedMessage = {
+                id: 'msg-1',
+                localId: null,
+                createdAt: 1500,
                 role: 'agent',
-                content: {
-                    type: 'output',
-                    data: {
-                        type: 'assistant',
-                        uuid: 'tool-uuid-1',
-                        message: {
-                            role: 'assistant',
-                            model: 'claude-3',
-                            content: [{
-                                type: 'tool_use',
-                                id: 'tool-1',
-                                name: 'Bash',
-                                input: { command: 'ls -la' }
-                            }]
-                        }
-                    }
-                }
-            });
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-1',
+                    name: 'Bash',
+                    input: { command: 'ls -la' },
+                    description: null,
+                    uuid: 'tool-uuid-1',
+                    parentUUID: null
+                }],
+                isSidechain: false
+            };
             
             // Process with pending permission
-            const messages = [toolMessage].filter(Boolean) as NormalizedMessage[];
+            const messages = [toolMessage];
             const result1 = reducer(state, messages, agentState1);
             
             // Should create one message with pending permission
@@ -2209,7 +2088,7 @@ describe('reducer', () => {
             // Now update AgentState to approved
             const agentState2: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000,
@@ -2229,35 +2108,31 @@ describe('reducer', () => {
             // Check that the permission status was updated
             message = state.messages.get(messageId!);
             expect(message?.tool?.permission?.status).toBe('approved');
-            expect(message?.tool?.permission?.id).toBe('perm-1');
+            expect(message?.tool?.permission?.id).toBe('tool-1');
         });
 
         it('should handle app loading flow: tool loaded first, then AgentState with approved permission', () => {
             const state = createReducer();
             
             // Step 1: Load tool message first (without AgentState) - simulates messages loaded before sessions
-            const toolMessage = normalizeRawMessage('msg-1', null, 1500, {
+            const toolMessage: NormalizedMessage = {
+                id: 'msg-1',
+                localId: null,
+                createdAt: 1500,
                 role: 'agent',
-                content: {
-                    type: 'output',
-                    data: {
-                        type: 'assistant',
-                        uuid: 'tool-uuid-1',
-                        message: {
-                            role: 'assistant',
-                            model: 'claude-3',
-                            content: [{
-                                type: 'tool_use',
-                                id: 'tool-1',
-                                name: 'Bash',
-                                input: { command: 'ls -la' }
-                            }]
-                        }
-                    }
-                }
-            });
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-1',
+                    name: 'Bash',
+                    input: { command: 'ls -la' },
+                    description: null,
+                    uuid: 'tool-uuid-1',
+                    parentUUID: null
+                }],
+                isSidechain: false
+            };
             
-            const messages = [toolMessage].filter(Boolean) as NormalizedMessage[];
+            const messages = [toolMessage];
             const result1 = reducer(state, messages); // No AgentState
             
             // Tool should be created without permission
@@ -2271,14 +2146,14 @@ describe('reducer', () => {
             // Step 2: AgentState arrives with both pending and approved (sessions loaded)
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000
                     }
                 },
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000,
@@ -2297,7 +2172,7 @@ describe('reducer', () => {
             toolMsg = state.messages.get(toolMsgId!);
             expect(toolMsg?.tool?.permission).toBeDefined();
             expect(toolMsg?.tool?.permission?.status).toBe('approved');
-            expect(toolMsg?.tool?.permission?.id).toBe('perm-1');
+            expect(toolMsg?.tool?.permission?.id).toBe('tool-1');
             expect(toolMsg?.tool?.state).toBe('running'); // Should stay running for approved
         });
 
@@ -2305,41 +2180,37 @@ describe('reducer', () => {
             const state = createReducer();
             
             // Step 1: Load tool message first
-            const toolMessage = normalizeRawMessage('msg-1', null, 1500, {
+            const toolMessage: NormalizedMessage = {
+                id: 'msg-1',
+                localId: null,
+                createdAt: 1500,
                 role: 'agent',
-                content: {
-                    type: 'output',
-                    data: {
-                        type: 'assistant',
-                        uuid: 'tool-uuid-1',
-                        message: {
-                            role: 'assistant',
-                            model: 'claude-3',
-                            content: [{
-                                type: 'tool_use',
-                                id: 'tool-1',
-                                name: 'Bash',
-                                input: { command: 'rm -rf /' }
-                            }]
-                        }
-                    }
-                }
-            });
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-1',
+                    name: 'Bash',
+                    input: { command: 'rm -rf /' },
+                    description: null,
+                    uuid: 'tool-uuid-1',
+                    parentUUID: null
+                }],
+                isSidechain: false
+            };
             
-            const messages = [toolMessage].filter(Boolean) as NormalizedMessage[];
+            const messages = [toolMessage];
             reducer(state, messages);
             
             // Step 2: AgentState arrives with denied permission
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'rm -rf /' },
                         createdAt: 1000
                     }
                 },
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'rm -rf /' },
                         createdAt: 1000,
@@ -2368,41 +2239,37 @@ describe('reducer', () => {
             const state = createReducer();
             
             // Step 1: Load tool message first
-            const toolMessage = normalizeRawMessage('msg-1', null, 1500, {
+            const toolMessage: NormalizedMessage = {
+                id: 'msg-1',
+                localId: null,
+                createdAt: 1500,
                 role: 'agent',
-                content: {
-                    type: 'output',
-                    data: {
-                        type: 'assistant',
-                        uuid: 'tool-uuid-1',
-                        message: {
-                            role: 'assistant',
-                            model: 'claude-3',
-                            content: [{
-                                type: 'tool_use',
-                                id: 'tool-1',
-                                name: 'Bash',
-                                input: { command: 'sleep 3600' }
-                            }]
-                        }
-                    }
-                }
-            });
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-1',
+                    name: 'Bash',
+                    input: { command: 'sleep 3600' },
+                    description: null,
+                    uuid: 'tool-uuid-1',
+                    parentUUID: null
+                }],
+                isSidechain: false
+            };
             
-            const messages = [toolMessage].filter(Boolean) as NormalizedMessage[];
+            const messages = [toolMessage];
             reducer(state, messages);
             
             // Step 2: AgentState arrives with canceled permission
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'sleep 3600' },
                         createdAt: 1000
                     }
                 },
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'sleep 3600' },
                         createdAt: 1000,
@@ -2433,7 +2300,7 @@ describe('reducer', () => {
             // Start with pending permission
             const agentState1: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'echo test' },
                         createdAt: 1000
@@ -2444,7 +2311,7 @@ describe('reducer', () => {
             const result1 = reducer(state, [], agentState1);
             expect(result1).toHaveLength(1);
             
-            const permMsgId = state.permissionIdToMessageId.get('perm-1');
+            const permMsgId = state.toolIdToMessageId.get('tool-1');
             let msg = state.messages.get(permMsgId!);
             expect(msg?.tool?.permission?.status).toBe('pending');
             expect(msg?.tool?.state).toBe('running');
@@ -2452,7 +2319,7 @@ describe('reducer', () => {
             // Transition to approved
             const agentState2: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'echo test' },
                         createdAt: 1000,
@@ -2474,7 +2341,7 @@ describe('reducer', () => {
             const state2 = createReducer();
             const agentState3: AgentState = {
                 requests: {
-                    'perm-2': {
+                    'tool-2': {
                         tool: 'Bash',
                         arguments: { command: 'echo denied' },
                         createdAt: 3000
@@ -2486,7 +2353,7 @@ describe('reducer', () => {
             
             const agentState4: AgentState = {
                 completedRequests: {
-                    'perm-2': {
+                    'tool-2': {
                         tool: 'Bash',
                         arguments: { command: 'echo denied' },
                         createdAt: 3000,
@@ -2500,7 +2367,7 @@ describe('reducer', () => {
             const result4 = reducer(state2, [], agentState4);
             expect(result4).toHaveLength(1);
             
-            const permMsgId2 = state2.permissionIdToMessageId.get('perm-2');
+            const permMsgId2 = state2.toolIdToMessageId.get('tool-2');
             const msg2 = state2.messages.get(permMsgId2!);
             expect(msg2?.tool?.permission?.status).toBe('denied');
             expect(msg2?.tool?.state).toBe('error'); // Should change to error
@@ -2559,14 +2426,14 @@ describe('reducer', () => {
             // Step 2: AgentState arrives with approved permission
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'echo success' },
                         createdAt: 1000
                     }
                 },
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'echo success' },
                         createdAt: 1000,
@@ -2632,14 +2499,14 @@ describe('reducer', () => {
             // Step 2: AgentState with denied permission (too late!)
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'rm important.txt' },
                         createdAt: 1000
                     }
                 },
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'rm important.txt' },
                         createdAt: 1000,
@@ -2707,7 +2574,7 @@ describe('reducer', () => {
             // Step 2: AgentState with approved permission (too late to help)
             const agentState: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'cat /nonexistent' },
                         createdAt: 1000,
@@ -2768,7 +2635,7 @@ describe('reducer', () => {
             // Step 2: AgentState with denied permission
             const agentState: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'sudo rm -rf /' },
                         createdAt: 1000,
@@ -2840,14 +2707,14 @@ describe('reducer', () => {
             // Step 3: AgentState arrives later with permission info
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000
                     }
                 },
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1000,
@@ -2871,31 +2738,27 @@ describe('reducer', () => {
             const state = createReducer();
             
             // Simulate a tool call message from the agent
-            const toolMessage = normalizeRawMessage('msg-1', null, 1000, {
+            const toolMessage: NormalizedMessage = {
+                id: 'msg-1',
+                localId: null,
+                createdAt: 1000,
                 role: 'agent',
-                content: {
-                    type: 'output',
-                    data: {
-                        type: 'assistant',
-                        uuid: 'tool-uuid-1',
-                        message: {
-                            role: 'assistant',
-                            model: 'claude-3',
-                            content: [{
-                                type: 'tool_use',
-                                id: 'tool-1',
-                                name: 'Bash',
-                                input: { command: 'ls -la' }
-                            }]
-                        }
-                    }
-                }
-            });
+                content: [{
+                    type: 'tool-call',
+                    id: 'tool-1',
+                    name: 'Bash',
+                    input: { command: 'ls -la' },
+                    description: null,
+                    uuid: 'tool-uuid-1',
+                    parentUUID: null
+                }],
+                isSidechain: false
+            };
             
             // AgentState with the pending permission for the same tool
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 900  // Permission requested before the tool call
@@ -2904,7 +2767,7 @@ describe('reducer', () => {
             };
             
             // Process both simultaneously (as would happen when loading from storage)
-            const messages = [toolMessage].filter(Boolean) as NormalizedMessage[];
+            const messages = [toolMessage];
             const result = reducer(state, messages, agentState);
             
             // Should create exactly ONE message, not two
@@ -2918,7 +2781,7 @@ describe('reducer', () => {
             const message = state.messages.get(messageId!);
             expect(message?.tool?.name).toBe('Bash');
             expect(message?.tool?.permission?.status).toBe('pending');
-            expect(message?.tool?.permission?.id).toBe('perm-1');
+            expect(message?.tool?.permission?.id).toBe('tool-1');
         });
 
         it('should retroactively match permissions when tools are processed without AgentState initially', () => {
@@ -2960,7 +2823,7 @@ describe('reducer', () => {
             // Step 2: Later, AgentState arrives with permission for this tool
             const agentState: AgentState = {
                 requests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'echo hello' },
                         createdAt: 1000  // Permission was requested BEFORE the tool ran
@@ -2977,7 +2840,7 @@ describe('reducer', () => {
             if (result2[0].kind === 'tool-call') {
                 // The existing tool should now have the permission attached
                 expect(result2[0].tool.permission?.status).toBe('pending');
-                expect(result2[0].tool.permission?.id).toBe('perm-1');
+                expect(result2[0].tool.permission?.id).toBe('tool-1');
             }
             
             // Should still only have ONE message - the tool was updated
@@ -2989,7 +2852,7 @@ describe('reducer', () => {
             expect(originalTool?.tool?.permission?.status).toBe('pending');
             
             // The permission should be linked to the existing tool
-            const permMsgId = state.permissionIdToMessageId.get('perm-1');
+            const permMsgId = state.toolIdToMessageId.get('tool-1');
             expect(permMsgId).toBeDefined();
             expect(permMsgId).toBe(toolMsgId); // Same message ID
         });
@@ -3064,7 +2927,7 @@ describe('reducer', () => {
             // Step 2: Session arrives with AgentState containing permission info
             const agentState: AgentState = {
                 completedRequests: {
-                    'perm-1': {
+                    'tool-1': {
                         tool: 'Bash',
                         arguments: { command: 'ls -la' },
                         createdAt: 1500,
@@ -3107,10 +2970,10 @@ describe('reducer', () => {
             
             // The tool and permission should be the SAME message (matched correctly)
             expect(state.toolIdToMessageId.has('tool-1')).toBe(true);
-            expect(state.permissionIdToMessageId.has('perm-1')).toBe(true);
+            expect(state.toolIdToMessageId.has('tool-1')).toBe(true);
             
             const toolMsgId = state.toolIdToMessageId.get('tool-1');
-            const permMsgId = state.permissionIdToMessageId.get('perm-1');
+            const permMsgId = state.toolIdToMessageId.get('tool-1');
             expect(toolMsgId).toBe(permMsgId); // Same message - properly matched!
         });
     });

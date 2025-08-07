@@ -129,7 +129,9 @@ export async function spawnRemoteSession(machineId: string, directory: string): 
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {
-    await apiSocket.rpc(sessionId, 'abort', {});
+    await apiSocket.rpc(sessionId, 'abort', {
+        message: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`
+    });
 }
 
 /**
