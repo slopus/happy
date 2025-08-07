@@ -178,7 +178,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         const message = parsedMessage.data.message;
         console.log('🔍 askClaudeCode called with:', message);
         sync.sendMessage(sessionId, message);
-        return "success";
+        return "sent [DO NOT say anything else, simply say 'sent']";
     };
 
     const processPermissionRequest = async (parameters: unknown) => {
@@ -209,7 +209,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 await sessionDeny(sessionId, permissionRequest.id);
                 trackPermissionResponse(false);
             }
-            return "success";
+            return "done [DO NOT say anything else, simply say 'done']";
         } catch (error) {
             console.error('❌ Failed to process permission:', error);
             return `error (failed to ${decision} permission)`;
@@ -344,20 +344,23 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             return;
         }
 
-        console.log('🔍 sessionStatus.state:', sessionStatus.state);
+        // BUG & HACK: Noticed the assistant does not have the latest context when it starts talking. Hoping this fixes it
+        setTimeout(() => {
+            console.log('🔍 sessionStatus.state:', sessionStatus.state);
 
-        if (sessionStatus.state === 'permission_required' && permissionRequest) {
-            const permissionDetails = formatPermissionParams(permissionRequest.call);
-            conversation.sendUserMessage(
-                `Claude is requesting permission: ${permissionDetails}. Tell me briefly what the permission request is, and ask me if I want to allow or deny]`
-            )
-        }
+            if (sessionStatus.state === 'permission_required' && permissionRequest) {
+                const permissionDetails = formatPermissionParams(permissionRequest.call);
+                conversation.sendUserMessage(
+                    `Claude is requesting permission: ${permissionDetails}. Tell me briefly what the permission request is, and ask me if I want to allow or deny]`
+                )
+            }
 
-        if (sessionStatus.state === 'waiting') {
-            conversation.sendUserMessage(
-                `What is the latest update from claude? Only tell me new information since the last user message`
-            )
-        }
+            if (sessionStatus.state === 'waiting') {
+                conversation.sendUserMessage(
+                    `What is the latest update from claude? Only tell me new information since the last user message`
+                )
+            }
+        }, 300);
     }, [conversation.status, sessionStatus.state]);
 
     const permissionRequest = React.useMemo(() => {
