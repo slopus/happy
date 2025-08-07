@@ -1,5 +1,5 @@
 import chalk from 'chalk';
-import type { SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@anthropic-ai/claude-code';
+import type { SDKMessage, SDKAssistantMessage, SDKResultMessage, SDKSystemMessage, SDKUserMessage } from '@/claude/sdk';
 import { logger } from './logger';
 
 export type OnAssistantResultCallback = (result: SDKResultMessage) => void | Promise<void>;
@@ -140,10 +140,9 @@ export function formatClaudeMessage(
         }
 
         default: {
-            // This should never happen with proper SDK types
-            const exhaustiveCheck: never = message;
+            // Handle other message types
             if (process.env.DEBUG) {
-                console.log(chalk.gray(`[Unknown message type]`), exhaustiveCheck);
+                console.log(chalk.gray(`[Unknown message type: ${message.type}]`));
             }
         }
     }

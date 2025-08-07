@@ -117,7 +117,7 @@ Currently only supported on macOS.
         options.model = args[++i]
       } else if (arg === '-p' || arg === '--permission-mode') {
         // Use zod to validate the permission mode
-        options.permissionMode = z.enum(['auto', 'default', 'plan']).parse(args[++i])
+        options.permissionMode = z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan']).parse(args[++i])
       } else if (arg === '--local') {
         // Already processed, skip
       } else if (arg === '--happy-starting-mode') {
@@ -160,7 +160,7 @@ ${chalk.bold('Options:')}
   -h, --help              Show this help message
   -v, --version           Show version
   -m, --model <model>     Claude model to use (default: sonnet)
-  -p, --permission-mode   Permission mode: auto, default, or plan
+  -p, --permission-mode   Permission mode: default, acceptEdits, bypassPermissions, or plan
   --auth, --login         Force re-authentication
   --claude-env KEY=VALUE  Set environment variable for Claude Code
   --claude-arg ARG        Pass additional argument to Claude CLI

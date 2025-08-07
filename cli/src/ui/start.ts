@@ -14,7 +14,7 @@ import { readSettings } from '@/persistence/persistence';
 
 export interface StartOptions {
     model?: string
-    permissionMode?: 'auto' | 'default' | 'plan'
+    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
     startingMode?: 'local' | 'remote'
     shouldStartDaemon?: boolean
     claudeEnvVars?: Record<string, string>

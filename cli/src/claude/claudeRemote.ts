@@ -1,10 +1,7 @@
-import { query, type Options, type SDKUserMessage, type SDKMessage, type SDKAssistantMessage, AbortError } from '@anthropic-ai/claude-code'
+import { query, type QueryOptions as Options, type SDKUserMessage, type SDKMessage, type SDKAssistantMessage, type SDKSystemMessage, AbortError } from '@/claude/sdk'
 import { formatClaudeMessage, printDivider, type OnAssistantResultCallback } from '@/ui/messageFormatter'
 import { claudeCheckSession } from './claudeCheckSession';
 import { logger } from '@/ui/logger';
-import { mkdirSync, watch } from 'node:fs';
-import { homedir } from 'node:os';
-import { resolve } from 'node:path';
 import { join } from 'node:path';
 import type { InterruptController } from './InterruptController';
 import { awaitFileExist } from '@/modules/watcher/awaitFileExist';
@@ -35,9 +32,10 @@ export async function claudeRemote(opts: {
     path: string,
     mcpServers?: Record<string, any>,
     permissionPromptToolName?: string,
+    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
     onSessionFound: (id: string) => void,
     onThinkingChange?: (thinking: boolean) => void,
-    messages: AsyncIterable<SDKUserMessage>,
+    message: string,
     onAssistantResult?: OnAssistantResultCallback,
     interruptController?: InterruptController,
     claudeEnvVars?: Record<string, string>,
@@ -64,6 +62,7 @@ export async function claudeRemote(opts: {
         resume: startFrom ?? undefined,
         mcpServers: opts.mcpServers,
         permissionPromptToolName: opts.permissionPromptToolName,
+        permissionMode: opts.permissionMode,
         executable: 'node',
         abortController: abortController,
     }
@@ -75,14 +74,14 @@ export async function claudeRemote(opts: {
 
     // Query Claude
     let aborted = false;
-    let response: AsyncGenerator<SDKMessage>;
+    let response: AsyncIterableIterator<SDKMessage> & { interrupt?: () => Promise<void> };
     opts.abort.addEventListener('abort', () => {
         if (!aborted) {
             aborted = true;
             if (response) {
                 (async () => {
                     try {
-                        const r = await (response as any).interrupt();
+                        await (response as any).interrupt();
                     } catch (e) {
                         // Ignore
                     }
@@ -93,7 +92,7 @@ export async function claudeRemote(opts: {
             }
         }
     });
-    logger.debug(`[claudeRemote] Starting query with messages`);
+    logger.debug(`[claudeRemote] Starting query with permission mode: ${opts.permissionMode}`);
 
     /*
     UPDATE: Not working, will timeout and interrupt for now after 4.5 minutes.
@@ -111,8 +110,7 @@ export async function claudeRemote(opts: {
     process.env.MCP_TIMEOUT = '100000000'; // 27.8 hours
     */
     response = query({
-        prompt: opts.messages,
-        abortController: abortController,
+        prompt: opts.message,
         options: sdkOptions,
     });
 
@@ -185,8 +183,8 @@ export async function claudeRemote(opts: {
                     for (const block of assistantMsg.message.content) {
                         if (block.type === 'tool_use') {
                             toolCalls.push({
-                                id: block.id,
-                                name: block.name,
+                                id: block.id!,
+                                name: block.name!,
                                 input: block.input,
                                 used: false
                             });
@@ -221,16 +219,21 @@ export async function claudeRemote(opts: {
 
                 // Session id is still in memory, wait until session file is  written to disk
                 // Start a watcher for to detect the session id
-                logger.debug(`[claudeRemote] Waiting for session file to be written to disk: ${message.session_id}`);
-                const projectDir = getProjectPath(opts.path);
-                const found = await awaitFileExist(join(projectDir, `${message.session_id}.jsonl`));
-                logger.debug(`[claudeRemote] Session file found: ${message.session_id} ${found}`);
-                opts.onSessionFound(message.session_id);
+                const systemInit = message as SDKSystemMessage;
+                if (systemInit.session_id) {
+                    logger.debug(`[claudeRemote] Waiting for session file to be written to disk: ${systemInit.session_id}`);
+                    const projectDir = getProjectPath(opts.path);
+                    const found = await awaitFileExist(join(projectDir, `${systemInit.session_id}.jsonl`));
+                    logger.debug(`[claudeRemote] Session file found: ${systemInit.session_id} ${found}`);
+                    opts.onSessionFound(systemInit.session_id);
+                }
             }
             
-            // Stop thinking when result is received
+            // Stop thinking when result is received and exit
             if (message.type === 'result') {
                 updateThinking(false);
+                logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+                break; // Exit the loop when result is received
             }
         }
         logger.debug(`[claudeRemote] Finished iterating over response`);

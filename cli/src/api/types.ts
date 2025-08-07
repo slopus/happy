@@ -153,6 +153,16 @@ export const SessionMessageSchema = z.object({
 export type SessionMessage = z.infer<typeof SessionMessageSchema>
 
 /**
+ * Message metadata schema
+ */
+export const MessageMetaSchema = z.object({
+  sentFrom: z.string().optional(), // Source identifier
+  permissionMode: z.string().optional() // Permission mode for this message
+})
+
+export type MessageMeta = z.infer<typeof MessageMetaSchema>
+
+/**
  * API response types
  */
 export const CreateSessionResponseSchema = z.object({
@@ -178,7 +188,7 @@ export const UserMessageSchema = z.object({
     text: z.string()
   }),
   localKey: z.string().optional(), // Mobile messages include this
-  sentFrom: z.enum(['mobile', 'cli']).optional() // Source identifier
+  meta: MessageMetaSchema.optional()
 })
 
 export type UserMessage = z.infer<typeof UserMessageSchema>
@@ -188,7 +198,8 @@ export const AgentMessageSchema = z.object({
   content: z.object({
     type: z.literal('output'),
     data: z.any()
-  })
+  }),
+  meta: MessageMetaSchema.optional()
 })
 
 export type AgentMessage = z.infer<typeof AgentMessageSchema>
