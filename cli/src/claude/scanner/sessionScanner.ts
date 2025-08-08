@@ -9,7 +9,7 @@ import { PLAN_FAKE_REJECT } from "@/claude/sdk/prompts";
 
 // Custom tool response hacker function
 function hackToolResponse(message: any): any {
-    console.debug('hackToolResponse', JSON.stringify(message, null, 2));
+    logger.debug('hackToolResponse', JSON.stringify(message, null, 2));
     // Check if this is an assistant message with tool_result
     if (message.type === 'user' && message.message?.role === 'user' && message.message?.content && Array.isArray(message.message.content)) {
         let modified = false;
