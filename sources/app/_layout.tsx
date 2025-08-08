@@ -6,7 +6,7 @@ import '@/global.css';
 import { FontAwesome } from '@expo/vector-icons';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { AuthProvider } from '@/auth/AuthContext';
-import { DefaultTheme, ThemeProvider, useRoute } from '@react-navigation/native';
+import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
@@ -16,9 +16,9 @@ import { View } from 'react-native';
 import { ModalProvider } from '@/modal';
 import { PostHogProvider } from 'posthog-react-native';
 import { tracking } from '@/track/tracking';
-import { usePathname, useSegments } from 'expo-router';
 import { syncRestore } from '@/sync/sync';
 import { useTrackScreens } from '@/track/useTrackScreens';
+import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -122,9 +122,11 @@ export default function RootLayout() {
                     <AuthProvider initialCredentials={initState.credentials}>
                         <ThemeProvider value={DefaultTheme}>
                             <ModalProvider>
-                                <HorizontalSafeAreaWrapper>
-                                    <SidebarNavigator />
-                                </HorizontalSafeAreaWrapper>
+                                <RealtimeProvider>
+                                    <HorizontalSafeAreaWrapper>
+                                        <SidebarNavigator />
+                                    </HorizontalSafeAreaWrapper>
+                                </RealtimeProvider>
                             </ModalProvider>
                         </ThemeProvider>
                     </AuthProvider>
