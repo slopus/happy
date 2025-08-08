@@ -121,7 +121,7 @@ export function registerHandlers(
 ) {
     // Abort handler - interrupts Claude execution
     session.setHandler<{}, void>('abort', async () => {
-        logger.info('Abort request - interrupting Claude');
+        logger.debug('Abort request - interrupting Claude');
         await interruptController.interrupt();
     });
 
@@ -139,7 +139,7 @@ export function registerHandlers(
     // Permission handler - handles permission responses from mobile
     if (permissionCallbacks) {
         session.setHandler<PermissionResponse, void>('permission', async (message) => {
-            logger.info('Permission response' + JSON.stringify(message));
+            logger.debug('Permission response' + JSON.stringify(message));
             const id = message.id;
             const resolve = permissionCallbacks.requests.get(id);
             if (resolve) {
@@ -150,7 +150,7 @@ export function registerHandlers(
                 resolve({ approved: message.approved, reason: message.reason });
                 permissionCallbacks.requests.delete(id);
             } else {
-                logger.info('Permission request stale, likely timed out');
+                logger.debug('Permission request stale, likely timed out');
                 return;
             }
 
@@ -186,7 +186,7 @@ export function registerHandlers(
 
     // Shell command handler - executes commands in the default shell
     session.setHandler<BashRequest, BashResponse>('bash', async (data) => {
-        logger.info('Shell command request:', data.command);
+        logger.debug('Shell command request:', data.command);
 
         try {
             // Build options with shell enabled by default
@@ -236,7 +236,7 @@ export function registerHandlers(
 
     // Read file handler - returns base64 encoded content
     session.setHandler<ReadFileRequest, ReadFileResponse>('readFile', async (data) => {
-        logger.info('Read file request:', data.path);
+        logger.debug('Read file request:', data.path);
 
         try {
             const buffer = await readFile(data.path);
@@ -250,7 +250,7 @@ export function registerHandlers(
 
     // Write file handler - with hash verification
     session.setHandler<WriteFileRequest, WriteFileResponse>('writeFile', async (data) => {
-        logger.info('Write file request:', data.path);
+        logger.debug('Write file request:', data.path);
 
         try {
             // If expectedHash is provided (not null), verify existing file
@@ -310,7 +310,7 @@ export function registerHandlers(
 
     // List directory handler
     session.setHandler<ListDirectoryRequest, ListDirectoryResponse>('listDirectory', async (data) => {
-        logger.info('List directory request:', data.path);
+        logger.debug('List directory request:', data.path);
 
         try {
             const entries = await readdir(data.path, { withFileTypes: true });
@@ -362,7 +362,7 @@ export function registerHandlers(
 
     // Get directory tree handler - recursive with depth control
     session.setHandler<GetDirectoryTreeRequest, GetDirectoryTreeResponse>('getDirectoryTree', async (data) => {
-        logger.info('Get directory tree request:', data.path, 'maxDepth:', data.maxDepth);
+        logger.debug('Get directory tree request:', data.path, 'maxDepth:', data.maxDepth);
 
         // Helper function to build tree recursively
         async function buildTree(path: string, name: string, currentDepth: number): Promise<TreeNode | null> {
@@ -443,7 +443,7 @@ export function registerHandlers(
 
     // Ripgrep handler - raw interface to ripgrep
     session.setHandler<RipgrepRequest, RipgrepResponse>('ripgrep', async (data) => {
-        logger.info('Ripgrep request with args:', data.args, 'cwd:', data.cwd);
+        logger.debug('Ripgrep request with args:', data.args, 'cwd:', data.cwd);
 
         try {
             const result = await runRipgrep(data.args, { cwd: data.cwd });

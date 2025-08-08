@@ -99,7 +99,7 @@ export interface SDKControlRequest {
  * Query options
  */
 export interface QueryOptions {
-    abortController?: AbortController
+    abort?: AbortSignal
     allowedTools?: string[]
     appendSystemPrompt?: string
     customSystemPrompt?: string

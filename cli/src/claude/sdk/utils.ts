@@ -36,10 +36,10 @@ export function logDebug(message: string): void {
 export async function streamToStdin(
     stream: AsyncIterable<unknown>,
     stdin: NodeJS.WritableStream,
-    abortController: AbortController
+    abort?: AbortSignal
 ): Promise<void> {
     for await (const message of stream) {
-        if (abortController.signal.aborted) break
+        if (abort?.aborted) break
         stdin.write(JSON.stringify(message) + '\n')
     }
     stdin.end()

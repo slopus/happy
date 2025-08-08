@@ -1,11 +1,13 @@
 import { query, type QueryOptions as Options, type SDKUserMessage, type SDKMessage, type SDKAssistantMessage, type SDKSystemMessage, AbortError } from '@/claude/sdk'
 import { formatClaudeMessage, printDivider, type OnAssistantResultCallback } from '@/ui/messageFormatter'
+import { formatClaudeMessageForInk, type OnAssistantResultInkCallback } from '@/ui/messageFormatterInk'
 import { claudeCheckSession } from './claudeCheckSession';
 import { logger } from '@/ui/logger';
 import { join } from 'node:path';
 import type { InterruptController } from './InterruptController';
 import { awaitFileExist } from '@/modules/watcher/awaitFileExist';
 import { getProjectPath } from './path';
+import type { MessageBuffer } from '@/ui/ink/messageBuffer';
 
 // Deep equality helper for comparing tool arguments
 function deepEqual(a: any, b: any): boolean {
@@ -40,7 +42,8 @@ export async function claudeRemote(opts: {
     interruptController?: InterruptController,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
-    onToolCallResolver?: (resolver: ((name: string, args: any) => string | null) | null) => void
+    onToolCallResolver?: (resolver: ((name: string, args: any) => string | null) | null) => void,
+    messageBuffer?: MessageBuffer | null
 }) {
     // Check if session is valid
     let startFrom = opts.sessionId;
@@ -55,8 +58,16 @@ export async function claudeRemote(opts: {
         });
     }
 
+    // If already aborted, skip
+    if (opts.abort.aborted) {
+        logger.debug('[claudeRemote] External abort signal already aborted, skipping');
+        return;
+    }
+    
+    // Bridge external abort signal to SDK's abort controller
+    let response: AsyncIterableIterator<SDKMessage> & { interrupt?: () => Promise<void> };
+
     // Prepare SDK options
-    const abortController = new AbortController();
     const sdkOptions: Options = {
         cwd: opts.path,
         resume: startFrom ?? undefined,
@@ -64,7 +75,7 @@ export async function claudeRemote(opts: {
         permissionPromptToolName: opts.permissionPromptToolName,
         permissionMode: opts.permissionMode,
         executable: 'node',
-        abortController: abortController,
+        abort: opts.abort,
     }
 
     // Add Claude CLI arguments to executableArgs
@@ -72,26 +83,6 @@ export async function claudeRemote(opts: {
         sdkOptions.executableArgs = [...(sdkOptions.executableArgs || []), ...opts.claudeArgs];
     }
 
-    // Query Claude
-    let aborted = false;
-    let response: AsyncIterableIterator<SDKMessage> & { interrupt?: () => Promise<void> };
-    opts.abort.addEventListener('abort', () => {
-        if (!aborted) {
-            aborted = true;
-            if (response) {
-                (async () => {
-                    try {
-                        await (response as any).interrupt();
-                    } catch (e) {
-                        // Ignore
-                    }
-                    abortController.abort();
-                })();
-            } else {
-                abortController.abort();
-            }
-        }
-    });
     logger.debug(`[claudeRemote] Starting query with permission mode: ${opts.permissionMode}`);
 
     /*
@@ -118,12 +109,14 @@ export async function claudeRemote(opts: {
     if (opts.interruptController) {
         opts.interruptController.register(async () => {
             logger.debug('[claudeRemote] Interrupting Claude via SDK');
-            // @ts-ignore - undocumented but exists
-            await response.interrupt();
+            await response?.interrupt?.();
         });
     }
 
-    printDivider();
+    // Only print divider if not using Ink UI
+    if (!opts.messageBuffer) {
+        printDivider();
+    }
     
     // Track thinking state
     let thinking = false;
@@ -173,8 +166,17 @@ export async function claudeRemote(opts: {
 
         for await (const message of response) {
             logger.debugLargeJson(`[claudeRemote] Message ${message.type}`, message);
-            // Always format and display the message
-            formatClaudeMessage(message, opts.onAssistantResult);
+            // Format and display the message based on UI mode
+            if (opts.messageBuffer) {
+                // Use Ink formatter when message buffer is available
+                const inkCallback: OnAssistantResultInkCallback | undefined = opts.onAssistantResult 
+                    ? (result, buffer) => opts.onAssistantResult!(result)
+                    : undefined;
+                formatClaudeMessageForInk(message, opts.messageBuffer, inkCallback);
+            } else {
+                // Use standard console formatter
+                formatClaudeMessage(message, opts.onAssistantResult);
+            }
 
             // Extract tool calls from assistant messages
             if (message.type === 'assistant') {
@@ -238,7 +240,7 @@ export async function claudeRemote(opts: {
         }
         logger.debug(`[claudeRemote] Finished iterating over response`);
     } catch (e) {
-        if (abortController.signal.aborted) {
+        if (opts.abort.aborted) {
             logger.debug(`[claudeRemote] Aborted`);
             // Ignore
         }
@@ -265,6 +267,11 @@ export async function claudeRemote(opts: {
             opts.interruptController.unregister();
         }
     }
-    printDivider();
+    
+    // Only print divider if not using Ink UI
+    if (!opts.messageBuffer) {
+        printDivider();
+    }
+    
     logger.debug(`[claudeRemote] Function completed`);
 }

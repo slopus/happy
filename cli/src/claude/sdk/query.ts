@@ -153,12 +153,10 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
  */
 export function query(config: {
     prompt: QueryPrompt
-    abortController?: AbortController
     options?: QueryOptions
 }): Query {
     const {
         prompt,
-        abortController = config.abortController || new AbortController(),
         options: {
             allowedTools = [],
             appendSystemPrompt,
@@ -228,7 +226,7 @@ export function query(config: {
     const child = spawn(executable, [...executableArgs, pathToClaudeCodeExecutable, ...args], {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
-        signal: abortController.signal,
+        signal: config.options?.abort,
         env: {
             ...process.env
         }
@@ -239,7 +237,7 @@ export function query(config: {
     if (typeof prompt === 'string') {
         child.stdin.end()
     } else {
-        streamToStdin(prompt, child.stdin, abortController)
+        streamToStdin(prompt, child.stdin, config.options?.abort)
         childStdin = child.stdin
     }
 
@@ -257,13 +255,13 @@ export function query(config: {
         }
     }
 
-    abortController.signal.addEventListener('abort', cleanup)
+    config.options?.abort?.addEventListener('abort', cleanup)
     process.on('exit', cleanup)
 
     // Handle process exit
     const processExitPromise = new Promise<void>((resolve) => {
         child.on('close', (code) => {
-            if (abortController.signal.aborted) {
+            if (config.options?.abort?.aborted) {
                 query.setError(new AbortError('Claude Code process aborted by user'))
             }
             if (code !== 0) {
@@ -279,7 +277,7 @@ export function query(config: {
 
     // Handle process errors
     child.on('error', (error) => {
-        if (abortController.signal.aborted) {
+        if (config.options?.abort?.aborted) {
             query.setError(new AbortError('Claude Code process aborted by user'))
         } else {
             query.setError(new Error(`Failed to spawn Claude Code process: ${error.message}`))
@@ -289,7 +287,7 @@ export function query(config: {
     // Cleanup on exit
     processExitPromise.finally(() => {
         cleanup()
-        abortController.signal.removeEventListener('abort', cleanup)
+        config.options?.abort?.removeEventListener('abort', cleanup)
         if (process.env.CLAUDE_SDK_MCP_SERVERS) {
             delete process.env.CLAUDE_SDK_MCP_SERVERS
         }

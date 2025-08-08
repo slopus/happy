@@ -35,7 +35,7 @@ export class PushNotificationClient {
                 }
             )
 
-            logger.info(`Fetched ${response.data.tokens.length} push tokens`)
+            logger.debug(`Fetched ${response.data.tokens.length} push tokens`)
             return response.data.tokens
         } catch (error) {
             logger.debug('[PUSH] [ERROR] Failed to fetch push tokens:', error)
@@ -48,7 +48,7 @@ export class PushNotificationClient {
      * @param messages - Array of push messages to send
      */
     async sendPushNotifications(messages: ExpoPushMessage[]): Promise<void> {
-        logger.info(`Sending ${messages.length} push notifications`)
+        logger.debug(`Sending ${messages.length} push notifications`)
 
         // Filter out invalid push tokens
         const validMessages = messages.filter(message => {
@@ -59,7 +59,7 @@ export class PushNotificationClient {
         })
 
         if (validMessages.length === 0) {
-            logger.info('No valid Expo push tokens found')
+            logger.debug('No valid Expo push tokens found')
             return
         }
 
@@ -110,7 +110,7 @@ export class PushNotificationClient {
             }
         }
 
-        logger.info(`Push notifications sent successfully`)
+        logger.debug(`Push notifications sent successfully`)
     }
 
     /**
@@ -124,7 +124,7 @@ export class PushNotificationClient {
         const tokens = await this.fetchPushTokens()
 
         if (tokens.length === 0) {
-            logger.info('No push tokens found for user')
+            logger.debug('No push tokens found for user')
             return
         }
 

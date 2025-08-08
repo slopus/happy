@@ -7,6 +7,7 @@
       "es2020",
       "es2022"
     ],
+    "jsx": "react",
     "rootDir": "src",
     "declaration": true,
     "strict": true,
@@ -38,5 +39,6 @@
   ],
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx"
   ]
 }

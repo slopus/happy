@@ -6,6 +6,10 @@ import { logger } from "@/ui/logger"
 import { createSessionScanner } from "./scanner/sessionScanner"
 import type { OnAssistantResultCallback } from "@/ui/messageFormatter"
 import type { InterruptController } from "./InterruptController"
+import { render, type Instance } from 'ink'
+import React from 'react'
+import { RemoteModeDisplay } from '@/ui/ink/RemoteModeDisplay'
+import { MessageBuffer } from '@/ui/ink/messageBuffer'
 
 type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
 
@@ -49,6 +53,11 @@ export async function loop(opts: LoopOptions) {
     );
     let sessionId: string | null = null;
     let onMessage: (() => void) | null = null;
+    let inkInstance: Instance | null = null;
+    let messageBuffer: MessageBuffer | null = null;
+    
+    // Get log path for debug display
+    const logPath = await logger.logFilePathPromise;
 
     const sessionScanner = opts.sessionScanner || createSessionScanner({
         workingDirectory: opts.path,
@@ -71,7 +80,7 @@ export async function loop(opts: LoopOptions) {
                 logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
 
             } else {
-                logger.info(`[loop] Invalid permission mode received: ${message.meta.permissionMode}`);
+                logger.debug(`[loop] Invalid permission mode received: ${message.meta.permissionMode}`);
             }
         } else {
             logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
@@ -177,7 +186,22 @@ export async function loop(opts: LoopOptions) {
 
         // Start remote mode
         if (mode === 'remote') {
-            console.log('Starting remote mode...');
+            // Initialize Ink UI if not already initialized
+            if (!inkInstance) {
+                messageBuffer = new MessageBuffer();
+                // Clear the screen before rendering
+                console.clear();
+                inkInstance = render(React.createElement(RemoteModeDisplay, { 
+                    messageBuffer,
+                    logPath: process.env.DEBUG ? logPath : undefined
+                }), {
+                    // Use alternate screen buffer to preserve terminal history
+                    exitOnCtrlC: false,
+                    patchConsole: false
+                });
+                logger.debug('[loop] Ink UI initialized for remote mode');
+            }
+            
             logger.debug('Starting ' + sessionId);
             const remoteAbortController = new AbortController();
 
@@ -188,15 +212,29 @@ export async function loop(opts: LoopOptions) {
                 }
             });
             const abortHandler = () => {
+                logger.debug('[loop] abortHandler called - key press detected');
                 if (remoteAbortController && !remoteAbortController.signal.aborted) {
+                    logger.debug('[loop] Aborting remote controller');
                     if (mode !== 'local') {
                         mode = 'local';
                         if (opts.onModeChange) {
                             opts.onModeChange(mode);
                         }
                     }
+                    
+                    // Clean up Ink UI when switching to local mode
+                    if (inkInstance) {
+                        inkInstance.unmount();
+                        inkInstance = null;
+                        messageBuffer?.clear();
+                        messageBuffer = null;
+                        logger.debug('[loop] Ink UI unmounted for local mode switch');
+                    }
+                    
                     opts.session.sendSessionEvent({ type: 'message', message: 'Inference aborted' });
                     remoteAbortController.abort();
+                } else {
+                    logger.debug('[loop] Remote controller already aborted or null');
                 }
                 if (process.stdin.isTTY) {
                     process.stdin.setRawMode(false);
@@ -207,6 +245,7 @@ export async function loop(opts: LoopOptions) {
                 process.stdin.setRawMode(true);
             }
             process.stdin.setEncoding("utf8");
+            logger.debug('[loop] Attaching stdin abort handler');
             process.stdin.on('data', abortHandler);
             try {
                 logger.debug(`Starting claudeRemote with messages: ${currentMessageQueue.size()}`);
@@ -230,6 +269,12 @@ export async function loop(opts: LoopOptions) {
                 if (opts.onProcessStart) {
                     opts.onProcessStart('remote');
                 }
+                
+                // Add status message to buffer
+                if (messageBuffer) {
+                    messageBuffer.addMessage('═'.repeat(40), 'status');
+                    messageBuffer.addMessage('Starting new Claude session...', 'status');
+                }
 
                 // Emit permission mode change event before starting claudeRemote
                 opts.session.sendSessionEvent({ type: 'permission-mode-changed', mode: currentPermissionMode });
@@ -250,6 +295,7 @@ export async function loop(opts: LoopOptions) {
                     claudeEnvVars: opts.claudeEnvVars,
                     claudeArgs: opts.claudeArgs,
                     onToolCallResolver: opts.onToolCallResolver,
+                    messageBuffer: messageBuffer,
                 });
 
             } catch (e) {
@@ -257,10 +303,12 @@ export async function loop(opts: LoopOptions) {
                     opts.session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                 }
             } finally {
+                remoteAbortController.abort(); // If process is still alive
                 // Call onProcessStop after remote mode completes
                 if (opts.onProcessStop) {
                     opts.onProcessStop('remote');
                 }
+                logger.debug('[loop] Removing stdin abort handler');
                 process.stdin.off('data', abortHandler);
                 if (process.stdin.isTTY) {
                     process.stdin.setRawMode(false);
@@ -269,6 +317,14 @@ export async function loop(opts: LoopOptions) {
                 // MessageQueue2 automatically handles mode changes, no need to manually close/recreate
             }
             if (mode !== 'remote') {
+                // Clean up Ink UI when exiting remote mode
+                if (inkInstance) {
+                    inkInstance.unmount();
+                    inkInstance = null;
+                    messageBuffer?.clear();
+                    messageBuffer = null;
+                    logger.debug('[loop] Ink UI unmounted after remote mode exit');
+                }
                 console.log('Switching back to good old claude...');
             }
         }
