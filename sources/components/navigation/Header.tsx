@@ -111,7 +111,8 @@ const styles = StyleSheet.create({
         alignItems: 'flex-start',
     },
     centerContainer: {
-        flex: 3,
+        flexGrow: 6,
+        flexBasis: 0,
         alignItems: 'center',
         justifyContent: 'center',
     },
@@ -158,10 +159,10 @@ interface ExtendedNavigationOptions extends Partial<NativeStackHeaderProps['opti
 const DefaultBackButton: React.FC<{ tintColor?: string; onPress: () => void }> = ({ tintColor = '#000', onPress }) => {
     return (
         <Pressable onPress={onPress} hitSlop={8}>
-            <Ionicons 
-                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} 
-                size={24} 
-                color={tintColor} 
+            <Ionicons
+                name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                size={24}
+                color={tintColor}
             />
         </Pressable>
     );
@@ -187,15 +188,15 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
 
     // Determine header left content
     let headerLeftContent: (() => React.ReactNode) | undefined;
-    
+
     if (options.headerLeft) {
         // Use custom headerLeft if provided
         headerLeftContent = () => options.headerLeft!({ canGoBack: !!back, tintColor: options.headerTintColor });
     } else if (back && options.headerBackVisible !== false) {
         // Show default back button if can go back and not explicitly hidden
         headerLeftContent = () => (
-            <DefaultBackButton 
-                tintColor={options.headerTintColor} 
+            <DefaultBackButton
+                tintColor={options.headerTintColor}
                 onPress={() => navigation.goBack()}
             />
         );

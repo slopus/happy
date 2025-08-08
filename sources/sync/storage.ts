@@ -42,6 +42,7 @@ interface StorageState {
     sessionsData: SessionListItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
     daemons: Record<string, DaemonStatus>;
+    realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyLoaded: () => void;
     applyMessages: (sessionId: string, messages: DecryptedMessage[]) => void;
@@ -52,6 +53,7 @@ interface StorageState {
     applyPurchases: (customerInfo: CustomerInfo) => void;
     recalculateOnline: () => void;
     applyDaemonStatus: (machineId: string, status: 'online' | 'offline') => void;
+    setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
 }
 
 export const storage = create<StorageState>()((set) => {
@@ -67,6 +69,7 @@ export const storage = create<StorageState>()((set) => {
         daemons: {},
         sessionsData: null,
         sessionMessages: {},
+        realtimeStatus: 'disconnected',
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
             const now = Date.now();
             const threshold = now - DISCONNECTED_TIMEOUT_MS;
@@ -418,6 +421,10 @@ export const storage = create<StorageState>()((set) => {
                 };
             }
         }),
+        setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => ({
+            ...state,
+            realtimeStatus: status
+        })),
     }
 });
 
@@ -504,4 +511,8 @@ export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSe
 
 export function useEntitlement(id: KnownEntitlements): boolean {
     return storage(useShallow((state) => state.purchases.entitlements[id] ?? false));
+}
+
+export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected' | 'error' {
+    return storage(useShallow((state) => state.realtimeStatus));
 }
