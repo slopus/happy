@@ -7,6 +7,7 @@ import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { PermissionModeSelector, PermissionMode } from './PermissionModeSelector';
+import { Shaker, ShakeInstance } from './Shaker';
 
 // Status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -123,39 +124,35 @@ export const AgentInput = React.memo((props: {
         }
     }, [props.onSend, currentState, props.onMicPress]);
 
-    // Long press abort button states
-    const [abortProgress, setAbortProgress] = React.useState(0);
+    // Double press abort button states
+    const [isFirstPress, setIsFirstPress] = React.useState(false);
     const [isAborting, setIsAborting] = React.useState(false);
-    const abortTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-    const abortIntervalRef = React.useRef<ReturnType<typeof setInterval> | null>(null);
-    const abortStartTimeRef = React.useRef<number>(0);
+    const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortButtonBgAnim = React.useRef(new Animated.Value(0)).current;
+    const shakerRef = React.useRef<ShakeInstance>(null);
 
-    const handleAbortPressIn = React.useCallback(() => {
+    const handleAbortPress = React.useCallback(async () => {
         if (!props.onAbort) return;
 
-        hapticsLight();
-        abortStartTimeRef.current = Date.now();
-        setAbortProgress(0);
-
-        // Start progress animation
-        abortIntervalRef.current = setInterval(() => {
-            const elapsed = Date.now() - abortStartTimeRef.current;
-            const progress = Math.min(elapsed / 3000, 1); // 3 seconds
-            setAbortProgress(progress);
-
-            if (progress >= 0.3 && progress < 0.35) {
-                hapticsLight();
-            } else if (progress >= 0.6 && progress < 0.65) {
-                hapticsLight();
-            } else if (progress >= 0.9 && progress < 0.95) {
-                hapticsLight();
-            }
-        }, 16);
-
-        // Set timer for 3 seconds
-        abortTimerRef.current = setTimeout(async () => {
+        if (!isFirstPress) {
+            // First press - show "Press again" and set timer
+            hapticsLight();
+            setIsFirstPress(true);
+            
+            // Reset after 2 seconds if no second press
+            resetTimerRef.current = setTimeout(() => {
+                setIsFirstPress(false);
+            }, 2000);
+        } else {
+            // Second press - execute abort
             hapticsError();
+            
+            // Clear the reset timer
+            if (resetTimerRef.current) {
+                clearTimeout(resetTimerRef.current);
+                resetTimerRef.current = null;
+            }
+            
             // Animate background color to red
             Animated.timing(abortButtonBgAnim, {
                 toValue: 1,
@@ -174,6 +171,10 @@ export const AgentInput = React.memo((props: {
                 if (elapsed < 300) {
                     await new Promise(resolve => setTimeout(resolve, 300 - elapsed));
                 }
+            } catch (error) {
+                // Shake on error
+                shakerRef.current?.shake();
+                console.error('Abort RPC call failed:', error);
             } finally {
                 // Animate back to normal
                 Animated.timing(abortButtonBgAnim, {
@@ -182,22 +183,19 @@ export const AgentInput = React.memo((props: {
                     useNativeDriver: false,
                 }).start(() => {
                     setIsAborting(false);
-                    handleAbortPressOut();
+                    setIsFirstPress(false);
                 });
             }
-        }, 3000);
-    }, [props.onAbort]);
+        }
+    }, [props.onAbort, isFirstPress]);
 
-    const handleAbortPressOut = React.useCallback(() => {
-        if (abortTimerRef.current) {
-            clearTimeout(abortTimerRef.current);
-            abortTimerRef.current = null;
-        }
-        if (abortIntervalRef.current) {
-            clearInterval(abortIntervalRef.current);
-            abortIntervalRef.current = null;
-        }
-        setAbortProgress(0);
+    // Clean up timer on unmount
+    React.useEffect(() => {
+        return () => {
+            if (resetTimerRef.current) {
+                clearTimeout(resetTimerRef.current);
+            }
+        };
     }, []);
 
     return (
@@ -245,63 +243,51 @@ export const AgentInput = React.memo((props: {
 
                         {/* Abort button */}
                         {props.onAbort && (
-                            <Animated.View
-                                style={{
-                                    backgroundColor: abortButtonBgAnim.interpolate({
-                                        inputRange: [0, 1],
-                                        outputRange: [Platform.select({ ios: '#F2F2F7', android: '#E0E0E0', default: '#F2F2F7' })!, Platform.select({ ios: '#FF3B30', android: '#F44336', default: '#FF3B30' })!]
-                                    }),
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    overflow: 'hidden',
-                                }}
-                            >
-                                <Pressable
-                                    onPressIn={handleAbortPressIn}
-                                    onPressOut={handleAbortPressOut}
-                                    disabled={isAborting}
+                            <Shaker ref={shakerRef}>
+                                <Animated.View
                                     style={{
-                                        position: 'relative',
-                                        paddingHorizontal: 12,
-                                        paddingVertical: 6,
-                                        minWidth: 100,
-                                        height: 32,
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
+                                        backgroundColor: abortButtonBgAnim.interpolate({
+                                            inputRange: [0, 1],
+                                            outputRange: [
+                                                isFirstPress 
+                                                    ? Platform.select({ ios: '#FFF3E0', android: '#FFE0B2', default: '#FFF3E0' })!
+                                                    : Platform.select({ ios: '#F2F2F7', android: '#E0E0E0', default: '#F2F2F7' })!, 
+                                                Platform.select({ ios: '#FF3B30', android: '#F44336', default: '#FF3B30' })!
+                                            ]
+                                        }),
+                                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                                        overflow: 'hidden',
                                     }}
                                 >
-                                    <View style={{
-                                        position: 'absolute',
-                                        inset: 0,
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                    }}>
+                                    <Pressable
+                                        onPress={handleAbortPress}
+                                        disabled={isAborting}
+                                        style={{
+                                            paddingHorizontal: 12,
+                                            paddingVertical: 6,
+                                            minWidth: 100,
+                                            height: 32,
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                        }}
+                                    >
                                         {isAborting ? (
                                             <ActivityIndicator size="small" color="#fff" />
                                         ) : (
-                                            <>
-                                                {/* Progress background */}
-                                                <View style={{
-                                                    position: 'absolute',
-                                                    top: 0,
-                                                    left: 0,
-                                                    bottom: 0,
-                                                    width: `${abortProgress * 100}%`,
-                                                    backgroundColor: Platform.select({ ios: '#FF3B30', android: '#F44336' }),
-                                                    opacity: 0.2,
-                                                }} />
-                                                <Text style={{
-                                                    fontSize: 13,
-                                                    color: abortProgress > 0 || isAborting ? Platform.select({ ios: '#FF3B30', android: '#F44336' }) : '#000',
-                                                    fontWeight: '600',
-                                                    ...Typography.default('semiBold')
-                                                }}>
-                                                    {abortProgress > 0 ? `Hold ${Math.ceil(3 - abortProgress * 3)}s` : 'Hold to abort'}
-                                                </Text>
-                                            </>
+                                            <Text style={{
+                                                fontSize: 13,
+                                                color: isFirstPress 
+                                                    ? Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })
+                                                    : '#000',
+                                                fontWeight: '600',
+                                                ...Typography.default('semiBold')
+                                            }}>
+                                                {isFirstPress ? 'Press again' : 'Abort'}
+                                            </Text>
                                         )}
-                                    </View>
-                                </Pressable>
-                            </Animated.View>
+                                    </Pressable>
+                                </Animated.View>
+                            </Shaker>
                         )}
                     </View>
                 </View>
