@@ -8,7 +8,6 @@ export class Session {
     readonly logPath: string;
     readonly api: ApiClient;
     readonly client: ApiSessionClient;
-    readonly scanner: SessionScanner
     readonly queue: MessageQueue2<PermissionMode>;
     readonly claudeEnvVars?: Record<string, string>;
     readonly claudeArgs?: string[];
@@ -25,7 +24,6 @@ export class Session {
         path: string,
         logPath: string,
         sessionId: string | null,
-        scanner: SessionScanner,
         claudeEnvVars?: Record<string, string>,
         claudeArgs?: string[],
         mcpServers: Record<string, any>,
@@ -37,7 +35,6 @@ export class Session {
         this.client = opts.client;
         this.logPath = opts.logPath;
         this.sessionId = opts.sessionId;
-        this.scanner = opts.scanner;
         this.queue = opts.messageQueue;
         this.claudeEnvVars = opts.claudeEnvVars;
         this.claudeArgs = opts.claudeArgs;
@@ -64,6 +61,5 @@ export class Session {
 
     onSessionFound = (sessionId: string) => {
         this.sessionId = sessionId;
-        this.scanner.onNewSession(sessionId);
     }
 }

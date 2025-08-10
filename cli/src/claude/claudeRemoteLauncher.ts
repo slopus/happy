@@ -9,6 +9,7 @@ import { Future } from "@/utils/future";
 import { SDKMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
+import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 
 export async function claudeRemoteLauncher(session: Session) {
 
@@ -58,10 +59,30 @@ export async function claudeRemoteLauncher(session: Session) {
     // Create permission server
     const permissions = await startPermissionResolver(session);
 
+    // Create SDK to Log converter
+    const sdkToLogConverter = new SDKToLogConverter({
+        sessionId: session.sessionId || 'unknown',
+        cwd: session.path,
+        version: process.env.npm_package_version
+    });
+
     // Handle messages
     function onMessage(message: SDKMessage) {
+
+        // Write to message log
         formatClaudeMessageForInk(message, messageBuffer);
+
+        // Write to permission server for tool id resolving
         permissions.onMessage(message);
+
+        // Convert SDK message to log format and send to client
+        const logMessage = sdkToLogConverter.convert(message);
+        if (logMessage) {
+            // Filter out system messages - they're usually not sent to logs
+            if (logMessage.type !== 'system') {
+                session.client.sendClaudeSessionMessage(logMessage);
+            }
+        }
     }
 
     try {
@@ -93,6 +114,7 @@ export async function claudeRemoteLauncher(session: Session) {
             abortController = new AbortController();
             abortFuture = new Future<void>();
             permissions.reset(); // Reset permissions before starting new session
+            sdkToLogConverter.resetParentChain(); // Reset parent chain for new conversation
             try {
                 await claudeRemote({
                     sessionId: session.sessionId,
@@ -106,7 +128,11 @@ export async function claudeRemoteLauncher(session: Session) {
                     },
                     permissionPromptToolName: 'mcp__permission__' + permissions.server.toolName,
                     permissionMode: messageData.mode,
-                    onSessionFound: session.onSessionFound,
+                    onSessionFound: (sessionId) => {
+                        // Update converter's session ID when new session is found
+                        sdkToLogConverter.updateSessionId(sessionId);
+                        session.onSessionFound(sessionId);
+                    },
                     onThinkingChange: session.onThinkingChange,
                     message: messageData.message,
                     claudeEnvVars: session.claudeEnvVars,

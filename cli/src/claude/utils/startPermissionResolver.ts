@@ -3,6 +3,7 @@ import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "../sdk";
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from "../sdk/prompts";
 import { Session } from "../session";
 import { startPermissionServerV2 } from "./startPermissionServerV2";
+import { deepEqual } from "@/utils/deepEqual";
 
 export async function startPermissionResolver(session: Session) {
 
@@ -25,7 +26,6 @@ export async function startPermissionResolver(session: Session) {
                 const wrappedResolve = (response: { approved: boolean, reason?: string }) => {
                     if (response.approved) {
                         // Inject the approval message at the beginning of the queue
-                        session.scanner.onRemoteUserMessageForDeduplication(PLAN_FAKE_RESTART); // Deduplicate
                         session.queue.unshift(PLAN_FAKE_RESTART, 'default');
                         resolve({ approved: false, reason: PLAN_FAKE_REJECT });
                     } else {
@@ -170,6 +170,29 @@ export async function startPermissionResolver(session: Session) {
 
     function reset() {
         toolCalls = [];
+        requests.clear();
+
+        // Move all pending requests to completedRequests with canceled status
+        session.client.updateAgentState((currentState) => {
+            const pendingRequests = currentState.requests || {};
+            const completedRequests = { ...currentState.completedRequests };
+
+            // Move each pending request to completed with canceled status
+            for (const [id, request] of Object.entries(pendingRequests)) {
+                completedRequests[id] = {
+                    ...request,
+                    completedAt: Date.now(),
+                    status: 'canceled',
+                    reason: 'Session switched to local mode'
+                };
+            }
+
+            return {
+                ...currentState,
+                requests: {}, // Clear all pending requests
+                completedRequests
+            };
+        });
     }
 
     function onMessage(message: SDKMessage) {

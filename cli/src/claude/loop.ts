@@ -15,14 +15,11 @@ interface LoopOptions {
     permissionMode?: PermissionMode
     startingMode?: 'local' | 'remote'
     onModeChange: (mode: 'local' | 'remote') => void
-    onThinkingChange: (thinking: boolean) => void
     mcpServers: Record<string, any>
-    sessionScanner: ReturnType<typeof createSessionScanner>
     session: ApiSessionClient
     api: ApiClient,
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
-    onToolCallResolver: (resolver: ((name: string, args: any) => string | null) | null) => void
     messageQueue: MessageQueue2<PermissionMode>
 }
 
@@ -35,7 +32,6 @@ export async function loop(opts: LoopOptions) {
         client: opts.session,
         path: opts.path,
         sessionId: null,
-        scanner: opts.sessionScanner,
         claudeEnvVars: opts.claudeEnvVars,
         claudeArgs: opts.claudeArgs,
         mcpServers: opts.mcpServers,

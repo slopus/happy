@@ -10,7 +10,7 @@ describe('sessionScanner', () => {
   let testDir: string
   let projectDir: string
   let collectedMessages: RawJSONLines[]
-  let scanner: ReturnType<typeof createSessionScanner> | null = null
+  let scanner: Awaited<ReturnType<typeof createSessionScanner>> | null = null
   
   beforeEach(async () => {
     testDir = join(tmpdir(), `scanner-test-${Date.now()}`)
@@ -26,7 +26,7 @@ describe('sessionScanner', () => {
   afterEach(async () => {
     // Clean up scanner
     if (scanner) {
-      scanner.cleanup()
+      await scanner.cleanup()
       scanner = null
     }
     
@@ -47,7 +47,8 @@ describe('sessionScanner', () => {
     // - Summary line
     // - Complete history from previous session (with NEW session ID)
     // - New messages
-    scanner = createSessionScanner({
+    scanner = await createSessionScanner({
+      sessionId: null,
       workingDirectory: testDir,
       onMessage: (msg) => collectedMessages.push(msg)
     })
@@ -145,7 +146,8 @@ describe('sessionScanner', () => {
   })
   
   it('should not process duplicate assistant messages with same message ID', async () => {
-    scanner = createSessionScanner({
+    scanner = await createSessionScanner({
+      sessionId: null,
       workingDirectory: testDir,
       onMessage: (msg) => collectedMessages.push(msg)
     })

@@ -8,7 +8,7 @@
 
 
 import chalk from 'chalk'
-import { start, StartOptions } from '@/ui/start'
+import { start, StartOptions } from '@/start'
 import { existsSync, rmSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'

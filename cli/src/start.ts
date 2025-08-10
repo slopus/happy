@@ -4,13 +4,12 @@ import { randomUUID } from 'node:crypto';
 import { loop } from '@/claude/loop';
 import os from 'node:os';
 import { AgentState, Metadata } from '@/api/types';
-import type { OnAssistantResultCallback } from '@/ui/messageFormatter';
 // @ts-ignore
-import packageJson from '../../package.json';
+import packageJson from '../package.json';
 import { registerHandlers } from '@/api/handlers';
 import { readSettings } from '@/persistence/persistence';
-import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from '@/claude/sdk/prompts';
-import { createSessionScanner } from '@/claude/utils/sessionScanner';
+import { PermissionMode } from '@anthropic-ai/claude-code';
+import { MessageQueue2 } from '@/utils/MessageQueue2';
 
 export interface StartOptions {
     model?: string
@@ -57,17 +56,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Create realtime session
     const session = api.session(response);
-    const pushClient = api.push();
-
-    // We should recieve updates when state changes immediately
-    // If we have not recieved an update - that means session is disconnected
-    // Either it was closed by user or the computer is offline
-    let thinking = false;
-    let mode: 'local' | 'remote' = 'local';
-    let pingInterval = setInterval(() => {
-        session.keepAlive(thinking, mode);
-    }, 2000);
-
 
     // Print log file path
     const logPath = await logger.logFilePathPromise;
@@ -75,23 +63,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     logger.infoDeveloper(`Logs: ${logPath}`);
 
     // Import MessageQueue2 and create message queue
-    const { MessageQueue2 } = await import('@/utils/MessageQueue2');
-    type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
-    const messageQueue = new MessageQueue2<PermissionMode>(
-        mode => mode  // Simple string hasher since modes are already strings
-    );
-
-    // Start MCP permission server
-    let requests = new Map<string, (response: { approved: boolean, reason?: string }) => void>();
-    let toolCallResolver: ((name: string, args: any) => string | null) | null = null;
-
-    // Create session scanner
-    const sessionScanner = createSessionScanner({
-        workingDirectory: workingDirectory,
-        onMessage: (message) => {
-            session.sendClaudeSessionMessage(message);
-        }
-    });
+    const messageQueue = new MessageQueue2<PermissionMode>(mode => mode);
 
     // Register all RPC handlers
     registerHandlers(session);
@@ -99,7 +71,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // Forward messages to the queue
     let currentPermissionMode = options.permissionMode;
     session.onUserMessage((message) => {
-        sessionScanner.onRemoteUserMessageForDeduplication(message.content.text);
 
         // Resolve permission mode from meta
         let messagePermissionMode = currentPermissionMode;
@@ -129,71 +100,19 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         permissionMode: options.permissionMode,
         startingMode: options.startingMode,
         messageQueue,
-        sessionScanner,
         api,
         onModeChange: (newMode) => {
-            mode = newMode;
             session.sendSessionEvent({ type: 'switch', mode: newMode });
-            session.keepAlive(thinking, mode);
-
-            // If switching from remote to local, clear all pending permission requests
-            if (newMode === 'local') {
-                logger.debug('Switching to local mode - clearing pending permission requests');
-
-                // Clear tool call resolver since we're switching to local mode
-                toolCallResolver = null;
-
-                // Reject all pending permission requests
-                for (const [id, resolve] of requests) {
-                    logger.debug(`Rejecting pending permission request: ${id}`);
-                    resolve({ approved: false, reason: 'Session switched to local mode' });
-                }
-                requests.clear();
-
-                // Move all pending requests to completedRequests with canceled status
-                session.updateAgentState((currentState) => {
-                    const pendingRequests = currentState.requests || {};
-                    const completedRequests = { ...currentState.completedRequests };
-
-                    // Move each pending request to completed with canceled status
-                    for (const [id, request] of Object.entries(pendingRequests)) {
-                        completedRequests[id] = {
-                            ...request,
-                            completedAt: Date.now(),
-                            status: 'canceled',
-                            reason: 'Session switched to local mode'
-                        };
-                    }
-
-                    return {
-                        ...currentState,
-                        controlledByUser: true,
-                        requests: {}, // Clear all pending requests
-                        completedRequests
-                    };
-                });
-            } else {
-                // Remote mode
-                session.updateAgentState((currentState) => ({
-                    ...currentState,
-                    controlledByUser: false
-                }));
-            }
+            session.updateAgentState((currentState) => ({
+                ...currentState,
+                controlledByUser: false
+            }));
         },
         mcpServers: {},
         session,
         claudeEnvVars: options.claudeEnvVars,
-        claudeArgs: options.claudeArgs,
-        onThinkingChange: (newThinking) => {
-            thinking = newThinking;
-            session.keepAlive(thinking, mode);
-        },
-        onToolCallResolver: (resolver) => {
-            toolCallResolver = resolver;
-        },
+        claudeArgs: options.claudeArgs
     });
-
-    clearInterval(pingInterval);
 
     // NOTE: Shut down as fast as possible to provide 0 claude overhead
     // Do not handle shutdown gracefully, just exit

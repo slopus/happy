@@ -29,6 +29,7 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
 
   // Assistant message - validates message object with usage and content
   z.object({
+    uuid: z.string(),
     type: z.literal("assistant"),
     message: z.object({// Entire message used in getMessageKey()
       usage: UsageSchema.optional(), // Used in apiSession.ts

@@ -2,8 +2,16 @@ import { logger } from "@/ui/logger";
 import { claudeLocal } from "./claudeLocal";
 import { Session } from "./session";
 import { Future } from "@/utils/future";
+import { createSessionScanner } from "./utils/sessionScanner";
 
 export async function claudeLocalLauncher(session: Session): Promise<'switch' | 'exit'> {
+
+    // Create scanner
+    const scanner = await createSessionScanner({
+        sessionId: session.sessionId,
+        workingDirectory: session.path,
+        onMessage: (message) => { session.client.sendClaudeSessionMessage(message) }
+    });
 
     // Handle abort
     let exitReason: 'switch' | 'exit' | null = null;
@@ -58,6 +66,12 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
             return 'switch';
         }
 
+        // Handle session start
+        const handleSessionStart = (sessionId: string) => {
+            session.onSessionFound(sessionId);
+            scanner.onNewSession(sessionId);
+        }
+
         // Run local mode
         while (true) {
             // If we already have an exit reason, return it
@@ -71,7 +85,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
                 await claudeLocal({
                     path: session.path,
                     sessionId: session.sessionId,
-                    onSessionFound: session.onSessionFound,
+                    onSessionFound: handleSessionStart,
                     onThinkingChange: session.onThinkingChange,
                     abort: processAbortController.signal,
                     claudeEnvVars: session.claudeEnvVars,
@@ -103,6 +117,9 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
         session.client.setHandler('abort', async () => { });
         session.client.setHandler('switch', async () => { });
         session.queue.setOnMessage(null);
+
+        // Cleanup
+        await scanner.cleanup();
     }
 
     // Return
