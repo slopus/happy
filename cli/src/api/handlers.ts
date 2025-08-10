@@ -7,20 +7,12 @@ import { ApiSessionClient } from './apiSession';
 import { logger } from '@/ui/logger';
 import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
-import { InterruptController } from '@/claude/InterruptController';
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { createHash } from 'crypto';
 import { join } from 'path';
 import { run as runRipgrep } from '@/ripgrep/index';
-import { PLAN_FAKE_REJECT } from '@/claude/sdk/prompts';
 
 const execAsync = promisify(exec);
-
-interface PermissionResponse {
-    id: string;
-    approved: boolean;
-    reason?: string;
-}
 
 interface BashRequest {
     command: string;
@@ -111,78 +103,7 @@ interface RipgrepResponse {
 /**
  * Register all RPC handlers with the session
  */
-export function registerHandlers(
-    session: ApiSessionClient,
-    interruptController: InterruptController,
-    permissionCallbacks?: {
-        requests: Map<string, (response: { approved: boolean, reason?: string }) => void>;
-    },
-    onSwitchRemoteRequested?: (id: string) => boolean
-) {
-    // Abort handler - interrupts Claude execution
-    session.setHandler<{}, void>('abort', async () => {
-        logger.debug('Abort request - interrupting Claude');
-        await interruptController.interrupt();
-    });
-
-    if (onSwitchRemoteRequested) {
-        session.setHandler<{ id: string }, boolean>('mode-change', async (message) => {
-            const approved = onSwitchRemoteRequested(message.id);
-            if (approved) {
-                session.sendSessionEvent({ type: 'switch', mode: 'remote' }, message.id);
-                return true;
-            }
-            return false;
-        });
-    }
-
-    // Permission handler - handles permission responses from mobile
-    if (permissionCallbacks) {
-        session.setHandler<PermissionResponse, void>('permission', async (message) => {
-            logger.debug('Permission response' + JSON.stringify(message));
-            const id = message.id;
-            const resolve = permissionCallbacks.requests.get(id);
-            if (resolve) {
-                if (!message.approved) {
-                    logger.debug('Permission denied, interrupting Claude');
-                    await interruptController.interrupt();
-                }
-                resolve({ approved: message.approved, reason: message.reason });
-                permissionCallbacks.requests.delete(id);
-            } else {
-                logger.debug('Permission request stale, likely timed out');
-                return;
-            }
-
-            // Move processed request to completedRequests
-            session.updateAgentState((currentState) => {
-                const request = currentState.requests?.[id];
-                if (!request) return currentState;
-
-                let r = { ...currentState.requests };
-                delete r[id];
-                
-                // Check for PLAN_FAKE_REJECT to report as success
-                const isExitPlanModeSuccess = request.tool === 'exit_plan_mode' && 
-                                             !message.approved && 
-                                             message.reason === PLAN_FAKE_REJECT;
-                
-                return ({
-                    ...currentState,
-                    requests: r,
-                    completedRequests: {
-                        ...currentState.completedRequests,
-                        [id]: {
-                            ...request,
-                            completedAt: Date.now(),
-                            status: isExitPlanModeSuccess ? 'approved' : (message.approved ? 'approved' : 'denied'),
-                            reason: isExitPlanModeSuccess ? 'Plan approved' : message.reason
-                        }
-                    }
-                });
-            });
-        });
-    }
+export function registerHandlers(session: ApiSessionClient) {
 
     // Shell command handler - executes commands in the default shell
     session.setHandler<BashRequest, BashResponse>('bash', async (data) => {
@@ -455,9 +376,9 @@ export function registerHandlers(
             };
         } catch (error) {
             logger.debug('Failed to run ripgrep:', error);
-            return { 
-                success: false, 
-                error: error instanceof Error ? error.message : 'Failed to run ripgrep' 
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Failed to run ripgrep'
             };
         }
     });

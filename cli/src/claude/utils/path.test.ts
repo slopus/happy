@@ -1,6 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
 import { getProjectPath } from './path';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 vi.mock('node:os', () => ({

@@ -4,15 +4,13 @@ import { randomUUID } from 'node:crypto';
 import { loop } from '@/claude/loop';
 import os from 'node:os';
 import { AgentState, Metadata } from '@/api/types';
-import { startPermissionServerV2 } from '@/claude/mcp/startPermissionServerV2';
 import type { OnAssistantResultCallback } from '@/ui/messageFormatter';
-import { InterruptController } from '@/claude/InterruptController';
 // @ts-ignore
 import packageJson from '../../package.json';
 import { registerHandlers } from '@/api/handlers';
 import { readSettings } from '@/persistence/persistence';
 import { PLAN_FAKE_REJECT, PLAN_FAKE_RESTART } from '@/claude/sdk/prompts';
-import { createSessionScanner } from '@/claude/scanner/sessionScanner';
+import { createSessionScanner } from '@/claude/utils/sessionScanner';
 
 export interface StartOptions {
     model?: string
@@ -76,9 +74,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     logger.infoDeveloper(`Session: ${response.id}`);
     logger.infoDeveloper(`Logs: ${logPath}`);
 
-    // Create interrupt controller
-    const interruptController = new InterruptController();
-
     // Import MessageQueue2 and create message queue
     const { MessageQueue2 } = await import('@/utils/MessageQueue2');
     type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
@@ -89,7 +84,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // Start MCP permission server
     let requests = new Map<string, (response: { approved: boolean, reason?: string }) => void>();
     let toolCallResolver: ((name: string, args: any) => string | null) | null = null;
-    
+
     // Create session scanner
     const sessionScanner = createSessionScanner({
         workingDirectory: workingDirectory,
@@ -98,148 +93,34 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         }
     });
 
-    const permissionServer = await startPermissionServerV2(async (request) => {
-        // Resolve tool call ID - throw if resolver not available
-        if (!toolCallResolver) {
-            const error = `Tool call resolver not available for permission request: ${request.name}`;
-            logger.info(`ERROR: ${error}`);
-            throw new Error(error);
-        }
-        
-        const toolCallId = toolCallResolver(request.name, request.arguments);
-        if (!toolCallId) {
-            const error = `Could not resolve tool call ID for permission request: ${request.name}`;
-            logger.info(`ERROR: ${error}`);
-            throw new Error(error);
-        }
-        
-        // Use tool call ID as the permission request ID
-        const id = toolCallId;
-        logger.debug(`Using tool call ID as permission request ID: ${id} for ${request.name}`);
-        
-        // Hack for exit_plan_mode
-        let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => { 
-            if (request.name === 'exit_plan_mode') {
-                // Intercept exit_plan_mode approval
-                const wrappedResolve = (response: { approved: boolean, reason?: string }) => {
-                    if (response.approved) {
-                        logger.debug('[HACK] exit_plan_mode approved - injecting approval message and denying');
-                        // Inject the approval message at the beginning of the queue
-                        sessionScanner.onRemoteUserMessageForDeduplication(PLAN_FAKE_RESTART); // Deduplicate
-                        messageQueue.unshift(PLAN_FAKE_RESTART, 'default');
-                        logger.debug(`[HACK] Message queue size after unshift: ${messageQueue.size()}`);
-                        // Return denied to cause Claude to stop
-                        resolve({ 
-                            approved: false, 
-                            reason: PLAN_FAKE_REJECT
-                        });
-                    } else {
-                        resolve(response);
-                    }
-                };
-                requests.set(id, wrappedResolve);
-            } else {
-                requests.set(id, resolve);
-            }
-        });
-        let timeout = setTimeout(async () => {
-            // Interrupt claude execution on permission timeout
-            logger.debug('Permission timeout - attempting to interrupt Claude');
-            const interrupted = await interruptController.interrupt();
-            if (interrupted) {
-                logger.debug('Claude interrupted successfully');
-            }
-
-            // Delete callback we are awaiting on
-            requests.delete(id);
-
-            // Move the permission request to completedRequests with canceled status
-            session.updateAgentState((currentState) => {
-                const request = currentState.requests?.[id];
-                if (!request) return currentState;
-
-                let r = { ...currentState.requests };
-                delete r[id];
-
-                return ({
-                    ...currentState,
-                    requests: r,
-                    completedRequests: {
-                        ...currentState.completedRequests,
-                        [id]: {
-                            ...request,
-                            completedAt: Date.now(),
-                            status: 'canceled',
-                            reason: 'Timeout'
-                        }
-                    }
-                });
-            });
-        }, 1000 * 60 * 4.5) // 4.5 minutes, 30 seconds before max timeout
-        logger.debug('Permission request' + id + ' ' + JSON.stringify(request));
-
-        // Send push notification for permission request
-        try {
-            await pushClient.sendToAllDevices(
-                'Permission Request',
-                `Claude wants to use ${request.name}`,
-                {
-                    sessionId: response.id,
-                    requestId: id,
-                    tool: request.name,
-                    type: 'permission_request'
-                }
-            );
-            logger.debug('Push notification sent for permission request');
-        } catch (error) {
-            logger.debug('Failed to send push notification:', error);
-        }
-
-        session.updateAgentState((currentState) => ({
-            ...currentState,
-            requests: {
-                ...currentState.requests,
-                [id]: {
-                    tool: request.name,
-                    arguments: request.arguments,
-                    createdAt: Date.now()
-                }
-            }
-        }));
-
-        // Clear timeout when permission is resolved
-        promise.then(() => clearTimeout(timeout)).catch(() => clearTimeout(timeout));
-
-        return promise;
-    });
-
     // Register all RPC handlers
-    registerHandlers(session, interruptController, { requests });
+    registerHandlers(session);
 
-    // Notify mobile client when in remote mode & assistant finished
-    const onAssistantResult: OnAssistantResultCallback = async (result) => {
-        try {
-            // Extract summary or create a default message
-            const summary = 'result' in result && result.result
-                ? result.result.substring(0, 100) + (result.result.length > 100 ? '...' : '')
-                : '';
+    // Forward messages to the queue
+    let currentPermissionMode = options.permissionMode;
+    session.onUserMessage((message) => {
+        sessionScanner.onRemoteUserMessageForDeduplication(message.content.text);
 
-            await pushClient.sendToAllDevices(
-                'Your move :D',
-                summary,
-                {
-                    sessionId: response.id,
-                    type: 'assistant_result',
-                    turns: result.num_turns,
-                    duration_ms: result.duration_ms,
-                    cost_usd: result.total_cost_usd
-                }
-            );
-            logger.debug('Push notification sent: Assistant result');
-        } catch (error) {
-            logger.debug('Failed to send assistant result push notification:', error);
+        // Resolve permission mode from meta
+        let messagePermissionMode = currentPermissionMode;
+        if (message.meta?.permissionMode) {
+            const validModes: PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
+            if (validModes.includes(message.meta.permissionMode as PermissionMode)) {
+                messagePermissionMode = message.meta.permissionMode as PermissionMode;
+                currentPermissionMode = messagePermissionMode;
+                logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
+
+            } else {
+                logger.debug(`[loop] Invalid permission mode received: ${message.meta.permissionMode}`);
+            }
+        } else {
+            logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
         }
-    };
+
+        // Push with resolved permission mode
+        messageQueue.push(message.content.text, messagePermissionMode || 'default');
+        logger.debugLargeJson('User message pushed to queue:', message)
+    });
 
     // Create claude loop
     await loop({
@@ -249,6 +130,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         startingMode: options.startingMode,
         messageQueue,
         sessionScanner,
+        api,
         onModeChange: (newMode) => {
             mode = newMode;
             session.sendSessionEvent({ type: 'switch', mode: newMode });
@@ -298,40 +180,8 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                 }));
             }
         },
-        onProcessStart: (processMode) => {
-            logger.debug(`[Process Lifecycle] Starting ${processMode} mode`);
-
-            // Clear permission requests when starting local mode
-            logger.debug('Starting process - clearing any stale permission requests');
-            for (const [id, resolve] of requests) {
-                logger.debug(`Rejecting stale permission request: ${id}`);
-                resolve({ approved: false, reason: 'Process restarted' });
-            }
-            requests.clear();
-        },
-        onProcessStop: (processMode) => {
-            logger.debug(`[Process Lifecycle] Stopped ${processMode} mode`);
-
-            logger.debug('Stopping process - clearing any stale permission requests');
-            for (const [id, resolve] of requests) {
-                logger.debug(`Rejecting stale permission request: ${id}`);
-                resolve({ approved: false, reason: 'Process restarted' });
-            }
-            requests.clear();
-
-            thinking = false;
-            session.keepAlive(thinking, mode);
-        },
-        mcpServers: {
-            'permission': {
-                type: 'http' as const,
-                url: permissionServer.url,
-            }
-        },
-        permissionPromptToolName: 'mcp__permission__' + permissionServer.toolName,
+        mcpServers: {},
         session,
-        onAssistantResult,
-        interruptController,
         claudeEnvVars: options.claudeEnvVars,
         claudeArgs: options.claudeArgs,
         onThinkingChange: (newThinking) => {

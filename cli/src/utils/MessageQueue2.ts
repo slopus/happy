@@ -14,11 +14,19 @@ export class MessageQueue2<T> {
     private queue: QueueItem<T>[] = [];
     private waiter: ((hasMessages: boolean) => void) | null = null;
     private closed = false;
+    private onMessageHandler: ((message: string, mode: T) => void) | null = null;
 
     constructor(
         private modeHasher: (mode: T) => string
     ) {
         logger.debug(`[MessageQueue2] Initialized`);
+    }
+
+    /**
+     * Set a handler that will be called when a message arrives
+     */
+    setOnMessage(handler: ((message: string, mode: T) => void) | null): void {
+        this.onMessageHandler = handler;
     }
 
     /**
@@ -38,6 +46,11 @@ export class MessageQueue2<T> {
             modeHash
         });
 
+        // Trigger message handler if set
+        if (this.onMessageHandler) {
+            this.onMessageHandler(message, mode);
+        }
+
         // Notify waiter if any
         if (this.waiter) {
             logger.debug(`[MessageQueue2] Notifying waiter`);
@@ -45,7 +58,7 @@ export class MessageQueue2<T> {
             this.waiter = null;
             waiter(true);
         }
-        
+
         logger.debug(`[MessageQueue2] push() completed. Queue size: ${this.queue.length}`);
     }
 
@@ -66,6 +79,11 @@ export class MessageQueue2<T> {
             modeHash
         });
 
+        // Trigger message handler if set
+        if (this.onMessageHandler) {
+            this.onMessageHandler(message, mode);
+        }
+
         // Notify waiter if any
         if (this.waiter) {
             logger.debug(`[MessageQueue2] Notifying waiter`);
@@ -73,8 +91,20 @@ export class MessageQueue2<T> {
             this.waiter = null;
             waiter(true);
         }
-        
+
         logger.debug(`[MessageQueue2] unshift() completed. Queue size: ${this.queue.length}`);
+    }
+
+    /**
+     * Reset the queue - clears all messages and resets to empty state
+     */
+    reset(): void {
+        logger.debug(`[MessageQueue2] reset() called. Clearing ${this.queue.length} messages`);
+        this.queue = [];
+        this.closed = false;
+        
+        // Clear waiter without calling it since we're not closing
+        this.waiter = null;
     }
 
     /**
@@ -83,7 +113,7 @@ export class MessageQueue2<T> {
     close(): void {
         logger.debug(`[MessageQueue2] close() called`);
         this.closed = true;
-        
+
         // Notify any waiting caller
         if (this.waiter) {
             const waiter = this.waiter;
@@ -115,19 +145,19 @@ export class MessageQueue2<T> {
         if (this.queue.length > 0) {
             return this.collectBatch();
         }
-        
+
         // If closed or already aborted, return null
         if (this.closed || abortSignal?.aborted) {
             return null;
         }
-        
+
         // Wait for messages to arrive
         const hasMessages = await this.waitForMessages(abortSignal);
-        
+
         if (!hasMessages) {
             return null;
         }
-        
+
         return this.collectBatch();
     }
 
@@ -152,9 +182,9 @@ export class MessageQueue2<T> {
 
         // Join all messages with newlines
         const combinedMessage = sameModeMessages.join('\n');
-        
+
         logger.debug(`[MessageQueue2] Collected batch of ${sameModeMessages.length} messages with mode hash: ${targetModeHash}`);
-        
+
         return {
             message: combinedMessage,
             mode
@@ -167,7 +197,7 @@ export class MessageQueue2<T> {
     private waitForMessages(abortSignal?: AbortSignal): Promise<boolean> {
         return new Promise((resolve) => {
             let abortHandler: (() => void) | null = null;
-            
+
             // Set up abort handler
             if (abortSignal) {
                 abortHandler = () => {
@@ -180,7 +210,7 @@ export class MessageQueue2<T> {
                 };
                 abortSignal.addEventListener('abort', abortHandler);
             }
-            
+
             const waiterFunc = (hasMessages: boolean) => {
                 // Clean up abort handler
                 if (abortHandler && abortSignal) {
@@ -188,7 +218,7 @@ export class MessageQueue2<T> {
                 }
                 resolve(hasMessages);
             };
-            
+
             // Check again in case messages arrived or queue closed while setting up
             if (this.queue.length > 0) {
                 if (abortHandler && abortSignal) {
@@ -197,7 +227,7 @@ export class MessageQueue2<T> {
                 resolve(true);
                 return;
             }
-            
+
             if (this.closed || abortSignal?.aborted) {
                 if (abortHandler && abortSignal) {
                     abortSignal.removeEventListener('abort', abortHandler);
@@ -205,7 +235,7 @@ export class MessageQueue2<T> {
                 resolve(false);
                 return;
             }
-            
+
             // Set the waiter
             this.waiter = waiterFunc;
             logger.debug('[MessageQueue2] Waiting for messages...');

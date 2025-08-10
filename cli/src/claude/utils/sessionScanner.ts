@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { readFile } from "node:fs/promises";
 import { logger } from "@/ui/logger";
 import { startFileWatcher } from "@/modules/watcher/startFileWatcher";
-import { getProjectPath } from "../path";
+import { getProjectPath } from "./path";
 import { PLAN_FAKE_REJECT } from "@/claude/sdk/prompts";
 
 // Custom tool response hacker function
@@ -82,7 +82,7 @@ export function createSessionScanner(opts: {
 
     // Main sync function
     const sync = new InvalidateSync(async () => {
-        logger.debug(`[SESSION_SCANNER] Syncing...`);
+        // logger.debug(`[SESSION_SCANNER] Syncing...`);
 
         // Collect session ids
         let sessions: string[] = [];
@@ -215,6 +215,8 @@ export function createSessionScanner(opts: {
         },
     }
 }
+
+export type SessionScanner = ReturnType<typeof createSessionScanner>;
 
 /*
   Duplication of messages has won.

@@ -14,7 +14,7 @@ type RpcHandlerMap = Map<string, RpcHandler>;
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string;
     private readonly secret: Uint8Array;
-    private readonly sessionId: string;
+    readonly sessionId: string;
     private metadata: Metadata | null;
     private metadataVersion: number;
     private agentState: AgentState | null;
@@ -245,7 +245,7 @@ export class ApiSessionClient extends EventEmitter {
      * Send a ping message to keep the connection alive
      */
     keepAlive(thinking: boolean, mode: 'local' | 'remote') {
-        logger.debug(`[API] Sending keep alive message: ${thinking}`);
+        // logger.debug(`[API] Sending keep alive message: ${thinking}`);
         this.socket.volatile.emit('session-alive', {
             sid: this.sessionId,
             time: Date.now(),

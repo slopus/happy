@@ -1,23 +1,6 @@
-// NOTE: To allow for longer than 5 minutes 
-// CRITICAL: Set custom timeouts BEFORE importing MCP SDK
-// import { setGlobalDispatcher, Agent } from 'undici';
-
-// Override the default 5-minute timeout with 27.8 hours
-// const globalAgent = new Agent({
-//   headersTimeout: 100000000, // 27.8 hours
-//   bodyTimeout: 100000000,
-//   keepAliveTimeout: 100000000,
-//   connectTimeout: 100000000
-// });
-
-// setGlobalDispatcher(globalAgent);
-// logger.debug('[MCP] Set global undici dispatcher with 27.8 hour timeouts');
-
-// NOW import MCP SDK (order matters!)
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { createServer } from "node:http";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { randomUUID } from "node:crypto";
 import { AddressInfo } from "node:net";
 import { z } from "zod";
 import { logger } from "@/ui/logger";
@@ -41,10 +24,6 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
             tool_name: z.string().describe('The tool that needs permission'),
             input: z.any().describe('The arguments for the tool'),
         },
-        // outputSchema: {
-        //     approved: z.boolean().describe('Whether the tool was approved'),
-        //     reason: z.string().describe('The reason for the approval or denial'),
-        // },
     }, async (args) => {
         const response = await handler({ name: args.tool_name, arguments: args.input });
         const result = response.approved
@@ -100,6 +79,10 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
 
     return {
         url: baseUrl.toString(),
-        toolName: 'ask_permission'
+        toolName: 'ask_permission',
+        stop: () => {
+            mcp.close();
+            server.close();
+        }
     }
 }
