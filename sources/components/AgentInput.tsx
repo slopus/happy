@@ -193,14 +193,14 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                         {props.permissionMode && props.permissionMode !== 'default' && (
                             <Text style={{
                                 fontSize: 11,
-                                color: props.permissionMode === 'acceptEdits' ? '#007AFF' : 
-                                       props.permissionMode === 'bypassPermissions' ? '#FF9500' : 
-                                       props.permissionMode === 'plan' ? '#34C759' : '#8E8E93',
+                                color: props.permissionMode === 'acceptEdits' ? '#007AFF' :
+                                    props.permissionMode === 'bypassPermissions' ? '#FF9500' :
+                                        props.permissionMode === 'plan' ? '#34C759' : '#8E8E93',
                                 ...Typography.default()
                             }}>
                                 {props.permissionMode === 'acceptEdits' ? 'Accept All Edits' :
-                                 props.permissionMode === 'bypassPermissions' ? 'Bypass All Permissions' :
-                                 props.permissionMode === 'plan' ? 'Plan Mode' : ''}
+                                    props.permissionMode === 'bypassPermissions' ? 'Bypass All Permissions' :
+                                        props.permissionMode === 'plan' ? 'Plan Mode' : ''}
                             </Text>
                         )}
                     </View>
@@ -339,16 +339,26 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                     {isAborting ? (
                                         <ActivityIndicator
                                             size="small"
-                                            color={Platform.select({ ios: '#FFF', android: '#FFF', default: '#FFF' })}
+                                            color={Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })}
                                         />
                                     ) : (
                                         <>
-                                            <Ionicons
+                                            {!isFirstPress ? <Ionicons
                                                 name={"stop"}
                                                 size={16}
                                                 color={isFirstPress ? '#FF9500' : 'black'}
                                                 style={{ marginRight: 4 }}
-                                            />
+                                            /> : <Text style={{
+                                                fontSize: 13,
+                                                color: isFirstPress
+                                                    ? Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })!
+                                                    : '#000',
+                                                fontWeight: '600',
+                                                ...Typography.default('semiBold')
+                                            }}>
+                                                Again
+                                            </Text>}
+                                            
                                             {/* <Text style={{
                                                 fontSize: 13,
                                                 color: isFirstPress
