@@ -84,6 +84,9 @@ export async function claudeRemote(opts: {
         }
     };
 
+    // Start thinking early
+    updateThinking(true);
+
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
