@@ -52,7 +52,7 @@ export default function SettingsScreen() {
             console.log('Purchase successful!');
         }
     };
-    
+
     // Use the multi-click hook for version clicks
     const handleVersionClick = useMultiClick(() => {
         // Toggle dev mode
@@ -174,17 +174,6 @@ export default function SettingsScreen() {
                     onPress={handleReportIssue}
                 />
                 <Item
-                    title="Terms of Service"
-                    icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
-                    onPress={async () => {
-                        const url = 'https://github.com/slopus/happy/blob/main/TERMS.md';
-                        const supported = await Linking.canOpenURL(url);
-                        if (supported) {
-                            await Linking.openURL(url);
-                        }
-                    }}
-                />
-                <Item
                     title="Privacy Policy"
                     icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
                     onPress={async () => {
@@ -195,6 +184,30 @@ export default function SettingsScreen() {
                         }
                     }}
                 />
+                <Item
+                    title="Terms of Service"
+                    icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
+                    onPress={async () => {
+                        const url = 'https://github.com/slopus/happy/blob/main/TERMS.md';
+                        const supported = await Linking.canOpenURL(url);
+                        if (supported) {
+                            await Linking.openURL(url);
+                        }
+                    }}
+                />
+                {Platform.OS === 'ios' && (
+                    <Item
+                        title="EULA"
+                        icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
+                        onPress={async () => {
+                            const url = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
+                            const supported = await Linking.canOpenURL(url);
+                            if (supported) {
+                                await Linking.openURL(url);
+                            }
+                        }}
+                    />
+                )}
             </ItemGroup>
         </ItemList>
     );
