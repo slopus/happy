@@ -324,14 +324,14 @@ export class ApiSessionClient extends EventEmitter {
      * @param handler - Handler function that returns the updated agent state
      */
     updateAgentState(handler: (metadata: AgentState) => AgentState) {
-        // console.log('Updating agent state', this.agentState);
+        logger.debugLargeJson('Updating agent state', this.agentState);
         backoff(async () => {
             let updated = handler(this.agentState || {});
             const answer = await this.socket.emitWithAck('update-state', { sid: this.sessionId, expectedVersion: this.agentStateVersion, agentState: updated ? encodeBase64(encrypt(updated, this.secret)) : null });
             if (answer.result === 'success') {
                 this.agentState = answer.agentState ? decrypt(decodeBase64(answer.agentState), this.secret) : null;
                 this.agentStateVersion = answer.version;
-                // console.log('Agent state updated', this.agentState);
+                logger.debug('Agent state updated', this.agentState);
             } else if (answer.result === 'version-mismatch') {
                 if (answer.version > this.agentStateVersion) {
                     this.agentStateVersion = answer.version;

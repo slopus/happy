@@ -32,15 +32,8 @@ import { uninstall } from './daemon/uninstall'
   // Parse global options first
   let installationLocation: 'global' | 'local'
     = (args.includes('--local') || process.env.HANDY_LOCAL) ? 'local' : 'global'
-  
-  // Parse server URL if provided
-  let serverUrl: string | undefined
-  const serverUrlIndex = args.indexOf('--happy-server-url')
-  if (serverUrlIndex !== -1 && serverUrlIndex + 1 < args.length) {
-    serverUrl = args[serverUrlIndex + 1]
-  }
 
-  initializeConfiguration(installationLocation, serverUrl)
+  initializeConfiguration(installationLocation)
   initLoggerWithGlobalConfiguration()
 
   logger.debug('Starting happy CLI with args: ', process.argv)
@@ -137,9 +130,6 @@ Currently only supported on macOS.
         options.claudeArgs = [...(options.claudeArgs || []), claudeArg]
       } else if (arg === '--daemon-spawn') {
         options.daemonSpawn = true
-      } else if (arg === '--happy-server-url') {
-        // Already processed in global options, skip the value
-        i++
       } else {
         console.error(chalk.red(`Unknown argument: ${arg}`))
         process.exit(1)
@@ -149,7 +139,7 @@ Currently only supported on macOS.
     // Show help
     if (showHelp) {
       console.log(`
-${chalk.bold('happy')} - Claude Code session sharing
+${chalk.bold('happy')} - Claude Code On the Go
 
 ${chalk.bold('Usage:')}
   happy [options]
@@ -190,6 +180,10 @@ ${chalk.bold('Examples:')}
   happy --claude-arg --option
                           Pass argument to Claude CLI
   happy logout            Logs out of your account and removes data directory
+
+[TODO: add after steve's refactor lands]
+${chalk.bold('Happy is a seamless passthrough to Claude CLI - so any commands that Claude CLI supports will work with Happy. Here is the help for Claude CLI:')}
+TODO: exec cluade --help and show inline here
 `)
       process.exit(0)
     }
@@ -212,7 +206,6 @@ ${chalk.bold('Examples:')}
 
     // Onboarding flow for daemon installation
     const settings = await readSettings() || { onboardingCompleted: false };
-    const experimentalFeatures = process.env.EXPERIMENTAL_FEATURES !== undefined
     if (settings.daemonAutoStartWhenRunningHappy === undefined) {
 
       console.log(chalk.cyan('\n🚀 Happy Daemon Setup\n'));
@@ -247,7 +240,7 @@ ${chalk.bold('Examples:')}
 
     // Auto-start daemon if enabled
     if (settings.daemonAutoStartWhenRunningHappy) {
-      console.debug('Starting Happy background service...');
+      logger.debug('Starting Happy background service...');
       
       if (!(await isDaemonRunning())) {
         // Make sure to start detached
@@ -256,36 +249,27 @@ ${chalk.bold('Examples:')}
         // When running with tsx, happyPath is the TypeScript file
         // When running the built binary, happyPath is the binary itself
         // We need to determine which case we're in
-        const isBuiltBinary = happyPath.endsWith('/bin/happy') || happyPath.endsWith('\\bin\\happy');
+        const runningFromBuiltBinary = happyPath.endsWith('happy') || happyPath.endsWith('happy.cmd');
         
         // Build daemon args
         const daemonArgs = ['daemon', 'start'];
-        if (serverUrl) {
-          daemonArgs.push('--happy-server-url', serverUrl);
-        }
         if (installationLocation === 'local') {
           daemonArgs.push('--local');
         }
         
-        const daemonProcess = isBuiltBinary 
-          ? spawn(happyPath, daemonArgs, {
-              detached: true,
-              stdio: ['ignore', 'inherit', 'inherit'], // Show stdout/stderr for debugging
-              env: {
-                ...process.env,
-                HANDY_SERVER_URL: serverUrl || process.env.HANDY_SERVER_URL, // Pass through server URL
-                HANDY_LOCAL: process.env.HANDY_LOCAL, // Pass through local flag
-              },
-            })
-          : spawn('npx', ['tsx', happyPath, ...daemonArgs], {
-              detached: true,
-              stdio: ['ignore', 'inherit', 'inherit'], // Show stdout/stderr for debugging
-              env: {
-                ...process.env,
-                HANDY_SERVER_URL: serverUrl || process.env.HANDY_SERVER_URL, // Pass through server URL
-                HANDY_LOCAL: process.env.HANDY_LOCAL, // Pass through local flag
-              },
-            });
+        let executable, args;
+        if (runningFromBuiltBinary) {
+          executable = happyPath
+          args = daemonArgs
+        } else {
+          executable = 'npx'
+          args = ['tsx', happyPath, ...daemonArgs]
+        }
+
+        const daemonProcess = spawn(executable, args, {
+          detached: true,
+          stdio: ['ignore', 'inherit', 'inherit'], // Show stdout/stderr for debugging
+        })
         daemonProcess.unref();
         
         // Give daemon a moment to write PID file

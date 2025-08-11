@@ -19,11 +19,11 @@ class Configuration {
   public readonly daemonLogsDir: string
   public readonly settingsFile: string
   public readonly privateKeyFile: string
-  public readonly daemonPidFile: string
+  public readonly daemonMetadataFile: string
   
-  constructor(location: 'global' | 'local' | string, serverUrl?: string) {
+  constructor(location: 'global' | 'local' | string) {
     // Server configuration - priority: parameter > environment > default
-    this.serverUrl = serverUrl || process.env.HANDY_SERVER_URL || 'https://handy-api.korshakov.org'
+    this.serverUrl = process.env.HANDY_SERVER_URL || 'https://handy-api.korshakov.org'
     
     // Check if we're running as daemon based on process args
     const args = process.argv.slice(2)
@@ -45,13 +45,13 @@ class Configuration {
     this.daemonLogsDir = join(this.happyDir, 'logs-daemon')
     this.settingsFile = join(this.happyDir, 'settings.json')
     this.privateKeyFile = join(this.happyDir, 'access.key')
-    this.daemonPidFile = join(this.happyDir, 'daemon.pid')
+    this.daemonMetadataFile = join(this.happyDir, 'daemon-metadata.json')
   }
 }
 
 // @ts-ignore - Intentionally undefined, will be initialized at startup
 export let configuration: Configuration = undefined
 
-export function initializeConfiguration(location: 'global' | 'local' | string, serverUrl?: string) {
-  configuration = new Configuration(location, serverUrl)
+export function initializeConfiguration(location: 'global' | 'local' | string) {
+  configuration = new Configuration(location)
 }

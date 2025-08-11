@@ -4,18 +4,12 @@ import { existsSync, readFileSync, rmdirSync, unlinkSync } from 'fs'
 import path from 'path'
 import os from 'os'
 import { configuration, initializeConfiguration } from '@/configuration'
+import { stopDaemon } from '@/daemon/run'
 
-function killAllDaemons() {
+async function killAllDaemons() {
   try {
-    // Kill by PID file
-    if (existsSync(configuration.daemonPidFile)) {
-      const pid = readFileSync(configuration.daemonPidFile, 'utf-8').trim()
-      console.log(`Killing daemon from PID file: ${pid}`)
-      try {
-        process.kill(parseInt(pid), 'SIGKILL')
-      } catch {}
-      unlinkSync(configuration.daemonPidFile)
-    }
+    // Use the stopDaemon function from run.ts
+    await stopDaemon()
     
     // Kill any stragglers
     execSync("pkill -f 'daemon start' || true", { stdio: 'ignore' })
@@ -31,20 +25,20 @@ describe('daemon tests', () => {
     console.log('Build complete!')
   })
   
-  beforeEach(() => {
+  beforeEach(async () => {
     console.log('\n--- BEFORE TEST ---')
-    killAllDaemons()
+    await killAllDaemons()
     initializeConfiguration('global')
   })
 
-  afterEach(() => {
+  afterEach(async () => {
     console.log('\n--- AFTER TEST ---')
-    killAllDaemons()
+    await killAllDaemons()
   })
 
-  it('daemon writes PID file', async () => {
+  it('daemon writes metadata file', async () => {
     console.log('Starting daemon...')
-    console.log('Test expects PID file at:', configuration.daemonPidFile)
+    console.log('Test expects metadata file at:', configuration.daemonMetadataFile)
     
     // Start daemon using the built binary
     const { spawn } = await import('child_process')
@@ -68,26 +62,26 @@ describe('daemon tests', () => {
     
     daemonProcess.unref()
     
-    // Wait for PID file
-    console.log('Waiting for PID file...')
+    // Wait for metadata file
+    console.log('Waiting for metadata file...')
     let attempts = 0
-    while (!existsSync(configuration.daemonPidFile) && attempts < 50) {
+    while (!existsSync(configuration.daemonMetadataFile) && attempts < 50) {
       await new Promise(resolve => setTimeout(resolve, 100))
       attempts++
     }
     
-    console.log(`PID file exists after ${attempts} attempts: ${existsSync(configuration.daemonPidFile)}`)
+    console.log(`Metadata file exists after ${attempts} attempts: ${existsSync(configuration.daemonMetadataFile)}`)
     
-    if (!existsSync(configuration.daemonPidFile)) {
+    if (!existsSync(configuration.daemonMetadataFile)) {
       console.log('STDOUT:', stdout)
       console.log('STDERR:', stderr)
     }
     
-    expect(existsSync(configuration.daemonPidFile)).toBe(true)
+    expect(existsSync(configuration.daemonMetadataFile)).toBe(true)
     
-    const pid = readFileSync(configuration.daemonPidFile, 'utf-8').trim()
-    console.log(`PID from file: ${pid}`)
-    expect(parseInt(pid)).toBeGreaterThan(0)
+    const metadata = JSON.parse(readFileSync(configuration.daemonMetadataFile, 'utf-8'))
+    console.log(`PID from metadata: ${metadata.pid}`)
+    expect(metadata.pid).toBeGreaterThan(0)
   }, 10000)
 
   it('second daemon should not start', async () => {
@@ -102,14 +96,15 @@ describe('daemon tests', () => {
     })
     firstDaemon.unref()
     
-    // Wait for PID file
+    // Wait for metadata file
     let attempts = 0
-    while (!existsSync(configuration.daemonPidFile) && attempts < 50) {
+    while (!existsSync(configuration.daemonMetadataFile) && attempts < 50) {
       await new Promise(resolve => setTimeout(resolve, 100))
       attempts++
     }
     
-    const firstPid = readFileSync(configuration.daemonPidFile, 'utf-8').trim()
+    const firstMetadata = JSON.parse(readFileSync(configuration.daemonMetadataFile, 'utf-8'))
+    const firstPid = firstMetadata.pid
     console.log(`First daemon PID: ${firstPid}`)
     
     // Try to start second daemon
@@ -119,8 +114,8 @@ describe('daemon tests', () => {
     })
     
     // PID should still be the first one
-    const currentPid = readFileSync(configuration.daemonPidFile, 'utf-8').trim()
-    expect(currentPid).toBe(firstPid)
+    const currentMetadata = JSON.parse(readFileSync(configuration.daemonMetadataFile, 'utf-8'))
+    expect(currentMetadata.pid).toBe(firstPid)
   }, 10000)
 
   it('daemon spawn-happy-session RPC test', () => {

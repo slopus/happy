@@ -133,11 +133,6 @@ class Logger {
     }
   }
   
-  daemonDebug(message: string, ...args: unknown[]): void {
-    // Just use regular debug logging - the logger instance will handle the file path
-    this.debug(`[DAEMON] ${message}`, ...args)
-  }
-  
   private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {
     switch (level) {
       case 'debug': {

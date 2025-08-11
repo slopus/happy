@@ -3,7 +3,7 @@ import { MachineIdentity } from './types'
 import { logger } from '@/ui/logger'
 import { readSettings, writeSettings, readCredentials } from '@/persistence/persistence'
 import { hostname } from 'os'
-import { writeFileSync, readFileSync, existsSync, unlinkSync, mkdirSync, openSync, writeSync, closeSync } from 'fs'
+import { writeFileSync, readFileSync, existsSync, unlinkSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { doAuth } from '@/ui/auth'
@@ -11,10 +11,25 @@ import crypto from 'crypto'
 import { spawn } from 'child_process'
 import { configuration } from '@/configuration'
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate'
+import packageJson from '../../package.json'
 
-// Store the file descriptor globally to keep the lock
-let pidFileFd: number | null = null;
+interface DaemonMetadata {
+    pid: number;
+    startTime: string;
+    version: string;
+    childPids?: number[];
+}
 
+/**
+ * Will be called from the same index.ts file as the regular CLI.
+ * Will be running in a separate process.
+ * 
+ * Usually
+ * - User runs `happy`
+ * - We offer them to start the daemon
+ * - If yes, we run the CLI itself with `daemon start` parameters & detach
+ * - Finally in the new process we run this `startDaemon` function
+ */
 export async function startDaemon(): Promise<void> {
     // IMMEDIATELY check platform
     if (process.platform !== 'darwin') {
@@ -22,28 +37,63 @@ export async function startDaemon(): Promise<void> {
         process.exit(1);
     }
     
-    logger.daemonDebug('Starting daemon process...');
-    logger.daemonDebug(`Server URL: ${configuration.serverUrl}`);
+    logger.debug('[DAEMON RUN] Starting daemon process...');
+    logger.debug(`[DAEMON RUN] Server URL: ${configuration.serverUrl}`);
     
-    if (await isDaemonRunning()) {
-        logger.daemonDebug('Happy daemon is already running');
-        process.exit(0);
+    const runningDaemon = await getDaemonMetadata();
+    if (runningDaemon) {
+        if (runningDaemon.version !== packageJson.version) {
+            logger.debug(`[DAEMON RUN] Daemon version mismatch (running: ${runningDaemon.version}, current: ${packageJson.version}), restarting...`);
+            await stopDaemon();
+            // Small delay to ensure cleanup
+            await new Promise(resolve => setTimeout(resolve, 500));
+        } else if (await isDaemonProcessRunning(runningDaemon.pid)) {
+            logger.debug('[DAEMON RUN] Happy daemon is already running with correct version');
+            process.exit(0);
+        } else {
+            logger.debug('[DAEMON RUN] Stale daemon metadata found, cleaning up');
+            await cleanupDaemonMetadata();
+        }
     }
 
-    // Write PID file to claim daemon ownership
-    pidFileFd = writePidFile();
-    logger.daemonDebug('PID file written');
+    // First, clean up any orphaned child processes from previous run
+    const oldMetadata = await getDaemonMetadata();
+    if (oldMetadata && oldMetadata.childPids && oldMetadata.childPids.length > 0) {
+        logger.debug(`[DAEMON RUN] Found ${oldMetadata.childPids.length} potential orphaned child processes from previous run`);
+        for (const childPid of oldMetadata.childPids) {
+            try {
+                // Check if process still exists
+                process.kill(childPid, 0);
+                
+                // Process exists - verify it's a happy process before killing
+                const isHappy = await isProcessHappyChild(childPid);
+                if (isHappy) {
+                    logger.debug(`[DAEMON RUN] Killing orphaned happy process ${childPid}`);
+                    process.kill(childPid, 'SIGTERM');
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    try {
+                        process.kill(childPid, 0);
+                        process.kill(childPid, 'SIGKILL');
+                    } catch {
+                        // Already dead
+                    }
+                }
+            } catch {
+                // Process doesn't exist, that's fine
+                logger.debug(`[DAEMON RUN] Process ${childPid} doesn't exist (already dead)`);
+            }
+        }
+    }
+    
+    // Write daemon metadata
+    writeDaemonMetadata();
+    logger.debug('[DAEMON RUN] Daemon metadata written');
 
     // Start caffeinate to prevent sleep while daemon runs
     const caffeinateStarted = startCaffeinate();
     if (caffeinateStarted) {
-        logger.daemonDebug('Sleep prevention enabled for daemon');
+        logger.debug('[DAEMON RUN] Sleep prevention enabled for daemon');
     }
-
-    // Setup cleanup handlers
-    process.on('SIGINT', () => { stopDaemon().catch(console.error); });
-    process.on('SIGTERM', () => { stopDaemon().catch(console.error); });
-    process.on('exit', () => { stopDaemon().catch(console.error); });
 
     try {
         // Load or create machine identity
@@ -59,13 +109,13 @@ export async function startDaemon(): Promise<void> {
             machineId: settings.machineId!,
             machineHost: settings.machineHost || hostname(),
             platform: process.platform,
-            version: process.env.npm_package_version || 'unknown'
+            version: packageJson.version
         };
 
         // Get auth token and secret
         let credentials = await readCredentials();
         if (!credentials) {
-            logger.daemonDebug('No credentials found, running auth');
+            logger.debug('[DAEMON RUN] No credentials found, running auth');
             await doAuth();
             credentials = await readCredentials();
             if (!credentials) {
@@ -83,25 +133,46 @@ export async function startDaemon(): Promise<void> {
         );
 
         daemon.on('connected', () => {
-            logger.daemonDebug('Connected to server event received');
+            logger.debug('[DAEMON RUN] Connected to server event received');
         });
 
         daemon.on('disconnected', () => {
-            logger.daemonDebug('Disconnected from server event received');
+            logger.debug('[DAEMON RUN] Disconnected from server event received');
         });
 
         daemon.on('shutdown', () => {
-            logger.daemonDebug('Shutdown requested');
-            stopDaemon();
+            logger.debug('[DAEMON RUN] Shutdown requested');
+            daemon?.shutdown();
+            cleanupDaemonMetadata();
             process.exit(0);
         });
 
         // Connect to server
         daemon.connect();
-        logger.daemonDebug('Daemon started successfully');
+        logger.debug('[DAEMON RUN] Daemon started successfully');
+
+
+        // Setup cleanup handlers
+        process.on('SIGINT', async () => {
+            logger.debug('[DAEMON RUN] Received SIGINT, shutting down...');
+            if (daemon) {
+                daemon.shutdown(); // This kills all spawned processes
+            }
+            await cleanupDaemonMetadata(); // Clean up our own metadata file
+            process.exit(0);
+        });
+        
+        process.on('SIGTERM', async () => {
+            logger.debug('[DAEMON RUN] Received SIGTERM, shutting down...');
+            if (daemon) {
+                daemon.shutdown(); // This kills all spawned processes
+            }
+            await cleanupDaemonMetadata(); // Clean up our own metadata file
+            process.exit(0);
+        });
 
     } catch (error) {
-        logger.daemonDebug('Failed to start daemon', error);
+        logger.debug('[DAEMON RUN] Failed to start daemon', error);
         stopDaemon();
         process.exit(1);
     }
@@ -114,91 +185,82 @@ export async function startDaemon(): Promise<void> {
 
 export async function isDaemonRunning(): Promise<boolean> {
     try {
-        logger.daemonDebug('[isDaemonRunning] Checking if daemon is running...');
+        logger.debug('[DAEMON RUN] [isDaemonRunning] Checking if daemon is running...');
         
-        // First check PID file
-        if (existsSync(configuration.daemonPidFile)) {
-            logger.daemonDebug('[isDaemonRunning] PID file exists');
-            const pid = parseInt(readFileSync(configuration.daemonPidFile, 'utf-8'));
-            logger.daemonDebug('[isDaemonRunning] PID from file:', pid);
-            
-            // Check if process exists
-            try {
-                process.kill(pid, 0);
-                logger.daemonDebug('[isDaemonRunning] Process exists, checking if it\'s a happy daemon...');
-                // Verify it's actually a happy daemon process
-                const isHappyDaemon = await isProcessHappyDaemon(pid);
-                logger.daemonDebug('[isDaemonRunning] isHappyDaemon:', isHappyDaemon);
-                if (isHappyDaemon) {
-                    return true;
-                } else {
-                    // PID file points to wrong process, clean it up
-                    logger.daemonDebug('[isDaemonRunning] PID is not a happy daemon, cleaning up');
-                    logger.debug(`PID ${pid} is not a happy daemon, cleaning up`);
-                    unlinkSync(configuration.daemonPidFile);
-                }
-            } catch (error) {
-                // Process not running, clean up stale PID file
-                logger.daemonDebug('[isDaemonRunning] Process not running, cleaning up stale PID file');
-                logger.debug('Process not running, cleaning up stale PID file');
-                unlinkSync(configuration.daemonPidFile);
-            }
-        } else {
-            logger.daemonDebug('[isDaemonRunning] No PID file found');
+        const metadata = await getDaemonMetadata();
+        if (!metadata) {
+            logger.debug('[DAEMON RUN] [isDaemonRunning] No daemon metadata found');
+            return false;
         }
         
+        logger.debug('[DAEMON RUN] [isDaemonRunning] Daemon metadata exists');
+        logger.debug('[DAEMON RUN] [isDaemonRunning] PID from metadata:', metadata.pid);
         
-        return false;
+        // Check if process exists and is a happy daemon
+        const isRunning = await isDaemonProcessRunning(metadata.pid);
+        if (!isRunning) {
+            logger.debug('[DAEMON RUN] [isDaemonRunning] Process not running, cleaning up stale metadata');
+            await cleanupDaemonMetadata();
+            return false;
+        }
+        
+        return true;
     } catch (error) {
-        logger.daemonDebug('[isDaemonRunning] Error:', error);
+        logger.debug('[DAEMON RUN] [isDaemonRunning] Error:', error);
         logger.debug('Error checking daemon status', error);
         return false;
     }
 }
 
-function writePidFile(): number {
+async function isDaemonProcessRunning(pid: number): Promise<boolean> {
+    try {
+        process.kill(pid, 0);
+        logger.debug('[DAEMON RUN] Process exists, checking if it\'s a happy daemon...');
+        // Verify it's actually a happy daemon process
+        const isHappyDaemon = await isProcessHappyDaemon(pid);
+        logger.debug('[DAEMON RUN] isHappyDaemon:', isHappyDaemon);
+        return isHappyDaemon;
+    } catch (error) {
+        return false;
+    }
+}
+
+function writeDaemonMetadata(childPids?: number[]): void {
     const happyDir = join(homedir(), '.happy');
     if (!existsSync(happyDir)) {
         mkdirSync(happyDir, { recursive: true });
     }
     
-    // Try to open with exclusive create flag
+    const metadata: DaemonMetadata = {
+        pid: process.pid,
+        startTime: new Date().toISOString(),
+        version: packageJson.version,
+        ...(childPids && { childPids })
+    };
+    
+    writeFileSync(configuration.daemonMetadataFile, JSON.stringify(metadata, null, 2));
+}
+
+async function getDaemonMetadata(): Promise<DaemonMetadata | null> {
     try {
-        const fd = openSync(configuration.daemonPidFile, 'wx');
-        writeSync(fd, process.pid.toString());
-        // Return the file descriptor but DON'T close it - this maintains the lock
-        return fd;
-    } catch (error: any) {
-        if (error.code === 'EEXIST') {
-            // File exists, check if we can get a write lock
-            try {
-                const fd = openSync(configuration.daemonPidFile, 'r+');
-                // If we can open for write, the daemon is likely dead
-                const existingPid = readFileSync(configuration.daemonPidFile, 'utf-8').trim();
-                closeSync(fd);
-                
-                // Check if that process is still alive
-                try {
-                    process.kill(parseInt(existingPid), 0);
-                    // Process exists
-                    logger.daemonDebug('PID file exists and process is running');
-                    logger.daemonDebug('Happy daemon is already running');
-                    process.exit(0);
-                } catch {
-                    // Process doesn't exist, clean up stale PID file
-                    logger.daemonDebug('PID file exists but process is dead, cleaning up');
-                    unlinkSync(configuration.daemonPidFile);
-                    // Retry
-                    return writePidFile();
-                }
-            } catch (lockError: any) {
-                // Can't get write access, daemon must be running with lock held
-                logger.daemonDebug('Cannot acquire write lock on PID file, daemon is running');
-                logger.daemonDebug('Happy daemon is already running');
-                process.exit(0);
-            }
+        if (!existsSync(configuration.daemonMetadataFile)) {
+            return null;
         }
-        throw error;
+        const content = readFileSync(configuration.daemonMetadataFile, 'utf-8');
+        return JSON.parse(content) as DaemonMetadata;
+    } catch (error) {
+        logger.debug('Error reading daemon metadata', error);
+        return null;
+    }
+}
+
+async function cleanupDaemonMetadata(): Promise<void> {
+    try {
+        if (existsSync(configuration.daemonMetadataFile)) {
+            unlinkSync(configuration.daemonMetadataFile);
+        }
+    } catch (error) {
+        logger.debug('Error cleaning up daemon metadata', error);
     }
 }
 
@@ -207,34 +269,66 @@ export async function stopDaemon() {
         // Stop caffeinate when stopping daemon
         stopCaffeinate();
         logger.debug('Stopped sleep prevention');
-        
-        // Close our file descriptor if we have one
-        if (pidFileFd !== null) {
+
+        // Get daemon metadata to find PID
+        const metadata = await getDaemonMetadata();
+        if (metadata) {
+            logger.debug(`Stopping daemon with PID ${metadata.pid}`);
+            
             try {
-                closeSync(pidFileFd);
-            } catch {}
-            pidFileFd = null;
-        }
-        
-        // Stop daemon from PID file
-        if (existsSync(configuration.daemonPidFile)) {
-            const pid = parseInt(readFileSync(configuration.daemonPidFile, 'utf-8'));
-            logger.debug(`Stopping daemon with PID ${pid}`);
-            try {
-                process.kill(pid, 'SIGTERM');
-                // Give it time to shutdown gracefully
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                // Force kill if still running
+                // Send SIGTERM to daemon and let it clean up its own children
+                process.kill(metadata.pid, 'SIGTERM');
+                
+                // Give it time to shutdown gracefully (including killing its children)
+                await new Promise(resolve => setTimeout(resolve, 2000));
+                
+                // Check if daemon process is still running
                 try {
-                    process.kill(pid, 0);
-                    process.kill(pid, 'SIGKILL');
+                    process.kill(metadata.pid, 0);
+                    // Still running, force kill
+                    logger.debug('Daemon still running, force killing...');
+                    process.kill(metadata.pid, 'SIGKILL');
                 } catch {
-                    // Process already dead
+                    // Process already dead - good
+                    logger.debug('Daemon exited cleanly');
                 }
             } catch (error) {
-                logger.debug('Process already dead or inaccessible', error);
+                logger.debug('Daemon process already dead or inaccessible', error);
             }
-            unlinkSync(configuration.daemonPidFile);
+            
+            // Wait a bit more for cleanup
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // NOW check if there are any orphaned child processes
+            // This only happens if daemon crashed or didn't clean up properly
+            if (metadata.childPids && metadata.childPids.length > 0) {
+                logger.debug(`Checking for ${metadata.childPids.length} potential orphaned child processes...`);
+                for (const childPid of metadata.childPids) {
+                    try {
+                        // Check if process still exists
+                        process.kill(childPid, 0);
+                        
+                        // Process exists - verify it's a happy process before killing
+                        const isHappy = await isProcessHappyChild(childPid);
+                        if (isHappy) {
+                            logger.debug(`Killing orphaned happy process ${childPid}`);
+                            process.kill(childPid, 'SIGTERM');
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            try {
+                                process.kill(childPid, 0);
+                                process.kill(childPid, 'SIGKILL');
+                            } catch {
+                                // Already dead
+                            }
+                        }
+                    } catch {
+                        // Process doesn't exist, that's fine
+                    }
+                }
+            }
+            
+            // Only clean up metadata file after everything is done
+            await cleanupDaemonMetadata();
         }
     } catch (error) {
         logger.debug('Error stopping daemon', error);
@@ -255,6 +349,28 @@ async function isProcessHappyDaemon(pid: number): Promise<boolean> {
             const isHappyDaemon = output.includes('daemon start') && 
                                  (output.includes('happy') || output.includes('src/index'));
             resolve(isHappyDaemon);
+        });
+        
+        ps.on('error', () => {
+            resolve(false);
+        });
+    });
+}
+
+// Helper function to check if a PID belongs to a happy child process
+async function isProcessHappyChild(pid: number): Promise<boolean> {
+    return new Promise((resolve) => {
+        const ps = spawn('ps', ['-p', pid.toString(), '-o', 'command=']);
+        let output = '';
+        
+        ps.stdout.on('data', (data) => {
+            output += data.toString();
+        });
+        
+        ps.on('close', () => {
+            const isHappyChild = output.includes('--daemon-spawn') && 
+                                (output.includes('happy') || output.includes('src/index'));
+            resolve(isHappyChild);
         });
         
         ps.on('error', () => {
