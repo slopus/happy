@@ -158,7 +158,7 @@ describe('SDKToLogConverter', () => {
     })
 
     describe('Result messages', () => {
-        it('should convert successful result to summary', () => {
+        it('should not convert result messages', () => {
             const sdkMessage: SDKResultMessage = {
                 type: 'result',
                 subtype: 'success',
@@ -177,18 +177,7 @@ describe('SDKToLogConverter', () => {
 
             const logMessage = converter.convert(sdkMessage)
 
-            expect(logMessage).toBeTruthy()
-            expect(logMessage?.type).toBe('summary')
-            expect(logMessage).toMatchObject({
-                type: 'summary',
-                summary: 'Session completed successfully in 5 turns',
-                usage: {
-                    input_tokens: 100,
-                    output_tokens: 200
-                },
-                totalCost: 0.05,
-                duration: 3000
-            })
+            expect(logMessage).toBeNull()
         })
 
         it('should not convert error results', () => {

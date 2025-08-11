@@ -173,24 +173,9 @@ export class SDKToLogConverter {
             }
 
             case 'result': {
-                // Result messages are typically not sent to logs
-                // They're more for SDK consumption
-                // But we can include them as metadata if needed
-                const resultMsg = sdkMessage as SDKResultMessage
-
-                // Could convert to a summary message
-                if (resultMsg.subtype === 'success') {
-                    logMessage = {
-                        type: 'summary',
-                        summary: `Session completed successfully in ${resultMsg.num_turns} turns`,
-                        leafUuid: this.lastUuid ?? uuid,
-                        // Include usage and cost info
-                        usage: resultMsg.usage,
-                        totalCost: resultMsg.total_cost_usd,
-                        duration: resultMsg.duration_ms,
-                        sessionId: resultMsg.session_id || this.context.sessionId
-                    }
-                }
+                // Result messages are not converted to log messages
+                // They're SDK-specific messages that indicate session completion
+                // Not part of the actual conversation log
                 break
             }
 

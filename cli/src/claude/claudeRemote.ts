@@ -114,7 +114,7 @@ export async function claudeRemote(opts: {
             if (message.type === 'result') {
                 updateThinking(false);
                 logger.debug('[claudeRemote] Result received, exiting claudeRemote');
-                break; // Exit the loop when result is received
+                return; // Exit the loop when result is received
             }
 
             // Handle plan result
@@ -124,11 +124,11 @@ export async function claudeRemote(opts: {
                     for (let c of msg.message.content) {
                         if (c.type === 'tool_result' && (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode')) { // Exit on any result of plan mode tool call
                             logger.debug('[claudeRemote] Plan result received, exiting claudeRemote');
-                            break;
+                            return;
                         }
                         if (c.type === 'tool_result' && c.tool_use_id && opts.responses.has(c.tool_use_id) && !opts.responses.get(c.tool_use_id)!!.approved) { // Exit on any tool permission rejection
                             logger.debug('[claudeRemote] Tool rejected, exiting claudeRemote');
-                            break;
+                            return;
                         }
                     }
                 }

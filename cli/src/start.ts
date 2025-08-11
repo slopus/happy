@@ -10,6 +10,7 @@ import { registerHandlers } from '@/api/handlers';
 import { readSettings } from '@/persistence/persistence';
 import { PermissionMode } from '@anthropic-ai/claude-code';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 
 export interface StartOptions {
     model?: string
@@ -61,6 +62,12 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     const logPath = await logger.logFilePathPromise;
     logger.infoDeveloper(`Session: ${response.id}`);
     logger.infoDeveloper(`Logs: ${logPath}`);
+
+    // Start caffeinate to prevent sleep on macOS
+    const caffeinateStarted = startCaffeinate();
+    if (caffeinateStarted) {
+        logger.infoDeveloper('Sleep prevention enabled (macOS)');
+    }
 
     // Import MessageQueue2 and create message queue
     const messageQueue = new MessageQueue2<PermissionMode>(mode => mode);
@@ -124,6 +131,10 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // Close session
     logger.debug('Closing session...');
     await session.close();
+
+    // Stop caffeinate before exiting
+    stopCaffeinate();
+    logger.debug('Stopped sleep prevention');
 
     // Exit
     process.exit(0);

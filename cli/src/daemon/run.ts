@@ -10,6 +10,7 @@ import { doAuth } from '@/ui/auth'
 import crypto from 'crypto'
 import { spawn } from 'child_process'
 import { configuration } from '@/configuration'
+import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate'
 
 // Store the file descriptor globally to keep the lock
 let pidFileFd: number | null = null;
@@ -32,6 +33,12 @@ export async function startDaemon(): Promise<void> {
     // Write PID file to claim daemon ownership
     pidFileFd = writePidFile();
     logger.daemonDebug('PID file written');
+
+    // Start caffeinate to prevent sleep while daemon runs
+    const caffeinateStarted = startCaffeinate();
+    if (caffeinateStarted) {
+        logger.daemonDebug('Sleep prevention enabled for daemon');
+    }
 
     // Setup cleanup handlers
     process.on('SIGINT', () => { stopDaemon().catch(console.error); });
@@ -197,6 +204,10 @@ function writePidFile(): number {
 
 export async function stopDaemon() {
     try {
+        // Stop caffeinate when stopping daemon
+        stopCaffeinate();
+        logger.debug('Stopped sleep prevention');
+        
         // Close our file descriptor if we have one
         if (pidFileFd !== null) {
             try {
