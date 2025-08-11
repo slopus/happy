@@ -1,4 +1,5 @@
 import { MMKV } from 'react-native-mmkv';
+import { config } from '@/config';
 
 // Separate MMKV instance for server config that persists across logouts
 const serverConfigStorage = new MMKV({ id: 'server-config' });
@@ -8,7 +9,7 @@ const SERVER_KEY = 'custom-server-url';
 
 export function getServerUrl(): string {
     const customServer = serverConfigStorage.getString(SERVER_KEY);
-    return customServer || process.env.EXPO_PUBLIC_API_ENDPOINT || DEFAULT_SERVER;
+    return customServer || config.serverUrl || DEFAULT_SERVER;
 }
 
 export function setServerUrl(url: string | null): void {
