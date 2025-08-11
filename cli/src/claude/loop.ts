@@ -61,11 +61,12 @@ export async function loop(opts: LoopOptions) {
 
         // Start remote mode
         if (mode === 'remote') {
-            try {
-                await claudeRemoteLauncher(session);
-            } catch (e) {
-                opts.session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+            let reason = await claudeRemoteLauncher(session);
+            if (reason === 'exit') { // Normal exit - Exit loop
+                return;
             }
+
+            // Non "exit" reason means we need to switch to local mode
             mode = 'local';
             if (opts.onModeChange) {
                 opts.onModeChange(mode);

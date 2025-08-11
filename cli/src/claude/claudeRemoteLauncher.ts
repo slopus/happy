@@ -12,12 +12,28 @@ import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 
-export async function claudeRemoteLauncher(session: Session) {
+export async function claudeRemoteLauncher(session: Session): Promise<'switch' | 'exit'> {
 
     // Configure terminal
     let messageBuffer = new MessageBuffer();
     console.clear();
-    let inkInstance = render(React.createElement(RemoteModeDisplay, { messageBuffer, logPath: process.env.DEBUG ? session.logPath : undefined }), {
+    let inkInstance = render(React.createElement(RemoteModeDisplay, { 
+        messageBuffer, 
+        logPath: process.env.DEBUG ? session.logPath : undefined,
+        onExit: async () => {
+            // Exit the entire client
+            logger.debug('[remote]: Exiting client via Ctrl-C');
+            if (!exitReason) {
+                exitReason = 'exit';
+            }
+            await abort();
+        },
+        onSwitchToLocal: () => {
+            // Switch to local mode
+            logger.debug('[remote]: Switching to local mode via double space');
+            doSwitch();
+        }
+    }), {
         exitOnCtrlC: false,
         patchConsole: false
     });
@@ -28,7 +44,7 @@ export async function claudeRemoteLauncher(session: Session) {
     process.stdin.setEncoding("utf8");
 
     // Handle abort
-    let exitReason: 'switch' | null = null as 'switch' | null;
+    let exitReason: 'switch' | 'exit' | null = null;
     let abortController: AbortController | null = null;
     let abortFuture: Future<void> | null = null;
 
@@ -55,7 +71,7 @@ export async function claudeRemoteLauncher(session: Session) {
     // When to abort
     session.client.setHandler('abort', doAbort); // When abort clicked
     session.client.setHandler('switch', doSwitch); // When switch clicked
-    process.stdin.on('data', doSwitch); // When any key is pressed
+    // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
     // Create permission server
     const permissions = await startPermissionResolver(session);
@@ -274,5 +290,5 @@ export async function claudeRemoteLauncher(session: Session) {
         }
     }
 
-    return exitReason || 'switch';
+    return exitReason || 'exit';
 }
