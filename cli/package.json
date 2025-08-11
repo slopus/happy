@@ -50,7 +50,8 @@
     "prepublishOnly": "yarn build && yarn test",
     "typecheck": "tsc --noEmit",
     "dev": "npx tsx --env-file .env.sample src/index.ts",
-    "dev:local-server": "HANDY_SERVER_URL=http://localhost:3005 npx tsx --env-file .env.sample src/index.ts"
+    "dev:local-server": "HANDY_SERVER_URL=http://localhost:3005 npx tsx --env-file .env.sample src/index.ts",
+    "prerelease": "npm version prerelease --preid=beta"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.72",
