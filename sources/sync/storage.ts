@@ -12,6 +12,8 @@ import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadP
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
+import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
+import { messagesToPrompt } from '@/realtime/sessionToPrompt';
 
 // Use the same timeout for both online status and disconnection detection
 
@@ -140,6 +142,36 @@ export const storage = create<StorageState>()((set) => {
                 if (existingSessionMessages && newSession.agentState && 
                     (!oldSession || newSession.agentStateVersion > (oldSession.agentStateVersion || 0))) {
                     
+                    // Check for NEW permission requests before processing
+                    const currentRealtimeSessionId = getCurrentRealtimeSessionId();
+                    const voiceSession = getVoiceSession();
+                    
+                    console.log('[REALTIME DEBUG] Permission check:', {
+                        currentRealtimeSessionId,
+                        sessionId: session.id,
+                        match: currentRealtimeSessionId === session.id,
+                        hasVoiceSession: !!voiceSession,
+                        oldRequests: Object.keys(oldSession?.agentState?.requests || {}),
+                        newRequests: Object.keys(newSession.agentState?.requests || {})
+                    });
+                    
+                    if (currentRealtimeSessionId === session.id && voiceSession) {
+                        const oldRequests = oldSession?.agentState?.requests || {};
+                        const newRequests = newSession.agentState?.requests || {};
+                        
+                        // Find NEW permission requests only
+                        for (const [requestId, request] of Object.entries(newRequests)) {
+                            if (!oldRequests[requestId]) {
+                                // This is a NEW permission request
+                                const toolName = request.tool;
+                                console.log('[REALTIME DEBUG] Sending permission notification for:', toolName);
+                                voiceSession.sendTextMessage(
+                                    `Claude is requesting permission to use the ${toolName} tool`
+                                );
+                            }
+                        }
+                    }
+                    
                     // Process new AgentState through reducer
                     const processedMessages = reducer(existingSessionMessages.reducerState, [], newSession.agentState);
                     
@@ -195,6 +227,44 @@ export const storage = create<StorageState>()((set) => {
 
             // Run reducer with agentState
             const processedMessages = reducer(existingSession.reducerState, normalizedMessages, agentState);
+
+            // Send realtime updates for new messages if this is the active realtime session
+            const currentRealtimeSessionId = getCurrentRealtimeSessionId();
+            const voiceSession = getVoiceSession();
+            console.log('[REALTIME DEBUG] Checking realtime updates:', {
+                currentRealtimeSessionId,
+                sessionId,
+                match: currentRealtimeSessionId === sessionId,
+                hasVoiceSession: !!voiceSession,
+                processedMessagesCount: processedMessages.length
+            });
+            
+            if (currentRealtimeSessionId === sessionId && voiceSession && processedMessages.length > 0) {
+                // Filter for agent messages and tool calls only
+                const agentMessages = processedMessages.filter(m => 
+                    m.kind === 'agent-text' || m.kind === 'tool-call'
+                );
+                
+                console.log('[REALTIME DEBUG] Agent messages found:', agentMessages.length, agentMessages.map(m => ({
+                    kind: m.kind,
+                    text: m.kind === 'agent-text' ? m.text : undefined,
+                    tool: m.kind === 'tool-call' ? m.tool?.name : undefined
+                })));
+                
+                if (agentMessages.length > 0) {
+                    // Use the existing messagesToPrompt function to format properly
+                    const contextUpdate = messagesToPrompt(agentMessages, {
+                        maxCharacters: 1000,
+                        excludeToolCalls: false
+                    });
+                    
+                    console.log('[REALTIME DEBUG] Sending context update:', contextUpdate);
+                    
+                    if (contextUpdate.trim()) {
+                        voiceSession.sendContextualUpdate(contextUpdate);
+                    }
+                }
+            }
 
             // Merge messages
             const mergedMessagesMap = { ...existingSession.messagesMap };
