@@ -55,9 +55,18 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                     return true; // Key was handled
                 }
             }
+            // Handle Shift+Tab for mode switching
+            if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
+                const modeOrder: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+                const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
+                const nextIndex = (currentIndex + 1) % modeOrder.length;
+                props.onPermissionModeChange(modeOrder[nextIndex]);
+                hapticsLight();
+                return true; // Key was handled, prevent default tab behavior
+            }
         }
         return false; // Key was not handled
-    }, [props.value, props.onSend]);
+    }, [props.value, props.onSend, props.permissionMode, props.onPermissionModeChange]);
 
     const handleAbortPress = React.useCallback(async () => {
         if (!props.onAbort) return;
