@@ -10,7 +10,7 @@ let conversationInstance: ReturnType<typeof useConversation> | null = null;
 
 // Global voice session implementation
 class RealtimeVoiceSessionImpl implements VoiceSession {
-    
+
     async startSession(config: VoiceSessionConfig): Promise<void> {
         if (!conversationInstance) {
             console.warn('Realtime voice session not initialized');
@@ -19,7 +19,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 
         try {
             storage.getState().setRealtimeStatus('connecting');
-            
+
             // Request microphone permission first
             try {
                 await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -29,10 +29,10 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                 return;
             }
 
-            
+
             // Use hardcoded agent ID for Eleven Labs
             const conversationId = await conversationInstance.startSession({
-                agentId: 'agent_7801k2c0r5hjfraa1kdbytpvs6yt',
+                agentId: __DEV__ ? 'agent_7801k2c0r5hjfraa1kdbytpvs6yt' : 'agent_6701k211syvvegba4kt7m68nxjmw',
                 connectionType: 'webrtc', // Use WebRTC for better performance
                 // Pass session ID and initial context as dynamic variables
                 dynamicVariables: {

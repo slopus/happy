@@ -23,7 +23,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             
             // Use hardcoded agent ID for Eleven Labs
             await conversationInstance.startSession({
-                agentId: 'agent_7801k2c0r5hjfraa1kdbytpvs6yt',
+                agentId: __DEV__ ? 'agent_7801k2c0r5hjfraa1kdbytpvs6yt' : 'agent_6701k211syvvegba4kt7m68nxjmw',
                 // Pass session ID and initial context as dynamic variables
                 dynamicVariables: {
                     sessionId: config.sessionId,
