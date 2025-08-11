@@ -3,11 +3,9 @@ import { View, Pressable, Animated } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { SessionListItem } from '@/sync/storage';
-import { getSessionName, getSessionState, getSessionSubtitle, formatOSPlatform } from '@/utils/sessionUtils';
-import { isMessageFromAssistant } from '@/utils/messageUtils';
+import { getSessionName, useSessionStatus, getSessionSubtitle, formatOSPlatform } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { FlashList } from '@shopify/flash-list';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { LegendList } from '@legendapp/list';
@@ -125,7 +123,7 @@ const SessionItem = React.memo(({ session, selectedSessionId, router }: {
     selectedSessionId?: string | null;
     router: any;
 }) => {
-    const sessionStatus = getSessionState(session);
+    const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
     const isSelected = selectedSessionId === session.id;

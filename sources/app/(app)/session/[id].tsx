@@ -5,19 +5,18 @@ import { View, FlatList, Text, ActivityIndicator, Platform, useWindowDimensions 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
 import { useRouter } from "expo-router";
-import { getSessionName, getSessionState } from "@/utils/sessionUtils";
+import { getSessionName, useSessionStatus } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages, useSettings, useDaemonStatusByMachine, useRealtimeStatus } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { sessionAbort, sessionAllow, sessionDeny, sessionSwitch, spawnRemoteSession } from '@/sync/ops';
+import { sessionAbort, sessionSwitch, spawnRemoteSession } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
 import { RoundButton } from '@/components/RoundButton';
-import { formatPermissionParams } from '@/utils/formatPermissionParams';
 import { Deferred } from '@/components/Deferred';
 import { Session } from '@/sync/storageTypes';
-import { sessionToRealtimePrompt, messagesToPrompt } from '@/realtime/sessionToPrompt';
+import { sessionToRealtimePrompt } from '@/realtime/sessionToPrompt';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -29,11 +28,10 @@ import { AgentContentView } from '@/components/AgentContentView';
 import { isRunningOnMac } from '@/utils/platform';
 import { Modal } from '@/modal';
 import { Header } from '@/components/navigation/Header';
-import { trackMessageSent, trackPermissionResponse } from '@/track';
+import { trackMessageSent } from '@/track';
 import { tracking } from '@/track';
 import { useAutocompleteSession } from '@/hooks/useAutocompleteSession';
 import { AutoCompleteView } from '@/components/AutoCompleteView';
-import { z } from 'zod';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -93,7 +91,6 @@ export default React.memo(() => {
 
 
 function SessionView({ sessionId, session }: { sessionId: string, session: Session }) {
-    const settings = useSettings();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
@@ -105,7 +102,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const [permissionMode, setPermissionMode] = useState<'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'>('default');
     const screenWidth = useWindowDimensions().width;
     const headerHeight = useHeaderHeight();
-    const sessionStatus = getSessionState(session);
+    const sessionStatus = useSessionStatus(session);
     const lastSeenText = sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active';
     const autocomplete = useAutocompleteSession(message, message.length);
     const daemonStatus = useDaemonStatusByMachine(session.metadata?.machineId || '');
@@ -158,22 +155,10 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         }
     }, [realtimeStatus, session, messagesRecentFirst, sessionId]);
 
-    // No cleanup needed - voice session is managed globally now
-
-    const permissionRequest = React.useMemo(() => {
-        let requests = session.agentState?.requests;
-        if (!requests) {
-            return null;
-        }
-        if (Object.keys(requests).length === 0) {
-            return null;
-        }
-        return { id: Object.keys(requests)[0], call: requests[Object.keys(requests)[0]] };
-    }, [session.agentState]);
+    // Trigger session visibility
     React.useEffect(() => {
         sync.onSessionVisible(sessionId);
     }, [sessionId]);
-
 
     const footer = React.useMemo(() => {
         return <View style={{ flexDirection: 'row', alignItems: 'center', height: 32 }} />;

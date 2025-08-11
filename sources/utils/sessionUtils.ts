@@ -1,3 +1,4 @@
+import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 
 // Timeout for considering a session disconnected (30 seconds)
@@ -22,10 +23,16 @@ export interface SessionStatus {
  * Get the current state of a session based on activeAt and thinking status.
  * This centralizes the logic for determining session state across the app.
  */
-export function getSessionState(session: Session): SessionStatus {
+export function useSessionStatus(session: Session): SessionStatus {
+
     const now = Date.now();
     const isDisconnected = !session.activeAt || session.activeAt < now - DISCONNECTED_TIMEOUT_MS;
     const isIdle = !isDisconnected && session.activeAt < now - IDLE_TIMEOUT_MS;
+    const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
+
+    const vibingMessage = React.useMemo(() => {
+        return vibingMessages[Math.floor(Math.random() * vibingMessages.length)] + '…';
+    }, [isDisconnected, hasPermissions, session.thinking]);
 
     if (isDisconnected) {
         return {
@@ -39,7 +46,7 @@ export function getSessionState(session: Session): SessionStatus {
     }
 
     // Check if permission is required (controlledByUser is true)
-    if (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0) {
+    if (hasPermissions) {
         return {
             state: 'permission_required',
             isConnected: true,
@@ -55,7 +62,7 @@ export function getSessionState(session: Session): SessionStatus {
         return {
             state: 'thinking',
             isConnected: true,
-            statusText: 'thinking...',
+            statusText: vibingMessage,
             shouldShowStatus: true,
             statusColor: '#007AFF',
             statusDotColor: '#007AFF',
@@ -133,7 +140,7 @@ export function isSessionActive(session: Session): boolean {
  */
 export function formatOSPlatform(platform?: string): string {
     if (!platform) return '';
-    
+
     const osMap: Record<string, string> = {
         'darwin': 'macOS',
         'win32': 'Windows',
@@ -145,7 +152,7 @@ export function formatOSPlatform(platform?: string): string {
         'openbsd': 'OpenBSD',
         'sunos': 'SunOS'
     };
-    
+
     return osMap[platform.toLowerCase()] || platform;
 }
 
@@ -185,3 +192,5 @@ export function formatLastSeen(presence: "online" | number): string {
         return date.toLocaleDateString(undefined, options);
     }
 }
+
+const vibingMessages = ["Accomplishing", "Actioning", "Actualizing", "Baking", "Booping", "Brewing", "Calculating", "Cerebrating", "Channelling", "Churning", "Clauding", "Coalescing", "Cogitating", "Computing", "Combobulating", "Concocting", "Conjuring", "Considering", "Contemplating", "Cooking", "Crafting", "Creating", "Crunching", "Deciphering", "Deliberating", "Determining", "Discombobulating", "Divining", "Doing", "Effecting", "Elucidating", "Enchanting", "Envisioning", "Finagling", "Flibbertigibbeting", "Forging", "Forming", "Frolicking", "Generating", "Germinating", "Hatching", "Herding", "Honking", "Ideating", "Imagining", "Incubating", "Inferring", "Manifesting", "Marinating", "Meandering", "Moseying", "Mulling", "Mustering", "Musing", "Noodling", "Percolating", "Perusing", "Philosophising", "Pontificating", "Pondering", "Processing", "Puttering", "Puzzling", "Reticulating", "Ruminating", "Scheming", "Schlepping", "Shimmying", "Simmering", "Smooshing", "Spelunking", "Spinning", "Stewing", "Sussing", "Synthesizing", "Thinking", "Tinkering", "Transmuting", "Unfurling", "Unravelling", "Vibing", "Wandering", "Whirring", "Wibbling", "Wizarding", "Working", "Wrangling"];
