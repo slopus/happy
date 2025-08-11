@@ -132,6 +132,7 @@ type StoredPermission = {
 
 export type ReducerState = {
     toolIdToMessageId: Map<string, string>; // toolId/permissionId -> messageId (since they're the same now)
+    sidechainToolIdToMessageId: Map<string, string>; // toolId -> sidechain messageId (for dual tracking)
     permissions: Map<string, StoredPermission>; // Store permission details by ID for quick lookup
     localIds: Map<string, string>;
     messageIds: Map<string, string>; // originalId -> internalId
@@ -143,6 +144,7 @@ export type ReducerState = {
 export function createReducer(): ReducerState {
     return {
         toolIdToMessageId: new Map(),
+        sidechainToolIdToMessageId: new Map(),
         permissions: new Map(),
         messages: new Map(),
         localIds: new Map(),
@@ -160,7 +162,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     if (agentState?.completedRequests) {
         console.log(`[REDUCER] AgentState has ${Object.keys(agentState.completedRequests).length} completed requests`);
     }
-    
+
     let newMessages: Message[] = [];
     let changed: Set<string> = new Set();
 
@@ -196,7 +198,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 if (agentState.completedRequests && agentState.completedRequests[permId]) {
                     continue;
                 }
-                
+
                 // Check if we already have a message for this permission ID
                 const existingMessageId = state.toolIdToMessageId.get(permId);
                 if (existingMessageId) {
@@ -212,7 +214,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     }
                 } else {
                     console.log(`[REDUCER] Creating new message for permission ${permId}`);
-                    
+
                     // Create a new tool message for the permission request
                     let mid = allocateId();
                     let toolCall: ToolCall = {
@@ -242,10 +244,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
                     // Store by permission ID (which will match tool ID)
                     state.toolIdToMessageId.set(permId, mid);
-                    
+
                     changed.add(mid);
                 }
-                
+
                 // Store permission details for quick lookup
                 state.permissions.set(permId, {
                     tool: request.tool,
@@ -268,15 +270,15 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         if (message.tool.startedAt && message.tool.permission?.status === 'approved') {
                             continue;
                         }
-                        
+
                         // Skip if already has the same status
-                        if (message.tool.permission?.status === completed.status && 
+                        if (message.tool.permission?.status === completed.status &&
                             message.tool.permission?.reason === completed.reason) {
                             continue;
                         }
-                        
+
                         let hasChanged = false;
-                        
+
                         // Update permission status
                         if (!message.tool.permission) {
                             message.tool.permission = {
@@ -288,7 +290,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             message.tool.permission.status = completed.status;
                             hasChanged = true;
                         }
-                        
+
                         if (completed.reason && message.tool.permission?.reason !== completed.reason) {
                             message.tool.permission!.reason = completed.reason;
                             hasChanged = true;
@@ -341,12 +343,12 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         });
                         continue;
                     }
-                    
+
                     // Skip if already processed as pending
                     if (agentState.requests && agentState.requests[permId]) {
                         continue;
                     }
-                    
+
                     // Create a new message for completed permission without tool
                     let mid = allocateId();
                     let toolCall: ToolCall = {
@@ -357,8 +359,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         startedAt: null,
                         completedAt: completed.completedAt || Date.now(),
                         description: null,
-                        result: completed.status === 'approved' 
-                            ? 'Approved' 
+                        result: completed.status === 'approved'
+                            ? 'Approved'
                             : (completed.reason ? { error: completed.reason } : undefined),
                         permission: {
                             id: permId,
@@ -378,7 +380,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     });
 
                     state.toolIdToMessageId.set(permId, mid);
-                    
+
                     // Store permission details
                     state.permissions.set(permId, {
                         tool: completed.tool,
@@ -388,7 +390,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         status: completed.status,
                         reason: completed.reason || undefined
                     });
-                    
+
                     changed.add(mid);
                 }
             }
@@ -470,7 +472,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 if (c.type === 'tool-call') {
                     // Direct lookup by tool ID (since permission ID = tool ID now)
                     const existingMessageId = state.toolIdToMessageId.get(c.id);
-                    
+
                     if (existingMessageId) {
                         console.log(`[REDUCER] Found existing message for tool ${c.id}`);
                         // Update existing message with tool execution details
@@ -491,7 +493,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         console.log(`[REDUCER] Creating new message for tool ${c.id}`);
                         // Check if there's a stored permission for this tool
                         const permission = state.permissions.get(c.id);
-                        
+
                         let toolCall: ToolCall = {
                             name: c.name,
                             state: 'running' as const,
@@ -502,7 +504,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             description: c.description,
                             result: undefined
                         };
-                        
+
                         // Add permission info if found
                         if (permission) {
                             console.log(`[REDUCER] Found stored permission for tool ${c.id}`);
@@ -511,7 +513,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                                 status: permission.status,
                                 reason: permission.reason
                             };
-                            
+
                             // Update state based on permission status
                             if (permission.status !== 'approved') {
                                 toolCall.state = 'error';
@@ -521,7 +523,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                                 }
                             }
                         }
-                        
+
                         let mid = allocateId();
                         state.messages.set(mid, {
                             id: mid,
@@ -533,7 +535,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             event: null,
                             meta: msg.meta,
                         });
-                        
+
                         state.toolIdToMessageId.set(c.id, mid);
                         changed.add(mid);
                     }
@@ -626,6 +628,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     state.messages.set(mid, textMsg);
                     existingSidechain.push(textMsg);
                 } else if (c.type === 'tool-call') {
+                    // Check if there's already a permission message for this tool
+                    const existingPermissionMessageId = state.toolIdToMessageId.get(c.id);
+                    
                     let mid = allocateId();
                     let toolCall: ToolCall = {
                         name: c.name,
@@ -637,6 +642,22 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         description: c.description,
                         result: undefined
                     };
+                    
+                    // If there's a permission message, copy its permission info
+                    if (existingPermissionMessageId) {
+                        const permissionMessage = state.messages.get(existingPermissionMessageId);
+                        if (permissionMessage?.tool?.permission) {
+                            toolCall.permission = { ...permissionMessage.tool.permission };
+                            // Update the permission message to show it's running
+                            if (permissionMessage.tool.state !== 'completed' && permissionMessage.tool.state !== 'error') {
+                                permissionMessage.tool.state = 'running';
+                                permissionMessage.tool.startedAt = msg.createdAt;
+                                permissionMessage.tool.description = c.description;
+                                changed.add(existingPermissionMessageId);
+                            }
+                        }
+                    }
+                    
                     let toolMsg: ReducerMessage = {
                         id: mid,
                         realID: msg.id,
@@ -650,17 +671,31 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     state.messages.set(mid, toolMsg);
                     existingSidechain.push(toolMsg);
 
-                    // Map for result processing
-                    state.toolIdToMessageId.set(c.id, mid);
+                    // Map sidechain tool separately to avoid overwriting permission mapping
+                    state.sidechainToolIdToMessageId.set(c.id, mid);
                 } else if (c.type === 'tool-result') {
-                    // Process tool result in sidechain
-                    let messageId = state.toolIdToMessageId.get(c.tool_use_id);
-                    if (messageId) {
-                        let message = state.messages.get(messageId);
-                        if (message && message.tool && message.tool.state === 'running') {
-                            message.tool.state = c.is_error ? 'error' : 'completed';
-                            message.tool.result = c.content;
-                            message.tool.completedAt = msg.createdAt;
+                    // Process tool result in sidechain - update BOTH messages
+                    
+                    // Update the sidechain tool message
+                    let sidechainMessageId = state.sidechainToolIdToMessageId.get(c.tool_use_id);
+                    if (sidechainMessageId) {
+                        let sidechainMessage = state.messages.get(sidechainMessageId);
+                        if (sidechainMessage && sidechainMessage.tool && sidechainMessage.tool.state === 'running') {
+                            sidechainMessage.tool.state = c.is_error ? 'error' : 'completed';
+                            sidechainMessage.tool.result = c.content;
+                            sidechainMessage.tool.completedAt = msg.createdAt;
+                        }
+                    }
+                    
+                    // Also update the main permission message if it exists
+                    let permissionMessageId = state.toolIdToMessageId.get(c.tool_use_id);
+                    if (permissionMessageId) {
+                        let permissionMessage = state.messages.get(permissionMessageId);
+                        if (permissionMessage && permissionMessage.tool && permissionMessage.tool.state === 'running') {
+                            permissionMessage.tool.state = c.is_error ? 'error' : 'completed';
+                            permissionMessage.tool.result = c.content;
+                            permissionMessage.tool.completedAt = msg.createdAt;
+                            changed.add(permissionMessageId);
                         }
                     }
                 }
@@ -670,9 +705,13 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         // Update the sidechain in state
         state.sidechains.set(msg.sidechainId, existingSidechain);
 
-        // Update
-        if (state.messageIds.has(msg.sidechainId)) {
-            changed.add(state.messageIds.get(msg.sidechainId)!);
+        // Find the Task tool message that owns this sidechain and mark it as changed
+        // msg.sidechainId is the realID of the Task message
+        for (const [internalId, message] of state.messages) {
+            if (message.realID === msg.sidechainId && message.tool) {
+                changed.add(internalId);
+                break;
+            }
         }
     }
 
@@ -710,6 +749,13 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             newMessages.push(message);
         }
     }
+
+    //
+    // Debug changes
+    //
+
+    console.log(JSON.stringify(messages, null, 2));
+    console.log(`[REDUCER] Changed messages: ${changed.size}`);
 
     return newMessages;
 }

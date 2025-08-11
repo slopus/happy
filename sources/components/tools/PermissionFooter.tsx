@@ -9,14 +9,16 @@ interface PermissionFooterProps {
         status: 'pending' | 'approved' | 'denied' | 'canceled';
     };
     sessionId: string;
+    toolName?: string;
 }
 
-export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, sessionId }) => {
+export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, sessionId, toolName }) => {
     const [loading, setLoading] = useState(false);
+    const [loadingAllEdits, setLoadingAllEdits] = useState(false);
 
     const handleApprove = async () => {
-        if (permission.status !== 'pending' || loading) return;
-        
+        if (permission.status !== 'pending' || loading || loadingAllEdits) return;
+
         setLoading(true);
         try {
             await sessionAllow(sessionId, permission.id);
@@ -27,9 +29,22 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         }
     };
 
+    const handleApproveAllEdits = async () => {
+        if (permission.status !== 'pending' || loading || loadingAllEdits) return;
+
+        setLoadingAllEdits(true);
+        try {
+            await sessionAllow(sessionId, permission.id, 'acceptEdits');
+        } catch (error) {
+            console.error('Failed to approve all edits:', error);
+        } finally {
+            setLoadingAllEdits(false);
+        }
+    };
+
     const handleDeny = async () => {
-        if (permission.status !== 'pending' || loading) return;
-        
+        if (permission.status !== 'pending' || loading || loadingAllEdits) return;
+
         setLoading(true);
         try {
             await sessionDeny(sessionId, permission.id);
@@ -55,7 +70,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         (isDenied) && styles.buttonInactive
                     ]}
                     onPress={handleApprove}
-                    disabled={!isPending || loading}
+                    disabled={!isPending || loading || loadingAllEdits}
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loading && isPending ? (
@@ -76,6 +91,34 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     )}
                 </TouchableOpacity>
 
+                {/* Allow All Edits button - only show for Edit and MultiEdit tools */}
+                {(toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode') && (
+                    <TouchableOpacity
+                        style={[
+                            styles.button,
+                            isPending && styles.buttonAllowAll,
+                            isApproved && styles.buttonInactive,
+                            isDenied && styles.buttonInactive
+                        ]}
+                        onPress={handleApproveAllEdits}
+                        disabled={!isPending || loading || loadingAllEdits}
+                        activeOpacity={isPending ? 0.7 : 1}
+                    >
+                        {loadingAllEdits && isPending ? (
+                            <ActivityIndicator size="small" color="#007AFF" />
+                        ) : (
+                            <View style={styles.buttonContent}>
+                                <Text style={[
+                                    styles.buttonText,
+                                    isPending && styles.buttonTextAllowAll
+                                ]}>
+                                    All edits
+                                </Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
                     style={[
                         styles.button,
@@ -84,7 +127,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         (isApproved) && styles.buttonInactive
                     ]}
                     onPress={handleDeny}
-                    disabled={!isPending || loading}
+                    disabled={!isPending || loading || loadingAllEdits}
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loading && isPending ? (
@@ -140,6 +183,10 @@ const styles = StyleSheet.create({
         backgroundColor: '#FF3B30',
         borderColor: '#FF3B30',
     },
+    buttonAllowAll: {
+        backgroundColor: '#007AFF',
+        borderColor: '#007AFF',
+    },
     buttonSelected: {
         backgroundColor: '#F2F2F7',
         borderColor: '#D1D1D6',
@@ -164,6 +211,9 @@ const styles = StyleSheet.create({
         color: 'white',
     },
     buttonTextDeny: {
+        color: 'white',
+    },
+    buttonTextAllowAll: {
         color: 'white',
     },
     buttonTextSelected: {

@@ -187,7 +187,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             
             {/* Permission footer - always renders when permission exists to maintain consistent height */}
             {tool.permission && sessionId && (
-                <PermissionFooter permission={tool.permission} sessionId={sessionId} />
+                <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} />
             )}
         </View>
     );

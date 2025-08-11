@@ -22,19 +22,19 @@ const modeConfig = {
         icon: 'create' as const,
         description: 'Auto-approve edits'
     },
-    bypassPermissions: {
-        label: 'Bypass',
-        icon: 'flash' as const,
-        description: 'Skip all permissions'
-    },
     plan: {
         label: 'Plan',
         icon: 'list' as const,
         description: 'Plan before executing'
-    }
+    },
+    bypassPermissions: {
+        label: 'Yolo',
+        icon: 'flash' as const,
+        description: 'Skip all permissions'
+    },
 };
 
-const modeOrder: PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
+const modeOrder: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
 
 export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
     mode,
@@ -56,10 +56,10 @@ export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
             style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                backgroundColor: Platform.select({ 
-                    ios: '#F2F2F7', 
-                    android: '#E0E0E0', 
-                    default: '#F2F2F7' 
+                backgroundColor: Platform.select({
+                    ios: '#F2F2F7',
+                    android: '#E0E0E0',
+                    default: '#F2F2F7'
                 }),
                 borderRadius: Platform.select({ default: 16, android: 20 }),
                 paddingHorizontal: 12,

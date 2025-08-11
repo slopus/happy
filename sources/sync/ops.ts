@@ -12,11 +12,12 @@ import { sync } from './sync';
 interface SessionPermissionRequest {
     id: string;
     approved: boolean;
+    mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
 }
 
 // Mode change operation types
 interface SessionModeChangeRequest {
-    id: string;
+    to: 'remote' | 'local';
 }
 
 // Bash operation types
@@ -137,28 +138,28 @@ export async function sessionAbort(sessionId: string): Promise<void> {
 /**
  * Allow a permission request
  */
-export async function sessionAllow(sessionId: string, id: string): Promise<void> {
-    const request: SessionPermissionRequest = { id, approved: true };
+export async function sessionAllow(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'): Promise<void> {
+    const request: SessionPermissionRequest = { id, approved: true, mode };
     await apiSocket.rpc(sessionId, 'permission', request);
 }
 
 /**
  * Deny a permission request
  */
-export async function sessionDeny(sessionId: string, id: string): Promise<void> {
-    const request: SessionPermissionRequest = { id, approved: false };
+export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'): Promise<void> {
+    const request: SessionPermissionRequest = { id, approved: false, mode };
     await apiSocket.rpc(sessionId, 'permission', request);
 }
 
 /**
  * Request mode change for a session
  */
-export async function sessionModeChange(sessionId: string, id: string): Promise<boolean> {
-    const request: SessionModeChangeRequest = { id };
+export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): Promise<boolean> {
+    const request: SessionModeChangeRequest = { to };
     const response = await apiSocket.rpc<boolean, SessionModeChangeRequest>(
         sessionId,
-        'mode-change',
-        request
+        'switch',
+        request,
     );
     return response;
 }
