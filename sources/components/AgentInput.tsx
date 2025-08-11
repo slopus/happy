@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, Animated, Text, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { View, Platform, Animated, Text, ActivityIndicator, useWindowDimensions, Button } from 'react-native';
 import { Pressable } from 'react-native-gesture-handler';
 import { hapticsLight, hapticsError } from './haptics';
 import { Typography } from '@/constants/Typography';
@@ -8,6 +8,7 @@ import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { PermissionModeSelector, PermissionMode } from './PermissionModeSelector';
 import { Shaker, ShakeInstance } from './Shaker';
+import { sessionSwitch } from '@/sync/ops';
 
 // Status dot component
 function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -65,6 +66,7 @@ export const AgentInput = React.memo((props: {
     onAbort?: () => void | Promise<void>,
     permissionMode?: PermissionMode,
     onPermissionModeChange?: (mode: PermissionMode) => void,
+    onSwitch?: () => void,
 }) => {
     // Animation states
     const scaleAnim = React.useRef(new Animated.Value(1)).current;
@@ -240,6 +242,11 @@ export const AgentInput = React.memo((props: {
                                 />
                             </View>
                         )}
+
+                        <Button 
+                            title="Switch"
+                            onPress={() => props.onSwitch?.()}
+                        />
 
                         {/* Abort button */}
                         {props.onAbort && (

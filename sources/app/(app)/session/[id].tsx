@@ -9,7 +9,7 @@ import { getSessionName, getSessionState } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages, useSettings, useDaemonStatusByMachine, useRealtimeStatus } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { sessionAbort, sessionAllow, sessionDeny, spawnRemoteSession } from '@/sync/ops';
+import { sessionAbort, sessionAllow, sessionDeny, sessionSwitch, spawnRemoteSession } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
@@ -376,36 +376,35 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                             />
                         </View>
                     )}
-                    {(sessionStatus.state !== 'disconnected' || !daemonStatus?.online) && (
-                        <AgentInput
-                            placeholder="Type a message ..."
-                            value={message}
-                            onChangeText={setMessage}
-                            onSend={() => {
-                                if (message.trim()) {
-                                    setMessage('');
-                                    sync.sendMessage(sessionId, message, permissionMode);
-                                    trackMessageSent();
-                                }
-                            }}
-                            onMicPress={handleMicrophonePress}
-                            isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
-                            status={{
-                                state: sessionStatus.state,
-                                text: sessionStatus.state === 'disconnected' ? 'disconnected' :
-                                    sessionStatus.state === 'thinking' ? 'thinking...' :
-                                        sessionStatus.state === 'idle' ? 'idle' :
-                                            sessionStatus.state === 'permission_required' ? 'permission required' :
-                                                sessionStatus.state === 'waiting' ? 'connected' : '',
-                                color: sessionStatus.statusColor,
-                                dotColor: sessionStatus.statusDotColor,
-                                isPulsing: sessionStatus.isPulsing,
-                            }}
-                            onAbort={() => sessionAbort(sessionId)}
-                            permissionMode={permissionMode}
-                            onPermissionModeChange={setPermissionMode}
-                        />
-                    )}
+                    <AgentInput
+                        placeholder="Type a message ..."
+                        value={message}
+                        onChangeText={setMessage}
+                        onSend={() => {
+                            if (message.trim()) {
+                                setMessage('');
+                                sync.sendMessage(sessionId, message, permissionMode);
+                                trackMessageSent();
+                            }
+                        }}
+                        onMicPress={handleMicrophonePress}
+                        isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
+                        onSwitch={() => sessionSwitch(sessionId, 'remote')}
+                        status={{
+                            state: sessionStatus.state,
+                            text: sessionStatus.state === 'disconnected' ? 'disconnected' :
+                                sessionStatus.state === 'thinking' ? 'thinking...' :
+                                    sessionStatus.state === 'idle' ? 'idle' :
+                                        sessionStatus.state === 'permission_required' ? 'permission required' :
+                                            sessionStatus.state === 'waiting' ? 'connected' : '',
+                            color: sessionStatus.statusColor,
+                            dotColor: sessionStatus.statusDotColor,
+                            isPulsing: sessionStatus.isPulsing,
+                        }}
+                        onAbort={() => sessionAbort(sessionId)}
+                        permissionMode={permissionMode}
+                        onPermissionModeChange={setPermissionMode}
+                    />
                 </AgentContentView>
             </View>
 

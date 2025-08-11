@@ -124,7 +124,26 @@ function AgentEventBlock(props: {
       </View>
     );
   }
-  return null;
+  if (props.event.type === 'message') {
+    return (
+      <View style={{
+        marginHorizontal: 8,
+        alignItems: 'center',
+        paddingVertical: 8,
+      }}>
+        <Text style={{ color: '#666666', fontSize: 14 }}>{props.event.message}</Text>
+      </View>
+    );
+  }
+  return (
+    <View style={{
+      marginHorizontal: 8,
+      alignItems: 'center',
+      paddingVertical: 8,
+    }}>
+      <Text style={{ color: '#666666', fontSize: 14 }}>Unknown event</Text>
+    </View>
+  );
 }
 
 function ToolCallBlock(props: {
