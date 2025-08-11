@@ -11,15 +11,39 @@ export async function startPermissionResolver(session: Session) {
 
     let responses = new Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>();
     let requests = new Map<string, (response: { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }) => void>();
+    
+    // Queue for permission requests that arrive before their tool call ID
+    let pendingPermissionRequests: Array<{
+        request: { name: string, arguments: any },
+        resolve: (value: { approved: boolean, reason?: string }) => void,
+        reject: (error: Error) => void,
+        timeout: NodeJS.Timeout
+    }> = [];
+    
     const server = await startPermissionServerV2(async (request) => {
 
-        // Should not happent
         const id = resolveToolCallId(request.name, request.arguments);
         if (!id) {
-            const error = `Could not resolve tool call ID for permission request: ${request.name}`;
-            throw new Error(error);
+            // Tool call ID hasn't arrived yet - queue this request
+            logger.debug(`Tool call ID not yet available for ${request.name}, queueing request`);
+            
+            return new Promise<{ approved: boolean, reason?: string }>((resolve, reject) => {
+                const timeout = setTimeout(() => {
+                    const idx = pendingPermissionRequests.findIndex(p => p.request === request);
+                    if (idx !== -1) {
+                        pendingPermissionRequests.splice(idx, 1);
+                        reject(new Error(`Timeout: Tool call ID never arrived for ${request.name}`));
+                    }
+                }, 30000); // 30 second timeout
+                
+                pendingPermissionRequests.push({ request, resolve, reject, timeout });
+            });
         }
 
+        return handlePermissionRequest(id, request);
+    });
+    
+    function handlePermissionRequest(id: string, request: { name: string, arguments: any }): Promise<{ approved: boolean, reason?: string }> {
         // Hack for exit_plan_mode
         let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => {
             if (request.name === 'exit_plan_mode' || request.name === 'ExitPlanMode') {
@@ -81,21 +105,16 @@ export async function startPermissionResolver(session: Session) {
         logger.debug('Permission request' + id + ' ' + JSON.stringify(request));
 
         // Send push notification for permission request
-        try {
-            await session.api.push().sendToAllDevices(
-                'Permission Request',
-                `Claude wants to use ${request.name}`,
-                {
-                    sessionId: session.client.sessionId,
-                    requestId: id,
-                    tool: request.name,
-                    type: 'permission_request'
-                }
-            );
-            logger.debug('Push notification sent for permission request');
-        } catch (error) {
-            logger.debug('Failed to send push notification:', error);
-        }
+        session.api.push().sendToAllDevices(
+            'Permission Request',
+            `Claude wants to use ${request.name}`,
+            {
+                sessionId: session.client.sessionId,
+                requestId: id,
+                tool: request.name,
+                type: 'permission_request'
+            }
+        );
 
         session.client.updateAgentState((currentState) => ({
             ...currentState,
@@ -113,7 +132,7 @@ export async function startPermissionResolver(session: Session) {
         promise.then(() => clearTimeout(timeout)).catch(() => clearTimeout(timeout));
 
         return promise;
-    });
+    }
 
     session.client.setHandler<PermissionResponse, void>('permission', async (message) => {
         logger.debug('Permission response' + JSON.stringify(message));
@@ -178,6 +197,13 @@ export async function startPermissionResolver(session: Session) {
     function reset() {
         toolCalls = [];
         requests.clear();
+        responses.clear();
+        
+        // Clear pending permission requests
+        for (const pending of pendingPermissionRequests) {
+            clearTimeout(pending.timeout);
+        }
+        pendingPermissionRequests = [];
 
         // Move all pending requests to completedRequests with canceled status
         session.client.updateAgentState((currentState) => {
@@ -214,6 +240,23 @@ export async function startPermissionResolver(session: Session) {
                             input: block.input,
                             used: false
                         });
+                        
+                        // Process any pending permission requests that match this tool call
+                        for (let i = pendingPermissionRequests.length - 1; i >= 0; i--) {
+                            const pending = pendingPermissionRequests[i];
+                            if (pending.request.name === block.name && deepEqual(pending.request.arguments, block.input)) {
+                                logger.debug(`Resolving pending permission request for ${block.name} with ID ${block.id}`);
+                                clearTimeout(pending.timeout);
+                                pendingPermissionRequests.splice(i, 1);
+                                
+                                // Process the request now that we have the ID
+                                handlePermissionRequest(block.id!, pending.request).then(
+                                    pending.resolve,
+                                    pending.reject
+                                );
+                                break; // Exit after finding the first match
+                            }
+                        }
                     }
                 }
             }

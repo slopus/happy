@@ -119,26 +119,33 @@ export class PushNotificationClient {
      * @param body - Notification body
      * @param data - Additional data to send with the notification
      */
-    async sendToAllDevices(title: string, body: string, data?: Record<string, any>): Promise<void> {
-        // Fetch all push tokens
-        const tokens = await this.fetchPushTokens()
+    sendToAllDevices(title: string, body: string, data?: Record<string, any>): void {
+        // Execute async operations without awaiting
+        (async () => {
+            try {
+                // Fetch all push tokens
+                const tokens = await this.fetchPushTokens()
 
-        if (tokens.length === 0) {
-            logger.debug('No push tokens found for user')
-            return
-        }
+                if (tokens.length === 0) {
+                    logger.debug('No push tokens found for user')
+                    return
+                }
 
-        // Create messages for all tokens
-        const messages: ExpoPushMessage[] = tokens.map(token => ({
-            to: token.token,
-            title,
-            body,
-            data,
-            sound: 'default',
-            priority: 'high'
-        }))
+                // Create messages for all tokens
+                const messages: ExpoPushMessage[] = tokens.map(token => ({
+                    to: token.token,
+                    title,
+                    body,
+                    data,
+                    sound: 'default',
+                    priority: 'high'
+                }))
 
-        // Send notifications
-        await this.sendPushNotifications(messages)
+                // Send notifications
+                await this.sendPushNotifications(messages)
+            } catch (error) {
+                logger.debug('[PUSH] Error sending to all devices:', error)
+            }
+        })()
     }
 }
