@@ -15,6 +15,7 @@ export interface SDKMessage {
 
 export interface SDKUserMessage extends SDKMessage {
     type: 'user'
+    parent_tool_use_id?: string
     message: {
         role: 'user'
         content: string | Array<{
@@ -29,6 +30,7 @@ export interface SDKUserMessage extends SDKMessage {
 
 export interface SDKAssistantMessage extends SDKMessage {
     type: 'assistant'
+    parent_tool_use_id?: string
     message: {
         role: 'assistant'
         content: Array<{

@@ -9,7 +9,8 @@ export async function startPermissionResolver(session: Session) {
 
     let toolCalls: { id: string, name: string, input: any, used: boolean }[] = [];
 
-    let requests = new Map<string, (response: { approved: boolean, reason?: string }) => void>();
+    let responses = new Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>();
+    let requests = new Map<string, (response: { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }) => void>();
     const server = await startPermissionServerV2(async (request) => {
 
         // Should not happent
@@ -21,12 +22,17 @@ export async function startPermissionResolver(session: Session) {
 
         // Hack for exit_plan_mode
         let promise = new Promise<{ approved: boolean, reason?: string }>((resolve) => {
-            if (request.name === 'exit_plan_mode') {
+            if (request.name === 'exit_plan_mode' || request.name === 'ExitPlanMode') {
                 // Intercept exit_plan_mode approval
-                const wrappedResolve = (response: { approved: boolean, reason?: string }) => {
+                const wrappedResolve = (response: { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }) => {
                     if (response.approved) {
+                        logger.debug('Plan approved - injecting PLAN_FAKE_RESTART');
                         // Inject the approval message at the beginning of the queue
-                        session.queue.unshift(PLAN_FAKE_RESTART, 'default');
+                        if (response.mode && ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode)) {
+                            session.queue.unshift(PLAN_FAKE_RESTART, response.mode);
+                        } else {
+                            session.queue.unshift(PLAN_FAKE_RESTART, 'default');
+                        }
                         resolve({ approved: false, reason: PLAN_FAKE_REJECT });
                     } else {
                         resolve(response);
@@ -114,7 +120,8 @@ export async function startPermissionResolver(session: Session) {
         const id = message.id;
         const resolve = requests.get(id);
         if (resolve) {
-            resolve({ approved: message.approved, reason: message.reason });
+            responses.set(id, message);
+            resolve({ approved: message.approved, reason: message.reason, mode: message.mode });
             requests.delete(id);
         } else {
             logger.debug('Permission request stale, likely timed out');
@@ -231,7 +238,8 @@ export async function startPermissionResolver(session: Session) {
     return {
         server,
         reset,
-        onMessage
+        onMessage,
+        responses
     }
 }
 
@@ -239,4 +247,5 @@ interface PermissionResponse {
     id: string;
     approved: boolean;
     reason?: string;
+    mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
 }

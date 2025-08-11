@@ -6,10 +6,11 @@ import React from "react";
 import { claudeRemote } from "./claudeRemote";
 import { startPermissionResolver } from "./utils/startPermissionResolver";
 import { Future } from "@/utils/future";
-import { SDKMessage } from "./sdk";
+import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
+import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 
 export async function claudeRemoteLauncher(session: Session) {
 
@@ -59,14 +60,16 @@ export async function claudeRemoteLauncher(session: Session) {
     // Create permission server
     const permissions = await startPermissionResolver(session);
 
-    // Create SDK to Log converter
+    // Create SDK to Log converter (pass responses from permissions)
     const sdkToLogConverter = new SDKToLogConverter({
         sessionId: session.sessionId || 'unknown',
         cwd: session.path,
         version: process.env.npm_package_version
-    });
+    }, permissions.responses);
 
     // Handle messages
+    let planModeToolCalls = new Set<string>();
+    let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
     function onMessage(message: SDKMessage) {
 
         // Write to message log
@@ -75,12 +78,95 @@ export async function claudeRemoteLauncher(session: Session) {
         // Write to permission server for tool id resolving
         permissions.onMessage(message);
 
+        // Detect plan mode tool call
+        if (message.type === 'assistant') {
+            let umessage = message as SDKAssistantMessage;
+            if (umessage.message.content && Array.isArray(umessage.message.content)) {
+                for (let c of umessage.message.content) {
+                    if (c.type === 'tool_use' && (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode')) {
+                        logger.debug('[remote]: detected plan mode tool call ' + c.id!);
+                        planModeToolCalls.add(c.id! as string);
+                    }
+                }
+            }
+        }
+
+        // Track active tool calls
+        if (message.type === 'assistant') {
+            let umessage = message as SDKAssistantMessage;
+            if (umessage.message.content && Array.isArray(umessage.message.content)) {
+                for (let c of umessage.message.content) {
+                    if (c.type === 'tool_use') {
+                        logger.debug('[remote]: detected tool use ' + c.id! + ' parent: ' + umessage.parent_tool_use_id);
+                        ongoingToolCalls.set(c.id!, { parentToolCallId: umessage.parent_tool_use_id ?? null });
+                    }
+                }
+            }
+        }
+        if (message.type === 'user') {
+            let umessage = message as SDKUserMessage;
+            if (umessage.message.content && Array.isArray(umessage.message.content)) {
+                for (let c of umessage.message.content) {
+                    if (c.type === 'tool_result' && c.tool_use_id) {
+                        ongoingToolCalls.delete(c.tool_use_id);
+                    }
+                }
+            }
+        }
+
         // Convert SDK message to log format and send to client
-        const logMessage = sdkToLogConverter.convert(message);
+        let msg = message;
+
+        // Hack plan mode exit
+        if (message.type === 'user') {
+            let umessage = message as SDKUserMessage;
+            if (umessage.message.content && Array.isArray(umessage.message.content)) {
+                msg = {
+                    ...umessage,
+                    message: {
+                        ...umessage.message,
+                        content: umessage.message.content.map((c) => {
+                            if (c.type === 'tool_result' && c.tool_use_id && planModeToolCalls.has(c.tool_use_id!)) {
+                                if (c.content === PLAN_FAKE_REJECT) {
+                                    logger.debug('[remote]: hack plan mode exit');
+                                    logger.debugLargeJson('[remote]: hack plan mode exit', c);
+                                    return {
+                                        ...c,
+                                        is_error: false,
+                                        content: 'Plan approved',
+                                        mode: c.mode
+                                    }
+                                } else {
+                                    return c;
+                                }
+                            }
+                            return c;
+                        })
+                    }
+                }
+            }
+        }
+
+        const logMessage = sdkToLogConverter.convert(msg);
         if (logMessage) {
             // Filter out system messages - they're usually not sent to logs
             if (logMessage.type !== 'system') {
                 session.client.sendClaudeSessionMessage(logMessage);
+            }
+        }
+
+        // Insert a fake message to start the sidechain
+        if (message.type === 'assistant') {
+            let umessage = message as SDKAssistantMessage;
+            if (umessage.message.content && Array.isArray(umessage.message.content)) {
+                for (let c of umessage.message.content) {
+                    if (c.type === 'tool_use' && c.name === 'Task' && c.input && typeof (c.input as any).prompt === 'string') {
+                        const logMessage2 = sdkToLogConverter.convertSidechainUserMessage(c.id!, (c.input as any).prompt);
+                        if (logMessage2) {
+                            session.client.sendClaudeSessionMessage(logMessage2);
+                        }
+                    }
+                }
             }
         }
     }
@@ -119,6 +205,7 @@ export async function claudeRemoteLauncher(session: Session) {
                 await claudeRemote({
                     sessionId: session.sessionId,
                     path: session.path,
+                    responses: permissions.responses,
                     mcpServers: {
                         ...session.mcpServers,
                         permission: {
@@ -140,7 +227,7 @@ export async function claudeRemoteLauncher(session: Session) {
                     onMessage,
                     signal: abortController.signal,
                 });
-                if (!exitReason) {
+                if (!exitReason && abortController.signal.aborted) {
                     session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 }
             } catch (e) {
@@ -149,6 +236,18 @@ export async function claudeRemoteLauncher(session: Session) {
                     continue;
                 }
             } finally {
+
+                // Terminate all ongoing tool calls
+                for (let [toolCallId, { parentToolCallId }] of ongoingToolCalls) {
+                    const converted = sdkToLogConverter.generateInterruptedToolResult(toolCallId, parentToolCallId);
+                    if (converted) {
+                        logger.debug('[remote]: terminating tool call ' + toolCallId + ' parent: ' + parentToolCallId);
+                        session.client.sendClaudeSessionMessage(converted);
+                    }
+                }
+                ongoingToolCalls.clear();
+
+                // Reset abort controller and future
                 abortController = null;
                 abortFuture?.resolve(undefined);
                 abortFuture = null;

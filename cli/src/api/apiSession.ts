@@ -182,16 +182,21 @@ export class ApiSessionClient extends EventEmitter {
                 content: {
                     type: 'text',
                     text: body.message.content
+                },
+                meta: {
+                    sentFrom: 'cli'
                 }
             }
         } else {
-            // Legacy behavior: wrap as agent message
             // Wrap Claude messages in the expected format
             content = {
                 role: 'agent',
                 content: {
                     type: 'output',
                     data: body  // This wraps the entire Claude message
+                },
+                meta: {
+                    sentFrom: 'cli'
                 }
             };
         }
@@ -326,7 +331,7 @@ export class ApiSessionClient extends EventEmitter {
             if (answer.result === 'success') {
                 this.agentState = answer.agentState ? decrypt(decodeBase64(answer.agentState), this.secret) : null;
                 this.agentStateVersion = answer.version;
-                console.log('Agent state updated', this.agentState);
+                // console.log('Agent state updated', this.agentState);
             } else if (answer.result === 'version-mismatch') {
                 if (answer.version > this.agentStateVersion) {
                     this.agentStateVersion = answer.version;
@@ -334,7 +339,7 @@ export class ApiSessionClient extends EventEmitter {
                 }
                 throw new Error('Agent state version mismatch');
             } else if (answer.result === 'error') {
-                console.error('Agent state update error', answer);
+                // console.error('Agent state update error', answer);
                 // Hard error - ignore
             }
         });

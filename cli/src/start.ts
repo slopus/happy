@@ -114,20 +114,16 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         claudeArgs: options.claudeArgs
     });
 
-    // NOTE: Shut down as fast as possible to provide 0 claude overhead
-    // Do not handle shutdown gracefully, just exit
-    let _gracefulShutdown = async () => {
-        // Send session death message
-        session.sendSessionDeath();
+    // Send session death message
+    session.sendSessionDeath();
 
-        // Wait for socket to flush
-        logger.debug('Waiting for socket to flush...');
-        await session.flush();
+    // Wait for socket to flush
+    logger.debug('Waiting for socket to flush...');
+    await session.flush();
 
-        // Close session
-        logger.debug('Closing session...');
-        await session.close();
-    }
+    // Close session
+    logger.debug('Closing session...');
+    await session.close();
 
     // Exit
     process.exit(0);

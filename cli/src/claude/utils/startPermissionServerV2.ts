@@ -26,9 +26,10 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
         },
     }, async (args) => {
         const response = await handler({ name: args.tool_name, arguments: args.input });
+        logger.debugLargeJson('[permissionServerV2] Response', response);
         const result = response.approved
             ? { behavior: 'allow', updatedInput: args.input || {} }
-            : { behavior: 'deny', message: response.reason || 'Permission denied by user' };
+            : { behavior: 'deny', message: response.reason || `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.` };
         return {
             content: [
                 {
@@ -40,10 +41,10 @@ export async function startPermissionServerV2(handler: (req: { name: string, arg
         };
     })
 
-    const transport = new StreamableHTTPServerTransport({ 
+    const transport = new StreamableHTTPServerTransport({
         // NOTE: Returning session id here will result in claude
         // sdk spawn to fail with `Invalid Request: Server already initialized`
-        sessionIdGenerator: undefined 
+        sessionIdGenerator: undefined
     });
     await mcp.connect(transport);
 

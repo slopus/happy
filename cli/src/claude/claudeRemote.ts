@@ -14,6 +14,7 @@ export async function claudeRemote(opts: {
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
     onSessionFound: (id: string) => void,
     onThinkingChange?: (thinking: boolean) => void,
+    responses: Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>,
     message: string,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
@@ -32,6 +33,8 @@ export async function claudeRemote(opts: {
             process.env[key] = value;
         });
     }
+
+    // let exitReason: 'tool_rejected' | null = null;
 
     // Bridge external abort signal to SDK's abort controller
     let response: AsyncIterableIterator<SDKMessage> & { interrupt?: () => Promise<void> };
@@ -68,19 +71,6 @@ export async function claudeRemote(opts: {
         prompt: message,
         options: sdkOptions,
     });
-
-    // // Send interrupt immediately if abort signal is received
-    // if (opts.signal) {
-    //     if (opts.signal.aborted) {
-    //         logger.debug(`[claudeRemote] Abort signal received, exiting claudeRemote`);
-    //         await response.interrupt?.();
-    //     } else {
-    //         opts.signal.addEventListener('abort', async () => {
-    //             logger.debug(`[claudeRemote] Abort signal received, exiting claudeRemote`);
-    //             await response.interrupt?.();
-    //         });
-    //     }
-    // }
 
     // Track thinking state
     let thinking = false;
@@ -125,6 +115,23 @@ export async function claudeRemote(opts: {
                 updateThinking(false);
                 logger.debug('[claudeRemote] Result received, exiting claudeRemote');
                 break; // Exit the loop when result is received
+            }
+
+            // Handle plan result
+            if (message.type === 'user') {
+                const msg = message as SDKUserMessage;
+                if (msg.message.role === 'user' && Array.isArray(msg.message.content)) {
+                    for (let c of msg.message.content) {
+                        if (c.type === 'tool_result' && (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode')) { // Exit on any result of plan mode tool call
+                            logger.debug('[claudeRemote] Plan result received, exiting claudeRemote');
+                            break;
+                        }
+                        if (c.type === 'tool_result' && c.tool_use_id && opts.responses.has(c.tool_use_id) && !opts.responses.get(c.tool_use_id)!!.approved) { // Exit on any tool permission rejection
+                            logger.debug('[claudeRemote] Tool rejected, exiting claudeRemote');
+                            break;
+                        }
+                    }
+                }
             }
         }
         logger.debug(`[claudeRemote] Finished iterating over response`);

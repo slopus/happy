@@ -37,7 +37,7 @@ export const RemoteModeDisplay: React.FC<RemoteModeDisplayProps> = ({ messageBuf
 
     const formatMessage = (msg: BufferedMessage): string => {
         const lines = msg.content.split('\n')
-        const maxLineLength = terminalWidth - 8 // Account for borders and padding
+        const maxLineLength = terminalWidth - 10 // Account for borders and padding
         return lines.map(line => {
             if (line.length <= maxLineLength) return line
             const chunks: string[] = []
