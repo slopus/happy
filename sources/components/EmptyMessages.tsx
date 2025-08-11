@@ -3,7 +3,7 @@ import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
-import { getSessionState } from '@/utils/sessionUtils';
+import { useSessionStatus } from '@/utils/sessionUtils';
 
 interface EmptyMessagesProps {
     session: Session;
@@ -43,7 +43,7 @@ function formatRelativeTime(timestamp: number): string {
 
 export function EmptyMessages({ session }: EmptyMessagesProps) {
     const osIcon = getOSIcon(session.metadata?.os);
-    const sessionStatus = getSessionState(session);
+    const sessionStatus = useSessionStatus(session);
     const startedTime = formatRelativeTime(session.createdAt);
     
     return (

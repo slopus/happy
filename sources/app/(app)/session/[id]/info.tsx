@@ -8,7 +8,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession } from '@/sync/storage';
-import { getSessionName, getSessionState, formatOSPlatform } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, formatOSPlatform } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 
@@ -93,7 +93,7 @@ export default React.memo(() => {
     }
 
     const sessionName = getSessionName(session);
-    const sessionStatus = getSessionState(session);
+    const sessionStatus = useSessionStatus(session);
 
     const screenOptions = {
         // headerShown: true,
