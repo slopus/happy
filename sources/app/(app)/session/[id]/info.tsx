@@ -134,7 +134,7 @@ export default React.memo(() => {
                             fontWeight: '500',
                             ...Typography.default()
                         }}>
-                            {sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active'}
+                            {sessionStatus.statusText}
                         </Text>
                     </View>
                 </View>

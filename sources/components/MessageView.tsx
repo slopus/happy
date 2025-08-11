@@ -119,6 +119,7 @@ function AgentEventBlock(props: {
         marginHorizontal: 8,
         alignItems: 'center',
         paddingVertical: 8,
+        paddingBottom: 24
       }}>
         <Text style={{ color: '#666666', fontSize: 14 }}>Switched to {props.event.mode} mode</Text>
       </View>
@@ -127,9 +128,10 @@ function AgentEventBlock(props: {
   if (props.event.type === 'message') {
     return (
       <View style={{
-        marginHorizontal: 8,
+        marginVertical: 8,
         alignItems: 'center',
         paddingVertical: 8,
+        paddingBottom: 24
       }}>
         <Text style={{ color: '#666666', fontSize: 14 }}>{props.event.message}</Text>
       </View>
@@ -140,6 +142,7 @@ function AgentEventBlock(props: {
       marginHorizontal: 8,
       alignItems: 'center',
       paddingVertical: 8,
+      paddingBottom: 24
     }}>
       <Text style={{ color: '#666666', fontSize: 14 }}>Unknown event</Text>
     </View>

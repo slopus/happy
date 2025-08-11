@@ -2,6 +2,7 @@ import React from 'react';
 import { Text, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
+import { hapticsLight } from './haptics';
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
 
@@ -44,6 +45,7 @@ export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
     const currentConfig = modeConfig[mode];
 
     const handleTap = () => {
+        hapticsLight();
         const currentIndex = modeOrder.indexOf(mode);
         const nextIndex = (currentIndex + 1) % modeOrder.length;
         onModeChange(modeOrder[nextIndex]);
@@ -56,33 +58,34 @@ export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
             style={{
                 flexDirection: 'row',
                 alignItems: 'center',
-                backgroundColor: Platform.select({
-                    ios: '#F2F2F7',
-                    android: '#E0E0E0',
-                    default: '#F2F2F7'
-                }),
+                // backgroundColor: Platform.select({
+                //     ios: '#F2F2F7',
+                //     android: '#E0E0E0',
+                //     default: '#F2F2F7'
+                // }),
                 borderRadius: Platform.select({ default: 16, android: 20 }),
                 paddingHorizontal: 12,
                 paddingVertical: 6,
-                minWidth: 100,
+                width: 120,
+                justifyContent: 'center',
                 height: 32,
                 opacity: disabled ? 0.5 : 1,
             }}
         >
             <Ionicons
-                name={currentConfig.icon}
+                name={'hammer-outline'}
                 size={16}
-                color={Platform.select({ ios: '#007AFF', android: '#1976D2', default: '#007AFF' })}
+                color={'black'}
                 style={{ marginRight: 4 }}
             />
-            <Text style={{
+            {/* <Text style={{
                 fontSize: 13,
                 color: '#000',
                 fontWeight: '600',
                 ...Typography.default('semiBold')
             }}>
                 {currentConfig.label}
-            </Text>
+            </Text> */}
         </Pressable>
     );
 };
