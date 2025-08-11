@@ -120,6 +120,7 @@ export default {
                 revenueCatAppleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE,
                 revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
                 revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE,
+                serverUrl: process.env.EXPO_PUBLIC_SERVER_URL,
             }
         },
         owner: "bulkacorp"
