@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "start:local-server": "EXPO_PUBLIC_DEBUG=1 EXPO_PUBLIC_API_ENDPOINT=http://localhost:3005 expo start -c",
+    "start:local-server": "EXPO_PUBLIC_DEBUG=1 EXPO_PUBLIC_SERVER_URL=http://localhost:3005 expo start -c",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "ios:connected-device": "yarn ios -d $(xcrun devicectl list devices | grep -E \"available \\(paired\\)\" | head -1 | awk '{print $1}')",
