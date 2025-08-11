@@ -182,7 +182,7 @@ const SessionItem = React.memo(({ session, selectedSessionId, router }: {
                             lineHeight: 16,
                             ...Typography.default()
                         }}>
-                            {sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active'}
+                            {sessionStatus.statusText}
                         </Text>
                     </View>
                     {session.metadata?.os && (

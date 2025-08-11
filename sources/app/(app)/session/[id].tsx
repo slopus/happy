@@ -22,7 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useIsLandscape, useDeviceType, useHeaderHeight } from '@/utils/responsive';
-import Animated, { useSharedValue, useAnimatedStyle, withRepeat, withTiming } from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { AgentContentView } from '@/components/AgentContentView';
 import { isRunningOnMac } from '@/utils/platform';
@@ -32,44 +32,9 @@ import { trackMessageSent } from '@/track';
 import { tracking } from '@/track';
 import { useAutocompleteSession } from '@/hooks/useAutocompleteSession';
 import { AutoCompleteView } from '@/components/AutoCompleteView';
+import { StatusDot } from '@/components/StatusDot';
+import { ChatFooter } from '@/components/ChatFooter';
 
-// Animated status dot component
-function StatusDot({ color, isPulsing, size = 6 }: { color: string; isPulsing?: boolean; size?: number }) {
-    const opacity = useSharedValue(1);
-
-    React.useEffect(() => {
-        if (isPulsing) {
-            opacity.value = withRepeat(
-                withTiming(0.3, { duration: 1000 }),
-                -1, // infinite
-                true // reverse
-            );
-        } else {
-            opacity.value = withTiming(1, { duration: 200 });
-        }
-    }, [isPulsing]);
-
-    const animatedStyle = useAnimatedStyle(() => {
-        return {
-            opacity: opacity.value,
-        };
-    });
-
-    return (
-        <Animated.View
-            style={[
-                {
-                    width: size,
-                    height: size,
-                    borderRadius: size / 2,
-                    backgroundColor: color,
-                    marginRight: 4,
-                },
-                animatedStyle
-            ]}
-        />
-    );
-}
 
 export default React.memo(() => {
     const route = useRoute();
@@ -103,7 +68,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const screenWidth = useWindowDimensions().width;
     const headerHeight = useHeaderHeight();
     const sessionStatus = useSessionStatus(session);
-    const lastSeenText = sessionStatus.shouldShowStatus ? sessionStatus.statusText : 'active';
+    const lastSeenText = sessionStatus.statusText;
     const autocomplete = useAutocompleteSession(message, message.length);
     const daemonStatus = useDaemonStatusByMachine(session.metadata?.machineId || '');
 
@@ -120,9 +85,6 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         flatListStyle: {
             marginTop: Platform.OS === 'web' ? headerHeight + safeArea.top : 0
         },
-        listFooterHeight: {
-            height: headerHeight + safeArea.top
-        }
     }), [headerHeight, safeArea.top]);
 
 
@@ -160,7 +122,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         sync.onSessionVisible(sessionId);
     }, [sessionId]);
 
-    const footer = React.useMemo(() => {
+    const ListHeader = React.useMemo(() => {
         return <View style={{ flexDirection: 'row', alignItems: 'center', height: 32 }} />;
     }, []);
 
@@ -184,7 +146,24 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         autoscrollToTopThreshold: 100,
     }), []);
 
-    const ListFooterComponent = useCallback(() => <View style={headerDependentStyles.listFooterHeight} />, [headerDependentStyles.listFooterHeight]);
+    const ListFooter = useCallback(() => (
+        <ChatFooter
+            status={{
+                state: sessionStatus.state,
+                text: sessionStatus.state === 'disconnected' ? 'disconnected' :
+                    sessionStatus.state === 'thinking' ? 'thinking...' :
+                        sessionStatus.state === 'idle' ? 'idle' :
+                            sessionStatus.state === 'permission_required' ? 'permission required' :
+                                sessionStatus.state === 'waiting' ? 'connected' : '',
+                color: sessionStatus.statusColor,
+                dotColor: sessionStatus.statusDotColor,
+                isPulsing: sessionStatus.isPulsing,
+            }}
+            permissionMode={permissionMode}
+            onPermissionModeChange={setPermissionMode}
+            onSwitch={() => sessionSwitch(sessionId, 'remote')}
+        />
+    ), [sessionStatus, permissionMode, sessionId]);
 
     return (
         <>
@@ -241,7 +220,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                                         alignItems: 'center',
                                         justifyContent: 'center',
                                         height: 16,
-                                        marginTop: 2
+                                        marginTop: 2,
+                                        marginRight: 4
                                     }}>
                                         <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
                                     </View>
@@ -320,19 +300,19 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                                     keyboardDismissMode="none"
                                     renderItem={renderItem}
                                     contentContainerStyle={contentContainerStyle}
-                                    ListHeaderComponent={footer}
-                                    ListFooterComponent={ListFooterComponent}
+                                    ListHeaderComponent={ListFooter}
+                                    ListFooterComponent={ListHeader}
                                 />
                             )}
                         </Deferred>
-                        <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 1000 }}>
+                        {/* <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 1000 }}>
                             <LinearGradient
                                 colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']}
                                 locations={[0, 1]}
                                 style={{ alignSelf: 'stretch', height: 8, pointerEvents: 'none' }}
                             />
                             <AutoCompleteView results={autocomplete} onSelect={() => { }} />
-                        </View>
+                        </View> */}
 
                     </Animated.View>
 
@@ -365,6 +345,14 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         placeholder="Type a message ..."
                         value={message}
                         onChangeText={setMessage}
+                        permissionMode={permissionMode}
+                        onPermissionModeChange={setPermissionMode}
+                        connectionStatus={{
+                            text: sessionStatus.statusText,
+                            color: sessionStatus.statusColor,
+                            dotColor: sessionStatus.statusDotColor,
+                            isPulsing: sessionStatus.isPulsing
+                        }}
                         onSend={() => {
                             if (message.trim()) {
                                 setMessage('');
@@ -374,21 +362,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         }}
                         onMicPress={handleMicrophonePress}
                         isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
-                        onSwitch={() => sessionSwitch(sessionId, 'remote')}
-                        status={{
-                            state: sessionStatus.state,
-                            text: sessionStatus.state === 'disconnected' ? 'disconnected' :
-                                sessionStatus.state === 'thinking' ? 'thinking...' :
-                                    sessionStatus.state === 'idle' ? 'idle' :
-                                        sessionStatus.state === 'permission_required' ? 'permission required' :
-                                            sessionStatus.state === 'waiting' ? 'connected' : '',
-                            color: sessionStatus.statusColor,
-                            dotColor: sessionStatus.statusDotColor,
-                            isPulsing: sessionStatus.isPulsing,
-                        }}
                         onAbort={() => sessionAbort(sessionId)}
-                        permissionMode={permissionMode}
-                        onPermissionModeChange={setPermissionMode}
+                        showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
                     />
                 </AgentContentView>
             </View>

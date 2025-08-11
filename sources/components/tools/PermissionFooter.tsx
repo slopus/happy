@@ -171,7 +171,7 @@ const styles = StyleSheet.create({
         backgroundColor: '#E5E5EA',
         alignItems: 'center',
         justifyContent: 'center',
-        minHeight: 44,
+        height: 44,
         borderWidth: 1,
         borderColor: '#D1D1D6',
     },

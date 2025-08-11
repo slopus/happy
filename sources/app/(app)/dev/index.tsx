@@ -159,6 +159,12 @@ export default function DevScreen() {
                     onPress={() => router.push('/dev/multi-text-input')}
                 />
                 <Item 
+                    title="Input Styles"
+                    subtitle="10+ different input field style variants"
+                    icon={<Ionicons name="color-palette-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/input-styles')}
+                />
+                <Item 
                     title="Modal System"
                     subtitle="Alert, confirm, and custom modals"
                     icon={<Ionicons name="albums-outline" size={28} color="#007AFF" />}
