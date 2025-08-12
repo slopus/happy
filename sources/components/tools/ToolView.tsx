@@ -40,7 +40,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     let knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
 
-    let description = tool.description;
+    let description: string | null = null;
     let status: string | null = null;
     let minimal = false;
     let icon = <Ionicons name="construct-outline" size={18} />;

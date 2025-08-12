@@ -17,19 +17,18 @@ const ICON_TODO = (size: number = 24, color: string = '#000') => <Ionicons name=
 
 export const knownTools = {
     'Task': {
-        title: 'Task',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            // Check for description field at runtime
+            if (opts.tool.input && opts.tool.input.description && typeof opts.tool.input.description === 'string') {
+                return opts.tool.input.description;
+            }
+            return 'Task';
+        },
         icon: ICON_TASK,
         input: z.object({
             prompt: z.string().describe('The task for the agent to perform'),
             subagent_type: z.string().optional().describe('The type of specialized agent to use')
-        }).partial().loose(),
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            const type = opts.tool.input.subagent_type;
-            if (type) {
-                return `Task(type: ${type})`;
-            }
-            return 'Task';
-        }
+        }).partial().loose()
     },
     'Bash': {
         title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
@@ -326,7 +325,7 @@ export const knownTools = {
             todos: z.array(z.object({
                 content: z.string().describe('The todo item content'),
                 status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
-                priority: z.enum(['high', 'medium', 'low']).describe('The priority of the todo'),
+                priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
                 id: z.string().describe('Unique identifier for the todo')
             }).loose()).describe('The updated todo list')
         }).partial().loose(),
@@ -334,13 +333,13 @@ export const knownTools = {
             oldTodos: z.array(z.object({
                 content: z.string().describe('The todo item content'),
                 status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
-                priority: z.enum(['high', 'medium', 'low']).describe('The priority of the todo'),
+                priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
                 id: z.string().describe('Unique identifier for the todo')
             }).loose()).describe('The old todo list'),
             newTodos: z.array(z.object({
                 content: z.string().describe('The todo item content'),
                 status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
-                priority: z.enum(['high', 'medium', 'low']).describe('The priority of the todo'),
+                priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
                 id: z.string().describe('Unique identifier for the todo')
             }).loose()).describe('The new todo list')
         }).partial().loose(),
