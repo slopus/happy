@@ -30,7 +30,7 @@ export function ToolHeader({ tool }: ToolHeaderProps) {
         }
     }
     
-    const icon = knownTool?.icon || 'construct';
+    const icon = knownTool?.icon ? knownTool.icon(18, 'black') : <Ionicons name="construct-outline" size={18} color="black" />;
     
     // Extract subtitle using the same logic as ToolView
     let subtitle = null;
@@ -45,7 +45,7 @@ export function ToolHeader({ tool }: ToolHeaderProps) {
         <View style={styles.container}>
             <View style={styles.titleContainer}>
                 <View style={styles.titleRow}>
-                    <Ionicons name={icon as any} size={18} color="#5856D6" />
+                    {icon}
                     <Text style={styles.title} numberOfLines={1}>{toolTitle}</Text>
                 </View>
                 {subtitle && (
