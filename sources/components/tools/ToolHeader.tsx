@@ -10,7 +10,7 @@ interface ToolHeaderProps {
 
 export function ToolHeader({ tool }: ToolHeaderProps) {
     const knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
-    
+
     // Extract status first for Bash tool to potentially use as title
     let status: string | null = null;
     if (knownTool && typeof knownTool.extractStatus === 'function') {
@@ -19,7 +19,7 @@ export function ToolHeader({ tool }: ToolHeaderProps) {
             status = extractedStatus;
         }
     }
-    
+
     // Handle optional title and function type
     let toolTitle = tool.name;
     if (knownTool?.title) {
@@ -29,9 +29,9 @@ export function ToolHeader({ tool }: ToolHeaderProps) {
             toolTitle = knownTool.title;
         }
     }
-    
+
     const icon = knownTool?.icon ? knownTool.icon(18, 'black') : <Ionicons name="construct-outline" size={18} color="black" />;
-    
+
     // Extract subtitle using the same logic as ToolView
     let subtitle = null;
     if (knownTool && typeof knownTool.extractSubtitle === 'function') {
@@ -61,12 +61,15 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'center',
         alignItems: 'center',
-        flex: 1,
+        flexGrow: 1,
+        flexBasis: 0,
         paddingHorizontal: 4,
     },
     titleContainer: {
         flexDirection: 'column',
         alignItems: 'center',
+        flexGrow: 1,
+        flexBasis: 0
     },
     titleRow: {
         flexDirection: 'row',
