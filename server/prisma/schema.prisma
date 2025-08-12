@@ -30,6 +30,7 @@ model Account {
     AccountPushToken    AccountPushToken[]
     TerminalAuthRequest TerminalAuthRequest[]
     UsageReport         UsageReport[]
+    Machine             Machine[]
 }
 
 model TerminalAuthRequest {
@@ -136,4 +137,24 @@ model UsageReport {
     @@unique([accountId, sessionId, key])
     @@index([accountId])
     @@index([sessionId])
+}
+
+//
+// Machines
+//
+
+model Machine {
+    id                String    @id
+    accountId         String
+    account           Account   @relation(fields: [accountId], references: [id])
+    metadata          String    // Encrypted - contains ALL machine info
+    metadataVersion   Int       @default(0)
+    seq               Int       @default(0)
+    active            Boolean   @default(true)
+    lastActiveAt      DateTime  @default(now())
+    createdAt         DateTime  @default(now())
+    updatedAt         DateTime  @updatedAt
+    
+    @@unique([accountId, id])
+    @@index([accountId])
 }
