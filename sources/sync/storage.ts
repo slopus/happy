@@ -78,9 +78,9 @@ function buildSessionListViewData(
         }
     });
     
-    // Sort by most recently updated
-    activeSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-    inactiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    // Sort by creation date for stable ordering
+    activeSessions.sort((a, b) => b.createdAt - a.createdAt);
+    inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
     
     // Get active machines
     const activeMachines = Object.values(machines).filter(m => m.active);
@@ -171,9 +171,9 @@ export const storage = create<StorageState>()((set) => {
                 }
             });
 
-            // Sort both arrays by updatedAt
-            activeSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-            inactiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+            // Sort both arrays by creation date for stable ordering
+            activeSessions.sort((a, b) => b.createdAt - a.createdAt);
+            inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
 
             // Build flat list data for FlashList
             const listData: SessionListItem[] = [];

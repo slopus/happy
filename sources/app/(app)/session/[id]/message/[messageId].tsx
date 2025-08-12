@@ -1,7 +1,8 @@
 import * as React from 'react';
-import { useLocalSearchParams, Stack } from "expo-router";
-import { Text, View } from "react-native";
-import { useMessage } from "@/sync/storage";
+import { useLocalSearchParams, Stack, useRouter } from "expo-router";
+import { Text, View, ActivityIndicator } from "react-native";
+import { useMessage, useSession, useSessionMessages } from "@/sync/storage";
+import { sync } from '@/sync/sync';
 import { Deferred } from "@/components/Deferred";
 import { ToolFullView } from '@/components/tools/ToolFullView';
 import { ToolHeader } from '@/components/tools/ToolHeader';
@@ -10,7 +11,24 @@ import { Message } from '@/sync/typesMessage';
 
 export default React.memo(() => {
     const { id: sessionId, messageId } = useLocalSearchParams<{ id: string; messageId: string }>();
-    const message = useMessage(sessionId!, messageId!)!;
+    const router = useRouter();
+    const session = useSession(sessionId!);
+    const { isLoaded: messagesLoaded } = useSessionMessages(sessionId!);
+    const message = useMessage(sessionId!, messageId!);
+    
+    // Trigger session visibility when component mounts
+    React.useEffect(() => {
+        if (sessionId) {
+            sync.onSessionVisible(sessionId);
+        }
+    }, [sessionId]);
+    
+    // Navigate back if message doesn't exist after messages are loaded
+    React.useEffect(() => {
+        if (messagesLoaded && !message) {
+            router.back();
+        }
+    }, [messagesLoaded, message, router]);
     
     // Configure header for tool messages
     React.useLayoutEffect(() => {
@@ -18,6 +36,25 @@ export default React.memo(() => {
             // Header is configured in the Stack.Screen options
         }
     }, [message]);
+    
+    // Show loader while waiting for session and messages to load
+    if (!session || !messagesLoaded) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#666" />
+            </View>
+        );
+    }
+    
+    // If messages are loaded but specific message not found, show loader briefly
+    // The useEffect above will navigate back
+    if (!message) {
+        return (
+            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                <ActivityIndicator size="large" color="#666" />
+            </View>
+        );
+    }
     
     return (
         <>
@@ -42,16 +79,16 @@ function FullView(props: { message: Message }) {
     }
     if (props.message.kind === 'agent-text') {
         return (
-            <Text>
-
-            </Text>
+            <View style={{ flex: 1, padding: 16 }}>
+                <Text>{props.message.text}</Text>
+            </View>
         )
     }
     if (props.message.kind === 'user-text') {
         return (
-            <Text>
-
-            </Text>
+            <View style={{ flex: 1, padding: 16 }}>
+                <Text>{props.message.text}</Text>
+            </View>
         )
     }
     return null;
