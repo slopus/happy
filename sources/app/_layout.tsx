@@ -19,6 +19,7 @@ import { tracking } from '@/track/tracking';
 import { syncRestore } from '@/sync/sync';
 import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
+import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -142,5 +143,10 @@ export default function RootLayout() {
         );
     }
 
-    return providers;
+    return (
+        <>
+            <FaviconPermissionIndicator />
+            {providers}
+        </>
+    );
 }

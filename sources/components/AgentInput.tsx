@@ -61,7 +61,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
 
     // Handle combined text and selection state changes
     const handleInputStateChange = React.useCallback((newState: TextInputState) => {
-        console.log('📝 Input state changed:', JSON.stringify(newState));
+        // console.log('📝 Input state changed:', JSON.stringify(newState));
         setInputState(newState);
     }, []);
 
@@ -104,7 +104,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
             end: result.cursorPosition
         });
 
-        console.log('Selected suggestion:', suggestion.text);
+        // console.log('Selected suggestion:', suggestion.text);
 
         // Small haptic feedback
         hapticsLight();
