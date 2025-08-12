@@ -5,13 +5,13 @@ import { View, FlatList, Text, ActivityIndicator, Platform, useWindowDimensions 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
 import { useRouter } from "expo-router";
-import { getSessionName, useSessionStatus } from "@/utils/sessionUtils";
+import { getSessionName, useSessionStatus, getSessionAvatarId } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages, useSettings, useDaemonStatusByMachine, useRealtimeStatus } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { sessionAbort, sessionSwitch, spawnRemoteSession } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
-import { Pressable } from 'react-native';
+import { Pressable, ScrollView, Keyboard } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
 import { RoundButton } from '@/components/RoundButton';
 import { Deferred } from '@/components/Deferred';
@@ -72,15 +72,18 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const autocomplete = useAutocompleteSession(message, message.length);
     const daemonStatus = useDaemonStatusByMachine(session.metadata?.machineId || '');
 
-
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
         emptyMessageContainer: {
-            flexGrow: 1,
-            flexBasis: 0,
-            justifyContent: 'center' as const,
+            position: 'absolute' as const,
+            bottom: 150,  // Fixed distance from bottom
+            left: 0,
+            right: 0,
             alignItems: 'center' as const,
-            marginTop: safeArea.top + headerHeight
+        },
+        emptyMessageWrapper: {
+            flex: 1,
+            position: 'relative' as const,
         },
         flatListStyle: {
             marginTop: Platform.OS === 'web' ? headerHeight + safeArea.top : 0
@@ -262,7 +265,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                                     marginRight: Platform.select({ ios: -8, default: -8 }),
                                 }}
                             >
-                                <Avatar id={sessionId} size={32} monochrome={!sessionStatus.isConnected} />
+                                <Avatar id={getSessionAvatarId(session)} size={32} monochrome={!sessionStatus.isConnected} />
                             </Pressable>
                         )}
                         headerShadowVisible={false}
@@ -277,7 +280,10 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             {/* Main content area - no padding since header is overlay */}
             <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 32 : 0) }}>
                 <AgentContentView>
-                    <Animated.View style={{ flexGrow: 1, flexBasis: 0 }}>
+                    <Pressable 
+                        style={headerDependentStyles.emptyMessageWrapper}
+                        onPress={() => Keyboard.dismiss()}
+                    >
                         <Deferred>
                             {messagesRecentFirst.length === 0 && isLoaded && (
                                 <View style={headerDependentStyles.emptyMessageContainer}>
@@ -306,68 +312,59 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                                 />
                             )}
                         </Deferred>
-                        {/* <View style={{ position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 1000 }}>
-                            <LinearGradient
-                                colors={['rgba(255,255,255,0)', 'rgba(255,255,255,1)']}
-                                locations={[0, 1]}
-                                style={{ alignSelf: 'stretch', height: 8, pointerEvents: 'none' }}
-                            />
-                            <AutoCompleteView results={autocomplete} onSelect={() => { }} />
-                        </View> */}
+                    </Pressable>
 
-                    </Animated.View>
-
-                    {sessionStatus.state === 'disconnected' && daemonStatus?.online && (
-                        <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
-                            <RoundButton
-                                title={isReviving ? "Reviving..." : "Revive session"}
-                                onPress={async () => {
-                                    if (!isReviving && session.metadata?.machineId && session.metadata?.path) {
-                                        setIsReviving(true);
-                                        try {
-                                            const result = await spawnRemoteSession(session.metadata.machineId, session.metadata.path);
-                                            if (result.sessionId && result.sessionId !== sessionId) {
-                                                router.replace(`/session/${result.sessionId}`);
+                    {sessionStatus.state === 'disconnected' && daemonStatus?.active && (
+                            <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+                                <RoundButton
+                                    title={isReviving ? "Reviving..." : "Revive session"}
+                                    onPress={async () => {
+                                        if (!isReviving && session.metadata?.machineId && session.metadata?.path) {
+                                            setIsReviving(true);
+                                            try {
+                                                const result = await spawnRemoteSession(session.metadata.machineId, session.metadata.path);
+                                                if (result.sessionId && result.sessionId !== sessionId) {
+                                                    router.replace(`/session/${result.sessionId}`);
+                                                }
+                                            } catch (error) {
+                                                Modal.alert('Error', 'Failed to revive session');
+                                            } finally {
+                                                setIsReviving(false);
                                             }
-                                        } catch (error) {
-                                            Modal.alert('Error', 'Failed to revive session');
-                                        } finally {
-                                            setIsReviving(false);
                                         }
-                                    }
-                                }}
-                                size="normal"
-                                disabled={isReviving}
-                                loading={isReviving}
-                            />
-                        </View>
+                                    }}
+                                    size="normal"
+                                    disabled={isReviving}
+                                    loading={isReviving}
+                                />
+                            </View>
                     )}
                     <AgentInput
-                        placeholder="Type a message ..."
-                        value={message}
-                        onChangeText={setMessage}
-                        permissionMode={permissionMode}
-                        onPermissionModeChange={setPermissionMode}
-                        connectionStatus={{
-                            text: sessionStatus.statusText,
-                            color: sessionStatus.statusColor,
-                            dotColor: sessionStatus.statusDotColor,
-                            isPulsing: sessionStatus.isPulsing
-                        }}
-                        onSend={() => {
-                            if (message.trim()) {
-                                setMessage('');
-                                sync.sendMessage(sessionId, message, permissionMode);
-                                trackMessageSent();
-                            }
-                        }}
-                        onMicPress={handleMicrophonePress}
-                        isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
-                        onAbort={() => sessionAbort(sessionId)}
-                        showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-                        // Autocomplete configuration
-                        autocompletePrefixes={['@', '/']}
-                        autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
+                            placeholder="Type a message ..."
+                            value={message}
+                            onChangeText={setMessage}
+                            permissionMode={permissionMode}
+                            onPermissionModeChange={setPermissionMode}
+                            connectionStatus={{
+                                text: sessionStatus.statusText,
+                                color: sessionStatus.statusColor,
+                                dotColor: sessionStatus.statusDotColor,
+                                isPulsing: sessionStatus.isPulsing
+                            }}
+                            onSend={() => {
+                                if (message.trim()) {
+                                    setMessage('');
+                                    sync.sendMessage(sessionId, message, permissionMode);
+                                    trackMessageSent();
+                                }
+                            }}
+                            onMicPress={handleMicrophonePress}
+                            isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
+                            onAbort={() => sessionAbort(sessionId)}
+                            showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
+                            // Autocomplete configuration
+                            autocompletePrefixes={['@', '/']}
+                            autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
                     />
                 </AgentContentView>
             </View>

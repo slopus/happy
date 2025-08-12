@@ -35,6 +35,7 @@ class Sync {
     private sessionReceivedMessages = new Map<string, Set<string>>();
     private settingsSync: InvalidateSync;
     private purchasesSync: InvalidateSync;
+    private machinesSync: InvalidateSync;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
 
@@ -42,6 +43,7 @@ class Sync {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
         this.settingsSync = new InvalidateSync(this.syncSettings);
         this.purchasesSync = new InvalidateSync(this.syncPurchases);
+        this.machinesSync = new InvalidateSync(this.fetchMachines);
 
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
@@ -93,6 +95,7 @@ class Sync {
         this.sessionsSync.invalidate();
         this.settingsSync.invalidate();
         this.purchasesSync.invalidate();
+        this.machinesSync.invalidate();
 
         // Register push token
         this.registerPushToken();
@@ -382,6 +385,65 @@ class Sync {
 
         // Apply to storage
         storage.getState().applySessions(decryptedSessions);
+    }
+
+    private fetchMachines = async () => {
+        if (!this.credentials) return;
+
+        const API_ENDPOINT = getServerUrl();
+        const response = await fetch(`${API_ENDPOINT}/v1/machines`, {
+            headers: {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            console.error(`Failed to fetch machines: ${response.status}`);
+            return;
+        }
+
+        const data = await response.json();
+        const machines = data as Array<{
+            id: string;
+            metadata: string;
+            metadataVersion: number;
+            seq: number;
+            active: boolean;
+            lastActiveAt: number;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+
+        // Process each machine
+        for (const machine of machines) {
+            if (machine.metadata) {
+                try {
+                    // Decrypt metadata
+                    const decrypted = this.encryption.decryptRaw(machine.metadata);
+                    const metadata = JSON.parse(decrypted);
+                    
+                    // Update storage with machine
+                    storage.setState(state => ({
+                        machines: {
+                            ...state.machines,
+                            [machine.id]: {
+                                id: machine.id,
+                                seq: machine.seq,
+                                createdAt: machine.createdAt,
+                                updatedAt: machine.updatedAt,
+                                active: machine.active,
+                                lastActiveAt: machine.lastActiveAt,
+                                metadata,
+                                metadataVersion: machine.metadataVersion
+                            }
+                        }
+                    }));
+                } catch (error) {
+                    console.error(`Failed to decrypt machine ${machine.id}:`, error);
+                }
+            }
+        }
     }
 
     private syncSettings = async () => {
@@ -714,6 +776,39 @@ class Sync {
                     seq: updateData.seq
                 }])
             }
+        } else if (updateData.body.t === 'update-machine') {
+            const machineUpdate = updateData.body;
+            const machineId = machineUpdate.id;
+            const machine = storage.getState().machines[machineId];
+            const metadataUpdate = machineUpdate.metadata;
+            if (metadataUpdate) {
+                try {
+                    // Decrypt metadata
+                    const decrypted = this.encryption.decryptRaw(metadataUpdate.value);
+                    const metadata = JSON.parse(decrypted);
+                    
+                    // Update storage with machine
+                    storage.setState(state => ({
+                        machines: {
+                            ...state.machines,
+                            [machineId]: {
+                                ...(machine || {
+                                    id: machineId,
+                                    createdAt: updateData.createdAt,
+                                    active: true,
+                                    lastActiveAt: updateData.createdAt
+                                }),
+                                metadata,
+                                metadataVersion: metadataUpdate.version,
+                                updatedAt: updateData.createdAt,
+                                seq: updateData.seq
+                            }
+                        }
+                    }));
+                } catch (error) {
+                    console.error(`Failed to decrypt machine update for ${machineId}:`, error);
+                }
+            }
         }
     }
 
@@ -742,10 +837,7 @@ class Sync {
             }
         }
         
-        // Process daemon status updates
-        if (updateData.type === 'daemon-status') {
-            storage.getState().applyDaemonStatus(updateData.machineId, updateData.status);
-        }
+        // Machine status is now handled via persisted machine updates, not ephemeral
     }
 }
 

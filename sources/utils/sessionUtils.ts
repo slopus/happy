@@ -107,11 +107,53 @@ export function getSessionName(session: Session): string {
 }
 
 /**
+ * Generates a deterministic avatar ID from machine ID and path.
+ * This ensures the same machine + path combination always gets the same avatar.
+ */
+export function getSessionAvatarId(session: Session): string {
+    if (session.metadata?.machineId && session.metadata?.path) {
+        // Combine machine ID and path for a unique, deterministic avatar
+        return `${session.metadata.machineId}:${session.metadata.path}`;
+    }
+    // Fallback to session ID if metadata is missing
+    return session.id;
+}
+
+/**
+ * Formats a path relative to home directory if possible.
+ * If the path starts with the home directory, replaces it with ~
+ * Otherwise returns the full path.
+ */
+export function formatPathRelativeToHome(path: string, homeDir?: string): string {
+    if (!homeDir) return path;
+    
+    // Normalize paths to handle trailing slashes
+    const normalizedHome = homeDir.endsWith('/') ? homeDir.slice(0, -1) : homeDir;
+    const normalizedPath = path;
+    
+    // Check if path starts with home directory
+    if (normalizedPath.startsWith(normalizedHome)) {
+        // Replace home directory with ~
+        const relativePath = normalizedPath.slice(normalizedHome.length);
+        // Add ~ and ensure there's a / after it if needed
+        if (relativePath.startsWith('/')) {
+            return '~' + relativePath;
+        } else if (relativePath === '') {
+            return '~';
+        } else {
+            return '~/' + relativePath;
+        }
+    }
+    
+    return path;
+}
+
+/**
  * Returns the session path for the subtitle.
  */
 export function getSessionSubtitle(session: Session): string {
     if (session.metadata) {
-        return session.metadata.path;
+        return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
     }
     return 'unknown';
 }

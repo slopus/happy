@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { DecryptedMessage, Session } from "./storageTypes";
+import { DecryptedMessage, Session, Machine } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { normalizeRawMessage } from "./typesRaw";
@@ -27,13 +27,16 @@ interface SessionMessages {
     isLoaded: boolean;
 }
 
-export type SessionListItem = string | Session;
+// Machine type is now imported from storageTypes - represents persisted machine data
 
-interface DaemonStatus {
-    machineId: string;
-    online: boolean;
-    lastSeen: number;
-}
+// Unified list item type for SessionsList component
+export type SessionListViewItem = 
+    | { type: 'header'; title: string }
+    | { type: 'session'; session: Session }
+    | { type: 'machine'; machine: Machine };
+
+// Legacy type for backward compatibility - to be removed
+export type SessionListItem = string | Session;
 
 interface StorageState {
     settings: Settings;
@@ -41,9 +44,10 @@ interface StorageState {
     localSettings: LocalSettings;
     purchases: Purchases;
     sessions: Record<string, Session>;
-    sessionsData: SessionListItem[] | null;
+    sessionsData: SessionListItem[] | null;  // Legacy - to be removed
+    sessionListViewData: SessionListViewItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
-    daemons: Record<string, DaemonStatus>;
+    machines: Record<string, Machine>;
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyLoaded: () => void;
@@ -54,8 +58,61 @@ interface StorageState {
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
     applyPurchases: (customerInfo: CustomerInfo) => void;
     recalculateOnline: () => void;
-    applyDaemonStatus: (machineId: string, status: 'online' | 'offline') => void;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
+}
+
+// Helper function to build unified list view data from sessions and machines
+function buildSessionListViewData(
+    sessions: Record<string, Session>,
+    machines: Record<string, Machine>
+): SessionListViewItem[] {
+    // Categorize sessions into active and inactive
+    const activeSessions: Session[] = [];
+    const inactiveSessions: Session[] = [];
+    
+    Object.values(sessions).forEach(session => {
+        if (isSessionActive(session)) {
+            activeSessions.push(session);
+        } else {
+            inactiveSessions.push(session);
+        }
+    });
+    
+    // Sort by most recently updated
+    activeSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    inactiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    
+    // Get active machines
+    const activeMachines = Object.values(machines).filter(m => m.active);
+    
+    // Build unified list view data
+    const listData: SessionListViewItem[] = [];
+    
+    // Active sessions section
+    if (activeSessions.length > 0) {
+        listData.push({ type: 'header', title: 'Active Sessions' });
+        activeSessions.forEach(session => 
+            listData.push({ type: 'session', session })
+        );
+    }
+    
+    // Machines section
+    if (activeMachines.length > 0) {
+        listData.push({ type: 'header', title: 'Machines Online' });
+        activeMachines.forEach(machine => 
+            listData.push({ type: 'machine', machine })
+        );
+    }
+    
+    // Inactive sessions section
+    if (inactiveSessions.length > 0) {
+        listData.push({ type: 'header', title: 'Previous Sessions' });
+        inactiveSessions.forEach(session => 
+            listData.push({ type: 'session', session })
+        );
+    }
+    
+    return listData;
 }
 
 export const storage = create<StorageState>()((set) => {
@@ -68,8 +125,9 @@ export const storage = create<StorageState>()((set) => {
         localSettings,
         purchases,
         sessions: {},
-        daemons: {},
-        sessionsData: null,
+        machines: {},
+        sessionsData: null,  // Legacy - to be removed
+        sessionListViewData: null,
         sessionMessages: {},
         realtimeStatus: 'disconnected',
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
@@ -124,6 +182,9 @@ export const storage = create<StorageState>()((set) => {
                 listData.push('online');
                 listData.push(...activeSessions);
             }
+            
+            // Legacy sessionsData - to be removed
+            // Machines are now integrated into sessionListViewData
 
             if (inactiveSessions.length > 0) {
                 listData.push('offline');
@@ -195,10 +256,17 @@ export const storage = create<StorageState>()((set) => {
                 }
             });
 
+            // Build new unified list view data
+            const sessionListViewData = buildSessionListViewData(
+                mergedSessions,
+                state.machines
+            );
+            
             return {
                 ...state,
                 sessions: mergedSessions,
-                sessionsData: listData,
+                sessionsData: listData,  // Legacy - to be removed
+                sessionListViewData,
                 sessionMessages: updatedSessionMessages
             };
         }),
@@ -434,16 +502,26 @@ export const storage = create<StorageState>()((set) => {
                 listData.push('online');
                 listData.push(...newActiveSessions);
             }
+            
+            // Legacy sessionsData - to be removed
+            // Machines are now integrated into sessionListViewData
 
             if (newInactiveSessions.length > 0) {
                 listData.push('offline');
                 listData.push(...newInactiveSessions);
             }
 
+            // Build new unified list view data
+            const sessionListViewData = buildSessionListViewData(
+                updatedSessions,
+                state.machines
+            );
+            
             return {
                 ...state,
                 sessions: updatedSessions,
-                sessionsData: listData
+                sessionsData: listData,  // Legacy - to be removed
+                sessionListViewData
             };
         }),
         applySettingsLocal: (settings: Partial<Settings>) => set((state) => {
@@ -483,29 +561,6 @@ export const storage = create<StorageState>()((set) => {
                 ...state,
                 purchases
             };
-        }),
-        applyDaemonStatus: (machineId: string, status: 'online' | 'offline') => set((state) => {
-            const now = Date.now();
-            if (status === 'online') {
-                return {
-                    ...state,
-                    daemons: {
-                        ...state.daemons,
-                        [machineId]: {
-                            machineId,
-                            online: true,
-                            lastSeen: now
-                        }
-                    }
-                };
-            } else {
-                // Remove offline daemons
-                const { [machineId]: removed, ...remainingDaemons } = state.daemons;
-                return {
-                    ...state,
-                    daemons: remainingDaemons
-                };
-            }
         }),
         setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => ({
             ...state,
@@ -561,25 +616,37 @@ export function useLocalSettings(): LocalSettings {
     return storage(useShallow((state) => state.localSettings));
 }
 
-export function useDaemonStatus(): DaemonStatus | null {
+export function useDaemonStatus(): Machine | null {
     return storage(useShallow((state) => {
-        // Return the first online daemon if any
-        const onlineDaemons = Object.values(state.daemons).filter(d => d.online);
-        return onlineDaemons.length > 0 ? onlineDaemons[0] : null;
+        // Return the first online machine if any
+        const onlineMachines = Object.values(state.machines).filter(m => m.active);
+        return onlineMachines.length > 0 ? onlineMachines[0] : null;
     }));
 }
 
-export function useAllDaemonStatuses(): DaemonStatus[] {
+// Legacy export for backward compatibility
+export function useAllDaemonStatuses(): Machine[] {
     return storage(useShallow((state) => {
-        // Return all online daemons
-        return Object.values(state.daemons).filter(d => d.online);
+        // Return all online machines
+        return Object.values(state.machines).filter(m => m.active);
     }));
 }
 
-export function useDaemonStatusByMachine(machineId: string): DaemonStatus | null {
+// New exports for machine system
+export function useAllMachines(): Machine[] {
     return storage(useShallow((state) => {
-        const daemon = state.daemons[machineId];
-        return daemon?.online ? daemon : null;
+        return Object.values(state.machines).filter(m => m.active);
+    }));
+}
+
+export function useSessionListViewData(): SessionListViewItem[] | null {
+    return storage((state) => state.sessionListViewData);
+}
+
+export function useDaemonStatusByMachine(machineId: string): Machine | null {
+    return storage(useShallow((state) => {
+        const machine = state.machines[machineId];
+        return machine?.active ? machine : null;
     }));
 }
 
