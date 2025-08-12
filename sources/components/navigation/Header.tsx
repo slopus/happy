@@ -77,7 +77,7 @@ export const Header = React.memo((props: HeaderProps) => {
                     </View>
 
                     <View style={styles.centerContainer}>
-                        {title && <Text style={titleStyle} numberOfLines={1}>{title}</Text>}
+                        {title && title}
                         {subtitle && <Text style={subtitleStyle} numberOfLines={1}>{subtitle}</Text>}
                     </View>
 
@@ -107,17 +107,21 @@ const styles = StyleSheet.create({
         maxWidth: layout.headerMaxWidth, // Standard max width for content
     },
     leftContainer: {
-        flex: 1,
+        flexGrow: 0,
+        flexShrink: 0,
         alignItems: 'flex-start',
     },
     centerContainer: {
-        flexGrow: 6,
+        flexGrow: 1,
         flexBasis: 0,
+        alignSelf: 'stretch',
+        flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
     },
     rightContainer: {
-        flex: 1,
+        flexGrow: 0,
+        flexShrink: 0,
         alignItems: 'flex-end',
     },
     title: {
