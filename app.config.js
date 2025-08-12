@@ -58,7 +58,7 @@ export default {
         web: {
             bundler: "metro",
             output: "single",
-            favicon: "./sources/assets/images/happy-otter-icon.png"
+            favicon: "./sources/assets/images/favicon.png"
         },
         plugins: [
             [
