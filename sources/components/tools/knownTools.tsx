@@ -241,7 +241,6 @@ export const knownTools = {
             return 'Write File';
         },
         icon: ICON_EDIT,
-        minimal: true,
         input: z.object({
             file_path: z.string().describe('The absolute path to the file to write'),
             content: z.string().describe('The content to write to the file')

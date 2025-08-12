@@ -282,20 +282,24 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 <AgentContentView>
                     <Deferred>
                         {messagesRecentFirst.length === 0 && isLoaded && (
-                            <Pressable 
-                                style={[headerDependentStyles.emptyMessageWrapper, headerDependentStyles.emptyMessageContainer]}
-                                onPress={() => Keyboard.dismiss()}
-                            >
-                                <EmptyMessages session={session} />
-                            </Pressable>
+                            <View style={headerDependentStyles.emptyMessageWrapper}>
+                                <Pressable 
+                                    style={headerDependentStyles.emptyMessageContainer}
+                                    onPress={() => Keyboard.dismiss()}
+                                >
+                                    <EmptyMessages session={session} />
+                                </Pressable>
+                            </View>
                         )}
                         {messagesRecentFirst.length === 0 && !isLoaded && (
-                            <Pressable 
-                                style={[headerDependentStyles.emptyMessageWrapper, headerDependentStyles.emptyMessageContainer]}
-                                onPress={() => Keyboard.dismiss()}
-                            >
-                                <ActivityIndicator size="large" color="#C7C7CC" />
-                            </Pressable>
+                            <View style={headerDependentStyles.emptyMessageWrapper}>
+                                <Pressable 
+                                    style={headerDependentStyles.emptyMessageContainer}
+                                    onPress={() => Keyboard.dismiss()}
+                                >
+                                    <ActivityIndicator size="large" color="#C7C7CC" />
+                                </Pressable>
+                            </View>
                         )}
                         {messagesRecentFirst.length > 0 && (
                             <FlatList
