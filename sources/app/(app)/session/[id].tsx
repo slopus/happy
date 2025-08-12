@@ -280,39 +280,40 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             {/* Main content area - no padding since header is overlay */}
             <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 32 : 0) }}>
                 <AgentContentView>
-                    <Pressable 
-                        style={headerDependentStyles.emptyMessageWrapper}
-                        onPress={() => Keyboard.dismiss()}
-                    >
-                        <Deferred>
-                            {messagesRecentFirst.length === 0 && isLoaded && (
-                                <View style={headerDependentStyles.emptyMessageContainer}>
-                                    <EmptyMessages session={session} />
-                                </View>
-                            )}
-                            {messagesRecentFirst.length === 0 && !isLoaded && (
-                                <View style={headerDependentStyles.emptyMessageContainer}>
-                                    <ActivityIndicator size="large" color="#C7C7CC" />
-                                </View>
-                            )}
-                            {messagesRecentFirst.length > 0 && (
-                                <FlatList
-                                    removeClippedSubviews={true}
-                                    data={messagesRecentFirst}
-                                    inverted={true}
-                                    keyExtractor={keyExtractor}
-                                    style={headerDependentStyles.flatListStyle}
-                                    maintainVisibleContentPosition={maintainVisibleContentPosition}
-                                    keyboardShouldPersistTaps="handled"
-                                    keyboardDismissMode="none"
-                                    renderItem={renderItem}
-                                    contentContainerStyle={contentContainerStyle}
-                                    ListHeaderComponent={ListFooter}
-                                    ListFooterComponent={ListHeader}
-                                />
-                            )}
-                        </Deferred>
-                    </Pressable>
+                    <Deferred>
+                        {messagesRecentFirst.length === 0 && isLoaded && (
+                            <Pressable 
+                                style={[headerDependentStyles.emptyMessageWrapper, headerDependentStyles.emptyMessageContainer]}
+                                onPress={() => Keyboard.dismiss()}
+                            >
+                                <EmptyMessages session={session} />
+                            </Pressable>
+                        )}
+                        {messagesRecentFirst.length === 0 && !isLoaded && (
+                            <Pressable 
+                                style={[headerDependentStyles.emptyMessageWrapper, headerDependentStyles.emptyMessageContainer]}
+                                onPress={() => Keyboard.dismiss()}
+                            >
+                                <ActivityIndicator size="large" color="#C7C7CC" />
+                            </Pressable>
+                        )}
+                        {messagesRecentFirst.length > 0 && (
+                            <FlatList
+                                removeClippedSubviews={true}
+                                data={messagesRecentFirst}
+                                inverted={true}
+                                keyExtractor={keyExtractor}
+                                style={[headerDependentStyles.emptyMessageWrapper, headerDependentStyles.flatListStyle]}
+                                maintainVisibleContentPosition={maintainVisibleContentPosition}
+                                keyboardShouldPersistTaps="handled"
+                                keyboardDismissMode="none"
+                                renderItem={renderItem}
+                                contentContainerStyle={contentContainerStyle}
+                                ListHeaderComponent={ListFooter}
+                                ListFooterComponent={ListHeader}
+                            />
+                        )}
+                    </Deferred>
 
                     {sessionStatus.state === 'disconnected' && daemonStatus?.active && (
                             <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
