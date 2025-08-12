@@ -12,22 +12,42 @@ export interface KeyPressEvent {
 
 export type OnKeyPressCallback = (event: KeyPressEvent) => boolean;
 
+export interface TextInputState {
+    text: string;
+    selection: {
+        start: number;
+        end: number;
+    };
+}
+
+export interface MultiTextInputHandle {
+    setTextAndSelection: (text: string, selection: { start: number; end: number }) => void;
+    focus: () => void;
+    blur: () => void;
+}
+
 interface MultiTextInputProps {
     value: string;
     onChangeText: (text: string) => void;
     placeholder?: string;
     maxHeight?: number;
     onKeyPress?: OnKeyPressCallback;
+    onSelectionChange?: (selection: { start: number; end: number }) => void;
+    onStateChange?: (state: TextInputState) => void;
 }
 
-export const MultiTextInput = React.memo((props: MultiTextInputProps) => {
+export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
     const {
         value,
         onChangeText,
         placeholder,
         maxHeight = 120,
-        onKeyPress
+        onKeyPress,
+        onSelectionChange,
+        onStateChange
     } = props;
+    
+    const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
     // Convert maxHeight to approximate maxRows (assuming ~24px line height)
     const maxRows = Math.floor(maxHeight / 24);
@@ -77,9 +97,78 @@ export const MultiTextInput = React.memo((props: MultiTextInputProps) => {
         }
     }, [onKeyPress]);
 
+    const handleChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        const text = e.target.value;
+        const selection = { 
+            start: e.target.selectionStart, 
+            end: e.target.selectionEnd 
+        };
+        
+        console.log('📝 MultiTextInput.web: Text changed:', JSON.stringify({ text, selection }));
+        
+        onChangeText(text);
+        
+        if (onStateChange) {
+            onStateChange({ text, selection });
+        }
+        if (onSelectionChange) {
+            onSelectionChange(selection);
+        }
+    }, [onChangeText, onStateChange, onSelectionChange]);
+
+    const handleSelect = React.useCallback((e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+        const target = e.target as HTMLTextAreaElement;
+        const selection = { 
+            start: target.selectionStart, 
+            end: target.selectionEnd 
+        };
+        
+        console.log('📍 MultiTextInput.web: Selection changed:', JSON.stringify(selection));
+        
+        if (onSelectionChange) {
+            onSelectionChange(selection);
+        }
+        if (onStateChange) {
+            onStateChange({ text: value, selection });
+        }
+    }, [value, onSelectionChange, onStateChange]);
+
+    // Imperative handle for direct control
+    React.useImperativeHandle(ref, () => ({
+        setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
+            console.log('🎯 MultiTextInput.web: setTextAndSelection:', JSON.stringify({ text, selection }));
+            
+            if (textareaRef.current) {
+                // Directly set value and selection on DOM element
+                textareaRef.current.value = text;
+                textareaRef.current.setSelectionRange(selection.start, selection.end);
+                
+                // Trigger React's onChange by dispatching an input event
+                const event = new Event('input', { bubbles: true });
+                textareaRef.current.dispatchEvent(event);
+                
+                // Also call callbacks directly for immediate update
+                onChangeText(text);
+                if (onStateChange) {
+                    onStateChange({ text, selection });
+                }
+                if (onSelectionChange) {
+                    onSelectionChange(selection);
+                }
+            }
+        },
+        focus: () => {
+            textareaRef.current?.focus();
+        },
+        blur: () => {
+            textareaRef.current?.blur();
+        }
+    }), [onChangeText, onStateChange, onSelectionChange]);
+
     return (
         <View style={{ width: '100%' }}>
             <TextareaAutosize
+                ref={textareaRef}
                 style={{
                     width: '100%',
                     padding: '0',
@@ -95,7 +184,8 @@ export const MultiTextInput = React.memo((props: MultiTextInputProps) => {
                 }}
                 placeholder={placeholder}
                 value={value}
-                onChange={(e) => onChangeText(e.target.value)}
+                onChange={handleChange}
+                onSelect={handleSelect}
                 onKeyDown={handleKeyDown}
                 maxRows={maxRows}
                 autoCapitalize="sentences"
@@ -105,3 +195,5 @@ export const MultiTextInput = React.memo((props: MultiTextInputProps) => {
         </View>
     );
 });
+
+MultiTextInput.displayName = 'MultiTextInput';

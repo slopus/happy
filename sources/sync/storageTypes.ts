@@ -18,7 +18,9 @@ export const MetadataSchema = z.object({
         text: z.string(),
         updatedAt: z.number()
     }).optional(),
-    machineId: z.string().optional()
+    machineId: z.string().optional(),
+    tools: z.array(z.string()).optional(),
+    slashCommands: z.array(z.string()).optional()
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;

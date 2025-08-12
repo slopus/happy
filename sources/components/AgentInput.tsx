@@ -9,6 +9,11 @@ import { PermissionModeSelector, PermissionMode } from './PermissionModeSelector
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
+import { useActiveWord } from './autocomplete/useActiveWord';
+import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
+import { AgentInputAutocomplete } from './AgentInputAutocomplete';
+import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
+import { applySuggestion } from './autocomplete/applySuggestion';
 
 interface AgentInputProps {
     value: string;
@@ -28,6 +33,8 @@ interface AgentInputProps {
         dotColor: string;
         isPulsing?: boolean;
     };
+    autocompletePrefixes: string[];
+    autocompleteSuggestions: (query: string) => Promise<{ key: string, text: string, component: React.ElementType }[]>;
 }
 
 export const AgentInput = React.memo((props: AgentInputProps) => {
@@ -44,10 +51,89 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
     const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     const abortButtonBgAnim = React.useRef(new Animated.Value(0)).current;
     const shakerRef = React.useRef<ShakeInstance>(null);
+    const inputRef = React.useRef<MultiTextInputHandle>(null);
 
+    // Autocomplete state - track text and selection together
+    const [inputState, setInputState] = React.useState<TextInputState>({
+        text: props.value,
+        selection: { start: 0, end: 0 }
+    });
 
-    // Handle Enter key
+    // Handle combined text and selection state changes
+    const handleInputStateChange = React.useCallback((newState: TextInputState) => {
+        console.log('📝 Input state changed:', JSON.stringify(newState));
+        setInputState(newState);
+    }, []);
+
+    // Use the tracked selection from inputState
+    const activeWord = useActiveWord(inputState.text, inputState.selection, props.autocompletePrefixes);
+    // Using default options: clampSelection=true, autoSelectFirst=true, wrapAround=true
+    // To customize: useActiveSuggestions(activeWord, props.autocompleteSuggestions, { clampSelection: false, wrapAround: false })
+    const [suggestions, selected, moveUp, moveDown] = useActiveSuggestions(activeWord, props.autocompleteSuggestions, { clampSelection: true, wrapAround: true });
+
+    // Debug logging
+    // React.useEffect(() => {
+    //     console.log('🔍 Autocomplete Debug:', JSON.stringify({
+    //         value: props.value,
+    //         inputState,
+    //         activeWord,
+    //         suggestionsCount: suggestions.length,
+    //         selected,
+    //         prefixes: props.autocompletePrefixes
+    //     }, null, 2));
+    // }, [props.value, inputState, activeWord, suggestions.length, selected]);
+
+    // Handle suggestion selection
+    const handleSuggestionSelect = React.useCallback((index: number) => {
+        if (!suggestions[index] || !inputRef.current) return;
+
+        const suggestion = suggestions[index];
+
+        // Apply the suggestion
+        const result = applySuggestion(
+            inputState.text,
+            inputState.selection,
+            suggestion.text,
+            props.autocompletePrefixes,
+            true // add space after
+        );
+
+        // Use imperative API to set text and selection
+        inputRef.current.setTextAndSelection(result.text, {
+            start: result.cursorPosition,
+            end: result.cursorPosition
+        });
+
+        console.log('Selected suggestion:', suggestion.text);
+
+        // Small haptic feedback
+        hapticsLight();
+    }, [suggestions, inputState, props.autocompletePrefixes]);
+
+    // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
+        // Handle autocomplete navigation first
+        if (suggestions.length > 0) {
+            if (event.key === 'ArrowUp') {
+                moveUp();
+                return true;
+            } else if (event.key === 'ArrowDown') {
+                moveDown();
+                return true;
+            } else if ((event.key === 'Enter' || (event.key === 'Tab' && !event.shiftKey))) {
+                // Both Enter and Tab select the current suggestion
+                // If none selected (selected === -1), select the first one
+                const indexToSelect = selected >= 0 ? selected : 0;
+                handleSuggestionSelect(indexToSelect);
+                return true;
+            } else if (event.key === 'Escape') {
+                // Close suggestions
+                // TODO: Clear suggestions
+                return true;
+            }
+        }
+
+        // Original key handling
         if (Platform.OS === 'web') {
             if (event.key === 'Enter' && !event.shiftKey) {
                 if (props.value.trim()) {
@@ -66,7 +152,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
             }
         }
         return false; // Key was not handled
-    }, [props.value, props.onSend, props.permissionMode, props.onPermissionModeChange]);
+    }, [props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, suggestions, selected, handleSuggestionSelect, moveUp, moveDown]);
 
     const handleAbortPress = React.useCallback(async () => {
         if (!props.onAbort) return;
@@ -172,7 +258,30 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
     };
     return (
         <View style={containerStyle}>
-            <View style={{ width: '100%', maxWidth: layout.maxWidth }}>
+            <View style={{ width: '100%', maxWidth: layout.maxWidth, position: 'relative' }}>
+                {/* Autocomplete suggestions overlay */}
+                {suggestions.length > 0 && (
+                    <View style={{
+                        position: 'absolute',
+                        bottom: '100%',
+                        left: 0,
+                        right: 0,
+                        marginBottom: 8,
+                        zIndex: 1000,
+                        paddingHorizontal: screenWidth > 700 ? 0 : 8,
+                    }}>
+                        <AgentInputAutocomplete
+                            suggestions={suggestions.map(s => {
+                                const Component = s.component;
+                                return <Component key={s.key} />;
+                            })}
+                            selectedIndex={selected}
+                            onSelect={handleSuggestionSelect}
+                            itemHeight={48}
+                        />
+                    </View>
+                )}
+
                 {/* Connection status and permission mode */}
                 {(props.connectionStatus || (props.permissionMode && props.permissionMode !== 'default')) && (
                     <View style={{
@@ -218,10 +327,12 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                 <View style={inputContainerStyle}>
                     <View style={inputWrapperStyle}>
                         <MultiTextInput
+                            ref={inputRef}
                             value={props.value}
                             onChangeText={props.onChangeText}
                             placeholder={props.placeholder}
                             onKeyPress={handleKeyPress}
+                            onStateChange={handleInputStateChange}
                             maxHeight={120}
                         />
                     </View>
@@ -367,7 +478,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                             }}>
                                                 Again
                                             </Text>}
-                                            
+
                                             {/* <Text style={{
                                                 fontSize: 13,
                                                 color: isFirstPress
