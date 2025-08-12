@@ -50,10 +50,15 @@ const styles = StyleSheet.create({
         backgroundColor: '#FAFAFA',
     },
     input: {
-        paddingHorizontal: 24,
-        paddingVertical: 20,
-        fontSize: 18,
+        paddingHorizontal: 32,
+        paddingVertical: 24,
+        fontSize: 20,
         color: '#000',
-        letterSpacing: -0.2,
+        letterSpacing: -0.3,
+        // Remove outline on web
+        ...(Platform.OS === 'web' ? {
+            outlineStyle: 'none',
+            outlineWidth: 0,
+        } as any : {}),
     },
 });

@@ -50,8 +50,13 @@ const styles = StyleSheet.create({
         backgroundColor: '#FFFFFF',
         borderRadius: 16,
         width: '100%',
-        maxWidth: 640,
-        maxHeight: 500,
+        maxWidth: 800, // Increased from 640 for wider input
+        // Use viewport-based height for better layout
+        ...(Platform.OS === 'web' ? {
+            maxHeight: '60vh', // Takes up to 60% of viewport height
+        } as any : {
+            maxHeight: 500, // Fallback for native
+        }),
         overflow: 'hidden',
         shadowColor: '#000',
         shadowOffset: {
