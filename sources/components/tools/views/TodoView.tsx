@@ -44,7 +44,7 @@ export const TodoView = React.memo<ToolViewProps>(({ tool }) => {
                             icon = '☑';
                         } else if (isInProgress) {
                             textStyle = [styles.todoText, styles.inProgressText];
-                            icon = '⬚';
+                            icon = '☐';
                         } else if (isPending) {
                             textStyle = [styles.todoText, styles.pendingText];
                         }
