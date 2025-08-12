@@ -81,6 +81,14 @@ export interface SDKControlResponse extends SDKMessage {
     }
 }
 
+export interface SDKLog extends SDKMessage {
+    type: 'log'
+    log: {
+        level: 'debug' | 'info' | 'warn' | 'error'
+        message: string
+    }
+}
+
 /**
  * Control request types
  */

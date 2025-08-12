@@ -1,10 +1,31 @@
 import { query, type QueryOptions as Options, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
 import { claudeCheckSession } from './utils/claudeCheckSession';
 import { logger } from '@/ui/logger';
-import { join } from 'node:path';
+import { join, resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
 import { awaitFileExist } from '@/modules/watcher/awaitFileExist';
 import { getProjectPath } from './utils/path';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Get project root - in dev use env var, in production check for scripts directory
+function getProjectRoot() {
+    if (process.env.HAPPY_PROJECT_ROOT) {
+        return resolve(process.env.HAPPY_PROJECT_ROOT);
+    }
+    
+    // Check if we're in a bundled build (dist/ with no scripts/)
+    const distRoot = resolve(join(__dirname, '..', '..'));
+    if (existsSync(join(distRoot, 'scripts'))) {
+        // Production with scripts directory available
+        return distRoot;
+    }
+    
+    // Bundled build - scripts should be embedded or not needed
+    return null;
+}
 
 export async function claudeRemote(opts: {
     sessionId: string | null,
@@ -48,6 +69,14 @@ export async function claudeRemote(opts: {
         permissionMode: opts.permissionMode,
         executable: 'node',
         abort: opts.signal,
+        pathToClaudeCodeExecutable: (() => {
+            const projectRoot = getProjectRoot();
+            if (!projectRoot) {
+                // Bundled build - use default Claude Code path
+                return undefined; // Will use SDK's default
+            }
+            return resolve(join(projectRoot, 'scripts', 'claude_remote_launcher.cjs'));
+        })(),
     }
 
     // Add Claude CLI arguments to executableArgs

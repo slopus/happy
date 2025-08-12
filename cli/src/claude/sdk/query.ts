@@ -7,18 +7,19 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { existsSync } from 'node:fs'
 import { Stream } from './stream'
-import { 
-    type QueryOptions, 
-    type QueryPrompt, 
-    type SDKMessage, 
+import {
+    type QueryOptions,
+    type QueryPrompt,
+    type SDKMessage,
     type ControlResponseHandler,
     type SDKControlRequest,
     type ControlRequest,
     type SDKControlResponse,
-    AbortError 
+    AbortError
 } from './types'
 import { getDefaultClaudeCodePath, logDebug, streamToStdin } from './utils'
 import type { Writable } from 'node:stream'
+import { logger } from '@/ui/logger'
 
 /**
  * Query class manages Claude Code process interaction
@@ -74,22 +75,26 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
      */
     private async readMessages(): Promise<void> {
         const rl = createInterface({ input: this.childStdout })
-        
+
         try {
             for await (const line of rl) {
                 if (line.trim()) {
-                    const message = JSON.parse(line) as SDKMessage | SDKControlResponse
-                    
-                    if (message.type === 'control_response') {
-                        const controlResponse = message as SDKControlResponse
-                        const handler = this.pendingControlResponses.get(controlResponse.response.request_id)
-                        if (handler) {
-                            handler(controlResponse.response)
+                    try {
+                        const message = JSON.parse(line) as SDKMessage | SDKControlResponse
+
+                        if (message.type === 'control_response') {
+                            const controlResponse = message as SDKControlResponse
+                            const handler = this.pendingControlResponses.get(controlResponse.response.request_id)
+                            if (handler) {
+                                handler(controlResponse.response)
+                            }
+                            continue
                         }
-                        continue
+
+                        this.inputStream.enqueue(message)
+                    } catch (e) {
+                        logger.debug(line)
                     }
-                    
-                    this.inputStream.enqueue(message)
                 }
             }
             await this.processExitPromise
@@ -117,7 +122,7 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
         if (!this.childStdin) {
             throw new Error('Interrupt requires --input-format stream-json')
         }
-        
+
         await this.request({
             subtype: 'interrupt'
         }, this.childStdin)
@@ -133,7 +138,7 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
             type: 'control_request',
             request
         }
-        
+
         return new Promise((resolve, reject) => {
             this.pendingControlResponses.set(requestId, (response) => {
                 if (response.subtype === 'success') {
@@ -142,7 +147,7 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
                     reject(new Error(response.error))
                 }
             })
-            
+
             childStdin.write(JSON.stringify(sdkRequest) + '\n')
         })
     }
@@ -185,7 +190,7 @@ export function query(config: {
 
     // Build command arguments
     const args = ['--output-format', 'stream-json', '--verbose']
-    
+
     if (customSystemPrompt) args.push('--system-prompt', customSystemPrompt)
     if (appendSystemPrompt) args.push('--append-system-prompt', appendSystemPrompt)
     if (maxTurns) args.push('--max-turns', maxTurns.toString())
@@ -200,7 +205,7 @@ export function query(config: {
     }
     if (strictMcpConfig) args.push('--strict-mcp-config')
     if (permissionMode) args.push('--permission-mode', permissionMode)
-    
+
     if (fallbackModel) {
         if (model && fallbackModel === model) {
             throw new Error('Fallback model cannot be the same as the main model. Please specify a different model for fallbackModel option.')
@@ -222,7 +227,7 @@ export function query(config: {
 
     // Spawn Claude Code process
     logDebug(`Spawning Claude Code process: ${executable} ${[...executableArgs, pathToClaudeCodeExecutable, ...args].join(' ')}`)
-    
+
     const child = spawn(executable, [...executableArgs, pathToClaudeCodeExecutable, ...args], {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],

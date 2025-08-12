@@ -2,13 +2,30 @@ import { spawn } from "node:child_process";
 import { resolve, join, dirname } from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, existsSync } from "node:fs";
 import { watch } from "node:fs";
 import { logger } from "@/ui/logger";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { getProjectPath } from "./utils/path";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// Get project root - in dev use env var, in production check for scripts directory
+function getProjectRoot() {
+    if (process.env.HAPPY_PROJECT_ROOT) {
+        return resolve(process.env.HAPPY_PROJECT_ROOT);
+    }
+    
+    // Check if we're in a bundled build (dist/ with no scripts/)
+    const distRoot = resolve(join(__dirname, '..', '..'));
+    if (existsSync(join(distRoot, 'scripts'))) {
+        // Production with scripts directory available
+        return distRoot;
+    }
+    
+    // Bundled build - scripts should be embedded or not needed
+    return null;
+}
 
 export async function claudeLocal(opts: {
     abort: AbortSignal,
@@ -83,10 +100,15 @@ export async function claudeLocal(opts: {
                 args.push(...opts.claudeArgs)
             }
 
-            // Check for custom Claude CLI path
-            // Running with tsx path to cli is different
-            const claudeCliPath = process.env.HAPPY_CLAUDE_CLI_PATH
-                || resolve(join(__dirname, '..', 'scripts', 'claudeInteractiveLaunch.cjs'))
+            // Get Claude CLI path from project root
+            const projectRoot = getProjectRoot();
+            const claudeCliPath = projectRoot 
+                ? resolve(join(projectRoot, 'scripts', 'claude_local_launcher.cjs'))
+                : null;
+            
+            if (!claudeCliPath || !existsSync(claudeCliPath)) {
+                throw new Error('Claude local launcher not found. Please ensure HAPPY_PROJECT_ROOT is set correctly for development.');
+            }
 
             // Prepare environment variables
             const env = {
