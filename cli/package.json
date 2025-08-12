@@ -46,11 +46,11 @@
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
-    "build": "tsc --noEmit && pkgroll",
+    "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
     "prepublishOnly": "yarn build && yarn test",
     "typecheck": "tsc --noEmit",
     "dev": "npx tsx --env-file .env.sample src/index.ts",
-    "dev:local-server": "HANDY_SERVER_URL=http://localhost:3005 npx tsx --env-file .env.sample src/index.ts",
+    "dev:local-server": "cross-env HANDY_SERVER_URL=http://localhost:3005 tsx --env-file .env.sample src/index.ts",
     "prerelease": "npm version prerelease --preid=beta"
   },
   "dependencies": {
@@ -77,6 +77,7 @@
   "devDependencies": {
     "@eslint/compat": "^1",
     "@types/node": ">=18",
+    "cross-env": "^10.0.0",
     "eslint": "^9",
     "eslint-config-prettier": "^10",
     "pkgroll": "^2.14.2",
