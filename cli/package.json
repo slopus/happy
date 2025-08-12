@@ -49,12 +49,13 @@
     "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
     "prepublishOnly": "yarn build && yarn test",
     "typecheck": "tsc --noEmit",
-    "dev": "npx tsx --env-file .env.sample src/index.ts",
-    "dev:local-server": "cross-env HANDY_SERVER_URL=http://localhost:3005 tsx --env-file .env.sample src/index.ts",
-    "prerelease": "npm version prerelease --preid=beta"
+    "dev": "yarn build && npx tsx --env-file .env.sample src/index.ts",
+    "dev:local-server": "yarn build && cross-env HANDY_SERVER_URL=http://localhost:3005 tsx --env-file .env.sample src/index.ts",
+    "version:prerelease": "npm version prerelease --preid=beta",
+    "publish:prerelease": "npm publish --tag beta"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^1.0.72",
+    "@anthropic-ai/claude-code": "^1.0.73",
     "@anthropic-ai/sdk": "^0.56.0",
     "@modelcontextprotocol/sdk": "^1.15.1",
     "@stablelib/base64": "^2.0.1",

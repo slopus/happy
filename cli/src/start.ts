@@ -46,7 +46,8 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         host: os.hostname(),
         version: packageJson.version,
         os: os.platform(),
-        machineId: settings.machineId
+        machineId: settings.machineId,
+        homeDir: os.homedir()
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);

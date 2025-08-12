@@ -2,10 +2,13 @@ import { logger } from '@/ui/logger'
 import { EventEmitter } from 'node:events'
 import { io, Socket } from 'socket.io-client'
 import { configuration } from '@/configuration'
-import { MachineIdentity, DaemonToServerEvents, ServerToDaemonEvents } from './types'
+import { MachineIdentity, MachineMetadata, DaemonToServerEvents, ServerToDaemonEvents } from './types'
 import { spawn } from 'child_process'
 import crypto from 'crypto'
 import { writeFileSync, readFileSync, existsSync } from 'fs'
+import { encrypt, encodeBase64 } from '@/api/encryption'
+import { projectPath } from '@/projectPath'
+import { join } from 'path'
 
 export class ApiDaemonSession extends EventEmitter {
   private socket: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
@@ -14,6 +17,7 @@ export class ApiDaemonSession extends EventEmitter {
   private token: string;
   private secret: Uint8Array;
   private spawnedProcesses: Set<any> = new Set();
+  private machineRegistered = false;
 
   constructor(
     token: string, 
@@ -42,9 +46,14 @@ export class ApiDaemonSession extends EventEmitter {
       autoConnect: false
     });
 
-    socket.on('connect', () => {
+    socket.on('connect', async () => {
       logger.debug('[DAEMON SESSION] Socket connected');
       logger.debug(`[DAEMON SESSION] Connected with auth - token: ${this.token.substring(0, 10)}..., machineId: ${this.machineIdentity.machineId}`);
+      
+      // Register/update machine on first connect only
+      if (!this.machineRegistered) {
+        await this.registerMachine();
+      }
       
       // Register RPC method with machineId prefix
       const rpcMethod = `${this.machineIdentity.machineId}:spawn-happy-session`;
@@ -84,25 +93,17 @@ export class ApiDaemonSession extends EventEmitter {
             
             logger.debug(`[DAEMON SESSION] Spawning happy in directory: ${directory} with args: ${args.join(' ')}`);
             
-            // TODO: In the future, we should disable local mode entirely for daemon-spawned sessions
-            // For now, we force remote mode since interactive mode requires a terminal
+            // Use projectPath to get the built binary
+            const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
             
-            // Determine the happy executable path
-            const happyPath = process.argv[1]; // Path to the CLI script
+            logger.debug(`[DAEMON SESSION] Using happy binary at: ${happyBinPath}`);
             
-            // When running with tsx, happyPath is the TypeScript file
-            // When running the built binary, happyPath is the binary itself
-            // We need to determine which case we're in
-            const runningFromBuiltBinary = happyPath.endsWith('happy') || happyPath.endsWith('happy.cmd');
+            // The binary is already executable and includes the node shebang
+            const executable = happyBinPath;
+            const spawnArgs = args;
             
-            let executable, spawnArgs;
-            if (runningFromBuiltBinary) {
-              executable = happyPath;
-              spawnArgs = args;
-            } else {
-              executable = 'npx';
-              spawnArgs = ['tsx', happyPath, ...args];
-            }
+            // Log exact spawn parameters for debugging
+            logger.debug(`[DAEMON SESSION] Spawn: executable=${executable}, args=${JSON.stringify(spawnArgs)}, cwd=${directory}`);
             
             // Spawn the process
             const happyProcess = spawn(executable, spawnArgs, {
@@ -224,7 +225,8 @@ export class ApiDaemonSession extends EventEmitter {
     
     // Debug: Log all events
     socket.onAny((event, ...args) => {
-      if (!event.startsWith('machine-alive')) { // Don't log keep-alive
+      // Don't log keep-alive or ephemeral events
+      if (!event.startsWith('session-alive') && event !== 'ephemeral') {
         logger.debug(`[DAEMON SESSION] Socket event: ${event}, args: ${JSON.stringify(args)}`);
       }
     });
@@ -253,12 +255,54 @@ export class ApiDaemonSession extends EventEmitter {
     this.socket = socket;
   }
 
+  private async registerMachine() {
+    try {
+      // Prepare metadata for encryption
+      const metadata: MachineMetadata = {
+        host: this.machineIdentity.machineHost,
+        platform: this.machineIdentity.platform,
+        happyCliVersion: this.machineIdentity.happyCliVersion,
+        happyHomeDirectory: this.machineIdentity.happyHomeDirectory
+      };
+      
+      // Encrypt metadata
+      const encrypted = encrypt(JSON.stringify(metadata), this.secret);
+      const encryptedMetadata = encodeBase64(encrypted);
+      
+      // One-time machine registration via HTTP
+      const response = await fetch(`${configuration.serverUrl}/v1/machines`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+          id: this.machineIdentity.machineId,
+          metadata: encryptedMetadata 
+        })
+      });
+      
+      if (response.ok) {
+        logger.debug('[DAEMON SESSION] Machine registered/updated successfully');
+        this.machineRegistered = true;
+      } else {
+        logger.debug(`[DAEMON SESSION] Failed to register machine: ${response.status}`);
+      }
+    } catch (error) {
+      logger.debug('[DAEMON SESSION] Failed to register machine:', error);
+    }
+  }
+
   private startKeepAlive() {
     this.stopKeepAlive();
     this.keepAliveInterval = setInterval(() => {
-      this.socket.volatile.emit('machine-alive', {
+      const payload = {
+        type: 'machine-scoped' as const,
+        machineId: this.machineIdentity.machineId,
         time: Date.now()
-      });
+      }
+      logger.debugLargeJson(`[DAEMON SESSION] Emitting session-alive`, payload)
+      this.socket.emit('session-alive', payload);
     }, 20000);
   }
 
@@ -290,6 +334,19 @@ export class ApiDaemonSession extends EventEmitter {
 
   connect() {
     this.socket.connect();
+  }
+
+  updateMetadata(updates: Partial<MachineMetadata>) {
+    const metadata: MachineMetadata = {
+      host: this.machineIdentity.machineHost,
+      platform: this.machineIdentity.platform,
+      happyCliVersion: updates.happyCliVersion || this.machineIdentity.happyCliVersion,
+      happyHomeDirectory: updates.happyHomeDirectory || this.machineIdentity.happyHomeDirectory
+    };
+    
+    const encrypted = encrypt(JSON.stringify(metadata), this.secret);
+    const encryptedMetadata = encodeBase64(encrypted);
+    this.socket.emit('update-machine-metadata', { metadata: encryptedMetadata });
   }
 
   shutdown() {

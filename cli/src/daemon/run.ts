@@ -109,7 +109,8 @@ export async function startDaemon(): Promise<void> {
             machineId: settings.machineId!,
             machineHost: settings.machineHost || hostname(),
             platform: process.platform,
-            version: packageJson.version
+            happyCliVersion: packageJson.version,
+            happyHomeDirectory: process.cwd()
         };
 
         // Get auth token and secret

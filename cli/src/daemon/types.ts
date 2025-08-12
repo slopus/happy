@@ -6,7 +6,15 @@ export interface MachineIdentity {
   machineId: string;
   machineHost: string;
   platform: string;
-  version: string;
+  happyCliVersion: string;
+  happyHomeDirectory: string;
+}
+
+export interface MachineMetadata {
+  host: string;
+  platform: string;
+  happyCliVersion: string;
+  happyHomeDirectory: string;
 }
 
 export interface EncryptedNewSessionRequest {
@@ -15,14 +23,15 @@ export interface EncryptedNewSessionRequest {
   startingMode: 'local' | 'remote';
 }
 
+// Import SessionAliveEvent type
+import type { SessionAliveEvent } from '@/api/types';
+
 export interface DaemonToServerEvents {
   'machine-connect': (data: { 
     token: string; 
     machineIdentity: string; // encrypted MachineIdentity
   }) => void;
-  'machine-alive': (data: { 
-    time: number;
-  }) => void;
+  'session-alive': (data: SessionAliveEvent) => void;
   'session-spawn-result': (data: {
     requestId: string;
     result: string; // encrypted result
@@ -34,6 +43,7 @@ export interface DaemonToServerEvents {
     result?: any
     error?: string
   }) => void) => void;
+  'update-machine-metadata': (data: { metadata: string }) => void;
 }
 
 export interface ServerToDaemonEvents {

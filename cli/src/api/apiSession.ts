@@ -252,6 +252,7 @@ export class ApiSessionClient extends EventEmitter {
     keepAlive(thinking: boolean, mode: 'local' | 'remote') {
         // logger.debug(`[API] Sending keep alive message: ${thinking}`);
         this.socket.volatile.emit('session-alive', {
+            type: 'session-scoped',
             sid: this.sessionId,
             time: Date.now(),
             thinking,
