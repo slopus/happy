@@ -11,6 +11,7 @@ import { readSettings } from '@/persistence/persistence';
 import { PermissionMode } from '@anthropic-ai/claude-code';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
+import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 
 export interface StartOptions {
     model?: string
@@ -49,6 +50,22 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);
+    
+    // Extract SDK metadata in background and update session when ready
+    extractSDKMetadataAsync(async (sdkMetadata) => {
+        logger.debug('[start] SDK metadata extracted, updating session:', sdkMetadata);
+        try {
+            // Update session metadata with tools and slash commands
+            api.session(response).updateMetadata((currentMetadata) => ({
+                ...currentMetadata,
+                tools: sdkMetadata.tools,
+                slashCommands: sdkMetadata.slashCommands
+            }));
+            logger.debug('[start] Session metadata updated with SDK capabilities');
+        } catch (error) {
+            logger.debug('[start] Failed to update session metadata:', error);
+        }
+    });
 
     // Output session ID for daemon to parse when spawned with --daemon-spawn
     if (options.daemonSpawn) {

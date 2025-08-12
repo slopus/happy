@@ -219,6 +219,8 @@ export type Metadata = {
     updatedAt: number
   },
   machineId?: string,
+  tools?: string[],
+  slashCommands?: string[],
 };
 
 export type AgentState = {
