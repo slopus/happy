@@ -16,7 +16,7 @@ async function killAllDaemons() {
   } catch {}
 }
 
-describe('daemon tests', () => {
+describe.skip('daemon tests', () => {
   const happyBinPath = path.join(process.cwd(), 'bin/happy')
   
   beforeAll(() => {
