@@ -298,7 +298,7 @@ function HeaderLeft() {
     return (
         <Pressable
             onPress={() => router.push('/settings')}
-            hitSlop={10}
+            hitSlop={15}
         >
             <Ionicons name="settings-outline" size={24} color="#000" />
         </Pressable>
@@ -311,7 +311,7 @@ function HeaderRight() {
     return (
         <Pressable
             onPress={() => router.push('/new-session')}
-            hitSlop={10}
+            hitSlop={15}
         >
             <Ionicons name="add-circle-outline" size={28} color="#000" />
         </Pressable>
@@ -324,7 +324,7 @@ function HeaderRightNotAuth() {
     return (
         <Pressable
             onPress={() => router.push('/server')}
-            hitSlop={10}
+            hitSlop={15}
         >
             <Ionicons name="server-outline" size={24} color="#000" />
         </Pressable>

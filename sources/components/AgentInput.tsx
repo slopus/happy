@@ -325,7 +325,11 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                 )}
                 {/* Input field */}
                 <View style={inputContainerStyle}>
-                    <View style={inputWrapperStyle}>
+                    <Pressable
+                        style={inputWrapperStyle}
+                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 0 }}
+                        onPress={() => inputRef.current?.focus()}
+                    >
                         <MultiTextInput
                             ref={inputRef}
                             value={props.value}
@@ -335,7 +339,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                             onStateChange={handleInputStateChange}
                             maxHeight={120}
                         />
-                    </View>
+                    </Pressable>
 
                     {/* Send button */}
                     <Animated.View
@@ -358,6 +362,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 justifyContent: 'center',
                                 opacity: p.pressed ? 0.7 : 1,
                             })}
+                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 10 }}
                             onPress={() => {
                                 hapticsLight();
                                 props.onSend();
@@ -405,6 +410,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 height: 32,
                                 opacity: p.pressed ? 0.7 : 1,
                             })}
+                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                             onPress={() => {
                                 hapticsLight();
                                 props.onMicPress?.();
@@ -453,6 +459,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                         justifyContent: 'center',
                                         alignItems: 'center',
                                     }}
+                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                     onPress={handleAbortPress}
                                     disabled={isAborting}
                                 >

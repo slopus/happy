@@ -55,6 +55,7 @@ export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
         <Pressable
             onPress={handleTap}
             disabled={disabled}
+            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
             style={{
                 flexDirection: 'row',
                 alignItems: 'center',
