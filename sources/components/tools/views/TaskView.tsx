@@ -26,7 +26,7 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
                 } else if (knownTool.title) {
                     // Handle optional title and function type
                     if (typeof knownTool.title === 'function') {
-                        title = knownTool.title();
+                        title = knownTool.title({ tool: m.tool, metadata });
                     } else {
                         title = knownTool.title;
                     }
@@ -57,7 +57,7 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
         );
     }
 
-    const visibleTools = filtered.slice(0, 3);
+    const visibleTools = filtered.slice(filtered.length - 3);
     const remainingCount = filtered.length - 3;
 
     return (
