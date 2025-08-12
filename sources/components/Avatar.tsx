@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Canvas, Rect, Group, RoundedRect, Path, Skia } from "@shopify/react-native-skia";
+import { Canvas, Rect, Group, Skia } from "@shopify/react-native-skia";
 
 const ELEMENTS = 64;
 const GRID_SIZE = 8; // 8x8 grid
@@ -56,8 +56,9 @@ const grayscaleColors = ['#070707', '#242424', '#575757', '#979797', '#bbbbbb'];
 
 export const Avatar = React.memo((props: AvatarProps) => {
     const { id, square, size = 48, monochrome } = props;
+    
     const defaultColors = monochrome ? grayscaleColors : colors;
-    const pixelColors = React.useMemo(() => generateColors(id, defaultColors, monochrome), [id, defaultColors, monochrome]);
+    const pixelColors = generateColors(id, defaultColors, monochrome);
     
     // Calculate cell size based on the avatar size
     const cellSize = size / GRID_SIZE;

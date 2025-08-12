@@ -5,7 +5,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
-import { useSessions, useAllDaemonStatuses } from '@/sync/storage';
+import { useSessions, useAllMachines } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { spawnRemoteSession } from '@/sync/ops';
@@ -17,12 +17,12 @@ import { Modal } from '@/modal';
 export default function NewSessionScreen() {
     const router = useRouter();
     const sessions = useSessions();
-    const daemonStatuses = useAllDaemonStatuses();
+    const machines = useAllMachines();
     const [customPaths, setCustomPaths] = useState<Record<string, string>>({});
     const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
     const [isSpawning, setIsSpawning] = useState(false);
 
-    // Group sessions by machineId and combine with daemon status
+    // Group sessions by machineId and combine with machine status
     const machineGroups = React.useMemo(() => {
         const groups: Record<string, { 
             machineHost: string, 
@@ -31,51 +31,29 @@ export default function NewSessionScreen() {
             lastSeen?: number
         }> = {};
         
-        // First, add all online daemons
-        daemonStatuses.forEach(daemon => {
-            groups[daemon.machineId] = {
-                machineHost: daemon.machineId, // We'll update this from sessions
+        // First, add all active machines with their proper host names
+        machines.forEach(machine => {
+            groups[machine.id] = {
+                machineHost: machine.metadata?.host || machine.id,
                 paths: new Set(),
-                isOnline: daemon.online,
-                lastSeen: daemon.lastSeen
+                isOnline: machine.active,
+                lastSeen: machine.lastActiveAt
             };
         });
         
-        // Then, enrich with session data
+        // Then, collect paths from existing sessions
         if (sessions) {
             console.log('[new-session] Total sessions:', sessions.length);
             sessions.forEach(item => {
                 if (typeof item === 'string') return; // Skip section headers
                 
                 const session = item as Session;
-                console.log('[new-session] Session:', {
-                    id: session.id,
-                    machineId: session.metadata?.machineId,
-                    host: session.metadata?.host,
-                    path: session.metadata?.path
-                });
                 if (session.metadata?.machineId) {
                     const machineId = session.metadata.machineId;
-                    if (!groups[machineId]) {
-                        groups[machineId] = {
-                            machineHost: session.metadata.host || 'Unknown',
-                            paths: new Set(),
-                            isOnline: false, // Daemon not online
-                            lastSeen: session.updatedAt
-                        };
-                    } else {
-                        // Update host name from session metadata
-                        groups[machineId].machineHost = session.metadata.host || groups[machineId].machineHost;
-                    }
                     
-                    // Add path if it exists
-                    if (session.metadata.path) {
+                    // Only add path to existing machine groups
+                    if (groups[machineId] && session.metadata.path) {
                         groups[machineId].paths.add(session.metadata.path);
-                    }
-                    
-                    // Update last seen if more recent
-                    if (session.updatedAt > (groups[machineId].lastSeen || 0)) {
-                        groups[machineId].lastSeen = session.updatedAt;
                     }
                 }
             });
@@ -90,7 +68,7 @@ export default function NewSessionScreen() {
         })));
         
         return groups;
-    }, [sessions, daemonStatuses]);
+    }, [sessions, machines]);
 
     const handleStartSession = async (machineId: string, path: string) => {
         if (!isSpawning) {
@@ -132,6 +110,7 @@ export default function NewSessionScreen() {
                     pollForSession();
                 }
             } catch (error) {
+                console.error('Failed to start session', error);
                 Modal.alert('Error', 'Failed to start session. Make sure the daemon is running on the target machine.');
                 setIsSpawning(false);
             }

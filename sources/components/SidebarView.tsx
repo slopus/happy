@@ -1,4 +1,4 @@
-import { useSessions, useEntitlement } from '@/sync/storage';
+import { useSessionListViewData, useEntitlement } from '@/sync/storage';
 import * as React from 'react';
 import { Text, View, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -11,7 +11,7 @@ import { PlusPlus } from './PlusPlus';
 import { Typography } from '@/constants/Typography';
 
 export const SidebarView = React.memo(() => {
-    const sessionsData = useSessions();
+    const sessionListViewData = useSessionListViewData();
     const safeArea = useSafeAreaInsets();
     const router = useRouter();
     const headerHeight = useHeaderHeight();
@@ -38,16 +38,16 @@ export const SidebarView = React.memo(() => {
                 </View>
             </View>
             <View style={{ flex: 1, flexBasis: 0, flexGrow: 1 }}>
-                {sessionsData === null && (
+                {sessionListViewData === null && (
                     <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}>
                         <ActivityIndicator />
                     </View>
                 )}
-                {sessionsData !== null && sessionsData.length === 0 && (
+                {sessionListViewData !== null && sessionListViewData.length === 0 && (
                     <EmptySessionsTablet />
                 )}
-                {sessionsData !== null && sessionsData.length > 0 && (
-                    <SessionsList data={sessionsData} />
+                {sessionListViewData !== null && sessionListViewData.length > 0 && (
+                    <SessionsList />
                 )}
             </View>
         </View>

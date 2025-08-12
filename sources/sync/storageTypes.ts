@@ -20,7 +20,8 @@ export const MetadataSchema = z.object({
     }).optional(),
     machineId: z.string().optional(),
     tools: z.array(z.string()).optional(),
-    slashCommands: z.array(z.string()).optional()
+    slashCommands: z.array(z.string()).optional(),
+    homeDir: z.string().optional()
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
@@ -72,4 +73,28 @@ export interface DecryptedMessage {
     localId: string | null,
     content: any,
     createdAt: number,
+}
+
+//
+// Machine states
+//
+
+export const MachineMetadataSchema = z.object({
+    host: z.string(),
+    platform: z.string(),
+    happyCliVersion: z.string(),
+    happyHomeDirectory: z.string()
+});
+
+export type MachineMetadata = z.infer<typeof MachineMetadataSchema>;
+
+export interface Machine {
+    id: string;
+    seq: number;
+    createdAt: number;
+    updatedAt: number;
+    active: boolean;
+    lastActiveAt: number;
+    metadata: MachineMetadata | null;
+    metadataVersion: number;
 }

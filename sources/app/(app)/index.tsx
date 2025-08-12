@@ -10,7 +10,7 @@ import { useUpdates } from "@/hooks/useUpdates";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
 import { Stack, useRouter } from "expo-router";
-import { useSessions, useEntitlement, useSettings } from "@/sync/storage";
+import { useSessionListViewData, useEntitlement } from "@/sync/storage";
 import { getRandomBytesAsync } from "expo-crypto";
 import { useIsTablet, useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
@@ -55,7 +55,7 @@ export default function Home() {
 }
 
 function Authenticated() {
-    const sessionsData = useSessions();
+    const sessionListViewData = useSessionListViewData();
     const { updateAvailable, reloadApp } = useUpdates();
     const isTablet = useIsTablet();
 
@@ -64,7 +64,7 @@ function Authenticated() {
     
     // Show logout button after 2 seconds if still loading
     React.useEffect(() => {
-        if (sessionsData === null) {
+        if (sessionListViewData === null) {
             const timer = setTimeout(() => {
                 setShowLogoutButton(true);
             }, 2000);
@@ -73,7 +73,7 @@ function Authenticated() {
         } else {
             setShowLogoutButton(false);
         }
-    }, [sessionsData]);
+    }, [sessionListViewData]);
     
     const handleCopyAndLogout = async () => {
         const currentSecret = auth.credentials?.secret || '';
@@ -105,7 +105,7 @@ function Authenticated() {
                     }}
                 />
                 <View style={{ flex: 1, flexBasis: 0, flexGrow: 1 }}>
-                    {sessionsData === null && (
+                    {sessionListViewData === null && (
                         <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}>
                             <ActivityIndicator />
                             {showLogoutButton && (
@@ -120,7 +120,7 @@ function Authenticated() {
                             )}
                         </View>
                     )}
-                    {sessionsData !== null && sessionsData.length === 0 && (
+                    {sessionListViewData !== null && sessionListViewData.length === 0 && (
                         <EmptyMainScreen />
                     )}
                 </View>
@@ -128,7 +128,7 @@ function Authenticated() {
         )
     }
 
-    if (sessionsData === null) {
+    if (sessionListViewData === null) {
         return (
             <>
                 <Stack.Screen
@@ -170,10 +170,8 @@ function Authenticated() {
             />
             <View className="flex-1">
                 {updateAvailable && <UpdateBanner onReload={reloadApp} />}
-                {sessionsData.length === 0 ? emptyState : (
-                    <SessionsList
-                        data={sessionsData}
-                    />
+                {!sessionListViewData || sessionListViewData.length === 0 ? emptyState : (
+                    <SessionsList />
                 )}
             </View>
         </>
@@ -187,11 +185,15 @@ function NotAuthenticated() {
     const insets = useSafeAreaInsets();
 
     const createAccount = async () => {
-        const secret = await getRandomBytesAsync(32);
-        const token = await authGetToken(secret);
-        if (token && secret) {
-            await auth.login(token, encodeBase64(secret, 'base64url'));
-            trackAccountCreated();
+        try {
+            const secret = await getRandomBytesAsync(32);
+            const token = await authGetToken(secret);
+            if (token && secret) {
+                await auth.login(token, encodeBase64(secret, 'base64url'));
+                trackAccountCreated();
+            }
+        } catch (error) {
+            console.error('Error creating account', error);
         }
     }
 
@@ -305,12 +307,6 @@ function HeaderLeft() {
 
 function HeaderRight() {
     const router = useRouter();
-    const settings = useSettings();
-    
-    // Only show the plus button if experiments flag is enabled
-    if (!settings?.experiments) {
-        return null;
-    }
     
     return (
         <Pressable

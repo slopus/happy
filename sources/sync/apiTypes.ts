@@ -56,11 +56,21 @@ export const ApiUpdateAccountSchema = z.object({
     }).nullish(),
 });
 
+export const ApiUpdateMachineStateSchema = z.object({
+    t: z.literal('update-machine'),
+    id: z.string(),
+    metadata: z.object({
+        version: z.number(),
+        value: z.string() // Encrypted, client decrypts
+    }).nullish(),
+});
+
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
     ApiUpdateSessionStateSchema,
-    ApiUpdateAccountSchema
+    ApiUpdateAccountSchema,
+    ApiUpdateMachineStateSchema
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;

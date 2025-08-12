@@ -3,7 +3,7 @@ import { View, Text } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
-import { useSessionStatus } from '@/utils/sessionUtils';
+import { useSessionStatus, formatPathRelativeToHome } from '@/utils/sessionUtils';
 
 interface EmptyMessagesProps {
     session: Session;
@@ -60,30 +60,29 @@ export function EmptyMessages({ session }: EmptyMessagesProps) {
                 style={{ marginBottom: 12 }}
             />
             
-            <View style={{ 
-                flexDirection: 'row', 
-                alignItems: 'center',
-                backgroundColor: sessionStatus.isConnected ? '#F2F7F2' : '#F2F2F7',
-                paddingHorizontal: 16,
-                paddingVertical: 8,
-                borderRadius: 16,
-                marginBottom: 40
-            }}>
-                <View style={{ 
-                    width: 8, 
-                    height: 8, 
-                    borderRadius: 4, 
-                    backgroundColor: sessionStatus.statusDotColor,
-                    marginRight: 8
-                }} />
+            {session.metadata?.host && (
+                <Text style={{ 
+                    fontSize: 18, 
+                    color: '#000',
+                    textAlign: 'center',
+                    marginBottom: 4,
+                    ...Typography.default('semiBold')
+                }}>
+                    {session.metadata.host}
+                </Text>
+            )}
+            
+            {session.metadata?.path && (
                 <Text style={{ 
                     fontSize: 14, 
-                    color: sessionStatus.statusColor,
+                    color: '#8E8E93',
+                    textAlign: 'center',
+                    marginBottom: 40,
                     ...Typography.default('regular')
                 }}>
-                    {sessionStatus.statusText || 'connected'}
+                    {formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir)}
                 </Text>
-            </View>
+            )}
             
             <Text style={{ 
                 fontSize: 20, 

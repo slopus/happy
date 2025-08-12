@@ -8,7 +8,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession } from '@/sync/storage';
-import { getSessionName, useSessionStatus, formatOSPlatform } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 
@@ -116,7 +116,7 @@ export default React.memo(() => {
             <ItemList>
                 {/* Session Header */}
                 <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: 'white', marginBottom: 35 }}>
-                    <Avatar id={session.id} size={80} monochrome={!sessionStatus.isConnected} />
+                    <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} />
                     <Text style={{
                         fontSize: 20,
                         fontWeight: '600',
@@ -184,7 +184,7 @@ export default React.memo(() => {
                         />
                         <Item
                             title="Path"
-                            subtitle={session.metadata.path}
+                            subtitle={formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir)}
                             icon={<Ionicons name="folder-outline" size={29} color="#5856D6" />}
                             showChevron={false}
                         />
@@ -201,6 +201,14 @@ export default React.memo(() => {
                                 title="Operating System"
                                 subtitle={formatOSPlatform(session.metadata.os)}
                                 icon={<Ionicons name="hardware-chip-outline" size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
+                        {session.metadata.machineId && (
+                            <Item
+                                title="Machine ID"
+                                subtitle={`${session.metadata.machineId.substring(0, 8)}...${session.metadata.machineId.substring(session.metadata.machineId.length - 8)}`}
+                                icon={<Ionicons name="server-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
                             />
                         )}

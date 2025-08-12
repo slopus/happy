@@ -2,8 +2,9 @@ import React from 'react';
 import { View, Pressable, Animated } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
-import { SessionListItem } from '@/sync/storage';
-import { getSessionName, useSessionStatus, getSessionSubtitle, formatOSPlatform } from '@/utils/sessionUtils';
+import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
+import { Ionicons } from '@expo/vector-icons';
+import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
@@ -50,57 +51,86 @@ function StatusDot({ color, isPulsing }: { color: string; isPulsing?: boolean })
 }
 
 interface SessionsListProps {
-    data: SessionListItem[];
     selectedSessionId?: string | null;
 }
 
-export function SessionsList({ data, selectedSessionId }: SessionsListProps) {
+export function SessionsList({ selectedSessionId }: SessionsListProps) {
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
-
-    const keyExtractor = React.useCallback((item: SessionListItem, index: number) => {
-        if (typeof item === 'string') {
-            return `header-${item}-${index}`;
-        }
-        return `session-${item.id}`;
-    }, []);
-
-    const renderItem = React.useCallback(({ item, index }: { item: SessionListItem; index: number }) => {
-        if (typeof item === 'string') {
-            const isOnline = item === 'online';
-            const title = isOnline ? 'Active Sessions' : 'Previous Sessions';
-            return (
-                <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8, backgroundColor: '#F2F2F7' }}>
-                    <Text style={{ fontSize: 13, fontWeight: '600', color: '#8E8E93', letterSpacing: 0.3, textTransform: 'uppercase', ...Typography.default('semiBold') }}>{title}</Text>
-                </View>
-            );
-        }
-
-        const session = item;
+    const data = useSessionListViewData();
+    
+    // Early return if no data yet
+    if (!data) {
         return (
-            <SessionItem
-                session={session}
-                selectedSessionId={selectedSessionId}
-                router={router}
-            />
+            <View style={{ flex: 1, backgroundColor: '#F2F2F7' }} />
         );
-    }, [router, selectedSessionId]);
+    }
 
-    const getItemType = React.useCallback((item: SessionListItem) => {
-        return typeof item === 'string' ? 'header' : 'session';
+    const keyExtractor = React.useCallback((item: SessionListViewItem, index: number) => {
+        switch (item.type) {
+            case 'header': return `header-${item.title}-${index}`;
+            case 'session': return `session-${item.session.id}`;
+            case 'machine': return `machine-${item.machine.id}`;
+        }
     }, []);
+
+    const renderItem = React.useCallback(({ item }: { item: SessionListViewItem }) => {
+        switch (item.type) {
+            case 'header':
+                return (
+                    <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8, backgroundColor: '#F2F2F7' }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#8E8E93', letterSpacing: 0.3, textTransform: 'uppercase', ...Typography.default('semiBold') }}>
+                            {item.title}
+                        </Text>
+                    </View>
+                );
+                
+            case 'machine':
+                return (
+                    <Pressable
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            paddingHorizontal: 16,
+                            paddingVertical: 12,
+                            backgroundColor: '#fff'
+                        }}
+                        onPress={() => router.push('/new-session')}
+                    >
+                        <Ionicons 
+                            name="desktop-outline" 
+                            size={24} 
+                            color="#007AFF"
+                            style={{ marginRight: 12 }}
+                        />
+                        <Text style={{ fontSize: 15, color: '#000', ...Typography.default() }}>
+                            {item.machine.metadata?.host || item.machine.id}
+                        </Text>
+                    </Pressable>
+                );
+                
+            case 'session':
+                return (
+                    <SessionItem
+                        session={item.session}
+                        selectedSessionId={selectedSessionId}
+                        router={router}
+                    />
+                );
+        }
+    }, [router, selectedSessionId]);
 
     // ItemSeparatorComponent for FlashList
     const ItemSeparatorComponent = React.useCallback(({ leadingItem, trailingItem }: any) => {
-        // Don't render separator if either item is a section header
-        const leadingIsHeader = typeof leadingItem === 'string';
-        const trailingIsHeader = typeof trailingItem === 'string';
-        
-        if (leadingIsHeader || trailingIsHeader) {
+        // Don't render separator if either item is a header
+        if (leadingItem?.type === 'header' || trailingItem?.type === 'header') {
             return null;
         }
         
-        return <View style={{ height: 0.5, backgroundColor: '#E5E5E7', marginLeft: 88 }} />;
+        // Use different indentation for machine separators
+        const marginLeft = leadingItem?.type === 'machine' ? 52 : 88;
+        
+        return <View style={{ height: 0.5, backgroundColor: '#E5E5E7', marginLeft }} />;
     }, []);
 
     return (
@@ -128,6 +158,10 @@ const SessionItem = React.memo(({ session, selectedSessionId, router }: {
     const sessionSubtitle = getSessionSubtitle(session);
     const isSelected = selectedSessionId === session.id;
 
+    const avatarId = React.useMemo(() => {
+        return getSessionAvatarId(session);
+    }, [session]);
+
     return (
         <Pressable
             style={{
@@ -141,7 +175,7 @@ const SessionItem = React.memo(({ session, selectedSessionId, router }: {
                 router.push(`/session/${session.id}`);
             }}
         >
-            <Avatar id={session.id} size={48} monochrome={!sessionStatus.isConnected} />
+            <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} />
             <View style={{ flex: 1, marginLeft: 16, justifyContent: 'center' }}>
                 {/* Title line */}
                 <Text style={{ 
@@ -164,36 +198,25 @@ const SessionItem = React.memo(({ session, selectedSessionId, router }: {
                     {sessionSubtitle}
                 </Text>
                 
-                {/* Status line with dot and OS info */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                        <View style={{
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            height: 16,
-                            marginTop: 2
-                        }}>
-                            <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
-                        </View>
-                        <Text style={{ 
-                            fontSize: 12, 
-                            color: sessionStatus.statusColor,
-                            fontWeight: '500',
-                            lineHeight: 16,
-                            ...Typography.default()
-                        }}>
-                            {sessionStatus.statusText}
-                        </Text>
+                {/* Status line with dot */}
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        height: 16,
+                        marginTop: 2
+                    }}>
+                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
                     </View>
-                    {session.metadata?.os && (
-                        <Text style={{ 
-                            fontSize: 11, 
-                            color: '#8E8E93',
-                            ...Typography.default() 
-                        }}>
-                            {formatOSPlatform(session.metadata.os)}
-                        </Text>
-                    )}
+                    <Text style={{ 
+                        fontSize: 12, 
+                        color: sessionStatus.statusColor,
+                        fontWeight: '500',
+                        lineHeight: 16,
+                        ...Typography.default()
+                    }}>
+                        {sessionStatus.statusText}
+                    </Text>
                 </View>
             </View>
         </Pressable>
