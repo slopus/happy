@@ -4,7 +4,7 @@ import { Text, View, Pressable, ActivityIndicator, Platform } from 'react-native
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SessionsList } from './SessionsList';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter, useSegments } from 'expo-router';
 import { useHeaderHeight } from '@/utils/responsive';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
 import { PlusPlus } from './PlusPlus';

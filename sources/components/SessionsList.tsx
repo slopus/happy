@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Pressable, Animated } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { useRouter } from 'expo-router';
+import { usePathname, useRouter } from 'expo-router';
 import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
@@ -50,11 +50,7 @@ function StatusDot({ color, isPulsing }: { color: string; isPulsing?: boolean })
     );
 }
 
-interface SessionsListProps {
-    selectedSessionId?: string | null;
-}
-
-export function SessionsList({ selectedSessionId }: SessionsListProps) {
+export function SessionsList() {
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const data = useSessionListViewData();
@@ -113,12 +109,11 @@ export function SessionsList({ selectedSessionId }: SessionsListProps) {
                 return (
                     <SessionItem
                         session={item.session}
-                        selectedSessionId={selectedSessionId}
                         router={router}
                     />
                 );
         }
-    }, [router, selectedSessionId]);
+    }, [router]);
 
     // ItemSeparatorComponent for FlashList
     const ItemSeparatorComponent = React.useCallback(({ leadingItem, trailingItem }: any) => {
@@ -148,15 +143,21 @@ export function SessionsList({ selectedSessionId }: SessionsListProps) {
 }
 
 // Sub-component that handles session message logic
-const SessionItem = React.memo(({ session, selectedSessionId, router }: {
+const SessionItem = React.memo(({ session, router }: {
     session: Session;
-    selectedSessionId?: string | null;
     router: any;
 }) => {
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
-    const isSelected = selectedSessionId === session.id;
+    const pathname = usePathname();
+    const currentSessionId = React.useMemo(() => {
+        console.log('pathname', pathname);
+        if (pathname.startsWith('/session/')) {
+            return pathname.split('/')[2];
+        }
+        return undefined;
+    }, [pathname]);
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
@@ -169,7 +170,7 @@ const SessionItem = React.memo(({ session, selectedSessionId, router }: {
                 flexDirection: 'row',
                 alignItems: 'center',
                 paddingHorizontal: 16,
-                backgroundColor: isSelected ? 'rgba(0, 0, 0, 0.03)' : '#fff'
+                backgroundColor: currentSessionId === session.id ? '#f9f9f9' : '#fff'
             }}
             onPress={() => {
                 router.push(`/session/${session.id}`);

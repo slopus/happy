@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { View, ScrollView, Text, StyleSheet } from 'react-native';
+import { View, ScrollView, Text, StyleSheet, Platform } from 'react-native';
 import { Command, CommandCategory } from './types';
 import { CommandPaletteItem } from './CommandPaletteItem';
 import { Typography } from '@/constants/Typography';
@@ -99,7 +99,12 @@ export function CommandPaletteResults({
 
 const styles = StyleSheet.create({
     container: {
-        maxHeight: 420,
+        // Use viewport-based height for better proportions
+        ...(Platform.OS === 'web' ? {
+            maxHeight: '40vh', // 40% of viewport height for results
+        } as any : {
+            maxHeight: 420, // Fallback for native
+        }),
         paddingVertical: 8,
     },
     emptyContainer: {

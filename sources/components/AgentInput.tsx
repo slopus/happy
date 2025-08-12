@@ -110,50 +110,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
         hapticsLight();
     }, [suggestions, inputState, props.autocompletePrefixes]);
 
-    // Handle keyboard navigation
-    const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
-        // Handle autocomplete navigation first
-        if (suggestions.length > 0) {
-            if (event.key === 'ArrowUp') {
-                moveUp();
-                return true;
-            } else if (event.key === 'ArrowDown') {
-                moveDown();
-                return true;
-            } else if ((event.key === 'Enter' || (event.key === 'Tab' && !event.shiftKey))) {
-                // Both Enter and Tab select the current suggestion
-                // If none selected (selected === -1), select the first one
-                const indexToSelect = selected >= 0 ? selected : 0;
-                handleSuggestionSelect(indexToSelect);
-                return true;
-            } else if (event.key === 'Escape') {
-                // Close suggestions
-                // TODO: Clear suggestions
-                return true;
-            }
-        }
-
-        // Original key handling
-        if (Platform.OS === 'web') {
-            if (event.key === 'Enter' && !event.shiftKey) {
-                if (props.value.trim()) {
-                    props.onSend();
-                    return true; // Key was handled
-                }
-            }
-            // Handle Shift+Tab for mode switching
-            if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-                const modeOrder: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-                const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
-                const nextIndex = (currentIndex + 1) % modeOrder.length;
-                props.onPermissionModeChange(modeOrder[nextIndex]);
-                hapticsLight();
-                return true; // Key was handled, prevent default tab behavior
-            }
-        }
-        return false; // Key was not handled
-    }, [props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, suggestions, selected, handleSuggestionSelect, moveUp, moveDown]);
-
+    // Handle abort button press
     const handleAbortPress = React.useCallback(async () => {
         if (!props.onAbort) return;
 
@@ -211,6 +168,56 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
             }
         }
     }, [props.onAbort, isFirstPress, abortButtonBgAnim]);
+
+    // Handle keyboard navigation
+    const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
+        // Handle autocomplete navigation first
+        if (suggestions.length > 0) {
+            if (event.key === 'ArrowUp') {
+                moveUp();
+                return true;
+            } else if (event.key === 'ArrowDown') {
+                moveDown();
+                return true;
+            } else if ((event.key === 'Enter' || (event.key === 'Tab' && !event.shiftKey))) {
+                // Both Enter and Tab select the current suggestion
+                // If none selected (selected === -1), select the first one
+                const indexToSelect = selected >= 0 ? selected : 0;
+                handleSuggestionSelect(indexToSelect);
+                return true;
+            } else if (event.key === 'Escape') {
+                // Close suggestions
+                // TODO: Clear suggestions
+                return true;
+            }
+        }
+        
+        // Handle Escape for abort when no suggestions are visible
+        if (event.key === 'Escape' && props.showAbortButton && props.onAbort && !isAborting) {
+            handleAbortPress();
+            return true;
+        }
+
+        // Original key handling
+        if (Platform.OS === 'web') {
+            if (event.key === 'Enter' && !event.shiftKey) {
+                if (props.value.trim()) {
+                    props.onSend();
+                    return true; // Key was handled
+                }
+            }
+            // Handle Shift+Tab for mode switching
+            if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
+                const modeOrder: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+                const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
+                const nextIndex = (currentIndex + 1) % modeOrder.length;
+                props.onPermissionModeChange(modeOrder[nextIndex]);
+                hapticsLight();
+                return true; // Key was handled, prevent default tab behavior
+            }
+        }
+        return false; // Key was not handled
+    }, [props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, suggestions, selected, handleSuggestionSelect, moveUp, moveDown, props.showAbortButton, props.onAbort, isAborting, handleAbortPress]);
 
     // Animate send button color based on hasText
     React.useEffect(() => {

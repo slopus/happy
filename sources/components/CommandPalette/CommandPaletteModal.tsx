@@ -22,9 +22,11 @@ export function CommandPaletteModal({
 }: CommandPaletteModalProps) {
     const fadeAnim = useRef(new Animated.Value(0)).current;
     const scaleAnim = useRef(new Animated.Value(0.95)).current;
+    const [isModalVisible, setIsModalVisible] = React.useState(true);
 
     useEffect(() => {
         if (visible) {
+            // Opening animation
             Animated.parallel([
                 Animated.timing(fadeAnim, {
                     toValue: 1,
@@ -38,34 +40,47 @@ export function CommandPaletteModal({
                     useNativeDriver: true
                 })
             ]).start();
-        } else {
-            Animated.parallel([
-                Animated.timing(fadeAnim, {
-                    toValue: 0,
-                    duration: 150,
-                    useNativeDriver: true
-                }),
-                Animated.timing(scaleAnim, {
-                    toValue: 0.95,
-                    duration: 150,
-                    useNativeDriver: true
-                })
-            ]).start();
         }
     }, [visible, fadeAnim, scaleAnim]);
 
+    const handleClose = React.useCallback(() => {
+        // Closing animation
+        Animated.parallel([
+            Animated.timing(fadeAnim, {
+                toValue: 0,
+                duration: 150,
+                useNativeDriver: true
+            }),
+            Animated.timing(scaleAnim, {
+                toValue: 0.95,
+                duration: 150,
+                useNativeDriver: true
+            })
+        ]).start(() => {
+            setIsModalVisible(false);
+            // Small delay to ensure modal is hidden before calling onClose
+            setTimeout(() => {
+                if (onClose) {
+                    onClose();
+                }
+            }, 50);
+        });
+    }, [fadeAnim, scaleAnim, onClose]);
+
     const handleBackdropPress = () => {
-        if (onClose) {
-            onClose();
-        }
+        handleClose();
     };
+
+    if (!isModalVisible) {
+        return null;
+    }
 
     return (
         <Modal
-            visible={visible}
+            visible={isModalVisible}
             transparent={true}
             animationType="none"
-            onRequestClose={onClose}
+            onRequestClose={handleClose}
         >
             <KeyboardAvoidingView 
                 style={styles.container}
@@ -104,9 +119,14 @@ export function CommandPaletteModal({
 const styles = StyleSheet.create({
     container: {
         flex: 1,
-        justifyContent: 'center',
+        justifyContent: 'flex-start',
         alignItems: 'center',
-        paddingTop: 100, // Position slightly higher than center
+        // Position at 30% from top of viewport
+        ...(Platform.OS === 'web' ? {
+            paddingTop: '30vh',
+        } as any : {
+            paddingTop: 200, // Fallback for native
+        })
     },
     backdrop: {
         ...StyleSheet.absoluteFillObject,
@@ -123,6 +143,6 @@ const styles = StyleSheet.create({
     content: {
         zIndex: 1,
         width: '90%',
-        maxWidth: 640,
+        maxWidth: 800, // Increased from 640
     }
 });
