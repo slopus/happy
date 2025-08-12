@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseToolUseError, parseAllToolUseErrors, hasToolUseError } from './toolErrorParser';
+import { parseToolUseError, parseAllToolUseErrors, hasToolUseError, isCancelError } from './toolErrorParser';
 
 describe('toolErrorParser', () => {
     describe('parseToolUseError', () => {
@@ -68,6 +68,59 @@ describe('toolErrorParser', () => {
         it('should return false when no tool use error', () => {
             const input = 'Regular error message';
             expect(hasToolUseError(input)).toBe(false);
+        });
+    });
+
+    describe('isCancelError', () => {
+        it('should detect tool_use_error tags', () => {
+            const input = '<tool_use_error>Operation cancelled</tool_use_error>';
+            expect(isCancelError(input)).toBe(true);
+        });
+
+        it('should detect Request interrupted by user for tool use', () => {
+            const input = 'Error: [Request interrupted by user for tool use]';
+            expect(isCancelError(input)).toBe(true);
+        });
+
+        it('should detect various cancellation patterns', () => {
+            const cancelMessages = [
+                'Request interrupted',
+                'User cancelled the operation',
+                'Operation cancelled by user',
+                'Cancelled by user action',
+                'User aborted the process',
+                'Operation aborted',
+                'Interrupted by user'
+            ];
+
+            cancelMessages.forEach(msg => {
+                expect(isCancelError(msg)).toBe(true);
+            });
+        });
+
+        it('should be case insensitive', () => {
+            expect(isCancelError('REQUEST INTERRUPTED')).toBe(true);
+            expect(isCancelError('user CANCELLED')).toBe(true);
+        });
+
+        it('should return false for non-cancellation errors', () => {
+            const regularErrors = [
+                'File not found',
+                'Permission denied',
+                'Network error',
+                'Invalid input',
+                'Syntax error'
+            ];
+
+            regularErrors.forEach(msg => {
+                expect(isCancelError(msg)).toBe(false);
+            });
+        });
+
+        it('should handle non-string input', () => {
+            expect(isCancelError(null as any)).toBe(false);
+            expect(isCancelError(undefined as any)).toBe(false);
+            expect(isCancelError(123 as any)).toBe(false);
         });
     });
 });

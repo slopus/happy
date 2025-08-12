@@ -8,7 +8,8 @@ import { isSessionActive, DISCONNECTED_TIMEOUT_MS } from '@/utils/sessionUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases } from "./persistence";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
+import type { PermissionMode } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
@@ -59,6 +60,8 @@ interface StorageState {
     applyPurchases: (customerInfo: CustomerInfo) => void;
     recalculateOnline: () => void;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
+    updateSessionDraft: (sessionId: string, draft: string | null) => void;
+    updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -119,6 +122,8 @@ export const storage = create<StorageState>()((set) => {
     let { settings, version } = loadSettings();
     let localSettings = loadLocalSettings();
     let purchases = loadPurchases();
+    let sessionDrafts = loadSessionDrafts();
+    let sessionPermissionModes = loadSessionPermissionModes();
     return {
         settings,
         settingsVersion: version,
@@ -134,6 +139,10 @@ export const storage = create<StorageState>()((set) => {
             const now = Date.now();
             const threshold = now - DISCONNECTED_TIMEOUT_MS;
 
+            // Load drafts and permission modes if sessions are empty (initial load)
+            const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
+            const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
 
@@ -143,9 +152,16 @@ export const storage = create<StorageState>()((set) => {
                 const isOnline = session.active && session.activeAt > threshold;
                 const presence: "online" | number = isOnline ? "online" : session.activeAt;
 
+                // Preserve existing draft and permission mode if they exist, or load from saved data
+                const existingDraft = state.sessions[session.id]?.draft;
+                const savedDraft = savedDrafts[session.id];
+                const existingPermissionMode = state.sessions[session.id]?.permissionMode;
+                const savedPermissionMode = savedPermissionModes[session.id];
                 mergedSessions[session.id] = {
                     ...session,
-                    presence
+                    presence,
+                    draft: existingDraft || savedDraft || session.draft || null,
+                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default'
                 };
             });
 
@@ -566,6 +582,78 @@ export const storage = create<StorageState>()((set) => {
             ...state,
             realtimeStatus: status
         })),
+        updateSessionDraft: (sessionId: string, draft: string | null) => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+            
+            // Don't store empty strings, convert to null
+            const normalizedDraft = draft?.trim() ? draft : null;
+            
+            // Collect all drafts for persistence
+            const allDrafts: Record<string, string> = {};
+            Object.entries(state.sessions).forEach(([id, sess]) => {
+                if (id === sessionId) {
+                    if (normalizedDraft) {
+                        allDrafts[id] = normalizedDraft;
+                    }
+                } else if (sess.draft) {
+                    allDrafts[id] = sess.draft;
+                }
+            });
+            
+            // Persist drafts
+            saveSessionDrafts(allDrafts);
+            
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    draft: normalizedDraft
+                }
+            };
+            
+            // Rebuild sessionListViewData to update the UI immediately
+            const sessionListViewData = buildSessionListViewData(
+                updatedSessions,
+                state.machines
+            );
+            
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData
+            };
+        }),
+        updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+            
+            // Update the session with the new permission mode
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    permissionMode: mode
+                }
+            };
+            
+            // Collect all permission modes for persistence
+            const allModes: Record<string, PermissionMode> = {};
+            Object.entries(updatedSessions).forEach(([id, sess]) => {
+                if (sess.permissionMode && sess.permissionMode !== 'default') {
+                    allModes[id] = sess.permissionMode;
+                }
+            });
+            
+            // Persist permission modes (only non-default values to save space)
+            saveSessionPermissionModes(allModes);
+            
+            // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
+            return {
+                ...state,
+                sessions: updatedSessions
+            };
+        }),
     }
 });
 

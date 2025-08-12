@@ -20,6 +20,7 @@ import { syncRestore } from '@/sync/sync';
 import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
+import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -123,11 +124,13 @@ export default function RootLayout() {
                     <AuthProvider initialCredentials={initState.credentials}>
                         <ThemeProvider value={DefaultTheme}>
                             <ModalProvider>
-                                <RealtimeProvider>
-                                    <HorizontalSafeAreaWrapper>
-                                        <SidebarNavigator />
-                                    </HorizontalSafeAreaWrapper>
-                                </RealtimeProvider>
+                                <CommandPaletteProvider>
+                                    <RealtimeProvider>
+                                        <HorizontalSafeAreaWrapper>
+                                            <SidebarNavigator />
+                                        </HorizontalSafeAreaWrapper>
+                                    </RealtimeProvider>
+                                </CommandPaletteProvider>
                             </ModalProvider>
                         </ThemeProvider>
                     </AuthProvider>

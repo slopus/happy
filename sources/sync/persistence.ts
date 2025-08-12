@@ -2,6 +2,7 @@ import { MMKV } from 'react-native-mmkv';
 import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
+import type { PermissionMode } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();
 
@@ -75,6 +76,40 @@ export function loadPurchases(): Purchases {
 
 export function savePurchases(purchases: Purchases) {
     mmkv.set('purchases', JSON.stringify(purchases));
+}
+
+export function loadSessionDrafts(): Record<string, string> {
+    const drafts = mmkv.getString('session-drafts');
+    if (drafts) {
+        try {
+            return JSON.parse(drafts);
+        } catch (e) {
+            console.error('Failed to parse session drafts', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionDrafts(drafts: Record<string, string>) {
+    mmkv.set('session-drafts', JSON.stringify(drafts));
+}
+
+export function loadSessionPermissionModes(): Record<string, PermissionMode> {
+    const modes = mmkv.getString('session-permission-modes');
+    if (modes) {
+        try {
+            return JSON.parse(modes);
+        } catch (e) {
+            console.error('Failed to parse session permission modes', e);
+            return {};
+        }
+    }
+    return {};
+}
+
+export function saveSessionPermissionModes(modes: Record<string, PermissionMode>) {
+    mmkv.set('session-permission-modes', JSON.stringify(modes));
 }
 
 export function clearPersistence() {

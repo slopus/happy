@@ -1,12 +1,13 @@
-import { Switch } from 'react-native';
+import { Switch, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useSettingMutable } from '@/sync/storage';
+import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 
 export default function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
+    const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -30,6 +31,29 @@ export default function FeaturesSettingsScreen() {
                     showChevron={false}
                 />
             </ItemGroup>
+
+            {/* Web-only Features */}
+            {Platform.OS === 'web' && (
+                <ItemGroup 
+                    title="Web Features" 
+                    footer="Features available only in the web version of the app."
+                >
+                    <Item
+                        title="Command Palette"
+                        subtitle={commandPaletteEnabled ? "Press ⌘K to open" : "Quick command access disabled"}
+                        icon={<Ionicons name="keypad-outline" size={29} color="#007AFF" />}
+                        rightElement={
+                            <Switch
+                                value={commandPaletteEnabled}
+                                onValueChange={setCommandPaletteEnabled}
+                                trackColor={{ false: '#767577', true: '#34C759' }}
+                                thumbColor="#FFFFFF"
+                            />
+                        }
+                        showChevron={false}
+                    />
+                </ItemGroup>
+            )}
         </ItemList>
     );
 }

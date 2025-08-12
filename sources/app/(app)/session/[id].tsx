@@ -7,7 +7,7 @@ import { MessageView } from "@/components/MessageView";
 import { useRouter } from "expo-router";
 import { getSessionName, useSessionStatus, getSessionAvatarId } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
-import { useSession, useSessionMessages, useSettings, useDaemonStatusByMachine, useRealtimeStatus } from '@/sync/storage';
+import { useSession, useSessionMessages, useSettings, useDaemonStatusByMachine, useRealtimeStatus, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { sessionAbort, sessionSwitch, spawnRemoteSession } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
@@ -34,6 +34,7 @@ import { useAutocompleteSession } from '@/hooks/useAutocompleteSession';
 import { StatusDot } from '@/components/StatusDot';
 import { ChatFooter } from '@/components/ChatFooter';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
+import { useDraft } from '@/hooks/useDraft';
 
 
 export default React.memo(() => {
@@ -64,13 +65,22 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const [message, setMessage] = useState('');
     const realtimeStatus = useRealtimeStatus();
     const [isReviving, setIsReviving] = useState(false);
-    const [permissionMode, setPermissionMode] = useState<'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'>('default');
+    // Get permission mode from session object, default to 'default'
+    const permissionMode = session.permissionMode || 'default';
     const screenWidth = useWindowDimensions().width;
     const headerHeight = useHeaderHeight();
     const sessionStatus = useSessionStatus(session);
     const lastSeenText = sessionStatus.statusText;
     const autocomplete = useAutocompleteSession(message, message.length);
     const daemonStatus = useDaemonStatusByMachine(session.metadata?.machineId || '');
+    
+    // Use draft hook for auto-saving message drafts
+    const { clearDraft } = useDraft(sessionId, message, setMessage);
+    
+    // Function to update permission mode
+    const updatePermissionMode = useCallback((mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') => {
+        storage.getState().updateSessionPermissionMode(sessionId, mode);
+    }, [sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
@@ -163,7 +173,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 isPulsing: sessionStatus.isPulsing,
             }}
             permissionMode={permissionMode}
-            onPermissionModeChange={setPermissionMode}
+            onPermissionModeChange={updatePermissionMode}
             onSwitch={() => sessionSwitch(sessionId, 'remote')}
         />
     ), [sessionStatus, permissionMode, sessionId]);
@@ -349,7 +359,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                             value={message}
                             onChangeText={setMessage}
                             permissionMode={permissionMode}
-                            onPermissionModeChange={setPermissionMode}
+                            onPermissionModeChange={updatePermissionMode}
                             connectionStatus={{
                                 text: sessionStatus.statusText,
                                 color: sessionStatus.statusColor,
@@ -359,6 +369,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                             onSend={() => {
                                 if (message.trim()) {
                                     setMessage('');
+                                    clearDraft();
                                     sync.sendMessage(sessionId, message, permissionMode);
                                     trackMessageSent();
                                 }
