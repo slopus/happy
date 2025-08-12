@@ -254,9 +254,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
 
     return (
         <View style={[containerStyle, { overflow: 'hidden' }]} className={className}>
-            <View style={{ paddingVertical: 4 }}>
-                {renderDiffContent()}
-            </View>
+            {renderDiffContent()}
         </View>
     );
 

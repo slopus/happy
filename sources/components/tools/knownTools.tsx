@@ -2,11 +2,23 @@ import { Metadata } from '@/sync/storageTypes';
 import { ToolCall } from '@/sync/typesMessage';
 import { resolvePath } from '@/utils/pathUtils';
 import * as z from 'zod';
+import { Ionicons, Octicons } from '@expo/vector-icons';
+import React from 'react';
+
+// Icon factory functions
+const ICON_TASK = (size: number = 24, color: string = '#000') => <Octicons name="rocket" size={size} color={color} />;
+const ICON_TERMINAL = (size: number = 24, color: string = '#000') => <Octicons name="terminal" size={size} color={color} />;
+const ICON_SEARCH = (size: number = 24, color: string = '#000') => <Octicons name="search" size={size} color={color} />;
+const ICON_READ = (size: number = 24, color: string = '#000') => <Octicons name="eye" size={size} color={color} />;
+const ICON_EDIT = (size: number = 24, color: string = '#000') => <Octicons name="file-diff" size={size} color={color} />;
+const ICON_WEB = (size: number = 24, color: string = '#000') => <Ionicons name="globe-outline" size={size} color={color} />;
+const ICON_EXIT = (size: number = 24, color: string = '#000') => <Ionicons name="exit-outline" size={size} color={color} />;
+const ICON_TODO = (size: number = 24, color: string = '#000') => <Ionicons name="bulb-outline" size={size} color={color} />;
 
 export const knownTools = {
     'Task': {
         title: 'Task',
-        icon: 'rocket',
+        icon: ICON_TASK,
         input: z.object({
             prompt: z.string().describe('The task for the agent to perform'),
             subagent_type: z.string().optional().describe('The type of specialized agent to use')
@@ -17,20 +29,18 @@ export const knownTools = {
                 return `Task(type: ${type})`;
             }
             return 'Task';
-        },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.description === 'string') {
-                return opts.tool.input.description;
-            }
-            if (typeof opts.tool.input.prompt === 'string') {
-                return opts.tool.input.prompt;
-            }
-            return null;
         }
     },
     'Bash': {
-        title: 'Terminal',
-        icon: 'terminal',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (opts.tool.description) {
+                return opts.tool.description;
+            }
+            return 'Terminal';
+        },
+        icon: ICON_TERMINAL,
+        minimal: true,
+        hideDefaultError: true,
         input: z.object({
             command: z.string().describe('The command to execute'),
             timeout: z.number().optional().describe('Timeout in milliseconds (max 600000)')
@@ -61,8 +71,13 @@ export const knownTools = {
         }
     },
     'Glob': {
-        title: 'Search',
-        icon: 'search',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.pattern === 'string') {
+                return opts.tool.input.pattern;
+            }
+            return 'Search Files';
+        },
+        icon: ICON_SEARCH,
         minimal: true,
         input: z.object({
             pattern: z.string().describe('The glob pattern to match files against'),
@@ -73,23 +88,16 @@ export const knownTools = {
                 return `Search(pattern: ${opts.tool.input.pattern})`;
             }
             return 'Search';
-        },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.path === 'string') {
-                return resolvePath(opts.tool.input.path, opts.metadata);
-            }
-            return null;
-        },
-        extractStatus: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.pattern === 'string') {
-                return opts.tool.input.pattern;
-            }
-            return null;
-        },
+        }
     },
     'Grep': {
-        title: 'Search',
-        icon: 'search',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.pattern === 'string') {
+                return `grep(pattern: ${opts.tool.input.pattern})`;
+            }
+            return 'Search Content';
+        },
+        icon: ICON_READ,
         minimal: true,
         input: z.object({
             pattern: z.string().describe('The regular expression pattern to search for'),
@@ -107,29 +115,22 @@ export const knownTools = {
         }).partial().loose(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.pattern === 'string') {
-                const pattern = opts.tool.input.pattern.length > 20 
-                    ? opts.tool.input.pattern.substring(0, 20) + '...' 
+                const pattern = opts.tool.input.pattern.length > 20
+                    ? opts.tool.input.pattern.substring(0, 20) + '...'
                     : opts.tool.input.pattern;
                 return `Search(pattern: ${pattern})`;
             }
             return 'Search';
-        },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.path === 'string') {
-                return resolvePath(opts.tool.input.path, opts.metadata);
-            }
-            return null;
-        },
-        extractStatus: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.pattern === 'string') {
-                return opts.tool.input.pattern;
-            }
-            return null;
         }
     },
     'LS': {
-        title: 'Search',
-        icon: 'search',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.path === 'string') {
+                return resolvePath(opts.tool.input.path, opts.metadata);
+            }
+            return 'List Files';
+        },
+        icon: ICON_SEARCH,
         minimal: true,
         input: z.object({
             path: z.string().describe('The absolute path to the directory to list'),
@@ -142,32 +143,32 @@ export const knownTools = {
                 return `Search(path: ${basename})`;
             }
             return 'Search';
-        },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.path === 'string') {
-                return resolvePath(opts.tool.input.path, opts.metadata);
-            }
-            return null;
-        },
+        }
     },
     'ExitPlanMode': {
         title: 'Plan proposal',
-        icon: 'exit',
+        icon: ICON_EXIT,
         input: z.object({
             plan: z.string().describe('The plan you came up with')
         }).partial().loose()
     },
     'exit_plan_mode': {
         title: 'Plan proposal',
-        icon: 'exit',
+        icon: ICON_EXIT,
         input: z.object({
             plan: z.string().describe('The plan you came up with')
         }).partial().loose()
     },
     'Read': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.file_path === 'string') {
+                const path = resolvePath(opts.tool.input.file_path, opts.metadata);
+                return path;
+            }
+            return 'Read File';
+        },
         minimal: true,
-        title: 'Read',
-        icon: 'document-text',
+        icon: ICON_READ,
         input: z.object({
             file_path: z.string().describe('The absolute path to the file to read'),
             limit: z.number().optional().describe('The number of lines to read'),
@@ -181,55 +182,37 @@ export const knownTools = {
                 startLine: z.number().describe('The line number to start reading from'),
                 totalLines: z.number().describe('The total number of lines in the file')
             }).loose().optional()
-        }).partial().loose(),
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.file_path === 'string') {
-                const path = resolvePath(opts.tool.input.file_path, opts.metadata);
-                const filename = path.split('/').pop() || path;
-                return `Read(file: ${filename})`;
-            }
-            return 'Read';
-        },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.file_path === 'string') {
-                return resolvePath(opts.tool.input.file_path, opts.metadata);
-            }
-            return null;
-        },
-        extractStatus: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (opts.tool.state === 'completed' && opts.tool.result && typeof opts.tool.result === 'object' && opts.tool.result.file && typeof opts.tool.result.file.numLines === 'number') {
-                return `${opts.tool.result.file.numLines} lines`;
-            }
-            return null;
-        }
+        }).partial().loose()
     },
     'Edit': {
-        title: 'Edit File',
-        icon: 'document-text',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.file_path === 'string') {
+                const path = resolvePath(opts.tool.input.file_path, opts.metadata);
+                return path;
+            }
+            return 'Edit File';
+        },
+        icon: ICON_EDIT,
         input: z.object({
             file_path: z.string().describe('The absolute path to the file to modify'),
             old_string: z.string().describe('The text to replace'),
             new_string: z.string().describe('The text to replace it with'),
             replace_all: z.boolean().optional().default(false).describe('Replace all occurrences')
-        }).partial().loose(),
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+        }).partial().loose()
+    },
+    'MultiEdit': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.file_path === 'string') {
                 const path = resolvePath(opts.tool.input.file_path, opts.metadata);
-                const filename = path.split('/').pop() || path;
-                return `Edit File(file: ${filename})`;
+                const editCount = Array.isArray(opts.tool.input.edits) ? opts.tool.input.edits.length : 0;
+                if (editCount > 1) {
+                    return `${path} (${editCount} edits)`;
+                }
+                return path;
             }
             return 'Edit File';
         },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.file_path === 'string') {
-                return resolvePath(opts.tool.input.file_path, opts.metadata);
-            }
-            return null;
-        }
-    },
-    'MultiEdit': {
-        title: 'Edit File',
-        icon: 'document-text',
+        icon: ICON_EDIT,
         input: z.object({
             file_path: z.string().describe('The absolute path to the file to modify'),
             edits: z.array(z.object({
@@ -238,51 +221,46 @@ export const knownTools = {
                 replace_all: z.boolean().optional().default(false).describe('Replace all occurrences')
             })).describe('Array of edit operations')
         }).partial().loose(),
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+        extractStatus: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.file_path === 'string') {
                 const path = resolvePath(opts.tool.input.file_path, opts.metadata);
-                const filename = path.split('/').pop() || path;
                 const editCount = Array.isArray(opts.tool.input.edits) ? opts.tool.input.edits.length : 0;
                 if (editCount > 0) {
-                    return `Edit File(file: ${filename}, edits: ${editCount})`;
+                    return `${path} (${editCount} edits)`;
                 }
-                return `Edit File(file: ${filename})`;
-            }
-            return 'Edit File';
-        },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.file_path === 'string') {
-                return resolvePath(opts.tool.input.file_path, opts.metadata);
+                return path;
             }
             return null;
         }
     },
     'Write': {
-        title: 'Write File',
-        icon: 'document-text',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.file_path === 'string') {
+                const path = resolvePath(opts.tool.input.file_path, opts.metadata);
+                return path;
+            }
+            return 'Write File';
+        },
+        icon: ICON_EDIT,
         minimal: true,
         input: z.object({
             file_path: z.string().describe('The absolute path to the file to write'),
             content: z.string().describe('The content to write to the file')
-        }).partial().loose(),
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.file_path === 'string') {
-                const path = resolvePath(opts.tool.input.file_path, opts.metadata);
-                const filename = path.split('/').pop() || path;
-                return `Write File(file: ${filename})`;
-            }
-            return 'Write File';
-        },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.file_path === 'string') {
-                return resolvePath(opts.tool.input.file_path, opts.metadata);
-            }
-            return null;
-        }
+        }).partial().loose()
     },
     'WebFetch': {
-        title: 'Fetch URL',
-        icon: 'globe',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.url === 'string') {
+                try {
+                    const url = new URL(opts.tool.input.url);
+                    return url.hostname;
+                } catch {
+                    return 'Fetch URL';
+                }
+            }
+            return 'Fetch URL';
+        },
+        icon: ICON_WEB,
         minimal: true,
         input: z.object({
             url: z.string().url().describe('The URL to fetch content from'),
@@ -298,40 +276,32 @@ export const knownTools = {
                 }
             }
             return 'Fetch URL';
-        },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            return opts.tool.input.url || null;
         }
     },
     'NotebookRead': {
-        title: 'Read Notebook',
-        icon: 'book',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.notebook_path === 'string') {
+                const path = resolvePath(opts.tool.input.notebook_path, opts.metadata);
+                return path;
+            }
+            return 'Read Notebook';
+        },
+        icon: ICON_READ,
         minimal: true,
         input: z.object({
             notebook_path: z.string().describe('The absolute path to the Jupyter notebook file'),
             cell_id: z.string().optional().describe('The ID of a specific cell to read')
-        }).partial().loose(),
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.notebook_path === 'string') {
-                const path = resolvePath(opts.tool.input.notebook_path, opts.metadata);
-                const filename = path.split('/').pop() || path;
-                if (opts.tool.input.cell_id) {
-                    return `Read Notebook(file: ${filename}, cell: ${opts.tool.input.cell_id})`;
-                }
-                return `Read Notebook(file: ${filename})`;
-            }
-            return 'Read Notebook';
-        },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.notebook_path === 'string') {
-                return resolvePath(opts.tool.input.notebook_path, opts.metadata);
-            }
-            return null;
-        }
+        }).partial().loose()
     },
     'NotebookEdit': {
-        title: 'Edit Notebook',
-        icon: 'book',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.notebook_path === 'string') {
+                const path = resolvePath(opts.tool.input.notebook_path, opts.metadata);
+                return path;
+            }
+            return 'Edit Notebook';
+        },
+        icon: ICON_EDIT,
         input: z.object({
             notebook_path: z.string().describe('The absolute path to the notebook file'),
             new_source: z.string().describe('The new source for the cell'),
@@ -342,22 +312,15 @@ export const knownTools = {
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.notebook_path === 'string') {
                 const path = resolvePath(opts.tool.input.notebook_path, opts.metadata);
-                const filename = path.split('/').pop() || path;
                 const mode = opts.tool.input.edit_mode || 'replace';
-                return `Edit Notebook(file: ${filename}, mode: ${mode})`;
+                return `Edit Notebook(file: ${path}, mode: ${mode})`;
             }
             return 'Edit Notebook';
-        },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.notebook_path === 'string') {
-                return resolvePath(opts.tool.input.notebook_path, opts.metadata);
-            }
-            return null;
         }
     },
     'TodoWrite': {
         title: 'Todo List',
-        icon: 'bulb-outline',
+        icon: ICON_TODO,
         noStatus: true,
         input: z.object({
             todos: z.array(z.object({
@@ -390,8 +353,13 @@ export const knownTools = {
         },
     },
     'WebSearch': {
-        title: 'Web Search',
-        icon: 'globe',
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (typeof opts.tool.input.query === 'string') {
+                return opts.tool.input.query;
+            }
+            return 'Web Search';
+        },
+        icon: ICON_WEB,
         minimal: true,
         input: z.object({
             query: z.string().min(2).describe('The search query to use'),
@@ -400,24 +368,19 @@ export const knownTools = {
         }).partial().loose(),
         extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
             if (typeof opts.tool.input.query === 'string') {
-                const query = opts.tool.input.query.length > 30 
-                    ? opts.tool.input.query.substring(0, 30) + '...' 
+                const query = opts.tool.input.query.length > 30
+                    ? opts.tool.input.query.substring(0, 30) + '...'
                     : opts.tool.input.query;
                 return `Web Search(query: ${query})`;
             }
             return 'Web Search';
-        },
-        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            if (typeof opts.tool.input.query === 'string') {
-                return opts.tool.input.query;
-            }
-            return null;
         }
     }
 } satisfies Record<string, {
-    title: string;
-    icon: string;
+    title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);
+    icon: (size: number, color: string) => React.ReactNode;
     noStatus?: boolean;
+    hideDefaultError?: boolean;
     input?: z.ZodObject<any>;
     result?: z.ZodObject<any>;
     minimal?: boolean;

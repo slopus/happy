@@ -139,6 +139,15 @@ export type ReducerState = {
     messages: Map<string, ReducerMessage>;
     sidechains: Map<string, ReducerMessage[]>;
     tracerState: TracerState; // Tracer state for sidechain processing
+    latestTodos?: {
+        todos: Array<{
+            content: string;
+            status: 'pending' | 'in_progress' | 'completed';
+            priority: 'high' | 'medium' | 'low';
+            id: string;
+        }>;
+        timestamp: number;
+    };
 };
 
 export function createReducer(): ReducerState {
@@ -156,7 +165,17 @@ export function createReducer(): ReducerState {
 
 const ENABLE_LOGGING = false;
 
-export function reducer(state: ReducerState, messages: NormalizedMessage[], agentState?: AgentState | null): Message[] {
+export type ReducerResult = {
+    messages: Message[];
+    todos?: Array<{
+        content: string;
+        status: 'pending' | 'in_progress' | 'completed';
+        priority: 'high' | 'medium' | 'low';
+        id: string;
+    }>;
+};
+
+export function reducer(state: ReducerState, messages: NormalizedMessage[], agentState?: AgentState | null): ReducerResult {
     if (ENABLE_LOGGING) {
         console.log(`[REDUCER] Called with ${messages.length} messages, agentState: ${agentState ? 'YES' : 'NO'}`);
         if (agentState?.requests) {
@@ -504,6 +523,17 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                                 message.tool.result = undefined;
                             }
                             changed.add(existingMessageId);
+                            
+                            // Track TodoWrite tool inputs when updating existing messages
+                            if (message.tool.name === 'TodoWrite' && message.tool.state === 'running' && message.tool.input?.todos) {
+                                // Only update if this is newer than existing todos
+                                if (!state.latestTodos || message.tool.createdAt > state.latestTodos.timestamp) {
+                                    state.latestTodos = {
+                                        todos: message.tool.input.todos,
+                                        timestamp: message.tool.createdAt
+                                    };
+                                }
+                            }
                         }
                     } else {
                         if (ENABLE_LOGGING) {
@@ -558,6 +588,17 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
                         state.toolIdToMessageId.set(c.id, mid);
                         changed.add(mid);
+                        
+                        // Track TodoWrite tool inputs
+                        if (toolCall.name === 'TodoWrite' && toolCall.state === 'running' && toolCall.input?.todos) {
+                            // Only update if this is newer than existing todos
+                            if (!state.latestTodos || toolCall.createdAt > state.latestTodos.timestamp) {
+                                state.latestTodos = {
+                                    todos: toolCall.input.todos,
+                                    timestamp: toolCall.createdAt
+                                };
+                            }
+                        }
                     }
                 }
             }
@@ -779,7 +820,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         console.log(`[REDUCER] Changed messages: ${changed.size}`);
     }
 
-    return newMessages;
+    return {
+        messages: newMessages,
+        todos: state.latestTodos?.todos
+    };
 }
 
 //

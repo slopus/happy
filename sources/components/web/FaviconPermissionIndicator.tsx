@@ -11,17 +11,17 @@ import { updateFaviconWithNotification, resetFavicon } from '@/utils/web/favicon
  */
 export const FaviconPermissionIndicator = React.memo(() => {
     // Only run on web platform
-    console.log('[FaviconPermissionIndicator] Platform.OS:', Platform.OS);
+    // console.log('[FaviconPermissionIndicator] Platform.OS:', Platform.OS);
     if (Platform.OS !== 'web') {
         return null;
     }
 
     React.useEffect(() => {
-        console.log('[FaviconPermissionIndicator] Component mounted');
+        // console.log('[FaviconPermissionIndicator] Component mounted');
         
         // Check if we're in a browser environment
         if (typeof window === 'undefined' || typeof document === 'undefined') {
-            console.log('[FaviconPermissionIndicator] Not in browser environment, skipping');
+            // console.log('[FaviconPermissionIndicator] Not in browser environment, skipping');
             return;
         }
         
@@ -33,7 +33,7 @@ export const FaviconPermissionIndicator = React.memo(() => {
 
             const state = storage.getState();
             const sessions = state.sessions;
-            console.log('[FaviconPermissionIndicator] Checking permissions, sessions:', Object.keys(sessions).length);
+            // console.log('[FaviconPermissionIndicator] Checking permissions, sessions:', Object.keys(sessions).length);
             
             let hasOnlineSessionWithPermissions = false;
 
@@ -52,7 +52,7 @@ export const FaviconPermissionIndicator = React.memo(() => {
                     const hasPermissions = session.agentState?.requests && 
                         Object.keys(session.agentState.requests).length > 0;
 
-                    console.log('[FaviconPermissionIndicator] Session', session.id, 'online:', isOnline, 'hasPermissions:', hasPermissions, 'requests:', session.agentState?.requests);
+                    // console.log('[FaviconPermissionIndicator] Session', session.id, 'online:', isOnline, 'hasPermissions:', hasPermissions, 'requests:', session.agentState?.requests);
 
                     if (hasPermissions) {
                         hasOnlineSessionWithPermissions = true;
@@ -61,12 +61,12 @@ export const FaviconPermissionIndicator = React.memo(() => {
             });
 
             // Update favicon based on permission state
-            console.log('[FaviconPermissionIndicator] Has online session with permissions:', hasOnlineSessionWithPermissions);
+            // console.log('[FaviconPermissionIndicator] Has online session with permissions:', hasOnlineSessionWithPermissions);
             if (hasOnlineSessionWithPermissions) {
-                console.log('[FaviconPermissionIndicator] Updating favicon with notification');
+                // console.log('[FaviconPermissionIndicator] Updating favicon with notification');
                 updateFaviconWithNotification();
             } else {
-                console.log('[FaviconPermissionIndicator] Resetting favicon');
+                // console.log('[FaviconPermissionIndicator] Resetting favicon');
                 resetFavicon();
             }
         };

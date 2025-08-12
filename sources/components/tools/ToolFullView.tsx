@@ -6,6 +6,7 @@ import { CodeView } from '../CodeView';
 import { Metadata } from '@/sync/storageTypes';
 import { getToolFullViewComponent } from './views/_all';
 import { layout } from '../layout';
+import { useLocalSetting } from '@/sync/storage';
 
 interface ToolFullViewProps {
     tool: ToolCall;
@@ -17,6 +18,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
     // Check if there's a specialized content view for this tool
     const SpecializedFullView = getToolFullViewComponent(tool.name);
     const screenWidth = useWindowDimensions().width;
+    const devModeEnabled = useLocalSetting('devModeEnabled');
 
     return (
         <ScrollView style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
@@ -95,6 +97,29 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                         </View>
                     )}
                 </>
+                )}
+                
+                {/* Raw JSON View (Dev Mode Only) */}
+                {devModeEnabled && (
+                    <View style={styles.section}>
+                        <View style={styles.sectionHeader}>
+                            <Ionicons name="code-slash" size={20} color="#FF9500" />
+                            <Text style={styles.sectionTitle}>Raw JSON (Dev Mode)</Text>
+                        </View>
+                        <CodeView 
+                            code={JSON.stringify({
+                                name: tool.name,
+                                state: tool.state,
+                                description: tool.description,
+                                input: tool.input,
+                                result: tool.result,
+                                createdAt: tool.createdAt,
+                                startedAt: tool.startedAt,
+                                completedAt: tool.completedAt,
+                                permission: tool.permission
+                            }, null, 2)} 
+                        />
+                    </View>
                 )}
             </View>
         </ScrollView>

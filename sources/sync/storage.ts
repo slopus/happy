@@ -173,7 +173,8 @@ export const storage = create<StorageState>()((set) => {
                     }
                     
                     // Process new AgentState through reducer
-                    const processedMessages = reducer(existingSessionMessages.reducerState, [], newSession.agentState);
+                    const reducerResult = reducer(existingSessionMessages.reducerState, [], newSession.agentState);
+                    const processedMessages = reducerResult.messages;
                     
                     // Always update the session messages, even if no new messages were created
                     // This ensures the reducer state is updated with the new AgentState
@@ -226,7 +227,8 @@ export const storage = create<StorageState>()((set) => {
             let normalizedMessages = messages.map(m => normalizeRawMessage(m.id, m.localId, m.createdAt, m.content)).filter(m => m !== null);
 
             // Run reducer with agentState
-            const processedMessages = reducer(existingSession.reducerState, normalizedMessages, agentState);
+            const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState);
+            const processedMessages = reducerResult.messages;
 
             // Send realtime updates for new messages if this is the active realtime session
             const currentRealtimeSessionId = getCurrentRealtimeSessionId();
@@ -276,8 +278,21 @@ export const storage = create<StorageState>()((set) => {
             const messagesArray = Object.values(mergedMessagesMap)
                 .sort((a, b) => b.createdAt - a.createdAt);
 
+            // Update session with todos if they changed
+            let updatedSessions = state.sessions;
+            if (reducerResult.todos && session) {
+                updatedSessions = {
+                    ...state.sessions,
+                    [sessionId]: {
+                        ...session,
+                        todos: reducerResult.todos
+                    }
+                };
+            }
+
             return {
                 ...state,
+                sessions: updatedSessions,
                 sessionMessages: {
                     ...state.sessionMessages,
                     [sessionId]: {
@@ -307,7 +322,8 @@ export const storage = create<StorageState>()((set) => {
                 
                 if (agentState) {
                     // Process AgentState through reducer to get initial permission messages
-                    const processedMessages = reducer(reducerState, [], agentState);
+                    const reducerResult = reducer(reducerState, [], agentState);
+                    const processedMessages = reducerResult.messages;
                     
                     processedMessages.forEach(message => {
                         messagesMap[message.id] = message;

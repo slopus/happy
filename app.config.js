@@ -98,6 +98,14 @@ export default {
                     "calendarPermission": "Allow $(PRODUCT_NAME) to access your calendar to improve AI quality."
                 }
             ],
+            [
+                "expo-camera",
+                {
+                  cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to scan QR codes and share photos with AI.",
+                  microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations.",
+                  recordAudioAndroid: true
+                }
+              ]
         ],
         updates: {
             url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",

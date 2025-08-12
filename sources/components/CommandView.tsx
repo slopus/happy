@@ -10,6 +10,8 @@ interface CommandViewProps {
     // Legacy prop for backward compatibility
     output?: string | null;
     maxHeight?: number;
+    fullWidth?: boolean;
+    hideEmptyOutput?: boolean;
 }
 
 export const CommandView = React.memo<CommandViewProps>(({
@@ -20,12 +22,18 @@ export const CommandView = React.memo<CommandViewProps>(({
     error,
     output,
     maxHeight,
+    fullWidth,
+    hideEmptyOutput,
 }) => {
     // Use legacy output if new props aren't provided
     const hasNewProps = stdout !== undefined || stderr !== undefined || error !== undefined;
 
     return (
-        <View style={[styles.container, maxHeight ? { maxHeight } : undefined]}>
+        <View style={[
+            styles.container, 
+            maxHeight ? { maxHeight } : undefined,
+            fullWidth ? { width: '100%' } : undefined
+        ]}>
             {/* Command Line */}
             <View style={styles.line}>
                 <Text style={styles.promptText}>{prompt} </Text>
@@ -50,7 +58,7 @@ export const CommandView = React.memo<CommandViewProps>(({
                     )}
 
                     {/* Empty output indicator */}
-                    {!stdout && !stderr && !error && (
+                    {!stdout && !stderr && !error && !hideEmptyOutput && (
                         <Text style={styles.emptyOutput}>[Command completed with no output]</Text>
                     )}
                 </>
