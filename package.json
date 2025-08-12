@@ -96,6 +96,7 @@
     "expo-system-ui": "~5.0.10",
     "expo-updates": "~0.28.17",
     "expo-web-browser": "~14.2.0",
+    "fuse.js": "^7.1.0",
     "livekit-client": "^2.15.4",
     "lottie-react-native": "7.2.2",
     "nativewind": "^4.1.23",

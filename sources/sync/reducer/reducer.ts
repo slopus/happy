@@ -154,13 +154,17 @@ export function createReducer(): ReducerState {
     }
 };
 
+const ENABLE_LOGGING = false;
+
 export function reducer(state: ReducerState, messages: NormalizedMessage[], agentState?: AgentState | null): Message[] {
-    console.log(`[REDUCER] Called with ${messages.length} messages, agentState: ${agentState ? 'YES' : 'NO'}`);
-    if (agentState?.requests) {
-        console.log(`[REDUCER] AgentState has ${Object.keys(agentState.requests).length} pending requests`);
-    }
-    if (agentState?.completedRequests) {
-        console.log(`[REDUCER] AgentState has ${Object.keys(agentState.completedRequests).length} completed requests`);
+    if (ENABLE_LOGGING) {
+        console.log(`[REDUCER] Called with ${messages.length} messages, agentState: ${agentState ? 'YES' : 'NO'}`);
+        if (agentState?.requests) {
+            console.log(`[REDUCER] AgentState has ${Object.keys(agentState.requests).length} pending requests`);
+        }
+        if (agentState?.completedRequests) {
+            console.log(`[REDUCER] AgentState has ${Object.keys(agentState.completedRequests).length} completed requests`);
+        }
     }
 
     let newMessages: Message[] = [];
@@ -189,7 +193,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     // Phase 0: Process AgentState permissions
     //
 
-    console.log(`[REDUCER] Phase 0: Processing AgentState`);
+    if (ENABLE_LOGGING) {
+        console.log(`[REDUCER] Phase 0: Processing AgentState`);
+    }
     if (agentState) {
         // Process pending permission requests
         if (agentState.requests) {
@@ -205,7 +211,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     // Update existing tool message with permission info
                     const message = state.messages.get(existingMessageId);
                     if (message?.tool && !message.tool.permission) {
-                        console.log(`[REDUCER] Updating existing tool ${permId} with permission`);
+                        if (ENABLE_LOGGING) {
+                            console.log(`[REDUCER] Updating existing tool ${permId} with permission`);
+                        }
                         message.tool.permission = {
                             id: permId,
                             status: 'pending'
@@ -213,7 +221,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         changed.add(existingMessageId);
                     }
                 } else {
-                    console.log(`[REDUCER] Creating new message for permission ${permId}`);
+                    if (ENABLE_LOGGING) {
+                        console.log(`[REDUCER] Creating new message for permission ${permId}`);
+                    }
 
                     // Create a new tool message for the permission request
                     let mid = allocateId();
@@ -331,7 +341,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 } else {
                     // No existing message - check if tool ID is in incoming messages
                     if (incomingToolIds.has(permId)) {
-                        console.log(`[REDUCER] Storing permission ${permId} for incoming tool`);
+                        if (ENABLE_LOGGING) {
+                            console.log(`[REDUCER] Storing permission ${permId} for incoming tool`);
+                        }
                         // Store permission for when tool arrives in Phase 2
                         state.permissions.set(permId, {
                             tool: completed.tool,
@@ -465,7 +477,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     // Phase 2: Process non-sidechain tool calls
     //
 
-    console.log(`[REDUCER] Phase 2: Processing tool calls`);
+    if (ENABLE_LOGGING) {
+        console.log(`[REDUCER] Phase 2: Processing tool calls`);
+    }
     for (let msg of nonSidechainMessages) {
         if (msg.role === 'agent') {
             for (let c of msg.content) {
@@ -474,7 +488,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     const existingMessageId = state.toolIdToMessageId.get(c.id);
 
                     if (existingMessageId) {
-                        console.log(`[REDUCER] Found existing message for tool ${c.id}`);
+                        if (ENABLE_LOGGING) {
+                            console.log(`[REDUCER] Found existing message for tool ${c.id}`);
+                        }
                         // Update existing message with tool execution details
                         const message = state.messages.get(existingMessageId);
                         if (message?.tool) {
@@ -490,7 +506,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             changed.add(existingMessageId);
                         }
                     } else {
-                        console.log(`[REDUCER] Creating new message for tool ${c.id}`);
+                        if (ENABLE_LOGGING) {
+                            console.log(`[REDUCER] Creating new message for tool ${c.id}`);
+                        }
                         // Check if there's a stored permission for this tool
                         const permission = state.permissions.get(c.id);
 
@@ -507,7 +525,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
                         // Add permission info if found
                         if (permission) {
-                            console.log(`[REDUCER] Found stored permission for tool ${c.id}`);
+                            if (ENABLE_LOGGING) {
+                                console.log(`[REDUCER] Found stored permission for tool ${c.id}`);
+                            }
                             toolCall.permission = {
                                 id: c.id,
                                 status: permission.status,
@@ -630,7 +650,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 } else if (c.type === 'tool-call') {
                     // Check if there's already a permission message for this tool
                     const existingPermissionMessageId = state.toolIdToMessageId.get(c.id);
-                    
+
                     let mid = allocateId();
                     let toolCall: ToolCall = {
                         name: c.name,
@@ -642,7 +662,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         description: c.description,
                         result: undefined
                     };
-                    
+
                     // If there's a permission message, copy its permission info
                     if (existingPermissionMessageId) {
                         const permissionMessage = state.messages.get(existingPermissionMessageId);
@@ -657,7 +677,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             }
                         }
                     }
-                    
+
                     let toolMsg: ReducerMessage = {
                         id: mid,
                         realID: msg.id,
@@ -675,7 +695,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     state.sidechainToolIdToMessageId.set(c.id, mid);
                 } else if (c.type === 'tool-result') {
                     // Process tool result in sidechain - update BOTH messages
-                    
+
                     // Update the sidechain tool message
                     let sidechainMessageId = state.sidechainToolIdToMessageId.get(c.tool_use_id);
                     if (sidechainMessageId) {
@@ -686,7 +706,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             sidechainMessage.tool.completedAt = msg.createdAt;
                         }
                     }
-                    
+
                     // Also update the main permission message if it exists
                     let permissionMessageId = state.toolIdToMessageId.get(c.tool_use_id);
                     if (permissionMessageId) {
@@ -754,8 +774,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     // Debug changes
     //
 
-    console.log(JSON.stringify(messages, null, 2));
-    console.log(`[REDUCER] Changed messages: ${changed.size}`);
+    if (ENABLE_LOGGING) {
+        console.log(JSON.stringify(messages, null, 2));
+        console.log(`[REDUCER] Changed messages: ${changed.size}`);
+    }
 
     return newMessages;
 }

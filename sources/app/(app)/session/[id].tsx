@@ -31,9 +31,9 @@ import { Header } from '@/components/navigation/Header';
 import { trackMessageSent } from '@/track';
 import { tracking } from '@/track';
 import { useAutocompleteSession } from '@/hooks/useAutocompleteSession';
-import { AutoCompleteView } from '@/components/AutoCompleteView';
 import { StatusDot } from '@/components/StatusDot';
 import { ChatFooter } from '@/components/ChatFooter';
+import { getSuggestions } from '@/components/autocomplete/suggestions';
 
 
 export default React.memo(() => {
@@ -164,6 +164,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             onSwitch={() => sessionSwitch(sessionId, 'remote')}
         />
     ), [sessionStatus, permissionMode, sessionId]);
+
 
     return (
         <>
@@ -364,6 +365,9 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
                         onAbort={() => sessionAbort(sessionId)}
                         showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
+                        // Autocomplete configuration
+                        autocompletePrefixes={['@', '/']}
+                        autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
                     />
                 </AgentContentView>
             </View>
