@@ -1,4 +1,40 @@
 /**
+ * Checks if an error message indicates a cancellation/interruption
+ * 
+ * Handles various cancellation error formats:
+ * - <tool_use_error>...</tool_use_error>
+ * - Error: [Request interrupted by user for tool use]
+ * - Request interrupted
+ * - User cancelled
+ * - Operation cancelled
+ */
+export function isCancelError(message: string): boolean {
+    // Check if the message is a string
+    if (typeof message !== 'string') {
+        return false;
+    }
+
+    // Check for tool_use_error tags
+    if (/<tool_use_error>.*<\/tool_use_error>/s.test(message)) {
+        return true;
+    }
+
+    // Check for common cancellation patterns
+    const cancelPatterns = [
+        /\[Request interrupted by user for tool use\]/i,
+        /Request interrupted/i,
+        /User cancelled/i,
+        /Operation cancelled/i,
+        /Cancelled by user/i,
+        /User aborted/i,
+        /Operation aborted/i,
+        /Interrupted by user/i
+    ];
+
+    return cancelPatterns.some(pattern => pattern.test(message));
+}
+
+/**
  * Parses error messages that contain <tool_use_error> tags
  * 
  * Example:
@@ -22,10 +58,10 @@ export function parseToolUseError(message: string): {
     const regex = /<tool_use_error>(.*?)<\/tool_use_error>/s;
     const match = message.match(regex);
 
-    if (match && match[1]) {
+    if (match) {
         return {
             isToolUseError: true,
-            errorMessage: match[1].trim()
+            errorMessage: match[1] ? match[1].trim() : ''
         };
     }
 

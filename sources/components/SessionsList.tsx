@@ -178,15 +178,25 @@ const SessionItem = React.memo(({ session, selectedSessionId, router }: {
             <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} />
             <View style={{ flex: 1, marginLeft: 16, justifyContent: 'center' }}>
                 {/* Title line */}
-                <Text style={{ 
-                    fontSize: 15, 
-                    fontWeight: '500', 
-                    color: sessionStatus.isConnected ? '#000' : '#999',
-                    marginBottom: 2,
-                    ...Typography.default('semiBold') 
-                }} numberOfLines={1}>
-                    {sessionName}
-                </Text>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                    <Text style={{ 
+                        fontSize: 15, 
+                        fontWeight: '500', 
+                        color: sessionStatus.isConnected ? '#000' : '#999',
+                        flex: 1,
+                        ...Typography.default('semiBold') 
+                    }} numberOfLines={1}>
+                        {sessionName}
+                    </Text>
+                    {session.draft && (
+                        <Ionicons 
+                            name="create-outline" 
+                            size={16} 
+                            color="#8E8E93"
+                            style={{ marginLeft: 6 }}
+                        />
+                    )}
+                </View>
                 
                 {/* Subtitle line */}
                 <Text style={{ 
