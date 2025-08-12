@@ -3,11 +3,15 @@
  */
 
 import { spawn } from 'child_process';
-import { join, dirname } from 'path';
+import { join, dirname, resolve } from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const RUNNER_PATH = join(__dirname, '..', '..', 'scripts', 'ripgrep_launcher.cjs');
+
+// Check for custom ripgrep launcher path (useful for built/packaged versions)
+// Running with tsx path to launcher is different
+const RUNNER_PATH = process.env.HAPPY_RIPGREP_LAUNCHER_PATH
+    || resolve(join(__dirname, '..', '..', 'scripts', 'ripgrep_launcher.cjs'));
 
 export interface RipgrepResult {
     exitCode: number
