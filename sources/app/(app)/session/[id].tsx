@@ -244,7 +244,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         headerLeft={() => (
                             <Pressable
                                 onPress={() => router.back()}
-                                hitSlop={10}
+                                hitSlop={15}
                             >
                                 <Ionicons
                                     name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
@@ -256,7 +256,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         headerRight={() => (
                             <Pressable
                                 onPress={() => router.push(`/session/${sessionId}/info`)}
-                                hitSlop={10}
+                                hitSlop={15}
                                 style={{
                                     width: 44,
                                     height: 44,
@@ -395,7 +395,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                             }
                         }),
                     }}
-                    hitSlop={10}
+                    hitSlop={15}
                 >
                     <Ionicons
                         name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
