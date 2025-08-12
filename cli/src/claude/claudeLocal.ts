@@ -7,6 +7,7 @@ import { watch } from "node:fs";
 import { logger } from "@/ui/logger";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { getProjectPath } from "./utils/path";
+import { projectPath } from "@/projectPath";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -101,10 +102,7 @@ export async function claudeLocal(opts: {
             }
 
             // Get Claude CLI path from project root
-            const projectRoot = getProjectRoot();
-            const claudeCliPath = projectRoot 
-                ? resolve(join(projectRoot, 'scripts', 'claude_local_launcher.cjs'))
-                : null;
+            const claudeCliPath = resolve(join(projectPath(), 'scripts', 'claude_local_launcher.cjs'))
             
             if (!claudeCliPath || !existsSync(claudeCliPath)) {
                 throw new Error('Claude local launcher not found. Please ensure HAPPY_PROJECT_ROOT is set correctly for development.');
