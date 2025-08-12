@@ -94,15 +94,15 @@ describe('Phase 0 permission skipping issue', () => {
         const result = reducer(state, toolMessages, agentState);
         
         // Log what happened (for debugging)
-        console.log('Result messages:', result.length);
+        console.log('Result messages:', result.messages.length);
         console.log('Permission mappings:', {
             toolIdToMessageId: Array.from(state.toolIdToMessageId.entries())
         });
         
         // Find the tool messages in the result
-        const webFetchTool = result.find(m => m.kind === 'tool-call' && m.tool?.name === 'WebFetch');
-        const writeTool = result.find(m => m.kind === 'tool-call' && m.tool?.name === 'Write');
-        const readTool = result.find(m => m.kind === 'tool-call' && m.tool?.name === 'Read');
+        const webFetchTool = result.messages.find(m => m.kind === 'tool-call' && m.tool?.name === 'WebFetch');
+        const writeTool = result.messages.find(m => m.kind === 'tool-call' && m.tool?.name === 'Write');
+        const readTool = result.messages.find(m => m.kind === 'tool-call' && m.tool?.name === 'Read');
         
         // THESE ASSERTIONS WILL FAIL with current code because Phase 2 can't find skipped permissions
         
@@ -172,7 +172,7 @@ describe('Phase 0 permission skipping issue', () => {
         const result1 = reducer(state, toolMessages, undefined);
         
         // Tool should be created without permission
-        const toolBeforePermission = result1.find(m => m.kind === 'tool-call');
+        const toolBeforePermission = result1.messages.find(m => m.kind === 'tool-call');
         expect(toolBeforePermission?.kind).toBe('tool-call');
         if (toolBeforePermission?.kind === 'tool-call') {
             expect(toolBeforePermission.tool?.permission).toBeUndefined();

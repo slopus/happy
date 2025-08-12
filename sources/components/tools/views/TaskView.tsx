@@ -16,15 +16,20 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
 
     for (let m of messages) {
         if (m.kind === 'tool-call') {
-            const knownTool = knownTools[m.tool.name as keyof typeof knownTools];
+            const knownTool = knownTools[m.tool.name as keyof typeof knownTools] as any;
             
             // Extract title using extractDescription if available, otherwise use title
             let title = m.tool.name;
             if (knownTool) {
                 if ('extractDescription' in knownTool && typeof knownTool.extractDescription === 'function') {
                     title = knownTool.extractDescription({ tool: m.tool, metadata });
-                } else {
-                    title = knownTool.title;
+                } else if (knownTool.title) {
+                    // Handle optional title and function type
+                    if (typeof knownTool.title === 'function') {
+                        title = knownTool.title();
+                    } else {
+                        title = knownTool.title;
+                    }
                 }
             }
 

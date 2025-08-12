@@ -308,6 +308,7 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
         {tokens.map((token, index) => (
           <Text
             key={index}
+            selectable
             style={{
               color: getColorForType(token.type, token.nestLevel),
               fontFamily: Typography.mono().fontFamily,

@@ -96,6 +96,7 @@ class FileSearchCache {
 
             if (!response.success || !response.stdout) {
                 console.error('FileSearchCache: Failed to fetch files', response.error);
+                console.log(response);
                 return;
             }
 

@@ -9,12 +9,22 @@ export const BashView = React.memo((props: { tool: ToolCall, metadata: Metadata 
     const { input, result, state } = props.tool;
 
     let parsedResult: { stdout?: string; stderr?: string } | null = null;
+    let unparsedOutput: string | null = null;
     let error: string | null = null;
     
     if (state === 'completed' && result) {
-        const parsed = knownTools.Bash.result.safeParse(result);
-        if (parsed.success) {
-            parsedResult = parsed.data;
+        if (typeof result === 'string') {
+            // Handle unparsed string result
+            unparsedOutput = result;
+        } else {
+            // Try to parse as structured result
+            const parsed = knownTools.Bash.result.safeParse(result);
+            if (parsed.success) {
+                parsedResult = parsed.data;
+            } else {
+                // If parsing fails but it's not a string, stringify it
+                unparsedOutput = JSON.stringify(result);
+            }
         }
     } else if (state === 'error' && typeof result === 'string') {
         error = result;
@@ -25,10 +35,11 @@ export const BashView = React.memo((props: { tool: ToolCall, metadata: Metadata 
             <ToolSectionView>
                 <CommandView 
                     command={input.command}
-                    stdout={parsedResult?.stdout}
-                    stderr={parsedResult?.stderr}
+                    // Don't show output in compact view
+                    stdout={null}
+                    stderr={null}
                     error={error}
-                    maxHeight={115}
+                    hideEmptyOutput
                 />
             </ToolSectionView>
         </>

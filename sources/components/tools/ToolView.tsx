@@ -11,6 +11,7 @@ import { knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
 import { useRouter } from 'expo-router';
 import { PermissionFooter } from './PermissionFooter';
+import { parseToolUseError } from '@/utils/toolErrorParser';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -36,41 +37,68 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     // Enable pressable if either onPress is provided or we have navigation params
     const isPressable = !!(onPress || (sessionId && messageId));
-    const toolTitle = tool.name in knownTools ? knownTools[tool.name as keyof typeof knownTools].title : tool.name;
+
+    let knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
+
     let description = tool.description;
     let status: string | null = null;
     let minimal = false;
-    let icon = 'construct';
+    let icon = <Ionicons name="construct-outline" size={18} />;
     let noStatus = false;
+    let hideDefaultError = false;
 
-    let knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
-    if (knownTool && typeof knownTool.extractSubtitle === 'function') {
-        const subtitle = knownTool.extractSubtitle({ tool, metadata: props.metadata });
-        if (typeof subtitle === 'string' && subtitle) {
-            description = subtitle;
-        }
-    }
+    // Extract status first to potentially use as title
     if (knownTool && typeof knownTool.extractStatus === 'function') {
         const state = knownTool.extractStatus({ tool, metadata: props.metadata });
         if (typeof state === 'string' && state) {
             status = state;
         }
     }
+
+    // Handle optional title and function type
+    let toolTitle = tool.name;
+    if (knownTool?.title) {
+        if (typeof knownTool.title === 'function') {
+            toolTitle = knownTool.title({ tool, metadata: props.metadata });
+        } else {
+            toolTitle = knownTool.title;
+        }
+    }
+
+    if (knownTool && typeof knownTool.extractSubtitle === 'function') {
+        const subtitle = knownTool.extractSubtitle({ tool, metadata: props.metadata });
+        if (typeof subtitle === 'string' && subtitle) {
+            description = subtitle;
+        }
+    }
     if (knownTool && typeof knownTool.minimal === 'boolean') {
         minimal = knownTool.minimal;
     }
-    if (knownTool && typeof knownTool.icon === 'string') {
-        icon = knownTool.icon;
+    if (knownTool && typeof knownTool.icon === 'function') {
+        icon = knownTool.icon(18, '#000');
     }
     if (knownTool && typeof knownTool.noStatus === 'boolean') {
         noStatus = knownTool.noStatus;
     }
+    if (knownTool && typeof knownTool.hideDefaultError === 'boolean') {
+        hideDefaultError = knownTool.hideDefaultError;
+    }
 
     let statusIcon = null;
-    
+
+    let isToolUseError = false;
+    if (tool.state === 'error' && tool.result && parseToolUseError(tool.result).isToolUseError) {
+        isToolUseError = true;
+        console.log('isToolUseError', tool.result);
+    }
+
     // Check permission status first for denied/canceled states
     if (tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) {
         statusIcon = <Ionicons name="remove-circle-outline" size={20} color="#8E8E93" />;
+    } else if (isToolUseError) {
+        statusIcon = <Ionicons name="remove-circle-outline" size={20} color="#8E8E93" />;
+        hideDefaultError = true;
+        minimal = true;
     } else {
         switch (tool.state) {
             case 'running':
@@ -79,9 +107,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 }
                 break;
             case 'completed':
-                if (!noStatus) {
-                    statusIcon = <Ionicons name="checkmark-circle" size={20} color="#34C759" />;
-                }
+                // if (!noStatus) {
+                //     statusIcon = <Ionicons name="checkmark-circle" size={20} color="#34C759" />;
+                // }
                 break;
             case 'error':
                 statusIcon = <Ionicons name="alert-circle-outline" size={20} color="#FF9500" />;
@@ -94,7 +122,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             {isPressable ? (
                 <TouchableOpacity style={styles.header} onPress={handlePress} activeOpacity={0.8}>
                     <View style={styles.headerLeft}>
-                        <Ionicons name={icon as any} size={20} color="#5856D6" />
+                        <View style={styles.iconContainer}>
+                            {icon}
+                        </View>
                         <View style={styles.titleContainer}>
                             <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
                             {description && (
@@ -114,7 +144,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             ) : (
                 <View style={styles.header}>
                     <View style={styles.headerLeft}>
-                        <Ionicons name={icon as any} size={20} color="#5856D6" />
+                        <Ionicons name={icon as any} size={20} />
                         <View style={styles.titleContainer}>
                             <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
                             {description && (
@@ -135,6 +165,10 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
             {/* Content area - either custom children or tool-specific view */}
             {(() => {
+                // Check if minimal first - minimal tools don't show content
+                if (minimal) {
+                    return null;
+                }
 
                 // Try to use a specific tool view component first
                 const SpecificToolView = getToolViewComponent(tool.name);
@@ -142,26 +176,24 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                     return (
                         <View style={styles.content}>
                             <SpecificToolView tool={tool} metadata={props.metadata} messages={props.messages ?? []} />
-                            {tool.state === 'error' && tool.result && 
-                             !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) && (
-                                <ToolError message={String(tool.result)} />
-                            )}
+                            {tool.state === 'error' && tool.result &&
+                                !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
+                                !hideDefaultError && (
+                                    <ToolError message={String(tool.result)} />
+                                )}
                         </View>
                     );
                 }
 
-                // Show error state if present (but not for denied/canceled permissions)
-                if (tool.state === 'error' && tool.result && 
-                    !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled'))) {
+                // Show error state if present (but not for denied/canceled permissions and not when hideDefaultError is true)
+                if (tool.state === 'error' && tool.result &&
+                    !(tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) &&
+                    !isToolUseError) {
                     return (
                         <View style={styles.content}>
                             <ToolError message={String(tool.result)} />
                         </View>
                     );
-                }
-
-                if (minimal) {
-                    return null;
                 }
 
                 // Fall back to default view
@@ -184,7 +216,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                     </View>
                 );
             })()}
-            
+
             {/* Permission footer - always renders when permission exists to maintain consistent height */}
             {tool.permission && sessionId && (
                 <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} />
@@ -219,6 +251,12 @@ const styles = StyleSheet.create({
         gap: 8,
         flex: 1,
     },
+    iconContainer: {
+        width: 24,
+        height: 24,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
     titleContainer: {
         flex: 1,
     },
@@ -231,8 +269,8 @@ const styles = StyleSheet.create({
         fontFamily: 'monospace',
     },
     toolName: {
-        fontSize: 15,
-        fontWeight: '600',
+        fontSize: 14,
+        fontWeight: '500',
         color: '#000',
     },
     status: {
