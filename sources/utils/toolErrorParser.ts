@@ -28,7 +28,8 @@ export function isCancelError(message: string): boolean {
         /Cancelled by user/i,
         /User aborted/i,
         /Operation aborted/i,
-        /Interrupted by user/i
+        /Interrupted by user/i,
+        /The user doesn't want to proceed with this tool use\. The tool use was rejected/i
     ];
 
     return cancelPatterns.some(pattern => pattern.test(message));
