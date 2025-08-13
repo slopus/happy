@@ -345,7 +345,7 @@ export class ApiDaemonSession extends EventEmitter {
     
     const encrypted = encrypt(JSON.stringify(metadata), this.secret);
     const encryptedMetadata = encodeBase64(encrypted);
-    this.socket.emit('update-machine-metadata', { metadata: encryptedMetadata });
+    this.socket.emit('update-machine', { metadata: encryptedMetadata });
   }
 
   shutdown() {

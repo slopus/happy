@@ -43,7 +43,7 @@ export interface DaemonToServerEvents {
     result?: any
     error?: string
   }) => void) => void;
-  'update-machine-metadata': (data: { metadata: string }) => void;
+  'update-machine': (data: { metadata: string }) => void;
 }
 
 export interface ServerToDaemonEvents {
