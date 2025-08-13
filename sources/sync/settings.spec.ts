@@ -99,7 +99,8 @@ describe('settings', () => {
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
-                experiments: false
+                experiments: false,
+                alwaysShowContextSize: false
             };
             const delta: Partial<Settings> = {
                 viewInline: true
@@ -111,7 +112,8 @@ describe('settings', () => {
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
-                experiments: false
+                experiments: false,
+                alwaysShowContextSize: false
             });
         });
 
@@ -123,7 +125,8 @@ describe('settings', () => {
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
-                experiments: false
+                experiments: false,
+                alwaysShowContextSize: false
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual({
@@ -140,7 +143,8 @@ describe('settings', () => {
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
-                experiments: false
+                experiments: false,
+                alwaysShowContextSize: false
             };
             const delta: Partial<Settings> = {
                 viewInline: false
@@ -152,7 +156,8 @@ describe('settings', () => {
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
-                experiments: false
+                experiments: false,
+                alwaysShowContextSize: false
             });
         });
 
@@ -164,7 +169,8 @@ describe('settings', () => {
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
-                experiments: false
+                experiments: false,
+                alwaysShowContextSize: false
             };
             expect(applySettings(currentSettings, {})).toEqual({
                 ...settingsDefaults,
@@ -195,7 +201,8 @@ describe('settings', () => {
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
-                experiments: false
+                experiments: false,
+                alwaysShowContextSize: false
             };
             const delta: any = {
                 viewInline: false,
@@ -235,7 +242,8 @@ describe('settings', () => {
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
-                experiments: false
+                experiments: false,
+                alwaysShowContextSize: false
             });
         });
 

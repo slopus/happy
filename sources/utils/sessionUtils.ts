@@ -31,7 +31,7 @@ export function useSessionStatus(session: Session): SessionStatus {
     const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
 
     const vibingMessage = React.useMemo(() => {
-        return vibingMessages[Math.floor(Math.random() * vibingMessages.length)] + '…';
+        return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
     }, [isDisconnected, hasPermissions, session.thinking]);
 
     if (isDisconnected) {

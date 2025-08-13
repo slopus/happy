@@ -38,12 +38,42 @@ interface AgentInputProps {
     };
     autocompletePrefixes: string[];
     autocompleteSuggestions: (query: string) => Promise<{ key: string, text: string, component: React.ElementType }[]>;
+    usageData?: {
+        inputTokens: number;
+        outputTokens: number;
+        cacheCreation: number;
+        cacheRead: number;
+        contextSize: number;
+    };
+    alwaysShowContextSize?: boolean;
 }
+
+const MAX_CONTEXT_SIZE = 190000;
+
+const getContextWarning = (contextSize: number, alwaysShow: boolean = false) => {
+    const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
+    const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
+    
+    if (percentageRemaining <= 5) {
+        return { text: `${Math.round(percentageRemaining)}% left`, color: '#FF3B30' }; // Red
+    } else if (percentageRemaining <= 10) {
+        return { text: `${Math.round(percentageRemaining)}% left`, color: '#8E8E93' }; // Grey
+    } else if (alwaysShow) {
+        // Show context remaining in neutral color when not near limit
+        return { text: `${Math.round(percentageRemaining)}% left`, color: '#8E8E93' }; // Grey
+    }
+    return null; // No display needed
+};
 
 export const AgentInput = React.memo((props: AgentInputProps) => {
     const screenWidth = useWindowDimensions().width;
 
     const hasText = props.value.trim().length > 0;
+
+    // Calculate context warning
+    const contextWarning = props.usageData?.contextSize 
+        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false) 
+        : null;
 
     // Color animation for send button
     const sendButtonColorAnim = React.useRef(new Animated.Value(0)).current;
@@ -458,21 +488,33 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 }}>
                                     {props.connectionStatus.text}
                                 </Text>
+                                {contextWarning && (
+                                    <Text style={{
+                                        fontSize: 11,
+                                        color: contextWarning.color,
+                                        marginLeft: 8,
+                                        ...Typography.default()
+                                    }}>
+                                        • {contextWarning.text}
+                                    </Text>
+                                )}
                             </View>
                         )}
-                        {props.permissionMode && props.permissionMode !== 'default' && (
-                            <Text style={{
-                                fontSize: 11,
-                                color: props.permissionMode === 'acceptEdits' ? '#007AFF' :
-                                    props.permissionMode === 'bypassPermissions' ? '#FF9500' :
-                                        props.permissionMode === 'plan' ? '#34C759' : '#8E8E93',
-                                ...Typography.default()
-                            }}>
-                                {props.permissionMode === 'acceptEdits' ? 'Accept All Edits' :
-                                    props.permissionMode === 'bypassPermissions' ? 'Bypass All Permissions' :
-                                        props.permissionMode === 'plan' ? 'Plan Mode' : ''}
-                            </Text>
-                        )}
+                        <View style={{ flexDirection: 'column', alignItems: 'flex-end' }}>
+                            {props.permissionMode && props.permissionMode !== 'default' && (
+                                <Text style={{
+                                    fontSize: 11,
+                                    color: props.permissionMode === 'acceptEdits' ? '#007AFF' :
+                                        props.permissionMode === 'bypassPermissions' ? '#FF9500' :
+                                            props.permissionMode === 'plan' ? '#34C759' : '#8E8E93',
+                                    ...Typography.default()
+                                }}>
+                                    {props.permissionMode === 'acceptEdits' ? 'Accept All Edits' :
+                                        props.permissionMode === 'bypassPermissions' ? 'Bypass All Permissions' :
+                                            props.permissionMode === 'plan' ? 'Plan Mode' : ''}
+                                </Text>
+                            )}
+                        </View>
                     </View>
                 )}
                 {/* Unified panel containing input and action buttons */}

@@ -5,6 +5,17 @@ import { MessageMetaSchema, MessageMeta } from './typesMessageMeta';
 // Raw types
 //
 
+// Usage data type from Claude API
+const usageDataSchema = z.object({
+    input_tokens: z.number(),
+    cache_creation_input_tokens: z.number(),
+    cache_read_input_tokens: z.number(),
+    output_tokens: z.number(),
+    service_tier: z.string().optional(),
+});
+
+export type UsageData = z.infer<typeof usageDataSchema>;
+
 const agentEventSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('switch'),
     mode: z.enum(['local', 'remote'])
@@ -52,7 +63,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
         z.object({ type: z.literal('system') }),
         z.object({ type: z.literal('result') }),
         z.object({ type: z.literal('summary'), summary: z.string() }),
-        z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string(), content: z.array(rawAgentContentSchema) }), parent_tool_use_id: z.string().nullable().optional() }),
+        z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string(), content: z.array(rawAgentContentSchema), usage: usageDataSchema.optional() }), parent_tool_use_id: z.string().nullable().optional() }),
         z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.array(rawAgentContentSchema) }), parent_tool_use_id: z.string().nullable().optional(), toolUseResult: z.any().nullable().optional() }),
     ]), z.object({
         isSidechain: z.boolean().nullish(),
@@ -141,6 +152,7 @@ export type NormalizedMessage = ({
     createdAt: number,
     isSidechain: boolean,
     meta?: MessageMeta,
+    usage?: UsageData,
 };
 
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
@@ -199,7 +211,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                     role: 'agent',
                     isSidechain: raw.content.data.isSidechain ?? false,
                     content,
-                    meta: raw.meta
+                    meta: raw.meta,
+                    usage: raw.content.data.message.usage
                 };
             } else if (raw.content.data.type === 'user') {
                 if (!raw.content.data.uuid) {
