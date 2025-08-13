@@ -385,7 +385,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                             if (message.trim()) {
                                 setMessage('');
                                 clearDraft();
-                                sync.sendMessage(sessionId, message, permissionMode, modelMode);
+                                sync.sendMessage(sessionId, message);
                                 trackMessageSent();
                             }
                         }}
