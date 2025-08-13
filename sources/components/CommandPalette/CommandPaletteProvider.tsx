@@ -64,11 +64,11 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
             {
                 id: 'connect',
                 title: 'Connect Device',
-                subtitle: 'Connect a new device manually',
+                subtitle: 'Connect a new device via web',
                 icon: 'link-outline',
                 category: 'Navigation',
                 action: () => {
-                    router.push('/settings/connect-manual');
+                    router.push('/terminal/connect');
                 }
             },
         ];

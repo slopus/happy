@@ -101,18 +101,6 @@ export default function SettingsScreen() {
                         loading={isLoading}
                         showChevron={false}
                     />
-                    {isCustomServer && (
-                        <Item
-                            title="Connect Terminal Manually"
-                            subtitle="Paste authentication link"
-                            icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
-                            onPress={() => {
-                                router.push('/settings/connect-manual');
-                            }}
-                            loading={isLoading}
-                            showChevron={false}
-                        />
-                    )}
                 </ItemGroup>
             )}
 

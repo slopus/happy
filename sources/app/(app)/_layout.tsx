@@ -91,6 +91,12 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="terminal/connect"
+                options={{
+                    headerTitle: 'Connect Terminal',
+                }}
+            />
+            <Stack.Screen
                 name="restore"
                 options={{
                     headerShown: true,
