@@ -1,6 +1,6 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, Animated, ActivityIndicator, TouchableWithoutFeedback } from 'react-native';
+import { View, Platform, useWindowDimensions, ViewStyle, Text, Animated, ActivityIndicator, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import { Pressable } from 'react-native-gesture-handler';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
@@ -323,7 +323,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                             zIndex: 1000,
                             paddingHorizontal: screenWidth > 700 ? 0 : 8,
                         }}>
-                            <FloatingOverlay maxHeight={280} keyboardShouldPersistTaps="handled">
+                            <FloatingOverlay maxHeight={280} keyboardShouldPersistTaps="always">
                                 {/* Permission Mode Section */}
                                 <View style={{ paddingVertical: 8 }}>
                                     <Text style={{
