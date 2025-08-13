@@ -73,6 +73,22 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="session/[id]/files"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Files',
+                    headerBackTitle: 'Back',
+                }}
+            />
+            <Stack.Screen
+                name="session/[id]/file"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'File Viewer',
+                    headerBackTitle: 'Files',
+                }}
+            />
+            <Stack.Screen
                 name="settings/account"
                 options={{
                     headerTitle: 'Account',

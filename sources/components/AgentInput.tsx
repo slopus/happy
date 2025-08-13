@@ -46,6 +46,7 @@ interface AgentInputProps {
         contextSize: number;
     };
     alwaysShowContextSize?: boolean;
+    onFileViewerPress?: () => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -586,8 +587,35 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                         props.onMicPress?.();
                                     }}
                                 >
-                                    <Ionicons
-                                        name={props.isMicActive ? "stop" : "mic"}
+                                    <Octicons
+                                        name={props.isMicActive ? "x-circle" : "accessibility"}
+                                        size={16}
+                                        color={'#000'}
+                                    />
+                                </Pressable>
+                            )}
+
+                            {/* File Viewer button */}
+                            {props.onFileViewerPress && (
+                                <Pressable
+                                    style={(p) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 6,
+                                        justifyContent: 'center',
+                                        height: 32,
+                                        opacity: p.pressed ? 0.7 : 1,
+                                    })}
+                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                    onPress={() => {
+                                        hapticsLight();
+                                        props.onFileViewerPress?.();
+                                    }}
+                                >
+                                    <Octicons
+                                        name="file"
                                         size={16}
                                         color={'#000'}
                                     />
@@ -618,7 +646,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                 color={Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })}
                                             />
                                         ) : (
-                                            <Ionicons
+                                            <Octicons
                                                 name={"stop"}
                                                 size={16}
                                                 color={'black'}
@@ -658,7 +686,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 }}
                                 disabled={!hasText}
                             >
-                                <Ionicons name="arrow-up" size={16} color="#fff" />
+                                <Octicons name="arrow-up" size={16} color="#fff" />
                             </Pressable>
                         </Animated.View>
                     </View>

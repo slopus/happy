@@ -77,6 +77,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const daemonStatus = useDaemonStatusByMachine(session.metadata?.machineId || '');
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
+    const experiments = useSetting('experiments');
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -392,6 +393,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
                         onAbort={() => sessionAbort(sessionId)}
                         showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
+                        onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
                         // Autocomplete configuration
                         autocompletePrefixes={['@', '/']}
                         autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
