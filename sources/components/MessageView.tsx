@@ -137,6 +137,29 @@ function AgentEventBlock(props: {
       </View>
     );
   }
+  if (props.event.type === 'limit-reached') {
+    const formatTime = (timestamp: number): string => {
+      try {
+        const date = new Date(timestamp * 1000); // Convert from Unix timestamp
+        return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      } catch {
+        return 'unknown time';
+      }
+    };
+
+    return (
+      <View style={{
+        marginHorizontal: 8,
+        alignItems: 'center',
+        paddingVertical: 8,
+        paddingBottom: 24
+      }}>
+        <Text style={{ color: '#666666', fontSize: 14 }}>
+          Usage limit reached until {formatTime(props.event.endsAt)}
+        </Text>
+      </View>
+    );
+  }
   return (
     <View style={{
       marginHorizontal: 8,

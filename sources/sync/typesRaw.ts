@@ -11,6 +11,9 @@ const agentEventSchema = z.discriminatedUnion('type', [z.object({
 }), z.object({
     type: z.literal('message'),
     message: z.string(),
+}), z.object({
+    type: z.literal('limit-reached'),
+    endsAt: z.number(),
 })]);
 export type AgentEvent = z.infer<typeof agentEventSchema>;
 

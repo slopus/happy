@@ -39,6 +39,12 @@
  *   - Skips completed permissions if matching tool call (same name AND arguments) exists in incoming messages
  *   - Phase 2 will handle matching tool calls to existing permission messages
  * 
+ * **Phase 0.5: Message-to-Event Conversion**
+ *   - Parses messages to check if they should be converted to events
+ *   - Converts matching messages to events immediately
+ *   - Converted messages skip all subsequent processing phases
+ *   - Supports user commands, tool results, and metadata-driven conversions
+ * 
  * **Phase 1: User and Text Messages**
  *   - Processes user messages with deduplication
  *   - Processes agent text messages
@@ -109,6 +115,7 @@ import { AgentEvent, NormalizedMessage } from "../typesRaw";
 import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
+import { parseMessageAsEvent } from "./messageToEvent";
 
 type ReducerMessage = {
     id: string;
@@ -193,8 +200,65 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     const tracedMessages = traceMessages(state.tracerState, messages);
 
     // Separate sidechain and non-sidechain messages
-    const nonSidechainMessages = tracedMessages.filter(msg => !msg.sidechainId);
+    let nonSidechainMessages = tracedMessages.filter(msg => !msg.sidechainId);
     const sidechainMessages = tracedMessages.filter(msg => msg.sidechainId);
+
+    //
+    // Phase 0.5: Message-to-Event Conversion
+    // Convert certain messages to events before normal processing
+    //
+
+    if (ENABLE_LOGGING) {
+        console.log(`[REDUCER] Phase 0.5: Message-to-Event Conversion`);
+    }
+
+    const messagesToProcess: NormalizedMessage[] = [];
+    const convertedEvents: { message: NormalizedMessage, event: AgentEvent }[] = [];
+
+    for (const msg of nonSidechainMessages) {
+        // Check if we've already processed this message
+        if (msg.role === 'user' && msg.localId && state.localIds.has(msg.localId)) {
+            continue;
+        }
+        if (state.messageIds.has(msg.id)) {
+            continue;
+        }
+
+        // Try to parse message as event
+        const event = parseMessageAsEvent(msg);
+        if (event) {
+            if (ENABLE_LOGGING) {
+                console.log(`[REDUCER] Converting message ${msg.id} to event:`, event);
+            }
+            convertedEvents.push({ message: msg, event });
+            // Mark as processed to prevent duplication
+            state.messageIds.set(msg.id, msg.id);
+            if (msg.role === 'user' && msg.localId) {
+                state.localIds.set(msg.localId, msg.id);
+            }
+        } else {
+            messagesToProcess.push(msg);
+        }
+    }
+
+    // Process converted events immediately
+    for (const { message, event } of convertedEvents) {
+        const mid = allocateId();
+        state.messages.set(mid, {
+            id: mid,
+            realID: message.id,
+            role: 'agent',
+            createdAt: message.createdAt,
+            event: event,
+            tool: null,
+            text: null,
+            meta: message.meta,
+        });
+        changed.add(mid);
+    }
+
+    // Update nonSidechainMessages to only include messages that weren't converted
+    nonSidechainMessages = messagesToProcess;
 
     // Build a set of incoming tool IDs for quick lookup
     const incomingToolIds = new Set<string>();

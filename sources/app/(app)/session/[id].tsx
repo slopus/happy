@@ -73,10 +73,10 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const lastSeenText = sessionStatus.statusText;
     const autocomplete = useAutocompleteSession(message, message.length);
     const daemonStatus = useDaemonStatusByMachine(session.metadata?.machineId || '');
-    
+
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
-    
+
     // Function to update permission mode
     const updatePermissionMode = useCallback((mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') => {
         storage.getState().updateSessionPermissionMode(sessionId, mode);
@@ -215,7 +215,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 }}>
                     <Header
                         title={
-                            <View style={{ alignItems: 'center' }}>
+                            <View style={{ alignItems: 'center', flexGrow: 1, flexBasis: 0, paddingHorizontal: 8 }}>
                                 <Text
                                     numberOfLines={1}
                                     ellipsizeMode="tail"
@@ -224,6 +224,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                                         fontWeight: '600',
                                         color: sessionStatus.isConnected ? '#000' : '#8E8E93',
                                         marginBottom: 2,
+                                        width: '100%',
                                         ...Typography.default('semiBold')
                                     }}
                                 >
@@ -293,7 +294,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     <Deferred>
                         {messagesRecentFirst.length === 0 && isLoaded && (
                             <View style={headerDependentStyles.emptyMessageWrapper}>
-                                <Pressable 
+                                <Pressable
                                     style={headerDependentStyles.emptyMessageContainer}
                                     onPress={() => Keyboard.dismiss()}
                                 >
@@ -303,7 +304,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         )}
                         {messagesRecentFirst.length === 0 && !isLoaded && (
                             <View style={headerDependentStyles.emptyMessageWrapper}>
-                                <Pressable 
+                                <Pressable
                                     style={headerDependentStyles.emptyMessageContainer}
                                     onPress={() => Keyboard.dismiss()}
                                 >
@@ -330,57 +331,57 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     </Deferred>
 
                     {sessionStatus.state === 'disconnected' && daemonStatus?.active && (
-                            <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
-                                <RoundButton
-                                    title={isReviving ? "Reviving..." : "Revive session"}
-                                    onPress={async () => {
-                                        if (!isReviving && session.metadata?.machineId && session.metadata?.path) {
-                                            setIsReviving(true);
-                                            try {
-                                                const result = await spawnRemoteSession(session.metadata.machineId, session.metadata.path);
-                                                if (result.sessionId && result.sessionId !== sessionId) {
-                                                    router.replace(`/session/${result.sessionId}`);
-                                                }
-                                            } catch (error) {
-                                                Modal.alert('Error', 'Failed to revive session');
-                                            } finally {
-                                                setIsReviving(false);
+                        <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+                            <RoundButton
+                                title={isReviving ? "Reviving..." : "Revive session"}
+                                onPress={async () => {
+                                    if (!isReviving && session.metadata?.machineId && session.metadata?.path) {
+                                        setIsReviving(true);
+                                        try {
+                                            const result = await spawnRemoteSession(session.metadata.machineId, session.metadata.path);
+                                            if (result.sessionId && result.sessionId !== sessionId) {
+                                                router.replace(`/session/${result.sessionId}`);
                                             }
+                                        } catch (error) {
+                                            Modal.alert('Error', 'Failed to revive session');
+                                        } finally {
+                                            setIsReviving(false);
                                         }
-                                    }}
-                                    size="normal"
-                                    disabled={isReviving}
-                                    loading={isReviving}
-                                />
-                            </View>
+                                    }
+                                }}
+                                size="normal"
+                                disabled={isReviving}
+                                loading={isReviving}
+                            />
+                        </View>
                     )}
                     <AgentInput
-                            placeholder="Type a message ..."
-                            value={message}
-                            onChangeText={setMessage}
-                            permissionMode={permissionMode}
-                            onPermissionModeChange={updatePermissionMode}
-                            connectionStatus={{
-                                text: sessionStatus.statusText,
-                                color: sessionStatus.statusColor,
-                                dotColor: sessionStatus.statusDotColor,
-                                isPulsing: sessionStatus.isPulsing
-                            }}
-                            onSend={() => {
-                                if (message.trim()) {
-                                    setMessage('');
-                                    clearDraft();
-                                    sync.sendMessage(sessionId, message, permissionMode);
-                                    trackMessageSent();
-                                }
-                            }}
-                            onMicPress={handleMicrophonePress}
-                            isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
-                            onAbort={() => sessionAbort(sessionId)}
-                            showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-                            // Autocomplete configuration
-                            autocompletePrefixes={['@', '/']}
-                            autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
+                        placeholder="Type a message ..."
+                        value={message}
+                        onChangeText={setMessage}
+                        permissionMode={permissionMode}
+                        onPermissionModeChange={updatePermissionMode}
+                        connectionStatus={{
+                            text: sessionStatus.statusText,
+                            color: sessionStatus.statusColor,
+                            dotColor: sessionStatus.statusDotColor,
+                            isPulsing: sessionStatus.isPulsing
+                        }}
+                        onSend={() => {
+                            if (message.trim()) {
+                                setMessage('');
+                                clearDraft();
+                                sync.sendMessage(sessionId, message, permissionMode);
+                                trackMessageSent();
+                            }
+                        }}
+                        onMicPress={handleMicrophonePress}
+                        isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
+                        onAbort={() => sessionAbort(sessionId)}
+                        showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
+                        // Autocomplete configuration
+                        autocompletePrefixes={['@', '/']}
+                        autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
                     />
                 </AgentContentView>
             </View>

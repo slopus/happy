@@ -14,6 +14,8 @@ import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
 import { AgentInputAutocomplete } from './AgentInputAutocomplete';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
+import { Modal } from '@/modal';
+import { ChatSettingsModal } from './ChatSettingsModal';
 
 interface AgentInputProps {
     value: string;
@@ -109,6 +111,18 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
         // Small haptic feedback
         hapticsLight();
     }, [suggestions, inputState, props.autocompletePrefixes]);
+
+    // Handle settings button press
+    const handleSettingsPress = React.useCallback(() => {
+        hapticsLight();
+        Modal.show({
+            component: ChatSettingsModal,
+            props: {
+                currentMode: props.permissionMode || 'default',
+                onModeChange: props.onPermissionModeChange,
+            }
+        });
+    }, [props.permissionMode, props.onPermissionModeChange]);
 
     // Handle abort button press
     const handleAbortPress = React.useCallback(async () => {
@@ -389,126 +403,153 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                     marginTop: 12,
                     paddingHorizontal: 8,
                 }}>
-                    {/* Permission mode selector */}
-                    {props.onPermissionModeChange && (
-                        <PermissionModeSelector
-                            mode={props.permissionMode || 'default'}
-                            onModeChange={props.onPermissionModeChange}
-                        />
-                    )}
-
-
-                    {/* Voice Assistant button */}
-                    {props.onMicPress && (
-                        <Pressable
-                            style={(p) => ({
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                // backgroundColor: props.isMicActive ? '#000' : Platform.select({
-                                //     ios: '#F2F2F7',
-                                //     android: '#E0E0E0',
-                                //     default: '#F2F2F7'
-                                // }),
-                                borderRadius: Platform.select({ default: 16, android: 20 }),
-                                paddingHorizontal: 12,
-                                paddingVertical: 6,
-                                width: 120,
-                                justifyContent: 'center',
-                                height: 32,
-                                opacity: p.pressed ? 0.7 : 1,
-                            })}
-                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                            onPress={() => {
-                                hapticsLight();
-                                props.onMicPress?.();
-                            }}
-                        >
-                            <Ionicons
-                                name={props.isMicActive ? "stop" : "mic"}
-                                size={16}
-                                color={'#000'}
-                                style={{ marginRight: 4 }}
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {/* Permission mode selector */}
+                        {props.onPermissionModeChange && (
+                            <PermissionModeSelector
+                                mode={props.permissionMode || 'default'}
+                                onModeChange={props.onPermissionModeChange}
                             />
-                            <Text style={{
-                                fontSize: 13,
-                                color: '#000',
-                                fontWeight: '600',
-                                ...Typography.default('semiBold')
-                            }}>
-                                {props.isMicActive ? 'Hang up' : 'Call Happy'}
-                            </Text>
-                        </Pressable>
-                    )}
+                        )}
 
-                    {/* Abort button */}
-                    {props.onAbort && (
-                        <Shaker ref={shakerRef}>
-                            <Animated.View
-                                style={{
-                                    // backgroundColor: abortButtonBgAnim.interpolate({
-                                    //     inputRange: [0, 1],
-                                    //     outputRange: [
-                                    //         Platform.select({ ios: '#F2F2F7', android: '#E0E0E0', default: '#F2F2F7' })!,
-                                    //         Platform.select({ ios: '#FF3B30', android: '#F44336', default: '#FF3B30' })!
-                                    //     ]
+                        {/* Settings button */}
+                        {props.onPermissionModeChange && (
+                            <Pressable
+                                onPress={handleSettingsPress}
+                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                style={(p) => ({
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    borderRadius: Platform.select({ default: 16, android: 20 }),
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 6,
+                                    justifyContent: 'center',
+                                    height: 32,
+                                    opacity: p.pressed ? 0.7 : 1,
+                                })}
+                            >
+                                <Ionicons
+                                    name={'hammer-outline'}
+                                    size={16}
+                                    color={'black'}
+                                />
+                            </Pressable>
+                        )}
+                    </View>
+
+                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                        {/* Voice Assistant button */}
+                        {props.onMicPress && (
+                            <Pressable
+                                style={(p) => ({
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    // backgroundColor: props.isMicActive ? '#000' : Platform.select({
+                                    //     ios: '#F2F2F7',
+                                    //     android: '#E0E0E0',
+                                    //     default: '#F2F2F7'
                                     // }),
                                     borderRadius: Platform.select({ default: 16, android: 20 }),
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 6,
+                                    width: 120,
+                                    justifyContent: 'center',
+                                    height: 32,
+                                    opacity: p.pressed ? 0.7 : 1,
+                                })}
+                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                onPress={() => {
+                                    hapticsLight();
+                                    props.onMicPress?.();
                                 }}
                             >
-                                <Pressable
-                                    style={{
-                                        paddingHorizontal: 12,
-                                        paddingVertical: 6,
-                                        minWidth: 80,
-                                        height: 32,
-                                        width: 120,
-                                        flexDirection: 'row',
-                                        justifyContent: 'center',
-                                        alignItems: 'center',
-                                    }}
-                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                    onPress={handleAbortPress}
-                                    disabled={isAborting}
-                                >
-                                    {isAborting ? (
-                                        <ActivityIndicator
-                                            size="small"
-                                            color={Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })}
-                                        />
-                                    ) : (
-                                        <>
-                                            {!isFirstPress ? <Ionicons
-                                                name={"stop"}
-                                                size={16}
-                                                color={isFirstPress ? '#FF9500' : 'black'}
-                                                style={{ marginRight: 4 }}
-                                            /> : <Text style={{
-                                                fontSize: 13,
-                                                color: isFirstPress
-                                                    ? Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })!
-                                                    : '#000',
-                                                fontWeight: '600',
-                                                ...Typography.default('semiBold')
-                                            }}>
-                                                Again
-                                            </Text>}
+                                <Ionicons
+                                    name={props.isMicActive ? "stop" : "mic"}
+                                    size={16}
+                                    color={'#000'}
+                                    style={{ marginRight: 4 }}
+                                />
+                                <Text style={{
+                                    fontSize: 13,
+                                    color: '#000',
+                                    fontWeight: '600',
+                                    ...Typography.default('semiBold')
+                                }}>
+                                    {props.isMicActive ? 'Hang up' : 'Call Happy'}
+                                </Text>
+                            </Pressable>
+                        )}
 
-                                            {/* <Text style={{
-                                                fontSize: 13,
-                                                color: isFirstPress
-                                                    ? Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })!
-                                                    : '#000',
-                                                fontWeight: '600',
-                                                ...Typography.default('semiBold')
-                                            }}>
-                                                {isFirstPress ? 'Again' : 'Abort'}
-                                            </Text> */}
-                                        </>
-                                    )}
-                                </Pressable>
-                            </Animated.View>
-                        </Shaker>
-                    )}
+                        {/* Abort button */}
+                        {props.onAbort && (
+                            <Shaker ref={shakerRef}>
+                                <Animated.View
+                                    style={{
+                                        // backgroundColor: abortButtonBgAnim.interpolate({
+                                        //     inputRange: [0, 1],
+                                        //     outputRange: [
+                                        //         Platform.select({ ios: '#F2F2F7', android: '#E0E0E0', default: '#F2F2F7' })!,
+                                        //         Platform.select({ ios: '#FF3B30', android: '#F44336', default: '#FF3B30' })!
+                                        //     ]
+                                        // }),
+                                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                                    }}
+                                >
+                                    <Pressable
+                                        style={{
+                                            paddingHorizontal: 12,
+                                            paddingVertical: 6,
+                                            minWidth: 80,
+                                            height: 32,
+                                            width: 120,
+                                            flexDirection: 'row',
+                                            justifyContent: 'center',
+                                            alignItems: 'center',
+                                        }}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        onPress={handleAbortPress}
+                                        disabled={isAborting}
+                                    >
+                                        {isAborting ? (
+                                            <ActivityIndicator
+                                                size="small"
+                                                color={Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })}
+                                            />
+                                        ) : (
+                                            <>
+                                                {!isFirstPress ? <Ionicons
+                                                    name={"stop"}
+                                                    size={16}
+                                                    color={isFirstPress ? '#FF9500' : 'black'}
+                                                    style={{ marginRight: 4 }}
+                                                /> : <Text style={{
+                                                    fontSize: 13,
+                                                    color: isFirstPress
+                                                        ? Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })!
+                                                        : '#000',
+                                                    fontWeight: '600',
+                                                    ...Typography.default('semiBold')
+                                                }}>
+                                                    Again
+                                                </Text>}
+
+                                                {/* <Text style={{
+                                                    fontSize: 13,
+                                                    color: isFirstPress
+                                                        ? Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })!
+                                                        : '#000',
+                                                    fontWeight: '600',
+                                                    ...Typography.default('semiBold')
+                                                }}>
+                                                    {isFirstPress ? 'Again' : 'Abort'}
+                                                </Text> */}
+                                            </>
+                                        )}
+                                    </Pressable>
+                                </Animated.View>
+                            </Shaker>
+                        )}
+                    </View>
                 </View>
             </View>
         </View>
