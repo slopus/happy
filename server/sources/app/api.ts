@@ -1531,8 +1531,8 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             }
         });
 
-        // Update machine metadata through socket
-        socket.on('update-machine-metadata', async (data: { metadata: string }) => {
+        // Update machine through socket
+        socket.on('update-machine', async (data: { metadata: string }) => {
             if (connection.connectionType !== 'machine-scoped') {
                 return; // Only machines can update their own metadata
             }
