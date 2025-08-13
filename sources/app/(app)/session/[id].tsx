@@ -67,6 +67,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const [isReviving, setIsReviving] = useState(false);
     // Get permission mode from session object, default to 'default'
     const permissionMode = session.permissionMode || 'default';
+    // Get model mode from session object, default to 'default'
+    const modelMode = session.modelMode || 'default';
     const screenWidth = useWindowDimensions().width;
     const headerHeight = useHeaderHeight();
     const sessionStatus = useSessionStatus(session);
@@ -80,6 +82,11 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     // Function to update permission mode
     const updatePermissionMode = useCallback((mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') => {
         storage.getState().updateSessionPermissionMode(sessionId, mode);
+    }, [sessionId]);
+
+    // Function to update model mode
+    const updateModelMode = useCallback((mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus') => {
+        storage.getState().updateSessionModelMode(sessionId, mode);
     }, [sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
@@ -225,6 +232,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                                         color: sessionStatus.isConnected ? '#000' : '#8E8E93',
                                         marginBottom: 2,
                                         width: '100%',
+                                        textAlign: 'center',
                                         ...Typography.default('semiBold')
                                     }}
                                 >
@@ -361,6 +369,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         onChangeText={setMessage}
                         permissionMode={permissionMode}
                         onPermissionModeChange={updatePermissionMode}
+                        modelMode={modelMode}
+                        onModelModeChange={updateModelMode}
                         connectionStatus={{
                             text: sessionStatus.statusText,
                             color: sessionStatus.statusColor,
@@ -371,7 +381,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                             if (message.trim()) {
                                 setMessage('');
                                 clearDraft();
-                                sync.sendMessage(sessionId, message, permissionMode);
+                                sync.sendMessage(sessionId, message, permissionMode, modelMode);
                                 trackMessageSent();
                             }
                         }}

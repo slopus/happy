@@ -30,6 +30,10 @@ interface MultiTextInputProps {
     onChangeText: (text: string) => void;
     placeholder?: string;
     maxHeight?: number;
+    paddingTop?: number;
+    paddingBottom?: number;
+    paddingLeft?: number;
+    paddingRight?: number;
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
@@ -180,7 +184,11 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     maxHeight,
                     color: '#000',
                     textAlignVertical: 'center',
-                    padding: 0,
+                    padding:0,
+                    paddingTop: props.paddingTop,
+                    paddingBottom: props.paddingBottom,
+                    paddingLeft: props.paddingLeft,
+                    paddingRight: props.paddingRight,
                     ...Typography.default(),
                 }}
                 placeholder={placeholder}
