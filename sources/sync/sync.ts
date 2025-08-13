@@ -112,7 +112,7 @@ class Sync {
     }
 
 
-    sendMessage(sessionId: string, text: string, permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') {
+    sendMessage(sessionId: string, text: string, permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', modelMode?: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus') {
 
         // Get encryption
         const encryption = this.sessionEncryption.get(sessionId);
@@ -141,6 +141,34 @@ class Sync {
             sentFrom = 'web'; // fallback
         }
 
+        // Resolve model settings based on modelMode
+        let model: string | null = null;
+        let fallbackModel: string | null = null;
+
+        switch (modelMode) {
+            case 'default':
+                model = null;
+                fallbackModel = null;
+                break;
+            case 'adaptiveUsage':
+                model = 'claude-opus-4-1-20250805';
+                fallbackModel = 'claude-sonnet-4-20250514';
+                break;
+            case 'sonnet':
+                model = 'claude-sonnet-4-20250514';
+                fallbackModel = null;
+                break;
+            case 'opus':
+                model = 'claude-opus-4-1-20250805';
+                fallbackModel = null;
+                break;
+            default:
+                // If no modelMode is specified, use default behavior (let server decide)
+                model = null;
+                fallbackModel = null;
+                break;
+        }
+
         // Create user message content with metadata
         const content: RawRecord = {
             role: 'user',
@@ -150,7 +178,9 @@ class Sync {
             },
             meta: {
                 sentFrom,
-                permissionMode: permissionMode || 'default'
+                permissionMode: permissionMode || 'default',
+                model,
+                fallbackModel
             }
         };
         const encryptedRawRecord = encryption.encryptRawRecord(content);

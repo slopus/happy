@@ -1,21 +1,20 @@
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, Animated, ActivityIndicator } from 'react-native';
+import { View, Platform, useWindowDimensions, ViewStyle, Text, Animated, ActivityIndicator, TouchableWithoutFeedback } from 'react-native';
 import { Pressable } from 'react-native-gesture-handler';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
 import { Typography } from '@/constants/Typography';
-import { PermissionModeSelector, PermissionMode } from './PermissionModeSelector';
+import { PermissionMode, ModelMode } from './PermissionModeSelector';
 import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
 import { useActiveWord } from './autocomplete/useActiveWord';
 import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
 import { AgentInputAutocomplete } from './AgentInputAutocomplete';
+import { FloatingOverlay } from './FloatingOverlay';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
-import { Modal } from '@/modal';
-import { ChatSettingsModal } from './ChatSettingsModal';
 
 interface AgentInputProps {
     value: string;
@@ -27,6 +26,8 @@ interface AgentInputProps {
     isMicActive?: boolean;
     permissionMode?: PermissionMode;
     onPermissionModeChange?: (mode: PermissionMode) => void;
+    modelMode?: ModelMode;
+    onModelModeChange?: (mode: ModelMode) => void;
     onAbort?: () => void | Promise<void>;
     showAbortButton?: boolean;
     connectionStatus?: {
@@ -47,11 +48,8 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
     // Color animation for send button
     const sendButtonColorAnim = React.useRef(new Animated.Value(0)).current;
 
-    // Double press abort button states
-    const [isFirstPress, setIsFirstPress] = React.useState(false);
+    // Abort button state
     const [isAborting, setIsAborting] = React.useState(false);
-    const resetTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-    const abortButtonBgAnim = React.useRef(new Animated.Value(0)).current;
     const shakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
 
@@ -112,76 +110,53 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
         hapticsLight();
     }, [suggestions, inputState, props.autocompletePrefixes]);
 
+    // Settings modal state
+    const [showSettings, setShowSettings] = React.useState(false);
+
     // Handle settings button press
     const handleSettingsPress = React.useCallback(() => {
         hapticsLight();
-        Modal.show({
-            component: ChatSettingsModal,
-            props: {
-                currentMode: props.permissionMode || 'default',
-                onModeChange: props.onPermissionModeChange,
-            }
-        });
-    }, [props.permissionMode, props.onPermissionModeChange]);
+        setShowSettings(prev => !prev);
+    }, []);
+
+    // Handle settings selection
+    const handleSettingsSelect = React.useCallback((mode: PermissionMode) => {
+        hapticsLight();
+        props.onPermissionModeChange?.(mode);
+        // Don't close the settings overlay - let users see the change and potentially switch again
+    }, [props.onPermissionModeChange]);
+
+    // Handle model selection
+    const handleModelSelect = React.useCallback((mode: ModelMode) => {
+        hapticsLight();
+        props.onModelModeChange?.(mode);
+        // Don't close the settings overlay - let users see the change and potentially switch again
+    }, [props.onModelModeChange]);
 
     // Handle abort button press
     const handleAbortPress = React.useCallback(async () => {
         if (!props.onAbort) return;
 
-        if (!isFirstPress) {
-            // First press - show "Press again" and set timer
-            hapticsLight();
-            setIsFirstPress(true);
+        hapticsError();
+        setIsAborting(true);
+        const startTime = Date.now();
 
-            // Reset after 2 seconds if no second press
-            resetTimerRef.current = setTimeout(() => {
-                setIsFirstPress(false);
-            }, 2000);
-        } else {
-            // Second press - execute abort
-            hapticsError();
+        try {
+            await props.onAbort?.();
 
-            // Clear the reset timer
-            if (resetTimerRef.current) {
-                clearTimeout(resetTimerRef.current);
-                resetTimerRef.current = null;
+            // Ensure minimum 300ms loading time
+            const elapsed = Date.now() - startTime;
+            if (elapsed < 300) {
+                await new Promise(resolve => setTimeout(resolve, 300 - elapsed));
             }
-
-            // Animate background color to red
-            Animated.timing(abortButtonBgAnim, {
-                toValue: 1,
-                duration: 200,
-                useNativeDriver: false,
-            }).start();
-
-            setIsAborting(true);
-            const startTime = Date.now();
-
-            try {
-                await props.onAbort?.();
-
-                // Ensure minimum 300ms loading time
-                const elapsed = Date.now() - startTime;
-                if (elapsed < 300) {
-                    await new Promise(resolve => setTimeout(resolve, 300 - elapsed));
-                }
-            } catch (error) {
-                // Shake on error
-                shakerRef.current?.shake();
-                console.error('Abort RPC call failed:', error);
-            } finally {
-                // Animate back to normal
-                Animated.timing(abortButtonBgAnim, {
-                    toValue: 0,
-                    duration: 200,
-                    useNativeDriver: false,
-                }).start(() => {
-                    setIsAborting(false);
-                    setIsFirstPress(false);
-                });
-            }
+        } catch (error) {
+            // Shake on error
+            shakerRef.current?.shake();
+            console.error('Abort RPC call failed:', error);
+        } finally {
+            setIsAborting(false);
         }
-    }, [props.onAbort, isFirstPress, abortButtonBgAnim]);
+    }, [props.onAbort]);
 
     // Handle keyboard navigation
     const handleKeyPress = React.useCallback((event: KeyPressEvent): boolean => {
@@ -205,7 +180,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                 return true;
             }
         }
-        
+
         // Handle Escape for abort when no suggestions are visible
         if (event.key === 'Escape' && props.showAbortButton && props.onAbort && !isAborting) {
             handleAbortPress();
@@ -242,14 +217,6 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
         }).start();
     }, [hasText]);
 
-    // Clean up timer on unmount
-    React.useEffect(() => {
-        return () => {
-            if (resetTimerRef.current) {
-                clearTimeout(resetTimerRef.current);
-            }
-        };
-    }, []);
 
     const containerStyle: ViewStyle = {
         alignItems: 'center',
@@ -258,25 +225,25 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
         paddingTop: 8,
     };
 
+    const unifiedPanelStyle: ViewStyle = {
+        backgroundColor: '#F5F5F5',
+        borderRadius: Platform.select({ default: 16, android: 20 })!,
+        overflow: 'hidden',
+        paddingVertical: 2,
+        paddingBottom: 8,
+        paddingHorizontal: 8,
+    };
+
     const inputContainerStyle: ViewStyle = {
         flexDirection: 'row',
         alignItems: 'center',
-        borderRadius: Platform.select({ default: 24, android: 28 })!,
-        overflow: 'hidden',
-        backgroundColor: '#F5F5F5',
         borderWidth: 0,
-        paddingLeft: 16,
-        paddingRight: 5,
-        paddingVertical: 0,
-        minHeight: 48,
+        paddingLeft: 8,
+        paddingRight: 8,
+        paddingVertical: 4,
+        minHeight: 40
     };
 
-    const inputWrapperStyle: ViewStyle = {
-        flex: 1,
-        paddingVertical: 10,
-        paddingRight: 12,
-        paddingLeft: 4
-    };
     return (
         <View style={containerStyle}>
             <View style={{ width: '100%', maxWidth: layout.maxWidth, position: 'relative' }}>
@@ -301,6 +268,170 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                             itemHeight={48}
                         />
                     </View>
+                )}
+
+                {/* Settings overlay */}
+                {showSettings && (
+                    <>
+                        <TouchableWithoutFeedback onPress={() => setShowSettings(false)}>
+                            <View style={{
+                                position: 'absolute',
+                                top: -1000,
+                                left: -1000,
+                                right: -1000,
+                                bottom: -1000,
+                                zIndex: 999,
+                            }} />
+                        </TouchableWithoutFeedback>
+                        <View style={{
+                            position: 'absolute',
+                            bottom: '100%',
+                            left: 0,
+                            right: 0,
+                            marginBottom: 8,
+                            zIndex: 1000,
+                            paddingHorizontal: screenWidth > 700 ? 0 : 8,
+                        }}>
+                            <FloatingOverlay maxHeight={280} keyboardShouldPersistTaps="handled">
+                                {/* Permission Mode Section */}
+                                <View style={{ paddingVertical: 8 }}>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        fontWeight: '600',
+                                        color: '#666',
+                                        paddingHorizontal: 16,
+                                        paddingBottom: 4,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        PERMISSION MODE
+                                    </Text>
+                                    {(['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const).map((mode) => {
+                                        const modeConfig = {
+                                            default: { label: 'Default' },
+                                            acceptEdits: { label: 'Accept Edits' },
+                                            plan: { label: 'Plan Mode' },
+                                            bypassPermissions: { label: 'Yolo Mode' },
+                                        };
+                                        const config = modeConfig[mode];
+                                        const isSelected = props.permissionMode === mode;
+
+                                        return (
+                                            <Pressable
+                                                key={mode}
+                                                onPress={() => handleSettingsSelect(mode)}
+                                                style={({ pressed }) => ({
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    paddingHorizontal: 16,
+                                                    paddingVertical: 8,
+                                                    backgroundColor: pressed ? 'rgba(0, 0, 0, 0.05)' : 'transparent'
+                                                })}
+                                            >
+                                                <View style={{
+                                                    width: 16,
+                                                    height: 16,
+                                                    borderRadius: 8,
+                                                    borderWidth: 2,
+                                                    borderColor: isSelected ? '#007AFF' : '#C0C0C0',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    marginRight: 12
+                                                }}>
+                                                    {isSelected && (
+                                                        <View style={{
+                                                            width: 6,
+                                                            height: 6,
+                                                            borderRadius: 3,
+                                                            backgroundColor: '#007AFF'
+                                                        }} />
+                                                    )}
+                                                </View>
+                                                <Text style={{
+                                                    fontSize: 14,
+                                                    color: isSelected ? '#007AFF' : '#000',
+                                                    ...Typography.default()
+                                                }}>
+                                                    {config.label}
+                                                </Text>
+                                            </Pressable>
+                                        );
+                                    })}
+                                </View>
+
+                                {/* Divider */}
+                                <View style={{
+                                    height: 1,
+                                    backgroundColor: '#F0F0F0',
+                                    marginHorizontal: 16
+                                }} />
+
+                                {/* Model Section */}
+                                <View style={{ paddingVertical: 8 }}>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        fontWeight: '600',
+                                        color: '#666',
+                                        paddingHorizontal: 16,
+                                        paddingBottom: 4,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        MODEL
+                                    </Text>
+                                    {(['default', 'adaptiveUsage', 'sonnet', 'opus'] as const).map((model) => {
+                                        const modelConfig = {
+                                            default: { label: 'Use CLI settings' },
+                                            adaptiveUsage: { label: 'Opus up to 50% usage, then Sonnet' },
+                                            sonnet: { label: 'Sonnet' },
+                                            opus: { label: 'Opus' },
+                                        };
+                                        const config = modelConfig[model];
+                                        const isSelected = props.modelMode === model || (model === 'default' && !props.modelMode);
+
+                                        return (
+                                            <Pressable
+                                                key={model}
+                                                onPress={() => handleModelSelect(model)}
+                                                style={({ pressed }) => ({
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    paddingHorizontal: 16,
+                                                    paddingVertical: 8,
+                                                    backgroundColor: pressed ? 'rgba(0, 0, 0, 0.05)' : 'transparent'
+                                                })}
+                                            >
+                                                <View style={{
+                                                    width: 16,
+                                                    height: 16,
+                                                    borderRadius: 8,
+                                                    borderWidth: 2,
+                                                    borderColor: isSelected ? '#007AFF' : '#C0C0C0',
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    marginRight: 12
+                                                }}>
+                                                    {isSelected && (
+                                                        <View style={{
+                                                            width: 6,
+                                                            height: 6,
+                                                            borderRadius: 3,
+                                                            backgroundColor: '#007AFF'
+                                                        }} />
+                                                    )}
+                                                </View>
+                                                <Text style={{
+                                                    fontSize: 14,
+                                                    color: isSelected ? '#007AFF' : '#000',
+                                                    ...Typography.default()
+                                                }}>
+                                                    {config.label}
+                                                </Text>
+                                            </Pressable>
+                                        );
+                                    })}
+                                </View>
+                            </FloatingOverlay>
+                        </View>
+                    </>
                 )}
 
                 {/* Connection status and permission mode */}
@@ -344,168 +475,97 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                         )}
                     </View>
                 )}
-                {/* Input field */}
-                <View style={inputContainerStyle}>
-                    <Pressable
-                        style={inputWrapperStyle}
-                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 0 }}
-                        onPress={() => inputRef.current?.focus()}
-                    >
+                {/* Unified panel containing input and action buttons */}
+                <View style={unifiedPanelStyle}>
+                    {/* Input field */}
+                    <View style={inputContainerStyle}>
                         <MultiTextInput
                             ref={inputRef}
                             value={props.value}
+                            paddingTop={Platform.OS === 'web' ? 10 : 8}
+                            paddingBottom={Platform.OS === 'web' ? 10 : 8}
                             onChangeText={props.onChangeText}
                             placeholder={props.placeholder}
                             onKeyPress={handleKeyPress}
                             onStateChange={handleInputStateChange}
                             maxHeight={120}
                         />
-                    </Pressable>
-
-                    {/* Send button */}
-                    <Animated.View
-                        style={{
-                            backgroundColor: sendButtonColorAnim.interpolate({
-                                inputRange: [0, 1],
-                                outputRange: ['#E0E0E0', 'black']
-                            }),
-                            width: 36,
-                            height: 36,
-                            borderRadius: 18,
-                            marginRight: 4,
-                        }}
-                    >
-                        <Pressable
-                            style={(p) => ({
-                                width: '100%',
-                                height: '100%',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                opacity: p.pressed ? 0.7 : 1,
-                            })}
-                            hitSlop={{ top: 5, bottom: 10, left: 0, right: 10 }}
-                            onPress={() => {
-                                hapticsLight();
-                                props.onSend();
-                            }}
-                            disabled={!hasText}
-                        >
-                            <Ionicons name="arrow-up" size={20} color="#fff" />
-                        </Pressable>
-                    </Animated.View>
-                </View>
-
-                {/* Action buttons below input */}
-                <View style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    marginTop: 12,
-                    paddingHorizontal: 8,
-                }}>
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                        {/* Permission mode selector */}
-                        {props.onPermissionModeChange && (
-                            <PermissionModeSelector
-                                mode={props.permissionMode || 'default'}
-                                onModeChange={props.onPermissionModeChange}
-                            />
-                        )}
-
-                        {/* Settings button */}
-                        {props.onPermissionModeChange && (
-                            <Pressable
-                                onPress={handleSettingsPress}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 6,
-                                    justifyContent: 'center',
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                })}
-                            >
-                                <Ionicons
-                                    name={'hammer-outline'}
-                                    size={16}
-                                    color={'black'}
-                                />
-                            </Pressable>
-                        )}
                     </View>
 
-                    <View style={{ flexDirection: 'row', gap: 8 }}>
-                        {/* Voice Assistant button */}
-                        {props.onMicPress && (
-                            <Pressable
-                                style={(p) => ({
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    // backgroundColor: props.isMicActive ? '#000' : Platform.select({
-                                    //     ios: '#F2F2F7',
-                                    //     android: '#E0E0E0',
-                                    //     default: '#F2F2F7'
-                                    // }),
-                                    borderRadius: Platform.select({ default: 16, android: 20 }),
-                                    paddingHorizontal: 12,
-                                    paddingVertical: 6,
-                                    width: 120,
-                                    justifyContent: 'center',
-                                    height: 32,
-                                    opacity: p.pressed ? 0.7 : 1,
-                                })}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                onPress={() => {
-                                    hapticsLight();
-                                    props.onMicPress?.();
-                                }}
-                            >
-                                <Ionicons
-                                    name={props.isMicActive ? "stop" : "mic"}
-                                    size={16}
-                                    color={'#000'}
-                                    style={{ marginRight: 4 }}
-                                />
-                                <Text style={{
-                                    fontSize: 13,
-                                    color: '#000',
-                                    fontWeight: '600',
-                                    ...Typography.default('semiBold')
-                                }}>
-                                    {props.isMicActive ? 'Hang up' : 'Call Happy'}
-                                </Text>
-                            </Pressable>
-                        )}
+                    {/* Action buttons below input */}
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        paddingHorizontal: 0,
+                    }}>
+                        <View style={{ flexDirection: 'row', gap: 8 }}>
 
-                        {/* Abort button */}
-                        {props.onAbort && (
-                            <Shaker ref={shakerRef}>
-                                <Animated.View
-                                    style={{
-                                        // backgroundColor: abortButtonBgAnim.interpolate({
-                                        //     inputRange: [0, 1],
-                                        //     outputRange: [
-                                        //         Platform.select({ ios: '#F2F2F7', android: '#E0E0E0', default: '#F2F2F7' })!,
-                                        //         Platform.select({ ios: '#FF3B30', android: '#F44336', default: '#FF3B30' })!
-                                        //     ]
-                                        // }),
+                            {/* Settings button */}
+                            {props.onPermissionModeChange && (
+                                <Pressable
+                                    onPress={handleSettingsPress}
+                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                    style={(p) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
                                         borderRadius: Platform.select({ default: 16, android: 20 }),
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 6,
+                                        justifyContent: 'center',
+                                        height: 32,
+                                        opacity: p.pressed ? 0.7 : 1,
+                                    })}
+                                >
+                                    <Octicons
+                                        name={'gear'}
+                                        size={16}
+                                        color={'black'}
+                                    />
+                                </Pressable>
+                            )}
+
+                            {/* Voice Assistant button */}
+                            {props.onMicPress && (
+                                <Pressable
+                                    style={(p) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                                        paddingHorizontal: 8,
+                                        paddingVertical: 6,
+                                        justifyContent: 'center',
+                                        height: 32,
+                                        opacity: p.pressed ? 0.7 : 1,
+                                    })}
+                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                    onPress={() => {
+                                        hapticsLight();
+                                        props.onMicPress?.();
                                     }}
                                 >
+                                    <Ionicons
+                                        name={props.isMicActive ? "stop" : "mic"}
+                                        size={16}
+                                        color={'#000'}
+                                    />
+                                </Pressable>
+                            )}
+
+                            {/* Abort button */}
+                            {props.onAbort && (
+                                <Shaker ref={shakerRef}>
                                     <Pressable
-                                        style={{
-                                            paddingHorizontal: 12,
-                                            paddingVertical: 6,
-                                            minWidth: 80,
-                                            height: 32,
-                                            width: 120,
+                                        style={(p) => ({
                                             flexDirection: 'row',
-                                            justifyContent: 'center',
                                             alignItems: 'center',
-                                        }}
+                                            borderRadius: Platform.select({ default: 16, android: 20 }),
+                                            paddingHorizontal: 8,
+                                            paddingVertical: 6,
+                                            justifyContent: 'center',
+                                            height: 32,
+                                            opacity: p.pressed ? 0.7 : 1,
+                                        })}
                                         hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                         onPress={handleAbortPress}
                                         disabled={isAborting}
@@ -516,39 +576,49 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                 color={Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })}
                                             />
                                         ) : (
-                                            <>
-                                                {!isFirstPress ? <Ionicons
-                                                    name={"stop"}
-                                                    size={16}
-                                                    color={isFirstPress ? '#FF9500' : 'black'}
-                                                    style={{ marginRight: 4 }}
-                                                /> : <Text style={{
-                                                    fontSize: 13,
-                                                    color: isFirstPress
-                                                        ? Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })!
-                                                        : '#000',
-                                                    fontWeight: '600',
-                                                    ...Typography.default('semiBold')
-                                                }}>
-                                                    Again
-                                                </Text>}
-
-                                                {/* <Text style={{
-                                                    fontSize: 13,
-                                                    color: isFirstPress
-                                                        ? Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })!
-                                                        : '#000',
-                                                    fontWeight: '600',
-                                                    ...Typography.default('semiBold')
-                                                }}>
-                                                    {isFirstPress ? 'Again' : 'Abort'}
-                                                </Text> */}
-                                            </>
+                                            <Ionicons
+                                                name={"stop"}
+                                                size={16}
+                                                color={'black'}
+                                            />
                                         )}
                                     </Pressable>
-                                </Animated.View>
-                            </Shaker>
-                        )}
+                                </Shaker>
+                            )}
+                        </View>
+
+                        {/* Send button */}
+                        <Animated.View
+                            style={{
+                                backgroundColor: sendButtonColorAnim.interpolate({
+                                    inputRange: [0, 1],
+                                    outputRange: ['#E0E0E0', 'black']
+                                }),
+                                width: 32,
+                                height: 32,
+                                borderRadius: 16,
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                            }}
+                        >
+                            <Pressable
+                                style={(p) => ({
+                                    width: '100%',
+                                    height: '100%',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    opacity: p.pressed ? 0.7 : 1,
+                                })}
+                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                onPress={() => {
+                                    hapticsLight();
+                                    props.onSend();
+                                }}
+                                disabled={!hasText}
+                            >
+                                <Ionicons name="arrow-up" size={16} color="#fff" />
+                            </Pressable>
+                        </Animated.View>
                     </View>
                 </View>
             </View>

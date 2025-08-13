@@ -67,6 +67,7 @@ export interface Session {
     }>;
     draft?: string | null; // Local draft message, not synced to server
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | null; // Local permission mode, not synced to server
+    modelMode?: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus' | null; // Local model mode, not synced to server
 }
 
 export interface DecryptedMessage {

@@ -62,6 +62,7 @@ interface StorageState {
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') => void;
+    updateSessionModelMode: (sessionId: string, mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus') => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -649,6 +650,25 @@ export const storage = create<StorageState>()((set) => {
             saveSessionPermissionModes(allModes);
             
             // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
+            return {
+                ...state,
+                sessions: updatedSessions
+            };
+        }),
+        updateSessionModelMode: (sessionId: string, mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus') => set((state) => {
+            const session = state.sessions[sessionId];
+            if (!session) return state;
+            
+            // Update the session with the new model mode
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: {
+                    ...session,
+                    modelMode: mode
+                }
+            };
+            
+            // No need to rebuild sessionListViewData since model mode doesn't affect the list display
             return {
                 ...state,
                 sessions: updatedSessions
