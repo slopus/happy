@@ -1,13 +1,22 @@
 import { ApiSessionClient } from "@/api/apiSession"
 import { MessageQueue2 } from "@/utils/MessageQueue2"
 import { logger } from "@/ui/logger"
-import { createSessionScanner } from "./utils/sessionScanner"
 import { Session } from "./session"
 import { claudeLocalLauncher } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
 
-type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+
+export interface EnhancedMode {
+    permissionMode: PermissionMode;
+    model?: string;
+    fallbackModel?: string;
+    customSystemPrompt?: string;
+    appendSystemPrompt?: string;
+    allowedTools?: string[];
+    disallowedTools?: string[];
+}
 
 interface LoopOptions {
     path: string
@@ -20,7 +29,7 @@ interface LoopOptions {
     api: ApiClient,
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
-    messageQueue: MessageQueue2<PermissionMode>
+    messageQueue: MessageQueue2<EnhancedMode>
 }
 
 export async function loop(opts: LoopOptions) {

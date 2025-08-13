@@ -132,6 +132,7 @@ function messageKey(message: RawJSONLines): string {
 
 async function readSessionLog(projectDir: string, sessionId: string): Promise<RawJSONLines[]> {
     const expectedSessionFile = join(projectDir, `${sessionId}.jsonl`);
+    logger.debug(`[SESSION_SCANNER] Reading session file: ${expectedSessionFile}`);
     let file: string;
     try {
         file = await readFile(expectedSessionFile, 'utf-8');

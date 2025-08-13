@@ -1,14 +1,13 @@
 import { ApiClient, ApiSessionClient } from "@/lib";
-import { SessionScanner } from "./utils/sessionScanner";
 import { MessageQueue2 } from "@/utils/MessageQueue2";
-import { PermissionMode } from "@anthropic-ai/claude-code";
+import { EnhancedMode } from "./loop";
 
 export class Session {
     readonly path: string;
     readonly logPath: string;
     readonly api: ApiClient;
     readonly client: ApiSessionClient;
-    readonly queue: MessageQueue2<PermissionMode>;
+    readonly queue: MessageQueue2<EnhancedMode>;
     readonly claudeEnvVars?: Record<string, string>;
     readonly claudeArgs?: string[];
     readonly mcpServers: Record<string, any>;
@@ -27,7 +26,7 @@ export class Session {
         claudeEnvVars?: Record<string, string>,
         claudeArgs?: string[],
         mcpServers: Record<string, any>,
-        messageQueue: MessageQueue2<PermissionMode>,
+        messageQueue: MessageQueue2<EnhancedMode>,
         onModeChange: (mode: 'local' | 'remote') => void,
     }) {
         this.path = opts.path;

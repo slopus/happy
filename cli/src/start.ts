@@ -8,8 +8,9 @@ import { AgentState, Metadata } from '@/api/types';
 import packageJson from '../package.json';
 import { registerHandlers } from '@/api/handlers';
 import { readSettings } from '@/persistence/persistence';
-import { PermissionMode } from '@anthropic-ai/claude-code';
+import { EnhancedMode, PermissionMode } from './claude/loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { hashObject } from '@/utils/deterministicJson';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 
@@ -88,13 +89,19 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     }
 
     // Import MessageQueue2 and create message queue
-    const messageQueue = new MessageQueue2<PermissionMode>(mode => mode);
+    const messageQueue = new MessageQueue2<EnhancedMode>(mode => hashObject(mode));
 
     // Register all RPC handlers
     registerHandlers(session);
 
     // Forward messages to the queue
     let currentPermissionMode = options.permissionMode;
+    let currentModel = options.model; // Track current model state
+    let currentFallbackModel: string | undefined = undefined; // Track current fallback model
+    let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
+    let currentAppendSystemPrompt: string | undefined = undefined; // Track current append system prompt
+    let currentAllowedTools: string[] | undefined = undefined; // Track current allowed tools
+    let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
     session.onUserMessage((message) => {
 
         // Resolve permission mode from meta
@@ -113,8 +120,77 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
         }
 
-        // Push with resolved permission mode
-        messageQueue.push(message.content.text, messagePermissionMode || 'default');
+        // Resolve model - use message.meta.model if provided, otherwise use current model
+        let messageModel = currentModel;
+        if (message.meta?.hasOwnProperty('model')) {
+            messageModel = message.meta.model || undefined; // null becomes undefined
+            currentModel = messageModel;
+            logger.debug(`[loop] Model updated from user message: ${messageModel || 'reset to default'}`);
+        } else {
+            logger.debug(`[loop] User message received with no model override, using current: ${currentModel || 'default'}`);
+        }
+
+        // Resolve custom system prompt - use message.meta.customSystemPrompt if provided, otherwise use current
+        let messageCustomSystemPrompt = currentCustomSystemPrompt;
+        if (message.meta?.hasOwnProperty('customSystemPrompt')) {
+            messageCustomSystemPrompt = message.meta.customSystemPrompt || undefined; // null becomes undefined
+            currentCustomSystemPrompt = messageCustomSystemPrompt;
+            logger.debug(`[loop] Custom system prompt updated from user message: ${messageCustomSystemPrompt ? 'set' : 'reset to none'}`);
+        } else {
+            logger.debug(`[loop] User message received with no custom system prompt override, using current: ${currentCustomSystemPrompt ? 'set' : 'none'}`);
+        }
+
+        // Resolve fallback model - use message.meta.fallbackModel if provided, otherwise use current fallback model
+        let messageFallbackModel = currentFallbackModel;
+        if (message.meta?.hasOwnProperty('fallbackModel')) {
+            messageFallbackModel = message.meta.fallbackModel || undefined; // null becomes undefined
+            currentFallbackModel = messageFallbackModel;
+            logger.debug(`[loop] Fallback model updated from user message: ${messageFallbackModel || 'reset to none'}`);
+        } else {
+            logger.debug(`[loop] User message received with no fallback model override, using current: ${currentFallbackModel || 'none'}`);
+        }
+
+        // Resolve append system prompt - use message.meta.appendSystemPrompt if provided, otherwise use current
+        let messageAppendSystemPrompt = currentAppendSystemPrompt;
+        if (message.meta?.hasOwnProperty('appendSystemPrompt')) {
+            messageAppendSystemPrompt = message.meta.appendSystemPrompt || undefined; // null becomes undefined
+            currentAppendSystemPrompt = messageAppendSystemPrompt;
+            logger.debug(`[loop] Append system prompt updated from user message: ${messageAppendSystemPrompt ? 'set' : 'reset to none'}`);
+        } else {
+            logger.debug(`[loop] User message received with no append system prompt override, using current: ${currentAppendSystemPrompt ? 'set' : 'none'}`);
+        }
+
+        // Resolve allowed tools - use message.meta.allowedTools if provided, otherwise use current
+        let messageAllowedTools = currentAllowedTools;
+        if (message.meta?.hasOwnProperty('allowedTools')) {
+            messageAllowedTools = message.meta.allowedTools || undefined; // null becomes undefined
+            currentAllowedTools = messageAllowedTools;
+            logger.debug(`[loop] Allowed tools updated from user message: ${messageAllowedTools ? messageAllowedTools.join(', ') : 'reset to none'}`);
+        } else {
+            logger.debug(`[loop] User message received with no allowed tools override, using current: ${currentAllowedTools ? currentAllowedTools.join(', ') : 'none'}`);
+        }
+
+        // Resolve disallowed tools - use message.meta.disallowedTools if provided, otherwise use current
+        let messageDisallowedTools = currentDisallowedTools;
+        if (message.meta?.hasOwnProperty('disallowedTools')) {
+            messageDisallowedTools = message.meta.disallowedTools || undefined; // null becomes undefined
+            currentDisallowedTools = messageDisallowedTools;
+            logger.debug(`[loop] Disallowed tools updated from user message: ${messageDisallowedTools ? messageDisallowedTools.join(', ') : 'reset to none'}`);
+        } else {
+            logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
+        }
+
+        // Push with resolved permission mode, model, system prompts, and tools
+        const enhancedMode: EnhancedMode = {
+            permissionMode: messagePermissionMode || 'default',
+            model: messageModel,
+            fallbackModel: messageFallbackModel,
+            customSystemPrompt: messageCustomSystemPrompt,
+            appendSystemPrompt: messageAppendSystemPrompt,
+            allowedTools: messageAllowedTools,
+            disallowedTools: messageDisallowedTools
+        };
+        messageQueue.push(message.content.text, enhancedMode);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 

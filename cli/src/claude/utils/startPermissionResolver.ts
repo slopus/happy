@@ -53,9 +53,9 @@ export async function startPermissionResolver(session: Session) {
                         logger.debug('Plan approved - injecting PLAN_FAKE_RESTART');
                         // Inject the approval message at the beginning of the queue
                         if (response.mode && ['default', 'acceptEdits', 'bypassPermissions'].includes(response.mode)) {
-                            session.queue.unshift(PLAN_FAKE_RESTART, response.mode);
+                            session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: response.mode });
                         } else {
-                            session.queue.unshift(PLAN_FAKE_RESTART, 'default');
+                            session.queue.unshift(PLAN_FAKE_RESTART, { permissionMode: 'default' });
                         }
                         resolve({ approved: false, reason: PLAN_FAKE_REJECT });
                     } else {

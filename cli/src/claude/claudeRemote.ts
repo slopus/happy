@@ -17,6 +17,12 @@ export async function claudeRemote(opts: {
     onThinkingChange?: (thinking: boolean) => void,
     responses: Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>,
     message: string,
+    model?: string,
+    fallbackModel?: string,
+    customSystemPrompt?: string,
+    appendSystemPrompt?: string,
+    allowedTools?: string[],
+    disallowedTools?: string[],
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
     signal?: AbortSignal,
@@ -47,6 +53,12 @@ export async function claudeRemote(opts: {
         mcpServers: opts.mcpServers,
         permissionPromptToolName: opts.permissionPromptToolName,
         permissionMode: opts.permissionMode,
+        model: opts.model,
+        fallbackModel: opts.fallbackModel,
+        customSystemPrompt: opts.customSystemPrompt,
+        appendSystemPrompt: opts.appendSystemPrompt,
+        allowedTools: opts.allowedTools,
+        disallowedTools: opts.disallowedTools,
         executable: 'node',
         abort: opts.signal,
         pathToClaudeCodeExecutable: (() => {
@@ -59,7 +71,7 @@ export async function claudeRemote(opts: {
         sdkOptions.executableArgs = [...(sdkOptions.executableArgs || []), ...opts.claudeArgs];
     }
 
-    logger.debug(`[claudeRemote] Starting query with permission mode: ${opts.permissionMode}`);
+    logger.debug(`[claudeRemote] Starting query with permission mode: ${opts.permissionMode}, model: ${opts.model || 'default'}, fallbackModel: ${opts.fallbackModel || 'none'}, customSystemPrompt: ${opts.customSystemPrompt ? 'set' : 'none'}, appendSystemPrompt: ${opts.appendSystemPrompt ? 'set' : 'none'}, allowedTools: ${opts.allowedTools ? opts.allowedTools.join(',') : 'none'}, disallowedTools: ${opts.disallowedTools ? opts.disallowedTools.join(',') : 'none'}`);
 
     let message = new PushableAsyncIterable<SDKUserMessage>();
     message.push({

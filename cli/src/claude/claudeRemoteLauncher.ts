@@ -242,7 +242,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         }
                     },
                     permissionPromptToolName: 'mcp__permission__' + permissions.server.toolName,
-                    permissionMode: messageData.mode,
+                    permissionMode: messageData.mode.permissionMode,
+                    model: messageData.mode.model,
+                    fallbackModel: messageData.mode.fallbackModel,
+                    customSystemPrompt: messageData.mode.customSystemPrompt,
+                    appendSystemPrompt: messageData.mode.appendSystemPrompt,
+                    allowedTools: messageData.mode.allowedTools,
+                    disallowedTools: messageData.mode.disallowedTools,
                     onSessionFound: (sessionId) => {
                         // Update converter's session ID when new session is found
                         sdkToLogConverter.updateSessionId(sessionId);
