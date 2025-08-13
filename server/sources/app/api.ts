@@ -12,28 +12,6 @@ import { allocateSessionSeq, allocateUserSeq } from "@/services/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { AsyncLock } from "@/utils/lock";
 
-// Session alive event types
-type SessionAliveEvent = 
-  | {
-      type: 'session-scoped';
-      sid: string;
-      time: number;
-      thinking: boolean;
-      mode: 'local' | 'remote';
-    }
-  | {
-      type: 'machine-scoped';
-      machineId: string;
-      time: number;
-    }
-  | {
-      // Legacy format (no type field) - defaults to session-scoped
-      sid: string;
-      time: number;
-      thinking: boolean;
-      mode?: 'local' | 'remote';
-      type?: undefined;
-    };
 
 // Recipient filter types
 type RecipientFilter = 
@@ -1184,10 +1162,15 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             }
         });
 
-        socket.on('session-alive', async (data: SessionAliveEvent) => {
+        socket.on('session-alive', async (data: {
+            sid: string;
+            time: number;
+            thinking?: boolean;
+            mode?: 'local' | 'remote';
+        }) => {
             try {
                 // Basic validation
-                if (!data || typeof data.time !== 'number') {
+                if (!data || typeof data.time !== 'number' || !data.sid) {
                     return;
                 }
 
@@ -1199,80 +1182,84 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     return;
                 }
 
-                // Determine type (default to session-scoped for legacy)
-                const eventType = data.type || 'session-scoped';
+                const { sid, thinking } = data;
                 
-                // Validate but CONTINUE with warning
-                if (eventType === 'machine-scoped' && connection.connectionType !== 'machine-scoped') {
-                    log({ module: 'websocket', level: 'warn' }, 
-                        `Connection type mismatch: ${connection.connectionType} sending machine-scoped alive`);
-                    // CONTINUE ANYWAY
-                }
-                if (eventType === 'session-scoped' && connection.connectionType === 'machine-scoped') {
-                    log({ module: 'websocket', level: 'warn' }, 
-                        `Connection type mismatch: ${connection.connectionType} sending session-scoped alive`);
-                    // CONTINUE ANYWAY
+                // Resolve session
+                const session = await db.session.findUnique({
+                    where: { id: sid, accountId: userId }
+                });
+                if (!session) {
+                    return;
                 }
 
-                // Handle based on type
-                if (eventType === 'machine-scoped' && 'machineId' in data) {
-                    // Machine heartbeat - update database instead of ephemeral
-                    const machineId = connection.connectionType === 'machine-scoped' ? connection.machineId : data.machineId;
-                    
-                    // Update machine lastActiveAt in database
-                    await db.machine.update({
-                        where: {
-                            accountId_id: {
-                                accountId: userId,
-                                id: machineId
-                            }
-                        },
-                        data: {
-                            lastActiveAt: new Date(t),
-                            active: true
-                        }
-                    }).catch(() => {
-                        // Machine might not exist yet, that's ok
-                    });
-                    
-                } else if ('sid' in data) {
-                    // Session heartbeat (legacy or explicit session-scoped)
-                    const { sid, thinking } = data;
-                    
-                    // Resolve session
-                    const session = await db.session.findUnique({
-                        where: { id: sid, accountId: userId }
-                    });
-                    if (!session) {
-                        return;
-                    }
+                // Update last active
+                await db.session.update({
+                    where: { id: sid },
+                    data: { lastActiveAt: new Date(t), active: true }
+                });
 
-                    // Update last active
-                    await db.session.update({
-                        where: { id: sid },
-                        data: { lastActiveAt: new Date(t), active: true }
-                    });
-
-                    // Emit update
-                    emitUpdateToInterestedClients({
-                        event: 'ephemeral',
-                        userId,
-                        payload: {
-                            type: 'activity',
-                            id: sid,
-                            active: true,
-                            activeAt: t,
-                            thinking: thinking || false
-                        },
-                        recipientFilter: { type: 'all-user-authenticated-connections' }
-                    });
-                }
+                // Emit update
+                emitUpdateToInterestedClients({
+                    event: 'ephemeral',
+                    userId,
+                    payload: {
+                        type: 'activity',
+                        id: sid,
+                        active: true,
+                        activeAt: t,
+                        thinking: thinking || false
+                    },
+                    recipientFilter: { type: 'all-user-authenticated-connections' }
+                });
             } catch (error) {
                 log({ module: 'websocket', level: 'error' }, `Error in session-alive: ${error}`);
             }
         });
 
-        socket.on('session-end', async (data: any) => {
+        socket.on('machine-alive', async (data: {
+            machineId: string;
+            time: number;
+        }) => {
+            try {
+                // Basic validation
+                if (!data || typeof data.time !== 'number' || !data.machineId) {
+                    return;
+                }
+
+                let t = data.time;
+                if (t > Date.now()) {
+                    t = Date.now();
+                }
+                if (t < Date.now() - 1000 * 60 * 10) {
+                    return;
+                }
+
+                const machineId = data.machineId;
+                
+                // Update machine lastActiveAt in database
+                await db.machine.update({
+                    where: {
+                        accountId_id: {
+                            accountId: userId,
+                            id: machineId
+                        }
+                    },
+                    data: {
+                        lastActiveAt: new Date(t),
+                        active: true
+                    }
+                }).catch(() => {
+                    // Machine might not exist yet, that's ok
+                });
+            } catch (error) {
+                log({ module: 'websocket', level: 'error' }, `Error in machine-alive: ${error}`);
+            }
+        });
+
+        socket.on('session-end', async (data: {
+            sid: string;
+            time: number;
+        }) => {
             try {
                 const { sid, time } = data;
                 let t = time;
