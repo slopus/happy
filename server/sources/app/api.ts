@@ -1166,7 +1166,6 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             sid: string;
             time: number;
             thinking?: boolean;
-            mode?: 'local' | 'remote';
         }) => {
             try {
                 // Basic validation
