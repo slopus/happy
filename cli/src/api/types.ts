@@ -72,37 +72,18 @@ export interface ServerToClientEvents {
   error: (data: { message: string }) => void
 }
 
-/**
- * Session alive event types
- */
-export type SessionAliveEvent = 
-  | {
-      type: 'session-scoped';
-      sid: string;
-      time: number;
-      thinking: boolean;
-      mode: 'local' | 'remote';
-    }
-  | {
-      type: 'machine-scoped';
-      machineId: string;
-      time: number;
-    }
-  | {
-      // Legacy format (no type field) - defaults to session-scoped
-      sid: string;
-      time: number;
-      thinking: boolean;
-      mode?: 'local' | 'remote';
-      type?: undefined;
-    };
 
 /**
  * Socket events from client to server
  */
 export interface ClientToServerEvents {
   message: (data: { sid: string, message: any }) => void
-  'session-alive': (data: SessionAliveEvent) => void
+  'session-alive': (data: {
+    sid: string;
+    time: number;
+    thinking: boolean;
+    mode?: 'local' | 'remote';
+  }) => void
   'session-end': (data: { sid: string, time: number }) => void,
   'update-metadata': (data: { sid: string, expectedVersion: number, metadata: string }, cb: (answer: {
     result: 'error'

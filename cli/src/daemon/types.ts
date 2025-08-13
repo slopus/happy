@@ -23,15 +23,15 @@ export interface EncryptedNewSessionRequest {
   startingMode: 'local' | 'remote';
 }
 
-// Import SessionAliveEvent type
-import type { SessionAliveEvent } from '@/api/types';
-
 export interface DaemonToServerEvents {
   'machine-connect': (data: { 
     token: string; 
     machineIdentity: string; // encrypted MachineIdentity
   }) => void;
-  'session-alive': (data: SessionAliveEvent) => void;
+  'machine-alive': (data: {
+    machineId: string;
+    time: number;
+  }) => void;
   'session-spawn-result': (data: {
     requestId: string;
     result: string; // encrypted result
