@@ -12,6 +12,7 @@ export default function AppearanceSettingsScreen() {
     const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
     const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
     const [showLineNumbersInToolViews, setShowLineNumbersInToolViews] = useSettingMutable('showLineNumbersInToolViews');
+    const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     return (
         <ItemList style={{ paddingTop: 0 }}>
 
@@ -96,6 +97,19 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={showLineNumbersInToolViews}
                             onValueChange={setShowLineNumbersInToolViews}
+                            trackColor={{ false: '#767577', true: '#34C759' }}
+                            thumbColor="#fff"
+                        />
+                    }
+                />
+                <Item
+                    title="Always Show Context Size"
+                    subtitle="Display context usage even when not near limit"
+                    icon={<Ionicons name="analytics-outline" size={29} color="#5856D6" />}
+                    rightElement={
+                        <Switch
+                            value={alwaysShowContextSize}
+                            onValueChange={setAlwaysShowContextSize}
                             trackColor={{ false: '#767577', true: '#34C759' }}
                             thumbColor="#fff"
                         />

@@ -72,21 +72,23 @@ function UserTextBlock(props: {
   metadata: Metadata | null;
 }) {
   return (
-    <View
-      style={{
-        marginHorizontal: 16,
-        backgroundColor: "#f0eee6",
-        paddingHorizontal: 12,
-        paddingVertical: 4,
-        borderRadius: 12,
-        marginBottom: 12,
-        alignSelf: "flex-end",
-      }}
-    >
-      <MarkdownView markdown={props.message.text} />
-      {__DEV__ && (
-        <Text style={{ color: '#666666', fontSize: 12 }}>{JSON.stringify(props.message.meta)}</Text>
-      )}
+    <View style={{ maxWidth: '100%', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-end', paddingHorizontal: 16 }}>
+      <View
+        style={{
+          backgroundColor: "#f0eee6",
+          paddingHorizontal: 12,
+          paddingVertical: 4,
+          borderRadius: 12,
+          marginBottom: 12,
+          maxWidth: '100%'
+        }}
+      >
+
+        <MarkdownView markdown={props.message.text} />
+        {__DEV__ && (
+          <Text style={{ color: '#666666', fontSize: 12 }}>{JSON.stringify(props.message.meta)}</Text>
+        )}
+      </View>
     </View>
   );
 }

@@ -12,6 +12,7 @@ export const SettingsSchema = z.object({
     showLineNumbersInToolViews: z.boolean().describe('Whether to show line numbers in tool view diffs'),
     analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
     experiments: z.boolean().describe('Whether to enable experimental features'),
+    alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
 });
 
 //
@@ -40,7 +41,8 @@ export const settingsDefaults: Settings = {
     showLineNumbers: true,
     showLineNumbersInToolViews: false,
     analyticsOptOut: false,
-    experiments: false
+    experiments: false,
+    alwaysShowContextSize: false
 };
 Object.freeze(settingsDefaults);
 

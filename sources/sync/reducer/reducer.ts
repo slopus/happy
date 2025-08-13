@@ -111,7 +111,7 @@
  */
 
 import { Message, ToolCall } from "../typesMessage";
-import { AgentEvent, NormalizedMessage } from "../typesRaw";
+import { AgentEvent, NormalizedMessage, UsageData } from "../typesRaw";
 import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState } from "../storageTypes";
 import { MessageMeta } from "../typesMessageMeta";
@@ -155,6 +155,14 @@ export type ReducerState = {
         }>;
         timestamp: number;
     };
+    latestUsage?: {
+        inputTokens: number;
+        outputTokens: number;
+        cacheCreation: number;
+        cacheRead: number;
+        contextSize: number;
+        timestamp: number;
+    };
 };
 
 export function createReducer(): ReducerState {
@@ -180,6 +188,13 @@ export type ReducerResult = {
         priority: 'high' | 'medium' | 'low';
         id: string;
     }>;
+    usage?: {
+        inputTokens: number;
+        outputTokens: number;
+        cacheCreation: number;
+        cacheRead: number;
+        contextSize: number;
+    };
 };
 
 export function reducer(state: ReducerState, messages: NormalizedMessage[], agentState?: AgentState | null): ReducerResult {
@@ -536,6 +551,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             // Mark this message as seen
             state.messageIds.set(msg.id, msg.id);
 
+            // Process usage data if present
+            if (msg.usage) {
+                processUsageData(state, msg.usage, msg.createdAt);
+            }
+
             // Process text content only (tool calls handled in Phase 2)
             for (let c of msg.content) {
                 if (c.type === 'text') {
@@ -886,7 +906,14 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
     return {
         messages: newMessages,
-        todos: state.latestTodos?.todos
+        todos: state.latestTodos?.todos,
+        usage: state.latestUsage ? {
+            inputTokens: state.latestUsage.inputTokens,
+            outputTokens: state.latestUsage.outputTokens,
+            cacheCreation: state.latestUsage.cacheCreation,
+            cacheRead: state.latestUsage.cacheRead,
+            contextSize: state.latestUsage.contextSize
+        } : undefined
     };
 }
 
@@ -896,6 +923,20 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
 function allocateId() {
     return Math.random().toString(36).substring(2, 15);
+}
+
+function processUsageData(state: ReducerState, usage: UsageData, timestamp: number) {
+    // Only update if this is newer than the current latest usage
+    if (!state.latestUsage || timestamp > state.latestUsage.timestamp) {
+        state.latestUsage = {
+            inputTokens: usage.input_tokens,
+            outputTokens: usage.output_tokens,
+            cacheCreation: usage.cache_creation_input_tokens,
+            cacheRead: usage.cache_read_input_tokens,
+            contextSize: usage.cache_creation_input_tokens + usage.cache_read_input_tokens + usage.input_tokens,
+            timestamp: timestamp
+        };
+    }
 }
 
 

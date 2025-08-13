@@ -704,6 +704,13 @@ export function useMessage(sessionId: string, messageId: string): Message | null
     }));
 }
 
+export function useSessionUsage(sessionId: string) {
+    return storage(useShallow((state) => {
+        const session = state.sessionMessages[sessionId];
+        return session?.reducerState?.latestUsage ?? null;
+    }));
+}
+
 export function useSettings(): Settings {
     return storage(useShallow((state) => state.settings));
 }

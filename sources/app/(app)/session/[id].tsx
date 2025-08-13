@@ -7,7 +7,7 @@ import { MessageView } from "@/components/MessageView";
 import { useRouter } from "expo-router";
 import { getSessionName, useSessionStatus, getSessionAvatarId } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
-import { useSession, useSessionMessages, useSettings, useDaemonStatusByMachine, useRealtimeStatus, storage } from '@/sync/storage';
+import { useSession, useSessionMessages, useSessionUsage, useSettings, useSetting, useDaemonStatusByMachine, useRealtimeStatus, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { sessionAbort, sessionSwitch, spawnRemoteSession } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
@@ -75,6 +75,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const lastSeenText = sessionStatus.statusText;
     const autocomplete = useAutocompleteSession(message, message.length);
     const daemonStatus = useDaemonStatusByMachine(session.metadata?.machineId || '');
+    const sessionUsage = useSessionUsage(sessionId);
+    const alwaysShowContextSize = useSetting('alwaysShowContextSize');
 
     // Use draft hook for auto-saving message drafts
     const { clearDraft } = useDraft(sessionId, message, setMessage);
@@ -299,45 +301,46 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             {/* Main content area - no padding since header is overlay */}
             <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 32 : 0) }}>
                 <AgentContentView>
-                    <Deferred>
-                        {messagesRecentFirst.length === 0 && isLoaded && (
-                            <View style={headerDependentStyles.emptyMessageWrapper}>
-                                <Pressable
-                                    style={headerDependentStyles.emptyMessageContainer}
-                                    onPress={() => Keyboard.dismiss()}
-                                >
-                                    <EmptyMessages session={session} />
-                                </Pressable>
-                            </View>
-                        )}
-                        {messagesRecentFirst.length === 0 && !isLoaded && (
-                            <View style={headerDependentStyles.emptyMessageWrapper}>
-                                <Pressable
-                                    style={headerDependentStyles.emptyMessageContainer}
-                                    onPress={() => Keyboard.dismiss()}
-                                >
-                                    <ActivityIndicator size="large" color="#C7C7CC" />
-                                </Pressable>
-                            </View>
-                        )}
-                        {messagesRecentFirst.length > 0 && (
-                            <FlatList
-                                removeClippedSubviews={true}
-                                data={messagesRecentFirst}
-                                inverted={true}
-                                keyExtractor={keyExtractor}
-                                style={[headerDependentStyles.emptyMessageWrapper, headerDependentStyles.flatListStyle]}
-                                maintainVisibleContentPosition={maintainVisibleContentPosition}
-                                keyboardShouldPersistTaps="handled"
-                                keyboardDismissMode="none"
-                                renderItem={renderItem}
-                                contentContainerStyle={contentContainerStyle}
-                                ListHeaderComponent={ListFooter}
-                                ListFooterComponent={ListHeader}
-                            />
-                        )}
-                    </Deferred>
-
+                    <View style={headerDependentStyles.emptyMessageWrapper}>
+                        <Deferred>
+                            {messagesRecentFirst.length === 0 && isLoaded && (
+                                <View style={headerDependentStyles.emptyMessageWrapper}>
+                                    <Pressable
+                                        style={headerDependentStyles.emptyMessageContainer}
+                                        onPress={() => Keyboard.dismiss()}
+                                    >
+                                        <EmptyMessages session={session} />
+                                    </Pressable>
+                                </View>
+                            )}
+                            {messagesRecentFirst.length === 0 && !isLoaded && (
+                                <View style={headerDependentStyles.emptyMessageWrapper}>
+                                    <Pressable
+                                        style={headerDependentStyles.emptyMessageContainer}
+                                        onPress={() => Keyboard.dismiss()}
+                                    >
+                                        <ActivityIndicator size="large" color="#C7C7CC" />
+                                    </Pressable>
+                                </View>
+                            )}
+                            {messagesRecentFirst.length > 0 && (
+                                <FlatList
+                                    removeClippedSubviews={true}
+                                    data={messagesRecentFirst}
+                                    inverted={true}
+                                    keyExtractor={keyExtractor}
+                                    style={[headerDependentStyles.emptyMessageWrapper, headerDependentStyles.flatListStyle]}
+                                    maintainVisibleContentPosition={maintainVisibleContentPosition}
+                                    keyboardShouldPersistTaps="handled"
+                                    keyboardDismissMode="none"
+                                    renderItem={renderItem}
+                                    contentContainerStyle={contentContainerStyle}
+                                    ListHeaderComponent={ListFooter}
+                                    ListFooterComponent={ListHeader}
+                                />
+                            )}
+                        </Deferred>
+                    </View>
                     {sessionStatus.state === 'disconnected' && daemonStatus?.active && (
                         <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
                             <RoundButton
@@ -392,6 +395,14 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         // Autocomplete configuration
                         autocompletePrefixes={['@', '/']}
                         autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
+                        usageData={sessionUsage ? {
+                            inputTokens: sessionUsage.inputTokens,
+                            outputTokens: sessionUsage.outputTokens,
+                            cacheCreation: sessionUsage.cacheCreation,
+                            cacheRead: sessionUsage.cacheRead,
+                            contextSize: sessionUsage.contextSize
+                        } : undefined}
+                        alwaysShowContextSize={alwaysShowContextSize}
                     />
                 </AgentContentView>
             </View>
