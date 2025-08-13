@@ -112,7 +112,7 @@ class Sync {
     }
 
 
-    sendMessage(sessionId: string, text: string, permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', modelMode?: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus') {
+    sendMessage(sessionId: string, text: string) {
 
         // Get encryption
         const encryption = this.sessionEncryption.get(sessionId);
@@ -120,6 +120,17 @@ class Sync {
             console.error(`Session ${sessionId} not found`);
             return;
         }
+
+        // Get session data from storage
+        const session = storage.getState().sessions[sessionId];
+        if (!session) {
+            console.error(`Session ${sessionId} not found in storage`);
+            return;
+        }
+
+        // Read permission mode and model mode from session state
+        const permissionMode = session.permissionMode || 'default';
+        const modelMode = session.modelMode || 'default';
 
         // Generate local ID
         const localId = randomUUID();
