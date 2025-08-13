@@ -297,12 +297,11 @@ export class ApiDaemonSession extends EventEmitter {
     this.stopKeepAlive();
     this.keepAliveInterval = setInterval(() => {
       const payload = {
-        type: 'machine-scoped' as const,
         machineId: this.machineIdentity.machineId,
         time: Date.now()
       }
-      logger.debugLargeJson(`[DAEMON SESSION] Emitting session-alive`, payload)
-      this.socket.emit('session-alive', payload);
+      logger.debugLargeJson(`[DAEMON SESSION] Emitting machine-alive`, payload)
+      this.socket.emit('machine-alive', payload);
     }, 20000);
   }
 
