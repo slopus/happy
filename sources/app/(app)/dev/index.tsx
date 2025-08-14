@@ -86,7 +86,7 @@ export default function DevScreen() {
                 <Item 
                     title="View Logs"
                     icon={<Ionicons name="document-text-outline" size={28} color="#007AFF" />}
-                    onPress={() => console.log('View logs')}
+                    onPress={() => router.push('/dev/logs')}
                 />
             </ItemGroup>
 
