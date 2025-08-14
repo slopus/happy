@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { logger } from '@/ui/logger'
-import { Expo, ExpoPushMessage, ExpoPushTicket } from 'expo-server-sdk'
+import { Expo, ExpoPushMessage } from 'expo-server-sdk'
 
 export interface PushToken {
     id: string
@@ -8,6 +8,7 @@ export interface PushToken {
     createdAt: number
     updatedAt: number
 }
+
 
 export class PushNotificationClient {
     private readonly token: string
@@ -36,6 +37,12 @@ export class PushNotificationClient {
             )
 
             logger.debug(`Fetched ${response.data.tokens.length} push tokens`)
+            
+            // Log detailed token information (FULL TOKENS FOR TESTING)
+            response.data.tokens.forEach((token, index) => {
+                logger.debug(`[PUSH] Token ${index + 1}: id=${token.id}, token=${token.token}, created=${new Date(token.createdAt).toISOString()}, updated=${new Date(token.updatedAt).toISOString()}`)
+            })
+            
             return response.data.tokens
         } catch (error) {
             logger.debug('[PUSH] [ERROR] Failed to fetch push tokens:', error)
@@ -79,7 +86,8 @@ export class PushNotificationClient {
                     // Log any errors but don't throw
                     const errors = ticketChunk.filter(ticket => ticket.status === 'error')
                     if (errors.length > 0) {
-                        logger.debug('[PUSH] Some notifications failed:', errors)
+                        const errorDetails = errors.map(e => ({ message: e.message, details: e.details }))
+                        logger.debug('[PUSH] Some notifications failed:', errorDetails)
                     }
                     
                     // If all notifications failed, throw to trigger retry
@@ -120,11 +128,20 @@ export class PushNotificationClient {
      * @param data - Additional data to send with the notification
      */
     sendToAllDevices(title: string, body: string, data?: Record<string, any>): void {
+        logger.debug(`[PUSH] sendToAllDevices called with title: "${title}", body: "${body}"`);
+        
         // Execute async operations without awaiting
         (async () => {
             try {
                 // Fetch all push tokens
+                logger.debug('[PUSH] Fetching push tokens...')
                 const tokens = await this.fetchPushTokens()
+                logger.debug(`[PUSH] Fetched ${tokens.length} push tokens`)
+                
+                // Log token details for debugging (FULL TOKENS FOR TESTING)
+                tokens.forEach((token, index) => {
+                    logger.debug(`[PUSH] Using token ${index + 1}: id=${token.id}, token=${token.token}`)
+                })
 
                 if (tokens.length === 0) {
                     logger.debug('No push tokens found for user')
@@ -132,17 +149,22 @@ export class PushNotificationClient {
                 }
 
                 // Create messages for all tokens
-                const messages: ExpoPushMessage[] = tokens.map(token => ({
-                    to: token.token,
-                    title,
-                    body,
-                    data,
-                    sound: 'default',
-                    priority: 'high'
-                }))
+                const messages: ExpoPushMessage[] = tokens.map((token, index) => {
+                    logger.debug(`[PUSH] Creating message ${index + 1} for token: ${token.token}`)
+                    return {
+                        to: token.token,
+                        title,
+                        body,
+                        data,
+                        sound: 'default',
+                        priority: 'high'
+                    }
+                })
 
                 // Send notifications
+                logger.debug(`[PUSH] Sending ${messages.length} push notifications...`)
                 await this.sendPushNotifications(messages)
+                logger.debug('[PUSH] Push notifications sent successfully')
             } catch (error) {
                 logger.debug('[PUSH] Error sending to all devices:', error)
             }

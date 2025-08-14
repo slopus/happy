@@ -24,6 +24,7 @@ import { spawn } from 'child_process'
 import { startDaemon, isDaemonRunning, stopDaemon } from './daemon/run'
 import { install } from './daemon/install'
 import { uninstall } from './daemon/uninstall'
+import { ApiClient } from './api/api'
 
 (async () => {
 
@@ -44,6 +45,18 @@ import { uninstall } from './daemon/uninstall'
   if (subcommand === 'logout') {
     try {
       await cleanKey();
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'notify') {
+    // Handle notification command
+    try {
+      await handleNotifyCommand(args.slice(1));
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
@@ -143,6 +156,7 @@ ${chalk.bold('happy')} - Claude Code On the Go
 
 ${chalk.bold('Usage:')}
   happy [options]
+  happy notify     Send notification
   happy logout     Logs out of your account and removes data directory
   happy daemon     Manage the background daemon (macOS only)
 
@@ -175,6 +189,7 @@ ${chalk.bold('Examples:')}
   happy -m opus           Use Claude Opus model
   happy -p plan           Use plan permission mode
   happy --auth            Force re-authentication before starting session
+  happy notify -p "Hello!"  Send notification
   happy --claude-env KEY=VALUE
                           Set environment variable for Claude Code
   happy --claude-arg --option
@@ -327,5 +342,95 @@ async function cleanKey(): Promise<void> {
     }
   } else {
     console.log(chalk.blue('Operation cancelled'))
+  }
+}
+
+/**
+ * Handle notification command
+ */
+async function handleNotifyCommand(args: string[]): Promise<void> {
+  let message = ''
+  let title = ''
+  let showHelp = false
+
+  // Parse arguments
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]
+    
+    if (arg === '-p' && i + 1 < args.length) {
+      message = args[++i]
+    } else if (arg === '-t' && i + 1 < args.length) {
+      title = args[++i]
+    } else if (arg === '-h' || arg === '--help') {
+      showHelp = true
+    } else {
+      console.error(chalk.red(`Unknown argument for notify command: ${arg}`))
+      process.exit(1)
+    }
+  }
+
+  if (showHelp) {
+    console.log(`
+${chalk.bold('happy notify')} - Send notification
+
+${chalk.bold('Usage:')}
+  happy notify -p <message> [-t <title>]    Send notification with custom message and optional title
+  happy notify -h, --help                   Show this help
+
+${chalk.bold('Options:')}
+  -p <message>    Notification message (required)
+  -t <title>      Notification title (optional, defaults to "Happy")
+
+${chalk.bold('Examples:')}
+  happy notify -p "Deployment complete!"
+  happy notify -p "System update complete" -t "Server Status"
+  happy notify -t "Alert" -p "Database connection restored"
+`)
+    return
+  }
+
+  if (!message) {
+    console.error(chalk.red('Error: Message is required. Use -p "your message" to specify the notification text.'))
+    console.log(chalk.gray('Run "happy notify --help" for usage information.'))
+    process.exit(1)
+  }
+
+  // Load credentials
+  let credentials = await readCredentials()
+  if (!credentials) {
+    console.error(chalk.red('Error: Not authenticated. Please run "happy --auth" first.'))
+    process.exit(1)
+  }
+
+  console.log(chalk.blue('📱 Sending push notification...'))
+  
+  try {
+    // Create API client and send push notification
+    const api = new ApiClient(credentials.token, credentials.secret)
+    
+    // Use custom title or default to "Happy"
+    const notificationTitle = title || 'Happy'
+    
+    // Send the push notification
+    api.push().sendToAllDevices(
+      notificationTitle,
+      message,
+      {
+        source: 'cli',
+        timestamp: Date.now()
+      }
+    )
+
+    console.log(chalk.green('✓ Push notification sent successfully!'))
+    console.log(chalk.gray(`  Title: ${notificationTitle}`))
+    console.log(chalk.gray(`  Message: ${message}`))
+    console.log(chalk.gray('  Check your mobile device for the notification.'))
+    
+    // Give a moment for the async operation to start
+    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+  } catch (error) {
+    console.error(chalk.red('✗ Failed to send push notification'))
+    throw error
   }
 }
