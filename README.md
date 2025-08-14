@@ -5,7 +5,7 @@
 </h1>
 
 <h4 align="center">
-Your code. Your privacy. Your Claude Code companion.
+Use Claude Code from anywhere with end-to-end encryption.
 </h4>
 
 Happy Coder is a native [iOS](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505), [Android](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) and [Web App](https://app.happy.engineering) that allows to use Claude Code anywhere with full end-to-end encryption without replacing original experience of Claude Code.
@@ -15,7 +15,7 @@ Step 1: Download App
 </h3>
 
 <div align="center">
-<a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><img width="180" height="52" alt="appstore" src="https://github.com/user-attachments/assets/45e31a11-cf6b-40a2-a083-6dc8d1f01291" /></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><img width="180" height="52" alt="googleplay" src="https://github.com/user-attachments/assets/acbba639-858f-4c74-85c7-92a4096efbf5" /></a>
+<a href="https://apps.apple.com/us/app/happy-claude-code-client/id6748571505"><img width="135" height="39" alt="appstore" src="https://github.com/user-attachments/assets/45e31a11-cf6b-40a2-a083-6dc8d1f01291" /></a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<a href="https://play.google.com/store/apps/details?id=com.ex3ndr.happy"><img width="135" height="39" alt="googleplay" src="https://github.com/user-attachments/assets/acbba639-858f-4c74-85c7-92a4096efbf5" /></a>
 </div>
 
 <h3 align="center">
@@ -40,16 +40,15 @@ happy
 
 ## How does it work?
 
-This when you are on your computer, you are using the normal Claude Code UI, that is started by our wrapper `happy`, when you want to move control to the mobile app, it will restart the session in remote mode, when you want to get back to your computer you switch back by pressing any button on your physical keyboard.
+On your computer, run `happy` instead of `claude` to start the normal Claude Code UI through our wrapper. When you want to control Claude from your phone, it restarts the session in remote mode. To switch back to your computer, just press any key on your keyboard.
 
 ## 🔥 Why Happy Coder?
 
-- 📱 **Seamless Mobile Experience** - Continue Claude Code sessions from anywhere with real-time streaming and instant desktop/mobile switching
-- 🔔 **Push Notifications** - Get notified for permission requests, completed tasks, and errors - never miss important updates
-- ☁️ **Cloud Sync & Offline Access** - Access your full conversation history even when terminals are offline, with automatic sync when reconnected
-- 🛡️ **End-to-End Encryption** - Military-grade encryption using TweetNaCl ensures only you can read your code - perfect for proprietary projects
-- 🔑 **Zero-Knowledge Architecture** - Your encryption keys never leave your device, server cannot decrypt messages even if compromised
-- 📖 **Open Source** - Fully auditable codebase for complete transparency and trust
+- 📱 **Mobile access to Claude Code** - Check what Claude is building while away from your desk
+- 🔔 **Push notifications** - Get alerted when Claude needs permission or encounters errors  
+- ⚡ **Switch devices instantly** - Take control from phone or desktop with one keypress
+- 🔐 **End-to-end encrypted** - Your code never leaves your devices unencrypted
+- 🛠️ **Open source** - Audit the code yourself. No telemetry, no tracking
 
 ## 📦 Project Components
 
