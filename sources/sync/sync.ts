@@ -717,8 +717,12 @@ class Sync {
         const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
 
         // Register with server
-        await registerPushToken(this.credentials, tokenData.data);
-        log.log('Push token registered successfully');
+        try {
+            await registerPushToken(this.credentials, tokenData.data);
+            log.log('Push token registered successfully');
+        } catch (error) {
+            log.log('Failed to register push token: ' + JSON.stringify(error));
+        }
     }
 
     private subscribeToUpdates = () => {
