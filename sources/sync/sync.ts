@@ -715,6 +715,7 @@ class Sync {
         // Get push token
         const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
         const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+        log.log('tokenData: ' + JSON.stringify(tokenData));
 
         // Register with server
         try {
