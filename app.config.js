@@ -14,7 +14,7 @@ export default {
     expo: {
         name,
         slug: "happy",
-        version: "1.3.0",
+        version: "1.3.1",
         runtimeVersion: "15",
         orientation: "default",
         icon: "./sources/assets/images/happy-otter-icon.png",
@@ -101,11 +101,17 @@ export default {
             [
                 "expo-camera",
                 {
-                  cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to scan QR codes and share photos with AI.",
-                  microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations.",
-                  recordAudioAndroid: true
+                    cameraPermission: "Allow $(PRODUCT_NAME) to access your camera to scan QR codes and share photos with AI.",
+                    microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations.",
+                    recordAudioAndroid: true
                 }
-              ]
+            ],
+            [
+                "expo-notifications",
+                {
+                    "enableBackgroundRemoteNotifications": true
+                }
+            ]
         ],
         updates: {
             url: "https://u.expo.dev/4558dd3d-cd5a-47cd-bad9-e591a241cc06",
