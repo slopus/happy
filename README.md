@@ -8,7 +8,13 @@
 Use Claude Code from anywhere with end-to-end encryption.
 </h4>
 
-Happy Coder is a native [iOS](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505), [Android](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) and [Web App](https://app.happy.engineering) that allows to use Claude Code anywhere with full end-to-end encryption without replacing original experience of Claude Code.
+<div align="center">
+  
+[📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [⭐ **Star on GitHub**](https://github.com/slopus/happy)
+
+</div>
+
+<img width="1600" height="867" alt="screeenshots" src="https://github.com/user-attachments/assets/2c334d5d-9812-405a-9ac4-2a4b0d632550" />
 
 <h3 align="center">
 Step 1: Download App
