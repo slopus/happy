@@ -1,4 +1,4 @@
-<img width="6828" height="3525" alt="wordart (1)" src="https://github.com/user-attachments/assets/343fa4c1-08e8-4342-bb33-6c332357e06c" />
+<div align="center"><img src="/logo.png" width="200" title="Happy Coder" alt="Happy Coder"/></div>
 
 <h1 align="center">
   Mobile Client for Claude Code
@@ -8,7 +8,7 @@
 Your code. Your privacy. Your Claude Code companion.
 </h4>
 
-Happy Coder is a native mobile client that connects to Claude Code with full end-to-end encryption without replacing original experience of Claude Code.
+Happy Coder is a native [iOS](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505), [Android](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) and [Web App](https://app.happy.engineering) that allows to use Claude Code anywhere with full end-to-end encryption without replacing original experience of Claude Code.
 
 <h3 align="center">
 Step 1: Download App
