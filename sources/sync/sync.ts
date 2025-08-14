@@ -22,6 +22,7 @@ import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
 import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, trackPaywallRestored, trackPaywallError } from '@/track';
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
+import { log } from '@/log';
 
 class Sync {
 
@@ -36,6 +37,7 @@ class Sync {
     private settingsSync: InvalidateSync;
     private purchasesSync: InvalidateSync;
     private machinesSync: InvalidateSync;
+    private pushTokenSync: InvalidateSync;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
 
@@ -44,6 +46,7 @@ class Sync {
         this.settingsSync = new InvalidateSync(this.syncSettings);
         this.purchasesSync = new InvalidateSync(this.syncPurchases);
         this.machinesSync = new InvalidateSync(this.fetchMachines);
+        this.pushTokenSync = new InvalidateSync(this.registerPushToken);
 
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
@@ -96,9 +99,7 @@ class Sync {
         this.settingsSync.invalidate();
         this.purchasesSync.invalidate();
         this.machinesSync.invalidate();
-
-        // Register push token
-        this.registerPushToken();
+        this.pushTokenSync.invalidate();
     }
 
 
@@ -206,9 +207,9 @@ class Sync {
         }]);
 
         // Send message with optional permission mode and source identifier
-        apiSocket.send('message', { 
-            sid: sessionId, 
-            message: encryptedRawRecord, 
+        apiSocket.send('message', {
+            sid: sessionId,
+            message: encryptedRawRecord,
             localId,
             sentFrom,
             permissionMode: permissionMode || 'default'
@@ -463,7 +464,7 @@ class Sync {
                     // Decrypt metadata
                     const decrypted = this.encryption.decryptRaw(machine.metadata);
                     const metadata = JSON.parse(decrypted);
-                    
+
                     // Update storage with machine
                     storage.setState(state => ({
                         machines: {
@@ -689,36 +690,35 @@ class Sync {
     }
 
     private registerPushToken = async () => {
+        log.log('registerPushToken');
         // Only register on mobile platforms
         if (Platform.OS === 'web') {
             return;
         }
 
-        try {
-            // Request permission
-            const { status: existingStatus } = await Notifications.getPermissionsAsync();
-            let finalStatus = existingStatus;
+        // Request permission
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        log.log('existingStatus: ' + JSON.stringify(existingStatus));
 
-            if (existingStatus !== 'granted') {
-                const { status } = await Notifications.requestPermissionsAsync();
-                finalStatus = status;
-            }
-
-            if (finalStatus !== 'granted') {
-                console.log('Failed to get push token for push notification!');
-                return;
-            }
-
-            // Get push token
-            const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
-            const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-
-            // Register with server
-            await registerPushToken(this.credentials, tokenData.data);
-            console.log('Push token registered successfully');
-        } catch (error) {
-            console.error('Failed to register push token:', error);
+        if (existingStatus !== 'granted') {
+            const { status } = await Notifications.requestPermissionsAsync();
+            finalStatus = status;
         }
+        log.log('finalStatus: ' + JSON.stringify(finalStatus));
+
+        if (finalStatus !== 'granted') {
+            console.log('Failed to get push token for push notification!');
+            return;
+        }
+
+        // Get push token
+        const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+
+        // Register with server
+        await registerPushToken(this.credentials, tokenData.data);
+        log.log('Push token registered successfully');
     }
 
     private subscribeToUpdates = () => {
@@ -827,7 +827,7 @@ class Sync {
                     // Decrypt metadata
                     const decrypted = this.encryption.decryptRaw(metadataUpdate.value);
                     const metadata = JSON.parse(decrypted);
-                    
+
                     // Update storage with machine
                     storage.setState(state => ({
                         machines: {
@@ -877,7 +877,7 @@ class Sync {
                 }])
             }
         }
-        
+
         // Machine status is now handled via persisted machine updates, not ephemeral
     }
 }
