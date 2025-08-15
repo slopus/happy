@@ -12,6 +12,7 @@ import { spawn } from 'child_process'
 import { configuration } from '@/configuration'
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate'
 import packageJson from '../../package.json'
+import { getEnvironmentInfo } from '@/ui/doctor'
 
 interface DaemonMetadata {
     pid: number;
@@ -38,6 +39,7 @@ export async function startDaemon(): Promise<void> {
     }
     
     logger.debug('[DAEMON RUN] Starting daemon process...');
+    logger.debugLargeJson('[DAEMON RUN] Daemon starting with environment', getEnvironmentInfo());
     logger.debug(`[DAEMON RUN] Server URL: ${configuration.serverUrl}`);
     
     const runningDaemon = await getDaemonMetadata();
@@ -242,7 +244,7 @@ function writeDaemonMetadata(childPids?: number[]): void {
     writeFileSync(configuration.daemonMetadataFile, JSON.stringify(metadata, null, 2));
 }
 
-async function getDaemonMetadata(): Promise<DaemonMetadata | null> {
+export async function getDaemonMetadata(): Promise<DaemonMetadata | null> {
     try {
         if (!existsSync(configuration.daemonMetadataFile)) {
             return null;

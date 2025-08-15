@@ -10,7 +10,6 @@ import { join } from 'node:path'
 
 class Configuration {
   public readonly serverUrl: string
-  public readonly installationLocation: 'global' | 'local'
   public readonly isDaemonProcess: boolean
   
   // Directories and paths (from persistence)
@@ -21,24 +20,21 @@ class Configuration {
   public readonly privateKeyFile: string
   public readonly daemonMetadataFile: string
   
-  constructor(location: 'global' | 'local' | string) {
+  constructor() {
     // Server configuration - priority: parameter > environment > default
-    this.serverUrl = process.env.HANDY_SERVER_URL || 'https://handy-api.korshakov.org'
+    this.serverUrl = process.env.HAPPY_SERVER_URL || 'https://handy-api.korshakov.org'
     
     // Check if we're running as daemon based on process args
     const args = process.argv.slice(2)
     this.isDaemonProcess = args.length >= 2 && args[0] === 'daemon' && (args[1] === 'start' || args[1] === 'stop')
     
-    // Directory configuration (merged from persistence)
-    if (location === 'local') {
-      this.happyDir = join(process.cwd(), '.happy')
-      this.installationLocation = 'local'
-    } else if (location === 'global') {
-      this.happyDir = join(homedir(), '.happy')
-      this.installationLocation = 'global'
+    // Directory configuration - Priority: HAPPY_HOME_DIR env > default home dir
+    if (process.env.HAPPY_HOME_DIR) {
+      // Expand ~ to home directory if present
+      const expandedPath = process.env.HAPPY_HOME_DIR.replace(/^~/, homedir())
+      this.happyDir = expandedPath
     } else {
-      this.happyDir = join(location, '.happy')
-      this.installationLocation = 'global' // default to global for custom paths
+      this.happyDir = join(homedir(), '.happy')
     }
     
     this.logsDir = join(this.happyDir, 'logs')
@@ -52,6 +48,6 @@ class Configuration {
 // @ts-ignore - Intentionally undefined, will be initialized at startup
 export let configuration: Configuration = undefined
 
-export function initializeConfiguration(location: 'global' | 'local' | string) {
-  configuration = new Configuration(location)
+export function initializeConfiguration() {
+  configuration = new Configuration()
 }

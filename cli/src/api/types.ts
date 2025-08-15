@@ -234,6 +234,7 @@ export type Metadata = {
   tools?: string[],
   slashCommands?: string[],
   homeDir?: string,
+  startedFromDaemon?: boolean,
 };
 
 export type AgentState = {

@@ -49,8 +49,8 @@
     "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
     "prepublishOnly": "yarn build && yarn test",
     "typecheck": "tsc --noEmit",
-    "dev": "yarn build && npx tsx --env-file .env.sample src/index.ts",
-    "dev:local-server": "yarn build && cross-env HANDY_SERVER_URL=http://localhost:3005 tsx --env-file .env.sample src/index.ts",
+    "dev": "yarn build && npx tsx src/index.ts",
+    "dev:local-server": "yarn build && tsx --env-file .env.dev-local-server src/index.ts",
     "version:prerelease": "npm version prerelease --preid=beta",
     "publish:prerelease": "npm publish --tag beta"
   },

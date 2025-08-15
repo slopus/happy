@@ -28,7 +28,7 @@ describe.skip('daemon tests', () => {
   beforeEach(async () => {
     console.log('\n--- BEFORE TEST ---')
     await killAllDaemons()
-    initializeConfiguration('global')
+    initializeConfiguration()
   })
 
   afterEach(async () => {

@@ -15,6 +15,7 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { Session } from '@/claude/session';
+import { getEnvironmentInfo } from '@/ui/doctor';
 
 export interface StartOptions {
     model?: string
@@ -29,6 +30,9 @@ export interface StartOptions {
 export async function start(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
     const workingDirectory = process.cwd();
     const sessionTag = randomUUID();
+    
+    // Log environment info at startup
+    logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
 
     // Validate daemon spawn requirements
     if (options.daemonSpawn && options.startingMode === 'local') {
@@ -50,7 +54,8 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         version: packageJson.version,
         os: os.platform(),
         machineId: settings.machineId,
-        homeDir: os.homedir()
+        homeDir: os.homedir(),
+        startedFromDaemon: options.daemonSpawn || false
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);

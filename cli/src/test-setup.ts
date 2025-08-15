@@ -8,7 +8,7 @@ import { initializeConfiguration } from '@/configuration'
 import { initLoggerWithGlobalConfiguration } from '@/ui/logger'
 
 // Initialize configuration before all tests
-initializeConfiguration('local')
+initializeConfiguration()
 
 // Initialize logger after configuration
 initLoggerWithGlobalConfiguration()

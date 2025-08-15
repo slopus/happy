@@ -86,11 +86,6 @@ export class ApiDaemonSession extends EventEmitter {
               '--happy-starting-mode', 'remote'  // ALWAYS force remote mode for daemon spawns
             ];
             
-            // Add --local if needed
-            if (configuration.installationLocation === 'local') {
-              args.push('--local');
-            }
-            
             logger.debug(`[DAEMON SESSION] Spawning happy in directory: ${directory} with args: ${args.join(' ')}`);
             
             // Use projectPath to get the built binary

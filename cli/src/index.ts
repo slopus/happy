@@ -25,16 +25,13 @@ import { startDaemon, isDaemonRunning, stopDaemon } from './daemon/run'
 import { install } from './daemon/install'
 import { uninstall } from './daemon/uninstall'
 import { ApiClient } from './api/api'
+import { runDoctorCommand } from './ui/doctor'
 
 (async () => {
 
   const args = process.argv.slice(2)
 
-  // Parse global options first
-  let installationLocation: 'global' | 'local'
-    = (args.includes('--local') || process.env.HANDY_LOCAL) ? 'local' : 'global'
-
-  initializeConfiguration(installationLocation)
+  initializeConfiguration()
   initLoggerWithGlobalConfiguration()
 
   logger.debug('Starting happy CLI with args: ', process.argv)
@@ -42,7 +39,10 @@ import { ApiClient } from './api/api'
   // Check if first argument is a subcommand
   const subcommand = args[0]
 
-  if (subcommand === 'logout') {
+  if (subcommand === 'doctor') {
+    await runDoctorCommand()
+    return;
+  } else if (subcommand === 'logout') {
     try {
       await cleanKey();
     } catch (error) {
@@ -124,8 +124,6 @@ Currently only supported on macOS.
       } else if (arg === '-p' || arg === '--permission-mode') {
         // Use zod to validate the permission mode
         options.permissionMode = z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan']).parse(args[++i])
-      } else if (arg === '--local') {
-        // Already processed, skip
       } else if (arg === '--happy-starting-mode') {
         options.startingMode = z.enum(['local', 'remote']).parse(args[++i])
       } else if (arg === '--claude-env') {
@@ -176,13 +174,10 @@ ${chalk.bold('Options:')}
   --happy-daemon-uninstall  Uninstall daemon from startup
 
   [Advanced]
-  --local < global | local >
-      Will use .happy folder in the current directory for storing your private key and debug logs. 
-      You will require re-login each time you run this in a new directory.
   --happy-starting-mode <interactive|remote>
       Set the starting mode for new sessions (default: remote)
   --happy-server-url <url>
-      Set the server URL (overrides HANDY_SERVER_URL environment variable)
+      Set the server URL (overrides HAPPY_SERVER_URL environment variable)
 
 ${chalk.bold('Examples:')}
   happy                   Start a session with default settings
@@ -268,9 +263,6 @@ TODO: exec cluade --help and show inline here
         
         // Build daemon args
         const daemonArgs = ['daemon', 'start'];
-        if (installationLocation === 'local') {
-          daemonArgs.push('--local');
-        }
         
         let executable, args;
         if (runningFromBuiltBinary) {
