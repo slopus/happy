@@ -87,28 +87,28 @@ export const RealtimeVoiceSession: React.FC = () => {
     const conversation = useConversation({
         clientTools: realtimeClientTools,
         onConnect: () => {
-            console.log('Realtime session connected');
+            // console.log('Realtime session connected');
             storage.getState().setRealtimeStatus('connected');
         },
         onDisconnect: () => {
-            console.log('Realtime session disconnected');
+            // console.log('Realtime session disconnected');
             storage.getState().setRealtimeStatus('disconnected');
         },
         onMessage: (data) => {
-            console.log('Realtime message:', data);
+            // console.log('Realtime message:', data);
         },
         onError: (error) => {
-            console.error('Realtime error:', error);
+            // console.error('Realtime error:', error);
             storage.getState().setRealtimeStatus('error');
         },
         onStatusChange: (data) => {
-            console.log('Realtime status change:', data);
+            // console.log('Realtime status change:', data);
         },
         onModeChange: (data) => {
-            console.log('Realtime mode change:', data);
+            // console.log('Realtime mode change:', data);
         },
         onDebug: (message) => {
-            console.debug('Realtime debug:', message);
+            // console.debug('Realtime debug:', message);
         }
     });
 

@@ -3,9 +3,11 @@ import { apiSocket } from '@/sync/apiSocket';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { ApiEncryption } from '@/sync/apiEncryption';
 import { storage } from './storage';
-import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
+import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema, ApiEphemeralActivityUpdateSchema } from './apiTypes';
+import type { ApiEphemeralUpdate, ApiEphemeralActivityUpdate } from './apiTypes';
 import { DecryptedMessage, Session } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
+import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
@@ -38,6 +40,7 @@ class Sync {
     private purchasesSync: InvalidateSync;
     private machinesSync: InvalidateSync;
     private pushTokenSync: InvalidateSync;
+    private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
 
@@ -47,6 +50,7 @@ class Sync {
         this.purchasesSync = new InvalidateSync(this.syncPurchases);
         this.machinesSync = new InvalidateSync(this.fetchMachines);
         this.pushTokenSync = new InvalidateSync(this.registerPushToken);
+        this.activityAccumulator = new ActivityUpdateAccumulator(this.flushActivityUpdates.bind(this), 5000);
 
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
@@ -747,7 +751,7 @@ class Sync {
         // Recalculate online sessions every second (for 30-second disconnect timeout)
         setInterval(() => {
             storage.getState().recalculateOnline();
-        }, 1000);
+        }, 10000);
     }
 
     private handleUpdate = (update: unknown) => {
@@ -858,6 +862,29 @@ class Sync {
         }
     }
 
+    private flushActivityUpdates = (updates: Map<string, ApiEphemeralActivityUpdate>) => {
+        
+        const sessions: Session[] = [];
+
+        for (const [sessionId, update] of updates) {
+            const session = storage.getState().sessions[sessionId];
+            if (session) {
+                sessions.push({
+                    ...session,
+                    active: update.active,
+                    activeAt: update.activeAt,
+                    thinking: update.thinking ?? false,
+                    thinkingAt: update.activeAt // Always use activeAt for consistency
+                });
+            }
+        }
+
+        if (sessions.length > 0) {
+            // console.log('flushing activity updates ' + sessions.length);
+            storage.getState().applySessions(sessions);
+        }
+    }
+
     private handleEphemeralUpdate = (update: unknown) => {
         const validatedUpdate = ApiEphemeralUpdateSchema.safeParse(update);
         if (!validatedUpdate.success) {
@@ -869,18 +896,10 @@ class Sync {
         }
         const updateData = validatedUpdate.data;
 
-        // Process activity updates
+        // Process activity updates through smart debounce accumulator
         if (updateData.type === 'activity') {
-            const session = storage.getState().sessions[updateData.id];
-            if (session) {
-                storage.getState().applySessions([{
-                    ...session,
-                    active: updateData.active,
-                    activeAt: updateData.activeAt,
-                    thinking: updateData.thinking ?? false,
-                    thinkingAt: updateData.activeAt // Always use activeAt for consistency
-                }])
-            }
+            // console.log('adding activity update ' + updateData.id);
+            this.activityAccumulator.addUpdate(updateData);
         }
 
         // Machine status is now handled via persisted machine updates, not ephemeral
