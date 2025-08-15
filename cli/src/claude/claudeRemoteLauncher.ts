@@ -260,6 +260,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
                     onMessage,
+                    onCompletionEvent: (message: string) => {
+                        logger.debug(`[remote]: Completion event: ${message}`);
+                        session.client.sendSessionEvent({ type: 'message', message });
+                    },
                     signal: abortController.signal,
                 });
                 if (!exitReason && abortController.signal.aborted) {

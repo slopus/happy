@@ -346,4 +346,114 @@ describe('MessageQueue2', () => {
         const result = await waitPromise;
         expect(result?.message).toBe('immediate');
     });
+
+    it('should batch messages pushed with pushImmediate normally', async () => {
+        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        
+        // Add some regular messages
+        queue.push('message1', { type: 'A' });
+        queue.push('message2', { type: 'A' });
+        
+        // Add an immediate message (does not clear or isolate)
+        queue.pushImmediate('immediate', { type: 'A' });
+        
+        // Add more messages after
+        queue.push('message3', { type: 'A' });
+        queue.push('message4', { type: 'A' });
+        
+        // All messages should be batched together since they have the same mode
+        const batch1 = await queue.waitForMessagesAndGetAsString();
+        expect(batch1?.message).toBe('message1\nmessage2\nimmediate\nmessage3\nmessage4');
+        expect(batch1?.mode.type).toBe('A');
+    });
+
+    it('should isolate messages pushed with pushIsolateAndClear', async () => {
+        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        
+        // Add some regular messages
+        queue.push('message1', { type: 'A' });
+        queue.push('message2', { type: 'A' });
+        
+        // Add an isolated message that clears the queue
+        queue.pushIsolateAndClear('isolated', { type: 'A' });
+        
+        // Add more messages after
+        queue.push('message3', { type: 'A' });
+        queue.push('message4', { type: 'A' });
+        
+        // First batch should only contain the isolated message
+        const batch1 = await queue.waitForMessagesAndGetAsString();
+        expect(batch1?.message).toBe('isolated');
+        expect(batch1?.mode.type).toBe('A');
+        
+        // Second batch should contain the messages added after
+        const batch2 = await queue.waitForMessagesAndGetAsString();
+        expect(batch2?.message).toBe('message3\nmessage4');
+        expect(batch2?.mode.type).toBe('A');
+    });
+
+    it('should stop batching when hitting isolated message', async () => {
+        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        
+        // Add regular messages
+        queue.push('message1', { type: 'A' });
+        queue.push('message2', { type: 'A' });
+        
+        // Manually add an isolated message without clearing (simulating edge case)
+        queue.queue.push({
+            message: 'isolated',
+            mode: { type: 'A' },
+            modeHash: 'A',
+            isolate: true
+        });
+        
+        // Add more regular messages
+        queue.push('message3', { type: 'A' });
+        
+        // First batch should contain regular messages until the isolated one
+        const batch1 = await queue.waitForMessagesAndGetAsString();
+        expect(batch1?.message).toBe('message1\nmessage2');
+        expect(batch1?.mode.type).toBe('A');
+        
+        // Second batch should only contain the isolated message
+        const batch2 = await queue.waitForMessagesAndGetAsString();
+        expect(batch2?.message).toBe('isolated');
+        expect(batch2?.mode.type).toBe('A');
+        
+        // Third batch should contain messages after the isolated one
+        const batch3 = await queue.waitForMessagesAndGetAsString();
+        expect(batch3?.message).toBe('message3');
+        expect(batch3?.mode.type).toBe('A');
+    });
+
+    it('should differentiate between pushImmediate and pushIsolateAndClear behavior', async () => {
+        const queue = new MessageQueue2<{ type: string }>((mode) => mode.type);
+        
+        // Test pushImmediate behavior - does NOT clear queue
+        queue.push('before1', { type: 'A' });
+        queue.push('before2', { type: 'A' });
+        queue.pushImmediate('immediate', { type: 'A' });
+        queue.push('after', { type: 'A' });
+        
+        // All should be batched together
+        const batch1 = await queue.waitForMessagesAndGetAsString();
+        expect(batch1?.message).toBe('before1\nbefore2\nimmediate\nafter');
+        expect(batch1?.mode.type).toBe('A');
+        
+        // Test pushIsolateAndClear behavior - DOES clear queue and isolate
+        queue.push('will-be-cleared1', { type: 'B' });
+        queue.push('will-be-cleared2', { type: 'B' });
+        queue.pushIsolateAndClear('isolated', { type: 'B' });
+        queue.push('after-isolated', { type: 'B' });
+        
+        // First batch should only be the isolated message
+        const batch2 = await queue.waitForMessagesAndGetAsString();
+        expect(batch2?.message).toBe('isolated');
+        expect(batch2?.mode.type).toBe('B');
+        
+        // Second batch should be the message added after
+        const batch3 = await queue.waitForMessagesAndGetAsString();
+        expect(batch3?.message).toBe('after-isolated');
+        expect(batch3?.mode.type).toBe('B');
+    });
 });

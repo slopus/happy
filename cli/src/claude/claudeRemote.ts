@@ -6,6 +6,7 @@ import { awaitFileExist } from '@/modules/watcher/awaitFileExist';
 import { getProjectPath } from './utils/path';
 import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
 import { projectPath } from '@/projectPath';
+import { parseSpecialCommand } from '@/parsers/specialCommands';
 
 export async function claudeRemote(opts: {
     sessionId: string | null,
@@ -26,7 +27,8 @@ export async function claudeRemote(opts: {
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
     signal?: AbortSignal,
-    onMessage: (message: SDKMessage) => void
+    onMessage: (message: SDKMessage) => void,
+    onCompletionEvent?: (message: string) => void
 }) {
     // Check if session is valid
     let startFrom = opts.sessionId;
@@ -73,6 +75,25 @@ export async function claudeRemote(opts: {
 
     logger.debug(`[claudeRemote] Starting query with permission mode: ${opts.permissionMode}, model: ${opts.model || 'default'}, fallbackModel: ${opts.fallbackModel || 'none'}, customSystemPrompt: ${opts.customSystemPrompt ? 'set' : 'none'}, appendSystemPrompt: ${opts.appendSystemPrompt ? 'set' : 'none'}, allowedTools: ${opts.allowedTools ? opts.allowedTools.join(',') : 'none'}, disallowedTools: ${opts.disallowedTools ? opts.disallowedTools.join(',') : 'none'}`);
 
+    // Parse special commands and handle them
+    const specialCommand = parseSpecialCommand(opts.message);
+    
+    if (specialCommand.type === 'clear') {
+        logger.debug('[claudeRemote] /clear command detected - should not reach here, handled in start.ts');
+        // /clear is handled in start.ts and should not reach here
+        // But handle gracefully by returning immediately
+        return;
+    }
+
+    if (specialCommand.type === 'compact') {
+        logger.debug('[claudeRemote] /compact command detected - will process as normal but with compaction behavior');
+        // "Compaction started" event already sent in start.ts
+        // Just continue with normal processing using the original message
+    }
+
+    // Track if this is a compact command for completion message
+    const isCompactCommand = specialCommand.type === 'compact';
+
     let message = new PushableAsyncIterable<SDKUserMessage>();
     message.push({
         type: 'user',
@@ -100,6 +121,9 @@ export async function claudeRemote(opts: {
         }
     };
 
+    // Track context reset
+    let contextWasReset = false;
+
     // Start thinking early
     updateThinking(true);
 
@@ -117,9 +141,15 @@ export async function claudeRemote(opts: {
                 // Start thinking when session initializes
                 updateThinking(true);
 
+                // Check if this is a context reset (new session created when one already exists)
+                const systemInit = message as SDKSystemMessage;
+                if (systemInit.session_id && opts.sessionId && systemInit.session_id !== opts.sessionId) {
+                    logger.debug(`[claudeRemote] Context reset detected: old session ${opts.sessionId}, new session ${systemInit.session_id}`);
+                    contextWasReset = true;
+                }
+
                 // Session id is still in memory, wait until session file is  written to disk
                 // Start a watcher for to detect the session id
-                const systemInit = message as SDKSystemMessage;
                 if (systemInit.session_id) {
                     logger.debug(`[claudeRemote] Waiting for session file to be written to disk: ${systemInit.session_id}`);
                     const projectDir = getProjectPath(opts.path);
@@ -133,6 +163,22 @@ export async function claudeRemote(opts: {
             if (message.type === 'result') {
                 updateThinking(false);
                 logger.debug('[claudeRemote] Result received, exiting claudeRemote');
+                
+                // Send completion messages
+                if (isCompactCommand) {
+                    logger.debug('[claudeRemote] Compaction completed');
+                    if (opts.onCompletionEvent) {
+                        opts.onCompletionEvent('Compaction completed');
+                    }
+                }
+                
+                if (contextWasReset) {
+                    logger.debug('[claudeRemote] Context was reset during this session');
+                    if (opts.onCompletionEvent) {
+                        opts.onCompletionEvent('Context was reset');
+                    }
+                }
+                
                 return; // Exit the loop when result is received
             }
 
@@ -143,6 +189,22 @@ export async function claudeRemote(opts: {
                     for (let c of msg.message.content) {
                         if (c.type === 'tool_result' && (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode')) { // Exit on any result of plan mode tool call
                             logger.debug('[claudeRemote] Plan result received, exiting claudeRemote');
+                            
+                            // Send completion messages before exiting
+                            if (isCompactCommand) {
+                                logger.debug('[claudeRemote] Compaction completed (plan mode)');
+                                if (opts.onCompletionEvent) {
+                                    opts.onCompletionEvent('Compaction completed');
+                                }
+                            }
+                            
+                            if (contextWasReset) {
+                                logger.debug('[claudeRemote] Context was reset during this session (plan mode)');
+                                if (opts.onCompletionEvent) {
+                                    opts.onCompletionEvent('Context was reset');
+                                }
+                            }
+                            
                             return;
                         }
                         if (c.type === 'tool_result' && c.tool_use_id && opts.responses.has(c.tool_use_id) && !opts.responses.get(c.tool_use_id)!!.approved) { // Exit on any tool permission rejection
@@ -154,6 +216,21 @@ export async function claudeRemote(opts: {
             }
         }
         logger.debug(`[claudeRemote] Finished iterating over response`);
+        
+        // Send completion messages if we reach the end normally
+        if (isCompactCommand) {
+            logger.debug('[claudeRemote] Compaction completed (normal exit)');
+            if (opts.onCompletionEvent) {
+                opts.onCompletionEvent('Compaction completed');
+            }
+        }
+        
+        if (contextWasReset) {
+            logger.debug('[claudeRemote] Context was reset during this session (normal exit)');
+            if (opts.onCompletionEvent) {
+                opts.onCompletionEvent('Context was reset');
+            }
+        }
     } catch (e) {
         if (e instanceof AbortError) {
             logger.debug(`[claudeRemote] Aborted`);

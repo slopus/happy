@@ -30,6 +30,7 @@ interface LoopOptions {
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     messageQueue: MessageQueue2<EnhancedMode>
+    onSessionReady?: (session: Session) => void
 }
 
 export async function loop(opts: LoopOptions) {
@@ -48,6 +49,11 @@ export async function loop(opts: LoopOptions) {
         messageQueue: opts.messageQueue,
         onModeChange: opts.onModeChange
     });
+
+    // Notify that session is ready
+    if (opts.onSessionReady) {
+        opts.onSessionReady(session);
+    }
 
     let mode: 'local' | 'remote' = opts.startingMode ?? 'local';
     while (true) {

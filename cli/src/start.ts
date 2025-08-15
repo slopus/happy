@@ -13,6 +13,8 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
+import { parseSpecialCommand } from '@/parsers/specialCommands';
+import { Session } from '@/claude/session';
 
 export interface StartOptions {
     model?: string
@@ -186,6 +188,41 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             logger.debug(`[loop] User message received with no disallowed tools override, using current: ${currentDisallowedTools ? currentDisallowedTools.join(', ') : 'none'}`);
         }
 
+        // Check for special commands before processing
+        const specialCommand = parseSpecialCommand(message.content.text);
+        
+        if (specialCommand.type === 'compact') {
+            logger.debug('[start] Detected /compact command');
+            // Send "Compaction started" event immediately
+            session.sendSessionEvent({ type: 'message', message: 'Compaction started' });
+            
+            // Push message with special flag to ensure isolated processing
+            const enhancedMode: EnhancedMode = {
+                permissionMode: messagePermissionMode || 'default',
+                model: messageModel,
+                fallbackModel: messageFallbackModel,
+                customSystemPrompt: messageCustomSystemPrompt,
+                appendSystemPrompt: messageAppendSystemPrompt,
+                allowedTools: messageAllowedTools,
+                disallowedTools: messageDisallowedTools
+            };
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            logger.debugLargeJson('[start] /compact command pushed to queue:', message);
+            return;
+        }
+        
+        if (specialCommand.type === 'clear') {
+            logger.debug('[start] Detected /clear command');
+            // Clear session ID locally
+            if (claudeSession) {
+                claudeSession.clearSessionId();
+            }
+            // Send confirmation event
+            session.sendSessionEvent({ type: 'message', message: 'Session cleared' });
+            logger.debug('[start] /clear command processed - session cleared');
+            return; // Don't push to queue
+        }
+
         // Push with resolved permission mode, model, system prompts, and tools
         const enhancedMode: EnhancedMode = {
             permissionMode: messagePermissionMode || 'default',
@@ -199,6 +236,9 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         messageQueue.push(message.content.text, enhancedMode);
         logger.debugLargeJson('User message pushed to queue:', message)
     });
+
+    // Store reference to the Session instance for special commands
+    let claudeSession: Session | null = null;
 
     // Create claude loop
     await loop({
@@ -214,6 +254,9 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                 ...currentState,
                 controlledByUser: newMode === 'local'
             }));
+        },
+        onSessionReady: (sessionInstance) => {
+            claudeSession = sessionInstance;
         },
         mcpServers: {},
         session,

@@ -1,6 +1,7 @@
 import { ApiClient, ApiSessionClient } from "@/lib";
 import { MessageQueue2 } from "@/utils/MessageQueue2";
 import { EnhancedMode } from "./loop";
+import { logger } from "@/ui/logger";
 
 export class Session {
     readonly path: string;
@@ -60,5 +61,13 @@ export class Session {
 
     onSessionFound = (sessionId: string) => {
         this.sessionId = sessionId;
+    }
+
+    /**
+     * Clear the current session ID (used by /clear command)
+     */
+    clearSessionId = (): void => {
+        this.sessionId = null;
+        logger.debug('[Session] Session ID cleared');
     }
 }
