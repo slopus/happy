@@ -26,6 +26,10 @@ ENV EXPO_PUBLIC_POSTHOG_API_KEY=$POSTHOG_API_KEY
 ENV EXPO_PUBLIC_REVENUE_CAT_STRIPE=$REVENUE_CAT_STRIPE
 RUN yarn expo export --platform web --output-dir dist
 
+# Debug: List what's in dist to see if public files are there
+RUN ls -la dist/
+RUN ls -la public/
+
 # Stage 2: Runtime with Nginx
 FROM nginx:alpine AS runner
 
