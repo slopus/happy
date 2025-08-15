@@ -108,8 +108,6 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
             end: e.target.selectionEnd 
         };
         
-        console.log('📝 MultiTextInput.web: Text changed:', JSON.stringify({ text, selection }));
-        
         onChangeText(text);
         
         if (onStateChange) {
@@ -127,8 +125,6 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
             end: target.selectionEnd 
         };
         
-        console.log('📍 MultiTextInput.web: Selection changed:', JSON.stringify(selection));
-        
         if (onSelectionChange) {
             onSelectionChange(selection);
         }
@@ -140,8 +136,6 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     // Imperative handle for direct control
     React.useImperativeHandle(ref, () => ({
         setTextAndSelection: (text: string, selection: { start: number; end: number }) => {
-            console.log('🎯 MultiTextInput.web: setTextAndSelection:', JSON.stringify({ text, selection }));
-            
             if (textareaRef.current) {
                 // Directly set value and selection on DOM element
                 textareaRef.current.value = text;
