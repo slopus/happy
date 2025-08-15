@@ -85,7 +85,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // Set initial agent state
     session.updateAgentState((currentState) => ({
         ...currentState,
-        controlledByUser: options.startingMode === 'local'
+        controlledByUser: options.startingMode !== 'remote'
     }));
 
     // Start caffeinate to prevent sleep on macOS

@@ -7,6 +7,7 @@ import { backoff } from '@/utils/time';
 import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
+import { AsyncLock } from '@/utils/lock';
 
 type RpcHandler<T = any, R = any> = (data: T) => R | Promise<R>;
 type RpcHandlerMap = Map<string, RpcHandler>;
@@ -23,6 +24,8 @@ export class ApiSessionClient extends EventEmitter {
     private pendingMessages: UserMessage[] = [];
     private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
     private rpcHandlers: RpcHandlerMap = new Map();
+    private agentStateLock = new AsyncLock();
+    private metadataLock = new AsyncLock();
 
     constructor(token: string, secret: Uint8Array, session: Session) {
         super()
@@ -301,21 +304,23 @@ export class ApiSessionClient extends EventEmitter {
      * @param handler - Handler function that returns the updated metadata
      */
     updateMetadata(handler: (metadata: Metadata) => Metadata) {
-        backoff(async () => {
-            let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
-            const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(updated, this.secret)) });
-            if (answer.result === 'success') {
-                this.metadata = decrypt(decodeBase64(answer.metadata), this.secret);
-                this.metadataVersion = answer.version;
-            } else if (answer.result === 'version-mismatch') {
-                if (answer.version > this.metadataVersion) {
-                    this.metadataVersion = answer.version;
+        this.metadataLock.inLock(async () => {
+            await backoff(async () => {
+                let updated = handler(this.metadata!); // Weird state if metadata is null - should never happen but here we are
+                const answer = await this.socket.emitWithAck('update-metadata', { sid: this.sessionId, expectedVersion: this.metadataVersion, metadata: encodeBase64(encrypt(updated, this.secret)) });
+                if (answer.result === 'success') {
                     this.metadata = decrypt(decodeBase64(answer.metadata), this.secret);
+                    this.metadataVersion = answer.version;
+                } else if (answer.result === 'version-mismatch') {
+                    if (answer.version > this.metadataVersion) {
+                        this.metadataVersion = answer.version;
+                        this.metadata = decrypt(decodeBase64(answer.metadata), this.secret);
+                    }
+                    throw new Error('Metadata version mismatch');
+                } else if (answer.result === 'error') {
+                    // Hard error - ignore
                 }
-                throw new Error('Metadata version mismatch');
-            } else if (answer.result === 'error') {
-                // Hard error - ignore
-            }
+            });
         });
     }
 
@@ -325,23 +330,25 @@ export class ApiSessionClient extends EventEmitter {
      */
     updateAgentState(handler: (metadata: AgentState) => AgentState) {
         logger.debugLargeJson('Updating agent state', this.agentState);
-        backoff(async () => {
-            let updated = handler(this.agentState || {});
-            const answer = await this.socket.emitWithAck('update-state', { sid: this.sessionId, expectedVersion: this.agentStateVersion, agentState: updated ? encodeBase64(encrypt(updated, this.secret)) : null });
-            if (answer.result === 'success') {
-                this.agentState = answer.agentState ? decrypt(decodeBase64(answer.agentState), this.secret) : null;
-                this.agentStateVersion = answer.version;
-                logger.debug('Agent state updated', this.agentState);
-            } else if (answer.result === 'version-mismatch') {
-                if (answer.version > this.agentStateVersion) {
-                    this.agentStateVersion = answer.version;
+        this.agentStateLock.inLock(async () => {
+            await backoff(async () => {
+                let updated = handler(this.agentState || {});
+                const answer = await this.socket.emitWithAck('update-state', { sid: this.sessionId, expectedVersion: this.agentStateVersion, agentState: updated ? encodeBase64(encrypt(updated, this.secret)) : null });
+                if (answer.result === 'success') {
                     this.agentState = answer.agentState ? decrypt(decodeBase64(answer.agentState), this.secret) : null;
+                    this.agentStateVersion = answer.version;
+                    logger.debug('Agent state updated', this.agentState);
+                } else if (answer.result === 'version-mismatch') {
+                    if (answer.version > this.agentStateVersion) {
+                        this.agentStateVersion = answer.version;
+                        this.agentState = answer.agentState ? decrypt(decodeBase64(answer.agentState), this.secret) : null;
+                    }
+                    throw new Error('Agent state version mismatch');
+                } else if (answer.result === 'error') {
+                    // console.error('Agent state update error', answer);
+                    // Hard error - ignore
                 }
-                throw new Error('Agent state version mismatch');
-            } else if (answer.result === 'error') {
-                // console.error('Agent state update error', answer);
-                // Hard error - ignore
-            }
+            });
         });
     }
 
