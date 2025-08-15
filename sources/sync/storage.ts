@@ -3,7 +3,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { DecryptedMessage, Session, Machine } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
-import { normalizeRawMessage } from "./typesRaw";
+import { normalizeRawMessage, NormalizedMessage } from "./typesRaw";
 import { isSessionActive, DISCONNECTED_TIMEOUT_MS } from '@/utils/sessionUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
@@ -50,9 +50,12 @@ interface StorageState {
     sessionMessages: Record<string, SessionMessages>;
     machines: Record<string, Machine>;
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+    socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+    socketLastConnectedAt: number | null;
+    socketLastDisconnectedAt: number | null;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyLoaded: () => void;
-    applyMessages: (sessionId: string, messages: DecryptedMessage[]) => void;
+    applyMessages: (sessionId: string, messages: NormalizedMessage[]) => void;
     applyMessagesLoaded: (sessionId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
@@ -60,6 +63,7 @@ interface StorageState {
     applyPurchases: (customerInfo: CustomerInfo) => void;
     recalculateOnline: () => void;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
+    setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') => void;
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus') => void;
@@ -136,6 +140,9 @@ export const storage = create<StorageState>()((set) => {
         sessionListViewData: null,
         sessionMessages: {},
         realtimeStatus: 'disconnected',
+        socketStatus: 'disconnected',
+        socketLastConnectedAt: null,
+        socketLastDisconnectedAt: null,
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
             const now = Date.now();
             const threshold = now - DISCONNECTED_TIMEOUT_MS;
@@ -294,7 +301,7 @@ export const storage = create<StorageState>()((set) => {
             };
             return result;
         }),
-        applyMessages: (sessionId: string, messages: DecryptedMessage[]) => set((state) => {
+        applyMessages: (sessionId: string, messages: NormalizedMessage[]) => set((state) => {
 
             // Resolve session messages state
             const existingSession = state.sessionMessages[sessionId] || {
@@ -308,8 +315,8 @@ export const storage = create<StorageState>()((set) => {
             const session = state.sessions[sessionId];
             const agentState = session?.agentState;
 
-            // Normalize messages
-            let normalizedMessages = messages.map(m => normalizeRawMessage(m.id, m.localId, m.createdAt, m.content)).filter(m => m !== null);
+            // Messages are already normalized, no need to process them again
+            const normalizedMessages = messages;
 
             // Run reducer with agentState
             const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState);
@@ -583,6 +590,24 @@ export const storage = create<StorageState>()((set) => {
             ...state,
             realtimeStatus: status
         })),
+        setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => {
+            const now = Date.now();
+            const updates: Partial<StorageState> = { 
+                socketStatus: status 
+            };
+            
+            // Update timestamp based on status
+            if (status === 'connected') {
+                updates.socketLastConnectedAt = now;
+            } else if (status === 'disconnected' || status === 'error') {
+                updates.socketLastDisconnectedAt = now;
+            }
+            
+            return {
+                ...state,
+                ...updates
+            };
+        }),
         updateSessionDraft: (sessionId: string, draft: string | null) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
@@ -783,4 +808,12 @@ export function useEntitlement(id: KnownEntitlements): boolean {
 
 export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected' | 'error' {
     return storage(useShallow((state) => state.realtimeStatus));
+}
+
+export function useSocketStatus() {
+    return storage(useShallow((state) => ({
+        status: state.socketStatus,
+        lastConnectedAt: state.socketLastConnectedAt,
+        lastDisconnectedAt: state.socketLastDisconnectedAt
+    })));
 }

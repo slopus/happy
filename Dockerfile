@@ -16,6 +16,7 @@ RUN yarn install --frozen-lockfile --ignore-engines
 
 # Copy the rest of the application code
 COPY sources ./sources
+COPY public ./public
 COPY * ./
 
 # Build the application for web in production mode

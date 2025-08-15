@@ -201,14 +201,12 @@ class Sync {
         };
         const encryptedRawRecord = encryption.encryptRawRecord(content);
 
-        // Add to messages
-        storage.getState().applyMessages(sessionId, [{
-            id: localId,
-            createdAt: Date.now(),
-            seq: null,
-            localId: localId,
-            content
-        }]);
+        // Add to messages - normalize the raw record
+        const createdAt = Date.now();
+        const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
+        if (normalizedMessage) {
+            storage.getState().applyMessages(sessionId, [normalizedMessage]);
+        }
 
         // Send message with optional permission mode and source identifier
         apiSocket.send('message', {
@@ -673,24 +671,28 @@ class Sync {
             this.sessionReceivedMessages.set(sessionId, eixstingMessages);
         }
 
-        // Decrypt messages
+        // Decrypt and normalize messages
         let start = Date.now();
-        let messages: DecryptedMessage[] = [];
+        let normalizedMessages: NormalizedMessage[] = [];
         for (const msg of [...data.messages as ApiMessage[]].reverse()) {
             if (eixstingMessages.has(msg.id)) {
                 continue;
             }
-            let m = encryption.decryptMessage(msg);
-            if (m) {
-                eixstingMessages.add(m.id);
-                messages.push(m);
+            let decrypted = encryption.decryptMessage(msg);
+            if (decrypted) {
+                eixstingMessages.add(decrypted.id);
+                // Normalize the decrypted message
+                let normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                if (normalized) {
+                    normalizedMessages.push(normalized);
+                }
             }
         }
-        console.log('Decrypted messages in', Date.now() - start, 'ms');
-        // console.log('messages', JSON.stringify(messages));
+        console.log('Decrypted and normalized messages in', Date.now() - start, 'ms');
+        // console.log('messages', JSON.stringify(normalizedMessages));
 
         // Apply to storage
-        storage.getState().applyMessages(sessionId, messages);
+        storage.getState().applyMessages(sessionId, normalizedMessages);
     }
 
     private registerPushToken = async () => {
@@ -795,7 +797,7 @@ class Sync {
 
                     // Update messages
                     if (lastMessage) {
-                        storage.getState().applyMessages(updateData.body.sid, [decrypted]);
+                        storage.getState().applyMessages(updateData.body.sid, [lastMessage]);
                     }
                 }
             }
@@ -943,6 +945,11 @@ async function syncInit(credentials: AuthCredentials, restore: boolean) {
     // Initialize socket connection
     const API_ENDPOINT = getServerUrl();
     apiSocket.initialize({ endpoint: API_ENDPOINT, token: credentials.token }, encryption);
+
+    // Wire socket status to storage
+    apiSocket.onStatusChange((status) => {
+        storage.getState().setSocketStatus(status);
+    });
 
     // Initialize sessions engine
     if (restore) {
