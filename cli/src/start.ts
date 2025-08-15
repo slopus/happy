@@ -82,6 +82,12 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     logger.infoDeveloper(`Session: ${response.id}`);
     logger.infoDeveloper(`Logs: ${logPath}`);
 
+    // Set initial agent state
+    session.updateAgentState((currentState) => ({
+        ...currentState,
+        controlledByUser: options.startingMode === 'local'
+    }));
+
     // Start caffeinate to prevent sleep on macOS
     const caffeinateStarted = startCaffeinate();
     if (caffeinateStarted) {
@@ -206,7 +212,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             session.sendSessionEvent({ type: 'switch', mode: newMode });
             session.updateAgentState((currentState) => ({
                 ...currentState,
-                controlledByUser: false
+                controlledByUser: newMode === 'local'
             }));
         },
         mcpServers: {},
