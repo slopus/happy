@@ -31,6 +31,8 @@ class ApiSocket {
     private encryption: ApiEncryption | null = null;
     private messageHandlers: Map<string, (data: any) => void> = new Map();
     private reconnectedListeners: Set<() => void> = new Set();
+    private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
+    private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
 
     //
     // Initialization
@@ -50,6 +52,8 @@ class ApiSocket {
         if (!this.config || this.socket) {
             return;
         }
+
+        this.updateStatus('connecting');
 
         this.socket = io(this.config.endpoint, {
             path: '/v1/updates',
@@ -72,6 +76,7 @@ class ApiSocket {
             this.socket.disconnect();
             this.socket = null;
         }
+        this.updateStatus('disconnected');
     }
 
     //
@@ -81,6 +86,13 @@ class ApiSocket {
     onReconnected = (listener: () => void) => {
         this.reconnectedListeners.add(listener);
         return () => this.reconnectedListeners.delete(listener);
+    };
+
+    onStatusChange = (listener: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => {
+        this.statusListeners.add(listener);
+        // Immediately notify with current status
+        listener(this.currentStatus);
+        return () => this.statusListeners.delete(listener);
     };
 
     //
@@ -172,12 +184,20 @@ class ApiSocket {
     // Private Methods
     //
 
+    private updateStatus(status: 'disconnected' | 'connecting' | 'connected' | 'error') {
+        if (this.currentStatus !== status) {
+            this.currentStatus = status;
+            this.statusListeners.forEach(listener => listener(status));
+        }
+    }
+
     private setupEventHandlers() {
         if (!this.socket) return;
 
         // Connection events
         this.socket.on('connect', () => {
             console.log('SyncSocket: Connected, recovered: ' + this.socket?.recovered);
+            this.updateStatus('connected');
             if (!this.socket?.recovered) {
                 this.reconnectedListeners.forEach(listener => listener());
             }
@@ -185,15 +205,18 @@ class ApiSocket {
 
         this.socket.on('disconnect', (reason) => {
             console.log('SyncSocket: Disconnected', reason);
+            this.updateStatus('disconnected');
         });
 
         // Error events
         this.socket.on('connect_error', (error) => {
             console.error('SyncSocket: Connection error', error);
+            this.updateStatus('error');
         });
 
         this.socket.on('error', (error) => {
             console.error('SyncSocket: Error', error);
+            this.updateStatus('error');
         });
 
         // Message handling

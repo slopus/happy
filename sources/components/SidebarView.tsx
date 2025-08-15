@@ -1,4 +1,4 @@
-import { useSessionListViewData, useEntitlement } from '@/sync/storage';
+import { useSessionListViewData, useEntitlement, useSocketStatus } from '@/sync/storage';
 import * as React from 'react';
 import { Text, View, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -7,26 +7,86 @@ import { Ionicons } from '@expo/vector-icons';
 import { usePathname, useRouter, useSegments } from 'expo-router';
 import { useHeaderHeight } from '@/utils/responsive';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
-import { PlusPlus } from './PlusPlus';
 import { Typography } from '@/constants/Typography';
+import { StatusDot } from './StatusDot';
 
 export const SidebarView = React.memo(() => {
     const sessionListViewData = useSessionListViewData();
     const safeArea = useSafeAreaInsets();
     const router = useRouter();
     const headerHeight = useHeaderHeight();
-    const isPro = __DEV__ || useEntitlement('pro');
+    const socketStatus = useSocketStatus();
+
+    // Get connection status styling (matching sessionUtils.ts pattern)
+    const getConnectionStatus = () => {
+        const { status } = socketStatus;
+        switch (status) {
+            case 'connected':
+                return { 
+                    color: '#34C759', 
+                    isPulsing: false,
+                    text: 'connected',
+                    textColor: '#34C759'
+                };
+            case 'connecting':
+                return { 
+                    color: '#007AFF', 
+                    isPulsing: true,
+                    text: 'connecting',
+                    textColor: '#007AFF'
+                };
+            case 'disconnected':
+                return { 
+                    color: '#999', 
+                    isPulsing: false,
+                    text: 'disconnected',
+                    textColor: '#999'
+                };
+            case 'error':
+                return { 
+                    color: '#FF3B30', 
+                    isPulsing: false,
+                    text: 'error',
+                    textColor: '#FF3B30'
+                };
+            default:
+                return { 
+                    color: '#8E8E93', 
+                    isPulsing: false,
+                    text: '',
+                    textColor: '#8E8E93'
+                };
+        }
+    };
 
     return (
         <View style={{ flex: 1, paddingTop: safeArea.top, borderRightWidth: 1, borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.05)' }}>
             <View style={{ height: headerHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 }}>
                 <View style={{ flex: 1 }} />
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <View style={{ flexDirection: 'column', alignItems: 'center' }}>
                     <Text style={{ 
                         fontSize: Platform.OS === 'web' ? 18 : 16,
                         ...Typography.logo()
                     }}>Happy Coder</Text>
-                    {isPro && <PlusPlus fontSize={Platform.OS === 'web' ? 18 : 16} />}
+                    {getConnectionStatus().text && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                            <StatusDot 
+                                color={getConnectionStatus().color}
+                                isPulsing={getConnectionStatus().isPulsing}
+                                size={6}
+                                style={{ marginRight: 4 }}
+                            />
+                            <Text style={{ 
+                                fontSize: 11, 
+                                color: getConnectionStatus().textColor,
+                                fontWeight: '500',
+                                lineHeight: 16,
+                                ...Typography.default()
+                            }}>
+                                {getConnectionStatus().text}
+                            </Text>
+                        </View>
+                    )}
                 </View>
                 <View style={{ flex: 1, alignItems: 'flex-end' }}>
                     <Pressable

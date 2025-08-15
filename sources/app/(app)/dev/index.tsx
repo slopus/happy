@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Switch, View } from 'react-native';
+import { Switch, View, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -7,7 +7,7 @@ import { ItemList } from '@/components/ItemList';
 import { useRouter } from 'expo-router';
 import Constants from 'expo-constants';
 import * as Application from 'expo-application';
-import { useLocalSettingMutable } from '@/sync/storage';
+import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { getServerUrl } from '@/sync/serverConfig';
@@ -16,6 +16,7 @@ export default function DevScreen() {
     const router = useRouter();
     const [debugMode, setDebugMode] = useLocalSettingMutable('debugMode');
     const [verboseLogging, setVerboseLogging] = React.useState(false);
+    const socketStatus = useSocketStatus();
     const anonymousId = sync.encryption!.anonID;
 
     const handleClearCache = async () => {
@@ -27,6 +28,57 @@ export default function DevScreen() {
         if (confirmed) {
             console.log('Cache cleared');
             Modal.alert('Success', 'Cache has been cleared');
+        }
+    };
+
+    // Helper function to format time ago
+    const formatTimeAgo = (timestamp: number | null): string => {
+        if (!timestamp) return '';
+        
+        const now = Date.now();
+        const diff = now - timestamp;
+        const seconds = Math.floor(diff / 1000);
+        const minutes = Math.floor(seconds / 60);
+        const hours = Math.floor(minutes / 60);
+        const days = Math.floor(hours / 24);
+
+        if (seconds < 10) return 'Just now';
+        if (seconds < 60) return `${seconds}s ago`;
+        if (minutes < 60) return `${minutes}m ago`;
+        if (hours < 24) return `${hours}h ago`;
+        if (days < 7) return `${days}d ago`;
+        
+        return new Date(timestamp).toLocaleDateString();
+    };
+
+    // Helper function to get socket status subtitle
+    const getSocketStatusSubtitle = (): string => {
+        const { status, lastConnectedAt, lastDisconnectedAt } = socketStatus;
+        
+        if (status === 'connected' && lastConnectedAt) {
+            return `Connected ${formatTimeAgo(lastConnectedAt)}`;
+        } else if ((status === 'disconnected' || status === 'error') && lastDisconnectedAt) {
+            return `Last connected ${formatTimeAgo(lastDisconnectedAt)}`;
+        } else if (status === 'connecting') {
+            return 'Connecting to server...';
+        }
+        
+        return 'No connection info';
+    };
+
+    // Socket status indicator component
+    const SocketStatusIndicator = () => {
+        switch (socketStatus.status) {
+            case 'connected':
+                return <Ionicons name="checkmark-circle" size={22} color="#34C759" />;
+            case 'connecting':
+                return <ActivityIndicator size="small" color="#007AFF" />;
+            case 'error':
+                return <Ionicons name="close-circle" size={22} color="#FF3B30" />;
+            case 'disconnected':
+                return <Ionicons name="close-circle" size={22} color="#FF9500" />;
+            default:
+                return <Ionicons name="help-circle" size={22} color="#8E8E93" />;
         }
     };
 
@@ -241,6 +293,13 @@ export default function DevScreen() {
                 <Item 
                     title="API Endpoint"
                     detail={getServerUrl()}
+                />
+                <Item 
+                    title="Socket.IO Status"
+                    subtitle={getSocketStatusSubtitle()}
+                    detail={socketStatus.status}
+                    rightElement={<SocketStatusIndicator />}
+                    showChevron={false}
                 />
             </ItemGroup>
         </ItemList>
