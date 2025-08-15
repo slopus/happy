@@ -54,7 +54,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);
-    
+
     // Extract SDK metadata in background and update session when ready
     extractSDKMetadataAsync(async (sdkMetadata) => {
         logger.debug('[start] SDK metadata extracted, updating session:', sdkMetadata);
@@ -190,12 +190,12 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
         // Check for special commands before processing
         const specialCommand = parseSpecialCommand(message.content.text);
-        
+
         if (specialCommand.type === 'compact') {
             logger.debug('[start] Detected /compact command');
             // Send "Compaction started" event immediately
             session.sendSessionEvent({ type: 'message', message: 'Compaction started' });
-            
+
             // Push message with special flag to ensure isolated processing
             const enhancedMode: EnhancedMode = {
                 permissionMode: messagePermissionMode || 'default',
@@ -210,17 +210,22 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             logger.debugLargeJson('[start] /compact command pushed to queue:', message);
             return;
         }
-        
+
         if (specialCommand.type === 'clear') {
             logger.debug('[start] Detected /clear command');
-            // Clear session ID locally
-            if (claudeSession) {
-                claudeSession.clearSessionId();
-            }
-            // Send confirmation event
-            session.sendSessionEvent({ type: 'message', message: 'Session cleared' });
-            logger.debug('[start] /clear command processed - session cleared');
-            return; // Don't push to queue
+            // Push message with special flag to ensure isolated processing
+            const enhancedMode: EnhancedMode = {
+                permissionMode: messagePermissionMode || 'default',
+                model: messageModel,
+                fallbackModel: messageFallbackModel,
+                customSystemPrompt: messageCustomSystemPrompt,
+                appendSystemPrompt: messageAppendSystemPrompt,
+                allowedTools: messageAllowedTools,
+                disallowedTools: messageDisallowedTools
+            };
+            messageQueue.pushIsolateAndClear(specialCommand.originalMessage || message.content.text, enhancedMode);
+            logger.debugLargeJson('[start] /compact command pushed to queue:', message);
+            return;
         }
 
         // Push with resolved permission mode, model, system prompts, and tools
