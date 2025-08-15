@@ -193,10 +193,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
         if (specialCommand.type === 'compact') {
             logger.debug('[start] Detected /compact command');
-            // Send "Compaction started" event immediately
-            session.sendSessionEvent({ type: 'message', message: 'Compaction started' });
-
-            // Push message with special flag to ensure isolated processing
             const enhancedMode: EnhancedMode = {
                 permissionMode: messagePermissionMode || 'default',
                 model: messageModel,
@@ -213,7 +209,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
         if (specialCommand.type === 'clear') {
             logger.debug('[start] Detected /clear command');
-            // Push message with special flag to ensure isolated processing
             const enhancedMode: EnhancedMode = {
                 permissionMode: messagePermissionMode || 'default',
                 model: messageModel,
