@@ -132,4 +132,5 @@ export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralDaemonStatusUpdateSchema,
 ]);
 
+export type ApiEphemeralActivityUpdate = z.infer<typeof ApiEphemeralActivityUpdateSchema>;
 export type ApiEphemeralUpdate = z.infer<typeof ApiEphemeralUpdateSchema>;

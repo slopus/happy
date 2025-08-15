@@ -224,14 +224,14 @@ export const storage = create<StorageState>()((set) => {
                     const currentRealtimeSessionId = getCurrentRealtimeSessionId();
                     const voiceSession = getVoiceSession();
                     
-                    console.log('[REALTIME DEBUG] Permission check:', {
-                        currentRealtimeSessionId,
-                        sessionId: session.id,
-                        match: currentRealtimeSessionId === session.id,
-                        hasVoiceSession: !!voiceSession,
-                        oldRequests: Object.keys(oldSession?.agentState?.requests || {}),
-                        newRequests: Object.keys(newSession.agentState?.requests || {})
-                    });
+                    // console.log('[REALTIME DEBUG] Permission check:', {
+                    //     currentRealtimeSessionId,
+                    //     sessionId: session.id,
+                    //     match: currentRealtimeSessionId === session.id,
+                    //     hasVoiceSession: !!voiceSession,
+                    //     oldRequests: Object.keys(oldSession?.agentState?.requests || {}),
+                    //     newRequests: Object.keys(newSession.agentState?.requests || {})
+                    // });
                     
                     if (currentRealtimeSessionId === session.id && voiceSession) {
                         const oldRequests = oldSession?.agentState?.requests || {};
@@ -242,7 +242,7 @@ export const storage = create<StorageState>()((set) => {
                             if (!oldRequests[requestId]) {
                                 // This is a NEW permission request
                                 const toolName = request.tool;
-                                console.log('[REALTIME DEBUG] Sending permission notification for:', toolName);
+                                // console.log('[REALTIME DEBUG] Sending permission notification for:', toolName);
                                 voiceSession.sendTextMessage(
                                     `Claude is requesting permission to use the ${toolName} tool`
                                 );
@@ -318,13 +318,13 @@ export const storage = create<StorageState>()((set) => {
             // Send realtime updates for new messages if this is the active realtime session
             const currentRealtimeSessionId = getCurrentRealtimeSessionId();
             const voiceSession = getVoiceSession();
-            console.log('[REALTIME DEBUG] Checking realtime updates:', {
-                currentRealtimeSessionId,
-                sessionId,
-                match: currentRealtimeSessionId === sessionId,
-                hasVoiceSession: !!voiceSession,
-                processedMessagesCount: processedMessages.length
-            });
+            // console.log('[REALTIME DEBUG] Checking realtime updates:', {
+            //     currentRealtimeSessionId,
+            //     sessionId,
+            //     match: currentRealtimeSessionId === sessionId,
+            //     hasVoiceSession: !!voiceSession,
+            //     processedMessagesCount: processedMessages.length
+            // });
             
             if (currentRealtimeSessionId === sessionId && voiceSession && processedMessages.length > 0) {
                 // Filter for agent messages and tool calls only
@@ -332,11 +332,11 @@ export const storage = create<StorageState>()((set) => {
                     m.kind === 'agent-text' || m.kind === 'tool-call'
                 );
                 
-                console.log('[REALTIME DEBUG] Agent messages found:', agentMessages.length, agentMessages.map(m => ({
-                    kind: m.kind,
-                    text: m.kind === 'agent-text' ? m.text : undefined,
-                    tool: m.kind === 'tool-call' ? m.tool?.name : undefined
-                })));
+                // console.log('[REALTIME DEBUG] Agent messages found:', agentMessages.length, agentMessages.map(m => ({
+                //     kind: m.kind,
+                //     text: m.kind === 'agent-text' ? m.text : undefined,
+                //     tool: m.kind === 'tool-call' ? m.tool?.name : undefined
+                // })));
                 
                 if (agentMessages.length > 0) {
                     // Use the existing messagesToPrompt function to format properly
@@ -345,7 +345,7 @@ export const storage = create<StorageState>()((set) => {
                         excludeToolCalls: false
                     });
                     
-                    console.log('[REALTIME DEBUG] Sending context update:', contextUpdate);
+                    // console.log('[REALTIME DEBUG] Sending context update:', contextUpdate);
                     
                     if (contextUpdate.trim()) {
                         voiceSession.sendContextualUpdate(contextUpdate);
