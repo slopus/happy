@@ -35,6 +35,8 @@ import { StatusDot } from '@/components/StatusDot';
 import { ChatFooter } from '@/components/ChatFooter';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { useDraft } from '@/hooks/useDraft';
+import { PlaceholderContainerView } from '@/components/PlaceholderContainerView';
+import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 
 
 export default React.memo(() => {
@@ -94,16 +96,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
 
     // Memoize header-dependent styles to prevent re-renders
     const headerDependentStyles = React.useMemo(() => ({
-        emptyMessageContainer: {
-            position: 'absolute' as const,
-            bottom: 150,  // Fixed distance from bottom
-            left: 0,
-            right: 0,
-            alignItems: 'center' as const,
-        },
-        emptyMessageWrapper: {
-            flex: 1,
-            position: 'relative' as const,
+        contentContainer: {
+            flex: 1
         },
         flatListStyle: {
             marginTop: Platform.OS === 'web' ? headerHeight + safeArea.top : 0
@@ -146,8 +140,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     }, [sessionId]);
 
     const ListHeader = React.useMemo(() => {
-        return <View style={{ flexDirection: 'row', alignItems: 'center', height: 32 }} />;
-    }, []);
+        return <View style={{ flexDirection: 'row', alignItems: 'center', height: (Platform.OS === 'web' ? 0 : headerHeight + safeArea.top) + 32 }} />;
+    }, [headerHeight, safeArea.top]);
 
     // Memoize FlatList props
     const keyExtractor = useCallback((item: any) => item.id, []);
@@ -249,9 +243,9 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                                         marginTop: 2,
                                         marginRight: 4
                                     }}>
-                                        <StatusDot 
-                                            color={session.agentState?.controlledByUser !== false ? '#34C759' : sessionStatus.statusDotColor} 
-                                            isPulsing={session.agentState?.controlledByUser !== false ? false : sessionStatus.isPulsing} 
+                                        <StatusDot
+                                            color={session.agentState?.controlledByUser !== false ? '#34C759' : sessionStatus.statusDotColor}
+                                            isPulsing={session.agentState?.controlledByUser !== false ? false : sessionStatus.isPulsing}
                                         />
                                     </View>
                                     <Text style={{
@@ -261,7 +255,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                                         lineHeight: 16,
                                         ...Typography.default()
                                     }}>
-                                        {session.agentState?.controlledByUser !== false 
+                                        {session.agentState?.controlledByUser !== false
                                             ? 'terminal control - permission prompts are not displayed'
                                             : (sessionStatus.shouldShowStatus ? sessionStatus.statusText : lastSeenText)}
                                     </Text>
@@ -307,27 +301,22 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             {/* Main content area - no padding since header is overlay */}
             <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 32 : 0) }}>
                 <AgentContentView>
-                    <View style={headerDependentStyles.emptyMessageWrapper}>
+                    <View style={headerDependentStyles.contentContainer}>
                         <Deferred>
-                            {messagesRecentFirst.length === 0 && isLoaded && (
-                                <View style={headerDependentStyles.emptyMessageWrapper}>
-                                    <Pressable
-                                        style={headerDependentStyles.emptyMessageContainer}
-                                        onPress={() => Keyboard.dismiss()}
-                                    >
+                            {messagesRecentFirst.length === 0 && (
+                                <PlaceholderContainerView
+                                    style={{ flex: 1 }}
+                                    contentContainerStyle={{
+                                        paddingTop: headerHeight + safeArea.top,
+                                        paddingHorizontal: 48
+                                    }}
+                                >
+                                    {isLoaded ? (
                                         <EmptyMessages session={session} />
-                                    </Pressable>
-                                </View>
-                            )}
-                            {messagesRecentFirst.length === 0 && !isLoaded && (
-                                <View style={headerDependentStyles.emptyMessageWrapper}>
-                                    <Pressable
-                                        style={headerDependentStyles.emptyMessageContainer}
-                                        onPress={() => Keyboard.dismiss()}
-                                    >
+                                    ) : (
                                         <ActivityIndicator size="large" color="#C7C7CC" />
-                                    </Pressable>
-                                </View>
+                                    )}
+                                </PlaceholderContainerView>
                             )}
                             {messagesRecentFirst.length > 0 && (
                                 <FlatList
@@ -335,7 +324,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                                     data={messagesRecentFirst}
                                     inverted={true}
                                     keyExtractor={keyExtractor}
-                                    style={[headerDependentStyles.emptyMessageWrapper, headerDependentStyles.flatListStyle]}
+                                    style={[headerDependentStyles.flatListStyle]}
                                     maintainVisibleContentPosition={maintainVisibleContentPosition}
                                     keyboardShouldPersistTaps="handled"
                                     keyboardDismissMode="none"
