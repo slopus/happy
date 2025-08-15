@@ -249,16 +249,21 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                                         marginTop: 2,
                                         marginRight: 4
                                     }}>
-                                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                                        <StatusDot 
+                                            color={session.agentState?.controlledByUser !== false ? '#34C759' : sessionStatus.statusDotColor} 
+                                            isPulsing={session.agentState?.controlledByUser !== false ? false : sessionStatus.isPulsing} 
+                                        />
                                     </View>
                                     <Text style={{
                                         fontSize: 12,
-                                        color: sessionStatus.statusColor,
+                                        color: session.agentState?.controlledByUser !== false ? '#34C759' : sessionStatus.statusColor,
                                         fontWeight: sessionStatus.shouldShowStatus ? '500' : '400',
                                         lineHeight: 16,
                                         ...Typography.default()
                                     }}>
-                                        {sessionStatus.shouldShowStatus ? sessionStatus.statusText : lastSeenText}
+                                        {session.agentState?.controlledByUser !== false 
+                                            ? 'terminal control - permission prompts are not displayed'
+                                            : (sessionStatus.shouldShowStatus ? sessionStatus.statusText : lastSeenText)}
                                     </Text>
                                 </View>
                             </View>
