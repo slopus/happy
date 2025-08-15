@@ -1,6 +1,6 @@
 {
   "name": "handy",
-  "main": "expo-router/entry",
+  "main": "index",
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",

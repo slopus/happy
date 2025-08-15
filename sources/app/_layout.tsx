@@ -58,9 +58,7 @@ export default function RootLayout() {
     const [initState, setInitState] = React.useState<{ credentials: AuthCredentials | null } | null>(null);
     React.useEffect(() => {
         (async () => {
-
             try {
-
                 await Fonts.loadAsync({
                     // Keep existing font
                     SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
