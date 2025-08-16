@@ -9,7 +9,7 @@ import { authGetToken } from "@/auth/authGetToken";
 import { useUpdates } from "@/hooks/useUpdates";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
-import { Stack, useRouter } from "expo-router";
+import { router, Stack, useRouter } from "expo-router";
 import { useSessionListViewData, useEntitlement, useSocketStatus } from "@/sync/storage";
 import { getRandomBytesAsync } from "expo-crypto";
 import { useIsTablet, useIsLandscape } from "@/utils/responsive";
@@ -20,58 +20,59 @@ import { getServerInfo } from "@/sync/serverConfig";
 import { Modal } from '@/modal';
 import * as Clipboard from 'expo-clipboard';
 import { StatusDot } from '@/components/StatusDot';
+import { FAB } from "@/components/FAB";
 
 // Header title component with subtitle
 function HeaderTitleWithSubtitle({ subtitle }: { subtitle?: string }) {
     const socketStatus = useSocketStatus();
-    
+
     // Get connection status styling (matching sessionUtils.ts pattern)
     const getConnectionStatus = () => {
         const { status } = socketStatus;
         switch (status) {
             case 'connected':
-                return { 
-                    color: '#34C759', 
+                return {
+                    color: '#34C759',
                     isPulsing: false,
                     text: 'connected',
                     textColor: '#34C759'
                 };
             case 'connecting':
-                return { 
-                    color: '#007AFF', 
+                return {
+                    color: '#007AFF',
                     isPulsing: true,
                     text: 'connecting',
                     textColor: '#007AFF'
                 };
             case 'disconnected':
-                return { 
-                    color: '#999', 
+                return {
+                    color: '#999',
                     isPulsing: false,
                     text: 'disconnected',
                     textColor: '#999'
                 };
             case 'error':
-                return { 
-                    color: '#FF3B30', 
+                return {
+                    color: '#FF3B30',
                     isPulsing: false,
                     text: 'connection error',
                     textColor: '#FF3B30'
                 };
             default:
-                return { 
-                    color: '#8E8E93', 
+                return {
+                    color: '#8E8E93',
                     isPulsing: false,
                     text: '',
                     textColor: '#8E8E93'
                 };
         }
     };
-    
+
     const hasCustomSubtitle = !!subtitle;
     const connectionStatus = getConnectionStatus();
     const showConnectionStatus = !hasCustomSubtitle && connectionStatus.text;
     const titleFontSize = (hasCustomSubtitle || showConnectionStatus) ? 20 : 24;
-    
+
     return (
         <View style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: titleFontSize, color: '#000', ...Typography.logo() }}>
@@ -84,14 +85,14 @@ function HeaderTitleWithSubtitle({ subtitle }: { subtitle?: string }) {
             )}
             {showConnectionStatus && (
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
-                    <StatusDot 
-                        color={connectionStatus.color} 
+                    <StatusDot
+                        color={connectionStatus.color}
                         isPulsing={connectionStatus.isPulsing}
                         size={6}
                         style={{ marginRight: 4 }}
                     />
-                    <Text style={{ 
-                        fontSize: 12, 
+                    <Text style={{
+                        fontSize: 12,
                         color: connectionStatus.textColor,
                         fontWeight: '500',
                         lineHeight: 16,
@@ -120,41 +121,9 @@ function Authenticated() {
     const { updateAvailable, reloadApp } = useUpdates();
     const isTablet = useIsTablet();
 
-    const auth = useAuth();
-    const [showLogoutButton, setShowLogoutButton] = React.useState(false);
-    
-    // Show logout button after 2 seconds if still loading
-    React.useEffect(() => {
-        if (sessionListViewData === null) {
-            const timer = setTimeout(() => {
-                setShowLogoutButton(true);
-            }, 2000);
-            
-            return () => clearTimeout(timer);
-        } else {
-            setShowLogoutButton(false);
-        }
-    }, [sessionListViewData]);
-    
-    const handleCopyAndLogout = async () => {
-        const currentSecret = auth.credentials?.secret || '';
-        
-        const confirmed = await Modal.confirm(
-            'Copy backup login phrase and logout',
-            'This will copy your backup phrase to clipboard and log you out. Make sure to save your backup phrase in a secure place!',
-            { confirmText: 'Copy and Logout', destructive: true }
-        );
-        
-        if (confirmed) {
-            try {
-                await Clipboard.setStringAsync(currentSecret);
-                Modal.alert('Success', 'Backup phrase copied to clipboard. Logging out now...');
-                auth.logout();
-            } catch (error) {
-                Modal.alert('Error', 'Failed to copy backup phrase. Please try again.');
-            }
-        }
-    };
+    const handleNewSession = () => {
+        router.push('/new-session');
+    }
 
     // Empty state in tabled view
     if (isTablet) {
@@ -169,16 +138,6 @@ function Authenticated() {
                     {sessionListViewData === null && (
                         <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}>
                             <ActivityIndicator />
-                            {showLogoutButton && (
-                                <View style={{ marginTop: 32 }}>
-                                    <RoundButton
-                                        title="Copy backup login phrase and logout"
-                                        onPress={handleCopyAndLogout}
-                                        display="inverted"
-                                        size="normal"
-                                    />
-                                </View>
-                            )}
                         </View>
                     )}
                     {sessionListViewData !== null && sessionListViewData.length === 0 && (
@@ -196,22 +155,14 @@ function Authenticated() {
                     options={{
                         headerShown: true,
                         headerTitle: () => <HeaderTitleWithSubtitle />,
-                        headerRight: () => <HeaderRight />
+                        headerLeft: () => <HeaderLeft />,
+                        // headerRight: () => <HeaderRight />
                     }}
                 />
                 <View className="flex-1 items-center justify-center mb-8">
                     <ActivityIndicator size="small" color="#000000" />
-                    {showLogoutButton && (
-                    <View style={{ marginTop: 32, paddingHorizontal: 32, width: '100%', maxWidth: 300 }}>
-                        <RoundButton
-                            title="Copy backup login phrase and logout"
-                            onPress={handleCopyAndLogout}
-                            display="inverted"
-                            size="normal"
-                        />
-                    </View>
-                )}
                 </View>
+                <FAB onPress={handleNewSession} />
             </>
         )
     }
@@ -226,7 +177,7 @@ function Authenticated() {
                     headerShown: true,
                     headerTitle: () => <HeaderTitleWithSubtitle />,
                     headerLeft: () => <HeaderLeft />,
-                    headerRight: () => <HeaderRight />
+                    // headerRight: () => <HeaderRight />
                 }}
             />
             <View className="flex-1">
@@ -235,6 +186,7 @@ function Authenticated() {
                     <SessionsList />
                 )}
             </View>
+            <FAB onPress={handleNewSession} />
         </>
     );
 }
@@ -368,7 +320,7 @@ function HeaderLeft() {
 
 function HeaderRight() {
     const router = useRouter();
-    
+
     return (
         <Pressable
             onPress={() => router.push('/new-session')}
