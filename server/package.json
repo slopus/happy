@@ -8,12 +8,13 @@
   "scripts": {
     "build": "tsc --noEmit",
     "start": "tsx ./sources/main.ts",
-    "dev": "tsx --env-file=.env.example ./sources/main.ts",
+    "dev": "tsx --env-file=.env --env-file=.env.example ./sources/main.ts",
     "test": "vitest run",
     "migrate": "dotenv -e .env.example -- prisma migrate dev",
     "generate": "prisma generate",
     "postinstall": "prisma generate",
-    "db": "docker run -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=handy -v $(pwd)/.pgdata:/var/lib/postgresql/data -p 5432:5432 postgres"
+    "db": "docker run -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=handy -v $(pwd)/.pgdata:/var/lib/postgresql/data -p 5432:5432 postgres",
+    "redis": "docker run -d -p 6379:6379 redis"
   },
   "devDependencies": {
     "@types/chalk": "^2.2.0",
