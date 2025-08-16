@@ -686,7 +686,14 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 }}
                                 disabled={!hasText}
                             >
-                                <Octicons name="arrow-up" size={16} color="#fff" />
+                                <Octicons 
+                                    name="arrow-up" 
+                                    size={16} 
+                                    color="#fff" 
+                                    style={{
+                                        marginTop: Platform.OS === 'web' ? 2 : 0
+                                    }}
+                                />
                             </Pressable>
                         </Animated.View>
                     </View>
