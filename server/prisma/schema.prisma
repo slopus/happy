@@ -29,11 +29,22 @@ model Account {
     Session             Session[]
     AccountPushToken    AccountPushToken[]
     TerminalAuthRequest TerminalAuthRequest[]
+    AccountAuthRequest  AccountAuthRequest[]
     UsageReport         UsageReport[]
     Machine             Machine[]
 }
 
 model TerminalAuthRequest {
+    id                String   @id @default(cuid())
+    publicKey         String   @unique
+    response          String?
+    responseAccountId String?
+    responseAccount   Account? @relation(fields: [responseAccountId], references: [id])
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+}
+
+model AccountAuthRequest {
     id                String   @id @default(cuid())
     publicKey         String   @unique
     response          String?

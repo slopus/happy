@@ -292,63 +292,78 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         return reply.send({ success: true });
     });
 
-    // OpenAI Realtime ephemeral token generation
-    typed.post('/v1/openai/realtime-token', {
-        preHandler: app.authenticate,
+    // Account auth request
+    typed.post('/v1/auth/account/request', {
         schema: {
+            body: z.object({
+                publicKey: z.string(),
+            }),
             response: {
-                200: z.object({
-                    token: z.string()
-                }),
-                500: z.object({
-                    error: z.string()
+                200: z.union([z.object({
+                    state: z.literal('requested'),
+                }), z.object({
+                    state: z.literal('authorized'),
+                    token: z.string(),
+                    response: z.string()
+                })]),
+                401: z.object({
+                    error: z.literal('Invalid public key')
                 })
             }
         }
     }, async (request, reply) => {
-        try {
-            // Check if OpenAI API key is configured on server
-            const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-            if (!OPENAI_API_KEY) {
-                return reply.code(500).send({
-                    error: 'OpenAI API key not configured on server'
-                });
-            }
+        const publicKey = privacyKit.decodeBase64(request.body.publicKey);
+        const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
+        if (!isValid) {
+            return reply.code(401).send({ error: 'Invalid public key' });
+        }
 
-            // Generate ephemeral token from OpenAI
-            const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${OPENAI_API_KEY}`,
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4o-realtime-preview-2024-12-17',
-                    voice: 'verse',
-                }),
-            });
+        const answer = await db.accountAuthRequest.upsert({
+            where: { publicKey: privacyKit.encodeHex(publicKey) },
+            update: {},
+            create: { publicKey: privacyKit.encodeHex(publicKey) }
+        });
 
-            if (!response.ok) {
-                throw new Error(`OpenAI API error: ${response.status}`);
-            }
-
-            const data = await response.json() as {
-                client_secret: {
-                    value: string;
-                    expires_at: number;
-                };
-                id: string;
-            };
-
+        if (answer.response && answer.responseAccountId) {
+            const token = await tokenGenerator.new({ user: answer.responseAccountId! });
             return reply.send({
-                token: data.client_secret.value
-            });
-        } catch (error) {
-            log({ module: 'openai', level: 'error' }, 'Failed to generate ephemeral token', error);
-            return reply.code(500).send({
-                error: 'Failed to generate ephemeral token'
+                state: 'authorized',
+                token: token,
+                response: answer.response
             });
         }
+
+        return reply.send({ state: 'requested' });
+    });
+
+    // Approve account auth request
+    typed.post('/v1/auth/account/response', {
+        preHandler: app.authenticate,
+        schema: {
+            body: z.object({
+                response: z.string(),
+                publicKey: z.string()
+            })
+        }
+    }, async (request, reply) => {
+        const publicKey = privacyKit.decodeBase64(request.body.publicKey);
+        const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
+        if (!isValid) {
+            return reply.code(401).send({ error: 'Invalid public key' });
+        }
+        const authRequest = await db.accountAuthRequest.findUnique({
+            where: { publicKey: privacyKit.encodeHex(publicKey) }
+        });
+        if (!authRequest) {
+            return reply.code(404).send({ error: 'Request not found' });
+        }
+        if (!authRequest.response) {
+            await db.accountAuthRequest.update({
+                where: { id: authRequest.id },
+                data: { response: request.body.response, responseAccountId: request.user.id }
+            });
+        }
+        return reply.send({ success: true });
     });
 
     // Sessions API
