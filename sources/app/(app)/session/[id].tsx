@@ -5,7 +5,7 @@ import { View, FlatList, Text, ActivityIndicator, Platform, useWindowDimensions 
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
 import { useRouter } from "expo-router";
-import { getSessionName, useSessionStatus, getSessionAvatarId } from "@/utils/sessionUtils";
+import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from "@/utils/sessionUtils";
 import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages, useSessionUsage, useSettings, useSetting, useDaemonStatusByMachine, useRealtimeStatus, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -27,7 +27,7 @@ import { StatusBar } from 'expo-status-bar';
 import { AgentContentView } from '@/components/AgentContentView';
 import { isRunningOnMac } from '@/utils/platform';
 import { Modal } from '@/modal';
-import { Header } from '@/components/navigation/Header';
+import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { trackMessageSent } from '@/track';
 import { tracking } from '@/track';
 import { useAutocompleteSession } from '@/hooks/useAutocompleteSession';
@@ -330,83 +330,14 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     right: 0,
                     zIndex: 1000
                 }}>
-                    <Header
-                        title={
-                            <View style={{ alignItems: 'center', flexGrow: 1, flexBasis: 0, paddingHorizontal: 8 }}>
-                                <Text
-                                    numberOfLines={1}
-                                    ellipsizeMode="tail"
-                                    style={{
-                                        fontSize: 16,
-                                        fontWeight: '600',
-                                        color: sessionStatus.isConnected ? '#000' : '#8E8E93',
-                                        marginBottom: 2,
-                                        width: '100%',
-                                        textAlign: 'center',
-                                        ...Typography.default('semiBold')
-                                    }}
-                                >
-                                    {getSessionName(session)}
-                                </Text>
-                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                    <View style={{
-                                        alignItems: 'center',
-                                        justifyContent: 'center',
-                                        height: 16,
-                                        marginTop: 2,
-                                        marginRight: 4
-                                    }}>
-                                        <StatusDot
-                                            color={session.agentState?.controlledByUser !== false ? '#34C759' : sessionStatus.statusDotColor}
-                                            isPulsing={session.agentState?.controlledByUser !== false ? false : sessionStatus.isPulsing}
-                                        />
-                                    </View>
-                                    <Text style={{
-                                        fontSize: 12,
-                                        color: session.agentState?.controlledByUser !== false ? '#34C759' : sessionStatus.statusColor,
-                                        fontWeight: sessionStatus.shouldShowStatus ? '500' : '400',
-                                        lineHeight: 16,
-                                        ...Typography.default()
-                                    }}>
-                                        {session.agentState?.controlledByUser !== false
-                                            ? 'terminal control - permission prompts are not displayed'
-                                            : (sessionStatus.shouldShowStatus ? sessionStatus.statusText : lastSeenText)}
-                                    </Text>
-                                </View>
-                            </View>
-                        }
-                        headerLeft={() => (
-                            <Pressable
-                                onPress={() => router.back()}
-                                hitSlop={15}
-                            >
-                                <Ionicons
-                                    name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
-                                    size={Platform.select({ ios: 28, default: 24 })}
-                                    color="#000"
-                                />
-                            </Pressable>
-                        )}
-                        headerRight={() => (
-                            <Pressable
-                                onPress={() => router.push(`/session/${sessionId}/info`)}
-                                hitSlop={15}
-                                style={{
-                                    width: 44,
-                                    height: 44,
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    marginRight: Platform.select({ ios: -8, default: -8 }),
-                                }}
-                            >
-                                <Avatar id={getSessionAvatarId(session)} size={32} monochrome={!sessionStatus.isConnected} />
-                            </Pressable>
-                        )}
-                        headerShadowVisible={false}
-                    // headerStyle={{
-                    //     borderBottomWidth: 0.5,
-                    //     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
-                    // }}
+                    <ChatHeaderView
+                        title={getSessionName(session)}
+                        subtitle={session.metadata?.path ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir) : undefined}
+                        onBackPress={() => router.back()}
+                        onAvatarPress={() => router.push(`/session/${sessionId}/info`)}
+                        avatarId={getSessionAvatarId(session)}
+                        tintColor={sessionStatus.isConnected ? '#000' : '#8E8E93'}
+                        isConnected={sessionStatus.isConnected}
                     />
                 </View>
             )}
