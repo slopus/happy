@@ -10,7 +10,7 @@ import { useUpdates } from "@/hooks/useUpdates";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
 import { router, Stack, useRouter } from "expo-router";
-import { useSessionListViewData, useEntitlement, useSocketStatus } from "@/sync/storage";
+import { useSessionListViewData, useEntitlement, useSocketStatus, useSetting } from "@/sync/storage";
 import { getRandomBytesAsync } from "expo-crypto";
 import { useIsTablet, useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
@@ -120,6 +120,7 @@ function Authenticated() {
     const sessionListViewData = useSessionListViewData();
     const { updateAvailable, reloadApp } = useUpdates();
     const isTablet = useIsTablet();
+    const isExperimental = useSetting('experiments');
 
     const handleNewSession = () => {
         router.push('/new-session');
@@ -162,7 +163,9 @@ function Authenticated() {
                 <View className="flex-1 items-center justify-center mb-8">
                     <ActivityIndicator size="small" color="#000000" />
                 </View>
-                <FAB onPress={handleNewSession} />
+                {isExperimental && (
+                    <FAB onPress={handleNewSession} />
+                )}
             </>
         )
     }
@@ -186,7 +189,9 @@ function Authenticated() {
                     <SessionsList />
                 )}
             </View>
-            <FAB onPress={handleNewSession} />
+            {isExperimental && (
+                <FAB onPress={handleNewSession} />
+            )}
         </>
     );
 }
