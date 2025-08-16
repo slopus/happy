@@ -1,51 +1,49 @@
 import { useHeaderHeight } from '@/utils/responsive';
 import * as React from 'react';
-import { Platform, ViewStyle, KeyboardAvoidingView as RNKeyboardAvoidingView, View, Keyboard } from 'react-native';
-import { KeyboardAvoidingView as KCKeyboardAvoidingView, useKeyboardState, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { View } from 'react-native';
+import { ScrollView } from 'react-native-gesture-handler';
+import { useKeyboardState } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 interface AgentContentViewProps {
-    children: React.ReactNode;
+    input?: React.ReactNode | null;
+    content?: React.ReactNode | null;
+    placeholder?: React.ReactNode | null;
 }
 
-export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ children }) => {
-
-    // Use keyboard-controller for iOS, native for Android
-    if (Platform.OS === 'ios') {
-        return (
-            <KCKeyboardAvoidingView
-                style={[{ flex: 1 }]}
-                behavior="translate-with-padding"
-                keyboardVerticalOffset={0}
-            >
-                {children}
-            </KCKeyboardAvoidingView>
-        );
-    }
-
-    // Use native KeyboardAvoidingView for Android
-    return (
-        <FallbackKeyboardAvoidingView>
-            {children}
-        </FallbackKeyboardAvoidingView>
-    );
-});
-
-const FallbackKeyboardAvoidingView: React.FC<AgentContentViewProps> = React.memo(({
-    children,
-}) => {
+export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ input, content, placeholder }) => {
     const safeArea = useSafeAreaInsets();
-    const height = useReanimatedKeyboardAnimation();
-    const animatedStyle = useAnimatedStyle(() => ({
-        paddingTop: height.progress.value === 1 ? height.height.value : 0,
-        transform: [{ translateY: height.height.value + safeArea.bottom * height.progress.value }]
-    }), [safeArea.bottom]);
+    const headerHeight = useHeaderHeight();
+    const state = useKeyboardState();
+    console.log('state', state);
     return (
-        <Animated.View
-            style={[{ flex: 1 }, animatedStyle]}
-        >
-            {children}
-        </Animated.View>
+        <View style={{ flexBasis:0, flexGrow:1, paddingBottom: state.isVisible ? state.height - safeArea.bottom : 0 }}>
+            <View style={{ flexBasis:0, flexGrow:1 }}>
+                {content && (
+                    <View style={[{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }]}>
+                        {content}
+                    </View>
+                )}
+                {placeholder && (
+                    <ScrollView
+                        style={[{ position: 'absolute', top: safeArea.top + headerHeight, left: 0, right: 0, bottom: 0 }]}
+                        contentContainerStyle={{ alignItems: 'center', justifyContent: 'center', flex: 1 }}
+                        keyboardShouldPersistTaps="handled"
+                        alwaysBounceVertical={false}
+                    >
+                        {placeholder}
+                    </ScrollView>
+                )}
+            </View>
+            <View>
+                {input}
+            </View>
+        </View>
     );
 });
+
+// const FallbackKeyboardAvoidingView: React.FC<AgentContentViewProps> = React.memo(({
+//     children,
+// }) => {
+    
+// });

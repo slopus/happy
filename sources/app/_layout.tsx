@@ -21,6 +21,7 @@ import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
+import * as SystemUI from 'expo-system-ui';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -33,6 +34,9 @@ SplashScreen.setOptions({
     duration: 300,
 })
 SplashScreen.preventAutoHideAsync();
+
+// Set window background color
+SystemUI.setBackgroundColorAsync('white');
 
 // Component to apply horizontal safe area padding
 function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) {
