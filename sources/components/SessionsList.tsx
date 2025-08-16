@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, Animated } from 'react-native';
+import { View, Pressable, Animated, FlatList } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
 import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { LegendList } from '@legendapp/list';
+import { entityColor, entitySessionColor } from './entityColor';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing }: { color: string; isPulsing?: boolean }) {
@@ -148,11 +149,10 @@ export function SessionsList() {
 
     return (
         <View style={{ flex: 1, backgroundColor: '#F2F2F7' }}>
-            <LegendList
+            <FlatList
                 data={data}
                 renderItem={renderItem}
                 keyExtractor={keyExtractor}
-                estimatedItemSize={88}
                 contentContainerStyle={{ paddingBottom: safeArea.bottom + 16 }}
                 ItemSeparatorComponent={ItemSeparatorComponent}
             />
