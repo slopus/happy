@@ -238,16 +238,4 @@ class Logger {
 }
 
 // Will be initialized immideately on startup
-export let logger: Logger
-
-export function initLoggerWithGlobalConfiguration() {
-  logger = new Logger()
-  
-  // Print debug mode message if DEBUG is on
-  if (process.env.DEBUG) {
-    logger.logFilePathPromise.then(logPath => {
-      logger.info(chalk.yellow('[DEBUG MODE] Debug logging enabled'))
-      logger.info(chalk.gray(`Log file: ${logPath}`))
-    })
-  }
-}
+export let logger = new Logger()

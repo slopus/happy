@@ -33,7 +33,8 @@ export class ApiClient {
           headers: {
             'Authorization': `Bearer ${this.token}`,
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 5000 // 5 second timeout
         }
       )
 

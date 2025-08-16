@@ -3,8 +3,9 @@
  * Provides endpoints for listing sessions, stopping sessions, and daemon shutdown
  */
 
-import fastify from 'fastify';
+import fastify, { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { logger } from '@/ui/logger';
 import { Metadata } from '@/api/types';
 import { TrackedSession } from './types';
@@ -26,9 +27,14 @@ export function startDaemonControlServer({
     const app = fastify({
       logger: false // We use our own logger
     });
+    
+    // Set up Zod type provider
+    app.setValidatorCompiler(validatorCompiler);
+    app.setSerializerCompiler(serializerCompiler);
+    const typed = app.withTypeProvider<ZodTypeProvider>();
 
     // Session reports itself after creation
-    app.post('/session-started', {
+    typed.post('/session-started', {
       schema: {
         body: z.object({
           sessionId: z.string(),
@@ -36,7 +42,7 @@ export function startDaemonControlServer({
         })
       }
     }, async (request, reply) => {
-      const { sessionId, metadata } = request.body as { sessionId: string; metadata: Metadata };
+      const { sessionId, metadata } = request.body;
       
       logger.debug(`[CONTROL SERVER] Session started: ${sessionId}`);
       onHappySessionWebhook(sessionId, metadata);
@@ -45,21 +51,21 @@ export function startDaemonControlServer({
     });
 
     // List all tracked sessions
-    app.post('/list', async (request, reply) => {
+    typed.post('/list', async (request, reply) => {
       const children = getChildren();
       logger.debug(`[CONTROL SERVER] Listing ${children.length} sessions`);
       return { children };
     });
 
     // Stop specific session
-    app.post('/stop-session', {
+    typed.post('/stop-session', {
       schema: {
         body: z.object({
           sessionId: z.string()
         })
       }
     }, async (request, reply) => {
-      const { sessionId } = request.body as { sessionId: string };
+      const { sessionId } = request.body;
       
       logger.debug(`[CONTROL SERVER] Stop session request: ${sessionId}`);
       const success = stopSession(sessionId);
@@ -67,7 +73,7 @@ export function startDaemonControlServer({
     });
 
     // Spawn new session
-    app.post('/spawn-session', {
+    typed.post('/spawn-session', {
       schema: {
         body: z.object({
           directory: z.string(),
@@ -75,7 +81,7 @@ export function startDaemonControlServer({
         })
       }
     }, async (request, reply) => {
-      const { directory, sessionId } = request.body as { directory: string; sessionId?: string };
+      const { directory, sessionId } = request.body;
       
       logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}`);
       const session = spawnSession(directory, sessionId);
@@ -89,7 +95,7 @@ export function startDaemonControlServer({
     });
 
     // Stop daemon
-    app.post('/stop', async (request, reply) => {
+    typed.post('/stop', async (request, reply) => {
       logger.debug('[CONTROL SERVER] Stop daemon request received');
       
       // Give time for response to arrive

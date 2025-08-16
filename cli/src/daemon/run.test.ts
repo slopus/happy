@@ -3,8 +3,8 @@ import { execSync } from 'child_process'
 import { existsSync, readFileSync, rmdirSync, unlinkSync } from 'fs'
 import path from 'path'
 import os from 'os'
-import { configuration, initializeConfiguration } from '@/configuration'
-import { stopDaemon } from '@/daemon/run'
+import { configuration } from '@/configuration'
+import { stopDaemon } from '@/daemon/utils'
 
 async function killAllDaemons() {
   try {
@@ -28,7 +28,6 @@ describe.skip('daemon tests', () => {
   beforeEach(async () => {
     console.log('\n--- BEFORE TEST ---')
     await killAllDaemons()
-    initializeConfiguration()
   })
 
   afterEach(async () => {

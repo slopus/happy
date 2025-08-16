@@ -9,7 +9,7 @@
 export { ApiClient } from '@/api/api'
 export { ApiSessionClient } from '@/api/apiSession'
 
-export { initLoggerWithGlobalConfiguration, logger } from '@/ui/logger'
-export { initializeConfiguration, configuration } from '@/configuration'
+export { logger } from '@/ui/logger'
+export { configuration } from '@/configuration'
 
 export { RawJSONLinesSchema, type RawJSONLines } from '@/claude/types'

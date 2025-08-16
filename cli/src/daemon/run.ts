@@ -4,7 +4,6 @@ import { MachineIdentity, DaemonMetadata, TrackedSession } from './types';
 import { logger } from '@/ui/logger';
 import { ensureMachineId, readCredentials } from '@/persistence/persistence';
 import { hostname } from 'os';
-import { existsSync, unlinkSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
@@ -14,6 +13,8 @@ import { spawn, ChildProcess } from 'child_process';
 import { projectPath } from '@/projectPath';
 import { atomicFileWrite } from '@/utils/fileAtomic';
 import { Metadata } from '@/api/types';
+import { getDaemonMetadata, cleanupDaemonMetadata } from './utils';
+import { existsSync, readFileSync, unlinkSync } from 'fs';
 
 export async function startDaemon(): Promise<void> {
   logger.debug('[DAEMON RUN] Starting daemon process...');
@@ -22,10 +23,11 @@ export async function startDaemon(): Promise<void> {
   // Check if already running
   const runningDaemon = await getDaemonMetadata();
   if (runningDaemon) {
-    if (await isDaemonProcessRunning(runningDaemon.pid)) {
+    try {
+      process.kill(runningDaemon.pid, 0);
       logger.debug('[DAEMON RUN] Daemon already running');
       process.exit(0);
-    } else {
+    } catch {
       logger.debug('[DAEMON RUN] Stale metadata found, cleaning up');
       await cleanupDaemonMetadata();
     }
@@ -75,7 +77,7 @@ export async function startDaemon(): Promise<void> {
       }
     };
     
-    // Spawn a new session (with optional sessionId for resume)
+    // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = (directory: string, sessionId?: string): TrackedSession | null => {
       try {
         const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
@@ -84,10 +86,8 @@ export async function startDaemon(): Promise<void> {
           '--started-by', 'daemon'
         ];
         
-        // Add resume flag if sessionId provided
-        if (sessionId) {
-          args.push('--resume', sessionId);
-        }
+        // TODO: In future, sessionId could be used with --resume to continue existing sessions
+        // For now, we ignore it - each spawn creates a new session
         
         const fullCommand = `${happyBinPath} ${args.join(' ')}`;
         logger.debug(`[DAEMON RUN] Spawning: ${fullCommand} in ${directory}`);
@@ -95,7 +95,16 @@ export async function startDaemon(): Promise<void> {
         const happyProcess = spawn(happyBinPath, args, {
           cwd: directory,
           detached: false,  // Dies with daemon
-          stdio: 'ignore'
+          stdio: ['ignore', 'pipe', 'pipe']  // Capture stdout/stderr for debugging
+          // env is inherited automatically from parent process
+        });
+        
+        // Log output for debugging
+        happyProcess.stdout?.on('data', (data) => {
+          logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
+        });
+        happyProcess.stderr?.on('data', (data) => {
+          logger.debug(`[DAEMON RUN] Child stderr: ${data.toString()}`);
         });
         
         if (!happyProcess.pid) {
@@ -288,108 +297,6 @@ export async function startDaemon(): Promise<void> {
   }
 }
 
-export async function isDaemonRunning(): Promise<boolean> {
-  try {
-    const metadata = await getDaemonMetadata();
-    if (!metadata) {
-      return false;
-    }
-    
-    const isRunning = await isDaemonProcessRunning(metadata.pid);
-    if (!isRunning) {
-      logger.debug('[DAEMON RUN] Daemon PID not running, cleaning up metadata');
-      await cleanupDaemonMetadata();
-      return false;
-    }
-    
-    return true;
-  } catch (error) {
-    logger.debug('[DAEMON RUN] Error checking daemon status', error);
-    return false;
-  }
-}
-
-export async function getDaemonMetadata(): Promise<DaemonMetadata | null> {
-  try {
-    if (!existsSync(configuration.daemonMetadataFile)) {
-      return null;
-    }
-    const content = readFileSync(configuration.daemonMetadataFile, 'utf-8');
-    return JSON.parse(content) as DaemonMetadata;
-  } catch (error) {
-    logger.debug('[DAEMON RUN] Error reading daemon metadata', error);
-    return null;
-  }
-}
-
-async function isDaemonProcessRunning(pid: number): Promise<boolean> {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function cleanupDaemonMetadata(): Promise<void> {
-  try {
-    if (existsSync(configuration.daemonMetadataFile)) {
-      unlinkSync(configuration.daemonMetadataFile);
-      logger.debug('[DAEMON RUN] Daemon metadata file removed');
-    }
-  } catch (error) {
-    logger.debug('[DAEMON RUN] Error cleaning up daemon metadata', error);
-  }
-}
-
-export async function stopDaemon() {
-  try {
-    stopCaffeinate();
-    logger.debug('Stopped sleep prevention');
-
-    const metadata = await getDaemonMetadata();
-    if (!metadata) {
-      logger.debug('No daemon metadata found');
-      return;
-    }
-
-    logger.debug(`Stopping daemon with PID ${metadata.pid}`);
-    
-    // Try HTTP graceful stop
-    try {
-      const { stopDaemonHttp } = await import('./controlClient');
-      await stopDaemonHttp();
-      
-      // Wait for daemon to die
-      await waitForProcessDeath(metadata.pid, 5000);
-      logger.debug('Daemon stopped gracefully via HTTP');
-      return;
-    } catch (error) {
-      logger.debug('HTTP stop failed, will force kill', error);
-    }
-    
-    // Force kill
-    try {
-      process.kill(metadata.pid, 'SIGKILL');
-      logger.debug('Force killed daemon');
-    } catch (error) {
-      logger.debug('Daemon already dead');
-    }
-  } catch (error) {
-    logger.debug('Error stopping daemon', error);
-  }
-}
-
-async function waitForProcessDeath(pid: number, timeout: number): Promise<void> {
-  const start = Date.now();
-  while (Date.now() - start < timeout) {
-    try {
-      process.kill(pid, 0);
-      await new Promise(resolve => setTimeout(resolve, 100));
-    } catch {
-      return; // Process is dead
-    }
-  }
-  throw new Error('Process did not die within timeout');
-}
+// Re-export utility functions to maintain backwards compatibility
+export { isDaemonRunning, getDaemonMetadata, stopDaemon } from './utils';
 

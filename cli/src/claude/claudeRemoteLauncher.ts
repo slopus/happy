@@ -14,11 +14,19 @@ import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { createSessionScanner } from "./utils/sessionScanner";
 
 export async function claudeRemoteLauncher(session: Session): Promise<'switch' | 'exit'> {
-
+    logger.debug('[claudeRemoteLauncher] Starting remote launcher');
+    
+    // Check if we have a TTY for UI rendering
+    const hasTTY = process.stdout.isTTY && process.stdin.isTTY;
+    logger.debug(`[claudeRemoteLauncher] TTY available: ${hasTTY}`);
+    
     // Configure terminal
     let messageBuffer = new MessageBuffer();
-    console.clear();
-    let inkInstance = render(React.createElement(RemoteModeDisplay, {
+    let inkInstance: any = null;
+    
+    if (hasTTY) {
+        console.clear();
+        inkInstance = render(React.createElement(RemoteModeDisplay, {
         messageBuffer,
         logPath: process.env.DEBUG ? session.logPath : undefined,
         onExit: async () => {
@@ -34,15 +42,19 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             logger.debug('[remote]: Switching to local mode via double space');
             doSwitch();
         }
-    }), {
-        exitOnCtrlC: false,
-        patchConsole: false
-    });
-    process.stdin.resume();
-    if (process.stdin.isTTY) {
-        process.stdin.setRawMode(true);
+        }), {
+            exitOnCtrlC: false,
+            patchConsole: false
+        });
     }
-    process.stdin.setEncoding("utf8");
+    
+    if (hasTTY) {
+        process.stdin.resume();
+        if (process.stdin.isTTY) {
+            process.stdin.setRawMode(true);
+        }
+        process.stdin.setEncoding("utf8");
+    }
 
     // Start the scanner
     const scanner = await createSessionScanner({
@@ -308,7 +320,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         if (process.stdin.isTTY) {
             process.stdin.setRawMode(false);
         }
-        inkInstance.unmount();
+        if (inkInstance) {
+            inkInstance.unmount();
+        }
         messageBuffer.clear();
 
         // Resolve abort future

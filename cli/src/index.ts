@@ -14,14 +14,15 @@ import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { homedir } from 'node:os'
 import { createInterface } from 'node:readline'
-import { initializeConfiguration, configuration } from '@/configuration'
-import { initLoggerWithGlobalConfiguration, logger } from './ui/logger'
+import { configuration } from '@/configuration'
+import { logger } from './ui/logger'
 import { readCredentials, readSettings, updateSettings } from './persistence/persistence'
 import { doAuth } from './ui/auth'
 import packageJson from '../package.json'
 import { z } from 'zod'
 import { spawn } from 'child_process'
-import { startDaemon, isDaemonRunning, stopDaemon } from './daemon/run'
+import { startDaemon } from './daemon/run'
+import { isDaemonRunning, stopDaemon } from './daemon/utils'
 import { install } from './daemon/install'
 import { uninstall } from './daemon/uninstall'
 import { ApiClient } from './api/api'
@@ -30,11 +31,7 @@ import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 
 
 (async () => {
-
   const args = process.argv.slice(2)
-
-  initializeConfiguration()
-  initLoggerWithGlobalConfiguration()
 
   logger.debug('Starting happy CLI with args: ', process.argv)
 

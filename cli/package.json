@@ -44,7 +44,9 @@
     "package.json"
   ],
   "scripts": {
-    "test": "vitest run",
+    "why do we need to build before running tests / dev?": "We need the binary to be built so we run daemon commands which directly run the binary - we don't want them to go out of sync or have custom spawn logic depending how we started happy",
+    "test": "yarn build && vitest run",
+    "test:local": "yarn build && tsx --env-file .env.dev-local-server node_modules/.bin/vitest run",
     "test:watch": "vitest",
     "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
     "prepublishOnly": "yarn build && yarn test",
@@ -66,6 +68,7 @@
     "chalk": "^5.4.1",
     "expo-server-sdk": "^3.15.0",
     "fastify": "^5.5.0",
+    "fastify-type-provider-zod": "4.0.2",
     "http-proxy": "^1.18.1",
     "http-proxy-middleware": "^3.0.5",
     "ink": "^6.1.0",

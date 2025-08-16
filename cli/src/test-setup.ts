@@ -1,14 +1,8 @@
 /**
- * Global test setup for Vitest
+ * Test setup file for vitest
  * 
- * Initializes configuration and logger for all tests
+ * Configures the test environment before running tests
  */
 
-import { initializeConfiguration } from '@/configuration'
-import { initLoggerWithGlobalConfiguration } from '@/ui/logger'
-
-// Initialize configuration before all tests
-initializeConfiguration()
-
-// Initialize logger after configuration
-initLoggerWithGlobalConfiguration()
+// Extend test timeout for integration tests
+process.env.VITEST_POOL_TIMEOUT = '60000'

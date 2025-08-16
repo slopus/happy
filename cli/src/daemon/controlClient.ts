@@ -17,7 +17,7 @@ async function daemonPost(path: string, body?: any): Promise<any> {
     const response = await fetch(`http://127.0.0.1:${metadata.httpPort}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: body ? JSON.stringify(body) : undefined,
+      body: JSON.stringify(body || {}),
       signal: AbortSignal.timeout(5000)
     });
     

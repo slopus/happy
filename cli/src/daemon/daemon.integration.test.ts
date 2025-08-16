@@ -6,14 +6,18 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
 import { existsSync, unlinkSync } from 'fs';
-import { readFile, writeFile } from 'fs/promises';
-import path from 'path';
-import axios from 'axios';
-
-const HAPPY_CLI_PATH = path.join(__dirname, '../../');
-const DAEMON_METADATA_PATH = path.join(process.env.HAPPY_HOME_DIR || path.join(process.env.HOME!, '.happy-dev'), 'daemon-metadata.json');
+import { readFile } from 'fs/promises';
+import { configuration } from '@/configuration';
+import { 
+  listDaemonSessions, 
+  stopDaemonSession, 
+  spawnDaemonSession, 
+  stopDaemonHttp, 
+  notifyDaemonSessionStarted 
+} from '@/daemon/controlClient';
+import { Metadata } from '@/api/types';
 
 // Utility to wait for condition
 async function waitFor(
@@ -31,16 +35,16 @@ async function waitFor(
 
 // Kill daemon helper
 async function killDaemon(): Promise<void> {
-  if (existsSync(DAEMON_METADATA_PATH)) {
+  if (existsSync(configuration.daemonMetadataFile)) {
     try {
-      const metadata = JSON.parse(await readFile(DAEMON_METADATA_PATH, 'utf8'));
+      const metadata = JSON.parse(await readFile(configuration.daemonMetadataFile, 'utf8'));
       process.kill(metadata.pid, 'SIGKILL');
     } catch (e) {
       // Ignore errors
     }
     // Clean up metadata file
     try {
-      unlinkSync(DAEMON_METADATA_PATH);
+      unlinkSync(configuration.daemonMetadataFile);
     } catch (e) {
       // Ignore
     }
@@ -48,15 +52,11 @@ async function killDaemon(): Promise<void> {
 }
 
 // Start daemon helper
-async function startDaemon(): Promise<{ pid: number; httpPort: number }> {
+async function startDaemon(): Promise<{ pid: number }> {
   return new Promise((resolve, reject) => {
     const child = spawn('yarn', ['tsx', 'src/index.ts', 'daemon', 'start'], {
-      cwd: HAPPY_CLI_PATH,
-      env: {
-        ...process.env,
-        HAPPY_HOME_DIR: process.env.HAPPY_HOME_DIR || path.join(process.env.HOME!, '.happy-dev'),
-        HAPPY_SERVER_URL: process.env.HAPPY_SERVER_URL || 'http://localhost:3005'
-      },
+      cwd: process.cwd(),
+      env: process.env,  // Child inherits all env vars including HAPPY_HOME_DIR
       stdio: ['ignore', 'pipe', 'pipe']
     });
 
@@ -75,10 +75,10 @@ async function startDaemon(): Promise<{ pid: number; httpPort: number }> {
     setTimeout(async () => {
       if (!resolved) {
         try {
-          await waitFor(async () => existsSync(DAEMON_METADATA_PATH), 3000);
-          const metadata = JSON.parse(await readFile(DAEMON_METADATA_PATH, 'utf8'));
+          await waitFor(async () => existsSync(configuration.daemonMetadataFile), 3000);
+          const metadata = JSON.parse(await readFile(configuration.daemonMetadataFile, 'utf8'));
           resolved = true;
-          resolve({ pid: metadata.pid, httpPort: metadata.httpPort });
+          resolve({ pid: metadata.pid });
         } catch (error) {
           resolved = true;
           reject(error);
@@ -97,8 +97,6 @@ async function startDaemon(): Promise<{ pid: number; httpPort: number }> {
 
 describe('Daemon HTTP Control Integration', () => {
   let daemonPid: number;
-  let daemonPort: number;
-  let httpClient: ReturnType<typeof axios.create>;
 
   beforeAll(async () => {
     // Clean up any existing daemon
@@ -107,21 +105,14 @@ describe('Daemon HTTP Control Integration', () => {
     // Start daemon
     const daemon = await startDaemon();
     daemonPid = daemon.pid;
-    daemonPort = daemon.httpPort;
     
-    // Create HTTP client
-    httpClient = axios.create({
-      baseURL: `http://127.0.0.1:${daemonPort}`,
-      timeout: 1000
-    });
-    
-    console.log(`Daemon started: PID=${daemonPid}, Port=${daemonPort}`);
+    console.log(`Daemon started: PID=${daemonPid}`);
   });
 
   afterAll(async () => {
     // Stop daemon via HTTP
     try {
-      await httpClient.post('/stop');
+      await stopDaemonHttp();
       // Wait for daemon to die
       await waitFor(async () => {
         try {
@@ -144,53 +135,42 @@ describe('Daemon HTTP Control Integration', () => {
   });
 
   it('should list sessions (initially empty)', async () => {
-    const response = await httpClient.post('/list');
-    expect(response.status).toBe(200);
-    expect(response.data).toHaveProperty('children');
-    expect(response.data.children).toEqual([]);
+    const sessions = await listDaemonSessions();
+    expect(sessions).toEqual([]);
   });
 
   it('should handle session-started webhook from terminal session', async () => {
     // Simulate a terminal-started session reporting to daemon
-    const mockMetadata = {
+    const mockMetadata: Metadata = {
+      path: '/test/path',
+      host: 'test-host',
       hostPid: 99999,
       startedBy: 'terminal',
-      machineId: 'test-machine-123',
-      startTime: Date.now()
+      machineId: 'test-machine-123'
     };
 
-    const response = await httpClient.post('/session-started', {
-      sessionId: 'test-session-123',
-      metadata: mockMetadata
-    });
-
-    expect(response.status).toBe(200);
-    expect(response.data).toEqual({ status: 'ok' });
+    await notifyDaemonSessionStarted('test-session-123', mockMetadata);
 
     // Verify session is tracked
-    const listResponse = await httpClient.post('/list');
-    expect(listResponse.data.children).toHaveLength(1);
+    const sessions = await listDaemonSessions();
+    expect(sessions).toHaveLength(1);
     
-    const tracked = listResponse.data.children[0];
+    const tracked = sessions[0];
     expect(tracked.startedBy).toBe('happy directly - likely by user from terminal');
     expect(tracked.happySessionId).toBe('test-session-123');
     expect(tracked.pid).toBe(99999);
   });
 
   it('should spawn a new session via HTTP', async () => {
-    const response = await httpClient.post('/spawn-session', {
-      directory: '/tmp',
-      sessionId: 'spawned-test-456'
-    });
+    const response = await spawnDaemonSession('/tmp', 'spawned-test-456');
 
-    expect(response.status).toBe(200);
-    expect(response.data).toHaveProperty('success', true);
-    expect(response.data).toHaveProperty('pid');
+    expect(response).toHaveProperty('success', true);
+    expect(response).toHaveProperty('pid');
 
     // Verify session is tracked
-    const listResponse = await httpClient.post('/list');
-    const spawnedSession = listResponse.data.children.find(
-      (s: any) => s.pid === response.data.pid
+    const sessions = await listDaemonSessions();
+    const spawnedSession = sessions.find(
+      (s: any) => s.pid === response.pid
     );
     
     expect(spawnedSession).toBeDefined();
@@ -198,13 +178,11 @@ describe('Daemon HTTP Control Integration', () => {
     
     // Clean up - stop the spawned session
     if (spawnedSession?.happySessionId) {
-      await httpClient.post('/stop-session', { 
-        sessionId: spawnedSession.happySessionId 
-      });
+      await stopDaemonSession(spawnedSession.happySessionId);
     } else {
       // Force kill by PID if no session ID
       try {
-        process.kill(response.data.pid, 'SIGTERM');
+        process.kill(response.pid, 'SIGTERM');
       } catch {
         // Ignore
       }
@@ -213,35 +191,30 @@ describe('Daemon HTTP Control Integration', () => {
 
   it('should stop a specific session', async () => {
     // First spawn a session
-    const spawnResponse = await httpClient.post('/spawn-session', {
-      directory: '/tmp',
-      sessionId: 'to-stop-789'
-    });
+    const spawnResponse = await spawnDaemonSession('/tmp');
     
-    expect(spawnResponse.data.success).toBe(true);
-    const pid = spawnResponse.data.pid;
+    expect(spawnResponse.success).toBe(true);
+    const pid = spawnResponse.pid;
 
-    // Give session time to initialize
-    await new Promise(resolve => setTimeout(resolve, 500));
+    // Give session time to initialize and report via webhook
+    await new Promise(resolve => setTimeout(resolve, 1000));
 
-    // List should show the session
-    let listResponse = await httpClient.post('/list');
-    let hasSession = listResponse.data.children.some((s: any) => s.pid === pid);
-    expect(hasSession).toBe(true);
+    // List sessions to get the actual session ID
+    let sessions = await listDaemonSessions();
+    let spawnedSession = sessions.find((s: any) => s.pid === pid);
+    expect(spawnedSession).toBeDefined();
+    expect(spawnedSession.happySessionId).toBeDefined();
 
-    // Stop the session
-    const stopResponse = await httpClient.post('/stop-session', {
-      sessionId: 'to-stop-789'
-    });
-    
-    expect(stopResponse.data).toHaveProperty('success');
+    // Stop the session using its ACTUAL session ID
+    const success = await stopDaemonSession(spawnedSession.happySessionId);
+    expect(success).toBe(true);
 
     // Give time for process to die
     await new Promise(resolve => setTimeout(resolve, 500));
 
     // Verify session is removed
-    listResponse = await httpClient.post('/list');
-    hasSession = listResponse.data.children.some((s: any) => s.pid === pid);
+    sessions = await listDaemonSessions();
+    let hasSession = sessions.some((s: any) => s.pid === pid);
     expect(hasSession).toBe(false);
   });
 
@@ -249,14 +222,12 @@ describe('Daemon HTTP Control Integration', () => {
     // This test verifies the stop endpoint works
     // We'll test it but then restart the daemon for other tests
     
-    const response = await httpClient.post('/stop');
-    expect(response.status).toBe(200);
-    expect(response.data).toEqual({ status: 'stopping' });
+    await stopDaemonHttp();
 
     // Wait for daemon to actually stop
     await waitFor(async () => {
       try {
-        await httpClient.post('/list');
+        await listDaemonSessions();
         return false; // Still responding
       } catch {
         return true; // Not responding
@@ -264,45 +235,36 @@ describe('Daemon HTTP Control Integration', () => {
     }, 2000);
 
     // Verify metadata file is cleaned up
-    await waitFor(async () => !existsSync(DAEMON_METADATA_PATH), 1000);
+    await waitFor(async () => !existsSync(configuration.daemonMetadataFile), 1000);
     
     // Restart daemon for afterAll cleanup
     const daemon = await startDaemon();
     daemonPid = daemon.pid;
-    daemonPort = daemon.httpPort;
-    httpClient = axios.create({
-      baseURL: `http://127.0.0.1:${daemonPort}`,
-      timeout: 1000
-    });
   });
 
   it('should track both daemon-spawned and terminal sessions', async () => {
     // Add a terminal session
-    await httpClient.post('/session-started', {
-      sessionId: 'terminal-session-aaa',
-      metadata: {
-        hostPid: 88888,
-        startedBy: 'terminal',
-        machineId: 'test-machine'
-      }
+    await notifyDaemonSessionStarted('terminal-session-aaa', {
+      path: '/test/path',
+      host: 'test-host',
+      hostPid: 88888,
+      startedBy: 'terminal',
+      machineId: 'test-machine'
     });
 
     // Spawn a daemon session
-    const spawnResponse = await httpClient.post('/spawn-session', {
-      directory: '/tmp',
-      sessionId: 'daemon-session-bbb'
-    });
+    const spawnResponse = await spawnDaemonSession('/tmp', 'daemon-session-bbb');
 
     // List all sessions
-    const listResponse = await httpClient.post('/list');
-    expect(listResponse.data.children).toHaveLength(2);
+    const sessions = await listDaemonSessions();
+    expect(sessions).toHaveLength(2);
 
     // Verify we have one of each type
-    const terminalSession = listResponse.data.children.find(
+    const terminalSession = sessions.find(
       (s: any) => s.happySessionId === 'terminal-session-aaa'
     );
-    const daemonSession = listResponse.data.children.find(
-      (s: any) => s.pid === spawnResponse.data.pid
+    const daemonSession = sessions.find(
+      (s: any) => s.pid === spawnResponse.pid
     );
 
     expect(terminalSession).toBeDefined();
@@ -312,36 +274,33 @@ describe('Daemon HTTP Control Integration', () => {
     expect(daemonSession.startedBy).toBe('daemon');
 
     // Clean up spawned session
-    await httpClient.post('/stop-session', { sessionId: 'daemon-session-bbb' });
+    await stopDaemonSession('daemon-session-bbb');
   });
 
   it('should update session metadata when webhook is called', async () => {
     // Spawn a session without initial metadata
-    const spawnResponse = await httpClient.post('/spawn-session', {
-      directory: '/tmp'
-    });
+    const spawnResponse = await spawnDaemonSession('/tmp');
 
-    const pid = spawnResponse.data.pid;
+    const pid = spawnResponse.pid;
 
     // Session should be tracked but without full metadata
-    let listResponse = await httpClient.post('/list');
-    let session = listResponse.data.children.find((s: any) => s.pid === pid);
+    let sessions = await listDaemonSessions();
+    let session = sessions.find((s: any) => s.pid === pid);
     expect(session).toBeDefined();
     expect(session.happySessionId).toBeUndefined();
 
     // Simulate the session calling back with its metadata
-    await httpClient.post('/session-started', {
-      sessionId: 'updated-session-xyz',
-      metadata: {
-        hostPid: pid,
-        startedBy: 'daemon',
-        machineId: 'test-machine-updated'
-      }
+    await notifyDaemonSessionStarted('updated-session-xyz', {
+      path: '/test/path',
+      host: 'test-host',
+      hostPid: pid,
+      startedBy: 'daemon',
+      machineId: 'test-machine-updated'
     });
 
     // Check updated metadata
-    listResponse = await httpClient.post('/list');
-    session = listResponse.data.children.find((s: any) => s.pid === pid);
+    sessions = await listDaemonSessions();
+    session = sessions.find((s: any) => s.pid === pid);
     expect(session.happySessionId).toBe('updated-session-xyz');
     expect(session.happySessionMetadataFromLocalWebhook).toBeDefined();
 
@@ -358,10 +317,7 @@ describe('Daemon HTTP Control Integration', () => {
     const promises = [];
     for (let i = 0; i < 3; i++) {
       promises.push(
-        httpClient.post('/spawn-session', {
-          directory: '/tmp',
-          sessionId: `concurrent-${i}`
-        })
+        spawnDaemonSession('/tmp')
       );
     }
 
@@ -369,26 +325,28 @@ describe('Daemon HTTP Control Integration', () => {
     
     // All should succeed
     results.forEach(res => {
-      expect(res.data.success).toBe(true);
-      expect(res.data.pid).toBeDefined();
+      expect(res.success).toBe(true);
+      expect(res.pid).toBeDefined();
     });
 
-    // List should show all sessions
-    const listResponse = await httpClient.post('/list');
-    const concurrentSessions = listResponse.data.children.filter(
-      (s: any) => s.happySessionId?.startsWith('concurrent-')
-    );
-    expect(concurrentSessions.length).toBeGreaterThanOrEqual(3);
+    // Collect PIDs for tracking
+    const spawnedPids = results.map(r => r.pid);
 
-    // Stop all concurrent sessions
-    const stopPromises = [];
-    for (let i = 0; i < 3; i++) {
-      stopPromises.push(
-        httpClient.post('/stop-session', {
-          sessionId: `concurrent-${i}`
-        })
-      );
+    // Give sessions time to report via webhook
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
+    // List should show all sessions
+    const sessions = await listDaemonSessions();
+    const daemonSessions = sessions.filter(
+      (s: any) => s.startedBy === 'daemon' && spawnedPids.includes(s.pid)
+    );
+    expect(daemonSessions.length).toBeGreaterThanOrEqual(3);
+
+    // Stop all spawned sessions using their actual session IDs
+    for (const session of daemonSessions) {
+      if (session.happySessionId) {
+        await stopDaemonSession(session.happySessionId);
+      }
     }
-    await Promise.all(stopPromises);
   });
 });

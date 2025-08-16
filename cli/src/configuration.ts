@@ -45,9 +45,4 @@ class Configuration {
   }
 }
 
-// @ts-ignore - Intentionally undefined, will be initialized at startup
-export let configuration: Configuration = undefined
-
-export function initializeConfiguration() {
-  configuration = new Configuration()
-}
+export const configuration: Configuration = new Configuration()

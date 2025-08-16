@@ -121,8 +121,8 @@ export function registerHandlers(session: ApiSessionClient) {
 
             return {
                 success: true,
-                stdout: stdout || '',
-                stderr: stderr || '',
+                stdout: stdout ? stdout.toString() : '',
+                stderr: stderr ? stderr.toString() : '',
                 exitCode: 0
             };
         } catch (error) {
@@ -147,8 +147,8 @@ export function registerHandlers(session: ApiSessionClient) {
             // If exec fails, it includes stdout/stderr in the error
             return {
                 success: false,
-                stdout: execError.stdout || '',
-                stderr: execError.stderr || execError.message || 'Command failed',
+                stdout: execError.stdout ? execError.stdout.toString() : '',
+                stderr: execError.stderr ? execError.stderr.toString() : execError.message || 'Command failed',
                 exitCode: typeof execError.code === 'number' ? execError.code : 1,
                 error: execError.message || 'Command failed'
             };
@@ -371,8 +371,8 @@ export function registerHandlers(session: ApiSessionClient) {
             return {
                 success: true,
                 exitCode: result.exitCode,
-                stdout: result.stdout,
-                stderr: result.stderr
+                stdout: result.stdout.toString(),
+                stderr: result.stderr.toString()
             };
         } catch (error) {
             logger.debug('Failed to run ripgrep:', error);

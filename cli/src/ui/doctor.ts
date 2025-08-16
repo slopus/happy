@@ -8,7 +8,7 @@
 import chalk from 'chalk'
 import { configuration } from '@/configuration'
 import { readSettings, readCredentials } from '@/persistence/persistence'
-import { isDaemonRunning, getDaemonMetadata } from '@/daemon/run'
+import { isDaemonRunning, getDaemonMetadata } from '@/daemon/utils'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'

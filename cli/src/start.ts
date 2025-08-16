@@ -33,6 +33,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     
     // Log environment info at startup
     logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
+    logger.debug(`[START] Options: startedBy=${options.startedBy}, startingMode=${options.startingMode}`);
 
     // Validate daemon spawn requirements
     if (options.startedBy === 'daemon' && options.startingMode === 'local') {
@@ -68,7 +69,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Always report to daemon if it exists
     try {
-        const { getDaemonMetadata } = await import('@/daemon/run');
+        const { getDaemonMetadata } = await import('@/daemon/utils');
         const daemonMetadata = await getDaemonMetadata();
         
         if (daemonMetadata?.httpPort) {
