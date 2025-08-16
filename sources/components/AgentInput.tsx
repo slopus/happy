@@ -1,6 +1,7 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, Animated, ActivityIndicator, TouchableWithoutFeedback, Keyboard } from 'react-native';
+import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback } from 'react-native';
+import { Image } from 'expo-image';
 import { Pressable } from 'react-native-gesture-handler';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
@@ -76,8 +77,6 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
         ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false) 
         : null;
 
-    // Color animation for send button
-    const sendButtonColorAnim = React.useRef(new Animated.Value(0)).current;
 
     // Abort button state
     const [isAborting, setIsAborting] = React.useState(false);
@@ -239,14 +238,6 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
         return false; // Key was not handled
     }, [props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, suggestions, selected, handleSuggestionSelect, moveUp, moveDown, props.showAbortButton, props.onAbort, isAborting, handleAbortPress]);
 
-    // Animate send button color based on hasText
-    React.useEffect(() => {
-        Animated.timing(sendButtonColorAnim, {
-            toValue: hasText ? 1 : 0,
-            duration: 150,
-            useNativeDriver: false,
-        }).start();
-    }, [hasText]);
 
 
     const containerStyle: ViewStyle = {
@@ -568,32 +559,6 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 </Pressable>
                             )}
 
-                            {/* Voice Assistant button */}
-                            {props.onMicPress && (
-                                <Pressable
-                                    style={(p) => ({
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        borderRadius: Platform.select({ default: 16, android: 20 }),
-                                        paddingHorizontal: 8,
-                                        paddingVertical: 6,
-                                        justifyContent: 'center',
-                                        height: 32,
-                                        opacity: p.pressed ? 0.7 : 1,
-                                    })}
-                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                    onPress={() => {
-                                        hapticsLight();
-                                        props.onMicPress?.();
-                                    }}
-                                >
-                                    <Octicons
-                                        name={props.isMicActive ? "x-circle" : "accessibility"}
-                                        size={16}
-                                        color={'#000'}
-                                    />
-                                </Pressable>
-                            )}
 
                             {/* File Viewer button */}
                             {props.onFileViewerPress && (
@@ -657,13 +622,12 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                             )}
                         </View>
 
-                        {/* Send button */}
-                        <Animated.View
+                        {/* Send/Voice button */}
+                        <View
                             style={{
-                                backgroundColor: sendButtonColorAnim.interpolate({
-                                    inputRange: [0, 1],
-                                    outputRange: ['#E0E0E0', 'black']
-                                }),
+                                backgroundColor: hasText 
+                                    ? 'black'
+                                    : (props.onMicPress && !props.isMicActive) ? 'black' : '#E0E0E0',
                                 width: 32,
                                 height: 32,
                                 borderRadius: 16,
@@ -682,20 +646,43 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
                                 onPress={() => {
                                     hapticsLight();
-                                    props.onSend();
+                                    if (hasText) {
+                                        props.onSend();
+                                    } else {
+                                        props.onMicPress?.();
+                                    }
                                 }}
-                                disabled={!hasText}
+                                disabled={!hasText && !props.onMicPress}
                             >
-                                <Octicons 
-                                    name="arrow-up" 
-                                    size={16} 
-                                    color="#fff" 
-                                    style={{
-                                        marginTop: Platform.OS === 'web' ? 2 : 0
-                                    }}
-                                />
+                                {hasText ? (
+                                    <Octicons 
+                                        name="arrow-up" 
+                                        size={16} 
+                                        color="#fff" 
+                                        style={{
+                                            marginTop: Platform.OS === 'web' ? 2 : 0
+                                        }}
+                                    />
+                                ) : props.onMicPress && !props.isMicActive ? (
+                                    <Image
+                                        source={require('@/assets/images/icon-voice-white.png')}
+                                        style={{
+                                            width: 24,
+                                            height: 24
+                                        }}
+                                    />
+                                ) : (
+                                    <Octicons 
+                                        name="arrow-up" 
+                                        size={16} 
+                                        color="#fff" 
+                                        style={{
+                                            marginTop: Platform.OS === 'web' ? 2 : 0
+                                        }}
+                                    />
+                                )}
                             </Pressable>
-                        </Animated.View>
+                        </View>
                     </View>
                 </View>
             </View>
