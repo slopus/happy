@@ -16,7 +16,7 @@ export const FAB = React.memo(({ onPress }: { onPress: () => void }) => {
         >
             <Pressable
                 style={({ pressed }) => ({
-                    backgroundColor: pressed ? 'rgb(100,100,100)' : 'black',
+                    backgroundColor: pressed ? 'rgb(240,240,240)' : 'white',
                     borderRadius: 20,
                     width: 56,
                     height: 56,
@@ -29,7 +29,7 @@ export const FAB = React.memo(({ onPress }: { onPress: () => void }) => {
                 })}
                 onPress={onPress}
             >
-                <Ionicons name="add" size={24} color="white" />
+                <Ionicons name="add" size={24} color="black" />
             </Pressable>
         </View>
     )
