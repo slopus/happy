@@ -281,7 +281,8 @@ export class ApiDaemonSession extends EventEmitter {
         logger.debug('[DAEMON SESSION] Machine registered/updated successfully');
         this.machineRegistered = true;
       } else {
-        logger.debug(`[DAEMON SESSION] Failed to register machine: ${response.status}`);
+        const errorText = await response.text();
+        logger.debug(`[DAEMON SESSION] Failed to register machine: ${response.status} - ${errorText}`);
       }
     } catch (error) {
       logger.debug('[DAEMON SESSION] Failed to register machine:', error);

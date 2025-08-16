@@ -135,6 +135,27 @@ User interface components.
 - Testing: Vitest 
 
 
+# Running the Daemon
+
+## Starting the Daemon
+```bash
+# From the happy-cli directory:
+./bin/happy.mjs daemon start
+
+# With custom server URL (for local development):
+HAPPY_SERVER_URL=http://localhost:3005 ./bin/happy.mjs daemon start
+
+# Stop the daemon:
+./bin/happy.mjs daemon stop
+
+# Check daemon status:
+./bin/happy.mjs daemon status
+```
+
+## Daemon Logs
+- Daemon logs are stored in `~/.happy-dev/logs/` (or `$HAPPY_HOME_DIR/logs/`)
+- Named with format: `YYYY-MM-DD-HH-MM-SS-daemon.log`
+
 # Session Forking `claude` and sdk behavior
 
 ## Commands Run

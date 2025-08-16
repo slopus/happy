@@ -16,7 +16,7 @@ import { homedir } from 'node:os'
 import { createInterface } from 'node:readline'
 import { initializeConfiguration, configuration } from '@/configuration'
 import { initLoggerWithGlobalConfiguration, logger } from './ui/logger'
-import { readCredentials, readSettings, writeSettings } from './persistence/persistence'
+import { readCredentials, readSettings, updateSettings } from './persistence/persistence'
 import { doAuth } from './ui/auth'
 import packageJson from '../package.json'
 import { z } from 'zod'
@@ -215,7 +215,7 @@ TODO: exec cluade --help and show inline here
     }
 
     // Onboarding flow for daemon installation
-    const settings = await readSettings() || { onboardingCompleted: false };
+    let settings = await readSettings() || { onboardingCompleted: false };
     if (settings.daemonAutoStartWhenRunningHappy === undefined) {
 
       console.log(chalk.cyan('\n🚀 Happy Daemon Setup\n'));
@@ -236,7 +236,11 @@ TODO: exec cluade --help and show inline here
       rl.close();
       
       const shouldAutoStart = answer.toLowerCase() !== 'n';
-      settings.daemonAutoStartWhenRunningHappy = shouldAutoStart;
+      
+      settings = await updateSettings(settings => ({
+        ...settings,
+        daemonAutoStartWhenRunningHappy: shouldAutoStart
+      }));
       
       if (shouldAutoStart) {
         console.log(chalk.green('✓ Happy will start the background service automatically'));
@@ -244,8 +248,6 @@ TODO: exec cluade --help and show inline here
       } else {
         console.log(chalk.yellow('  You can enable this later by running: happy daemon install'));
       }
-      
-      await writeSettings(settings);
     }
 
     // Auto-start daemon if enabled

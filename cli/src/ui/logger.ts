@@ -206,7 +206,10 @@ class Logger {
       if (prefix.includes(this.localTimezoneTimestamp())) {
         level = 'debug'
       }
-      this.sendToRemoteServer(level, message, ...args)
+      // Fire and forget, with explicit .catch to prevent unhandled rejection
+      this.sendToRemoteServer(level, message, ...args).catch(() => {
+        // Silently ignore remote logging errors to prevent loops
+      })
     }
     
     // Handle async file path

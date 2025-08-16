@@ -1,13 +1,12 @@
 import { ApiDaemonSession } from './apiDaemonSession'
 import { MachineIdentity } from './types'
 import { logger } from '@/ui/logger'
-import { readSettings, writeSettings, readCredentials } from '@/persistence/persistence'
+import { ensureMachineId, readCredentials } from '@/persistence/persistence'
 import { hostname } from 'os'
 import { writeFileSync, readFileSync, existsSync, unlinkSync, mkdirSync } from 'fs'
 import { join } from 'path'
 import { homedir } from 'os'
 import { doAuth } from '@/ui/auth'
-import crypto from 'crypto'
 import { spawn } from 'child_process'
 import { configuration } from '@/configuration'
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate'
@@ -98,14 +97,9 @@ export async function startDaemon(): Promise<void> {
     }
 
     try {
-        // Load or create machine identity
-        const settings = await readSettings() || { onboardingCompleted: false };
-        if (!settings.machineId) {
-            // Generate a UUID for machine ID
-            settings.machineId = crypto.randomUUID();
-            settings.machineHost = hostname();
-            await writeSettings(settings);
-        }
+        // Ensure machine ID exists
+        const settings = await ensureMachineId();
+        logger.debug(`[DAEMON RUN] Using machineId: ${settings.machineId}`);
 
         const machineIdentity: MachineIdentity = {
             machineId: settings.machineId!,
@@ -176,7 +170,8 @@ export async function startDaemon(): Promise<void> {
 
     } catch (error) {
         logger.debug('[DAEMON RUN] Failed to start daemon', error);
-        stopDaemon();
+        await cleanupDaemonMetadata();
+        stopCaffeinate();
         process.exit(1);
     }
 

@@ -7,7 +7,7 @@ import { AgentState, Metadata } from '@/api/types';
 // @ts-ignore
 import packageJson from '../package.json';
 import { registerHandlers } from '@/api/handlers';
-import { readSettings } from '@/persistence/persistence';
+import { ensureMachineId } from '@/persistence/persistence';
 import { EnhancedMode, PermissionMode } from './claude/loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
@@ -47,7 +47,11 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Create a new session
     let state: AgentState = {};
-    const settings = await readSettings() || { onboardingCompleted: false };
+    
+    // Ensure machine ID exists
+    const settings = await ensureMachineId();
+    logger.debug(`Using machineId: ${settings.machineId}`);
+    
     let metadata: Metadata = {
         path: workingDirectory,
         host: os.hostname(),
