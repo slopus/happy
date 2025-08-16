@@ -39,6 +39,7 @@ import { PlaceholderContainerView } from '@/components/PlaceholderContainerView'
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useIsTablet } from '@/utils/responsive';
+import { gitStatusSync } from '@/sync/gitStatusSync';
 
 
 export default React.memo(() => {
@@ -108,7 +109,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     }), [headerHeight, safeArea.top]);
 
 
-    // Handle microphone button press
+    // Handle microphone button press - memoized to prevent button flashing
     const handleMicrophonePress = useCallback(async () => {
         if (realtimeStatus === 'connecting') {
             return; // Prevent actions during transitions
@@ -137,9 +138,17 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         }
     }, [realtimeStatus, session, messagesRecentFirst, sessionId]);
 
-    // Trigger session visibility
+    // Memoize mic button state to prevent flashing during chat transitions
+    const micButtonState = useMemo(() => ({
+        onMicPress: handleMicrophonePress,
+        isMicActive: realtimeStatus === 'connected' || realtimeStatus === 'connecting'
+    }), [handleMicrophonePress, realtimeStatus]);
+
+    // Trigger session visibility and initialize git status sync
     React.useEffect(() => {
         sync.onSessionVisible(sessionId);
+        // Initialize git status sync for this session
+        gitStatusSync.getSync(sessionId);
     }, [sessionId]);
 
     const ListHeader = React.useMemo(() => {
@@ -248,6 +257,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             placeholder="Type a message ..."
             value={message}
             onChangeText={setMessage}
+            sessionId={sessionId}
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
             modelMode={modelMode}
@@ -266,8 +276,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     trackMessageSent();
                 }
             }}
-            onMicPress={handleMicrophonePress}
-            isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
+            onMicPress={micButtonState.onMicPress}
+            isMicActive={micButtonState.isMicActive}
             onAbort={() => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
@@ -413,6 +423,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     <VoiceAssistantStatusBar variant="full" />
                 </View>
             )}
+
 
             {/* Main content area - no padding since header is overlay */}
             <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 32 : 0) }}>

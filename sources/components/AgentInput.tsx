@@ -16,11 +16,13 @@ import { AgentInputAutocomplete } from './AgentInputAutocomplete';
 import { FloatingOverlay } from './FloatingOverlay';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
+import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 
 interface AgentInputProps {
     value: string;
     placeholder: string;
     onChangeText: (text: string) => void;
+    sessionId?: string;
     onSend: () => void;
     sendIcon?: React.ReactNode;
     onMicPress?: () => void;
@@ -560,32 +562,6 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                             )}
 
 
-                            {/* File Viewer button */}
-                            {props.onFileViewerPress && (
-                                <Pressable
-                                    style={(p) => ({
-                                        flexDirection: 'row',
-                                        alignItems: 'center',
-                                        borderRadius: Platform.select({ default: 16, android: 20 }),
-                                        paddingHorizontal: 8,
-                                        paddingVertical: 6,
-                                        justifyContent: 'center',
-                                        height: 32,
-                                        opacity: p.pressed ? 0.7 : 1,
-                                    })}
-                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                    onPress={() => {
-                                        hapticsLight();
-                                        props.onFileViewerPress?.();
-                                    }}
-                                >
-                                    <Octicons
-                                        name="file"
-                                        size={16}
-                                        color={'#000'}
-                                    />
-                                </Pressable>
-                            )}
 
                             {/* Abort button */}
                             {props.onAbort && (
@@ -620,6 +596,9 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                     </Pressable>
                                 </Shaker>
                             )}
+
+                            {/* Git Status Badge */}
+                            <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                         </View>
 
                         {/* Send/Voice button */}
@@ -689,3 +668,34 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
         </View>
     );
 });
+
+// Git Status Button Component
+function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
+    const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
+
+    if (!sessionId || !onPress || !hasMeaningfulGitStatus) {
+        return null;
+    }
+
+    return (
+        <Pressable
+            style={(p) => ({
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderRadius: Platform.select({ default: 16, android: 20 }),
+                paddingHorizontal: 8,
+                paddingVertical: 6,
+                justifyContent: 'center',
+                height: 32,
+                opacity: p.pressed ? 0.7 : 1,
+            })}
+            hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+            onPress={() => {
+                hapticsLight();
+                onPress?.();
+            }}
+        >
+            <GitStatusBadge sessionId={sessionId} />
+        </Pressable>
+    );
+}

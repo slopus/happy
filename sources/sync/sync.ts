@@ -25,6 +25,8 @@ import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, tr
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 import { log } from '@/log';
+import { gitStatusSync } from './gitStatusSync';
+import { isMutableTool } from '@/components/tools/knownTools';
 
 class Sync {
 
@@ -122,6 +124,9 @@ class Sync {
             this.messagesSync.set(sessionId, ex);
         }
         ex.invalidate();
+
+        // Also invalidate git status sync for this session
+        gitStatusSync.getSync(sessionId).invalidate();
     }
 
 
@@ -756,6 +761,8 @@ class Sync {
                 for (const item of sessionsData) {
                     if (typeof item !== 'string') {
                         this.messagesSync.get(item.id)?.invalidate();
+                        // Also invalidate git status on reconnection
+                        gitStatusSync.invalidate(item.id);
                     }
                 }
             }
@@ -811,6 +818,13 @@ class Sync {
                     // Update messages
                     if (lastMessage) {
                         storage.getState().applyMessages(updateData.body.sid, [lastMessage]);
+                        let hasMutableTool = false;
+                        if (lastMessage.role === 'agent' && lastMessage.content[0].type === 'tool-result') {
+                            hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
+                        }
+                        if (hasMutableTool) {
+                            gitStatusSync.invalidate(updateData.body.sid);
+                        }
                     }
                 }
             }
@@ -840,7 +854,12 @@ class Sync {
                         : session.metadataVersion,
                     updatedAt: updateData.createdAt,
                     seq: updateData.seq
-                }])
+                }]);
+                
+                // Invalidate git status when agent state changes (files may have been modified)
+                if (updateData.body.agentState) {
+                    gitStatusSync.invalidate(updateData.body.id);
+                }
             }
         } else if (updateData.body.t === 'update-machine') {
             const machineUpdate = updateData.body;
