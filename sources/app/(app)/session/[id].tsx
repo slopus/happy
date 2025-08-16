@@ -185,20 +185,22 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const content = (
         <>
             <Deferred>
-                <FlatList
-                    removeClippedSubviews={true}
-                    data={messagesRecentFirst}
-                    inverted={true}
-                    keyExtractor={keyExtractor}
-                    style={[headerDependentStyles.flatListStyle]}
-                    maintainVisibleContentPosition={maintainVisibleContentPosition}
-                    keyboardShouldPersistTaps="handled"
-                    keyboardDismissMode="none" // Interactive mode is still buggy
-                    renderItem={renderItem}
-                    contentContainerStyle={contentContainerStyle}
-                    ListHeaderComponent={ListFooter}
-                    ListFooterComponent={ListHeader}
-                />
+                {messagesRecentFirst.length > 0 && (
+                    <FlatList
+                        removeClippedSubviews={true}
+                        data={messagesRecentFirst}
+                        inverted={true}
+                        keyExtractor={keyExtractor}
+                        style={[headerDependentStyles.flatListStyle]}
+                        maintainVisibleContentPosition={maintainVisibleContentPosition}
+                        keyboardShouldPersistTaps="handled"
+                        keyboardDismissMode="none" // Interactive mode is still buggy
+                        renderItem={renderItem}
+                        contentContainerStyle={contentContainerStyle}
+                        ListHeaderComponent={ListFooter}
+                        ListFooterComponent={ListHeader}
+                    />
+                )}
             </Deferred>
             {sessionStatus.state === 'disconnected' && daemonStatus?.active && (
                 <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
