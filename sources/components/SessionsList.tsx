@@ -152,7 +152,6 @@ const SessionItem = React.memo(({ session, router }: {
     const sessionSubtitle = getSessionSubtitle(session);
     const pathname = usePathname();
     const currentSessionId = React.useMemo(() => {
-        console.log('pathname', pathname);
         if (pathname.startsWith('/session/')) {
             return pathname.split('/')[2];
         }
