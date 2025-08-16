@@ -4,7 +4,7 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
-    "start:local-server": "EXPO_PUBLIC_DEBUG=1 EXPO_PUBLIC_SERVER_URL=http://localhost:3005 expo start -c",
+    "start:local-server": "EXPO_PUBLIC_DEBUG=1 EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005 expo start -c",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "ios:connected-device": "yarn ios -d $(xcrun devicectl list devices | grep -E \"available \\(paired\\)\" | head -1 | awk '{print $1}')",
@@ -15,7 +15,8 @@
     "ota": "APP_ENV=preview NODE_ENV=preview yarn typecheck && eas update --branch preview",
     "ota:production": "NODE_ENV=production APP_ENV=production yarn typecheck && eas update --branch production",
     "typecheck": "tsc --noEmit",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "log-server": "npx console-log-server -p 3333 -l 10Mb"
   },
   "jest": {
     "preset": "jest-expo"

@@ -134,7 +134,8 @@ export default {
                 revenueCatAppleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE,
                 revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
                 revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE,
-                serverUrl: process.env.EXPO_PUBLIC_SERVER_URL,
+                defaultServerUrl: 'https://handy-api.korshakov.org',
+                serverUrl: process.env.EXPO_PUBLIC_HAPPY_SERVER_URL || 'https://handy-api.korshakov.org',
             }
         },
         owner: "bulkacorp"

@@ -11,6 +11,7 @@ import { useSession } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
+import { sessionKill } from '@/sync/ops';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -79,6 +80,35 @@ export default React.memo(() => {
             Modal.alert('Error', 'Failed to copy metadata');
         }
     }, [session]);
+
+    const handleKillSession = useCallback(async () => {
+        if (!session) return;
+        
+        Modal.alert(
+            'Kill Session',
+            'Are you sure you want to terminate this session? This will immediately stop the session process.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Kill Session',
+                    style: 'destructive',
+                    onPress: async () => {
+                        try {
+                            const result = await sessionKill(session.id);
+                            if (result.success) {
+                                Modal.alert('Success', result.message);
+                                router.back(); // Go back after killing session
+                            } else {
+                                Modal.alert('Error', result.message || 'Failed to kill session');
+                            }
+                        } catch (error) {
+                            Modal.alert('Error', error instanceof Error ? error.message : 'Failed to kill session');
+                        }
+                    }
+                }
+            ]
+        );
+    }, [session, router]);
 
     const formatDate = useCallback((timestamp: number) => {
         return new Date(timestamp).toLocaleString();
@@ -212,6 +242,22 @@ export default React.memo(() => {
                                 showChevron={false}
                             />
                         )}
+                        {session.metadata.hostPid && (
+                            <Item
+                                title="Process ID"
+                                subtitle={session.metadata.hostPid.toString()}
+                                icon={<Ionicons name="terminal-outline" size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
+                        {session.metadata.happyHomeDir && (
+                            <Item
+                                title="Happy Home"
+                                subtitle={formatPathRelativeToHome(session.metadata.happyHomeDir, session.metadata.homeDir)}
+                                icon={<Ionicons name="home-outline" size={29} color="#5856D6" />}
+                                showChevron={false}
+                            />
+                        )}
                         <Item
                             title="Copy Metadata"
                             icon={<Ionicons name="copy-outline" size={29} color="#007AFF" />}
@@ -257,6 +303,18 @@ export default React.memo(() => {
                         />
                     )}
                 </ItemGroup>
+
+                {/* Actions */}
+                {sessionStatus.isConnected && (
+                    <ItemGroup title="Actions">
+                        <Item
+                            title="Kill Session"
+                            subtitle="Immediately terminate the session process"
+                            icon={<Ionicons name="skull-outline" size={29} color="#FF3B30" />}
+                            onPress={handleKillSession}
+                        />
+                    </ItemGroup>
+                )}
             </ItemList>
         </>
     );

@@ -4,7 +4,7 @@ import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
 import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
@@ -65,6 +65,7 @@ export function SessionsList() {
     const keyExtractor = React.useCallback((item: SessionListViewItem, index: number) => {
         switch (item.type) {
             case 'header': return `header-${item.title}-${index}`;
+            case 'project-group': return `project-group-${item.machine.id}-${item.displayPath}-${index}`;
             case 'session': return `session-${item.session.id}`;
             case 'machine': return `machine-${item.machine.id}`;
         }
@@ -105,10 +106,27 @@ export function SessionsList() {
                     </Pressable>
                 );
                 
+            case 'project-group':
+                return (
+                    <View style={{ 
+                        paddingHorizontal: 16,
+                        paddingVertical: 10,
+                        backgroundColor: '#F8F8F8'
+                    }}>
+                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#000', ...Typography.default('semiBold') }}>
+                            {item.displayPath}
+                        </Text>
+                        <Text style={{ fontSize: 11, color: '#8E8E93', marginTop: 2, ...Typography.default() }}>
+                            {item.machine.metadata?.host || item.machine.id}
+                        </Text>
+                    </View>
+                );
+                
             case 'session':
                 return (
                     <SessionItem
                         session={item.session}
+                        variant={item.variant}
                         router={router}
                     />
                 );
@@ -143,8 +161,9 @@ export function SessionsList() {
 }
 
 // Sub-component that handles session message logic
-const SessionItem = React.memo(({ session, router }: {
+const SessionItem = React.memo(({ session, variant, router }: {
     session: Session;
+    variant?: 'default' | 'no-path';
     router: any;
 }) => {
     const sessionStatus = useSessionStatus(session);
@@ -185,7 +204,7 @@ const SessionItem = React.memo(({ session, router }: {
                         color: sessionStatus.isConnected ? '#000' : '#999',
                         flex: 1,
                         ...Typography.default('semiBold') 
-                    }} numberOfLines={1}>
+                    }} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
                         {sessionName}
                     </Text>
                     {session.draft && (

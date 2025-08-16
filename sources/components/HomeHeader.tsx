@@ -121,7 +121,7 @@ function HeaderTitleWithSubtitle({ subtitle }: { subtitle?: string }) {
     return (
         <View style={{ alignItems: 'center' }}>
             <Text style={{ fontSize: titleFontSize, color: '#000', ...Typography.logo() }}>
-                Happy Coder
+                Happy
             </Text>
             {hasCustomSubtitle && (
                 <Text style={{ fontSize: 12, color: '#8E8E93', marginTop: 2 }}>

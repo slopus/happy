@@ -1,63 +1,116 @@
 import * as React from 'react';
-import { View, TextInput, Text } from 'react-native';
+import { View, TextInput, Text, TouchableOpacity } from 'react-native';
 import { RoundButton } from './RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { trackConnectAttempt } from '@/track';
+import { Ionicons } from '@expo/vector-icons';
 
 export const ConnectButton = React.memo(() => {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
     const [manualUrl, setManualUrl] = React.useState('');
-    const isDevMode = process.env.EXPO_PUBLIC_DEBUG === '1';
+    const [showManualEntry, setShowManualEntry] = React.useState(false);
 
     const handleConnect = async () => {
         trackConnectAttempt();
-        if (isDevMode && manualUrl.trim()) {
-            // Process manual URL in dev mode
+        connectTerminal();
+    };
+
+    const handleManualConnect = async () => {
+        if (manualUrl.trim()) {
+            trackConnectAttempt();
             connectWithUrl(manualUrl.trim());
-        } else {
-            // Use camera scanner
-            connectTerminal();
+            setManualUrl('');
         }
     };
 
     return (
         <View style={{ width: 210 }}>
-            {isDevMode && (
-                <View style={{
-                    marginBottom: 16,
-                    padding: 16,
-                    borderRadius: 8,
-                    width: 200,
-                }}>
-                    <Text style={{
-                        fontSize: 14,
-                        fontWeight: '600',
-                        marginBottom: 8,
-                        color: '#333',
-                    }}>Dev Mode: Manual URL Entry</Text>
-                    <TextInput
-                        style={{
-                            backgroundColor: 'white',
-                            borderWidth: 1,
-                            borderColor: '#ddd',
-                            borderRadius: 8,
-                            padding: 12,
-                        }}
-                        value={manualUrl}
-                        onChangeText={setManualUrl}
-                        placeholder="Paste happy://terminal?... URL here"
-                        placeholderTextColor="#666"
-                        autoCapitalize="none"
-                        autoCorrect={false}
-                    />
-                </View>
-            )}
             <RoundButton
-                title="Connect"
+                title="Authenticate Terminal"
                 size="large"
                 onPress={handleConnect}
                 loading={isLoading}
             />
+            
+            <TouchableOpacity
+                onPress={() => setShowManualEntry(!showManualEntry)}
+                style={{
+                    marginTop: 12,
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                }}
+            >
+                <Ionicons 
+                    name="link-outline" 
+                    size={16} 
+                    color="#666" 
+                    style={{ marginRight: 6 }}
+                />
+                <Text style={{
+                    fontSize: 14,
+                    color: '#666',
+                    textDecorationLine: 'underline',
+                }}>
+                    Authenticate Terminal with URL paste
+                </Text>
+            </TouchableOpacity>
+
+            {showManualEntry && (
+                <View style={{
+                    marginTop: 12,
+                    padding: 12,
+                    borderRadius: 8,
+                    backgroundColor: '#f5f5f5',
+                    width: 210,
+                }}>
+                    <Text style={{
+                        fontSize: 12,
+                        color: '#666',
+                        marginBottom: 8,
+                    }}>
+                        Paste the auth URL from your terminal
+                    </Text>
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                    }}>
+                        <TextInput
+                            style={{
+                                flex: 1,
+                                backgroundColor: 'white',
+                                borderWidth: 1,
+                                borderColor: '#ddd',
+                                borderRadius: 6,
+                                padding: 8,
+                                fontSize: 12,
+                            }}
+                            value={manualUrl}
+                            onChangeText={setManualUrl}
+                            placeholder="happy://terminal?..."
+                            placeholderTextColor="#999"
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                            onSubmitEditing={handleManualConnect}
+                        />
+                        <TouchableOpacity
+                            onPress={handleManualConnect}
+                            disabled={!manualUrl.trim()}
+                            style={{
+                                marginLeft: 8,
+                                padding: 8,
+                                opacity: manualUrl.trim() ? 1 : 0.5,
+                            }}
+                        >
+                            <Ionicons 
+                                name="checkmark-circle" 
+                                size={24} 
+                                color="#007AFF" 
+                            />
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            )}
         </View>
     )
 });

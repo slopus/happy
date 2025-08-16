@@ -21,7 +21,9 @@ export const MetadataSchema = z.object({
     machineId: z.string().optional(),
     tools: z.array(z.string()).optional(),
     slashCommands: z.array(z.string()).optional(),
-    homeDir: z.string().optional()
+    homeDir: z.string().optional(), // User's home directory on the machine
+    happyHomeDir: z.string().optional(), // Happy configuration directory 
+    hostPid: z.number().optional() // Process ID of the session
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
@@ -86,7 +88,7 @@ export const MachineMetadataSchema = z.object({
     host: z.string(),
     platform: z.string(),
     happyCliVersion: z.string(),
-    happyHomeDirectory: z.string()
+    happyHomeDirectory: z.string() // Directory for Happy auth, settings, logs (usually .happy/ or .happy-dev/)
 });
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>;

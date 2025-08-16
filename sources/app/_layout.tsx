@@ -22,6 +22,7 @@ import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
 import * as SystemUI from 'expo-system-ui';
+import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -63,6 +64,9 @@ export default function RootLayout() {
     React.useEffect(() => {
         (async () => {
             try {
+                // Initialize remote logging
+                monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds();
+
                 await Fonts.loadAsync({
                     // Keep existing font
                     SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
