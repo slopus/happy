@@ -25,6 +25,7 @@ export const knownTools = {
             return 'Task';
         },
         icon: ICON_TASK,
+        isMutable: true,
         input: z.object({
             prompt: z.string().describe('The task for the agent to perform'),
             subagent_type: z.string().optional().describe('The type of specialized agent to use')
@@ -40,6 +41,7 @@ export const knownTools = {
         icon: ICON_TERMINAL,
         minimal: true,
         hideDefaultError: true,
+        isMutable: true,
         input: z.object({
             command: z.string().describe('The command to execute'),
             timeout: z.number().optional().describe('Timeout in milliseconds (max 600000)')
@@ -192,6 +194,7 @@ export const knownTools = {
             return 'Edit File';
         },
         icon: ICON_EDIT,
+        isMutable: true,
         input: z.object({
             file_path: z.string().describe('The absolute path to the file to modify'),
             old_string: z.string().describe('The text to replace'),
@@ -212,6 +215,7 @@ export const knownTools = {
             return 'Edit File';
         },
         icon: ICON_EDIT,
+        isMutable: true,
         input: z.object({
             file_path: z.string().describe('The absolute path to the file to modify'),
             edits: z.array(z.object({
@@ -241,6 +245,7 @@ export const knownTools = {
             return 'Write File';
         },
         icon: ICON_EDIT,
+        isMutable: true,
         input: z.object({
             file_path: z.string().describe('The absolute path to the file to write'),
             content: z.string().describe('The content to write to the file')
@@ -300,6 +305,7 @@ export const knownTools = {
             return 'Edit Notebook';
         },
         icon: ICON_EDIT,
+        isMutable: true,
         input: z.object({
             notebook_path: z.string().describe('The absolute path to the notebook file'),
             new_source: z.string().describe('The new source for the cell'),
@@ -379,6 +385,7 @@ export const knownTools = {
     icon: (size: number, color: string) => React.ReactNode;
     noStatus?: boolean;
     hideDefaultError?: boolean;
+    isMutable?: boolean;
     input?: z.ZodObject<any>;
     result?: z.ZodObject<any>;
     minimal?: boolean;
@@ -386,3 +393,21 @@ export const knownTools = {
     extractSubtitle?: (opts: { metadata: Metadata | null, tool: ToolCall }) => string | null;
     extractStatus?: (opts: { metadata: Metadata | null, tool: ToolCall }) => string | null;
 }>;
+
+/**
+ * Check if a tool is mutable (can potentially modify files)
+ * @param toolName The name of the tool to check
+ * @returns true if the tool is mutable or unknown, false if it's read-only
+ */
+export function isMutableTool(toolName: string): boolean {
+    const tool = knownTools[toolName as keyof typeof knownTools];
+    if (tool) {
+        if ('isMutable' in tool) {
+            return tool.isMutable === true;
+        } else {
+            return false;
+        }
+    }
+    // If tool is unknown, assume it's mutable to be safe
+    return true;
+}

@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { DecryptedMessage, Session, Machine } from "./storageTypes";
+import { DecryptedMessage, Session, Machine, GitStatus } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { normalizeRawMessage, NormalizedMessage } from "./typesRaw";
@@ -15,6 +15,7 @@ import React from "react";
 import { sync } from "./sync";
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
 import { messagesToPrompt } from '@/realtime/sessionToPrompt';
+import { isMutableTool } from "@/components/tools/knownTools";
 
 // Use the same timeout for both online status and disconnection detection
 
@@ -31,7 +32,7 @@ interface SessionMessages {
 // Machine type is now imported from storageTypes - represents persisted machine data
 
 // Unified list item type for SessionsList component
-export type SessionListViewItem = 
+export type SessionListViewItem =
     | { type: 'header'; title: string }
     | { type: 'project-group'; displayPath: string; machine: Machine }
     | { type: 'session'; session: Session; variant?: 'default' | 'no-path' }
@@ -49,6 +50,7 @@ interface StorageState {
     sessionsData: SessionListItem[] | null;  // Legacy - to be removed
     sessionListViewData: SessionListViewItem[] | null;
     sessionMessages: Record<string, SessionMessages>;
+    sessionGitStatus: Record<string, GitStatus | null>;
     machines: Record<string, Machine>;
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
@@ -62,6 +64,8 @@ interface StorageState {
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
     applyPurchases: (customerInfo: CustomerInfo) => void;
+    applyGitStatus: (sessionId: string, status: GitStatus | null) => void;
+    isMutableToolCall: (sessionId: string, callId: string) => boolean;
     recalculateOnline: () => void;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
@@ -79,7 +83,7 @@ function buildSessionListViewData(
     // Categorize sessions into active and inactive
     const activeSessions: Session[] = [];
     const inactiveSessions: Session[] = [];
-    
+
     Object.values(sessions).forEach(session => {
         if (isSessionActive(session)) {
             activeSessions.push(session);
@@ -87,18 +91,18 @@ function buildSessionListViewData(
             inactiveSessions.push(session);
         }
     });
-    
+
     // Build project groups from active sessions
-    const projectGroups = new Map<string, { 
+    const projectGroups = new Map<string, {
         machine: Machine;
         path: string;
         sessions: Session[];
         oldestCreatedAt: number;
     }>();
-    
+
     // Separate sessions with and without machineId/path
     const standaloneActiveSessions: Session[] = [];
-    
+
     activeSessions.forEach(session => {
         if (!session.metadata?.machineId || !session.metadata?.path) {
             // Sessions without machineId/path will be shown as standalone
@@ -106,7 +110,7 @@ function buildSessionListViewData(
             standaloneActiveSessions.push(session);
             return;
         }
-        
+
         const machine = machines[session.metadata.machineId];
         if (!machine) {
             // Machine not found, show as standalone
@@ -114,10 +118,10 @@ function buildSessionListViewData(
             standaloneActiveSessions.push(session);
             return;
         }
-        
+
         const groupKey = `${session.metadata.machineId}:${session.metadata.path}`;
         const existing = projectGroups.get(groupKey);
-        
+
         if (existing) {
             existing.sessions.push(session);
             existing.oldestCreatedAt = Math.min(existing.oldestCreatedAt, session.createdAt);
@@ -130,12 +134,12 @@ function buildSessionListViewData(
             });
         }
     });
-    
+
     // Sort sessions within each group by createdAt (oldest first)
     projectGroups.forEach(group => {
         group.sessions.sort((a, b) => a.createdAt - b.createdAt);
     });
-    
+
     // Extract sort keys from previous data to maintain stability
     const previousSortKeys = new Map<string, number>();
     if (previousData) {
@@ -147,89 +151,89 @@ function buildSessionListViewData(
             }
         });
     }
-    
+
     // Sort project groups - use previous sort keys when available, otherwise use oldest session createdAt
     const sortedGroups = Array.from(projectGroups.entries()).sort(([keyA, groupA], [keyB, groupB]) => {
         const prevSortA = previousSortKeys.get(keyA);
         const prevSortB = previousSortKeys.get(keyB);
-        
+
         if (prevSortA !== undefined && prevSortB !== undefined) {
             return prevSortA - prevSortB;
         }
         if (prevSortA !== undefined) return -1;
         if (prevSortB !== undefined) return 1;
-        
+
         // New groups - sort by oldest session creation time (newest groups first)
         return groupB.oldestCreatedAt - groupA.oldestCreatedAt;
     });
-    
+
     // Get active machines
     const activeMachines = Object.values(machines).filter(m => m.active);
     console.log(`📊 Storage: Active machines: ${activeMachines.length}, Machine IDs: ${Object.keys(machines).join(', ')}`);
-    
+
     // Sort standalone active sessions by creation date (newest first)
     standaloneActiveSessions.sort((a, b) => b.createdAt - a.createdAt);
-    
+
     // Sort inactive sessions by creation date
     inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
-    
+
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
-    
+
     // Active sessions section with project groups and standalone sessions
     if (sortedGroups.length > 0 || standaloneActiveSessions.length > 0) {
         listData.push({ type: 'header', title: 'Active Sessions' });
-        
+
         sortedGroups.forEach(([_, group]) => {
             // Use the first session's homeDir to format the path
             const firstSession = group.sessions[0];
             const displayPath = formatPathRelativeToHome(group.path, firstSession.metadata?.homeDir);
-            
-            listData.push({ 
-                type: 'project-group', 
+
+            listData.push({
+                type: 'project-group',
                 displayPath,
                 machine: group.machine
             });
-            
-            group.sessions.forEach(session => 
-                listData.push({ 
-                    type: 'session', 
+
+            group.sessions.forEach(session =>
+                listData.push({
+                    type: 'session',
                     session,
                     variant: 'no-path'
                 })
             );
         });
-        
+
         // Add standalone active sessions (without project groups)
-        standaloneActiveSessions.forEach(session => 
-            listData.push({ 
-                type: 'session', 
+        standaloneActiveSessions.forEach(session =>
+            listData.push({
+                type: 'session',
                 session,
                 variant: 'default'
             })
         );
     }
-    
+
     // Machines section
     if (activeMachines.length > 0) {
         listData.push({ type: 'header', title: 'Machines Online' });
-        activeMachines.forEach(machine => 
+        activeMachines.forEach(machine =>
             listData.push({ type: 'machine', machine })
         );
     }
-    
+
     // Inactive sessions section
     if (inactiveSessions.length > 0) {
         listData.push({ type: 'header', title: 'Previous Sessions' });
-        inactiveSessions.forEach(session => 
+        inactiveSessions.forEach(session =>
             listData.push({ type: 'session', session })
         );
     }
-    
+
     return listData;
 }
 
-export const storage = create<StorageState>()((set) => {
+export const storage = create<StorageState>()((set, get) => {
     let { settings, version } = loadSettings();
     let localSettings = loadLocalSettings();
     let purchases = loadPurchases();
@@ -245,10 +249,26 @@ export const storage = create<StorageState>()((set) => {
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
         sessionMessages: {},
+        sessionGitStatus: {},
         realtimeStatus: 'disconnected',
         socketStatus: 'disconnected',
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
+        isMutableToolCall: (sessionId: string, callId: string) => {
+            const sessionMessages = get().sessionMessages[sessionId];
+            if (!sessionMessages) {
+                return true;
+            }
+            const toolCall = sessionMessages.reducerState.toolIdToMessageId.get(callId);
+            if (!toolCall) {
+                return true;
+            }
+            const toolCallMessage = sessionMessages.messagesMap[toolCall];
+            if (!toolCallMessage || toolCallMessage.kind !== 'tool-call') {
+                return true;
+            }
+            return toolCallMessage.tool?.name ? isMutableTool(toolCallMessage.tool?.name) : true;
+        },
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
             const now = Date.now();
             const threshold = now - DISCONNECTED_TIMEOUT_MS;
@@ -312,7 +332,7 @@ export const storage = create<StorageState>()((set) => {
                 listData.push('online');
                 listData.push(...activeSessions);
             }
-            
+
             // Legacy sessionsData - to be removed
             // Machines are now integrated into sessionListViewData
 
@@ -322,23 +342,23 @@ export const storage = create<StorageState>()((set) => {
             }
 
             console.log(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
-            
+
             // Process AgentState updates for sessions that already have messages loaded
             const updatedSessionMessages = { ...state.sessionMessages };
-            
+
             sessions.forEach(session => {
                 const oldSession = state.sessions[session.id];
                 const newSession = mergedSessions[session.id];
-                
+
                 // Check if sessionMessages exists AND agentStateVersion is newer
                 const existingSessionMessages = updatedSessionMessages[session.id];
-                if (existingSessionMessages && newSession.agentState && 
+                if (existingSessionMessages && newSession.agentState &&
                     (!oldSession || newSession.agentStateVersion > (oldSession.agentStateVersion || 0))) {
-                    
+
                     // Check for NEW permission requests before processing
                     const currentRealtimeSessionId = getCurrentRealtimeSessionId();
                     const voiceSession = getVoiceSession();
-                    
+
                     // console.log('[REALTIME DEBUG] Permission check:', {
                     //     currentRealtimeSessionId,
                     //     sessionId: session.id,
@@ -347,11 +367,11 @@ export const storage = create<StorageState>()((set) => {
                     //     oldRequests: Object.keys(oldSession?.agentState?.requests || {}),
                     //     newRequests: Object.keys(newSession.agentState?.requests || {})
                     // });
-                    
+
                     if (currentRealtimeSessionId === session.id && voiceSession) {
                         const oldRequests = oldSession?.agentState?.requests || {};
                         const newRequests = newSession.agentState?.requests || {};
-                        
+
                         // Find NEW permission requests only
                         for (const [requestId, request] of Object.entries(newRequests)) {
                             if (!oldRequests[requestId]) {
@@ -364,21 +384,21 @@ export const storage = create<StorageState>()((set) => {
                             }
                         }
                     }
-                    
+
                     // Process new AgentState through reducer
                     const reducerResult = reducer(existingSessionMessages.reducerState, [], newSession.agentState);
                     const processedMessages = reducerResult.messages;
-                    
+
                     // Always update the session messages, even if no new messages were created
                     // This ensures the reducer state is updated with the new AgentState
                     const mergedMessagesMap = { ...existingSessionMessages.messagesMap };
                     processedMessages.forEach(message => {
                         mergedMessagesMap[message.id] = message;
                     });
-                    
+
                     const messagesArray = Object.values(mergedMessagesMap)
                         .sort((a, b) => b.createdAt - a.createdAt);
-                    
+
                     updatedSessionMessages[session.id] = {
                         messages: messagesArray,
                         messagesMap: mergedMessagesMap,
@@ -394,7 +414,7 @@ export const storage = create<StorageState>()((set) => {
                 state.machines,
                 state.sessionListViewData
             );
-            
+
             return {
                 ...state,
                 sessions: mergedSessions,
@@ -441,28 +461,28 @@ export const storage = create<StorageState>()((set) => {
             //     hasVoiceSession: !!voiceSession,
             //     processedMessagesCount: processedMessages.length
             // });
-            
+
             if (currentRealtimeSessionId === sessionId && voiceSession && processedMessages.length > 0) {
                 // Filter for agent messages and tool calls only
-                const agentMessages = processedMessages.filter(m => 
+                const agentMessages = processedMessages.filter(m =>
                     m.kind === 'agent-text' || m.kind === 'tool-call'
                 );
-                
+
                 // console.log('[REALTIME DEBUG] Agent messages found:', agentMessages.length, agentMessages.map(m => ({
                 //     kind: m.kind,
                 //     text: m.kind === 'agent-text' ? m.text : undefined,
                 //     tool: m.kind === 'tool-call' ? m.tool?.name : undefined
                 // })));
-                
+
                 if (agentMessages.length > 0) {
                     // Use the existing messagesToPrompt function to format properly
                     const contextUpdate = messagesToPrompt(agentMessages, {
                         maxCharacters: 1000,
                         excludeToolCalls: false
                     });
-                    
+
                     // console.log('[REALTIME DEBUG] Sending context update:', contextUpdate);
-                    
+
                     if (contextUpdate.trim()) {
                         voiceSession.sendContextualUpdate(contextUpdate);
                     }
@@ -513,27 +533,27 @@ export const storage = create<StorageState>()((set) => {
                 // First time loading - check for AgentState
                 const session = state.sessions[sessionId];
                 const agentState = session?.agentState;
-                
+
                 // Create new reducer state
                 const reducerState = createReducer();
-                
+
                 // Process AgentState if it exists
                 let messages: Message[] = [];
                 let messagesMap: Record<string, Message> = {};
-                
+
                 if (agentState) {
                     // Process AgentState through reducer to get initial permission messages
                     const reducerResult = reducer(reducerState, [], agentState);
                     const processedMessages = reducerResult.messages;
-                    
+
                     processedMessages.forEach(message => {
                         messagesMap[message.id] = message;
                     });
-                    
+
                     messages = Object.values(messagesMap)
                         .sort((a, b) => b.createdAt - a.createdAt);
                 }
-                
+
                 result = {
                     ...state,
                     sessionMessages: {
@@ -635,7 +655,7 @@ export const storage = create<StorageState>()((set) => {
                 listData.push('online');
                 listData.push(...newActiveSessions);
             }
-            
+
             // Legacy sessionsData - to be removed
             // Machines are now integrated into sessionListViewData
 
@@ -650,7 +670,7 @@ export const storage = create<StorageState>()((set) => {
                 state.machines,
                 state.sessionListViewData
             );
-            
+
             return {
                 ...state,
                 sessions: updatedSessions,
@@ -688,7 +708,7 @@ export const storage = create<StorageState>()((set) => {
         applyPurchases: (customerInfo: CustomerInfo) => set((state) => {
             // Transform CustomerInfo to our Purchases format
             const purchases = customerInfoToPurchases(customerInfo);
-            
+
             // Always save and update - no need for version checks
             savePurchases(purchases);
             return {
@@ -696,23 +716,30 @@ export const storage = create<StorageState>()((set) => {
                 purchases
             };
         }),
+        applyGitStatus: (sessionId: string, status: GitStatus | null) => set((state) => ({
+            ...state,
+            sessionGitStatus: {
+                ...state.sessionGitStatus,
+                [sessionId]: status
+            }
+        })),
         setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => ({
             ...state,
             realtimeStatus: status
         })),
         setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => {
             const now = Date.now();
-            const updates: Partial<StorageState> = { 
-                socketStatus: status 
+            const updates: Partial<StorageState> = {
+                socketStatus: status
             };
-            
+
             // Update timestamp based on status
             if (status === 'connected') {
                 updates.socketLastConnectedAt = now;
             } else if (status === 'disconnected' || status === 'error') {
                 updates.socketLastDisconnectedAt = now;
             }
-            
+
             return {
                 ...state,
                 ...updates
@@ -721,10 +748,10 @@ export const storage = create<StorageState>()((set) => {
         updateSessionDraft: (sessionId: string, draft: string | null) => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
-            
+
             // Don't store empty strings, convert to null
             const normalizedDraft = draft?.trim() ? draft : null;
-            
+
             // Collect all drafts for persistence
             const allDrafts: Record<string, string> = {};
             Object.entries(state.sessions).forEach(([id, sess]) => {
@@ -736,10 +763,10 @@ export const storage = create<StorageState>()((set) => {
                     allDrafts[id] = sess.draft;
                 }
             });
-            
+
             // Persist drafts
             saveSessionDrafts(allDrafts);
-            
+
             const updatedSessions = {
                 ...state.sessions,
                 [sessionId]: {
@@ -747,14 +774,14 @@ export const storage = create<StorageState>()((set) => {
                     draft: normalizedDraft
                 }
             };
-            
+
             // Rebuild sessionListViewData to update the UI immediately
             const sessionListViewData = buildSessionListViewData(
                 updatedSessions,
                 state.machines,
                 state.sessionListViewData
             );
-            
+
             return {
                 ...state,
                 sessions: updatedSessions,
@@ -764,7 +791,7 @@ export const storage = create<StorageState>()((set) => {
         updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
-            
+
             // Update the session with the new permission mode
             const updatedSessions = {
                 ...state.sessions,
@@ -773,7 +800,7 @@ export const storage = create<StorageState>()((set) => {
                     permissionMode: mode
                 }
             };
-            
+
             // Collect all permission modes for persistence
             const allModes: Record<string, PermissionMode> = {};
             Object.entries(updatedSessions).forEach(([id, sess]) => {
@@ -781,10 +808,10 @@ export const storage = create<StorageState>()((set) => {
                     allModes[id] = sess.permissionMode;
                 }
             });
-            
+
             // Persist permission modes (only non-default values to save space)
             saveSessionPermissionModes(allModes);
-            
+
             // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
             return {
                 ...state,
@@ -794,7 +821,7 @@ export const storage = create<StorageState>()((set) => {
         updateSessionModelMode: (sessionId: string, mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus') => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
-            
+
             // Update the session with the new model mode
             const updatedSessions = {
                 ...state.sessions,
@@ -803,7 +830,7 @@ export const storage = create<StorageState>()((set) => {
                     modelMode: mode
                 }
             };
-            
+
             // No need to rebuild sessionListViewData since model mode doesn't affect the list display
             return {
                 ...state,
@@ -927,4 +954,8 @@ export function useSocketStatus() {
         lastConnectedAt: state.socketLastConnectedAt,
         lastDisconnectedAt: state.socketLastDisconnectedAt
     })));
+}
+
+export function useSessionGitStatus(sessionId: string): GitStatus | null {
+    return storage(useShallow((state) => state.sessionGitStatus[sessionId] ?? null));
 }

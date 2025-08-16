@@ -103,3 +103,25 @@ export interface Machine {
     metadata: MachineMetadata | null;
     metadataVersion: number;
 }
+
+//
+// Git Status
+//
+
+export interface GitStatus {
+    branch: string | null;
+    isDirty: boolean;
+    modifiedCount: number;
+    untrackedCount: number;
+    stagedCount: number;
+    lastUpdatedAt: number;
+    // Line change statistics - separated by staged vs unstaged
+    stagedLinesAdded: number;
+    stagedLinesRemoved: number;
+    unstagedLinesAdded: number;
+    unstagedLinesRemoved: number;
+    // Computed totals
+    linesAdded: number;      // stagedLinesAdded + unstagedLinesAdded
+    linesRemoved: number;    // stagedLinesRemoved + unstagedLinesRemoved
+    linesChanged: number;    // Total lines that were modified (added + removed)
+}
