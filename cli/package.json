@@ -46,7 +46,8 @@
   "scripts": {
     "why do we need to build before running tests / dev?": "We need the binary to be built so we run daemon commands which directly run the binary - we don't want them to go out of sync or have custom spawn logic depending how we started happy",
     "test": "yarn build && vitest run",
-    "test:local": "yarn build && tsx --env-file .env.dev-local-server node_modules/.bin/vitest run",
+    "test:local": "yarn build && tsx --env-file .env.integration-test node_modules/.bin/vitest run",
+    "dev:integration-test-env": "yarn build && tsx --env-file .env.integration-test src/index.ts",
     "test:watch": "vitest",
     "build": "shx rm -rf dist && tsc --noEmit && pkgroll",
     "prepublishOnly": "yarn build && yarn test",

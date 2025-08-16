@@ -234,6 +234,7 @@ export type Metadata = {
   tools?: string[],
   slashCommands?: string[],
   homeDir?: string,
+  happyHomeDir?: string,
   startedFromDaemon?: boolean,
   hostPid?: number,
   startedBy?: 'daemon' | 'terminal',

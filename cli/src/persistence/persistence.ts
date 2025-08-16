@@ -15,8 +15,9 @@ import { randomUUID } from 'node:crypto';
 
 interface Settings {
   onboardingCompleted: boolean
-  machineId?: string
-  machineHost?: string
+  // This ID is used as the actual database ID on the server
+  // All machine operations use this ID
+  machineIdLocalAndDb?: string
   daemonAutoStartWhenRunningHappy?: boolean
 }
 
@@ -118,15 +119,15 @@ export async function updateSettings(
 
 /**
  * Ensure machine ID exists in settings, generating if needed
- * @returns Settings with machineId guaranteed to exist
+ * @returns Settings with machineIdLocalAndDb guaranteed to exist
+ * @deprecated Use authAndSetupMachineIfNeeded() from ui/auth.ts instead
  */
 export async function ensureMachineId(): Promise<Settings> {
   return updateSettings(settings => {
-    if (!settings.machineId) {
+    if (!settings.machineIdLocalAndDb) {
       return {
         ...settings,
-        machineId: randomUUID(),
-        machineHost: hostname()
+        machineIdLocalAndDb: randomUUID()
       };
     }
     return settings;

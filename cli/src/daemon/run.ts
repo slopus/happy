@@ -1,35 +1,33 @@
 import { DaemonHappyServerSession } from './serverSession';
 import { startDaemonControlServer } from './controlServer';
-import { MachineIdentity, DaemonMetadata, TrackedSession } from './types';
+import { MachineIdentity, DaemonState, TrackedSession } from './types';
 import { logger } from '@/ui/logger';
-import { ensureMachineId, readCredentials } from '@/persistence/persistence';
-import { hostname } from 'os';
+import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { join } from 'path';
 import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
-import { spawn, ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
 import { projectPath } from '@/projectPath';
 import { atomicFileWrite } from '@/utils/fileAtomic';
 import { Metadata } from '@/api/types';
-import { getDaemonMetadata, cleanupDaemonMetadata } from './utils';
-import { existsSync, readFileSync, unlinkSync } from 'fs';
+import { getDaemonState, cleanupDaemonState } from './utils';
 
 export async function startDaemon(): Promise<void> {
   logger.debug('[DAEMON RUN] Starting daemon process...');
   logger.debugLargeJson('[DAEMON RUN] Environment', getEnvironmentInfo());
   
   // Check if already running
-  const runningDaemon = await getDaemonMetadata();
+  const runningDaemon = await getDaemonState();
   if (runningDaemon) {
     try {
       process.kill(runningDaemon.pid, 0);
       logger.debug('[DAEMON RUN] Daemon already running');
       process.exit(0);
     } catch {
-      logger.debug('[DAEMON RUN] Stale metadata found, cleaning up');
-      await cleanupDaemonMetadata();
+      logger.debug('[DAEMON RUN] Stale state found, cleaning up');
+      await cleanupDaemonState();
     }
   }
 
@@ -40,8 +38,15 @@ export async function startDaemon(): Promise<void> {
   }
 
   try {
+    // Ensure auth and machine registration BEFORE anything else
+    const { credentials, machineIdentity } = await authAndSetupMachineIfNeeded();
+    logger.debug('[DAEMON RUN] Auth and machine setup complete');
+    
     // Setup state - key by PID
     const pidToTrackedSession = new Map<number, TrackedSession>();
+    
+    // Session spawning awaiter system
+    const pidToAwaiter = new Map<number, (session: TrackedSession) => void>();
     
     // Helper functions
     const getCurrentChildren = () => Array.from(pidToTrackedSession.values());
@@ -64,6 +69,14 @@ export async function startDaemon(): Promise<void> {
         existingSession.happySessionId = sessionId;
         existingSession.happySessionMetadataFromLocalWebhook = sessionMetadata;
         logger.debug(`[DAEMON RUN] Updated daemon-spawned session ${sessionId} with metadata`);
+        
+        // Resolve any awaiter for this PID
+        const awaiter = pidToAwaiter.get(pid);
+        if (awaiter) {
+          pidToAwaiter.delete(pid);
+          awaiter(existingSession);
+          logger.debug(`[DAEMON RUN] Resolved session awaiter for PID ${pid}`);
+        }
       } else if (!existingSession) {
         // New session started externally
         const trackedSession: TrackedSession = {
@@ -78,7 +91,7 @@ export async function startDaemon(): Promise<void> {
     };
     
     // Spawn a new session (sessionId reserved for future --resume functionality)
-    const spawnSession = (directory: string, sessionId?: string): TrackedSession | null => {
+    const spawnSession = async (directory: string, sessionId?: string): Promise<TrackedSession | null> => {
       try {
         const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
         const args = [
@@ -136,7 +149,24 @@ export async function startDaemon(): Promise<void> {
           }
         });
         
-        return trackedSession;
+        // Wait for webhook to populate session with happySessionId
+        logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${happyProcess.pid}`);
+        
+        return new Promise((resolve, reject) => {
+          // Set timeout for webhook
+          const timeout = setTimeout(() => {
+            pidToAwaiter.delete(happyProcess.pid!);
+            logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
+            resolve(trackedSession); // Return incomplete session on timeout
+          }, 10000); // 10 second timeout
+          
+          // Register awaiter
+          pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
+            clearTimeout(timeout);
+            logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`);
+            resolve(completedSession);
+          });
+        });
       } catch (error) {
         logger.debug('[DAEMON RUN] Failed to spawn session:', error);
         return null;
@@ -200,32 +230,17 @@ export async function startDaemon(): Promise<void> {
       onHappySessionWebhook
     });
 
-    // Write daemon metadata atomically
-    const metadata: DaemonMetadata = {
+    // Write daemon state atomically
+    const state: DaemonState = {
       pid: process.pid,
       httpPort: controlPort,
       startTime: new Date().toISOString(),
-      version: packageJson.version
+      startedWithCliVersion: packageJson.version
     };
-    await atomicFileWrite(configuration.daemonMetadataFile, JSON.stringify(metadata, null, 2));
-    logger.debug('[DAEMON RUN] Daemon metadata written');
+    await atomicFileWrite(configuration.daemonStateFile, JSON.stringify(state, null, 2));
+    logger.debug('[DAEMON RUN] Daemon state written');
 
-    // Get credentials and machine identity
-    const settings = await ensureMachineId();
-    const machineIdentity: MachineIdentity = {
-      machineId: settings.machineId!,
-      machineHost: settings.machineHost || hostname(),
-      platform: process.platform,
-      happyCliVersion: packageJson.version,
-      happyHomeDirectory: process.cwd()
-    };
-
-    const credentials = await readCredentials();
-    if (!credentials) {
-      throw new Error('No credentials found');
-    }
-
-    // Start server session
+    // Create server session with already-registered machine
     const serverSession = new DaemonHappyServerSession(
       credentials,
       machineIdentity,
@@ -259,9 +274,9 @@ export async function startDaemon(): Promise<void> {
       await stopControlServer();
       logger.debug('[DAEMON RUN] Control server stopped');
       
-      // Clean up metadata
-      await cleanupDaemonMetadata();
-      logger.debug('[DAEMON RUN] Metadata cleaned up');
+      // Clean up state
+      await cleanupDaemonState();
+      logger.debug('[DAEMON RUN] State cleaned up');
       
       // Stop caffeinate
       stopCaffeinate();
@@ -279,6 +294,31 @@ export async function startDaemon(): Promise<void> {
       logger.debug('[DAEMON RUN] Received SIGTERM');
       cleanup();
     });
+    
+    process.on('exit', () => {
+      logger.debug('[DAEMON RUN] Process exit - killing children');
+      // Note: Only synchronous operations allowed in exit handler
+      let killedCount = 0;
+      for (const session of pidToTrackedSession.values()) {
+        if (session.startedBy === 'daemon' && session.childProcess) {
+          try {
+            session.childProcess.kill('SIGTERM');
+            killedCount++;
+          } catch {}
+        }
+      }
+      logger.debug(`[DAEMON RUN] Killed ${killedCount} daemon-spawned children on exit`);
+    });
+    
+    process.on('uncaughtException', (error) => {
+      logger.debug('[DAEMON RUN] Uncaught exception - cleaning up before crash', error);
+      cleanup();
+    });
+    
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.debug('[DAEMON RUN] Unhandled rejection - cleaning up before crash', reason);
+      cleanup();
+    });
 
     logger.debug('[DAEMON RUN] Daemon started successfully');
 
@@ -291,12 +331,9 @@ export async function startDaemon(): Promise<void> {
 
   } catch (error) {
     logger.debug('[DAEMON RUN] Failed to start daemon', error);
-    await cleanupDaemonMetadata();
+    await cleanupDaemonState();
     stopCaffeinate();
     process.exit(1);
   }
 }
-
-// Re-export utility functions to maintain backwards compatibility
-export { isDaemonRunning, getDaemonMetadata, stopDaemon } from './utils';
 

@@ -17,7 +17,7 @@ import { createInterface } from 'node:readline'
 import { configuration } from '@/configuration'
 import { logger } from './ui/logger'
 import { readCredentials, readSettings, updateSettings } from './persistence/persistence'
-import { doAuth } from './ui/auth'
+import { doAuth, authAndSetupMachineIfNeeded } from './ui/auth'
 import packageJson from '../package.json'
 import { z } from 'zod'
 import { spawn } from 'child_process'
@@ -28,6 +28,7 @@ import { uninstall } from './daemon/uninstall'
 import { ApiClient } from './api/api'
 import { runDoctorCommand } from './ui/doctor'
 import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
+import { projectPath } from './projectPath'
 
 
 (async () => {
@@ -39,7 +40,7 @@ import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
   const subcommand = args[0]
 
   if (subcommand === 'doctor') {
-    await runDoctorCommand()
+    await runDoctorCommand();
     return;
   } else if (subcommand === 'logout') {
     try {
@@ -99,10 +100,46 @@ import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
       return
       
     } else if (daemonSubcommand === 'start') {
+      // Spawn detached daemon process
+      const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
+      const child = spawn(happyBinPath, ['daemon', 'start-sync'], {
+        detached: true,
+        stdio: 'ignore',
+        env: process.env
+      });
+      child.unref();
+      
+      // Wait for daemon to write state file (up to 5 seconds)
+      let started = false;
+      for (let i = 0; i < 50; i++) {
+        if (await isDaemonRunning()) {
+          started = true;
+          break;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      
+      if (started) {
+        console.log('Daemon started successfully');
+      } else {
+        console.error('Failed to start daemon');
+        process.exit(1);
+      }
+      process.exit(0);
+    } else if (daemonSubcommand === 'start-sync') {
+      // This is the actual synchronous daemon start (called by detached process)
       await startDaemon()
       process.exit(0)
     } else if (daemonSubcommand === 'stop') {
       await stopDaemon()
+      process.exit(0)
+    } else if (daemonSubcommand === 'kill-runaway') {
+      const { killRunawayHappyProcesses } = await import('./daemon/utils')
+      const result = await killRunawayHappyProcesses()
+      console.log(`Killed ${result.killed} runaway processes`)
+      if (result.errors.length > 0) {
+        console.log('Errors:', result.errors)
+      }
       process.exit(0)
     } else if (daemonSubcommand === 'install') {
       try {
@@ -123,10 +160,12 @@ import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 ${chalk.bold('happy daemon')} - Daemon management
 
 ${chalk.bold('Usage:')}
-  happy daemon start            Start the daemon
+  happy daemon start            Start the daemon (detached)
+  happy daemon start-sync       Start the daemon (synchronous, for internal use)
   happy daemon stop             Stop the daemon
   happy daemon list             List active sessions
   happy daemon stop-session <id>  Stop a specific session
+  happy daemon kill-runaway     Kill all runaway Happy processes
   sudo happy daemon install     Install the daemon (requires sudo)
   sudo happy daemon uninstall   Uninstall the daemon (requires sudo)
 
@@ -199,17 +238,10 @@ ${chalk.bold('Options:')}
   --claude-env KEY=VALUE  Set environment variable for Claude Code
   --claude-arg ARG        Pass additional argument to Claude CLI
 
-  [Daemon Management]
-  --happy-daemon-start    Start the daemon in background
-  --happy-daemon-stop     Stop the daemon
-  --happy-daemon-install  Install daemon to run on startup
-  --happy-daemon-uninstall  Uninstall daemon from startup
 
   [Advanced]
-  --happy-starting-mode <interactive|remote>
+  --happy-starting-mode <local|remote>
       Set the starting mode for new sessions (default: remote)
-  --happy-server-url <url>
-      Set the server URL (overrides HAPPY_SERVER_URL environment variable)
 
 ${chalk.bold('Examples:')}
   happy                   Start a session with default settings
@@ -223,9 +255,8 @@ ${chalk.bold('Examples:')}
                           Pass argument to Claude CLI
   happy logout            Logs out of your account and removes data directory
 
-[TODO: add after steve's refactor lands]
-${chalk.bold('Happy is a seamless passthrough to Claude CLI - so any commands that Claude CLI supports will work with Happy. Here is the help for Claude CLI:')}
-TODO: exec cluade --help and show inline here
+${chalk.bold('Happy is a wrapper around Claude Code that enables remote control via mobile app.')}
+${chalk.bold('Use "happy daemon" for background service management.')}
 `)
       process.exit(0)
     }
@@ -236,19 +267,24 @@ TODO: exec cluade --help and show inline here
       process.exit(0)
     }
 
-    // Load credentials
-    let credentials = await readCredentials()
-    if (!credentials || forceAuth) { // No credentials found or force auth requested
-      let res = await doAuth();
+    // Ensure authentication and machine setup
+    let credentials;
+    if (forceAuth) {
+      // Force re-auth requested
+      const res = await doAuth();
       if (!res) {
         process.exit(1);
       }
       credentials = res;
+    } else {
+      // Normal flow - auth and machine setup
+      const result = await authAndSetupMachineIfNeeded();
+      credentials = result.credentials;
     }
 
-    // Onboarding flow for daemon installation
-    let settings = await readSettings() || { onboardingCompleted: false };
-    if (settings.daemonAutoStartWhenRunningHappy === undefined) {
+    // Daemon auto-start preference (machine already set up)
+    let settings = await readSettings();
+    if (settings && settings.daemonAutoStartWhenRunningHappy === undefined) {
 
       console.log(chalk.cyan('\n🚀 Happy Daemon Setup\n'));
       // Ask about daemon auto-start
@@ -283,38 +319,22 @@ TODO: exec cluade --help and show inline here
     }
 
     // Auto-start daemon if enabled
-    if (settings.daemonAutoStartWhenRunningHappy) {
+    if (settings && settings.daemonAutoStartWhenRunningHappy) {
       logger.debug('Starting Happy background service...');
       
       if (!(await isDaemonRunning())) {
-        // Make sure to start detached
-        const happyPath = process.argv[1];
+        // Use the built binary to spawn daemon
+        const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
         
-        // When running with tsx, happyPath is the TypeScript file
-        // When running the built binary, happyPath is the binary itself
-        // We need to determine which case we're in
-        const runningFromBuiltBinary = happyPath.endsWith('happy') || happyPath.endsWith('happy.cmd');
-        
-        // Build daemon args
-        const daemonArgs = ['daemon', 'start'];
-        
-        let executable, args;
-        if (runningFromBuiltBinary) {
-          executable = happyPath
-          args = daemonArgs
-        } else {
-          executable = 'npx'
-          args = ['tsx', happyPath, ...daemonArgs]
-        }
-
-        const daemonProcess = spawn(executable, args, {
+        const daemonProcess = spawn(happyBinPath, ['daemon', 'start-sync'], {
           detached: true,
-          stdio: ['ignore', 'inherit', 'inherit'], // Show stdout/stderr for debugging
+          stdio: 'ignore',
+          env: process.env
         })
         daemonProcess.unref();
         
         // Give daemon a moment to write PID file
-        await new Promise(resolve => setTimeout(resolve, 200));
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
 

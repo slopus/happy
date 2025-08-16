@@ -7,7 +7,7 @@ import { AgentState, Metadata } from '@/api/types';
 // @ts-ignore
 import packageJson from '../package.json';
 import { registerHandlers } from '@/api/handlers';
-import { ensureMachineId } from '@/persistence/persistence';
+import { readSettings } from '@/persistence/persistence';
 import { EnhancedMode, PermissionMode } from './claude/loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
@@ -16,6 +16,7 @@ import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { Session } from '@/claude/session';
 import { getEnvironmentInfo } from '@/ui/doctor';
+import { configuration } from '@/configuration';
 
 export interface StartOptions {
     model?: string
@@ -49,17 +50,19 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // Create a new session
     let state: AgentState = {};
     
-    // Ensure machine ID exists
-    const settings = await ensureMachineId();
-    logger.debug(`Using machineId: ${settings.machineId}`);
+    // Get machine ID from settings (should already be set up)
+    const settings = await readSettings();
+    const machineId = settings?.machineIdLocalAndDb || 'unknown';
+    logger.debug(`Using machineId: ${machineId}`);
     
     let metadata: Metadata = {
         path: workingDirectory,
         host: os.hostname(),
         version: packageJson.version,
         os: os.platform(),
-        machineId: settings.machineId,
+        machineId: machineId,
         homeDir: os.homedir(),
+        happyHomeDir: configuration.happyDir,
         startedFromDaemon: options.startedBy === 'daemon',
         hostPid: process.pid,
         startedBy: options.startedBy || 'terminal'
@@ -69,10 +72,10 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Always report to daemon if it exists
     try {
-        const { getDaemonMetadata } = await import('@/daemon/utils');
-        const daemonMetadata = await getDaemonMetadata();
+        const { getDaemonState } = await import('@/daemon/utils');
+        const daemonState = await getDaemonState();
         
-        if (daemonMetadata?.httpPort) {
+        if (daemonState?.httpPort) {
             const { notifyDaemonSessionStarted } = await import('@/daemon/controlClient');
             await notifyDaemonSessionStarted(response.id, metadata);
             logger.debug(`[START] Reported session ${response.id} to daemon`);
@@ -260,6 +263,44 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Store reference to the Session instance for special commands
     let claudeSession: Session | null = null;
+
+    // Setup signal handlers for graceful shutdown
+    const cleanup = async () => {
+        logger.debug('[START] Received termination signal, cleaning up...');
+        
+        try {
+            // Send session death message if session exists
+            if (session) {
+                session.sendSessionDeath();
+                await session.flush();
+                await session.close();
+            }
+            
+            // Stop caffeinate
+            stopCaffeinate();
+            
+            logger.debug('[START] Cleanup complete, exiting');
+            process.exit(0);
+        } catch (error) {
+            logger.debug('[START] Error during cleanup:', error);
+            process.exit(1);
+        }
+    };
+
+    // Handle termination signals
+    process.on('SIGTERM', cleanup);
+    process.on('SIGINT', cleanup);
+    
+    // Handle uncaught exceptions and rejections
+    process.on('uncaughtException', (error) => {
+        logger.debug('[START] Uncaught exception:', error);
+        cleanup();
+    });
+    
+    process.on('unhandledRejection', (reason) => {
+        logger.debug('[START] Unhandled rejection:', reason);
+        cleanup();
+    });
 
     // Create claude loop
     await loop({

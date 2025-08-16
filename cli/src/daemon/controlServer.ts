@@ -19,7 +19,7 @@ export function startDaemonControlServer({
 }: {
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
-  spawnSession: (directory: string, sessionId?: string) => TrackedSession | null;
+  spawnSession: (directory: string, sessionId?: string) => Promise<TrackedSession | null>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata) => void;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
@@ -84,10 +84,14 @@ export function startDaemonControlServer({
       const { directory, sessionId } = request.body;
       
       logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}`);
-      const session = spawnSession(directory, sessionId);
+      const session = await spawnSession(directory, sessionId);
       
       if (session) {
-        return { success: true, pid: session.pid };
+        return { 
+          success: true, 
+          pid: session.pid,
+          sessionId: session.happySessionId || 'pending'
+        };
       } else {
         reply.code(500);
         return { error: 'Failed to spawn session' };

@@ -35,16 +35,16 @@ async function waitFor(
 
 // Kill daemon helper
 async function killDaemon(): Promise<void> {
-  if (existsSync(configuration.daemonMetadataFile)) {
+  if (existsSync(configuration.daemonStateFile)) {
     try {
-      const metadata = JSON.parse(await readFile(configuration.daemonMetadataFile, 'utf8'));
+      const metadata = JSON.parse(await readFile(configuration.daemonStateFile, 'utf8'));
       process.kill(metadata.pid, 'SIGKILL');
     } catch (e) {
       // Ignore errors
     }
     // Clean up metadata file
     try {
-      unlinkSync(configuration.daemonMetadataFile);
+      unlinkSync(configuration.daemonStateFile);
     } catch (e) {
       // Ignore
     }
@@ -75,8 +75,8 @@ async function startDaemon(): Promise<{ pid: number }> {
     setTimeout(async () => {
       if (!resolved) {
         try {
-          await waitFor(async () => existsSync(configuration.daemonMetadataFile), 3000);
-          const metadata = JSON.parse(await readFile(configuration.daemonMetadataFile, 'utf8'));
+          await waitFor(async () => existsSync(configuration.daemonStateFile), 3000);
+          const metadata = JSON.parse(await readFile(configuration.daemonStateFile, 'utf8'));
           resolved = true;
           resolve({ pid: metadata.pid });
         } catch (error) {
@@ -235,7 +235,7 @@ describe('Daemon HTTP Control Integration', () => {
     }, 2000);
 
     // Verify metadata file is cleaned up
-    await waitFor(async () => !existsSync(configuration.daemonMetadataFile), 1000);
+    await waitFor(async () => !existsSync(configuration.daemonStateFile), 1000);
     
     // Restart daemon for afterAll cleanup
     const daemon = await startDaemon();

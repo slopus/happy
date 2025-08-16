@@ -37,7 +37,7 @@ describe.skip('daemon tests', () => {
 
   it('daemon writes metadata file', async () => {
     console.log('Starting daemon...')
-    console.log('Test expects metadata file at:', configuration.daemonMetadataFile)
+    console.log('Test expects metadata file at:', configuration.daemonStateFile)
     
     // Start daemon using the built binary
     const { spawn } = await import('child_process')
@@ -64,21 +64,21 @@ describe.skip('daemon tests', () => {
     // Wait for metadata file
     console.log('Waiting for metadata file...')
     let attempts = 0
-    while (!existsSync(configuration.daemonMetadataFile) && attempts < 50) {
+    while (!existsSync(configuration.daemonStateFile) && attempts < 50) {
       await new Promise(resolve => setTimeout(resolve, 100))
       attempts++
     }
     
-    console.log(`Metadata file exists after ${attempts} attempts: ${existsSync(configuration.daemonMetadataFile)}`)
+    console.log(`Metadata file exists after ${attempts} attempts: ${existsSync(configuration.daemonStateFile)}`)
     
-    if (!existsSync(configuration.daemonMetadataFile)) {
+    if (!existsSync(configuration.daemonStateFile)) {
       console.log('STDOUT:', stdout)
       console.log('STDERR:', stderr)
     }
     
-    expect(existsSync(configuration.daemonMetadataFile)).toBe(true)
+    expect(existsSync(configuration.daemonStateFile)).toBe(true)
     
-    const metadata = JSON.parse(readFileSync(configuration.daemonMetadataFile, 'utf-8'))
+    const metadata = JSON.parse(readFileSync(configuration.daemonStateFile, 'utf-8'))
     console.log(`PID from metadata: ${metadata.pid}`)
     expect(metadata.pid).toBeGreaterThan(0)
   }, 10000)
@@ -97,12 +97,12 @@ describe.skip('daemon tests', () => {
     
     // Wait for metadata file
     let attempts = 0
-    while (!existsSync(configuration.daemonMetadataFile) && attempts < 50) {
+    while (!existsSync(configuration.daemonStateFile) && attempts < 50) {
       await new Promise(resolve => setTimeout(resolve, 100))
       attempts++
     }
     
-    const firstMetadata = JSON.parse(readFileSync(configuration.daemonMetadataFile, 'utf-8'))
+    const firstMetadata = JSON.parse(readFileSync(configuration.daemonStateFile, 'utf-8'))
     const firstPid = firstMetadata.pid
     console.log(`First daemon PID: ${firstPid}`)
     
@@ -113,7 +113,7 @@ describe.skip('daemon tests', () => {
     })
     
     // PID should still be the first one
-    const currentMetadata = JSON.parse(readFileSync(configuration.daemonMetadataFile, 'utf-8'))
+    const currentMetadata = JSON.parse(readFileSync(configuration.daemonStateFile, 'utf-8'))
     expect(currentMetadata.pid).toBe(firstPid)
   }, 10000)
 

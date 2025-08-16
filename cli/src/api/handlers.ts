@@ -100,6 +100,15 @@ interface RipgrepResponse {
     error?: string;
 }
 
+interface KillSessionRequest {
+    // No parameters needed
+}
+
+interface KillSessionResponse {
+    success: boolean;
+    message: string;
+}
+
 /**
  * Register all RPC handlers with the session
  */
@@ -379,6 +388,33 @@ export function registerHandlers(session: ApiSessionClient) {
             return {
                 success: false,
                 error: error instanceof Error ? error.message : 'Failed to run ripgrep'
+            };
+        }
+    });
+
+    // Kill session handler - terminates the current session gracefully
+    session.setHandler<KillSessionRequest, KillSessionResponse>('killSession', async () => {
+        logger.debug('Kill session request received');
+        
+        try {
+            // Immediately acknowledge the request
+            const response = {
+                success: true,
+                message: 'Session termination acknowledged, exiting in 100ms'
+            };
+            
+            // Wait a moment for the response to reach the client
+            setTimeout(() => {
+                logger.debug('[KILL SESSION] Exiting process as requested');
+                process.exit(0);
+            }, 100);
+            
+            return response;
+        } catch (error) {
+            logger.debug('Failed to kill session:', error);
+            return {
+                success: false,
+                message: error instanceof Error ? error.message : 'Failed to kill session'
             };
         }
     });

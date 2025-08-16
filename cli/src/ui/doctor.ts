@@ -8,7 +8,7 @@
 import chalk from 'chalk'
 import { configuration } from '@/configuration'
 import { readSettings, readCredentials } from '@/persistence/persistence'
-import { isDaemonRunning, getDaemonMetadata } from '@/daemon/utils'
+import { isDaemonRunning, getDaemonState, findRunawayHappyProcesses, findAllHappyProcesses } from '@/daemon/utils'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -106,35 +106,81 @@ export async function runDoctorCommand(): Promise<void> {
     console.log(chalk.bold('\n🤖 Daemon Status'));
     try {
         const isRunning = await isDaemonRunning();
-        const metadata = await getDaemonMetadata();
+        const state = await getDaemonState();
         
-        if (isRunning && metadata) {
+        if (isRunning && state) {
             console.log(chalk.green('✓ Daemon is running'));
-            console.log(`  PID: ${metadata.pid}`);
-            console.log(`  Started: ${new Date(metadata.startTime).toLocaleString()}`);
-            console.log(`  Version: ${metadata.version}`);
-            if (metadata.httpPort) {
-                console.log(`  HTTP Port: ${metadata.httpPort}`);
+            console.log(`  PID: ${state.pid}`);
+            console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`);
+            console.log(`  CLI Version: ${state.startedWithCliVersion}`);
+            if (state.httpPort) {
+                console.log(`  HTTP Port: ${state.httpPort}`);
             }
-        } else if (metadata && !isRunning) {
-            console.log(chalk.yellow('⚠️  Daemon metadata exists but process not running (stale)'));
+        } else if (state && !isRunning) {
+            console.log(chalk.yellow('⚠️  Daemon state exists but process not running (stale)'));
         } else {
             console.log(chalk.red('❌ Daemon is not running'));
         }
         
-        // Show daemon metadata file
-        if (metadata) {
-            console.log(chalk.bold('\n📄 Daemon Metadata:'));
-            console.log(chalk.blue(`Location: ${configuration.daemonMetadataFile}`));
-            console.log(chalk.gray(JSON.stringify(metadata, null, 2)));
+        // Show daemon state file
+        if (state) {
+            console.log(chalk.bold('\n📄 Daemon State:'));
+            console.log(chalk.blue(`Location: ${configuration.daemonStateFile}`));
+            console.log(chalk.gray(JSON.stringify(state, null, 2)));
         }
 
-        // Runaway daemons
-        const runaway: any[] = []; // await findPotentialRunawayDaemons();
-        if (runaway.length > 0) {
-            console.log(chalk.bold('\n🚨 Potential runaway daemons detected'));
-            console.log(chalk.gray('This can happen if a previous daemon cleanup failed.'));
-            console.log(`PIDs: ${chalk.yellow(runaway.join(', '))}`);
+        // All Happy processes
+        const allProcesses = findAllHappyProcesses();
+        if (allProcesses.length > 0) {
+            console.log(chalk.bold('\n🔍 All Happy CLI Processes'));
+            
+            // Group by type
+            const grouped = allProcesses.reduce((groups, process) => {
+                if (!groups[process.type]) groups[process.type] = [];
+                groups[process.type].push(process);
+                return groups;
+            }, {} as Record<string, typeof allProcesses>);
+            
+            // Display each group
+            Object.entries(grouped).forEach(([type, processes]) => {
+                const typeLabels: Record<string, string> = {
+                    'current': '📍 Current Process',
+                    'daemon': '🤖 Daemon',
+                    'daemon-spawned-session': '🔗 Daemon-Spawned Sessions',
+                    'user-session': '👤 User Sessions',
+                    'dev-daemon': '🛠️  Dev Daemon',
+                    'dev-session': '🛠️  Dev Sessions',
+                    'dev-doctor': '🛠️  Dev Doctor',
+                    'dev-related': '🛠️  Dev Related',
+                    'doctor': '🩺 Doctor',
+                    'unknown': '❓ Unknown'
+                };
+                
+                console.log(chalk.blue(`\n${typeLabels[type] || type}:`));
+                processes.forEach(({ pid, command }) => {
+                    const color = type === 'current' ? chalk.green : 
+                                 type.startsWith('dev') ? chalk.cyan : 
+                                 type.includes('daemon') ? chalk.blue : chalk.gray;
+                    console.log(`  ${color(`PID ${pid}`)}: ${chalk.gray(command)}`);
+                });
+            });
+        }
+
+        // Runaway processes
+        const runawayProcesses = findRunawayHappyProcesses();
+        if (runawayProcesses.length > 0) {
+            console.log(chalk.bold('\n🚨 Runaway Happy processes detected'));
+            console.log(chalk.gray('These processes were left running after daemon crashes.'));
+            runawayProcesses.forEach(({ pid, command }) => {
+                console.log(`  ${chalk.yellow(`PID ${pid}`)}: ${chalk.gray(command)}`);
+            });
+            console.log(chalk.blue('\nTo clean up: happy daemon kill-runaway'));
+        }
+        
+        if (allProcesses.length > 1) { // More than just current process
+            console.log(chalk.bold('\n💡 Process Management'));
+            console.log(chalk.gray('To kill runaway processes: happy daemon kill-runaway'));
+            console.log(chalk.gray('To kill specific processes: kill -TERM <PID>'));
         }
     } catch (error) {
         console.log(chalk.red('❌ Error checking daemon status'));

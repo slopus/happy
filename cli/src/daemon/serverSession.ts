@@ -1,30 +1,32 @@
 /**
  * WebSocket session with Happy server
- * Handles machine registration and RPC for spawning sessions
+ * Handles RPC for spawning sessions (machine already registered before connection)
  */
 
 import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
-import { encrypt, encodeBase64 } from '@/api/encryption';
-import packageJson from '../../package.json';
-import { MachineIdentity, MachineMetadata, ServerToDaemonEvents, DaemonToServerEvents, TrackedSession } from './types';
+import { MachineIdentity, ServerToDaemonEvents, DaemonToServerEvents, TrackedSession } from './types';
 
 export class DaemonHappyServerSession {
   private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
   private token: string;
   private secret: Uint8Array;
   private keepAliveInterval: NodeJS.Timeout | null = null;
-  private machineRegistered = false;
+  private readonly spawnMethod: string;
+  private readonly stopMethod: string;
 
   constructor(
     credentials: { token: string; secret: Uint8Array },
     private machineIdentity: MachineIdentity,
-    private spawnSession: (directory: string, sessionId?: string) => TrackedSession | null,
+    private spawnSession: (directory: string, sessionId?: string) => Promise<TrackedSession | null>,
     private stopSession: (sessionId: string) => boolean
   ) {
     this.token = credentials.token;
     this.secret = credentials.secret;
+    // Lift RPC method names to constructor level
+    this.spawnMethod = `${this.machineIdentity.machineIdLocalAndDb}:spawn-happy-session`;
+    this.stopMethod = `${this.machineIdentity.machineIdLocalAndDb}:stop-session`;
   }
 
   connect() {
@@ -34,6 +36,7 @@ export class DaemonHappyServerSession {
     this.socket = io(serverUrl, {
       transports: ['websocket'],
       auth: { token: this.token },
+      path: '/v1/updates',
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000
@@ -42,24 +45,18 @@ export class DaemonHappyServerSession {
     this.socket.on('connect', () => {
       logger.debug('[SERVER SESSION] Connected to server');
       
-      // Register machine
-      if (!this.machineRegistered) {
-        this.registerMachine();
-      }
-      
-      // Register RPC method
-      const rpcMethod = `${this.machineIdentity.machineId}:spawn-happy-session`;
-      this.socket.emit('rpc-register', { method: rpcMethod });
-      logger.debug(`[SERVER SESSION] Registered RPC method: ${rpcMethod}`);
+      // Machine already registered before connection
+      // Just register RPC methods
+      this.socket.emit('rpc-register', { method: this.spawnMethod });
+      this.socket.emit('rpc-register', { method: this.stopMethod });
+      logger.debug(`[SERVER SESSION] Registered RPC methods: ${this.spawnMethod}, ${this.stopMethod}`);
       
       this.startKeepAlive();
     });
 
-    // Handle spawn-happy-session RPC
+    // Single consolidated RPC handler
     this.socket.on('rpc-request', async (data, callback) => {
-      const expectedMethod = `${this.machineIdentity.machineId}:spawn-happy-session`;
-      
-      if (data.method === expectedMethod) {
+      if (data.method === this.spawnMethod) {
         logger.debug('[SERVER SESSION] Received spawn-happy-session RPC request');
         
         try {
@@ -69,29 +66,29 @@ export class DaemonHappyServerSession {
             throw new Error('Directory is required');
           }
           
-          const session = this.spawnSession(directory, sessionId);
+          const session = await this.spawnSession(directory, sessionId);
           
           if (!session) {
             throw new Error('Failed to spawn session');
           }
           
-          logger.debug(`[SERVER SESSION] Spawned session with PID ${session.pid}`);
-          
-          // Return immediately
-          callback({ ok: true, result: { message: 'Session spawning', pid: session.pid } });
+          logger.debug(`[SERVER SESSION] Spawned session ${session.happySessionId || 'pending'} with PID ${session.pid}`);
+          const response = { 
+            ok: true, 
+            result: { 
+              message: 'Session spawned successfully', 
+              pid: session.pid,
+              sessionId: session.happySessionId
+            } 
+          };
+          logger.debug(`[SERVER SESSION] Sending RPC response:`, response);
+          callback(response);
           
         } catch (error: any) {
           logger.debug(`[SERVER SESSION] RPC spawn failed:`, error);
           callback({ ok: false, error: error.message });
         }
-      }
-    });
-
-    // Handle stop-session RPC (if we add this in the future)
-    this.socket.on('rpc-request', async (data, callback) => {
-      const expectedMethod = `${this.machineIdentity.machineId}:stop-session`;
-      
-      if (data.method === expectedMethod) {
+      } else if (data.method === this.stopMethod) {
         logger.debug('[SERVER SESSION] Received stop-session RPC request');
         
         try {
@@ -124,9 +121,9 @@ export class DaemonHappyServerSession {
 
     this.socket.io.on('reconnect', () => {
       logger.debug('[SERVER SESSION] Reconnected to server');
-      // Re-register RPC method
-      const rpcMethod = `${this.machineIdentity.machineId}:spawn-happy-session`;
-      this.socket.emit('rpc-register', { method: rpcMethod });
+      // Re-register RPC methods
+      this.socket.emit('rpc-register', { method: this.spawnMethod });
+      this.socket.emit('rpc-register', { method: this.stopMethod });
     });
 
     this.socket.on('daemon-command', (data) => {
@@ -153,49 +150,11 @@ export class DaemonHappyServerSession {
     });
   }
 
-  private async registerMachine() {
-    try {
-      const metadata: MachineMetadata = {
-        host: this.machineIdentity.machineHost,
-        platform: this.machineIdentity.platform,
-        happyCliVersion: this.machineIdentity.happyCliVersion,
-        happyHomeDirectory: this.machineIdentity.happyHomeDirectory
-      };
-      
-      logger.debug('[SERVER SESSION] Registering machine with server');
-      
-      const encrypted = encrypt(JSON.stringify(metadata), this.secret);
-      const encryptedMetadata = encodeBase64(encrypted);
-      
-      const response = await fetch(`${configuration.serverUrl}/v1/machines`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 
-          id: this.machineIdentity.machineId,
-          metadata: encryptedMetadata 
-        })
-      });
-      
-      if (response.ok) {
-        logger.debug('[SERVER SESSION] Machine registered successfully');
-        this.machineRegistered = true;
-      } else {
-        const errorText = await response.text();
-        logger.debug(`[SERVER SESSION] Failed to register machine: ${response.status} - ${errorText}`);
-      }
-    } catch (error) {
-      logger.debug('[SERVER SESSION] Failed to register machine:', error);
-    }
-  }
-
   private startKeepAlive() {
     this.stopKeepAlive();
     this.keepAliveInterval = setInterval(() => {
       const payload = {
-        machineId: this.machineIdentity.machineId,
+        machineId: this.machineIdentity.machineIdLocalAndDb,
         time: Date.now()
       };
       logger.debugLargeJson(`[SERVER SESSION] Emitting machine-alive`, payload);

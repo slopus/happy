@@ -6,25 +6,27 @@ import { ChildProcess } from 'child_process';
 import { Metadata } from '@/api/types';
 
 export interface MachineIdentity {
-  machineId: string;
+  // This ID is used as the actual database ID on the server
+  // All machine operations use this ID
+  machineIdLocalAndDb: string;
   machineHost: string;
   platform: string;
   happyCliVersion: string;
   happyHomeDirectory: string;
 }
 
-export interface MachineMetadata {
+export interface MachineServerMetadata {
   host: string;
   platform: string;
   happyCliVersion: string;
   happyHomeDirectory: string;
 }
 
-export interface DaemonMetadata {
+export interface DaemonState {
   pid: number;
   httpPort: number;
   startTime: string;
-  version: string;
+  startedWithCliVersion: string;
 }
 
 export type TrackedSession = {
@@ -52,7 +54,7 @@ export interface DaemonToServerEvents {
     machineIdentity: string; // encrypted MachineIdentity
   }) => void;
   'machine-alive': (data: {
-    machineId: string;
+    machineId: string; // Server expects this field name
     time: number;
   }) => void;
   'session-spawn-result': (data: {

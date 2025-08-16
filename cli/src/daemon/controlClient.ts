@@ -4,17 +4,17 @@
  */
 
 import { logger } from '@/ui/logger';
-import { getDaemonMetadata } from './run';
+import { getDaemonState } from './utils';
 import { Metadata } from '@/api/types';
 
 async function daemonPost(path: string, body?: any): Promise<any> {
-  const metadata = await getDaemonMetadata();
-  if (!metadata?.httpPort) {
+  const state = await getDaemonState();
+  if (!state?.httpPort) {
     throw new Error('No daemon running');
   }
 
   try {
-    const response = await fetch(`http://127.0.0.1:${metadata.httpPort}${path}`, {
+    const response = await fetch(`http://127.0.0.1:${state.httpPort}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),

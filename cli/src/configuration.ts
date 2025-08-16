@@ -18,7 +18,7 @@ class Configuration {
   public readonly daemonLogsDir: string
   public readonly settingsFile: string
   public readonly privateKeyFile: string
-  public readonly daemonMetadataFile: string
+  public readonly daemonStateFile: string
   
   constructor() {
     // Server configuration - priority: parameter > environment > default
@@ -41,7 +41,7 @@ class Configuration {
     this.daemonLogsDir = join(this.happyDir, 'logs-daemon')
     this.settingsFile = join(this.happyDir, 'settings.json')
     this.privateKeyFile = join(this.happyDir, 'access.key')
-    this.daemonMetadataFile = join(this.happyDir, 'daemon-metadata.json')
+    this.daemonStateFile = join(this.happyDir, 'daemon.state.json')
   }
 }
 

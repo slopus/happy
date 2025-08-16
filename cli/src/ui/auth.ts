@@ -5,12 +5,18 @@ import tweetnacl from 'tweetnacl';
 import axios from 'axios';
 import { displayQRCode } from "./qrcode";
 import { delay } from "@/utils/time";
-import { writeCredentials } from "@/persistence/persistence";
+import { writeCredentials, readCredentials, updateSettings, readSettings } from "@/persistence/persistence";
 import { generateWebAuthUrl } from "@/api/webAuth";
 import { openBrowser } from "@/utils/browser";
 import { AuthSelector, AuthMethod } from "./ink/AuthSelector";
 import { render } from 'ink';
 import React from 'react';
+import { randomUUID } from 'node:crypto';
+import { hostname } from 'node:os';
+import { logger } from './logger';
+import packageJson from '../../package.json';
+import { MachineIdentity, MachineServerMetadata } from '@/daemon/types';
+import { encrypt } from '@/api/encryption';
 
 export async function doAuth(): Promise<{ secret: Uint8Array, token: string } | null> {
     console.clear();
@@ -191,4 +197,103 @@ export function decryptWithEphemeralKey(encryptedBundle: Uint8Array, recipientSe
     }
 
     return decrypted;
+}
+
+/**
+ * Register or update machine with the server
+ */
+async function createOrUpdateMachine(
+    credentials: { token: string; secret: Uint8Array },
+    machineIdLocalAndDb: string,
+    metadata: MachineServerMetadata
+): Promise<void> {
+    const encrypted = encrypt(JSON.stringify(metadata), credentials.secret);
+    const encryptedMetadata = encodeBase64(encrypted);
+    
+    const response = await fetch(`${configuration.serverUrl}/v1/machines`, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${credentials.token}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ 
+            id: machineIdLocalAndDb,
+            metadata: encryptedMetadata 
+        })
+    });
+    
+    if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to register machine: ${response.status} - ${errorText}`);
+    }
+    
+    logger.debug(`[AUTH] Machine ${machineIdLocalAndDb} registered/updated with server`);
+}
+
+/**
+ * Ensure authentication and machine setup
+ * This replaces the onboarding flow and ensures everything is ready
+ */
+export async function authAndSetupMachineIfNeeded(): Promise<{
+    credentials: { token: string; secret: Uint8Array };
+    machineIdentity: MachineIdentity;
+}> {
+    logger.debug('[AUTH] Starting auth and machine setup...');
+    
+    // Step 1: Handle authentication
+    let credentials = await readCredentials();
+    
+    if (!credentials) {
+        logger.debug('[AUTH] No credentials found, starting authentication flow...');
+        const authResult = await doAuth();
+        if (!authResult) {
+            throw new Error('Authentication failed or was cancelled');
+        }
+        credentials = authResult;
+    } else {
+        logger.debug('[AUTH] Using existing credentials');
+    }
+    
+    // Step 2: Get or initialize settings with machine ID
+    const settings = await updateSettings(s => {
+        if (!s.machineIdLocalAndDb) {
+            // This ID is used as the actual database ID on the server
+            // All machine operations use this ID
+            return {
+                ...s,
+                machineIdLocalAndDb: randomUUID(),
+                onboardingCompleted: true
+            };
+        }
+        return s;
+    });
+    
+    logger.debug(`[AUTH] Machine ID: ${settings.machineIdLocalAndDb}`);
+    
+    // Step 3: Build machine metadata for server
+    const metadata: MachineServerMetadata = {
+        host: hostname(),
+        platform: process.platform,
+        happyCliVersion: packageJson.version,
+        happyHomeDirectory: configuration.happyDir
+    };
+    
+    // Step 4: Register/update machine with server
+    try {
+        await createOrUpdateMachine(credentials, settings.machineIdLocalAndDb!, metadata);
+    } catch (error) {
+        logger.debug('[AUTH] Failed to register machine with server:', error);
+        throw new Error(`Failed to register machine: ${error}`);
+    }
+    
+    // Step 5: Build and return machine identity
+    const machineIdentity: MachineIdentity = {
+        machineIdLocalAndDb: settings.machineIdLocalAndDb!,
+        machineHost: hostname(),
+        platform: process.platform,
+        happyCliVersion: packageJson.version,
+        happyHomeDirectory: configuration.happyDir
+    };
+    
+    return { credentials, machineIdentity };
 }
