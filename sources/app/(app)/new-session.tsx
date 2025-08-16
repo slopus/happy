@@ -7,12 +7,13 @@ import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import type { Session } from '@/sync/storageTypes';
+import type { Session, MachineMetadata } from '@/sync/storageTypes';
 import { spawnRemoteSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router';
 import { Modal } from '@/modal';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 
 export default function NewSessionScreen() {
     const router = useRouter();
@@ -28,7 +29,8 @@ export default function NewSessionScreen() {
             machineHost: string, 
             paths: Set<string>,
             isOnline: boolean,
-            lastSeen?: number
+            lastSeen?: number,
+            metadata?: MachineMetadata | null
         }> = {};
         
         // First, add all active machines with their proper host names
@@ -37,7 +39,8 @@ export default function NewSessionScreen() {
                 machineHost: machine.metadata?.host || machine.id,
                 paths: new Set(),
                 isOnline: machine.active,
-                lastSeen: machine.lastActiveAt
+                lastSeen: machine.lastActiveAt,
+                metadata: machine.metadata
             };
         });
         
@@ -74,11 +77,12 @@ export default function NewSessionScreen() {
         if (!isSpawning) {
             setIsSpawning(true);
             try {
+                console.log(`🚀 Starting session on machine ${machineId} at path: ${path}`);
                 const result = await spawnRemoteSession(machineId, path);
-                console.log('daemon result', result);
+                console.log('🎉 daemon result', result);
+                
                 if (result.sessionId) {
-                    // NOTE: This does not really work for some reason : D
-                    console.log('Session spawned:', result.sessionId);
+                    console.log('✅ Session spawned successfully:', result.sessionId);
                     
                     // Poll for the session to appear in our local state
                     const pollInterval = 100; // Poll every 100ms
@@ -91,6 +95,7 @@ export default function NewSessionScreen() {
                         
                         if (newSession) {
                             // Session found! Navigate to it using replace to remove new-session screen from stack
+                            console.log('📱 Navigating to session:', result.sessionId);
                             router.replace(`/session/${result.sessionId}`);
                             return;
                         }
@@ -100,6 +105,7 @@ export default function NewSessionScreen() {
                             setTimeout(pollForSession, pollInterval);
                         } else {
                             // Timeout - session didn't appear
+                            console.log('⏰ Polling timeout - session should appear soon');
                             setIsSpawning(false);
                             Modal.alert('Session started', 'The session was started but may take a moment to appear. Pull to refresh on the main screen.');
                             router.back();
@@ -108,11 +114,25 @@ export default function NewSessionScreen() {
                     
                     // Start polling
                     pollForSession();
+                } else {
+                    console.error('❌ No sessionId in response:', result);
+                    setIsSpawning(false);
+                    Modal.alert('Error', 'Session spawning failed - no session ID returned.');
                 }
             } catch (error) {
-                console.error('Failed to start session', error);
-                Modal.alert('Error', 'Failed to start session. Make sure the daemon is running on the target machine.');
+                console.error('💥 Failed to start session', error);
                 setIsSpawning(false);
+                
+                let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
+                if (error instanceof Error) {
+                    if (error.message.includes('timeout')) {
+                        errorMessage = 'Session startup timed out. The machine may be slow or the daemon may not be responding.';
+                    } else if (error.message.includes('Socket not connected')) {
+                        errorMessage = 'Not connected to server. Check your internet connection.';
+                    }
+                }
+                
+                Modal.alert('Error', errorMessage);
             }
         }
     };
@@ -232,18 +252,29 @@ export default function NewSessionScreen() {
                                     </View>
                                 )
                                 }>
-                                    {Array.from(data.paths).slice(0, 3).map(path => (
-                                        <Item
-                                            key={path}
-                                            title={path}
-                                            titleStyle={{ fontFamily: 'Menlo', fontSize: 14 }}
-                                            onPress={() => {
-                                                setSelectedMachine(machineId);
-                                                setCustomPaths(prev => ({ ...prev, [machineId]: path }));
-                                            }}
-                                            selected={selectedMachine === machineId && customPaths[machineId] === path}
-                                        />
-                                    ))}
+                                    {Array.from(data.paths).sort().slice(0, 3).map(path => {
+                                        // Derive home directory from path - typically /Users/username or /home/username
+                                        const pathSegments = path.split('/');
+                                        let homeDir = '';
+                                        if (pathSegments[1] === 'Users' && pathSegments[2]) {
+                                            homeDir = `/Users/${pathSegments[2]}`;
+                                        } else if (pathSegments[1] === 'home' && pathSegments[2]) {
+                                            homeDir = `/home/${pathSegments[2]}`;
+                                        }
+                                        
+                                        return (
+                                            <Item
+                                                key={path}
+                                                title={formatPathRelativeToHome(path, homeDir)}
+                                                titleStyle={{ fontFamily: 'Menlo', fontSize: 14 }}
+                                                onPress={() => {
+                                                    setSelectedMachine(machineId);
+                                                    setCustomPaths(prev => ({ ...prev, [machineId]: path }));
+                                                }}
+                                                selected={selectedMachine === machineId && customPaths[machineId] === path}
+                                            />
+                                        );
+                                    })}
                                     <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
                                         <TextInput
                                             style={{

@@ -1,4 +1,5 @@
-import { View, ScrollView, Pressable, Platform, Image, Linking } from 'react-native';
+import { View, ScrollView, Pressable, Platform, Image, Linking, TextInput, Alert } from 'react-native';
+import * as React from 'react';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +17,60 @@ import { trackPaywallButtonClicked } from '@/track';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
 import { PlusPlus } from '@/components/PlusPlus';
+
+// Manual Auth Modal Component for Android
+function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (url: string) => void }) {
+    const [url, setUrl] = React.useState('');
+    
+    return (
+        <View style={{ padding: 20, backgroundColor: 'white', borderRadius: 12, minWidth: 300 }}>
+            <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>
+                Authenticate Terminal
+            </Text>
+            <Text style={{ fontSize: 14, color: '#666', marginBottom: 16 }}>
+                Paste the authentication URL from your terminal
+            </Text>
+            <TextInput
+                style={{
+                    borderWidth: 1,
+                    borderColor: '#ddd',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 14,
+                    marginBottom: 20
+                }}
+                value={url}
+                onChangeText={setUrl}
+                placeholder="happy://terminal?..."
+                placeholderTextColor="#999"
+                autoCapitalize="none"
+                autoCorrect={false}
+                autoFocus
+            />
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                <Pressable
+                    onPress={onClose}
+                    style={{ paddingVertical: 8, paddingHorizontal: 16, marginRight: 8 }}
+                >
+                    <Text style={{ color: '#007AFF', fontSize: 16 }}>Cancel</Text>
+                </Pressable>
+                <Pressable
+                    onPress={() => {
+                        if (url.trim()) {
+                            onSubmit(url.trim());
+                            onClose();
+                        }
+                    }}
+                    style={{ paddingVertical: 8, paddingHorizontal: 16 }}
+                >
+                    <Text style={{ color: '#007AFF', fontSize: 16, fontWeight: '600' }}>
+                        Authenticate
+                    </Text>
+                </Pressable>
+            </View>
+        </View>
+    );
+}
 
 export default function SettingsScreen() {
     const router = useRouter();
@@ -79,9 +134,9 @@ export default function SettingsScreen() {
                 />
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
                     <Text style={{ ...Typography.logo(), fontSize: 24, fontWeight: 'bold' }}>
-                        Happy Coder
+                        Happy
                     </Text>
-                    {isPro && <PlusPlus fontSize={24} />}
+                    {/* {isPro && <PlusPlus fontSize={24} />} */}
                 </View>
                 <Pressable onPress={handleVersionClick} hitSlop={20}>
                     <Text style={{ ...Typography.mono(), fontSize: 14, color: '#8E8E93' }}>
@@ -90,15 +145,51 @@ export default function SettingsScreen() {
                 </Pressable>
             </View>
 
-            {/* Terminal - Only show on native platforms */}
+            {/* Connect Terminal - Only show on native platforms */}
             {Platform.OS !== 'web' && (
-                <ItemGroup>
+                <ItemGroup title="Connect Terminal">
                     <Item
-                        title="Connect Terminal"
-                        subtitle="Scan QR code to connect Claude Code"
+                        title="Scan QR code to authenticate"
                         icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
                         onPress={connectTerminal}
                         loading={isLoading}
+                        showChevron={false}
+                    />
+                    <Item
+                        title="Enter URL manually"
+                        icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
+                        onPress={() => {
+                            if (Platform.OS === 'ios') {
+                                Alert.prompt(
+                                    'Authenticate Terminal',
+                                    'Paste the authentication URL from your terminal',
+                                    [
+                                        { text: 'Cancel', style: 'cancel' },
+                                        {
+                                            text: 'Authenticate',
+                                            onPress: (url?: string) => {
+                                                if (url?.trim()) {
+                                                    connectWithUrl(url.trim());
+                                                }
+                                            }
+                                        }
+                                    ],
+                                    'plain-text',
+                                    '',
+                                    'happy://terminal?...'
+                                );
+                            } else {
+                                // For Android, show a custom modal
+                                Modal.show({
+                                    component: ManualAuthModal,
+                                    props: {
+                                        onSubmit: (url: string) => {
+                                            connectWithUrl(url);
+                                        }
+                                    }
+                                });
+                            }
+                        }}
                         showChevron={false}
                     />
                 </ItemGroup>
@@ -197,6 +288,7 @@ export default function SettingsScreen() {
                     />
                 )}
             </ItemGroup>
+            
         </ItemList>
     );
 }

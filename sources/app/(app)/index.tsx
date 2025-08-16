@@ -20,6 +20,8 @@ import { getServerInfo } from "@/sync/serverConfig";
 import { FAB } from "@/components/FAB";
 import { Header } from "@/components/navigation/Header";
 import { HomeHeader, HomeHeaderNotAuth } from "@/components/HomeHeader";
+import { Modal } from '@/modal';
+import * as Clipboard from 'expo-clipboard';
 
 export default function Home() {
     const auth = useAuth();

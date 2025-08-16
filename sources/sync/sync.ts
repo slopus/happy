@@ -49,7 +49,15 @@ class Sync {
         this.settingsSync = new InvalidateSync(this.syncSettings);
         this.purchasesSync = new InvalidateSync(this.syncPurchases);
         this.machinesSync = new InvalidateSync(this.fetchMachines);
-        this.pushTokenSync = new InvalidateSync(this.registerPushToken);
+
+
+        const registerPushToken = async () => {
+            if (__DEV__) {
+                return;
+            }
+            await this.registerPushToken();
+        }
+        this.pushTokenSync = new InvalidateSync(registerPushToken);
         this.activityAccumulator = new ActivityUpdateAccumulator(this.flushActivityUpdates.bind(this), 5000);
 
         // Listen for app state changes to refresh purchases
@@ -434,6 +442,7 @@ class Sync {
     private fetchMachines = async () => {
         if (!this.credentials) return;
 
+        console.log('📊 Sync: Fetching machines...');
         const API_ENDPOINT = getServerUrl();
         const response = await fetch(`${API_ENDPOINT}/v1/machines`, {
             headers: {
@@ -448,6 +457,7 @@ class Sync {
         }
 
         const data = await response.json();
+        console.log(`📊 Sync: Fetched ${Array.isArray(data) ? data.length : 0} machines from server`);
         const machines = data as Array<{
             id: string;
             metadata: string;
@@ -720,6 +730,7 @@ class Sync {
 
         // Get push token
         const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+
         const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
         log.log('tokenData: ' + JSON.stringify(tokenData));
 
@@ -757,13 +768,15 @@ class Sync {
     }
 
     private handleUpdate = (update: unknown) => {
+        console.log('🔄 Sync: handleUpdate called with:', JSON.stringify(update).substring(0, 300));
         const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
         if (!validatedUpdate.success) {
-            console.log('Invalid update received:', validatedUpdate.error);
-            console.error('Invalid update received:', update);
+            console.log('❌ Sync: Invalid update received:', validatedUpdate.error);
+            console.error('❌ Sync: Invalid update data:', update);
             return;
         }
         const updateData = validatedUpdate.data;
+        console.log(`🔄 Sync: Validated update type: ${updateData.body.t}`);
 
         if (updateData.body.t === 'new-message') {
 
@@ -806,6 +819,7 @@ class Sync {
             this.onSessionVisible(updateData.body.sid);
 
         } else if (updateData.body.t === 'new-session') {
+            console.log('🔄 Sync: New session update received, fetching sessions...');
             this.fetchSessions(); // Just fetch sessions again
         } else if (updateData.body.t === 'update-session') {
             const session = storage.getState().sessions[updateData.body.id];

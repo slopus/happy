@@ -123,15 +123,31 @@ class ApiSocket {
         if (!this.socket) {
             throw new Error('Socket not connected');
         }
-        // For daemon RPCs, we prefix with machineId and don't encrypt params
-        const result = await this.socket.emitWithAck('rpc-call', {
-            method: `${machineId}:${method}`,
-            params: params
-        });
-        if (result.ok) {
-            return result.result as R;
+        
+        if (!this.encryption) {
+            throw new Error('Encryption not initialized');
         }
-        throw new Error(result.error || 'Daemon RPC call failed');
+        
+        console.log(`🔌 DaemonRPC: Calling ${machineId}:${method}`, params);
+        
+        try {
+            // For daemon RPCs, we prefix with machineId and encrypt params (SECURITY REQUIREMENT)
+            // Set timeout to 15 seconds for daemon operations like session spawning
+            const result = await this.socket.timeout(15000).emitWithAck('rpc-call', {
+                method: `${machineId}:${method}`,
+                params: this.encryption.encryptRaw(params)
+            });
+            
+            console.log(`🔌 DaemonRPC: Response for ${machineId}:${method}`, result);
+            
+            if (result.ok) {
+                return this.encryption.decryptRaw(result.result) as R;
+            }
+            throw new Error(result.error || 'Daemon RPC call failed');
+        } catch (error) {
+            console.error(`🔌 DaemonRPC: Error for ${machineId}:${method}`, error);
+            throw error;
+        }
     }
 
     send(event: string, data: any) {
@@ -196,7 +212,8 @@ class ApiSocket {
 
         // Connection events
         this.socket.on('connect', () => {
-            console.log('SyncSocket: Connected, recovered: ' + this.socket?.recovered);
+            console.log('🔌 SyncSocket: Connected, recovered: ' + this.socket?.recovered);
+            console.log('🔌 SyncSocket: Socket ID:', this.socket?.id);
             this.updateStatus('connected');
             if (!this.socket?.recovered) {
                 this.reconnectedListeners.forEach(listener => listener());
@@ -204,26 +221,35 @@ class ApiSocket {
         });
 
         this.socket.on('disconnect', (reason) => {
-            console.log('SyncSocket: Disconnected', reason);
+            console.log('🔌 SyncSocket: Disconnected', reason);
             this.updateStatus('disconnected');
         });
 
         // Error events
         this.socket.on('connect_error', (error) => {
-            console.error('SyncSocket: Connection error', error);
+            console.error('🔌 SyncSocket: Connection error', error);
             this.updateStatus('error');
         });
 
         this.socket.on('error', (error) => {
-            console.error('SyncSocket: Error', error);
+            console.error('🔌 SyncSocket: Error', error);
             this.updateStatus('error');
+        });
+
+        // Authentication response
+        this.socket.on('auth', (data) => {
+            console.log('🔌 SyncSocket: Auth response:', data);
         });
 
         // Message handling
         this.socket.onAny((event, data) => {
+            console.log(`📥 SyncSocket: Received event '${event}':`, JSON.stringify(data).substring(0, 200));
             const handler = this.messageHandlers.get(event);
             if (handler) {
+                console.log(`📥 SyncSocket: Calling handler for '${event}'`);
                 handler(data);
+            } else {
+                console.log(`📥 SyncSocket: No handler registered for '${event}'`);
             }
         });
     }

@@ -112,6 +112,16 @@ interface SessionRipgrepResponse {
     error?: string;
 }
 
+// Kill session operation types
+interface SessionKillRequest {
+    // No parameters needed
+}
+
+interface SessionKillResponse {
+    success: boolean;
+    message: string;
+}
+
 // Exported session operation functions
 
 /**
@@ -299,6 +309,26 @@ export async function sessionRipgrep(
     }
 }
 
+/**
+ * Kill the session process immediately
+ */
+export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
+    try {
+        const request: SessionKillRequest = {};
+        const response = await apiSocket.rpc<SessionKillResponse, SessionKillRequest>(
+            sessionId,
+            'killSession',
+            request
+        );
+        return response;
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
 // Export types for external use
 export type {
     SessionBashRequest,
@@ -309,5 +339,6 @@ export type {
     DirectoryEntry,
     SessionGetDirectoryTreeResponse,
     TreeNode,
-    SessionRipgrepResponse
+    SessionRipgrepResponse,
+    SessionKillResponse
 };

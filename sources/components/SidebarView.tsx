@@ -74,7 +74,7 @@ export const SidebarView = React.memo(() => {
                         <Text style={{
                             fontSize: Platform.OS === 'web' ? 18 : 16,
                             ...Typography.logo()
-                        }}>Happy Coder</Text>
+                        }}>Happy</Text>
                         {getConnectionStatus().text && (
                             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
                                 <StatusDot
