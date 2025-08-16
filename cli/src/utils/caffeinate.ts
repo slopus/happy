@@ -59,11 +59,19 @@ export function startCaffeinate(): boolean {
     }
 }
 
+let isStopping = false
+
 /**
  * Stop the caffeinate process
  */
 export function stopCaffeinate(): void {
+    // Prevent re-entrant calls during cleanup
+    if (isStopping) {
+        return
+    }
+    
     if (caffeinateProcess && !caffeinateProcess.killed) {
+        isStopping = true
         logger.debug(`[caffeinate] Stopping caffeinate process PID ${caffeinateProcess.pid}`)
         
         try {
@@ -76,9 +84,11 @@ export function stopCaffeinate(): void {
                     caffeinateProcess.kill('SIGKILL')
                 }
                 caffeinateProcess = null
+                isStopping = false
             }, 1000)
         } catch (error) {
             logger.debug('[caffeinate] Error stopping caffeinate:', error)
+            isStopping = false
         }
     }
 }

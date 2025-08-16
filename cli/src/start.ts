@@ -24,7 +24,7 @@ export interface StartOptions {
     shouldStartDaemon?: boolean
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
-    daemonSpawn?: boolean
+    startedBy?: 'daemon' | 'terminal'
 }
 
 export async function start(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
@@ -35,7 +35,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
 
     // Validate daemon spawn requirements
-    if (options.daemonSpawn && options.startingMode === 'local') {
+    if (options.startedBy === 'daemon' && options.startingMode === 'local') {
         logger.debug('Daemon spawn requested with local mode - forcing remote mode');
         options.startingMode = 'remote';
         // TODO: Eventually we should error here instead of silently switching
@@ -59,10 +59,26 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         os: os.platform(),
         machineId: settings.machineId,
         homeDir: os.homedir(),
-        startedFromDaemon: options.daemonSpawn || false
+        startedFromDaemon: options.startedBy === 'daemon',
+        hostPid: process.pid,
+        startedBy: options.startedBy || 'terminal'
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);
+
+    // Always report to daemon if it exists
+    try {
+        const { getDaemonMetadata } = await import('@/daemon/run');
+        const daemonMetadata = await getDaemonMetadata();
+        
+        if (daemonMetadata?.httpPort) {
+            const { notifyDaemonSessionStarted } = await import('@/daemon/controlClient');
+            await notifyDaemonSessionStarted(response.id, metadata);
+            logger.debug(`[START] Reported session ${response.id} to daemon`);
+        }
+    } catch (error) {
+        logger.debug('[START] Failed to report to daemon (may not be running):', error);
+    }
 
     // Extract SDK metadata in background and update session when ready
     extractSDKMetadataAsync(async (sdkMetadata) => {
@@ -79,11 +95,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
             logger.debug('[start] Failed to update session metadata:', error);
         }
     });
-
-    // Output session ID for daemon to parse when spawned with --daemon-spawn
-    if (options.daemonSpawn) {
-        console.log(`daemon:sessionIdCreated:${response.id}`);
-    }
 
     // Create realtime session
     const session = api.session(response);

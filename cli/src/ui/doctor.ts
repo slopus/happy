@@ -113,8 +113,8 @@ export async function runDoctorCommand(): Promise<void> {
             console.log(`  PID: ${metadata.pid}`);
             console.log(`  Started: ${new Date(metadata.startTime).toLocaleString()}`);
             console.log(`  Version: ${metadata.version}`);
-            if (metadata.childPids && metadata.childPids.length > 0) {
-                console.log(`  Child Processes: ${metadata.childPids.length}`);
+            if (metadata.httpPort) {
+                console.log(`  HTTP Port: ${metadata.httpPort}`);
             }
         } else if (metadata && !isRunning) {
             console.log(chalk.yellow('⚠️  Daemon metadata exists but process not running (stale)'));

@@ -2,6 +2,9 @@
  * Types and interfaces for the Happy daemon functionality
  */
 
+import { ChildProcess } from 'child_process';
+import { Metadata } from '@/api/types';
+
 export interface MachineIdentity {
   machineId: string;
   machineHost: string;
@@ -16,6 +19,26 @@ export interface MachineMetadata {
   happyCliVersion: string;
   happyHomeDirectory: string;
 }
+
+export interface DaemonMetadata {
+  pid: number;
+  httpPort: number;
+  startTime: string;
+  version: string;
+}
+
+export type TrackedSession = {
+  startedBy: 'daemon';
+  happySessionId?: string;  // Will be set when session reports
+  happySessionMetadataFromLocalWebhook?: Metadata;
+  pid: number;
+  childProcess: ChildProcess;
+} | {
+  startedBy: 'happy directly - likely by user from terminal';
+  happySessionId: string;
+  happySessionMetadataFromLocalWebhook: Metadata;
+  pid: number;
+};
 
 export interface EncryptedNewSessionRequest {
   requestId: string;

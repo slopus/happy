@@ -235,6 +235,8 @@ export type Metadata = {
   slashCommands?: string[],
   homeDir?: string,
   startedFromDaemon?: boolean,
+  hostPid?: number,
+  startedBy?: 'daemon' | 'terminal',
 };
 
 export type AgentState = {

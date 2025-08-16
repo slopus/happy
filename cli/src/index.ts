@@ -26,6 +26,8 @@ import { install } from './daemon/install'
 import { uninstall } from './daemon/uninstall'
 import { ApiClient } from './api/api'
 import { runDoctorCommand } from './ui/doctor'
+import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
+
 
 (async () => {
 
@@ -68,7 +70,38 @@ import { runDoctorCommand } from './ui/doctor'
   } else if (subcommand === 'daemon') {
     // Show daemon management help
     const daemonSubcommand = args[1]
-    if (daemonSubcommand === 'start') {
+    
+    if (daemonSubcommand === 'list') {
+      try {
+        const sessions = await listDaemonSessions()
+        
+        if (sessions.length === 0) {
+          console.log('No active sessions')
+        } else {
+          console.log('Active sessions:')
+          console.log(JSON.stringify(sessions, null, 2))
+        }
+      } catch (error) {
+        console.log('No daemon running')
+      }
+      return
+      
+    } else if (daemonSubcommand === 'stop-session') {
+      const sessionId = args[2]
+      if (!sessionId) {
+        console.error('Session ID required')
+        process.exit(1)
+      }
+      
+      try {
+        const success = await stopDaemonSession(sessionId)
+        console.log(success ? 'Session stopped' : 'Failed to stop session')
+      } catch (error) {
+        console.log('No daemon running')
+      }
+      return
+      
+    } else if (daemonSubcommand === 'start') {
       await startDaemon()
       process.exit(0)
     } else if (daemonSubcommand === 'stop') {
@@ -95,11 +128,13 @@ ${chalk.bold('happy daemon')} - Daemon management
 ${chalk.bold('Usage:')}
   happy daemon start            Start the daemon
   happy daemon stop             Stop the daemon
+  happy daemon list             List active sessions
+  happy daemon stop-session <id>  Stop a specific session
   sudo happy daemon install     Install the daemon (requires sudo)
   sudo happy daemon uninstall   Uninstall the daemon (requires sudo)
 
 ${chalk.bold('Note:')} The daemon runs in the background and provides persistent services.
-Currently only supported on macOS.
+Installation is only supported on macOS.
 `)
       }
     return;
@@ -139,8 +174,8 @@ Currently only supported on macOS.
         // Pass additional arguments to Claude CLI
         const claudeArg = args[++i]
         options.claudeArgs = [...(options.claudeArgs || []), claudeArg]
-      } else if (arg === '--daemon-spawn') {
-        options.daemonSpawn = true
+      } else if (arg === '--started-by') {
+        options.startedBy = args[++i] as 'daemon' | 'terminal'
       } else {
         console.error(chalk.red(`Unknown argument: ${arg}`))
         process.exit(1)

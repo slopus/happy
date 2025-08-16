@@ -65,6 +65,7 @@
     "axios": "^1.10.0",
     "chalk": "^5.4.1",
     "expo-server-sdk": "^3.15.0",
+    "fastify": "^5.5.0",
     "http-proxy": "^1.18.1",
     "http-proxy-middleware": "^3.0.5",
     "ink": "^6.1.0",
