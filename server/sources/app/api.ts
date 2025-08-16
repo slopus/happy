@@ -1,5 +1,5 @@
 import fastify, { FastifyInstance } from "fastify";
-import { log } from "@/utils/log";
+import { log, logger } from "@/utils/log";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { Server, Socket } from "socket.io";
 import { z } from "zod";
@@ -86,13 +86,16 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
     app.decorate('authenticate', async function (request: any, reply: any) {
         try {
             const authHeader = request.headers.authorization;
+            log({ module: 'auth-decorator' }, `Auth check - path: ${request.url}, has header: ${!!authHeader}, header start: ${authHeader?.substring(0, 50)}...`);
             if (!authHeader || !authHeader.startsWith('Bearer ')) {
+                log({ module: 'auth-decorator' }, `Auth failed - missing or invalid header`);
                 return reply.code(401).send({ error: 'Missing authorization header' });
             }
 
             const token = authHeader.substring(7);
             const verified = await tokenVerifier.verify(token);
             if (!verified) {
+                log({ module: 'auth-decorator' }, `Auth failed - invalid token`);
                 return reply.code(401).send({ error: 'Invalid token' });
             }
 
@@ -102,8 +105,11 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             });
 
             if (!user) {
+                log({ module: 'auth-decorator' }, `Auth failed - user not found: ${verified.user}`);
                 return reply.code(401).send({ error: 'User not found' });
             }
+            
+            log({ module: 'auth-decorator' }, `Auth success - user: ${user.id}`);
 
             request.user = user;
         } catch (error) {
@@ -224,10 +230,13 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             return reply.code(401).send({ error: 'Invalid public key' });
         }
 
+        const publicKeyHex = privacyKit.encodeHex(publicKey);
+        log({ module: 'auth-request' }, `Terminal auth request - publicKey hex: ${publicKeyHex}`);
+        
         const answer = await db.terminalAuthRequest.upsert({
-            where: { publicKey: privacyKit.encodeHex(publicKey) },
+            where: { publicKey: publicKeyHex },
             update: {},
-            create: { publicKey: privacyKit.encodeHex(publicKey) }
+            create: { publicKey: publicKeyHex }
         });
 
         if (answer.response && answer.responseAccountId) {
@@ -252,15 +261,26 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             })
         }
     }, async (request, reply) => {
+        log({ module: 'auth-response' }, `Auth response endpoint hit - user: ${request.user?.id || 'NO USER'}, publicKey: ${request.body.publicKey.substring(0, 20)}...`);
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
         if (!isValid) {
+            log({ module: 'auth-response' }, `Invalid public key length: ${publicKey.length}`);
             return reply.code(401).send({ error: 'Invalid public key' });
         }
+        const publicKeyHex = privacyKit.encodeHex(publicKey);
+        log({ module: 'auth-response' }, `Looking for auth request with publicKey hex: ${publicKeyHex}`);
         const authRequest = await db.terminalAuthRequest.findUnique({
-            where: { publicKey: privacyKit.encodeHex(publicKey) }
+            where: { publicKey: publicKeyHex }
         });
         if (!authRequest) {
+            log({ module: 'auth-response' }, `Auth request not found for publicKey: ${publicKeyHex}`);
+            // Let's also check what auth requests exist
+            const allRequests = await db.terminalAuthRequest.findMany({
+                take: 5,
+                orderBy: { createdAt: 'desc' }
+            });
+            log({ module: 'auth-response' }, `Recent auth requests in DB: ${JSON.stringify(allRequests.map(r => ({ id: r.id, publicKey: r.publicKey.substring(0, 20) + '...', hasResponse: !!r.response })))}`);
             return reply.code(404).send({ error: 'Request not found' });
         }
         if (!authRequest.response) {
@@ -416,6 +436,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             }
         });
         if (session) {
+            logger.info({ module: 'session-create', sessionId: session.id, userId, tag }, `Found existing session: ${session.id} for tag ${tag}`);
             return reply.send({
                 session: {
                     id: session.id,
@@ -437,6 +458,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             const updSeq = await allocateUserSeq(userId);
 
             // Create session
+            logger.info({ module: 'session-create', userId, tag }, `Creating new session for user ${userId} with tag ${tag}`);
             const session = await db.session.create({
                 data: {
                     accountId: userId,
@@ -444,6 +466,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     metadata: metadata
                 }
             });
+            logger.info({ module: 'session-create', sessionId: session.id, userId }, `Session created: ${session.id}`);
 
             // Create update
             const updContent: PrismaJson.UpdateBody = {
@@ -461,15 +484,23 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             };
 
             // Emit update to connected sockets
+            const updatePayload = {
+                id: randomKeyNaked(12),
+                seq: updSeq,
+                body: updContent,
+                createdAt: Date.now()
+            };
+            logger.info({ 
+                module: 'session-create', 
+                userId, 
+                sessionId: session.id,
+                updateType: 'new-session',
+                updatePayload: JSON.stringify(updatePayload)
+            }, `Emitting new-session update to all user connections`);
             emitUpdateToInterestedClients({
                 event: 'update',
                 userId,
-                payload: {
-                    id: randomKeyNaked(12),
-                    seq: updSeq,
-                    body: updContent,
-                    createdAt: Date.now()
-                },
+                payload: updatePayload,
                 recipientFilter: { type: 'all-user-authenticated-connections' }
             });
 
@@ -945,7 +976,10 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         const userId = request.user.id;
         const { id, metadata } = request.body;
         
-        const machine = await db.machine.upsert({
+        logger.info({ module: 'machines', machineId: id, userId, hasMetadata: !!metadata }, 'Creating/updating machine');
+        
+        try {
+            const machine = await db.machine.upsert({
             where: {
                 accountId_id: {
                     accountId: userId,
@@ -964,9 +998,9 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 active: true,
                 lastActiveAt: new Date()
             }
-        });
-        
-        // Emit update to all user connections
+            });
+            
+            // Emit update to all user connections
         const updSeq = await allocateUserSeq(userId);
         emitUpdateToInterestedClients({
             event: 'update',
@@ -984,9 +1018,78 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 },
                 createdAt: Date.now()
             }
+            });
+            
+            return { success: true };
+        } catch (error) {
+            logger.error({ 
+                module: 'machines', 
+                machineId: id, 
+                userId, 
+                error: error instanceof Error ? error.message : String(error),
+                errorStack: error instanceof Error ? error.stack : undefined
+            }, 'Failed to create/update machine');
+            return reply.code(500).send({ 
+                error: 'Failed to create/update machine',
+                details: error instanceof Error ? error.message : String(error)
+            });
+        }
+    });
+
+    // Combined logging endpoint (only when explicitly enabled)
+    if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
+        typed.post('/logs-combined-from-cli-and-mobile-for-simple-ai-debugging', {
+            schema: {
+                body: z.object({
+                    timestamp: z.string(),
+                    level: z.string(),
+                    message: z.string(),
+                    messageRawObject: z.any().optional(),
+                    source: z.enum(['mobile', 'cli']),
+                    platform: z.string().optional()
+                })
+            }
+        }, async (request, reply) => {
+            const { timestamp, level, message, source, platform } = request.body;
+            
+            // Log ONLY to separate remote logger (file only, no console)
+            const logData = {
+                source,
+                platform,
+                timestamp
+            };
+            
+            // Use the file-only logger if available
+            const { fileConsolidatedLogger } = await import('@/utils/log');
+            
+            if (!fileConsolidatedLogger) {
+                // Should never happen since we check env var above, but be safe
+                return reply.send({ success: true });
+            }
+            
+            switch (level.toLowerCase()) {
+                case 'error':
+                    fileConsolidatedLogger.error(logData, message);
+                    break;
+                case 'warn':
+                case 'warning':
+                    fileConsolidatedLogger.warn(logData, message);
+                    break;
+                case 'debug':
+                    fileConsolidatedLogger.debug(logData, message);
+                    break;
+                default:
+                    fileConsolidatedLogger.info(logData, message);
+            }
+            
+            return reply.send({ success: true });
         });
-        
-        return { success: true };
+    }
+
+    // Catch-all route for debugging 404s
+    app.setNotFoundHandler((request, reply) => {
+        log({ module: '404-handler' }, `404 - Method: ${request.method}, Path: ${request.url}, Headers: ${JSON.stringify(request.headers)}`);
+        reply.code(404).send({ error: 'Not found', path: request.url, method: request.method });
     });
 
     // Start
