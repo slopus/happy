@@ -25,8 +25,8 @@ export class DaemonHappyServerSession {
     this.token = credentials.token;
     this.secret = credentials.secret;
     // Lift RPC method names to constructor level
-    this.spawnMethod = `${this.machineIdentity.machineIdLocalAndDb}:spawn-happy-session`;
-    this.stopMethod = `${this.machineIdentity.machineIdLocalAndDb}:stop-session`;
+    this.spawnMethod = `${this.machineIdentity.machineId}:spawn-happy-session`;
+    this.stopMethod = `${this.machineIdentity.machineId}:stop-session`;
   }
 
   connect() {
@@ -154,7 +154,7 @@ export class DaemonHappyServerSession {
     this.stopKeepAlive();
     this.keepAliveInterval = setInterval(() => {
       const payload = {
-        machineId: this.machineIdentity.machineIdLocalAndDb,
+        machineId: this.machineIdentity.machineId,
         time: Date.now()
       };
       logger.debugLargeJson(`[SERVER SESSION] Emitting machine-alive`, payload);

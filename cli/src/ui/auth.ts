@@ -204,7 +204,7 @@ export function decryptWithEphemeralKey(encryptedBundle: Uint8Array, recipientSe
  */
 async function createOrUpdateMachine(
     credentials: { token: string; secret: Uint8Array },
-    machineIdLocalAndDb: string,
+    machineId: string,
     metadata: MachineServerMetadata
 ): Promise<void> {
     const encrypted = encrypt(JSON.stringify(metadata), credentials.secret);
@@ -217,7 +217,7 @@ async function createOrUpdateMachine(
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({ 
-            id: machineIdLocalAndDb,
+            id: machineId,
             metadata: encryptedMetadata 
         })
     });
@@ -227,7 +227,7 @@ async function createOrUpdateMachine(
         throw new Error(`Failed to register machine: ${response.status} - ${errorText}`);
     }
     
-    logger.debug(`[AUTH] Machine ${machineIdLocalAndDb} registered/updated with server`);
+    logger.debug(`[AUTH] Machine ${machineId} registered/updated with server`);
 }
 
 /**
@@ -256,19 +256,19 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
     
     // Step 2: Get or initialize settings with machine ID
     const settings = await updateSettings(s => {
-        if (!s.machineIdLocalAndDb) {
+        if (!s.machineId) {
             // This ID is used as the actual database ID on the server
             // All machine operations use this ID
             return {
                 ...s,
-                machineIdLocalAndDb: randomUUID(),
+                machineId: randomUUID(),
                 onboardingCompleted: true
             };
         }
         return s;
     });
     
-    logger.debug(`[AUTH] Machine ID: ${settings.machineIdLocalAndDb}`);
+    logger.debug(`[AUTH] Machine ID: ${settings.machineId}`);
     
     // Step 3: Build machine metadata for server
     const metadata: MachineServerMetadata = {
@@ -280,7 +280,7 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
     
     // Step 4: Register/update machine with server
     try {
-        await createOrUpdateMachine(credentials, settings.machineIdLocalAndDb!, metadata);
+        await createOrUpdateMachine(credentials, settings.machineId!, metadata);
     } catch (error) {
         logger.debug('[AUTH] Failed to register machine with server:', error);
         throw new Error(`Failed to register machine: ${error}`);
@@ -288,7 +288,7 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
     
     // Step 5: Build and return machine identity
     const machineIdentity: MachineIdentity = {
-        machineIdLocalAndDb: settings.machineIdLocalAndDb!,
+        machineId: settings.machineId!,
         machineHost: hostname(),
         platform: process.platform,
         happyCliVersion: packageJson.version,

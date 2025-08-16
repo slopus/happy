@@ -52,7 +52,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     
     // Get machine ID from settings (should already be set up)
     const settings = await readSettings();
-    const machineId = settings?.machineIdLocalAndDb || 'unknown';
+    const machineId = settings?.machineId || 'unknown';
     logger.debug(`Using machineId: ${machineId}`);
     
     let metadata: Metadata = {

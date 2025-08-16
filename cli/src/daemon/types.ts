@@ -8,7 +8,7 @@ import { Metadata } from '@/api/types';
 export interface MachineIdentity {
   // This ID is used as the actual database ID on the server
   // All machine operations use this ID
-  machineIdLocalAndDb: string;
+  machineId: string;
   machineHost: string;
   platform: string;
   happyCliVersion: string;
