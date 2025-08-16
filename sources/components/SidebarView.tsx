@@ -1,4 +1,4 @@
-import { useSessionListViewData, useEntitlement, useSocketStatus } from '@/sync/storage';
+import { useSessionListViewData, useEntitlement, useSocketStatus, useSetting } from '@/sync/storage';
 import * as React from 'react';
 import { Text, View, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,6 +17,7 @@ export const SidebarView = React.memo(() => {
     const router = useRouter();
     const headerHeight = useHeaderHeight();
     const socketStatus = useSocketStatus();
+    const isExperimental = useSetting('experiments');
 
     // Get connection status styling (matching sessionUtils.ts pattern)
     const getConnectionStatus = () => {
@@ -117,7 +118,9 @@ export const SidebarView = React.memo(() => {
                     )}
                 </View>
             </View>
-            <FAB onPress={handleNewSession} />
+            {isExperimental && (
+                <FAB onPress={handleNewSession} />
+            )}
         </>
     )
 });
