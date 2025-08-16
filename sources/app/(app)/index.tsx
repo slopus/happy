@@ -22,6 +22,8 @@ import { Header } from "@/components/navigation/Header";
 import { HomeHeader, HomeHeaderNotAuth } from "@/components/HomeHeader";
 import { Modal } from '@/modal';
 import * as Clipboard from 'expo-clipboard';
+import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
+import { useRealtimeStatus } from '@/sync/storage';
 
 export default function Home() {
     const auth = useAuth();
@@ -38,6 +40,7 @@ function Authenticated() {
     const { updateAvailable, reloadApp } = useUpdates();
     const isTablet = useIsTablet();
     const isExperimental = useSetting('experiments');
+    const realtimeStatus = useRealtimeStatus();
 
     const handleNewSession = () => {
         router.push('/new-session');
@@ -65,6 +68,9 @@ function Authenticated() {
         return (
             <>
                 <HomeHeader />
+                {!isTablet && realtimeStatus !== 'disconnected' && (
+                    <VoiceAssistantStatusBar variant="full" />
+                )}
                 <View className="flex-1 items-center justify-center mb-8">
                     <ActivityIndicator size="small" color="#000000" />
                 </View>
@@ -81,6 +87,9 @@ function Authenticated() {
     return (
         <>
             <HomeHeader />
+            {!isTablet && realtimeStatus !== 'disconnected' && (
+                <VoiceAssistantStatusBar variant="full" />
+            )}
             <View className="flex-1">
                 {updateAvailable && <UpdateBanner onReload={reloadApp} />}
                 {!sessionListViewData || sessionListViewData.length === 0 ? emptyState : (
