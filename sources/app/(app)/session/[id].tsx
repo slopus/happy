@@ -37,6 +37,8 @@ import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { useDraft } from '@/hooks/useDraft';
 import { PlaceholderContainerView } from '@/components/PlaceholderContainerView';
 import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
+import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
+import { useIsTablet } from '@/utils/responsive';
 
 
 export default React.memo(() => {
@@ -63,6 +65,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
+    const isTablet = useIsTablet();
+    const headerHeight = useHeaderHeight();
     const { messages: messagesRecentFirst, isLoaded } = useSessionMessages(sessionId);
     const [message, setMessage] = useState('');
     const realtimeStatus = useRealtimeStatus();
@@ -72,7 +76,6 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     // Get model mode from session object, default to 'default'
     const modelMode = session.modelMode || 'default';
     const screenWidth = useWindowDimensions().width;
-    const headerHeight = useHeaderHeight();
     const sessionStatus = useSessionStatus(session);
     const lastSeenText = sessionStatus.statusText;
     const autocomplete = useAutocompleteSession(message, message.length);
@@ -395,6 +398,19 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     //     borderBottomColor: 'rgba(0, 0, 0, 0.1)',
                     // }}
                     />
+                </View>
+            )}
+
+            {/* Voice Assistant Status Bar - positioned as overlay below header */}
+            {!isTablet && !(isLandscape && deviceType === 'phone') && realtimeStatus !== 'disconnected' && (
+                <View style={{
+                    position: 'absolute',
+                    top: safeArea.top + headerHeight, // Position below header
+                    left: 0,
+                    right: 0,
+                    zIndex: 999 // Below header but above content
+                }}>
+                    <VoiceAssistantStatusBar variant="full" />
                 </View>
             )}
 

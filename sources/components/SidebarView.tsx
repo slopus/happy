@@ -10,6 +10,8 @@ import { EmptySessionsTablet } from './EmptySessionsTablet';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { FAB } from './FAB';
+import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
+import { useRealtimeStatus } from '@/sync/storage';
 
 export const SidebarView = React.memo(() => {
     const sessionListViewData = useSessionListViewData();
@@ -18,6 +20,7 @@ export const SidebarView = React.memo(() => {
     const headerHeight = useHeaderHeight();
     const socketStatus = useSocketStatus();
     const isExperimental = useSetting('experiments');
+    const realtimeStatus = useRealtimeStatus();
 
     // Get connection status styling (matching sessionUtils.ts pattern)
     const getConnectionStatus = () => {
@@ -104,6 +107,9 @@ export const SidebarView = React.memo(() => {
                         </Pressable>
                     </View>
                 </View>
+                {realtimeStatus !== 'disconnected' && (
+                    <VoiceAssistantStatusBar variant="sidebar" />
+                )}
                 <View style={{ flex: 1, flexBasis: 0, flexGrow: 1 }}>
                     {sessionListViewData === null && (
                         <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}>
