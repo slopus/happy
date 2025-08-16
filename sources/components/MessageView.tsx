@@ -121,7 +121,6 @@ function AgentEventBlock(props: {
         marginHorizontal: 8,
         alignItems: 'center',
         paddingVertical: 8,
-        paddingBottom: 24
       }}>
         <Text style={{ color: '#666666', fontSize: 14 }}>Switched to {props.event.mode} mode</Text>
       </View>
@@ -133,7 +132,6 @@ function AgentEventBlock(props: {
         marginVertical: 8,
         alignItems: 'center',
         paddingVertical: 8,
-        paddingBottom: 24
       }}>
         <Text style={{ color: '#666666', fontSize: 14 }}>{props.event.message}</Text>
       </View>
@@ -154,7 +152,6 @@ function AgentEventBlock(props: {
         marginHorizontal: 8,
         alignItems: 'center',
         paddingVertical: 8,
-        paddingBottom: 24
       }}>
         <Text style={{ color: '#666666', fontSize: 14 }}>
           Usage limit reached until {formatTime(props.event.endsAt)}
@@ -167,7 +164,6 @@ function AgentEventBlock(props: {
       marginHorizontal: 8,
       alignItems: 'center',
       paddingVertical: 8,
-      paddingBottom: 24
     }}>
       <Text style={{ color: '#666666', fontSize: 14 }}>Unknown event</Text>
     </View>

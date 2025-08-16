@@ -140,7 +140,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     }, [sessionId]);
 
     const ListHeader = React.useMemo(() => {
-        return <View style={{ flexDirection: 'row', alignItems: 'center', height: (Platform.OS === 'web' ? 0 : headerHeight + safeArea.top) + 32 }} />;
+        return <View style={{ flexDirection: 'row', alignItems: 'center', height: (Platform.OS === 'web' ? 0 : (headerHeight + safeArea.top)) + 32 }} />;
     }, [headerHeight, safeArea.top]);
 
     // Memoize FlatList props
@@ -181,6 +181,104 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             onSwitch={() => sessionSwitch(sessionId, 'remote')}
         />
     ), [sessionStatus, permissionMode, sessionId]);
+
+    const content = (
+        <>
+            <Deferred>
+                <FlatList
+                    removeClippedSubviews={true}
+                    data={messagesRecentFirst}
+                    inverted={true}
+                    keyExtractor={keyExtractor}
+                    style={[headerDependentStyles.flatListStyle]}
+                    maintainVisibleContentPosition={maintainVisibleContentPosition}
+                    keyboardShouldPersistTaps="handled"
+                    keyboardDismissMode="none" // Interactive mode is still buggy
+                    renderItem={renderItem}
+                    contentContainerStyle={contentContainerStyle}
+                    ListHeaderComponent={ListFooter}
+                    ListFooterComponent={ListHeader}
+                />
+            </Deferred>
+            {sessionStatus.state === 'disconnected' && daemonStatus?.active && (
+                <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
+                    <RoundButton
+                        title={isReviving ? "Reviving..." : "Revive session"}
+                        onPress={async () => {
+                            if (!isReviving && session.metadata?.machineId && session.metadata?.path) {
+                                setIsReviving(true);
+                                try {
+                                    const result = await spawnRemoteSession(session.metadata.machineId, session.metadata.path);
+                                    if (result.sessionId && result.sessionId !== sessionId) {
+                                        router.replace(`/session/${result.sessionId}`);
+                                    }
+                                } catch (error) {
+                                    Modal.alert('Error', 'Failed to revive session');
+                                } finally {
+                                    setIsReviving(false);
+                                }
+                            }
+                        }}
+                        size="normal"
+                        disabled={isReviving}
+                        loading={isReviving}
+                    />
+                </View>
+            )}
+        </>
+    );
+
+    const placeholder = messagesRecentFirst.length === 0 ? (
+        <>
+            {isLoaded ? (
+                <EmptyMessages session={session} />
+            ) : (
+                <ActivityIndicator size="large" color="#C7C7CC" />
+            )}
+        </>
+    ) : null;
+
+    const input = (
+        <AgentInput
+            placeholder="Type a message ..."
+            value={message}
+            onChangeText={setMessage}
+            permissionMode={permissionMode}
+            onPermissionModeChange={updatePermissionMode}
+            modelMode={modelMode}
+            onModelModeChange={updateModelMode}
+            connectionStatus={{
+                text: sessionStatus.statusText,
+                color: sessionStatus.statusColor,
+                dotColor: sessionStatus.statusDotColor,
+                isPulsing: sessionStatus.isPulsing
+            }}
+            onSend={() => {
+                if (message.trim()) {
+                    setMessage('');
+                    clearDraft();
+                    sync.sendMessage(sessionId, message);
+                    trackMessageSent();
+                }
+            }}
+            onMicPress={handleMicrophonePress}
+            isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
+            onAbort={() => sessionAbort(sessionId)}
+            showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
+            onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
+            // Autocomplete configuration
+            autocompletePrefixes={['@', '/']}
+            autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
+            usageData={sessionUsage ? {
+                inputTokens: sessionUsage.inputTokens,
+                outputTokens: sessionUsage.outputTokens,
+                cacheCreation: sessionUsage.cacheCreation,
+                cacheRead: sessionUsage.cacheRead,
+                contextSize: sessionUsage.contextSize
+            } : undefined}
+            alwaysShowContextSize={alwaysShowContextSize}
+        />
+    );
 
 
     return (
@@ -300,144 +398,50 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
 
             {/* Main content area - no padding since header is overlay */}
             <View style={{ flexBasis: 0, flexGrow: 1, paddingBottom: safeArea.bottom + ((isRunningOnMac() || Platform.OS === 'web') ? 32 : 0) }}>
-                <AgentContentView>
-                    <View style={headerDependentStyles.contentContainer}>
-                        <Deferred>
-                            {messagesRecentFirst.length === 0 && (
-                                <PlaceholderContainerView
-                                    style={{ flex: 1 }}
-                                    contentContainerStyle={{
-                                        paddingTop: headerHeight + safeArea.top,
-                                        paddingHorizontal: 48
-                                    }}
-                                >
-                                    {isLoaded ? (
-                                        <EmptyMessages session={session} />
-                                    ) : (
-                                        <ActivityIndicator size="large" color="#C7C7CC" />
-                                    )}
-                                </PlaceholderContainerView>
-                            )}
-                            {messagesRecentFirst.length > 0 && (
-                                <FlatList
-                                    removeClippedSubviews={true}
-                                    data={messagesRecentFirst}
-                                    inverted={true}
-                                    keyExtractor={keyExtractor}
-                                    style={[headerDependentStyles.flatListStyle]}
-                                    maintainVisibleContentPosition={maintainVisibleContentPosition}
-                                    keyboardShouldPersistTaps="handled"
-                                    keyboardDismissMode="none"
-                                    renderItem={renderItem}
-                                    contentContainerStyle={contentContainerStyle}
-                                    ListHeaderComponent={ListFooter}
-                                    ListFooterComponent={ListHeader}
-                                />
-                            )}
-                        </Deferred>
-                    </View>
-                    {sessionStatus.state === 'disconnected' && daemonStatus?.active && (
-                        <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
-                            <RoundButton
-                                title={isReviving ? "Reviving..." : "Revive session"}
-                                onPress={async () => {
-                                    if (!isReviving && session.metadata?.machineId && session.metadata?.path) {
-                                        setIsReviving(true);
-                                        try {
-                                            const result = await spawnRemoteSession(session.metadata.machineId, session.metadata.path);
-                                            if (result.sessionId && result.sessionId !== sessionId) {
-                                                router.replace(`/session/${result.sessionId}`);
-                                            }
-                                        } catch (error) {
-                                            Modal.alert('Error', 'Failed to revive session');
-                                        } finally {
-                                            setIsReviving(false);
-                                        }
-                                    }
-                                }}
-                                size="normal"
-                                disabled={isReviving}
-                                loading={isReviving}
-                            />
-                        </View>
-                    )}
-                    <AgentInput
-                        placeholder="Type a message ..."
-                        value={message}
-                        onChangeText={setMessage}
-                        permissionMode={permissionMode}
-                        onPermissionModeChange={updatePermissionMode}
-                        modelMode={modelMode}
-                        onModelModeChange={updateModelMode}
-                        connectionStatus={{
-                            text: sessionStatus.statusText,
-                            color: sessionStatus.statusColor,
-                            dotColor: sessionStatus.statusDotColor,
-                            isPulsing: sessionStatus.isPulsing
-                        }}
-                        onSend={() => {
-                            if (message.trim()) {
-                                setMessage('');
-                                clearDraft();
-                                sync.sendMessage(sessionId, message);
-                                trackMessageSent();
-                            }
-                        }}
-                        onMicPress={handleMicrophonePress}
-                        isMicActive={realtimeStatus === 'connected' || realtimeStatus === 'connecting'}
-                        onAbort={() => sessionAbort(sessionId)}
-                        showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
-                        onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}
-                        // Autocomplete configuration
-                        autocompletePrefixes={['@', '/']}
-                        autocompleteSuggestions={(query) => getSuggestions(sessionId, query)}
-                        usageData={sessionUsage ? {
-                            inputTokens: sessionUsage.inputTokens,
-                            outputTokens: sessionUsage.outputTokens,
-                            cacheCreation: sessionUsage.cacheCreation,
-                            cacheRead: sessionUsage.cacheRead,
-                            contextSize: sessionUsage.contextSize
-                        } : undefined}
-                        alwaysShowContextSize={alwaysShowContextSize}
-                    />
-                </AgentContentView>
-            </View>
+                <AgentContentView
+                    content={content}
+                    input={input}
+                    placeholder={placeholder}
+                />
+            </View >
 
             {/* Back button for landscape phone mode when header is hidden */}
-            {isLandscape && deviceType === 'phone' && (
-                <Pressable
-                    onPress={() => router.back()}
-                    style={{
-                        position: 'absolute',
-                        top: safeArea.top + 8,
-                        left: 16,
-                        width: 44,
-                        height: 44,
-                        borderRadius: 22,
-                        backgroundColor: 'rgba(255, 255, 255, 0.9)',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        ...Platform.select({
-                            ios: {
-                                shadowColor: '#000',
-                                shadowOffset: { width: 0, height: 2 },
-                                shadowOpacity: 0.1,
-                                shadowRadius: 4,
-                            },
-                            android: {
-                                elevation: 2,
-                            }
-                        }),
-                    }}
-                    hitSlop={15}
-                >
-                    <Ionicons
-                        name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
-                        size={Platform.select({ ios: 28, default: 24 })}
-                        color="#000"
-                    />
-                </Pressable>
-            )}
+            {
+                isLandscape && deviceType === 'phone' && (
+                    <Pressable
+                        onPress={() => router.back()}
+                        style={{
+                            position: 'absolute',
+                            top: safeArea.top + 8,
+                            left: 16,
+                            width: 44,
+                            height: 44,
+                            borderRadius: 22,
+                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            ...Platform.select({
+                                ios: {
+                                    shadowColor: '#000',
+                                    shadowOffset: { width: 0, height: 2 },
+                                    shadowOpacity: 0.1,
+                                    shadowRadius: 4,
+                                },
+                                android: {
+                                    elevation: 2,
+                                }
+                            }),
+                        }}
+                        hitSlop={15}
+                    >
+                        <Ionicons
+                            name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
+                            size={Platform.select({ ios: 28, default: 24 })}
+                            color="#000"
+                        />
+                    </Pressable>
+                )
+            }
         </>
     )
 }
