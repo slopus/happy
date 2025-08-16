@@ -1339,7 +1339,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 const machineId = data.machineId;
                 
                 // Update machine lastActiveAt in database
-                await db.machine.update({
+                const machine = await db.machine.update({
                     where: {
                         accountId_id: {
                             accountId: userId,
@@ -1352,7 +1352,33 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     }
                 }).catch(() => {
                     // Machine might not exist yet, that's ok
+                    return null;
                 });
+
+                // If machine was updated, emit update to all user connections
+                if (machine) {
+                    const updSeq = await allocateUserSeq(userId);
+                    emitUpdateToInterestedClients({
+                        event: 'update',
+                        userId,
+                        payload: {
+                            id: randomKeyNaked(12),
+                            seq: updSeq,
+                            body: {
+                                t: 'update-machine',
+                                id: machine.id,
+                                metadata: machine.metadata ? {
+                                    version: machine.metadataVersion,
+                                    value: machine.metadata
+                                } : undefined,
+                                active: true,
+                                lastActiveAt: t
+                            },
+                            createdAt: Date.now()
+                        },
+                        recipientFilter: { type: 'all-user-authenticated-connections' }
+                    });
+                }
             } catch (error) {
                 log({ module: 'websocket', level: 'error' }, `Error in machine-alive: ${error}`);
             }
