@@ -10,8 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { Pressable } from 'react-native-gesture-handler';
-import { LegendList } from '@legendapp/list';
-import { FlashList } from '@shopify/flash-list';
+import { MachineItem } from './machines/MachineItem';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing }: { color: string; isPulsing?: boolean }) {
@@ -94,26 +93,11 @@ export function SessionsList() {
 
             case 'machine':
                 return (
-                    <Pressable
-                        style={{
-                            flexDirection: 'row',
-                            alignItems: 'center',
-                            paddingHorizontal: 16,
-                            paddingVertical: 12,
-                            backgroundColor: '#fff'
-                        }}
-                        onPress={() => router.push('/new-session')}
-                    >
-                        <Ionicons
-                            name="desktop-outline"
-                            size={24}
-                            color="#007AFF"
-                            style={{ marginRight: 12 }}
-                        />
-                        <Text style={{ fontSize: 15, color: '#000', ...Typography.default() }}>
-                            {item.machine.metadata?.host || item.machine.id}
-                        </Text>
-                    </Pressable>
+                    <MachineItem 
+                        machine={item.machine}
+                        onPress={() => router.push(`/machine/${item.machine.id}`)}
+                        showStatus={false}
+                    />
                 );
 
             case 'project-group':

@@ -4,10 +4,12 @@ import { MMKV } from 'react-native-mmkv';
 const serverConfigStorage = new MMKV({ id: 'server-config' });
 
 const SERVER_KEY = 'custom-server-url';
+const DEFAULT_SERVER_URL = 'https://handy-api.korshakov.org';
 
 export function getServerUrl(): string {
-    const customServer = serverConfigStorage.getString(SERVER_KEY);
-    return customServer || 'https://handy-api.korshakov.org';
+    return serverConfigStorage.getString(SERVER_KEY) || 
+           process.env.EXPO_PUBLIC_HAPPY_SERVER_URL || 
+           DEFAULT_SERVER_URL;
 }
 
 export function setServerUrl(url: string | null): void {
@@ -19,7 +21,7 @@ export function setServerUrl(url: string | null): void {
 }
 
 export function isUsingCustomServer(): boolean {
-    return serverConfigStorage.contains(SERVER_KEY);
+    return getServerUrl() !== DEFAULT_SERVER_URL;
 }
 
 export function getServerInfo(): { hostname: string; port?: number; isCustom: boolean } {

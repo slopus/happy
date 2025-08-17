@@ -63,6 +63,8 @@ export const ApiUpdateMachineStateSchema = z.object({
         version: z.number(),
         value: z.string() // Encrypted, client decrypts
     }).nullish(),
+    active: z.boolean().optional(),
+    lastActiveAt: z.number().optional()
 });
 
 export const ApiUpdateSchema = z.discriminatedUnion('t', [

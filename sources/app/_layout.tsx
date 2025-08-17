@@ -39,6 +39,13 @@ SplashScreen.preventAutoHideAsync();
 // Set window background color
 SystemUI.setBackgroundColorAsync('white');
 
+// NEVER ENABLE REMOTE LOGGING IN PRODUCTION
+// This is for local debugging with AI only
+// So AI will have all the logs easily accessible in one file for analysis
+if (!!process.env.PUBLIC_EXPO_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
+    monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds()
+}
+
 // Component to apply horizontal safe area padding
 function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) {
     const insets = useSafeAreaInsets();
@@ -64,9 +71,6 @@ export default function RootLayout() {
     React.useEffect(() => {
         (async () => {
             try {
-                // Initialize remote logging
-                monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds();
-
                 await Fonts.loadAsync({
                     // Keep existing font
                     SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),

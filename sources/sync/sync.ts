@@ -450,6 +450,10 @@ class Sync {
         this.applySessions(decryptedSessions);
     }
 
+    public refreshMachines = async () => {
+        return this.fetchMachines();
+    }
+
     private fetchMachines = async () => {
         if (!this.credentials) return;
 
@@ -883,35 +887,42 @@ class Sync {
             const machineUpdate = updateData.body;
             const machineId = machineUpdate.id;
             const machine = storage.getState().machines[machineId];
+            
+            // Always update active and lastActiveAt from the update
+            const updatedMachine = {
+                ...(machine || {
+                    id: machineId,
+                    createdAt: updateData.createdAt,
+                    metadata: null,
+                    metadataVersion: 0
+                }),
+                active: machineUpdate.active ?? true,
+                lastActiveAt: machineUpdate.lastActiveAt ?? updateData.createdAt,
+                updatedAt: updateData.createdAt,
+                seq: updateData.seq
+            };
+            
+            // If metadata is provided, decrypt and update it
             const metadataUpdate = machineUpdate.metadata;
             if (metadataUpdate) {
                 try {
                     // Decrypt metadata
                     const decrypted = this.encryption.decryptRaw(metadataUpdate.value);
                     const metadata = JSON.parse(decrypted);
-
-                    // Update storage with machine
-                    storage.setState(state => ({
-                        machines: {
-                            ...state.machines,
-                            [machineId]: {
-                                ...(machine || {
-                                    id: machineId,
-                                    createdAt: updateData.createdAt,
-                                    active: true,
-                                    lastActiveAt: updateData.createdAt
-                                }),
-                                metadata,
-                                metadataVersion: metadataUpdate.version,
-                                updatedAt: updateData.createdAt,
-                                seq: updateData.seq
-                            }
-                        }
-                    }));
+                    updatedMachine.metadata = metadata;
+                    updatedMachine.metadataVersion = metadataUpdate.version;
                 } catch (error) {
                     console.error(`Failed to decrypt machine update for ${machineId}:`, error);
                 }
             }
+            
+            // Update storage with machine
+            storage.setState(state => ({
+                machines: {
+                    ...state.machines,
+                    [machineId]: updatedMachine
+                }
+            }));
         }
     }
 

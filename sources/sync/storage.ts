@@ -5,6 +5,7 @@ import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
 import { isSessionActive, DISCONNECTED_TIMEOUT_MS, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
@@ -168,9 +169,8 @@ function buildSessionListViewData(
     });
 
     // Get active machines
-    const activeMachines = Object.values(machines).filter(m => m.active);
-    // console.log(`📊 Storage: Active machines: ${activeMachines.length}, Machine IDs: ${Object.keys(machines).join(', ')}`);
-
+    const activeMachines = Object.values(machines).filter(m => isMachineOnline(m));
+    
     // Sort standalone active sessions by creation date (newest first)
     standaloneActiveSessions.sort((a, b) => b.createdAt - a.createdAt);
 
