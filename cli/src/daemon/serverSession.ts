@@ -7,6 +7,7 @@ import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineIdentity, ServerToDaemonEvents, DaemonToServerEvents, TrackedSession } from './types';
+import { encrypt, decrypt, encodeBase64, decodeBase64 } from '@/api/encryption';
 
 export class DaemonHappyServerSession {
   private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
@@ -32,10 +33,14 @@ export class DaemonHappyServerSession {
   connect() {
     const serverUrl = configuration.serverUrl.replace(/^http/, 'ws');
     logger.debug(`[SERVER SESSION] Connecting to ${serverUrl}`);
-    
+
     this.socket = io(serverUrl, {
       transports: ['websocket'],
-      auth: { token: this.token },
+      auth: {
+        token: this.token,
+        clientType: 'machine-scoped' as const,
+        machineId: this.machineIdentity.machineId
+      },
       path: '/v1/updates',
       reconnection: true,
       reconnectionDelay: 1000,
@@ -44,73 +49,66 @@ export class DaemonHappyServerSession {
 
     this.socket.on('connect', () => {
       logger.debug('[SERVER SESSION] Connected to server');
-      
+
       // Machine already registered before connection
       // Just register RPC methods
       this.socket.emit('rpc-register', { method: this.spawnMethod });
       this.socket.emit('rpc-register', { method: this.stopMethod });
       logger.debug(`[SERVER SESSION] Registered RPC methods: ${this.spawnMethod}, ${this.stopMethod}`);
-      
+
       this.startKeepAlive();
     });
 
     // Single consolidated RPC handler
-    this.socket.on('rpc-request', async (data, callback) => {
-      if (data.method === this.spawnMethod) {
-        logger.debug('[SERVER SESSION] Received spawn-happy-session RPC request');
-        
-        try {
-          const { directory, sessionId } = data.params || {};
-          
+    this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
+      logger.debugLargeJson(`[SERVER SESSION] Received RPC request:`, data);
+      try {
+        if (data.method === this.spawnMethod) {
+          const { directory, sessionId } = decrypt(decodeBase64(data.params), this.secret) || {};
+
           if (!directory) {
             throw new Error('Directory is required');
           }
-          
           const session = await this.spawnSession(directory, sessionId);
-          
           if (!session) {
             throw new Error('Failed to spawn session');
           }
-          
+
           logger.debug(`[SERVER SESSION] Spawned session ${session.happySessionId || 'pending'} with PID ${session.pid}`);
-          const response = { 
-            ok: true, 
-            result: { 
-              message: 'Session spawned successfully', 
-              pid: session.pid,
-              sessionId: session.happySessionId
-            } 
-          };
+
+          if (!session.happySessionId) {
+            throw new Error(`Session spawned (PID ${session.pid}) but no sessionId received from webhook. The session process may still be initializing.`);
+          }
+
+          const response = { sessionId: session.happySessionId };
           logger.debug(`[SERVER SESSION] Sending RPC response:`, response);
-          callback(response);
-          
-        } catch (error: any) {
-          logger.debug(`[SERVER SESSION] RPC spawn failed:`, error);
-          callback({ ok: false, error: error.message });
+          callback(encodeBase64(encrypt(response, this.secret)));
+          return;
         }
-      } else if (data.method === this.stopMethod) {
-        logger.debug('[SERVER SESSION] Received stop-session RPC request');
-        
-        try {
-          const { sessionId } = data.params || {};
-          
+
+        if (data.method === this.stopMethod) {
+          logger.debug('[SERVER SESSION] Received stop-session RPC request');
+          const decryptedParams = decrypt(decodeBase64(data.params), this.secret);
+          const { sessionId } = decryptedParams || {};
           if (!sessionId) {
             throw new Error('Session ID is required');
           }
-          
           const success = this.stopSession(sessionId);
-          
           if (!success) {
             throw new Error('Session not found or failed to stop');
           }
-          
           logger.debug(`[SERVER SESSION] Stopped session ${sessionId}`);
-          callback({ ok: true, result: { message: 'Session stopped' } });
-          
-        } catch (error: any) {
-          logger.debug(`[SERVER SESSION] RPC stop failed:`, error);
-          callback({ ok: false, error: error.message });
+          const response = { message: 'Session stopped' };
+          const encryptedResponse = encodeBase64(encrypt(response, this.secret));
+          callback(encryptedResponse);
+          return;
         }
+
+        throw new Error(`Unknown RPC method: ${data.method}`);
+      } catch (error: any) {
+        logger.debug(`[SERVER SESSION] RPC handler failed:`, error.message || error);
+        logger.debug(`[SERVER SESSION] Error stack:`, error.stack);
+        callback(encodeBase64(encrypt({ error: error.message || String(error) }, this.secret)));
       }
     });
 
