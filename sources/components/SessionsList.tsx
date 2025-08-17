@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, Animated, FlatList } from 'react-native';
+import { View, Animated, FlatList, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
 import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
@@ -9,8 +9,9 @@ import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
+import { Pressable } from 'react-native-gesture-handler';
 import { LegendList } from '@legendapp/list';
-import { entityColor, entitySessionColor } from './entityColor';
+import { FlashList } from '@shopify/flash-list';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing }: { color: string; isPulsing?: boolean }) {
@@ -55,7 +56,15 @@ export function SessionsList() {
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const data = useSessionListViewData();
-    
+    const pathname = usePathname();
+    const selectable = true; //Platform.OS === 'web';
+    const dataWithSelected = selectable ? React.useMemo(() => {
+        return data?.map(item => ({
+            ...item,
+            selected: pathname.startsWith(`/session/${item.type === 'session' ? item.session.id : ''}`)
+        }));
+    }, [data, pathname]) : data;
+
     // Early return if no data yet
     if (!data) {
         return (
@@ -63,7 +72,7 @@ export function SessionsList() {
         );
     }
 
-    const keyExtractor = React.useCallback((item: SessionListViewItem, index: number) => {
+    const keyExtractor = React.useCallback((item: SessionListViewItem & { selected?: boolean }, index: number) => {
         switch (item.type) {
             case 'header': return `header-${item.title}-${index}`;
             case 'project-group': return `project-group-${item.machine.id}-${item.displayPath}-${index}`;
@@ -72,7 +81,7 @@ export function SessionsList() {
         }
     }, []);
 
-    const renderItem = React.useCallback(({ item }: { item: SessionListViewItem }) => {
+    const renderItem = React.useCallback(({ item }: { item: SessionListViewItem & { selected?: boolean } }) => {
         switch (item.type) {
             case 'header':
                 return (
@@ -82,7 +91,7 @@ export function SessionsList() {
                         </Text>
                     </View>
                 );
-                
+
             case 'machine':
                 return (
                     <Pressable
@@ -95,9 +104,9 @@ export function SessionsList() {
                         }}
                         onPress={() => router.push('/new-session')}
                     >
-                        <Ionicons 
-                            name="desktop-outline" 
-                            size={24} 
+                        <Ionicons
+                            name="desktop-outline"
+                            size={24}
                             color="#007AFF"
                             style={{ marginRight: 12 }}
                         />
@@ -106,10 +115,10 @@ export function SessionsList() {
                         </Text>
                     </Pressable>
                 );
-                
+
             case 'project-group':
                 return (
-                    <View style={{ 
+                    <View style={{
                         paddingHorizontal: 16,
                         paddingVertical: 10,
                         backgroundColor: '#F8F8F8'
@@ -122,14 +131,10 @@ export function SessionsList() {
                         </Text>
                     </View>
                 );
-                
+
             case 'session':
                 return (
-                    <SessionItem
-                        session={item.session}
-                        variant={item.variant}
-                        router={router}
-                    />
+                    <SessionItem session={item.session} selected={item.selected} />
                 );
         }
     }, [router]);
@@ -140,17 +145,17 @@ export function SessionsList() {
         if (leadingItem?.type === 'header' || trailingItem?.type === 'header') {
             return null;
         }
-        
+
         // Use different indentation for machine separators
         const marginLeft = leadingItem?.type === 'machine' ? 52 : 88;
-        
+
         return <View style={{ height: 0.5, backgroundColor: '#E5E5E7', marginLeft }} />;
     }, []);
 
     return (
         <View style={{ flex: 1, backgroundColor: '#F2F2F7' }}>
             <FlatList
-                data={data}
+                data={dataWithSelected!}
                 renderItem={renderItem}
                 keyExtractor={keyExtractor}
                 contentContainerStyle={{ paddingBottom: safeArea.bottom + 16 }}
@@ -161,21 +166,11 @@ export function SessionsList() {
 }
 
 // Sub-component that handles session message logic
-const SessionItem = React.memo(({ session, variant, router }: {
-    session: Session;
-    variant?: 'default' | 'no-path';
-    router: any;
-}) => {
+const SessionItem = React.memo(({ session, selected }: { session: Session; selected?: boolean }) => {
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
-    const pathname = usePathname();
-    const currentSessionId = React.useMemo(() => {
-        if (pathname.startsWith('/session/')) {
-            return pathname.split('/')[2];
-        }
-        return undefined;
-    }, [pathname]);
+    const router = useRouter();
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
@@ -188,7 +183,7 @@ const SessionItem = React.memo(({ session, variant, router }: {
                 flexDirection: 'row',
                 alignItems: 'center',
                 paddingHorizontal: 16,
-                backgroundColor: currentSessionId === session.id ? '#f9f9f9' : '#fff'
+                backgroundColor: selected ? '#f9f9f9' : '#fff'
             }}
             onPress={() => {
                 router.push(`/session/${session.id}`);
@@ -198,35 +193,35 @@ const SessionItem = React.memo(({ session, variant, router }: {
             <View style={{ flex: 1, marginLeft: 16, justifyContent: 'center' }}>
                 {/* Title line */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                    <Text style={{ 
-                        fontSize: 15, 
-                        fontWeight: '500', 
+                    <Text style={{
+                        fontSize: 15,
+                        fontWeight: '500',
                         color: sessionStatus.isConnected ? '#000' : '#999',
                         flex: 1,
-                        ...Typography.default('semiBold') 
+                        ...Typography.default('semiBold')
                     }} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
                         {sessionName}
                     </Text>
                     {session.draft && (
-                        <Ionicons 
-                            name="create-outline" 
-                            size={16} 
+                        <Ionicons
+                            name="create-outline"
+                            size={16}
                             color="#8E8E93"
                             style={{ marginLeft: 6 }}
                         />
                     )}
                 </View>
-                
+
                 {/* Subtitle line */}
-                <Text style={{ 
-                    fontSize: 13, 
+                <Text style={{
+                    fontSize: 13,
                     color: '#8E8E93',
                     marginBottom: 4,
-                    ...Typography.default() 
+                    ...Typography.default()
                 }} numberOfLines={1}>
                     {sessionSubtitle}
                 </Text>
-                
+
                 {/* Status line with dot */}
                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <View style={{
@@ -237,8 +232,8 @@ const SessionItem = React.memo(({ session, variant, router }: {
                     }}>
                         <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
                     </View>
-                    <Text style={{ 
-                        fontSize: 12, 
+                    <Text style={{
+                        fontSize: 12,
                         color: sessionStatus.statusColor,
                         fontWeight: '500',
                         lineHeight: 16,

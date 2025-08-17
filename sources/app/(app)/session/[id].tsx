@@ -46,7 +46,6 @@ export default React.memo(() => {
     const route = useRoute();
     const sessionId = (route.params! as any).id as string;
     const session = useSession(sessionId);
-
     if (!session) {
         return (
             <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
@@ -54,7 +53,6 @@ export default React.memo(() => {
             </View>
         )
     }
-
     return (
         <SessionView sessionId={sessionId} session={session} />
     );
