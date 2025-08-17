@@ -1,28 +1,23 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
 import { useState, useMemo, useCallback } from "react";
-import { View, FlatList, Text, ActivityIndicator, Platform, useWindowDimensions } from "react-native";
+import { View, FlatList, ActivityIndicator, Platform, useWindowDimensions } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
 import { useRouter } from "expo-router";
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from "@/utils/sessionUtils";
-import { Avatar } from "@/components/Avatar";
 import { useSession, useSessionMessages, useSessionUsage, useSettings, useSetting, useDaemonStatusByMachine, useRealtimeStatus, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { sessionAbort, sessionSwitch, spawnRemoteSession } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
-import { Pressable, ScrollView, Keyboard } from 'react-native';
+import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
 import { RoundButton } from '@/components/RoundButton';
 import { Deferred } from '@/components/Deferred';
 import { Session } from '@/sync/storageTypes';
-import { sessionToRealtimePrompt } from '@/realtime/sessionToPrompt';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { Ionicons } from '@expo/vector-icons';
-import { Typography } from '@/constants/Typography';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useIsLandscape, useDeviceType, useHeaderHeight } from '@/utils/responsive';
-import Animated from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { AgentContentView } from '@/components/AgentContentView';
 import { isRunningOnMac } from '@/utils/platform';
@@ -31,15 +26,13 @@ import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { trackMessageSent } from '@/track';
 import { tracking } from '@/track';
 import { useAutocompleteSession } from '@/hooks/useAutocompleteSession';
-import { StatusDot } from '@/components/StatusDot';
 import { ChatFooter } from '@/components/ChatFooter';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { useDraft } from '@/hooks/useDraft';
-import { PlaceholderContainerView } from '@/components/PlaceholderContainerView';
-import { KeyboardAwareScrollView } from 'react-native-keyboard-controller';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useIsTablet } from '@/utils/responsive';
 import { gitStatusSync } from '@/sync/gitStatusSync';
+import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 
 
 export default React.memo(() => {
@@ -112,18 +105,10 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         if (realtimeStatus === 'connecting') {
             return; // Prevent actions during transitions
         }
-
         if (realtimeStatus === 'disconnected' || realtimeStatus === 'error') {
             try {
-                // Send initial context - all of the conversation so far
-                const conversationContext = sessionToRealtimePrompt(session, messagesRecentFirst, {
-                    maxCharacters: 100_000,
-                    maxMessages: 20,
-                    excludeToolCalls: false
-                });
-                console.log('🔍 setting initial context:', conversationContext);
-
-                await startRealtimeSession(sessionId, conversationContext);
+                const initialPrompt = voiceHooks.onVoiceStarted(sessionId);
+                await startRealtimeSession(sessionId, initialPrompt);
                 tracking?.capture('voice_session_started', { sessionId });
             } catch (error) {
                 console.error('Failed to start realtime session:', error);
@@ -133,8 +118,11 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         } else if (realtimeStatus === 'connected') {
             await stopRealtimeSession();
             tracking?.capture('voice_session_stopped');
+
+            // Notify voice assistant about voice session stop
+            voiceHooks.onVoiceStopped();
         }
-    }, [realtimeStatus, session, messagesRecentFirst, sessionId]);
+    }, [realtimeStatus, sessionId]);
 
     // Memoize mic button state to prevent flashing during chat transitions
     const micButtonState = useMemo(() => ({
@@ -143,8 +131,11 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     }), [handleMicrophonePress, realtimeStatus]);
 
     // Trigger session visibility and initialize git status sync
-    React.useEffect(() => {
+    React.useLayoutEffect(() => {
+
+        // Trigger session sync
         sync.onSessionVisible(sessionId);
+
         // Initialize git status sync for this session
         gitStatusSync.getSync(sessionId);
     }, [sessionId]);
