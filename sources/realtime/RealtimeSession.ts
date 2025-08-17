@@ -1,6 +1,7 @@
 import type { VoiceSession } from './types';
 
 let voiceSession: VoiceSession | null = null;
+let voiceSessionStarted: boolean = false;
 let currentSessionId: string | null = null;
 
 export async function startRealtimeSession(sessionId: string, initialContext?: string) {
@@ -11,6 +12,7 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
     
     try {
         currentSessionId = sessionId;
+        voiceSessionStarted = true;
         await voiceSession.startSession({
             sessionId,
             initialContext
@@ -29,6 +31,7 @@ export async function stopRealtimeSession() {
     try {
         await voiceSession.endSession();
         currentSessionId = null;
+        voiceSessionStarted = false;
     } catch (error) {
         console.error('Failed to stop realtime session:', error);
     }
@@ -39,6 +42,10 @@ export function registerVoiceSession(session: VoiceSession) {
         console.warn('Voice session already registered, replacing with new one');
     }
     voiceSession = session;
+}
+
+export function isVoiceSessionStarted(): boolean {
+    return voiceSessionStarted;
 }
 
 export function getVoiceSession(): VoiceSession | null {

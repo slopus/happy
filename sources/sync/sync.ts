@@ -27,6 +27,8 @@ import { config } from '@/config';
 import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
 import { isMutableTool } from '@/components/tools/knownTools';
+import { voiceHooks } from '@/realtime/hooks/voiceHooks';
+import { Message } from './typesMessage';
 
 class Sync {
 
@@ -127,6 +129,12 @@ class Sync {
 
         // Also invalidate git status sync for this session
         gitStatusSync.getSync(sessionId).invalidate();
+
+        // Notify voice assistant about session visibility
+        const session = storage.getState().sessions[sessionId];
+        if (session) {
+            voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
+        }
     }
 
 
@@ -218,7 +226,7 @@ class Sync {
         const createdAt = Date.now();
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
         if (normalizedMessage) {
-            storage.getState().applyMessages(sessionId, [normalizedMessage]);
+            this.applyMessages(sessionId, [normalizedMessage]);
         }
 
         // Send message with optional permission mode and source identifier
@@ -232,13 +240,11 @@ class Sync {
     }
 
     applySettings = (delta: Partial<Settings>) => {
-        console.log('applySettings', delta);
         storage.getState().applySettingsLocal(delta);
 
         // Save pending settings
         this.pendingSettings = { ...this.pendingSettings, ...delta };
         savePendingSettings(this.pendingSettings);
-        console.log('pendingSettings', this.pendingSettings);
 
         // Sync PostHog opt-out state if it was changed
         if (tracking && 'analyticsOptOut' in delta) {
@@ -441,7 +447,7 @@ class Sync {
         }
 
         // Apply to storage
-        storage.getState().applySessions(decryptedSessions);
+        this.applySessions(decryptedSessions);
     }
 
     private fetchMachines = async () => {
@@ -707,7 +713,7 @@ class Sync {
         // console.log('messages', JSON.stringify(normalizedMessages));
 
         // Apply to storage
-        storage.getState().applyMessages(sessionId, normalizedMessages);
+        this.applyMessages(sessionId, normalizedMessages);
     }
 
     private registerPushToken = async () => {
@@ -770,7 +776,10 @@ class Sync {
 
         // Recalculate online sessions every 10 seconds (for 2-minute disconnect timeout)
         setInterval(() => {
+            const active = storage.getState().getActiveSessions();
             storage.getState().recalculateOnline();
+            const newActive = storage.getState().getActiveSessions();
+            this.applySessionDiff(active, newActive);
         }, 10000);
     }
 
@@ -805,7 +814,7 @@ class Sync {
                     // Update session
                     const session = storage.getState().sessions[updateData.body.sid];
                     if (session) {
-                        storage.getState().applySessions([{
+                        this.applySessions([{
                             ...session,
                             updatedAt: updateData.createdAt,
                             seq: updateData.seq
@@ -817,7 +826,7 @@ class Sync {
 
                     // Update messages
                     if (lastMessage) {
-                        storage.getState().applyMessages(updateData.body.sid, [lastMessage]);
+                        this.applyMessages(updateData.body.sid, [lastMessage]);
                         let hasMutableTool = false;
                         if (lastMessage.role === 'agent' && lastMessage.content[0].type === 'tool-result') {
                             hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
@@ -838,7 +847,7 @@ class Sync {
         } else if (updateData.body.t === 'update-session') {
             const session = storage.getState().sessions[updateData.body.id];
             if (session) {
-                storage.getState().applySessions([{
+                this.applySessions([{
                     ...session,
                     agentState: updateData.body.agentState
                         ? this.encryption.decryptAgentState(updateData.body.agentState.value)
@@ -855,10 +864,19 @@ class Sync {
                     updatedAt: updateData.createdAt,
                     seq: updateData.seq
                 }]);
-                
+
                 // Invalidate git status when agent state changes (files may have been modified)
                 if (updateData.body.agentState) {
                     gitStatusSync.invalidate(updateData.body.id);
+
+                    // Check for new permission requests and notify voice assistant
+                    const newAgentState = this.encryption.decryptAgentState(updateData.body.agentState.value);
+                    if (newAgentState?.requests && Object.keys(newAgentState.requests).length > 0) {
+                        const requestIds = Object.keys(newAgentState.requests);
+                        const firstRequest = newAgentState.requests[requestIds[0]];
+                        const toolName = firstRequest?.tool;
+                        voiceHooks.onPermissionRequested(updateData.body.id, requestIds[0], toolName, firstRequest?.arguments);
+                    }
                 }
             }
         } else if (updateData.body.t === 'update-machine') {
@@ -898,7 +916,7 @@ class Sync {
     }
 
     private flushActivityUpdates = (updates: Map<string, ApiEphemeralActivityUpdate>) => {
-        
+
         const sessions: Session[] = [];
 
         for (const [sessionId, update] of updates) {
@@ -916,7 +934,7 @@ class Sync {
 
         if (sessions.length > 0) {
             // console.log('flushing activity updates ' + sessions.length);
-            storage.getState().applySessions(sessions);
+            this.applySessions(sessions);
         }
     }
 
@@ -938,6 +956,48 @@ class Sync {
         }
 
         // Machine status is now handled via persisted machine updates, not ephemeral
+    }
+
+    //
+    // Apply store
+    //
+
+    private applyMessages = (sessionId: string, messages: NormalizedMessage[]) => {
+        const changed = storage.getState().applyMessages(sessionId, messages);
+        let m: Message[] = [];
+        for(let messageId of changed) {
+            const message = storage.getState().sessionMessages[sessionId].messagesMap[messageId];
+            if (message) {
+                m.push(message);
+            }
+        }
+        if (m.length > 0) {
+            voiceHooks.onMessages(sessionId, m);
+        }
+    }
+
+    private applySessions = (sessions: (Omit<Session, "presence"> & {
+        presence?: "online" | number;
+    })[]) => {
+        const active = storage.getState().getActiveSessions();
+        storage.getState().applySessions(sessions);
+        const newActive = storage.getState().getActiveSessions();
+        this.applySessionDiff(active, newActive);
+    }
+
+    private applySessionDiff = (active: Session[], newActive: Session[]) => {
+        let wasActive = new Set(active.map(s => s.id));
+        let isActive = new Set(newActive.map(s => s.id));
+        for (let s of active) {
+            if (!isActive.has(s.id)) {
+                voiceHooks.onSessionOffline(s.id, s.metadata ?? undefined);
+            }
+        }
+        for (let s of newActive) {
+            if (!wasActive.has(s.id)) {
+                voiceHooks.onSessionOnline(s.id, s.metadata ?? undefined);
+            }
+        }
     }
 }
 

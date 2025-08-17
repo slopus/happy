@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { DecryptedMessage, Session, Machine, GitStatus } from "./storageTypes";
+import { Session, Machine, GitStatus } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
-import { normalizeRawMessage, NormalizedMessage } from "./typesRaw";
+import { NormalizedMessage } from "./typesRaw";
 import { isSessionActive, DISCONNECTED_TIMEOUT_MS, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
@@ -14,7 +14,6 @@ import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
 import { sync } from "./sync";
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
-import { messagesToPrompt } from '@/realtime/sessionToPrompt';
 import { isMutableTool } from "@/components/tools/knownTools";
 
 // Use the same timeout for both online status and disconnection detection
@@ -58,7 +57,7 @@ interface StorageState {
     socketLastDisconnectedAt: number | null;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyLoaded: () => void;
-    applyMessages: (sessionId: string, messages: NormalizedMessage[]) => void;
+    applyMessages: (sessionId: string, messages: NormalizedMessage[]) => string[];
     applyMessagesLoaded: (sessionId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
@@ -69,6 +68,7 @@ interface StorageState {
     recalculateOnline: () => void;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
+    getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') => void;
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus') => void;
@@ -106,7 +106,7 @@ function buildSessionListViewData(
     activeSessions.forEach(session => {
         if (!session.metadata?.machineId || !session.metadata?.path) {
             // Sessions without machineId/path will be shown as standalone
-            console.log(`📊 Storage: Session ${session.id} missing machineId or path - machineId: ${session.metadata?.machineId}, path: ${session.metadata?.path}`);
+            // console.log(`📊 Storage: Session ${session.id} missing machineId or path - machineId: ${session.metadata?.machineId}, path: ${session.metadata?.path}`);
             standaloneActiveSessions.push(session);
             return;
         }
@@ -114,7 +114,7 @@ function buildSessionListViewData(
         const machine = machines[session.metadata.machineId];
         if (!machine) {
             // Machine not found, show as standalone
-            console.log(`📊 Storage: Machine ${session.metadata.machineId} not found for session ${session.id}`);
+            // console.log(`📊 Storage: Machine ${session.metadata.machineId} not found for session ${session.id}`);
             standaloneActiveSessions.push(session);
             return;
         }
@@ -169,7 +169,7 @@ function buildSessionListViewData(
 
     // Get active machines
     const activeMachines = Object.values(machines).filter(m => m.active);
-    console.log(`📊 Storage: Active machines: ${activeMachines.length}, Machine IDs: ${Object.keys(machines).join(', ')}`);
+    // console.log(`📊 Storage: Active machines: ${activeMachines.length}, Machine IDs: ${Object.keys(machines).join(', ')}`);
 
     // Sort standalone active sessions by creation date (newest first)
     standaloneActiveSessions.sort((a, b) => b.createdAt - a.createdAt);
@@ -269,6 +269,10 @@ export const storage = create<StorageState>()((set, get) => {
             }
             return toolCallMessage.tool?.name ? isMutableTool(toolCallMessage.tool?.name) : true;
         },
+        getActiveSessions: () => {
+            const state = get();
+            return Object.values(state.sessions).filter(s => s.active);
+        },
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
             const now = Date.now();
             const threshold = now - DISCONNECTED_TIMEOUT_MS;
@@ -341,7 +345,7 @@ export const storage = create<StorageState>()((set, get) => {
                 listData.push(...inactiveSessions);
             }
 
-            console.log(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
+            // console.log(`📊 Storage: applySessions called with ${sessions.length} sessions, active: ${activeSessions.length}, inactive: ${inactiveSessions.length}`);
 
             // Process AgentState updates for sessions that already have messages loaded
             const updatedSessionMessages = { ...state.sessionMessages };
@@ -430,101 +434,71 @@ export const storage = create<StorageState>()((set, get) => {
             };
             return result;
         }),
-        applyMessages: (sessionId: string, messages: NormalizedMessage[]) => set((state) => {
+        applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
+            let changed = new Set<string>();
+            set((state) => {
 
-            // Resolve session messages state
-            const existingSession = state.sessionMessages[sessionId] || {
-                messages: [],
-                messagesMap: {},
-                reducerState: createReducer(),
-                isLoaded: false
-            };
+                // Resolve session messages state
+                const existingSession = state.sessionMessages[sessionId] || {
+                    messages: [],
+                    messagesMap: {},
+                    reducerState: createReducer(),
+                    isLoaded: false
+                };
 
-            // Get the session's agentState if available
-            const session = state.sessions[sessionId];
-            const agentState = session?.agentState;
+                // Get the session's agentState if available
+                const session = state.sessions[sessionId];
+                const agentState = session?.agentState;
 
-            // Messages are already normalized, no need to process them again
-            const normalizedMessages = messages;
+                // Messages are already normalized, no need to process them again
+                const normalizedMessages = messages;
 
-            // Run reducer with agentState
-            const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState);
-            const processedMessages = reducerResult.messages;
-
-            // Send realtime updates for new messages if this is the active realtime session
-            const currentRealtimeSessionId = getCurrentRealtimeSessionId();
-            const voiceSession = getVoiceSession();
-            // console.log('[REALTIME DEBUG] Checking realtime updates:', {
-            //     currentRealtimeSessionId,
-            //     sessionId,
-            //     match: currentRealtimeSessionId === sessionId,
-            //     hasVoiceSession: !!voiceSession,
-            //     processedMessagesCount: processedMessages.length
-            // });
-
-            if (currentRealtimeSessionId === sessionId && voiceSession && processedMessages.length > 0) {
-                // Filter for agent messages and tool calls only
-                const agentMessages = processedMessages.filter(m =>
-                    m.kind === 'agent-text' || m.kind === 'tool-call'
-                );
-
-                // console.log('[REALTIME DEBUG] Agent messages found:', agentMessages.length, agentMessages.map(m => ({
-                //     kind: m.kind,
-                //     text: m.kind === 'agent-text' ? m.text : undefined,
-                //     tool: m.kind === 'tool-call' ? m.tool?.name : undefined
-                // })));
-
-                if (agentMessages.length > 0) {
-                    // Use the existing messagesToPrompt function to format properly
-                    const contextUpdate = messagesToPrompt(agentMessages, {
-                        maxCharacters: 1000,
-                        excludeToolCalls: false
-                    });
-
-                    // console.log('[REALTIME DEBUG] Sending context update:', contextUpdate);
-
-                    if (contextUpdate.trim()) {
-                        voiceSession.sendContextualUpdate(contextUpdate);
-                    }
+                // Run reducer with agentState
+                const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState);
+                const processedMessages = reducerResult.messages;
+                for(let message of processedMessages) {
+                    changed.add(message.id);
                 }
-            }
 
-            // Merge messages
-            const mergedMessagesMap = { ...existingSession.messagesMap };
-            processedMessages.forEach(message => {
-                mergedMessagesMap[message.id] = message;
-            });
+                // Merge messages
+                const mergedMessagesMap = { ...existingSession.messagesMap };
+                processedMessages.forEach(message => {
+                    mergedMessagesMap[message.id] = message;
+                });
 
-            // Convert to array and sort by createdAt
-            const messagesArray = Object.values(mergedMessagesMap)
-                .sort((a, b) => b.createdAt - a.createdAt);
+                // Convert to array and sort by createdAt
+                const messagesArray = Object.values(mergedMessagesMap)
+                    .sort((a, b) => b.createdAt - a.createdAt);
 
-            // Update session with todos if they changed
-            let updatedSessions = state.sessions;
-            if (reducerResult.todos && session) {
-                updatedSessions = {
-                    ...state.sessions,
-                    [sessionId]: {
-                        ...session,
-                        todos: reducerResult.todos
+                // Update session with todos if they changed
+                let updatedSessions = state.sessions;
+                if (reducerResult.todos && session) {
+                    updatedSessions = {
+                        ...state.sessions,
+                        [sessionId]: {
+                            ...session,
+                            todos: reducerResult.todos
+                        }
+                    };
+                }
+
+                return {
+                    ...state,
+                    sessions: updatedSessions,
+                    sessionMessages: {
+                        ...state.sessionMessages,
+                        [sessionId]: {
+                            ...existingSession,
+                            messages: messagesArray,
+                            messagesMap: mergedMessagesMap,
+                            isLoaded: true
+                        }
                     }
                 };
-            }
+            });
 
-            return {
-                ...state,
-                sessions: updatedSessions,
-                sessionMessages: {
-                    ...state.sessionMessages,
-                    [sessionId]: {
-                        ...existingSession,
-                        messages: messagesArray,
-                        messagesMap: mergedMessagesMap,
-                        isLoaded: true
-                    }
-                }
-            };
-        }),
+            return Array.from(changed);
+        },
         applyMessagesLoaded: (sessionId: string) => set((state) => {
             const existingSession = state.sessionMessages[sessionId];
             let result: StorageState;
