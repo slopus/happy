@@ -48,8 +48,9 @@ export default function FilesScreen() {
     );
 
     const handleFilePress = React.useCallback((file: GitFileStatus) => {
-        // Navigate to file viewer with the file path
-        router.push(`/session/${sessionId}/file?path=${encodeURIComponent(file.fullPath)}`);
+        // Navigate to file viewer with the file path (base64 encoded for special characters)
+        const encodedPath = btoa(file.fullPath);
+        router.push(`/session/${sessionId}/file?path=${encodedPath}`);
     }, [router, sessionId]);
 
     const renderStatusIcon = (file: GitFileStatus) => {

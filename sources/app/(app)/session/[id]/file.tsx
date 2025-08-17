@@ -68,7 +68,16 @@ export default function FileScreen() {
     const route = useRoute();
     const { id: sessionId } = useLocalSearchParams<{ id: string }>();
     const searchParams = useLocalSearchParams();
-    const filePath = searchParams.path as string;
+    const encodedPath = searchParams.path as string;
+    let filePath = '';
+    
+    // Decode base64 path with error handling
+    try {
+        filePath = encodedPath ? atob(encodedPath) : '';
+    } catch (error) {
+        console.error('Failed to decode file path:', error);
+        filePath = encodedPath || ''; // Fallback to original path if decoding fails
+    }
     
     const [fileContent, setFileContent] = React.useState<FileContent | null>(null);
     const [diffContent, setDiffContent] = React.useState<string | null>(null);
