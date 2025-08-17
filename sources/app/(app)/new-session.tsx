@@ -1,27 +1,25 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import React from 'react';
+import { View, Text, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import type { Session, MachineMetadata } from '@/sync/storageTypes';
+import type { Session } from '@/sync/storageTypes';
 import { spawnRemoteSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { MachineSessionLauncher } from '@/components/machines/MachineSessionLauncher';
 
 export default function NewSessionScreen() {
     const router = useRouter();
     const sessions = useSessions();
     const machines = useAllMachines();
-    const [customPaths, setCustomPaths] = useState<Record<string, string>>({});
-    const [selectedMachine, setSelectedMachine] = useState<string | null>(null);
-    const [isSpawning, setIsSpawning] = useState(false);
 
     // Group sessions by machineId and combine with machine status
     const machineGroups = React.useMemo(() => {
@@ -30,7 +28,7 @@ export default function NewSessionScreen() {
             paths: Set<string>,
             isOnline: boolean,
             lastSeen?: number,
-            metadata?: MachineMetadata | null
+            metadata?: any
         }> = {};
         
         // First, add all active machines with their proper host names
@@ -38,7 +36,7 @@ export default function NewSessionScreen() {
             groups[machine.id] = {
                 machineHost: machine.metadata?.host || machine.id,
                 paths: new Set(),
-                isOnline: machine.active,
+                isOnline: isMachineOnline(machine),
                 lastSeen: machine.lastActiveAt,
                 metadata: machine.metadata
             };
@@ -46,7 +44,6 @@ export default function NewSessionScreen() {
         
         // Then, collect paths from existing sessions
         if (sessions) {
-            console.log('[new-session] Total sessions:', sessions.length);
             sessions.forEach(item => {
                 if (typeof item === 'string') return; // Skip section headers
                 
@@ -62,21 +59,11 @@ export default function NewSessionScreen() {
             });
         }
         
-        console.log('[new-session] Machine groups:', Object.entries(groups).map(([id, data]) => ({
-            machineId: id,
-            host: data.machineHost,
-            pathCount: data.paths.size,
-            paths: Array.from(data.paths),
-            isOnline: data.isOnline
-        })));
-        
         return groups;
     }, [sessions, machines]);
 
     const handleStartSession = async (machineId: string, path: string) => {
-        if (!isSpawning) {
-            setIsSpawning(true);
-            try {
+        try {
                 console.log(`🚀 Starting session on machine ${machineId} at path: ${path}`);
                 const result = await spawnRemoteSession(machineId, path);
                 console.log('🎉 daemon result', result);
@@ -85,8 +72,8 @@ export default function NewSessionScreen() {
                     console.log('✅ Session spawned successfully:', result.sessionId);
                     
                     // Poll for the session to appear in our local state
-                    const pollInterval = 100; // Poll every 100ms
-                    const maxAttempts = 20; // Max 2 seconds
+                    const pollInterval = 100;
+                    const maxAttempts = 20;
                     let attempts = 0;
                     
                     const pollForSession = () => {
@@ -94,7 +81,6 @@ export default function NewSessionScreen() {
                         const newSession = Object.values(state.sessions).find((s: Session) => s.id === result.sessionId);
                         
                         if (newSession) {
-                            // Session found! Navigate to it using replace to remove new-session screen from stack
                             console.log('📱 Navigating to session:', result.sessionId);
                             router.replace(`/session/${result.sessionId}`);
                             return;
@@ -104,24 +90,20 @@ export default function NewSessionScreen() {
                         if (attempts < maxAttempts) {
                             setTimeout(pollForSession, pollInterval);
                         } else {
-                            // Timeout - session didn't appear
                             console.log('⏰ Polling timeout - session should appear soon');
-                            setIsSpawning(false);
-                            Modal.alert('Session started', 'The session was started but may take a moment to appear. Pull to refresh on the main screen.');
+                            Modal.alert('Session started', 'The session was started but may take a moment to appear.');
                             router.back();
                         }
                     };
                     
-                    // Start polling
                     pollForSession();
                 } else {
                     console.error('❌ No sessionId in response:', result);
-                    setIsSpawning(false);
                     Modal.alert('Error', 'Session spawning failed - no session ID returned.');
+                    throw new Error('Session spawning failed - no session ID returned.');
                 }
             } catch (error) {
                 console.error('💥 Failed to start session', error);
-                setIsSpawning(false);
                 
                 let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
                 if (error instanceof Error) {
@@ -133,14 +115,10 @@ export default function NewSessionScreen() {
                 }
                 
                 Modal.alert('Error', errorMessage);
+                throw error; // Re-throw so the component knows it failed
             }
-        }
     };
 
-    const handleCustomPathChange = (machineId: string, path: string) => {
-        setCustomPaths(prev => ({ ...prev, [machineId]: path }));
-        setSelectedMachine(machineId);
-    };
 
     if (!sessions) {
         return (
@@ -221,96 +199,71 @@ export default function NewSessionScreen() {
                             </View>
                         )}
                         <ItemList>
-                            {sortedMachines.map(([machineId, data]) => (
-                                <ItemGroup key={machineId} title={(
-                                    <View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                            <Ionicons 
-                                                name={Platform.OS === 'ios' ? 'desktop' : 'desktop-outline'} 
-                                                size={16} 
-                                                color="#666" 
-                                                style={{ marginRight: 6 }}
-                                            />
-                                            <Text style={[Typography.default('semiBold'), { fontSize: 16 }]}>
-                                                {data.machineHost}
-                                            </Text>
-                                            <View style={{ 
-                                                width: 8, 
-                                                height: 8, 
-                                                borderRadius: 4, 
-                                                backgroundColor: data.isOnline ? '#34C759' : '#C7C7CC',
-                                                marginLeft: 8
-                                            }} />
-                                            <Text style={[Typography.default(), { 
-                                                fontSize: 12, 
-                                                color: data.isOnline ? '#34C759' : '#8E8E93',
-                                                marginLeft: 4
-                                            }]}>
-                                                {data.isOnline ? 'online' : 'offline'}
-                                            </Text>
-                                        </View>
-                                    </View>
-                                )
-                                }>
-                                    {Array.from(data.paths).sort().slice(0, 3).map(path => {
-                                        // Derive home directory from path - typically /Users/username or /home/username
-                                        const pathSegments = path.split('/');
-                                        let homeDir = '';
-                                        if (pathSegments[1] === 'Users' && pathSegments[2]) {
-                                            homeDir = `/Users/${pathSegments[2]}`;
-                                        } else if (pathSegments[1] === 'home' && pathSegments[2]) {
-                                            homeDir = `/home/${pathSegments[2]}`;
-                                        }
-                                        
-                                        return (
-                                            <Item
-                                                key={path}
-                                                title={formatPathRelativeToHome(path, homeDir)}
-                                                titleStyle={{ fontFamily: 'Menlo', fontSize: 14 }}
-                                                onPress={() => {
-                                                    setSelectedMachine(machineId);
-                                                    setCustomPaths(prev => ({ ...prev, [machineId]: path }));
-                                                }}
-                                                selected={selectedMachine === machineId && customPaths[machineId] === path}
-                                            />
-                                        );
-                                    })}
-                                    <View style={{ paddingHorizontal: 16, paddingVertical: 12 }}>
-                                        <TextInput
-                                            style={{
-                                                borderWidth: 1,
-                                                borderColor: selectedMachine === machineId ? '#007AFF' : '#C7C7CC',
-                                                borderRadius: 8,
-                                                padding: 12,
-                                                fontSize: 14,
-                                                fontFamily: 'Menlo',
-                                                backgroundColor: selectedMachine === machineId ? '#F0F8FF' : '#F2F2F7',
-                                                minHeight: 44,
-                                                textAlignVertical: 'top'
-                                            }}
-                                            placeholder="Enter custom path (default: ~)"
-                                            placeholderTextColor="#8E8E93"
-                                            value={customPaths[machineId] || ''}
-                                            onChangeText={(text) => handleCustomPathChange(machineId, text)}
-                                            onFocus={() => setSelectedMachine(machineId)}
-                                            autoCapitalize="none"
-                                            autoCorrect={false}
-                                            multiline={true}
-                                        />
-                                        {customPaths[machineId] && customPaths[machineId].trim() !== '' && (
-                                            <View style={{ marginTop: 12, alignItems: 'flex-end' }}>
-                                                <RoundButton
-                                                    title={isSpawning ? "Starting..." : "Start"}
-                                                    onPress={() => handleStartSession(machineId, customPaths[machineId])}
-                                                    size="small"
-                                                    disabled={isSpawning}
-                                                    loading={isSpawning}
-                                                />
+                            {sortedMachines.map(([machineId, data]) => {
+                                const machine = machines.find(m => m.id === machineId);
+                                if (!machine) return null;
+                                
+                                // Get home directory from machine metadata
+                                const homeDir = machine.metadata?.homeDirectory || '~';
+                                
+                                return (
+                                    <ItemGroup 
+                                        key={machineId} 
+                                        title={(
+                                            <View>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+                                                    <View style={{ 
+                                                        width: 6, 
+                                                        height: 6, 
+                                                        borderRadius: 3, 
+                                                        backgroundColor: data.isOnline ? '#34C759' : '#C7C7CC',
+                                                        marginRight: 6
+                                                    }} />
+                                                    <Text style={[Typography.default(), { 
+                                                        fontSize: 12, 
+                                                        color: data.isOnline ? '#34C759' : '#8E8E93'
+                                                    }]}>
+                                                        {data.isOnline ? 'online' : 'offline'}
+                                                    </Text>
+                                                </View>
+                                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                                                        <Ionicons 
+                                                            name="desktop-outline" 
+                                                            size={20} 
+                                                            color="#007AFF" 
+                                                            style={{ marginRight: 8 }}
+                                                        />
+                                                        <Text style={[Typography.default(), { fontSize: 15, color: '#000' }]}>
+                                                            {data.machineHost}
+                                                        </Text>
+                                                    </View>
+                                                    <Pressable
+                                                        onPress={() => router.push(`/machine/${machineId}`)}
+                                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                        style={{ paddingLeft: 8 }}
+                                                    >
+                                                        <Text style={[Typography.default(), { 
+                                                            fontSize: 15, 
+                                                            color: '#007AFF'
+                                                        }]}>
+                                                            details
+                                                        </Text>
+                                                    </Pressable>
+                                                </View>
                                             </View>
                                         )}
-                                    </View>
-                                </ItemGroup>
-                            ))}
+                                    >
+                                        <MachineSessionLauncher
+                                            machineId={machineId}
+                                            recentPaths={Array.from(data.paths).sort()}
+                                            homeDir={homeDir}
+                                            isOnline={data.isOnline}
+                                            onStartSession={(path) => handleStartSession(machineId, path)}
+                                        />
+                                    </ItemGroup>
+                                );
+                            })}
                         </ItemList>
                     </ScrollView>
                 )}

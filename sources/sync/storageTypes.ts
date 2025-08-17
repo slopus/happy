@@ -88,7 +88,11 @@ export const MachineMetadataSchema = z.object({
     host: z.string(),
     platform: z.string(),
     happyCliVersion: z.string(),
-    happyHomeDirectory: z.string() // Directory for Happy auth, settings, logs (usually .happy/ or .happy-dev/)
+    happyHomeDirectory: z.string(), // Directory for Happy auth, settings, logs (usually .happy/ or .happy-dev/)
+    // Optional fields that may be added in future versions
+    homeDirectory: z.string().optional(), // User's home directory
+    username: z.string().optional(),
+    arch: z.string().optional()
 });
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>;

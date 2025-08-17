@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Switch, View, ActivityIndicator } from 'react-native';
+import { Switch, View, ActivityIndicator, TextInput, Text, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -10,7 +10,7 @@ import * as Application from 'expo-application';
 import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
-import { getServerUrl } from '@/sync/serverConfig';
+import { getServerUrl, setServerUrl, validateServerUrl } from '@/sync/serverConfig';
 
 export default function DevScreen() {
     const router = useRouter();
@@ -18,6 +18,37 @@ export default function DevScreen() {
     const [verboseLogging, setVerboseLogging] = React.useState(false);
     const socketStatus = useSocketStatus();
     const anonymousId = sync.encryption!.anonID;
+
+    const handleEditServerUrl = () => {
+        const currentUrl = getServerUrl();
+        
+        Alert.prompt(
+            'Edit API Endpoint',
+            'Enter the server URL:',
+            [
+                {
+                    text: 'Cancel',
+                    style: 'cancel'
+                },
+                {
+                    text: 'Save',
+                    onPress: (newUrl) => {
+                        if (newUrl && newUrl !== currentUrl) {
+                            const validation = validateServerUrl(newUrl);
+                            if (validation.valid) {
+                                setServerUrl(newUrl);
+                                Modal.alert('Success', 'Server URL updated. Please restart the app for changes to take effect.');
+                            } else {
+                                Modal.alert('Invalid URL', validation.error || 'Please enter a valid URL');
+                            }
+                        }
+                    }
+                }
+            ],
+            'plain-text',
+            currentUrl
+        );
+    };
 
     const handleClearCache = async () => {
         const confirmed = await Modal.confirm(
@@ -293,6 +324,8 @@ export default function DevScreen() {
                 <Item 
                     title="API Endpoint"
                     detail={getServerUrl()}
+                    onPress={handleEditServerUrl}
+                    detailStyle={{ flex: 1, textAlign: 'right', minWidth: '70%' }}
                 />
                 <Item 
                     title="Socket.IO Status"
