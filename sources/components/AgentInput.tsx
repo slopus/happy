@@ -673,7 +673,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
 function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
     const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
 
-    if (!sessionId || !onPress || !hasMeaningfulGitStatus) {
+    if (!sessionId || !onPress) {
         return null;
     }
 
@@ -695,7 +695,15 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                 onPress?.();
             }}
         >
-            <GitStatusBadge sessionId={sessionId} />
+            {hasMeaningfulGitStatus ? (
+                <GitStatusBadge sessionId={sessionId} />
+            ) : (
+                <Octicons 
+                    name="file-directory" 
+                    size={16} 
+                    color="#666" 
+                />
+            )}
         </Pressable>
     );
 }
