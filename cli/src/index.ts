@@ -29,6 +29,8 @@ import { ApiClient } from './api/api'
 import { runDoctorCommand } from './ui/doctor'
 import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 import { projectPath } from './projectPath'
+import { handleAuthCommand } from './commands/auth'
+import { clearCredentials, clearMachineId, writeCredentials } from './persistence/persistence'
 
 
 (async () => {
@@ -42,9 +44,23 @@ import { projectPath } from './projectPath'
   if (subcommand === 'doctor') {
     await runDoctorCommand();
     return;
-  } else if (subcommand === 'logout') {
+  } else if (subcommand === 'auth') {
+    // Handle auth subcommands
     try {
-      await cleanKey();
+      await handleAuthCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'logout') {
+    // Keep for backward compatibility - redirect to auth logout
+    console.log(chalk.yellow('Note: "happy logout" is deprecated. Use "happy auth logout" instead.\n'));
+    try {
+      await handleAuthCommand(['logout']);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
@@ -180,6 +196,7 @@ Installation is only supported on macOS.
     let showHelp = false
     let showVersion = false
     let forceAuth = false
+    let forceAuthNew = false // New --force-auth flag
 
     for (let i = 0; i < args.length; i++) {
       const arg = args[i]
@@ -189,7 +206,11 @@ Installation is only supported on macOS.
       } else if (arg === '-v' || arg === '--version') {
         showVersion = true
       } else if (arg === '--auth' || arg === '--login') {
+        // Keep for backward compatibility
         forceAuth = true
+      } else if (arg === '--force-auth') {
+        // New flag that properly clears everything
+        forceAuthNew = true
       } else if (arg === '-m' || arg === '--model') {
         options.model = args[++i]
       } else if (arg === '-p' || arg === '--permission-mode') {
@@ -225,8 +246,8 @@ ${chalk.bold('happy')} - Claude Code On the Go
 
 ${chalk.bold('Usage:')}
   happy [options]
+  happy auth       Manage authentication
   happy notify     Send notification
-  happy logout     Logs out of your account and removes data directory
   happy daemon     Manage the background daemon (macOS only)
 
 ${chalk.bold('Options:')}
@@ -234,7 +255,8 @@ ${chalk.bold('Options:')}
   -v, --version           Show version
   -m, --model <model>     Claude model to use (default: sonnet)
   -p, --permission-mode   Permission mode: default, acceptEdits, bypassPermissions, or plan
-  --auth, --login         Force re-authentication
+  --auth, --login         Re-authenticate (deprecated, use 'happy auth login')
+  --force-auth            Force complete re-authentication (clears all data)
   --claude-env KEY=VALUE  Set environment variable for Claude Code
   --claude-arg ARG        Pass additional argument to Claude CLI
 
@@ -247,13 +269,15 @@ ${chalk.bold('Examples:')}
   happy                   Start a session with default settings
   happy -m opus           Use Claude Opus model
   happy -p plan           Use plan permission mode
-  happy --auth            Force re-authentication before starting session
+  happy --force-auth      Force complete re-authentication
+  happy auth login        Authenticate or check auth status
+  happy auth show-backup  Get backup key for linking devices
   happy notify -p "Hello!"  Send notification
   happy --claude-env KEY=VALUE
                           Set environment variable for Claude Code
   happy --claude-arg --option
                           Pass argument to Claude CLI
-  happy logout            Logs out of your account and removes data directory
+  happy auth logout       Log out and remove authentication
 
 ${chalk.bold('Happy is a wrapper around Claude Code that enables remote control via mobile app.')}
 ${chalk.bold('Use "happy daemon" for background service management.')}
@@ -269,13 +293,39 @@ ${chalk.bold('Use "happy daemon" for background service management.')}
 
     // Ensure authentication and machine setup
     let credentials;
-    if (forceAuth) {
-      // Force re-auth requested
+    
+    if (forceAuthNew) {
+      // New --force-auth flag: clear everything first as requested
+      console.log(chalk.yellow('Force authentication requested...'));
+      
+      // Stop daemon if running
+      try {
+        await stopDaemon();
+      } catch {}
+      
+      // Clear credentials and machine ID
+      await clearCredentials();
+      await clearMachineId();
+      
+      // Now do normal auth flow which will re-auth and setup machine
+      const result = await authAndSetupMachineIfNeeded();
+      credentials = result.credentials;
+      
+    } else if (forceAuth) {
+      // Old --auth flag - fix the bug where it skipped machine setup
+      console.log(chalk.yellow('Note: --auth is deprecated. Use "happy auth login" or --force-auth instead.\n'));
+      
+      // The bug was that doAuth() only returned credentials without setting up machine
+      // Fix: Always ensure machine setup even with old --auth flag
       const res = await doAuth();
       if (!res) {
         process.exit(1);
       }
-      credentials = res;
+      // Save credentials then run full setup to ensure machine ID is created
+      await writeCredentials(res);
+      const result = await authAndSetupMachineIfNeeded();
+      credentials = result.credentials;
+      
     } else {
       // Normal flow - auth and machine setup
       const result = await authAndSetupMachineIfNeeded();

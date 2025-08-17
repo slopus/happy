@@ -1,3 +1,4 @@
+import { logger } from '@/ui/logger';
 import { randomBytes } from 'node:crypto'
 import tweetnacl from 'tweetnacl'
 
@@ -78,6 +79,7 @@ export function decrypt(data: Uint8Array, secret: Uint8Array): any | null {
   const encrypted = data.slice(tweetnacl.secretbox.nonceLength);
   const decrypted = tweetnacl.secretbox.open(encrypted, nonce, secret);
   if (!decrypted) {
+    logger.debug('[ERROR] Decryption failed');
     return null;
   }
   return JSON.parse(new TextDecoder().decode(decrypted));

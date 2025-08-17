@@ -38,7 +38,7 @@ function getLogFiles(logDir: string): { file: string, path: string, modified: Da
     if (!existsSync(logDir)) {
         return [];
     }
-    
+
     try {
         return readdirSync(logDir)
             .filter(file => file.endsWith('.log'))
@@ -56,20 +56,20 @@ function getLogFiles(logDir: string): { file: string, path: string, modified: Da
 
 export async function runDoctorCommand(): Promise<void> {
     console.log(chalk.bold.cyan('\n🩺 Happy CLI Doctor\n'));
-    
+
     // Version and basic info
     console.log(chalk.bold('📋 Basic Information'));
     console.log(`Happy CLI Version: ${chalk.green(packageJson.version)}`);
     console.log(`Platform: ${chalk.green(process.platform)} ${process.arch}`);
     console.log(`Node.js Version: ${chalk.green(process.version)}`);
     console.log('');
-    
+
     // Configuration
     console.log(chalk.bold('⚙️  Configuration'));
     console.log(`Happy Home: ${chalk.blue(configuration.happyDir)}`);
     console.log(`Server URL: ${chalk.blue(configuration.serverUrl)}`);
     console.log(`Logs Dir: ${chalk.blue(configuration.logsDir)}`);
-    
+
     // Environment
     console.log(chalk.bold('\n🌍 Environment Variables'));
     const env = getEnvironmentInfo();
@@ -78,7 +78,7 @@ export async function runDoctorCommand(): Promise<void> {
     console.log(`DANGEROUSLY_LOG_TO_SERVER: ${env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING ? chalk.yellow('ENABLED') : chalk.gray('not set')}`);
     console.log(`DEBUG: ${env.DEBUG ? chalk.green(env.DEBUG) : chalk.gray('not set')}`);
     console.log(`NODE_ENV: ${env.NODE_ENV ? chalk.green(env.NODE_ENV) : chalk.gray('not set')}`);
-    
+
     // Settings
     try {
         const settings = await readSettings();
@@ -88,7 +88,7 @@ export async function runDoctorCommand(): Promise<void> {
         console.log(chalk.bold('\n📄 Settings:'));
         console.log(chalk.red('❌ Failed to read settings'));
     }
-    
+
     // Authentication status
     console.log(chalk.bold('\n🔐 Authentication'));
     try {
@@ -101,13 +101,13 @@ export async function runDoctorCommand(): Promise<void> {
     } catch (error) {
         console.log(chalk.red('❌ Error reading credentials'));
     }
-    
+
     // Daemon status
     console.log(chalk.bold('\n🤖 Daemon Status'));
     try {
         const isRunning = await isDaemonRunning();
         const state = await getDaemonState();
-        
+
         if (isRunning && state) {
             console.log(chalk.green('✓ Daemon is running'));
             console.log(`  PID: ${state.pid}`);
@@ -121,7 +121,7 @@ export async function runDoctorCommand(): Promise<void> {
         } else {
             console.log(chalk.red('❌ Daemon is not running'));
         }
-        
+
         // Show daemon state file
         if (state) {
             console.log(chalk.bold('\n📄 Daemon State:'));
@@ -133,14 +133,14 @@ export async function runDoctorCommand(): Promise<void> {
         const allProcesses = findAllHappyProcesses();
         if (allProcesses.length > 0) {
             console.log(chalk.bold('\n🔍 All Happy CLI Processes'));
-            
+
             // Group by type
             const grouped = allProcesses.reduce((groups, process) => {
                 if (!groups[process.type]) groups[process.type] = [];
                 groups[process.type].push(process);
                 return groups;
             }, {} as Record<string, typeof allProcesses>);
-            
+
             // Display each group
             Object.entries(grouped).forEach(([type, processes]) => {
                 const typeLabels: Record<string, string> = {
@@ -155,12 +155,12 @@ export async function runDoctorCommand(): Promise<void> {
                     'doctor': '🩺 Doctor',
                     'unknown': '❓ Unknown'
                 };
-                
+
                 console.log(chalk.blue(`\n${typeLabels[type] || type}:`));
                 processes.forEach(({ pid, command }) => {
-                    const color = type === 'current' ? chalk.green : 
-                                 type.startsWith('dev') ? chalk.cyan : 
-                                 type.includes('daemon') ? chalk.blue : chalk.gray;
+                    const color = type === 'current' ? chalk.green :
+                        type.startsWith('dev') ? chalk.cyan :
+                            type.includes('daemon') ? chalk.blue : chalk.gray;
                     console.log(`  ${color(`PID ${pid}`)}: ${chalk.gray(command)}`);
                 });
             });
@@ -176,19 +176,18 @@ export async function runDoctorCommand(): Promise<void> {
             });
             console.log(chalk.blue('\nTo clean up: happy daemon kill-runaway'));
         }
-        
+
         if (allProcesses.length > 1) { // More than just current process
             console.log(chalk.bold('\n💡 Process Management'));
             console.log(chalk.gray('To kill runaway processes: happy daemon kill-runaway'));
-            console.log(chalk.gray('To kill specific processes: kill -TERM <PID>'));
         }
     } catch (error) {
         console.log(chalk.red('❌ Error checking daemon status'));
     }
-    
+
     // Log files
     console.log(chalk.bold('\n📝 Log Files'));
-    
+
     // Main logs
     const mainLogs = getLogFiles(configuration.logsDir);
     if (mainLogs.length > 0) {
@@ -200,7 +199,7 @@ export async function runDoctorCommand(): Promise<void> {
     } else {
         console.log(chalk.yellow('No main log files found'));
     }
-    
+
     // Daemon logs (filter main logs for daemon-specific ones)
     const daemonLogs = mainLogs.filter(({ file }) => file.includes('daemon'));
     if (daemonLogs.length > 0) {
@@ -212,11 +211,11 @@ export async function runDoctorCommand(): Promise<void> {
     } else {
         console.log(chalk.yellow('No daemon log files found'));
     }
-    
+
     // Support and bug reports
     console.log(chalk.bold('\n🐛 Support & Bug Reports'));
     console.log(`Report issues: ${chalk.blue('https://github.com/slopus/happy-cli/issues')}`);
     console.log(`Documentation: ${chalk.blue('https://happy.engineering/')}`);
-    
+
     console.log(chalk.green('\n✅ Doctor diagnosis complete!\n'));
 }

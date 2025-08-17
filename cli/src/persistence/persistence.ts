@@ -168,3 +168,16 @@ export async function writeCredentials(credentials: { secret: Uint8Array, token:
     token: credentials.token
   }, null, 2));
 }
+
+export async function clearCredentials(): Promise<void> {
+  if (existsSync(configuration.privateKeyFile)) {
+    await unlink(configuration.privateKeyFile);
+  }
+}
+
+export async function clearMachineId(): Promise<void> {
+  await updateSettings(settings => ({
+    ...settings,
+    machineId: undefined
+  }));
+}
