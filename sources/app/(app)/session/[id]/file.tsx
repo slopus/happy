@@ -1,10 +1,12 @@
 import * as React from 'react';
-import { View, ScrollView, ActivityIndicator, Platform } from 'react-native';
+import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
 import { useRoute } from '@react-navigation/native';
+import { useLocalSearchParams } from 'expo-router';
 import { Text } from '@/components/StyledText';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
 import { Typography } from '@/constants/Typography';
-import { sessionReadFile } from '@/sync/ops';
+import { sessionReadFile, sessionBash } from '@/sync/ops';
+import { storage } from '@/sync/storage';
 import { StatusBar } from 'expo-status-bar';
 import { Modal } from '@/modal';
 
@@ -14,12 +16,63 @@ interface FileContent {
     isBinary: boolean;
 }
 
+// Diff display component
+const DiffDisplay: React.FC<{ diffContent: string }> = ({ diffContent }) => {
+    const lines = diffContent.split('\n');
+    
+    return (
+        <View>
+            {lines.map((line, index) => {
+                const baseStyle = { ...Typography.mono(), fontSize: 14, lineHeight: 20 };
+                let lineStyle: any = baseStyle;
+                let backgroundColor = 'transparent';
+                
+                if (line.startsWith('+') && !line.startsWith('+++')) {
+                    lineStyle = { ...baseStyle, color: '#059669' }; // Green for additions
+                    backgroundColor = '#f0fdf4'; // Light green background
+                } else if (line.startsWith('-') && !line.startsWith('---')) {
+                    lineStyle = { ...baseStyle, color: '#dc2626' }; // Red for deletions
+                    backgroundColor = '#fef2f2'; // Light red background
+                } else if (line.startsWith('@@')) {
+                    lineStyle = { ...baseStyle, color: '#0891b2', fontWeight: '600' }; // Cyan for hunk headers
+                    backgroundColor = '#f0f9ff'; // Light blue background
+                } else if (line.startsWith('+++') || line.startsWith('---')) {
+                    lineStyle = { ...baseStyle, color: '#374151', fontWeight: '600' }; // Dark gray for file headers
+                } else {
+                    lineStyle = { ...baseStyle, color: '#374151' }; // Normal text
+                }
+                
+                return (
+                    <View 
+                        key={index} 
+                        style={{ 
+                            backgroundColor, 
+                            paddingHorizontal: 8, 
+                            paddingVertical: 1,
+                            borderLeftWidth: line.startsWith('+') && !line.startsWith('+++') ? 3 : 
+                                           line.startsWith('-') && !line.startsWith('---') ? 3 : 0,
+                            borderLeftColor: line.startsWith('+') && !line.startsWith('+++') ? '#059669' : '#dc2626'
+                        }}
+                    >
+                        <Text style={lineStyle}>
+                            {line || ' '}
+                        </Text>
+                    </View>
+                );
+            })}
+        </View>
+    );
+};
+
 export default function FileScreen() {
     const route = useRoute();
-    const sessionId = (route.params! as any).id as string;
-    const filePath = (route.params! as any).path as string;
+    const { id: sessionId } = useLocalSearchParams<{ id: string }>();
+    const searchParams = useLocalSearchParams();
+    const filePath = searchParams.path as string;
     
     const [fileContent, setFileContent] = React.useState<FileContent | null>(null);
+    const [diffContent, setDiffContent] = React.useState<string | null>(null);
+    const [displayMode, setDisplayMode] = React.useState<'file' | 'diff'>('diff');
     const [isLoading, setIsLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
 
@@ -105,6 +158,10 @@ export default function FileScreen() {
                 setIsLoading(true);
                 setError(null);
                 
+                // Get session metadata for git commands
+                const session = storage.getState().sessions[sessionId!];
+                const sessionPath = session?.metadata?.path;
+                
                 // Check if file is likely binary before trying to read
                 if (isBinaryFile(filePath)) {
                     if (!isCancelled) {
@@ -116,6 +173,24 @@ export default function FileScreen() {
                         setIsLoading(false);
                     }
                     return;
+                }
+                
+                // Fetch git diff for the file (if in git repo)
+                if (sessionPath && sessionId) {
+                    try {
+                        const diffResponse = await sessionBash(sessionId, {
+                            command: `git diff "${filePath}"`,
+                            cwd: sessionPath,
+                            timeout: 5000
+                        });
+                        
+                        if (!isCancelled && diffResponse.success && diffResponse.stdout.trim()) {
+                            setDiffContent(diffResponse.stdout);
+                        }
+                    } catch (diffError) {
+                        console.log('Could not fetch git diff:', diffError);
+                        // Continue with file loading even if diff fails
+                    }
                 }
                 
                 const response = await sessionReadFile(sessionId, filePath);
@@ -178,6 +253,15 @@ export default function FileScreen() {
             Modal.alert('Error', error);
         }
     }, [error]);
+
+    // Set default display mode based on diff availability
+    React.useEffect(() => {
+        if (diffContent) {
+            setDisplayMode('diff');
+        } else if (fileContent) {
+            setDisplayMode('file');
+        }
+    }, [diffContent, fileContent]);
 
     const fileName = filePath.split('/').pop() || filePath;
     const language = getFileLanguage(filePath);
@@ -294,19 +378,72 @@ export default function FileScreen() {
                     {filePath}
                 </Text>
             </View>
+
+            {/* Toggle buttons for File/Diff view */}
+            {diffContent && (
+                <View style={{
+                    flexDirection: 'row',
+                    paddingHorizontal: 16,
+                    paddingVertical: 12,
+                    borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
+                    borderBottomColor: Platform.select({ ios: '#C6C6C8', default: '#E0E0E0' }),
+                    backgroundColor: 'white'
+                }}>
+                    <Pressable
+                        onPress={() => setDisplayMode('diff')}
+                        style={{
+                            paddingHorizontal: 16,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                            backgroundColor: displayMode === 'diff' ? '#007AFF' : '#F2F2F7',
+                            marginRight: 8
+                        }}
+                    >
+                        <Text style={{
+                            fontSize: 14,
+                            fontWeight: '600',
+                            color: displayMode === 'diff' ? 'white' : '#666',
+                            ...Typography.default()
+                        }}>
+                            Diff
+                        </Text>
+                    </Pressable>
+                    
+                    <Pressable
+                        onPress={() => setDisplayMode('file')}
+                        style={{
+                            paddingHorizontal: 16,
+                            paddingVertical: 8,
+                            borderRadius: 8,
+                            backgroundColor: displayMode === 'file' ? '#007AFF' : '#F2F2F7'
+                        }}
+                    >
+                        <Text style={{
+                            fontSize: 14,
+                            fontWeight: '600',
+                            color: displayMode === 'file' ? 'white' : '#666',
+                            ...Typography.default()
+                        }}>
+                            File
+                        </Text>
+                    </Pressable>
+                </View>
+            )}
             
-            {/* File content */}
+            {/* Content display */}
             <ScrollView 
                 style={{ flex: 1 }}
                 contentContainerStyle={{ padding: 16 }}
                 showsVerticalScrollIndicator={true}
             >
-                {fileContent?.content ? (
+                {displayMode === 'diff' && diffContent ? (
+                    <DiffDisplay diffContent={diffContent} />
+                ) : displayMode === 'file' && fileContent?.content ? (
                     <SimpleSyntaxHighlighter 
                         code={fileContent.content}
                         language={language}
                     />
-                ) : (
+                ) : displayMode === 'file' && fileContent && !fileContent.content ? (
                     <Text style={{
                         fontSize: 16,
                         color: '#666',
@@ -315,7 +452,16 @@ export default function FileScreen() {
                     }}>
                         File is empty
                     </Text>
-                )}
+                ) : !diffContent && !fileContent?.content ? (
+                    <Text style={{
+                        fontSize: 16,
+                        color: '#666',
+                        fontStyle: 'italic',
+                        ...Typography.default()
+                    }}>
+                        No changes to display
+                    </Text>
+                ) : null}
             </ScrollView>
         </View>
     );

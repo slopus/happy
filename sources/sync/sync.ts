@@ -60,7 +60,7 @@ class Sync {
             await this.registerPushToken();
         }
         this.pushTokenSync = new InvalidateSync(registerPushToken);
-        this.activityAccumulator = new ActivityUpdateAccumulator(this.flushActivityUpdates.bind(this), 5000);
+        this.activityAccumulator = new ActivityUpdateAccumulator(this.flushActivityUpdates.bind(this), 2000);
 
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
@@ -768,7 +768,7 @@ class Sync {
             }
         });
 
-        // Recalculate online sessions every second (for 30-second disconnect timeout)
+        // Recalculate online sessions every 10 seconds (for 2-minute disconnect timeout)
         setInterval(() => {
             storage.getState().recalculateOnline();
         }, 10000);
