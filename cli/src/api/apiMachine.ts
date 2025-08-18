@@ -338,7 +338,12 @@ export class ApiMachineClient {
         machineId: this.machine.id,
         time: Date.now()
       };
-      logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
+      if (process.env.VERBOSE) {
+        // Polutes the logs, not useful most of the time
+        // Definetely do not want to log this on user's machines
+        // to avoid MBs of logs :D
+        logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
+      }
       this.socket.emit('machine-alive', payload);
     }, 20000);
     logger.debug('[API MACHINE] Keep-alive started (20s interval)');
