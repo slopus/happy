@@ -1,5 +1,5 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet, ViewStyle } from 'react-native';
 import { Text } from '../StyledText';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -9,8 +9,30 @@ interface EmptyStateProps {
     description?: string;
     iconSize?: number;
     iconColor?: string;
-    className?: string;
+    style?: ViewStyle;
 }
+
+const styles = StyleSheet.create({
+    container: {
+        alignItems: 'center',
+        paddingVertical: 32,
+        paddingHorizontal: 16,
+    },
+    title: {
+        color: '#6B7280',
+        fontSize: 18,
+        fontWeight: '500',
+        marginTop: 16,
+        textAlign: 'center',
+    },
+    description: {
+        color: '#9CA3AF',
+        fontSize: 14,
+        textAlign: 'center',
+        marginTop: 8,
+        maxWidth: 288, // equivalent to max-w-xs
+    },
+});
 
 export function EmptyState({ 
     icon = 'cube-outline',
@@ -18,16 +40,16 @@ export function EmptyState({
     description,
     iconSize = 48,
     iconColor = '#9CA3AF',
-    className = ''
+    style
 }: EmptyStateProps) {
     return (
-        <View className={`items-center py-8 px-4 ${className}`}>
+        <View style={[styles.container, style]}>
             <Ionicons name={icon} size={iconSize} color={iconColor} />
-            <Text className="text-gray-500 text-lg font-medium mt-4 text-center">
+            <Text style={styles.title}>
                 {title}
             </Text>
             {description && (
-                <Text className="text-gray-400 text-sm text-center mt-2 max-w-xs">
+                <Text style={styles.description}>
                     {description}
                 </Text>
             )}

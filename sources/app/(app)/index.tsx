@@ -1,6 +1,6 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Text, View, StyleSheet } from "react-native";
 import { Image } from 'expo-image';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
@@ -67,7 +67,7 @@ function Authenticated() {
                 {!isTablet && realtimeStatus !== 'disconnected' && (
                     <VoiceAssistantStatusBar variant="full" />
                 )}
-                <View className="flex-1 items-center justify-center mb-8">
+                <View style={styles.loadingContainer}>
                     <ActivityIndicator size="small" color="#000000" />
                 </View>
                 {isExperimental && (
@@ -86,7 +86,7 @@ function Authenticated() {
             {!isTablet && realtimeStatus !== 'disconnected' && (
                 <VoiceAssistantStatusBar variant="full" />
             )}
-            <View className="flex-1">
+            <View style={styles.container}>
                 {updateAvailable && <UpdateBanner onReload={reloadApp} />}
                 {!sessionListViewData || sessionListViewData.length === 0 ? emptyState : (
                     <SessionsList />
@@ -205,3 +205,15 @@ function NotAuthenticated() {
         </>
     )
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+    },
+    loadingContainer: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 32,
+    },
+});

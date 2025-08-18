@@ -1,12 +1,11 @@
 import * as React from 'react';
-import { ScrollView, View, Text } from 'react-native';
+import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { Typography } from '@/constants/Typography';
 
 const ColorSwatch = ({ name, color, textColor = '#000' }: { name: string; color: string; textColor?: string }) => (
-    <View className="mb-4">
+    <View style={styles.swatchContainer}>
         <View 
-            className="rounded-lg p-4 mb-2"
-            style={{ backgroundColor: color }}
+            style={[styles.swatch, { backgroundColor: color }]}
         >
             <Text style={{ color: textColor, ...Typography.default('semiBold') }}>{name}</Text>
             <Text style={{ color: textColor, ...Typography.mono(), fontSize: 12 }}>{color}</Text>
@@ -15,10 +14,9 @@ const ColorSwatch = ({ name, color, textColor = '#000' }: { name: string; color:
 );
 
 const ColorPair = ({ name, bg, text }: { name: string; bg: string; text: string }) => (
-    <View className="mb-4">
+    <View style={styles.swatchContainer}>
         <View 
-            className="rounded-lg p-4"
-            style={{ backgroundColor: bg }}
+            style={[styles.swatch, { backgroundColor: bg }]}
         >
             <Text style={{ color: text, ...Typography.default('semiBold'), marginBottom: 4 }}>{name}</Text>
             <Text style={{ color: text, ...Typography.mono(), fontSize: 12 }}>BG: {bg}</Text>
@@ -29,11 +27,11 @@ const ColorPair = ({ name, bg, text }: { name: string; bg: string; text: string 
 
 export default function ColorsScreen() {
     return (
-        <ScrollView className="flex-1 bg-white">
-            <View className="p-4">
+        <ScrollView style={styles.container}>
+            <View style={styles.content}>
                 {/* iOS System Colors */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4" style={Typography.default('semiBold')}>
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, Typography.default('semiBold')]}>
                         iOS System Colors
                     </Text>
                     
@@ -49,8 +47,8 @@ export default function ColorsScreen() {
                 </View>
 
                 {/* Gray Scale */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4" style={Typography.default('semiBold')}>
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, Typography.default('semiBold')]}>
                         Gray Scale
                     </Text>
                     
@@ -70,8 +68,8 @@ export default function ColorsScreen() {
                 </View>
 
                 {/* Backgrounds */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4" style={Typography.default('semiBold')}>
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, Typography.default('semiBold')]}>
                         Backgrounds
                     </Text>
                     
@@ -83,8 +81,8 @@ export default function ColorsScreen() {
                 </View>
 
                 {/* Component Colors */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4" style={Typography.default('semiBold')}>
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, Typography.default('semiBold')]}>
                         Component Colors
                     </Text>
                     
@@ -96,12 +94,12 @@ export default function ColorsScreen() {
                 </View>
 
                 {/* Usage in Code */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4" style={Typography.default('semiBold')}>
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, Typography.default('semiBold')]}>
                         Usage Examples
                     </Text>
                     
-                    <View className="bg-gray-100 p-4 rounded-lg">
+                    <View style={styles.codeBlock}>
                         <Text style={{ ...Typography.mono(), fontSize: 12 }}>
 {`// iOS System Colors
 const tintColor = '#007AFF';
@@ -123,29 +121,29 @@ const groupedBackground = '#F2F2F7';`}
                 </View>
 
                 {/* Tailwind/NativeWind Classes */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4" style={Typography.default('semiBold')}>
+                <View style={styles.section}>
+                    <Text style={[styles.sectionTitle, Typography.default('semiBold')]}>
                         NativeWind Classes
                     </Text>
                     
-                    <View className="space-y-2">
-                        <View className="bg-blue-500 p-3 rounded">
-                            <Text className="text-white">bg-blue-500</Text>
+                    <View style={styles.colorGrid}>
+                        <View style={[styles.colorItem, { backgroundColor: '#3b82f6' }]}>
+                            <Text style={styles.colorItemTextWhite}>bg-blue-500</Text>
                         </View>
-                        <View className="bg-green-500 p-3 rounded">
-                            <Text className="text-white">bg-green-500</Text>
+                        <View style={[styles.colorItem, { backgroundColor: '#10b981' }]}>
+                            <Text style={styles.colorItemTextWhite}>bg-green-500</Text>
                         </View>
-                        <View className="bg-red-500 p-3 rounded">
-                            <Text className="text-white">bg-red-500</Text>
+                        <View style={[styles.colorItem, { backgroundColor: '#ef4444' }]}>
+                            <Text style={styles.colorItemTextWhite}>bg-red-500</Text>
                         </View>
-                        <View className="bg-gray-100 p-3 rounded">
-                            <Text className="text-gray-900">bg-gray-100</Text>
+                        <View style={[styles.colorItem, { backgroundColor: '#f3f4f6' }]}>
+                            <Text style={styles.colorItemTextDark}>bg-gray-100</Text>
                         </View>
-                        <View className="bg-gray-200 p-3 rounded">
-                            <Text className="text-gray-900">bg-gray-200</Text>
+                        <View style={[styles.colorItem, { backgroundColor: '#e5e7eb' }]}>
+                            <Text style={styles.colorItemTextDark}>bg-gray-200</Text>
                         </View>
-                        <View className="bg-gray-800 p-3 rounded">
-                            <Text className="text-white">bg-gray-800</Text>
+                        <View style={[styles.colorItem, { backgroundColor: '#1f2937' }]}>
+                            <Text style={styles.colorItemTextWhite}>bg-gray-800</Text>
                         </View>
                     </View>
                 </View>
@@ -153,3 +151,47 @@ const groupedBackground = '#F2F2F7';`}
         </ScrollView>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: 'white',
+    },
+    content: {
+        padding: 16,
+    },
+    section: {
+        marginBottom: 32,
+    },
+    sectionTitle: {
+        fontSize: 20,
+        marginBottom: 16,
+    },
+    swatchContainer: {
+        marginBottom: 16,
+    },
+    swatch: {
+        borderRadius: 8,
+        padding: 16,
+        marginBottom: 8,
+    },
+    codeBlock: {
+        backgroundColor: '#f0f0f0',
+        padding: 16,
+        borderRadius: 8,
+    },
+    colorGrid: {
+        gap: 8,
+    },
+    colorItem: {
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 8,
+    },
+    colorItemTextWhite: {
+        color: 'white',
+    },
+    colorItemTextDark: {
+        color: '#111827',
+    },
+});

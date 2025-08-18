@@ -1,38 +1,34 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet, ViewStyle } from 'react-native';
 import { Text } from '../StyledText';
 
 interface InfoBoxProps {
     title?: string;
     variant?: 'info' | 'warning' | 'error' | 'success';
     children: React.ReactNode;
-    className?: string;
+    style?: ViewStyle;
 }
 
-const VARIANT_STYLES = {
+const VARIANT_COLORS = {
     info: {
-        bg: 'bg-info-container',
-        border: 'border-info',
-        titleColor: 'text-info',
-        textColor: 'text-on-surface'
+        backgroundColor: '#E3F2FD', // light blue
+        borderColor: '#2196F3', // blue
+        titleColor: '#1976D2', // dark blue
     },
     warning: {
-        bg: 'bg-warning-container',
-        border: 'border-warning',
-        titleColor: 'text-warning',
-        textColor: 'text-on-surface'
+        backgroundColor: '#FFF8E1', // light amber
+        borderColor: '#FF9800', // orange
+        titleColor: '#F57C00', // dark orange
     },
     error: {
-        bg: 'bg-error-container',
-        border: 'border-error',
-        titleColor: 'text-error',
-        textColor: 'text-on-surface'
+        backgroundColor: '#FFEBEE', // light red
+        borderColor: '#F44336', // red
+        titleColor: '#D32F2F', // dark red
     },
     success: {
-        bg: 'bg-success-container',
-        border: 'border-success',
-        titleColor: 'text-success',
-        textColor: 'text-on-surface'
+        backgroundColor: '#E8F5E8', // light green
+        borderColor: '#4CAF50', // green
+        titleColor: '#388E3C', // dark green
     }
 };
 
@@ -40,20 +36,43 @@ export function InfoBox({
     title, 
     variant = 'info',
     children,
-    className = '' 
+    style 
 }: InfoBoxProps) {
-    const styles = VARIANT_STYLES[variant];
+    const variantColors = VARIANT_COLORS[variant];
     
     return (
-        <View className={`rounded-lg p-3 border ${styles.bg} ${styles.border} ${className}`}>
+        <View style={[
+            styles.container, 
+            { 
+                backgroundColor: variantColors.backgroundColor,
+                borderColor: variantColors.borderColor 
+            },
+            style
+        ]}>
             {title && (
-                <Text className={`text-sm font-medium ${styles.titleColor} mb-2`}>
+                <Text style={[
+                    styles.title,
+                    { color: variantColors.titleColor }
+                ]}>
                     {title}
                 </Text>
             )}
-            <View className={styles.textColor}>
+            <View>
                 {children}
             </View>
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        borderRadius: 8,
+        padding: 12,
+        borderWidth: 1,
+    },
+    title: {
+        fontSize: 14,
+        fontWeight: '500',
+        marginBottom: 8,
+    },
+});

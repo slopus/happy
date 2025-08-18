@@ -6,7 +6,6 @@ interface FileIconProps {
     isDirectory?: boolean;
     size?: number;
     color?: string;
-    className?: string;
 }
 
 // Get appropriate icon and color based on file extension
@@ -102,8 +101,7 @@ export function FileIcon({
     fileName, 
     isDirectory = false, 
     size = 16, 
-    color: customColor,
-    className = ''
+    color: customColor
 }: FileIconProps) {
     const config = getFileIconConfig(fileName, isDirectory);
     const iconColor = customColor || config.color;
@@ -113,7 +111,6 @@ export function FileIcon({
             name={config.icon} 
             size={size} 
             color={iconColor}
-            className={className}
         />
     );
 }
