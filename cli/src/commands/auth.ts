@@ -135,8 +135,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
   try {
     const result = await authAndSetupMachineIfNeeded();
     console.log(chalk.green('\n✓ Authentication successful'));
-    console.log(chalk.gray(`  Machine ID: ${result.machineIdentity.machineId}`));
-    console.log(chalk.gray(`  Host: ${result.machineIdentity.machineHost}`));
+    console.log(chalk.gray(`  Machine ID: ${result.machineId}`));
   } catch (error) {
     console.error(chalk.red('Authentication failed:'), error instanceof Error ? error.message : 'Unknown error');
     process.exit(1);

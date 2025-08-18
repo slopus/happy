@@ -5,7 +5,7 @@
  * Extracted to avoid circular dependencies with ui/doctor.ts
  */
 
-import { DaemonState } from './types';
+import { DaemonState } from './api/types';
 import { logger } from '@/ui/logger';
 import { existsSync, unlinkSync, readFileSync } from 'fs';
 import { configuration } from '@/configuration';
@@ -18,14 +18,14 @@ export async function isDaemonRunning(): Promise<boolean> {
     if (!state) {
       return false;
     }
-    
+
     const isRunning = await isDaemonProcessRunning(state.pid);
     if (!isRunning) {
       logger.debug('[DAEMON RUN] Daemon PID not running, cleaning up state');
       await cleanupDaemonState();
       return false;
     }
-    
+
     return true;
   } catch (error) {
     logger.debug('[DAEMON RUN] Error checking daemon status', error);
@@ -74,16 +74,16 @@ export function findAllHappyProcesses(): Array<{ pid: number, command: string, t
     // Search specifically for happy.mjs processes
     const output = execSync('ps aux | grep "happy.mjs" | grep -v grep', { encoding: 'utf8' });
     const lines = output.trim().split('\n').filter(line => line.trim());
-    
+
     const allProcesses: Array<{ pid: number, command: string, type: string }> = [];
-    
+
     for (const line of lines) {
       const parts = line.trim().split(/\s+/);
       if (parts.length < 11) continue;
-      
+
       const pid = parseInt(parts[1]);
       const command = parts.slice(10).join(' ');
-      
+
       // Classify process type
       let type = 'unknown';
       if (pid === process.pid) {
@@ -97,29 +97,29 @@ export function findAllHappyProcesses(): Array<{ pid: number, command: string, t
       } else {
         type = 'user-session';
       }
-      
+
       allProcesses.push({ pid, command, type });
     }
-    
+
     // Also check for dev processes in happy-cli directory
     try {
       const devOutput = execSync('ps aux | grep -E "(tsx.*src/index.ts|yarn.*tsx)" | grep -v grep', { encoding: 'utf8' });
       const devLines = devOutput.trim().split('\n').filter(line => line.trim());
-      
+
       for (const line of devLines) {
         const parts = line.trim().split(/\s+/);
         if (parts.length < 11) continue;
-        
+
         const pid = parseInt(parts[1]);
         const command = parts.slice(10).join(' ');
-        
+
         // Check if it's in happy-cli directory
         let workingDir = '';
         try {
           const pwdOutput = execSync(`pwdx ${pid} 2>/dev/null`, { encoding: 'utf8' });
           workingDir = pwdOutput.replace(`${pid}:`, '').trim();
-        } catch {}
-        
+        } catch { }
+
         if (workingDir.includes('happy-cli')) {
           allProcesses.push({ pid, command, type: 'dev-session' });
         }
@@ -127,7 +127,7 @@ export function findAllHappyProcesses(): Array<{ pid: number, command: string, t
     } catch {
       // No dev processes found
     }
-    
+
     return allProcesses;
   } catch (error) {
     return [];
@@ -138,32 +138,32 @@ export function findAllHappyProcesses(): Array<{ pid: number, command: string, t
  * Find all runaway Happy CLI processes that should be killed
  */
 export function findRunawayHappyProcesses(): Array<{ pid: number, command: string }> {
-  
+
   try {
     // Find all Happy CLI processes except current daemon process
     const output = execSync('ps aux | grep "happy.mjs" | grep -v grep', { encoding: 'utf8' });
     const lines = output.trim().split('\n').filter(line => line.trim());
-    
+
     const processes: Array<{ pid: number, command: string }> = [];
-    
+
     for (const line of lines) {
       const parts = line.trim().split(/\s+/);
       if (parts.length < 11) continue;
-      
+
       const pid = parseInt(parts[1]);
       const command = parts.slice(10).join(' ');
-      
+
       // Skip current process
       if (pid === process.pid) continue;
-      
+
       // Include daemon-spawned sessions and hung daemons
-      if (command.includes('--started-by daemon') || 
-          command.includes('daemon start-sync') ||
-          command.includes('daemon start')) {
+      if (command.includes('--started-by daemon') ||
+        command.includes('daemon start-sync') ||
+        command.includes('daemon start')) {
         processes.push({ pid, command });
       }
     }
-    
+
     return processes;
   } catch (error) {
     return [];
@@ -177,15 +177,15 @@ export async function killRunawayHappyProcesses(): Promise<{ killed: number, err
   const runawayProcesses = findRunawayHappyProcesses();
   const errors: Array<{ pid: number, error: string }> = [];
   let killed = 0;
-  
+
   for (const { pid, command } of runawayProcesses) {
     try {
       // Try SIGTERM first
       process.kill(pid, 'SIGTERM');
-      
+
       // Wait a moment to see if it responds
       await new Promise(resolve => setTimeout(resolve, 1000));
-      
+
       // Check if it's still alive
       try {
         process.kill(pid, 0); // Signal 0 just checks if process exists
@@ -195,14 +195,14 @@ export async function killRunawayHappyProcesses(): Promise<{ killed: number, err
       } catch {
         // Process is dead from SIGTERM
       }
-      
+
       killed++;
       console.log(`Killed runaway process PID ${pid}: ${command}`);
     } catch (error) {
       errors.push({ pid, error: (error as Error).message });
     }
   }
-  
+
   return { killed, errors };
 }
 
@@ -219,12 +219,12 @@ export async function stopDaemon() {
     }
 
     logger.debug(`Stopping daemon with PID ${state.pid}`);
-    
+
     // Try HTTP graceful stop
     try {
       const { stopDaemonHttp } = await import('./controlClient');
       await stopDaemonHttp();
-      
+
       // Wait for daemon to die
       await waitForProcessDeath(state.pid, 5000);
       logger.debug('Daemon stopped gracefully via HTTP');
@@ -232,7 +232,7 @@ export async function stopDaemon() {
     } catch (error) {
       logger.debug('HTTP stop failed, will force kill', error);
     }
-    
+
     // Force kill
     try {
       process.kill(state.pid, 'SIGKILL');

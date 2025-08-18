@@ -1,6 +1,6 @@
 import axios from 'axios'
 import { logger } from '@/ui/logger'
-import type { AgentState, CreateSessionResponse, Metadata, Session } from '@/api/types'
+import type { AgentState, CreateSessionResponse, Metadata, Session, MachineMetadata, MachineResponse } from '@/api/types'
 import { ApiSessionClient } from './apiSession';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { PushNotificationClient } from './pushNotifications';
@@ -55,6 +55,95 @@ export class ApiClient {
       logger.debug('[API] [ERROR] Failed to get or create session:', error);
       throw new Error(`Failed to get or create session: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+  }
+
+  /**
+   * Get machine by ID from the server
+   * Returns the current machine state from the server with decrypted metadata
+   */
+  async getMachine(machineId: string): Promise<{
+    id: string;
+    metadata: MachineMetadata | null;
+    metadataVersion: number;
+    seq: number;
+    active: boolean;
+    lastActiveAt: number;
+    createdAt: number;
+    updatedAt: number;
+  } | null> {
+    const response = await axios.get(`${configuration.serverUrl}/v1/machines/${machineId}`, {
+      headers: {
+        'Authorization': `Bearer ${this.token}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 2000
+    });
+
+    const raw = response.data.machine;
+    if (!raw) {
+      return null;
+    }
+
+    logger.debug(`[API] Machine ${machineId} fetched from server`);
+
+    // Decrypt metadata like we do for sessions
+    const machine = {
+      id: raw.id,
+      metadata: raw.metadata ? decrypt(decodeBase64(raw.metadata), this.secret) : null,
+      metadataVersion: raw.metadataVersion,
+      seq: raw.seq,
+      active: raw.active,
+      lastActiveAt: raw.lastActiveAt,
+      createdAt: raw.createdAt,
+      updatedAt: raw.updatedAt
+    };
+    return machine;
+  }
+
+  /**
+   * Register or update machine with the server
+   * Returns the current machine state from the server with decrypted metadata
+   */
+  async createOrUpdateMachine(machineId: string, metadata: MachineMetadata): Promise<{
+    id: string;
+    metadata: MachineMetadata | null;
+    metadataVersion: number;
+    seq: number;
+    active: boolean;
+    lastActiveAt: number;
+    createdAt: number;
+    updatedAt: number;
+  }> {
+    const response = await axios.post(
+      `${configuration.serverUrl}/v1/machines`,
+      {
+        id: machineId,
+        metadata: encodeBase64(encrypt(metadata, this.secret))
+      },
+      {
+        headers: {
+          'Authorization': `Bearer ${this.token}`,
+          'Content-Type': 'application/json'
+        },
+        timeout: 5000
+      }
+    );
+
+    const raw = response.data.machine;
+    logger.debug(`[API] Machine ${machineId} registered/updated with server`);
+
+    // Return decrypted machine like we do for sessions
+    const machine = {
+      id: raw.id,
+      metadata: raw.metadata ? decrypt(decodeBase64(raw.metadata), this.secret) : null,
+      metadataVersion: raw.metadataVersion,
+      seq: raw.seq,
+      active: raw.active,
+      lastActiveAt: raw.lastActiveAt,
+      createdAt: raw.createdAt,
+      updatedAt: raw.updatedAt
+    };
+    return machine;
   }
 
   /**

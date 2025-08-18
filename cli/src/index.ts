@@ -93,7 +93,14 @@ import { clearCredentials, clearMachineId, writeCredentials } from './persistenc
           console.log('No active sessions')
         } else {
           console.log('Active sessions:')
-          console.log(JSON.stringify(sessions, null, 2))
+          // Clean up session data for display
+          const cleanSessions = sessions.map(s => ({
+            pid: s.pid,
+            sessionId: s.happySessionId || `PID-${s.pid}`,
+            startedBy: s.startedBy,
+            directory: s.happySessionMetadataFromLocalWebhook?.directory || 'unknown'
+          }))
+          console.log(JSON.stringify(cleanSessions, null, 2))
         }
       } catch (error) {
         console.log('No daemon running')

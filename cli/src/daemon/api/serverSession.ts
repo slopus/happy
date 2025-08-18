@@ -6,28 +6,54 @@
 import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
-import { MachineIdentity, ServerToDaemonEvents, DaemonToServerEvents, TrackedSession } from './types';
+import { ServerToDaemonEvents, DaemonToServerEvents, TrackedSession } from './types';
 import { encrypt, decrypt, encodeBase64, decodeBase64 } from '@/api/encryption';
+import { ApiClient } from '@/api/api';
+import { MachineMetadata } from '@/api/types';
 
 export class DaemonHappyServerSession {
   private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
+  private keepAliveInterval: NodeJS.Timeout | null = null;
+  private apiClient: ApiClient;
   private token: string;
   private secret: Uint8Array;
-  private keepAliveInterval: NodeJS.Timeout | null = null;
-  private readonly spawnMethod: string;
-  private readonly stopMethod: string;
 
   constructor(
     credentials: { token: string; secret: Uint8Array },
-    private machineIdentity: MachineIdentity,
+    private machineId: string,
     private spawnSession: (directory: string, sessionId?: string) => Promise<TrackedSession | null>,
-    private stopSession: (sessionId: string) => boolean
+    private stopSession: (sessionId: string) => boolean,
+    private requestShutdown: () => void
   ) {
     this.token = credentials.token;
     this.secret = credentials.secret;
-    // Lift RPC method names to constructor level
-    this.spawnMethod = `${this.machineIdentity.machineId}:spawn-happy-session`;
-    this.stopMethod = `${this.machineIdentity.machineId}:stop-session`;
+    this.apiClient = new ApiClient(credentials.token, credentials.secret);
+  }
+
+  async updateMachineMetadata(updates: Partial<MachineMetadata>): Promise<void> {
+    try {
+      // First get the current machine state to get the version
+      const currentMachine = await this.apiClient.getMachine(this.machineId);
+      if (!currentMachine) {
+        logger.debug('[SERVER SESSION][ERROR] Machine not found, will not be able to update metadata, skipping');
+        return;
+      }
+
+      // Merge with existing metadata (already decrypted by ApiClient)
+      const mergedMetadata = { ...currentMachine.metadata, ...updates };
+
+      // Just emit the update - the server will handle it
+      // We don't need to wait for response since this is best-effort
+      this.socket.emit('machine-update-metadata', {
+        machineId: this.machineId,
+        metadata: encodeBase64(encrypt(mergedMetadata, this.secret)),
+        expectedVersion: currentMachine.metadataVersion
+      });
+
+      logger.debug('[SERVER SESSION] Sent machine metadata update:', updates);
+    } catch (error) {
+      logger.debug('[SERVER SESSION] Failed to update metadata:', error);
+    }
   }
 
   connect() {
@@ -39,7 +65,7 @@ export class DaemonHappyServerSession {
       auth: {
         token: this.token,
         clientType: 'machine-scoped' as const,
-        machineId: this.machineIdentity.machineId
+        machineId: this.machineId
       },
       path: '/v1/updates',
       reconnection: true,
@@ -50,11 +76,22 @@ export class DaemonHappyServerSession {
     this.socket.on('connect', () => {
       logger.debug('[SERVER SESSION] Connected to server');
 
-      // Machine already registered before connection
-      // Just register RPC methods
-      this.socket.emit('rpc-register', { method: this.spawnMethod });
-      this.socket.emit('rpc-register', { method: this.stopMethod });
-      logger.debug(`[SERVER SESSION] Registered RPC methods: ${this.spawnMethod}, ${this.stopMethod}`);
+      // Define RPC method names
+      const spawnMethod = `${this.machineId}:spawn-happy-session`;
+      const stopMethod = `${this.machineId}:stop-session`;
+      const stopDaemonMethod = `${this.machineId}:stop-daemon`;
+
+      // Update daemon status to running
+      this.updateMachineMetadata({
+        daemonLastKnownStatus: 'running',
+        daemonLastKnownPid: process.pid
+      });
+
+      // Register RPC methods
+      this.socket.emit('rpc-register', { method: spawnMethod });
+      this.socket.emit('rpc-register', { method: stopMethod });
+      this.socket.emit('rpc-register', { method: stopDaemonMethod });
+      logger.debug(`[SERVER SESSION] Registered RPC methods: ${spawnMethod}, ${stopMethod}, ${stopDaemonMethod}`);
 
       this.startKeepAlive();
     });
@@ -63,7 +100,11 @@ export class DaemonHappyServerSession {
     this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
       logger.debugLargeJson(`[SERVER SESSION] Received RPC request:`, data);
       try {
-        if (data.method === this.spawnMethod) {
+        const spawnMethod = `${this.machineId}:spawn-happy-session`;
+        const stopMethod = `${this.machineId}:stop-session`;
+        const stopDaemonMethod = `${this.machineId}:stop-daemon`;
+
+        if (data.method === spawnMethod) {
           const { directory, sessionId } = decrypt(decodeBase64(data.params), this.secret) || {};
 
           if (!directory) {
@@ -86,7 +127,7 @@ export class DaemonHappyServerSession {
           return;
         }
 
-        if (data.method === this.stopMethod) {
+        if (data.method === stopMethod) {
           logger.debug('[SERVER SESSION] Received stop-session RPC request');
           const decryptedParams = decrypt(decodeBase64(data.params), this.secret);
           const { sessionId } = decryptedParams || {};
@@ -101,6 +142,24 @@ export class DaemonHappyServerSession {
           const response = { message: 'Session stopped' };
           const encryptedResponse = encodeBase64(encrypt(response, this.secret));
           callback(encryptedResponse);
+          return;
+        }
+
+        // Add stop-daemon handler
+        if (data.method === stopDaemonMethod) {
+          logger.debug('[SERVER SESSION] Received stop-daemon RPC request');
+
+          // Send acknowledgment immediately
+          callback(encodeBase64(encrypt({
+            message: 'Daemon stop request acknowledged, starting shutdown sequence...'
+          }, this.secret)));
+
+          // Trigger shutdown callback
+          setTimeout(() => {
+            logger.debug('[SERVER SESSION] Initiating daemon shutdown from RPC');
+            this.requestShutdown();
+          }, 100);
+
           return;
         }
 
@@ -120,8 +179,12 @@ export class DaemonHappyServerSession {
     this.socket.io.on('reconnect', () => {
       logger.debug('[SERVER SESSION] Reconnected to server');
       // Re-register RPC methods
-      this.socket.emit('rpc-register', { method: this.spawnMethod });
-      this.socket.emit('rpc-register', { method: this.stopMethod });
+      const spawnMethod = `${this.machineId}:spawn-happy-session`;
+      const stopMethod = `${this.machineId}:stop-session`;
+      const stopDaemonMethod = `${this.machineId}:stop-daemon`;
+      this.socket.emit('rpc-register', { method: spawnMethod });
+      this.socket.emit('rpc-register', { method: stopMethod });
+      this.socket.emit('rpc-register', { method: stopDaemonMethod });
     });
 
     this.socket.on('daemon-command', (data) => {
@@ -152,7 +215,7 @@ export class DaemonHappyServerSession {
     this.stopKeepAlive();
     this.keepAliveInterval = setInterval(() => {
       const payload = {
-        machineId: this.machineIdentity.machineId,
+        machineId: this.machineId,
         time: Date.now()
       };
       logger.debugLargeJson(`[SERVER SESSION] Emitting machine-alive`, payload);

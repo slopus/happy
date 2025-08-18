@@ -18,6 +18,7 @@ interface Settings {
   // This ID is used as the actual database ID on the server
   // All machine operations use this ID
   machineId?: string
+  machineIdConfirmedByServer?: boolean
   daemonAutoStartWhenRunningHappy?: boolean
 }
 
@@ -58,12 +59,12 @@ export async function updateSettings(
   const LOCK_RETRY_INTERVAL_MS = 100;  // How long to wait between lock attempts
   const MAX_LOCK_ATTEMPTS = 50;        // Maximum number of attempts (5 seconds total)
   const STALE_LOCK_TIMEOUT_MS = 10000; // Consider lock stale after 10 seconds
-  
+
   const lockFile = configuration.settingsFile + '.lock';
   const tmpFile = configuration.settingsFile + '.tmp';
   let fileHandle;
   let attempts = 0;
-  
+
   // Acquire exclusive lock with retries
   while (attempts < MAX_LOCK_ATTEMPTS) {
     try {
@@ -75,63 +76,46 @@ export async function updateSettings(
         // Lock file exists, wait and retry
         attempts++;
         await new Promise(resolve => setTimeout(resolve, LOCK_RETRY_INTERVAL_MS));
-        
+
         // Check for stale lock
         try {
           const stats = await stat(lockFile);
           if (Date.now() - stats.mtimeMs > STALE_LOCK_TIMEOUT_MS) {
-            await unlink(lockFile).catch(() => {});
+            await unlink(lockFile).catch(() => { });
           }
-        } catch {}
+        } catch { }
       } else {
         throw err;
       }
     }
   }
-  
+
   if (!fileHandle) {
     throw new Error(`Failed to acquire settings lock after ${MAX_LOCK_ATTEMPTS * LOCK_RETRY_INTERVAL_MS / 1000} seconds`);
   }
-  
+
   try {
     // Read current settings with defaults
     const current = await readSettings() || { ...defaultSettings };
-    
+
     // Apply update
     const updated = await updater(current);
-    
+
     // Ensure directory exists
     if (!existsSync(configuration.happyDir)) {
       await mkdir(configuration.happyDir, { recursive: true });
     }
-    
+
     // Write atomically using rename
     await writeFile(tmpFile, JSON.stringify(updated, null, 2));
     await rename(tmpFile, configuration.settingsFile); // Atomic on POSIX
-    
+
     return updated;
   } finally {
     // Release lock
     await fileHandle.close();
-    await unlink(lockFile).catch(() => {}); // Remove lock file
+    await unlink(lockFile).catch(() => { }); // Remove lock file
   }
-}
-
-/**
- * Ensure machine ID exists in settings, generating if needed
- * @returns Settings with machineId guaranteed to exist
- * @deprecated Use authAndSetupMachineIfNeeded() from ui/auth.ts instead
- */
-export async function ensureMachineId(): Promise<Settings> {
-  return updateSettings(settings => {
-    if (!settings.machineId) {
-      return {
-        ...settings,
-        machineId: randomUUID()
-      };
-    }
-    return settings;
-  });
 }
 
 //

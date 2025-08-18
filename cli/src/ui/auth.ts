@@ -13,10 +13,11 @@ import { render } from 'ink';
 import React from 'react';
 import { randomUUID } from 'node:crypto';
 import { hostname } from 'node:os';
+import os from 'os';
 import { logger } from './logger';
 import packageJson from '../../package.json';
-import { MachineIdentity, MachineServerMetadata } from '@/daemon/types';
-import { encrypt } from '@/api/encryption';
+import { MachineMetadata } from '@/api/types';
+import { ApiClient } from '@/api/api';
 
 export async function doAuth(): Promise<{ secret: Uint8Array, token: string } | null> {
     console.clear();
@@ -60,7 +61,7 @@ export async function doAuth(): Promise<{ secret: Uint8Array, token: string } | 
 function selectAuthenticationMethod(): Promise<AuthMethod | null> {
     return new Promise((resolve) => {
         let hasResolved = false;
-        
+
         const onSelect = (method: AuthMethod) => {
             if (!hasResolved) {
                 hasResolved = true;
@@ -68,7 +69,7 @@ function selectAuthenticationMethod(): Promise<AuthMethod | null> {
                 resolve(method);
             }
         };
-        
+
         const onCancel = () => {
             if (!hasResolved) {
                 hasResolved = true;
@@ -76,7 +77,7 @@ function selectAuthenticationMethod(): Promise<AuthMethod | null> {
                 resolve(null);
             }
         };
-        
+
         const app = render(React.createElement(AuthSelector, { onSelect, onCancel }), {
             exitOnCtrlC: false,
             patchConsole: false
@@ -91,14 +92,14 @@ async function doMobileAuth(keypair: tweetnacl.BoxKeyPair): Promise<{ secret: Ui
     console.clear();
     console.log('\nMobile Authentication\n');
     console.log('Scan this QR code with your Happy mobile app:\n');
-    
+
     const authUrl = 'happy://terminal?' + encodeBase64Url(keypair.publicKey);
     displayQRCode(authUrl);
-    
+
     console.log('\nOr manually enter this URL:');
     console.log(authUrl);
     console.log('');
-    
+
     return await waitForAuthentication(keypair);
 }
 
@@ -108,12 +109,12 @@ async function doMobileAuth(keypair: tweetnacl.BoxKeyPair): Promise<{ secret: Ui
 async function doWebAuth(keypair: tweetnacl.BoxKeyPair): Promise<{ secret: Uint8Array, token: string } | null> {
     console.clear();
     console.log('\nWeb Authentication\n');
-    
+
     const webUrl = generateWebAuthUrl(keypair.publicKey);
     console.log('Opening your browser...');
-    
+
     const browserOpened = await openBrowser(webUrl);
-    
+
     if (browserOpened) {
         console.log('✓ Browser opened\n');
         console.log('Complete authentication in your browser window.');
@@ -123,7 +124,7 @@ async function doWebAuth(keypair: tweetnacl.BoxKeyPair): Promise<{ secret: Uint8
         console.log(webUrl);
     }
     console.log('');
-    
+
     return await waitForAuthentication(keypair);
 }
 
@@ -134,16 +135,16 @@ async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<{ s
     process.stdout.write('Waiting for authentication');
     let dots = 0;
     let cancelled = false;
-    
+
     // Handle Ctrl-C during waiting
     const handleInterrupt = () => {
         cancelled = true;
         console.log('\n\nAuthentication cancelled.');
         process.exit(0);
     };
-    
+
     process.on('SIGINT', handleInterrupt);
-    
+
     try {
         while (!cancelled) {
             try {
@@ -171,17 +172,17 @@ async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<{ s
                 console.log('\n\nFailed to check authentication status. Please try again.');
                 return null;
             }
-            
+
             // Animate waiting dots
             process.stdout.write('\rWaiting for authentication' + '.'.repeat((dots % 3) + 1) + '   ');
             dots++;
-            
+
             await delay(1000);
         }
     } finally {
         process.off('SIGINT', handleInterrupt);
     }
-    
+
     return null;
 }
 
@@ -199,36 +200,6 @@ export function decryptWithEphemeralKey(encryptedBundle: Uint8Array, recipientSe
     return decrypted;
 }
 
-/**
- * Register or update machine with the server
- */
-async function createOrUpdateMachine(
-    credentials: { token: string; secret: Uint8Array },
-    machineId: string,
-    metadata: MachineServerMetadata
-): Promise<void> {
-    const encrypted = encrypt(JSON.stringify(metadata), credentials.secret);
-    const encryptedMetadata = encodeBase64(encrypted);
-    
-    const response = await fetch(`${configuration.serverUrl}/v1/machines`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${credentials.token}`,
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ 
-            id: machineId,
-            metadata: encryptedMetadata 
-        })
-    });
-    
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Failed to register machine: ${response.status} - ${errorText}`);
-    }
-    
-    logger.debug(`[AUTH] Machine ${machineId} registered/updated with server`);
-}
 
 /**
  * Ensure authentication and machine setup
@@ -236,13 +207,13 @@ async function createOrUpdateMachine(
  */
 export async function authAndSetupMachineIfNeeded(): Promise<{
     credentials: { token: string; secret: Uint8Array };
-    machineIdentity: MachineIdentity;
+    machineId: string;
 }> {
     logger.debug('[AUTH] Starting auth and machine setup...');
-    
+
     // Step 1: Handle authentication
     let credentials = await readCredentials();
-    
+
     if (!credentials) {
         logger.debug('[AUTH] No credentials found, starting authentication flow...');
         const authResult = await doAuth();
@@ -253,47 +224,45 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
     } else {
         logger.debug('[AUTH] Using existing credentials');
     }
-    
-    // Step 2: Get or initialize settings with machine ID
-    const settings = await updateSettings(s => {
-        if (!s.machineId) {
+
+    const settings = await updateSettings(async s => {
+        // Machine not created or failed to be created - lets create it
+        if (!s.machineId || !s.machineIdConfirmedByServer) {
+            const machineId = s.machineId || randomUUID();
+
+            const metadata: MachineMetadata = {
+                host: hostname(),
+                platform: process.platform,
+                happyCliVersion: packageJson.version,
+                homeDir: os.homedir(),
+                happyHomeDir: configuration.happyDir
+            };
+
+            // Choosig to do this synchronously for less variance in control flow
+            try {
+                const apiClient = new ApiClient(credentials.token, credentials.secret);
+                await apiClient.createOrUpdateMachine(machineId, metadata);
+                await updateSettings(s => {
+                    return {
+                        ...s,
+                        machineIdConfirmedByServer: true
+                    }
+                });
+            } catch (error) {
+                logger.debug('[AUTH] Failed to register machine with server, will try again on next cli run:', error);
+            }
+
             // This ID is used as the actual database ID on the server
             // All machine operations use this ID
             return {
                 ...s,
-                machineId: randomUUID(),
-                onboardingCompleted: true
+                machineId
             };
         }
         return s;
     });
-    
+
     logger.debug(`[AUTH] Machine ID: ${settings.machineId}`);
-    
-    // Step 3: Build machine metadata for server
-    const metadata: MachineServerMetadata = {
-        host: hostname(),
-        platform: process.platform,
-        happyCliVersion: packageJson.version,
-        happyHomeDirectory: configuration.happyDir
-    };
-    
-    // Step 4: Register/update machine with server
-    try {
-        await createOrUpdateMachine(credentials, settings.machineId!, metadata);
-    } catch (error) {
-        logger.debug('[AUTH] Failed to register machine with server:', error);
-        throw new Error(`Failed to register machine: ${error}`);
-    }
-    
-    // Step 5: Build and return machine identity
-    const machineIdentity: MachineIdentity = {
-        machineId: settings.machineId!,
-        machineHost: hostname(),
-        platform: process.platform,
-        happyCliVersion: packageJson.version,
-        happyHomeDirectory: configuration.happyDir
-    };
-    
-    return { credentials, machineIdentity };
+
+    return { credentials, machineId: settings.machineId! };
 }

@@ -8,7 +8,7 @@ import { z } from 'zod';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { logger } from '@/ui/logger';
 import { Metadata } from '@/api/types';
-import { TrackedSession } from './types';
+import { TrackedSession } from './api/types';
 
 export function startDaemonControlServer({
   getChildren,
@@ -27,7 +27,7 @@ export function startDaemonControlServer({
     const app = fastify({
       logger: false // We use our own logger
     });
-    
+
     // Set up Zod type provider
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
@@ -43,10 +43,10 @@ export function startDaemonControlServer({
       }
     }, async (request, reply) => {
       const { sessionId, metadata } = request.body;
-      
+
       logger.debug(`[CONTROL SERVER] Session started: ${sessionId}`);
       onHappySessionWebhook(sessionId, metadata);
-      
+
       return { status: 'ok' };
     });
 
@@ -66,7 +66,7 @@ export function startDaemonControlServer({
       }
     }, async (request, reply) => {
       const { sessionId } = request.body;
-      
+
       logger.debug(`[CONTROL SERVER] Stop session request: ${sessionId}`);
       const success = stopSession(sessionId);
       return { success };
@@ -82,13 +82,13 @@ export function startDaemonControlServer({
       }
     }, async (request, reply) => {
       const { directory, sessionId } = request.body;
-      
+
       logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}`);
       const session = await spawnSession(directory, sessionId);
-      
+
       if (session) {
-        return { 
-          success: true, 
+        return {
+          success: true,
           pid: session.pid,
           sessionId: session.happySessionId || 'pending'
         };
@@ -101,13 +101,13 @@ export function startDaemonControlServer({
     // Stop daemon
     typed.post('/stop', async (request, reply) => {
       logger.debug('[CONTROL SERVER] Stop daemon request received');
-      
+
       // Give time for response to arrive
       setTimeout(() => {
         logger.debug('[CONTROL SERVER] Triggering daemon shutdown');
         requestShutdown();
       }, 50);
-      
+
       return { status: 'stopping' };
     });
 
@@ -116,10 +116,10 @@ export function startDaemonControlServer({
         logger.debug('[CONTROL SERVER] Failed to start:', err);
         throw err;
       }
-      
+
       const port = parseInt(address.split(':').pop()!);
       logger.debug(`[CONTROL SERVER] Started on port ${port}`);
-      
+
       resolve({
         port,
         stop: async () => {
