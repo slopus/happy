@@ -183,17 +183,9 @@ export default function NewSessionScreen() {
                                     <Text style={[Typography.default(), {
                                         fontSize: 13,
                                         color: '#664D03',
-                                        lineHeight: 20,
-                                        marginBottom: 4
-                                    }]}>
-                                        • Is it asleep? If you're using a Mac, search App Store for 'Amphetamine' - prevents sleep even when the lid is closed
-                                    </Text>
-                                    <Text style={[Typography.default(), {
-                                        fontSize: 13,
-                                        color: '#664D03',
                                         lineHeight: 20
                                     }]}>
-                                        • Is the Happy daemon running?
+                                        • Is the Happy daemon running? Check with `happy daemon status`
                                     </Text>
                                 </View>
                             </View>
