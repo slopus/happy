@@ -221,8 +221,7 @@ export default function MachineDetailScreen() {
                     headerBackTitle: 'Back'
                 }}
             />
-            <ScrollView
-                style={{ flex: 1, backgroundColor: '#F2F2F7' }}
+            <ItemList
                 refreshControl={
                     <RefreshControl
                         refreshing={isRefreshing}
@@ -230,9 +229,8 @@ export default function MachineDetailScreen() {
                     />
                 }
             >
-                {/* Recent Projects section with launcher */}
-                <ItemList>
-                    <ItemGroup title="Recent Projects">
+                {/* Launch New Session section with launcher */}
+                <ItemGroup title="Launch New Session in Directory">
                         <MachineSessionLauncher
                             machineId={machineId!}
                             recentPaths={recentPaths}
@@ -240,77 +238,10 @@ export default function MachineDetailScreen() {
                             isOnline={isMachineOnline(machine)}
                             onStartSession={handleStartSession}
                         />
-                    </ItemGroup>
-                </ItemList>
+                </ItemGroup>
 
-                {/* Active Sessions */}
-                {machineSessions.length > 0 && (
-                    <ItemList>
-                        <ItemGroup title={`Active Sessions (${machineSessions.length})`}>
-                            {machineSessions.slice(0, 5).map(session => (
-                                <Item
-                                    key={session.id}
-                                    title={pastUsedRelativePath(session)}
-                                    subtitle={session.metadata?.name || 'Untitled Session'}
-                                    onPress={() => router.push(`/session/${session.id}`)}
-                                    rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
-                                />
-                            ))}
-                        </ItemGroup>
-                    </ItemList>
-                )}
-
-                {/* Machine Information */}
-                <ItemList>
-                    <ItemGroup title="Machine Information">
-                        <Item
-                            title="Host"
-                            subtitle={metadata?.host || machineId}
-                        />
-                        <Item
-                            title="Machine ID"
-                            subtitle={machineId}
-                            subtitleStyle={{ fontFamily: 'Menlo', fontSize: 12 }}
-                        />
-                        {metadata?.username && (
-                            <Item
-                                title="Username"
-                                subtitle={metadata.username}
-                            />
-                        )}
-                        {metadata?.homeDir && (
-                            <Item
-                                title="Home Directory"
-                                subtitle={metadata.homeDir}
-                                subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
-                            />
-                        )}
-                        {metadata?.platform && (
-                            <Item
-                                title="Platform"
-                                subtitle={metadata.platform}
-                            />
-                        )}
-                        {metadata?.arch && (
-                            <Item
-                                title="Architecture"
-                                subtitle={metadata.arch}
-                            />
-                        )}
-                        <Item
-                            title="Last Seen"
-                            subtitle={machine.activeAt ? new Date(machine.activeAt).toLocaleString() : 'Never'}
-                        />
-                        <Item
-                            title="Metadata Version"
-                            subtitle={String(machine.metadataVersion)}
-                        />
-                    </ItemGroup>
-                </ItemList>
-
-                {/* Daemon Information */}
-                <ItemList>
-                    <ItemGroup title="Daemon Information">
+                {/* Daemon */}
+                <ItemGroup title="Daemon">
                         <Item
                             title="Status"
                             detail={daemonStatus}
@@ -373,12 +304,69 @@ export default function MachineDetailScreen() {
                             title="Daemon State Version"
                             subtitle={String(machine.daemonStateVersion)}
                         />
+                </ItemGroup>
+
+                {/* Active Sessions */}
+                {machineSessions.length > 0 && (
+                    <ItemGroup title={`Active Sessions (${machineSessions.length})`}>
+                        {machineSessions.slice(0, 5).map(session => (
+                                <Item
+                                    key={session.id}
+                                    title={pastUsedRelativePath(session)}
+                                    subtitle={session.metadata?.name || 'Untitled Session'}
+                                    onPress={() => router.push(`/session/${session.id}`)}
+                                    rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
+                                />
+                            ))}
                     </ItemGroup>
-                </ItemList>
+                )}
 
-
-                <View style={{ height: 40 }} />
-            </ScrollView>
+                {/* Machine */}
+                <ItemGroup title="Machine">
+                        <Item
+                            title="Host"
+                            subtitle={metadata?.host || machineId}
+                        />
+                        <Item
+                            title="Machine ID"
+                            subtitle={machineId}
+                            subtitleStyle={{ fontFamily: 'Menlo', fontSize: 12 }}
+                        />
+                        {metadata?.username && (
+                            <Item
+                                title="Username"
+                                subtitle={metadata.username}
+                            />
+                        )}
+                        {metadata?.homeDir && (
+                            <Item
+                                title="Home Directory"
+                                subtitle={metadata.homeDir}
+                                subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
+                            />
+                        )}
+                        {metadata?.platform && (
+                            <Item
+                                title="Platform"
+                                subtitle={metadata.platform}
+                            />
+                        )}
+                        {metadata?.arch && (
+                            <Item
+                                title="Architecture"
+                                subtitle={metadata.arch}
+                            />
+                        )}
+                        <Item
+                            title="Last Seen"
+                            subtitle={machine.activeAt ? new Date(machine.activeAt).toLocaleString() : 'Never'}
+                        />
+                        <Item
+                            title="Metadata Version"
+                            subtitle={String(machine.metadataVersion)}
+                        />
+                </ItemGroup>
+            </ItemList>
         </>
     );
 }
