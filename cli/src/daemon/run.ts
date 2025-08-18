@@ -1,7 +1,8 @@
-import { DaemonHappyServerSession } from './api/serverSession';
+import { ApiMachineClient } from '@/api/apiMachine';
 import { startDaemonControlServer } from './controlServer';
-import { DaemonState, TrackedSession } from './api/types';
-import { MachineMetadata } from '@/api/types';
+import { DaemonFileState, TrackedSession } from './api/types';
+import { MachineMetadata, DaemonState } from '@/api/types';
+import os from 'os';
 import { logger } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { join } from 'path';
@@ -217,7 +218,7 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Track server session for cleanup
-    let serverSession: DaemonHappyServerSession | null = null;
+    let serverSession: ApiMachineClient | null = null;
 
     // Setup shutdown promise
     let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown') => void;
@@ -235,37 +236,50 @@ export async function startDaemon(): Promise<void> {
     });
 
     // Write daemon state atomically
-    const state: DaemonState = {
+    const fileState: DaemonFileState = {
       pid: process.pid,
       httpPort: controlPort,
       startTime: new Date().toISOString(),
       startedWithCliVersion: packageJson.version
     };
-    await atomicFileWrite(configuration.daemonStateFile, JSON.stringify(state, null, 2));
+    await atomicFileWrite(configuration.daemonStateFile, JSON.stringify(fileState, null, 2));
     logger.debug('[DAEMON RUN] Daemon state written');
 
-    // Create server session with already-registered machine
-    serverSession = new DaemonHappyServerSession(
+    // Prepare initial metadata
+    const initialMetadata: MachineMetadata = {
+      host: os.hostname(),
+      platform: os.platform(),
+      happyCliVersion: packageJson.version,
+      homeDir: os.homedir(),
+      happyHomeDir: configuration.happyHomeDir
+    };
+
+    // Create server session with initial metadata
+    serverSession = new ApiMachineClient(
       credentials,
       machineId,
+      initialMetadata,
       spawnSession,
       stopSession,
       () => requestShutdown('happy-app')
     );
 
+    // Initialize from server state (and create machine if needed) then connect
+    await serverSession.initialize();
     serverSession.connect();
 
     // Setup signal handlers
     const cleanup = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown') => {
       logger.debug(`[DAEMON RUN] Starting cleanup (source: ${source})...`);
 
-      // Update metadata before shutting down
+      // Update daemon state before shutting down
       if (serverSession) {
-        await serverSession.updateMachineMetadata({
-          daemonLastKnownStatus: 'shutting-down',
+        await serverSession.updateDaemonState((state) => ({
+          ...state,
+          status: 'shutting-down',
           shutdownRequestedAt: Date.now(),
-          shutdownSource: source
-        } as Partial<MachineMetadata>);
+          shutdownSource: source === 'happy-app' ? 'mobile-app' : source === 'happy-cli' ? 'cli' : source
+        }));
 
         // Give time for metadata update to send
         await new Promise(resolve => setTimeout(resolve, 100));

@@ -146,6 +146,53 @@ export const SessionSchema = z.object({
 export type Session = z.infer<typeof SessionSchema>
 
 /**
+ * Machine metadata - static information (rarely changes)
+ */
+export const MachineMetadataSchema = z.object({
+  host: z.string(),
+  platform: z.string(),
+  happyCliVersion: z.string(),
+  homeDir: z.string(),
+  happyHomeDir: z.string()
+})
+
+export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
+
+/**
+ * Daemon state - dynamic runtime information (frequently updated)
+ */
+export const DaemonStateSchema = z.object({
+  status: z.union([
+    z.enum(['running', 'shutting-down', 'offline']),
+    z.string() // We will likely add more statuses in the future
+  ]),
+  pid: z.number().optional(),
+  httpPort: z.number().optional(),
+  startedAt: z.number().optional(),
+  shutdownRequestedAt: z.number().optional(),
+  shutdownSource: z.enum(['mobile-app', 'cli', 'os-signal', 'unknown']).optional()
+})
+
+export type DaemonState = z.infer<typeof DaemonStateSchema>
+
+/**
+ * Machine information - similar to Session
+ */
+export const MachineSchema = z.object({
+  id: z.string(),
+  metadata: z.any(), // Decrypted MachineMetadata
+  metadataVersion: z.number(),
+  daemonState: z.any().nullable(), // Decrypted DaemonState
+  daemonStateVersion: z.number(),
+  active: z.boolean(),
+  lastActiveAt: z.number(),
+  createdAt: z.number(),
+  updatedAt: z.number()
+})
+
+export type Machine = z.infer<typeof MachineSchema>
+
+/**
  * Session message from API
  */
 export const SessionMessageSchema = z.object({

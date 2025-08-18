@@ -16,8 +16,8 @@ import { hostname } from 'node:os';
 import os from 'os';
 import { logger } from './logger';
 import packageJson from '../../package.json';
-import { MachineMetadata } from '@/api/types';
 import { ApiClient } from '@/api/api';
+import { MachineMetadata } from '@/api/types';
 
 export async function doAuth(): Promise<{ secret: Uint8Array, token: string } | null> {
     console.clear();
