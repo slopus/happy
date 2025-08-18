@@ -9,12 +9,8 @@
 
 import chalk from 'chalk'
 import { start, StartOptions } from '@/start'
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { homedir } from 'node:os'
 import { createInterface } from 'node:readline'
-import { configuration } from '@/configuration'
 import { logger } from './ui/logger'
 import { readCredentials, readSettings, updateSettings } from './persistence/persistence'
 import { doAuth, authAndSetupMachineIfNeeded } from './ui/auth'
@@ -220,13 +216,14 @@ Sessions spawned by the daemon will continue running after daemon stops unless -
     let showVersion = false
     let forceAuth = false
     let forceAuthNew = false // New --force-auth flag
+    const unknownArgs: string[] = [] // Collect unknown args to pass through to claude
 
     for (let i = 0; i < args.length; i++) {
       const arg = args[i]
 
-      if (arg === '-h' || arg === '--help') {
+      if (arg === '--help') {
         showHelp = true
-      } else if (arg === '-v' || arg === '--version') {
+      } else if (arg === '--version') {
         showVersion = true
       } else if (arg === '--auth' || arg === '--login') {
         // Keep for backward compatibility
@@ -234,32 +231,26 @@ Sessions spawned by the daemon will continue running after daemon stops unless -
       } else if (arg === '--force-auth') {
         // New flag that properly clears everything
         forceAuthNew = true
-      } else if (arg === '-m' || arg === '--model') {
-        options.model = args[++i]
-      } else if (arg === '-p' || arg === '--permission-mode') {
-        // Use zod to validate the permission mode
-        options.permissionMode = z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan']).parse(args[++i])
       } else if (arg === '--happy-starting-mode') {
         options.startingMode = z.enum(['local', 'remote']).parse(args[++i])
-      } else if (arg === '--claude-env') {
-        // Format: --claude-env KEY=VALUE
-        const envVar = args[++i]
-        const [key, value] = envVar.split('=', 2)
-        if (!key || value === undefined) {
-          console.error(chalk.red(`Invalid environment variable format: ${envVar}. Use KEY=VALUE`))
-          process.exit(1)
-        }
-        options.claudeEnvVars = { ...options.claudeEnvVars, [key]: value }
-      } else if (arg === '--claude-arg') {
-        // Pass additional arguments to Claude CLI
-        const claudeArg = args[++i]
-        options.claudeArgs = [...(options.claudeArgs || []), claudeArg]
+      } else if (arg === '--yolo') {
+        // Shortcut for --dangerously-skip-permissions
+        unknownArgs.push('--dangerously-skip-permissions')
       } else if (arg === '--started-by') {
         options.startedBy = args[++i] as 'daemon' | 'terminal'
       } else {
-        console.error(chalk.red(`Unknown argument: ${arg}`))
-        process.exit(1)
+        // Pass unknown arguments through to claude
+        unknownArgs.push(arg)
+        // Check if this arg expects a value (simplified check for common patterns)
+        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+          unknownArgs.push(args[++i])
+        }
       }
+    }
+
+    // Add unknown args to claudeArgs
+    if (unknownArgs.length > 0) {
+      options.claudeArgs = [...(options.claudeArgs || []), ...unknownArgs]
     }
 
     // Show help
@@ -268,43 +259,43 @@ Sessions spawned by the daemon will continue running after daemon stops unless -
 ${chalk.bold('happy')} - Claude Code On the Go
 
 ${chalk.bold('Usage:')}
-  happy [options]
-  happy auth       Manage authentication
-  happy notify     Send notification
-  happy daemon     Manage the background daemon (macOS only)
+  happy [options]          Start Claude with mobile control
+  happy auth              Manage authentication  
+  happy notify            Send push notification
+  happy daemon            Manage background service
 
-${chalk.bold('Options:')}
-  -h, --help              Show this help message
-  -v, --version           Show version
-  -m, --model <model>     Claude model to use (default: sonnet)
-  -p, --permission-mode   Permission mode: default, acceptEdits, bypassPermissions, or plan
-  --auth, --login         Re-authenticate (deprecated, use 'happy auth login')
-  --force-auth            Force complete re-authentication (clears all data)
-  --claude-env KEY=VALUE  Set environment variable for Claude Code
-  --claude-arg ARG        Pass additional argument to Claude CLI
+${chalk.bold('Happy Options:')}
+  --help                  Show this help message
+  --yolo                  Skip all permissions (--dangerously-skip-permissions)
+  --force-auth            Force re-authentication
 
-
-  [Advanced]
-  --happy-starting-mode <local|remote>
-      Set the starting mode for new sessions (default: remote)
+${chalk.bold('🎯 Happy supports ALL Claude options!')}
+  Use any claude flag exactly as you normally would.
 
 ${chalk.bold('Examples:')}
-  happy                   Start a session with default settings
-  happy -m opus           Use Claude Opus model
-  happy -p plan           Use plan permission mode
-  happy --force-auth      Force complete re-authentication
-  happy auth login        Authenticate or check auth status
-  happy auth show-backup  Get backup key for linking devices
-  happy notify -p "Hello!"  Send notification
-  happy --claude-env KEY=VALUE
-                          Set environment variable for Claude Code
-  happy --claude-arg --option
-                          Pass argument to Claude CLI
-  happy auth logout       Log out and remove authentication
+  happy                   Start session
+  happy --yolo            Start without permissions
+  happy --verbose         Enable verbose mode
+  happy -c                Continue last conversation
+  happy auth login        Authenticate
+  happy notify -p "Done!" Send notification
 
 ${chalk.bold('Happy is a wrapper around Claude Code that enables remote control via mobile app.')}
 ${chalk.bold('Use "happy daemon" for background service management.')}
+
+${chalk.gray('─'.repeat(60))}
+${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 `)
+      
+      // Run claude --help and display its output
+      const { execSync } = await import('child_process')
+      try {
+        const claudeHelp = execSync('claude --help', { encoding: 'utf8' })
+        console.log(claudeHelp)
+      } catch (e) {
+        console.log(chalk.yellow('Could not retrieve claude help. Make sure claude is installed.'))
+      }
+      
       process.exit(0)
     }
 
@@ -424,45 +415,6 @@ ${chalk.bold('Use "happy daemon" for background service management.')}
   }
 })();
 
-/**
- * Clean subcommand - remove the happy data directory after confirmation
- */
-async function cleanKey(): Promise<void> {
-  const happyDir = configuration.happyHomeDir
-
-  // Check if happy directory exists
-  if (!existsSync(happyDir)) {
-    console.log(chalk.yellow('No happy data directory found at:'), happyDir)
-    return
-  }
-
-  console.log(chalk.blue('Found happy data directory at:'), happyDir)
-  console.log(chalk.yellow('⚠️  This will remove all authentication data and require reconnecting your phone.'))
-
-  // Ask for confirmation
-  const rl = createInterface({
-    input: process.stdin,
-    output: process.stdout
-  })
-
-  const answer = await new Promise<string>((resolve) => {
-    rl.question(chalk.yellow('Are you sure you want to remove the happy data directory? (y/N): '), resolve)
-  })
-
-  rl.close()
-
-  if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
-    try {
-      rmSync(happyDir, { recursive: true, force: true })
-      console.log(chalk.green('✓ Happy data directory removed successfully'))
-      console.log(chalk.blue('ℹ️  You will need to reconnect your phone on the next session'))
-    } catch (error) {
-      throw new Error(`Failed to remove data directory: ${error instanceof Error ? error.message : 'Unknown error'}`)
-    }
-  } else {
-    console.log(chalk.blue('Operation cancelled'))
-  }
-}
 
 /**
  * Handle notification command
