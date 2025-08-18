@@ -900,38 +900,18 @@ export function useLocalSettings(): LocalSettings {
     return storage(useShallow((state) => state.localSettings));
 }
 
-export function useDaemonStatus(): Machine | null {
-    return storage(useShallow((state) => {
-        // Return the first online machine if any
-        const onlineMachines = Object.values(state.machines).filter(m => m.active);
-        return onlineMachines.length > 0 ? onlineMachines[0] : null;
-    }));
-}
-
-// Legacy export for backward compatibility
-export function useAllDaemonStatuses(): Machine[] {
-    return storage(useShallow((state) => {
-        // Return all online machines
-        return Object.values(state.machines).filter(m => m.active);
-    }));
-}
-
-// New exports for machine system
 export function useAllMachines(): Machine[] {
     return storage(useShallow((state) => {
-        return Object.values(state.machines).filter(m => m.active);
+        return Object.values(state.machines)
     }));
+}
+
+export function useMachine(machineId: string): Machine | null {
+    return storage(useShallow((state) => state.machines[machineId] ?? null));
 }
 
 export function useSessionListViewData(): SessionListViewItem[] | null {
     return storage((state) => state.sessionListViewData);
-}
-
-export function useDaemonStatusByMachine(machineId: string): Machine | null {
-    return storage(useShallow((state) => {
-        const machine = state.machines[machineId];
-        return machine?.active ? machine : null;
-    }));
 }
 
 export function useLocalSettingMutable<K extends keyof LocalSettings>(name: K): [LocalSettings[K], (value: LocalSettings[K]) => void] {

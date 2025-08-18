@@ -6,11 +6,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { MessageView } from "@/components/MessageView";
 import { useRouter } from "expo-router";
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from "@/utils/sessionUtils";
-import { useSession, useSessionMessages, useSessionUsage, useSettings, useSetting, useDaemonStatusByMachine, useRealtimeStatus, storage } from '@/sync/storage';
+import { useSession, useSessionMessages, useSessionUsage, useSettings, useSetting, useMachine, useRealtimeStatus, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { sessionAbort, sessionSwitch, machineSpawnNewSession } from '@/sync/ops';
+import { sessionAbort, sessionSwitch } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
-import { Pressable } from 'react-native';
+import { Pressable, Text } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
 import { RoundButton } from '@/components/RoundButton';
 import { Deferred } from '@/components/Deferred';
@@ -33,6 +33,7 @@ import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useIsTablet } from '@/utils/responsive';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
+import { machineSpawnNewSession } from '@/sync/ops';
 
 
 export default React.memo(() => {
@@ -69,9 +70,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const modelMode = session.modelMode || 'default';
     const screenWidth = useWindowDimensions().width;
     const sessionStatus = useSessionStatus(session);
-    const lastSeenText = sessionStatus.statusText;
-    const autocomplete = useAutocompleteSession(message, message.length);
-    const daemonStatus = useDaemonStatusByMachine(session.metadata?.machineId || '');
+    const machineId = session.metadata?.machineId;
+    const machine = machineId ? useMachine(machineId) : null;
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
@@ -203,15 +203,17 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     />
                 )}
             </Deferred>
-            {sessionStatus.state === 'disconnected' && daemonStatus?.active && (
-                <View style={{ paddingHorizontal: 16, paddingVertical: 16 }}>
-                    <RoundButton
+            {sessionStatus.state === 'disconnected' && machine?.active && (
+                <View style={{ paddingHorizontal: 16, paddingVertical: 16, alignItems: 'center' }}>
+                    <Text style={{ fontSize: 20, color: '#666', textAlign: 'center' }}>Session is dead, reviving a session in on our TODO, you are welcome to contribute. Repo: slopus/happy. For now you can start a new session from the machine view.</Text>
+                    {/* <RoundButton
                         title={isReviving ? "Reviving..." : "Revive session"}
                         onPress={async () => {
-                            if (!isReviving && session.metadata?.machineId && session.metadata?.path) {
+                            let machineId = session.metadata?.machineId;
+                            if (!isReviving && machineId && session.metadata?.path) {
                                 setIsReviving(true);
                                 try {
-                                    const result = await machineSpawnNewSession(session.metadata.machineId, session.metadata.path);
+                                    const result = await machineSpawnNewSession(machineId, session.metadata.path);
                                     if (result.sessionId && result.sessionId !== sessionId) {
                                         router.replace(`/session/${result.sessionId}`);
                                     }
@@ -225,7 +227,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         size="normal"
                         disabled={isReviving}
                         loading={isReviving}
-                    />
+                    /> */}
                 </View>
             )}
         </>

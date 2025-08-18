@@ -9,5 +9,6 @@ export function isMachineOnline(machine: Machine): boolean {
     }
     
     const timeSinceLastActive = Date.now() - machine.activeAt;
-    return timeSinceLastActive < MACHINE_ONLINE_THRESHOLD;
+    // Machine must be both marked as active AND have recent activity
+    return machine.active && timeSinceLastActive < MACHINE_ONLINE_THRESHOLD;
 }
