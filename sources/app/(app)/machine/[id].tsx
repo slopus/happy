@@ -120,17 +120,34 @@ export default function MachineDetailScreen() {
     };
 
     const handleStopDaemon = async () => {
-        setIsStoppingDaemon(true);
-        try {
-            const result = await machineStopDaemon(machineId!);
-            Modal.alert('Daemon Stop', result.message);
-            // Refresh to get updated metadata
-            await sync.refreshMachines();
-        } catch (error) {
-            Modal.alert('Error', 'Failed to stop daemon. It may not be running.');
-        } finally {
-            setIsStoppingDaemon(false);
-        }
+        // Show confirmation modal using alert with buttons
+        Modal.alert(
+            'Stop Daemon?',
+            'You will not be able to spawn new sessions on this machine until you restart the daemon on your computer again. Your current sessions will stay alive.',
+            [
+                {
+                    text: 'Cancel',
+                    style: 'cancel'
+                },
+                {
+                    text: 'Stop Daemon',
+                    style: 'destructive',
+                    onPress: async () => {
+                        setIsStoppingDaemon(true);
+                        try {
+                            const result = await machineStopDaemon(machineId!);
+                            Modal.alert('Daemon Stopped', result.message);
+                            // Refresh to get updated metadata
+                            await sync.refreshMachines();
+                        } catch (error) {
+                            Modal.alert('Error', 'Failed to stop daemon. It may not be running.');
+                        } finally {
+                            setIsStoppingDaemon(false);
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const handleRefresh = async () => {
@@ -302,6 +319,25 @@ export default function MachineDetailScreen() {
                             }}
                             showChevron={false}
                         />
+                        <Item
+                            title="Stop Daemon"
+                            titleStyle={{ 
+                                color: daemonStatus === 'stopped' ? '#999' : '#FF9500' 
+                            }}
+                            onPress={daemonStatus === 'stopped' ? undefined : handleStopDaemon}
+                            disabled={isStoppingDaemon || daemonStatus === 'stopped'}
+                            rightElement={
+                                isStoppingDaemon ? (
+                                    <ActivityIndicator size="small" color="#FF9500" />
+                                ) : (
+                                    <Ionicons 
+                                        name="stop-circle" 
+                                        size={20} 
+                                        color={daemonStatus === 'stopped' ? '#999' : '#FF9500'} 
+                                    />
+                                )
+                            }
+                        />
                         {machine.daemonState && (
                             <>
                                 {machine.daemonState.pid && (
@@ -336,19 +372,6 @@ export default function MachineDetailScreen() {
                         <Item
                             title="Daemon State Version"
                             subtitle={String(machine.daemonStateVersion)}
-                        />
-                        <Item
-                            title="Stop Daemon"
-                            titleStyle={{ color: '#FF9500' }}
-                            onPress={handleStopDaemon}
-                            disabled={isStoppingDaemon || daemonStatus === 'stopped'}
-                            rightElement={
-                                isStoppingDaemon ? (
-                                    <ActivityIndicator size="small" color="#FF9500" />
-                                ) : (
-                                    <Ionicons name="stop-circle" size={20} color="#FF9500" />
-                                )
-                            }
                         />
                     </ItemGroup>
                 </ItemList>
