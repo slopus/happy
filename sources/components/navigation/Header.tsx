@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import { layout } from '../layout';
 import { useIsLandscape, getDeviceType, getHeaderHeight, useHeaderHeight } from '@/utils/responsive';
+import { Typography } from '@/constants/Typography';
 
 interface HeaderProps {
     title?: React.ReactNode;
@@ -77,7 +78,7 @@ export const Header = React.memo((props: HeaderProps) => {
                     </View>
 
                     <View style={styles.centerContainer}>
-                        {title && title}
+                        {title}
                         {subtitle && <Text style={subtitleStyle} numberOfLines={1}>{subtitle}</Text>}
                     </View>
 
@@ -128,12 +129,14 @@ const styles = StyleSheet.create({
         fontSize: 17,
         fontWeight: '600',
         textAlign: 'center',
+        ...Typography.default('semiBold'),
     },
     subtitle: {
         fontSize: 13,
         fontWeight: '400',
         textAlign: 'center',
         marginTop: 2,
+        ...Typography.default('regular'),
     },
     shadow: {
         ...Platform.select({
@@ -181,13 +184,29 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
     let title: React.ReactNode | null = null;
     if (options.headerTitle) {
         if (typeof options.headerTitle === 'string') {
-            title = options.headerTitle;
+            title = (
+                <Text style={[
+                    { fontSize: 17, fontWeight: '600', textAlign: 'center', color: options.headerTintColor || '#000' },
+                    Typography.default('semiBold'),
+                    options.headerTitleStyle
+                ]}>
+                    {options.headerTitle}
+                </Text>
+            );
         } else if (typeof options.headerTitle === 'function') {
             // Handle function type headerTitle
             title = options.headerTitle({ children: route.name, tintColor: options.headerTintColor });
         }
     } else if (typeof options.title === 'string') {
-        title = options.title;
+        title = (
+            <Text style={[
+                { fontSize: 17, fontWeight: '600', textAlign: 'center', color: options.headerTintColor || '#000' },
+                Typography.default('semiBold'),
+                options.headerTitleStyle
+            ]}>
+                {options.title}
+            </Text>
+        );
     }
 
     // Determine header left content
