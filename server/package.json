@@ -13,7 +13,7 @@
     "migrate": "dotenv -e .env.dev -- prisma migrate dev",
     "generate": "prisma generate",
     "postinstall": "prisma generate",
-    "db": "docker run -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=handy -v postgres-data:/var/lib/postgresql/data -p 5432:5432 postgres",
+    "db": "docker run -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=handy -v $(pwd)/.pgdata:/var/lib/postgresql/data -p 5432:5432 postgres",
     "redis": "docker run -d -p 6379:6379 redis"
   },
   "devDependencies": {

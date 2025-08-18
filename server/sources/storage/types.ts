@@ -60,6 +60,14 @@ declare global {
                 value: string | null;
                 version: number;
             } | null | undefined;
+        } | {
+            t: 'update-machine';
+            id: string;
+            metadata?: {
+                value: string;
+                version: number;
+            };
+            activeAt?: number;
         };
     }
 }
