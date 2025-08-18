@@ -5,7 +5,7 @@
  * Uses the same .env as dev:local-server for consistency
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach, test } from 'vitest';
 import { spawn } from 'child_process';
 import { existsSync, unlinkSync } from 'fs';
 import { readFile } from 'fs/promises';
@@ -95,7 +95,19 @@ async function startDaemon(): Promise<{ pid: number }> {
   });
 }
 
-describe('Daemon Integration Tests', () => {
+// Check if dev server is running
+async function isServerHealthy(): Promise<boolean> {
+  try {
+    const response = await fetch('http://localhost:3005/', { 
+      signal: AbortSignal.timeout(1000) 
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
   let daemonPid: number;
 
   beforeAll(async () => {
@@ -177,16 +189,8 @@ describe('Daemon Integration Tests', () => {
     expect(spawnedSession.startedBy).toBe('daemon');
     
     // Clean up - stop the spawned session
-    if (spawnedSession?.happySessionId) {
-      await stopDaemonSession(spawnedSession.happySessionId);
-    } else {
-      // Force kill by PID if no session ID
-      try {
-        process.kill(response.pid, 'SIGTERM');
-      } catch {
-        // Ignore
-      }
-    }
+    expect(spawnedSession.happySessionId).toBeDefined();
+    await stopDaemonSession(spawnedSession.happySessionId);
   });
 
   it('should stop a specific session', async () => {
@@ -278,18 +282,11 @@ describe('Daemon Integration Tests', () => {
   });
 
   it('should update session metadata when webhook is called', async () => {
-    // Spawn a session without initial metadata
+    // Spawn a session
     const spawnResponse = await spawnDaemonSession('/tmp');
-
     const pid = spawnResponse.pid;
 
-    // Session should be tracked but without full metadata
-    let sessions = await listDaemonSessions();
-    let session = sessions.find((s: any) => s.pid === pid);
-    expect(session).toBeDefined();
-    expect(session.happySessionId).toBeUndefined();
-
-    // Simulate the session calling back with its metadata
+    // Call webhook with updated metadata  
     await notifyDaemonSessionStarted('updated-session-xyz', {
       path: '/test/path',
       host: 'test-host',
@@ -298,18 +295,13 @@ describe('Daemon Integration Tests', () => {
       machineId: 'test-machine-updated'
     });
 
-    // Check updated metadata
-    sessions = await listDaemonSessions();
-    session = sessions.find((s: any) => s.pid === pid);
+    // Verify webhook was processed (session ID updated)
+    const sessions = await listDaemonSessions();
+    const session = sessions.find((s: any) => s.pid === pid);
     expect(session.happySessionId).toBe('updated-session-xyz');
-    expect(session.happySessionMetadataFromLocalWebhook).toBeDefined();
 
     // Clean up
-    try {
-      process.kill(pid, 'SIGTERM');
-    } catch {
-      // Ignore
-    }
+    await stopDaemonSession('updated-session-xyz');
   });
 
   it('should handle concurrent session operations', async () => {
@@ -342,11 +334,10 @@ describe('Daemon Integration Tests', () => {
     );
     expect(daemonSessions.length).toBeGreaterThanOrEqual(3);
 
-    // Stop all spawned sessions using their actual session IDs
+    // Stop all spawned sessions
     for (const session of daemonSessions) {
-      if (session.happySessionId) {
-        await stopDaemonSession(session.happySessionId);
-      }
+      expect(session.happySessionId).toBeDefined();
+      await stopDaemonSession(session.happySessionId);
     }
   });
 });

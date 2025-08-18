@@ -54,8 +54,11 @@
     "dev:local-server": "yarn build && tsx --env-file .env.dev-local-server src/index.ts",
     "dev:integration-test-env": "yarn build && tsx --env-file .env.integration-test src/index.ts",
     "prepublishOnly": "yarn build && yarn test",
-    "version:prerelease": "npm version prerelease --preid=beta",
-    "publish:prerelease": "npm publish --tag beta"
+    "minor:publish": "yarn build && npm version minor && npm publish",
+    "patch:publish": "yarn build && npm version patch && npm publish",
+    "version:prerelease": "yarn build && npm version prerelease --preid=beta",
+    "publish:prerelease": "npm publish --tag beta",
+    "beta:publish": "yarn version:prerelease && yarn publish:prerelease"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.73",
