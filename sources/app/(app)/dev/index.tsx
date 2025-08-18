@@ -259,6 +259,12 @@ export default function DevScreen() {
                     icon={<Ionicons name="flask-outline" size={28} color="#34C759" />}
                     onPress={() => router.push('/dev/tests')}
                 />
+                <Item 
+                    title="Unistyles Demo"
+                    subtitle="React Native Unistyles features and capabilities"
+                    icon={<Ionicons name="brush-outline" size={28} color="#FF6B6B" />}
+                    onPress={() => router.push('/dev/unistyles-demo')}
+                />
             </ItemGroup>
 
             {/* Test Features */}
