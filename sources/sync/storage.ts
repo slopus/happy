@@ -57,6 +57,7 @@ interface StorageState {
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
+    applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyLoaded: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => string[];
     applyMessagesLoaded: (sessionId: string) => void;
@@ -809,6 +810,37 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions
+            };
+        }),
+        applyMachines: (machines: Machine[], replace: boolean = false) => set((state) => {
+            // Either replace all machines or merge updates
+            let mergedMachines: Record<string, Machine>;
+            
+            if (replace) {
+                // Replace entire machine state (used by fetchMachines)
+                mergedMachines = {};
+                machines.forEach(machine => {
+                    mergedMachines[machine.id] = machine;
+                });
+            } else {
+                // Merge individual updates (used by update-machine)
+                mergedMachines = { ...state.machines };
+                machines.forEach(machine => {
+                    mergedMachines[machine.id] = machine;
+                });
+            }
+            
+            // Rebuild sessionListViewData to reflect machine changes
+            const sessionListViewData = buildSessionListViewData(
+                state.sessions,
+                mergedMachines,
+                state.sessionListViewData
+            );
+            
+            return {
+                ...state,
+                machines: mergedMachines,
+                sessionListViewData
             };
         }),
     }

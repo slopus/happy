@@ -204,7 +204,7 @@ export default function NewSessionScreen() {
                                 if (!machine) return null;
                                 
                                 // Get home directory from machine metadata
-                                const homeDir = machine.metadata?.homeDirectory || '~';
+                                const homeDir = machine.metadata?.homeDir || '~';
                                 
                                 return (
                                     <ItemGroup 

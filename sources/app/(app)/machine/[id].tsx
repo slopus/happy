@@ -8,12 +8,11 @@ import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { spawnRemoteSession } from '@/sync/ops';
+import { spawnRemoteSession, stopDaemon } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { MachineSessionLauncher } from '@/components/machines/MachineSessionLauncher';
-import { apiSocket } from '@/sync/apiSocket';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 
@@ -22,8 +21,8 @@ export default function MachineDetailScreen() {
     const router = useRouter();
     const sessions = useSessions();
     const machines = useAllMachines();
-    const [isDeleting, setIsDeleting] = useState(false);
     const [isRefreshing, setIsRefreshing] = useState(false);
+    const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
 
     const machine = useMemo(() => {
         return machines.find(m => m.id === machineId);
@@ -48,6 +47,20 @@ export default function MachineDetailScreen() {
         });
         return Array.from(paths).sort();
     }, [machineSessions]);
+
+    // Determine daemon status from metadata
+    const daemonStatus = useMemo(() => {
+        if (!machine) return 'unknown';
+        
+        // Check metadata for daemon status
+        const metadata = machine.metadata as any;
+        if (metadata?.daemonLastKnownStatus === 'shutting-down') {
+            return 'stopped';
+        }
+        
+        // Use machine online status as proxy for daemon status
+        return isMachineOnline(machine) ? 'likely alive' : 'stopped';
+    }, [machine]);
 
     const handleStartSession = async (path: string) => {
         if (!machineId) return;
@@ -106,40 +119,18 @@ export default function MachineDetailScreen() {
         }
     };
 
-    const handleDelete = async () => {
-        Modal.alert(
-            'Delete Machine',
-            `Are you sure you want to delete "${machine?.metadata?.host || machineId}"? This action cannot be undone.`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Delete',
-                    style: 'destructive',
-                    onPress: async () => {
-                        setIsDeleting(true);
-                        try {
-                            const response = await apiSocket.request(`/v1/machines/${machineId}`, {
-                                method: 'DELETE'
-                            });
-
-                            if (response.ok) {
-                                // Refresh machines list
-                                await sync.refreshMachines();
-                                router.back();
-                            } else {
-                                const data = await response.json();
-                                Modal.alert('Error', data.error || 'Failed to delete machine');
-                            }
-                        } catch (error) {
-                            console.error('Failed to delete machine:', error);
-                            Modal.alert('Error', 'Failed to delete machine. Please try again.');
-                        } finally {
-                            setIsDeleting(false);
-                        }
-                    }
-                }
-            ]
-        );
+    const handleStopDaemon = async () => {
+        setIsStoppingDaemon(true);
+        try {
+            const result = await stopDaemon(machineId!);
+            Modal.alert('Daemon Stop', result.message);
+            // Refresh to get updated metadata
+            await sync.refreshMachines();
+        } catch (error) {
+            Modal.alert('Error', 'Failed to stop daemon. It may not be running.');
+        } finally {
+            setIsStoppingDaemon(false);
+        }
     };
 
     const handleRefresh = async () => {
@@ -228,7 +219,7 @@ export default function MachineDetailScreen() {
                         <MachineSessionLauncher
                             machineId={machineId!}
                             recentPaths={recentPaths}
-                            homeDir={metadata?.homeDirectory}
+                            homeDir={metadata?.homeDir}
                             isOnline={isMachineOnline(machine)}
                             onStartSession={handleStartSession}
                         />
@@ -270,10 +261,10 @@ export default function MachineDetailScreen() {
                                 subtitle={metadata.username}
                             />
                         )}
-                        {metadata?.homeDirectory && (
+                        {metadata?.homeDir && (
                             <Item
                                 title="Home Directory"
-                                subtitle={metadata.homeDirectory}
+                                subtitle={metadata.homeDir}
                                 subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
                             />
                         )}
@@ -300,24 +291,33 @@ export default function MachineDetailScreen() {
                     </ItemGroup>
                 </ItemList>
 
-                {/* Actions */}
+                {/* Daemon Section */}
                 <ItemList>
-                    <ItemGroup title="Actions">
+                    <ItemGroup title="Daemon">
                         <Item
-                            title="Delete Machine"
-                            titleStyle={{ color: '#FF3B30' }}
-                            onPress={handleDelete}
-                            disabled={isDeleting}
+                            title="Status"
+                            detail={daemonStatus}
+                            detailStyle={{ 
+                                color: daemonStatus === 'likely alive' ? '#34C759' : '#FF9500'
+                            }}
+                            showChevron={false}
+                        />
+                        <Item
+                            title="Stop Daemon"
+                            titleStyle={{ color: '#FF9500' }}
+                            onPress={handleStopDaemon}
+                            disabled={isStoppingDaemon || daemonStatus === 'stopped'}
                             rightElement={
-                                isDeleting ? (
-                                    <ActivityIndicator size="small" color="#FF3B30" />
+                                isStoppingDaemon ? (
+                                    <ActivityIndicator size="small" color="#FF9500" />
                                 ) : (
-                                    <Ionicons name="trash" size={20} color="#FF3B30" />
+                                    <Ionicons name="stop-circle" size={20} color="#FF9500" />
                                 )
                             }
                         />
                     </ItemGroup>
                 </ItemList>
+
 
                 <View style={{ height: 40 }} />
             </ScrollView>

@@ -5,7 +5,7 @@ import { ApiEncryption } from '@/sync/apiEncryption';
 import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema, ApiEphemeralActivityUpdateSchema } from './apiTypes';
 import type { ApiEphemeralUpdate, ApiEphemeralActivityUpdate } from './apiTypes';
-import { DecryptedMessage, Session } from './storageTypes';
+import { DecryptedMessage, Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
@@ -484,35 +484,44 @@ class Sync {
             updatedAt: number;
         }>;
 
-        // Process each machine
+        // Process all machines first, then update state once
+        const decryptedMachines: Machine[] = [];
+        
         for (const machine of machines) {
-            if (machine.metadata) {
-                try {
-                    // Decrypt metadata
-                    const decrypted = this.encryption.decryptRaw(machine.metadata);
-                    const metadata = JSON.parse(decrypted);
+            try {
+                // Decrypt metadata if present - decryptRaw already returns parsed JSON
+                const metadata = machine.metadata 
+                    ? this.encryption.decryptRaw(machine.metadata)
+                    : null;
 
-                    // Update storage with machine
-                    storage.setState(state => ({
-                        machines: {
-                            ...state.machines,
-                            [machine.id]: {
-                                id: machine.id,
-                                seq: machine.seq,
-                                createdAt: machine.createdAt,
-                                updatedAt: machine.updatedAt,
-                                active: machine.active,
-                                lastActiveAt: machine.lastActiveAt,
-                                metadata,
-                                metadataVersion: machine.metadataVersion
-                            }
-                        }
-                    }));
-                } catch (error) {
-                    console.error(`Failed to decrypt machine ${machine.id}:`, error);
-                }
+                decryptedMachines.push({
+                    id: machine.id,
+                    seq: machine.seq,
+                    createdAt: machine.createdAt,
+                    updatedAt: machine.updatedAt,
+                    active: machine.active,
+                    lastActiveAt: machine.lastActiveAt,
+                    metadata,
+                    metadataVersion: machine.metadataVersion
+                });
+            } catch (error) {
+                console.error(`Failed to decrypt machine ${machine.id}:`, error);
+                // Still add the machine with null metadata
+                decryptedMachines.push({
+                    id: machine.id,
+                    seq: machine.seq,
+                    createdAt: machine.createdAt,
+                    updatedAt: machine.updatedAt,
+                    active: machine.active,
+                    lastActiveAt: machine.lastActiveAt,
+                    metadata: null,
+                    metadataVersion: machine.metadataVersion
+                });
             }
         }
+
+        // Replace entire machine state with fetched machines
+        storage.getState().applyMachines(decryptedMachines, true);
     }
 
     private syncSettings = async () => {
@@ -848,6 +857,9 @@ class Sync {
         } else if (updateData.body.t === 'new-session') {
             console.log('🔄 Sync: New session update received, fetching sessions...');
             this.fetchSessions(); // Just fetch sessions again
+        } else if (updateData.body.t === 'new-machine') {
+            console.log('🔄 Sync: New machine update received, fetching machines...');
+            this.fetchMachines(); // Just fetch machines again
         } else if (updateData.body.t === 'update-session') {
             const session = storage.getState().sessions[updateData.body.id];
             if (session) {
@@ -888,27 +900,24 @@ class Sync {
             const machineId = machineUpdate.id;
             const machine = storage.getState().machines[machineId];
             
-            // Always update active and lastActiveAt from the update
-            const updatedMachine = {
-                ...(machine || {
-                    id: machineId,
-                    createdAt: updateData.createdAt,
-                    metadata: null,
-                    metadataVersion: 0
-                }),
+            // Create or update machine with all required fields
+            const updatedMachine: Machine = {
+                id: machineId,
+                seq: updateData.seq,
+                createdAt: machine?.createdAt ?? updateData.createdAt,
+                updatedAt: updateData.createdAt,
                 active: machineUpdate.active ?? true,
                 lastActiveAt: machineUpdate.lastActiveAt ?? updateData.createdAt,
-                updatedAt: updateData.createdAt,
-                seq: updateData.seq
+                metadata: machine?.metadata ?? null,
+                metadataVersion: machine?.metadataVersion ?? 0
             };
             
             // If metadata is provided, decrypt and update it
             const metadataUpdate = machineUpdate.metadata;
             if (metadataUpdate) {
                 try {
-                    // Decrypt metadata
-                    const decrypted = this.encryption.decryptRaw(metadataUpdate.value);
-                    const metadata = JSON.parse(decrypted);
+                    // Decrypt metadata - decryptRaw already returns parsed JSON
+                    const metadata = this.encryption.decryptRaw(metadataUpdate.value);
                     updatedMachine.metadata = metadata;
                     updatedMachine.metadataVersion = metadataUpdate.version;
                 } catch (error) {
@@ -916,13 +925,8 @@ class Sync {
                 }
             }
             
-            // Update storage with machine
-            storage.setState(state => ({
-                machines: {
-                    ...state.machines,
-                    [machineId]: updatedMachine
-                }
-            }));
+            // Update storage using applyMachines which rebuilds sessionListViewData
+            storage.getState().applyMachines([updatedMachine]);
         }
     }
 
@@ -966,7 +970,21 @@ class Sync {
             this.activityAccumulator.addUpdate(updateData);
         }
 
-        // Machine status is now handled via persisted machine updates, not ephemeral
+        // Handle machine activity updates
+        if (updateData.type === 'machine-activity') {
+            // Update machine's active status and lastActiveAt
+            const machine = storage.getState().machines[updateData.id];
+            if (machine) {
+                const updatedMachine: Machine = {
+                    ...machine,
+                    active: updateData.active,
+                    lastActiveAt: updateData.lastActiveAt
+                };
+                storage.getState().applyMachines([updatedMachine]);
+            }
+        }
+
+        // daemon-status ephemeral updates are deprecated, machine status is handled via machine-activity
     }
 
     //

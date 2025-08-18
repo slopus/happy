@@ -329,6 +329,18 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
     }
 }
 
+/**
+ * Stop the daemon on a specific machine
+ */
+export async function stopDaemon(machineId: string): Promise<{ message: string }> {
+    const result = await apiSocket.daemonRpc<{ message: string }>(
+        machineId,
+        'stop-daemon',
+        {}
+    );
+    return result;
+}
+
 // Export types for external use
 export type {
     SessionBashRequest,

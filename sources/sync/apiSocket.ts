@@ -156,36 +156,6 @@ class ApiSocket {
     }
 
     //
-    // Machine Metadata Update (FUTURE USE - NOT TESTED)
-    //
-
-    /**
-     * Update machine metadata with optimistic concurrency control
-     * NOTE: This is for future use and has not been tested yet
-     * 
-     * @param machineId - The ID of the machine to update
-     * @param metadata - The encrypted metadata string
-     * @param expectedVersion - The expected version number for optimistic concurrency
-     * @returns Promise with result status and new version if successful
-     */
-    async updateMachineMetadata(params: {
-        machineId: string;
-        metadata: string;
-        expectedVersion: number;
-    }): Promise<{
-        result: 'success' | 'error' | 'version-mismatch';
-        version?: number;
-        metadata?: string;
-        message?: string;
-    }> {
-        if (!this.socket || !this.socket.connected) {
-            throw new Error('Socket not connected');
-        }
-
-        return this.socket.timeout(10000).emitWithAck('machine-update-metadata', params);
-    }
-
-    //
     // HTTP Requests
     //
 
