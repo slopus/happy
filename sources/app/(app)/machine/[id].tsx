@@ -8,7 +8,7 @@ import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { spawnRemoteSession, stopDaemon } from '@/sync/ops';
+import { machineSpawnNewSession, machineStopDaemon } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -51,13 +51,13 @@ export default function MachineDetailScreen() {
     // Determine daemon status from metadata
     const daemonStatus = useMemo(() => {
         if (!machine) return 'unknown';
-        
+
         // Check metadata for daemon status
         const metadata = machine.metadata as any;
         if (metadata?.daemonLastKnownStatus === 'shutting-down') {
             return 'stopped';
         }
-        
+
         // Use machine online status as proxy for daemon status
         return isMachineOnline(machine) ? 'likely alive' : 'stopped';
     }, [machine]);
@@ -67,7 +67,7 @@ export default function MachineDetailScreen() {
 
         try {
             console.log(`🚀 Starting session on machine ${machineId} at path: ${path}`);
-            const result = await spawnRemoteSession(machineId, path);
+            const result = await machineSpawnNewSession(machineId, path);
             console.log('🎉 daemon result', result);
 
             if (result.sessionId) {
@@ -122,7 +122,7 @@ export default function MachineDetailScreen() {
     const handleStopDaemon = async () => {
         setIsStoppingDaemon(true);
         try {
-            const result = await stopDaemon(machineId!);
+            const result = await machineStopDaemon(machineId!);
             Modal.alert('Daemon Stop', result.message);
             // Refresh to get updated metadata
             await sync.refreshMachines();
@@ -138,6 +138,11 @@ export default function MachineDetailScreen() {
         await sync.refreshMachines();
         setIsRefreshing(false);
     };
+
+    const pastUsedRelativePath = useCallback((session: Session) => {
+        if (!session.metadata) return 'unknown path';
+        return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
+    }, []);
 
     if (!machine) {
         return (
@@ -160,11 +165,6 @@ export default function MachineDetailScreen() {
 
     const metadata = machine.metadata;
     const machineName = metadata?.host || 'unknown machine';
-
-    const pastUsedRelativePath = useCallback((session: Session) => {
-        if (!session.metadata) return 'unknown path';
-        return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
-    }, []);
 
     return (
         <>
@@ -282,7 +282,7 @@ export default function MachineDetailScreen() {
                         )}
                         <Item
                             title="Last Seen"
-                            subtitle={machine.lastActiveAt ? new Date(machine.lastActiveAt).toLocaleString() : 'Never'}
+                            subtitle={machine.activeAt ? new Date(machine.activeAt).toLocaleString() : 'Never'}
                         />
                         <Item
                             title="Metadata Version"
@@ -291,16 +291,51 @@ export default function MachineDetailScreen() {
                     </ItemGroup>
                 </ItemList>
 
-                {/* Daemon Section */}
+                {/* Daemon Information */}
                 <ItemList>
-                    <ItemGroup title="Daemon">
+                    <ItemGroup title="Daemon Information">
                         <Item
                             title="Status"
                             detail={daemonStatus}
-                            detailStyle={{ 
+                            detailStyle={{
                                 color: daemonStatus === 'likely alive' ? '#34C759' : '#FF9500'
                             }}
                             showChevron={false}
+                        />
+                        {machine.daemonState && (
+                            <>
+                                {machine.daemonState.pid && (
+                                    <Item
+                                        title="Last Known PID"
+                                        subtitle={String(machine.daemonState.pid)}
+                                        subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
+                                    />
+                                )}
+                                {machine.daemonState.httpPort && (
+                                    <Item
+                                        title="Last Known HTTP Port"
+                                        subtitle={String(machine.daemonState.httpPort)}
+                                        subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
+                                    />
+                                )}
+                                {machine.daemonState.startTime && (
+                                    <Item
+                                        title="Started At"
+                                        subtitle={new Date(machine.daemonState.startTime).toLocaleString()}
+                                    />
+                                )}
+                                {machine.daemonState.startedWithCliVersion && (
+                                    <Item
+                                        title="CLI Version"
+                                        subtitle={machine.daemonState.startedWithCliVersion}
+                                        subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
+                                    />
+                                )}
+                            </>
+                        )}
+                        <Item
+                            title="Daemon State Version"
+                            subtitle={String(machine.daemonStateVersion)}
                         />
                         <Item
                             title="Stop Daemon"

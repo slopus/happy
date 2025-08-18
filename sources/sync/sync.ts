@@ -477,9 +477,11 @@ class Sync {
             id: string;
             metadata: string;
             metadataVersion: number;
+            daemonState?: string | null;
+            daemonStateVersion?: number;
             seq: number;
             active: boolean;
-            lastActiveAt: number;
+            activeAt: number;  // Changed from lastActiveAt
             createdAt: number;
             updatedAt: number;
         }>;
@@ -493,6 +495,11 @@ class Sync {
                 const metadata = machine.metadata 
                     ? this.encryption.decryptRaw(machine.metadata)
                     : null;
+                
+                // Decrypt daemonState if present
+                const daemonState = machine.daemonState 
+                    ? this.encryption.decryptRaw(machine.daemonState)
+                    : null;
 
                 decryptedMachines.push({
                     id: machine.id,
@@ -500,9 +507,11 @@ class Sync {
                     createdAt: machine.createdAt,
                     updatedAt: machine.updatedAt,
                     active: machine.active,
-                    lastActiveAt: machine.lastActiveAt,
+                    activeAt: machine.activeAt,
                     metadata,
-                    metadataVersion: machine.metadataVersion
+                    metadataVersion: machine.metadataVersion,
+                    daemonState,
+                    daemonStateVersion: machine.daemonStateVersion || 0
                 });
             } catch (error) {
                 console.error(`Failed to decrypt machine ${machine.id}:`, error);
@@ -513,9 +522,11 @@ class Sync {
                     createdAt: machine.createdAt,
                     updatedAt: machine.updatedAt,
                     active: machine.active,
-                    lastActiveAt: machine.lastActiveAt,
+                    activeAt: machine.activeAt,
                     metadata: null,
-                    metadataVersion: machine.metadataVersion
+                    metadataVersion: machine.metadataVersion,
+                    daemonState: null,
+                    daemonStateVersion: 0
                 });
             }
         }
@@ -857,9 +868,6 @@ class Sync {
         } else if (updateData.body.t === 'new-session') {
             console.log('🔄 Sync: New session update received, fetching sessions...');
             this.fetchSessions(); // Just fetch sessions again
-        } else if (updateData.body.t === 'new-machine') {
-            console.log('🔄 Sync: New machine update received, fetching machines...');
-            this.fetchMachines(); // Just fetch machines again
         } else if (updateData.body.t === 'update-session') {
             const session = storage.getState().sessions[updateData.body.id];
             if (session) {
@@ -897,7 +905,7 @@ class Sync {
             }
         } else if (updateData.body.t === 'update-machine') {
             const machineUpdate = updateData.body;
-            const machineId = machineUpdate.id;
+            const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
             const machine = storage.getState().machines[machineId];
             
             // Create or update machine with all required fields
@@ -907,9 +915,11 @@ class Sync {
                 createdAt: machine?.createdAt ?? updateData.createdAt,
                 updatedAt: updateData.createdAt,
                 active: machineUpdate.active ?? true,
-                lastActiveAt: machineUpdate.lastActiveAt ?? updateData.createdAt,
+                activeAt: machineUpdate.activeAt ?? updateData.createdAt,
                 metadata: machine?.metadata ?? null,
-                metadataVersion: machine?.metadataVersion ?? 0
+                metadataVersion: machine?.metadataVersion ?? 0,
+                daemonState: machine?.daemonState ?? null,
+                daemonStateVersion: machine?.daemonStateVersion ?? 0
             };
             
             // If metadata is provided, decrypt and update it
@@ -921,7 +931,20 @@ class Sync {
                     updatedMachine.metadata = metadata;
                     updatedMachine.metadataVersion = metadataUpdate.version;
                 } catch (error) {
-                    console.error(`Failed to decrypt machine update for ${machineId}:`, error);
+                    console.error(`Failed to decrypt machine metadata for ${machineId}:`, error);
+                }
+            }
+            
+            // If daemonState is provided, decrypt and update it
+            const daemonStateUpdate = machineUpdate.daemonState;
+            if (daemonStateUpdate) {
+                try {
+                    // Decrypt daemonState - decryptRaw already returns parsed JSON
+                    const daemonState = this.encryption.decryptRaw(daemonStateUpdate.value);
+                    updatedMachine.daemonState = daemonState;
+                    updatedMachine.daemonStateVersion = daemonStateUpdate.version;
+                } catch (error) {
+                    console.error(`Failed to decrypt machine daemonState for ${machineId}:`, error);
                 }
             }
             
@@ -978,7 +1001,7 @@ class Sync {
                 const updatedMachine: Machine = {
                     ...machine,
                     active: updateData.active,
-                    lastActiveAt: updateData.lastActiveAt
+                    activeAt: updateData.activeAt
                 };
                 storage.getState().applyMachines([updatedMachine]);
             }
