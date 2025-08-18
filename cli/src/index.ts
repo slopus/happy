@@ -221,10 +221,14 @@ Sessions spawned by the daemon will continue running after daemon stops unless -
     for (let i = 0; i < args.length; i++) {
       const arg = args[i]
 
-      if (arg === '--help') {
+      if (arg === '-h' || arg === '--help') {
         showHelp = true
-      } else if (arg === '--version') {
+        // Also pass through to claude
+        unknownArgs.push(arg)
+      } else if (arg === '-v' || arg === '--version') {
         showVersion = true
+        // Also pass through to claude (will show after our version)
+        unknownArgs.push(arg)
       } else if (arg === '--auth' || arg === '--login') {
         // Keep for backward compatibility
         forceAuth = true
