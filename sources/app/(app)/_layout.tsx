@@ -31,6 +31,7 @@ export default function RootLayout() {
                 headerTintColor: '#000',
                 headerTitleStyle: {
                     color: '#000',
+                    ...Typography.default('semiBold'),
                 },
                 
             }}
