@@ -6939,6 +6939,16 @@ react-native-edge-to-edge@1.6.0:
   resolved "https://registry.npmjs.org/react-native-edge-to-edge/-/react-native-edge-to-edge-1.6.0.tgz"
   integrity sha512-2WCNdE3Qd6Fwg9+4BpbATUxCLcouF6YRY7K+J36KJ4l3y+tWN6XCqAC4DuoGblAAbb2sLkhEDp4FOlbOIot2Og==
 
+react-native-edge-to-edge@^1.6.2:
+  version "1.6.2"
+  resolved "https://registry.yarnpkg.com/react-native-edge-to-edge/-/react-native-edge-to-edge-1.6.2.tgz#5b93632b9afa8e7afaca1c0508807664820465fe"
+  integrity sha512-koEF6WRAfdGNelXlP7NtHrQhFGtplwciYNWLHOCTCk0Thc7dlxtqxHRYSA5vPJgWOEkVBFqxcoOqKwAtqOmLNw==
+
+react-native-fast-squircle@^1.0.5:
+  version "1.0.5"
+  resolved "https://registry.yarnpkg.com/react-native-fast-squircle/-/react-native-fast-squircle-1.0.5.tgz#3c4dfbe4c76b93e4a68d1c5026f04de493ea899a"
+  integrity sha512-xwJbfzxjNTijfDhfusbEX9toHYlEMvIX0CP8t/LOYEplXf/wmif4OjgQT9Oa8Hy/IAtGEQFEeSL8hbn60bRuRA==
+
 react-native-gesture-handler@2.27.2:
   version "2.27.2"
   resolved "https://registry.yarnpkg.com/react-native-gesture-handler/-/react-native-gesture-handler-2.27.2.tgz#d52e839e9cb225e75c9b6fce7438979ca6917512"
@@ -6985,6 +6995,11 @@ react-native-mmkv@^3.3.0:
   version "3.3.0"
   resolved "https://registry.yarnpkg.com/react-native-mmkv/-/react-native-mmkv-3.3.0.tgz#a0816babdf68afd2bfd881a48e28c8815795286b"
   integrity sha512-2iPjIJ+IAODXN35wm53EN6nv+hR/0NXLLiLWOdPA/0gXDB2dYVrr6MqvoiFpxhLhdj0B8fkf5ARNVavJaSvuuQ==
+
+react-native-nitro-modules@0.28.0:
+  version "0.28.0"
+  resolved "https://registry.yarnpkg.com/react-native-nitro-modules/-/react-native-nitro-modules-0.28.0.tgz#b24efed3d2a31e1e656a9c3db580d65f8ac42ddf"
+  integrity sha512-SR5fpEOxuzqObowLzwrAU7Pv9Kq+AcxKBTCprMcsaiNlURhex2R8T8moSU/hpZO8Vuf3iomdkzEVEIO8udSZ/w==
 
 react-native-purchases-ui@^9.1.0:
   version "9.1.0"
@@ -7054,6 +7069,11 @@ react-native-typography@^1.4.1:
   version "1.4.1"
   resolved "https://registry.npmjs.org/react-native-typography/-/react-native-typography-1.4.1.tgz"
   integrity sha512-dc9Zfs4jUdq4ygx4/KwO6jKTERBu6cRrfPJGntw/pA+D6BMjlWfMNuhZ/69vf4Zpsnt9s4AGe+Z/V1QFYaCXAA==
+
+react-native-unistyles@^3.0.10:
+  version "3.0.10"
+  resolved "https://registry.yarnpkg.com/react-native-unistyles/-/react-native-unistyles-3.0.10.tgz#25ef419b9a5a27c1e30507f16ac56dd04acd5207"
+  integrity sha512-fghOtFK4oHyGX4sfKrmP5Q3GCxIldmJ3sUPeVuN2oy1tUDVD3qF2Djd+081DmSSmy/8NLKDIWgqhjSX5DUR9DA==
 
 react-native-url-polyfill@^1.3.0:
   version "1.3.0"

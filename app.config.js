@@ -14,12 +14,12 @@ export default {
     expo: {
         name,
         slug: "happy",
-        version: "1.3.1",
-        runtimeVersion: "15",
+        version: "1.4.0",
+        runtimeVersion: "16",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
         scheme: "happy",
-        userInterfaceStyle: "automatic",
+        userInterfaceStyle: "light",
         newArchEnabled: true,
         splash: {
             image: "./sources/assets/images/splash-icon.png",

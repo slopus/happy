@@ -8,7 +8,8 @@ module.exports = function (api) {
       },
     },
     plugins: [
-      'react-native-worklets/plugin'
+      'react-native-worklets/plugin',
+      ['react-native-unistyles/plugin', { root: 'sources' }]
     ],
   };
 };
