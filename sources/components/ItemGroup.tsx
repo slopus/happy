@@ -119,6 +119,10 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
                 >
                     {React.Children.map(children, (child, index) => {
                         if (React.isValidElement<ItemChildProps>(child)) {
+                            // Don't add props to React.Fragment
+                            if (child.type === React.Fragment) {
+                                return child;
+                            }
                             const isLast = index === React.Children.count(children) - 1;
                             const childProps = child.props as ItemChildProps;
                             return React.cloneElement(child, {

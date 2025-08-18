@@ -7,7 +7,7 @@ import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { spawnRemoteSession } from '@/sync/ops';
+import { machineSpawnNewSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router';
@@ -23,34 +23,34 @@ export default function NewSessionScreen() {
 
     // Group sessions by machineId and combine with machine status
     const machineGroups = React.useMemo(() => {
-        const groups: Record<string, { 
-            machineHost: string, 
+        const groups: Record<string, {
+            machineHost: string,
             paths: Set<string>,
             isOnline: boolean,
             lastSeen?: number,
             metadata?: any
         }> = {};
-        
+
         // First, add all active machines with their proper host names
         machines.forEach(machine => {
             groups[machine.id] = {
                 machineHost: machine.metadata?.host || machine.id,
                 paths: new Set(),
                 isOnline: isMachineOnline(machine),
-                lastSeen: machine.lastActiveAt,
+                lastSeen: machine.activeAt,
                 metadata: machine.metadata
             };
         });
-        
+
         // Then, collect paths from existing sessions
         if (sessions) {
             sessions.forEach(item => {
                 if (typeof item === 'string') return; // Skip section headers
-                
+
                 const session = item as Session;
                 if (session.metadata?.machineId) {
                     const machineId = session.metadata.machineId;
-                    
+
                     // Only add path to existing machine groups
                     if (groups[machineId] && session.metadata.path) {
                         groups[machineId].paths.add(session.metadata.path);
@@ -58,65 +58,65 @@ export default function NewSessionScreen() {
                 }
             });
         }
-        
+
         return groups;
     }, [sessions, machines]);
 
     const handleStartSession = async (machineId: string, path: string) => {
         try {
-                console.log(`🚀 Starting session on machine ${machineId} at path: ${path}`);
-                const result = await spawnRemoteSession(machineId, path);
-                console.log('🎉 daemon result', result);
-                
-                if (result.sessionId) {
-                    console.log('✅ Session spawned successfully:', result.sessionId);
-                    
-                    // Poll for the session to appear in our local state
-                    const pollInterval = 100;
-                    const maxAttempts = 20;
-                    let attempts = 0;
-                    
-                    const pollForSession = () => {
-                        const state = storage.getState();
-                        const newSession = Object.values(state.sessions).find((s: Session) => s.id === result.sessionId);
-                        
-                        if (newSession) {
-                            console.log('📱 Navigating to session:', result.sessionId);
-                            router.replace(`/session/${result.sessionId}`);
-                            return;
-                        }
-                        
-                        attempts++;
-                        if (attempts < maxAttempts) {
-                            setTimeout(pollForSession, pollInterval);
-                        } else {
-                            console.log('⏰ Polling timeout - session should appear soon');
-                            Modal.alert('Session started', 'The session was started but may take a moment to appear.');
-                            router.back();
-                        }
-                    };
-                    
-                    pollForSession();
-                } else {
-                    console.error('❌ No sessionId in response:', result);
-                    Modal.alert('Error', 'Session spawning failed - no session ID returned.');
-                    throw new Error('Session spawning failed - no session ID returned.');
-                }
-            } catch (error) {
-                console.error('💥 Failed to start session', error);
-                
-                let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
-                if (error instanceof Error) {
-                    if (error.message.includes('timeout')) {
-                        errorMessage = 'Session startup timed out. The machine may be slow or the daemon may not be responding.';
-                    } else if (error.message.includes('Socket not connected')) {
-                        errorMessage = 'Not connected to server. Check your internet connection.';
+            console.log(`🚀 Starting session on machine ${machineId} at path: ${path}`);
+            const result = await machineSpawnNewSession(machineId, path);
+            console.log('🎉 daemon result', result);
+
+            if (result.sessionId) {
+                console.log('✅ Session spawned successfully:', result.sessionId);
+
+                // Poll for the session to appear in our local state
+                const pollInterval = 100;
+                const maxAttempts = 20;
+                let attempts = 0;
+
+                const pollForSession = () => {
+                    const state = storage.getState();
+                    const newSession = Object.values(state.sessions).find((s: Session) => s.id === result.sessionId);
+
+                    if (newSession) {
+                        console.log('📱 Navigating to session:', result.sessionId);
+                        router.replace(`/session/${result.sessionId}`);
+                        return;
                     }
-                }
-                
-                Modal.alert('Error', errorMessage);
-                throw error; // Re-throw so the component knows it failed
+
+                    attempts++;
+                    if (attempts < maxAttempts) {
+                        setTimeout(pollForSession, pollInterval);
+                    } else {
+                        console.log('⏰ Polling timeout - session should appear soon');
+                        Modal.alert('Session started', 'The session was started but may take a moment to appear.');
+                        router.back();
+                    }
+                };
+
+                pollForSession();
+            } else {
+                console.error('❌ No sessionId in response:', result);
+                Modal.alert('Error', 'Session spawning failed - no session ID returned.');
+                throw new Error('Session spawning failed - no session ID returned.');
             }
+        } catch (error) {
+            console.error('💥 Failed to start session', error);
+
+            let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
+            if (error instanceof Error) {
+                if (error.message.includes('timeout')) {
+                    errorMessage = 'Session startup timed out. The machine may be slow or the daemon may not be responding.';
+                } else if (error.message.includes('Socket not connected')) {
+                    errorMessage = 'Not connected to server. Check your internet connection.';
+                }
+            }
+
+            Modal.alert('Error', errorMessage);
+            throw error; // Re-throw so the component knows it failed
+        }
     };
 
 
@@ -154,9 +154,9 @@ export default function NewSessionScreen() {
                 ) : (
                     <ScrollView style={{ flex: 1 }}>
                         {sortedMachines.every(([, data]) => !data.isOnline) && (
-                            <View style={{ 
-                                marginHorizontal: 16, 
-                                marginTop: 16, 
+                            <View style={{
+                                marginHorizontal: 16,
+                                marginTop: 16,
                                 marginBottom: 8,
                                 padding: 16,
                                 backgroundColor: '#FFF3CD',
@@ -164,32 +164,32 @@ export default function NewSessionScreen() {
                                 borderWidth: 1,
                                 borderColor: '#FFE69C'
                             }}>
-                                <Text style={[Typography.default('semiBold'), { 
-                                    fontSize: 14, 
+                                <Text style={[Typography.default('semiBold'), {
+                                    fontSize: 14,
                                     color: '#664D03',
                                     marginBottom: 8
                                 }]}>
                                     All machines appear offline
                                 </Text>
                                 <View style={{ marginTop: 4 }}>
-                                    <Text style={[Typography.default(), { 
-                                        fontSize: 13, 
+                                    <Text style={[Typography.default(), {
+                                        fontSize: 13,
                                         color: '#664D03',
                                         lineHeight: 20,
                                         marginBottom: 4
                                     }]}>
                                         • Is your computer online?
                                     </Text>
-                                    <Text style={[Typography.default(), { 
-                                        fontSize: 13, 
+                                    <Text style={[Typography.default(), {
+                                        fontSize: 13,
                                         color: '#664D03',
                                         lineHeight: 20,
                                         marginBottom: 4
                                     }]}>
                                         • Is it asleep? If you're using a Mac, search App Store for 'Amphetamine' - prevents sleep even when the lid is closed
                                     </Text>
-                                    <Text style={[Typography.default(), { 
-                                        fontSize: 13, 
+                                    <Text style={[Typography.default(), {
+                                        fontSize: 13,
                                         color: '#664D03',
                                         lineHeight: 20
                                     }]}>
@@ -202,25 +202,25 @@ export default function NewSessionScreen() {
                             {sortedMachines.map(([machineId, data]) => {
                                 const machine = machines.find(m => m.id === machineId);
                                 if (!machine) return null;
-                                
+
                                 // Get home directory from machine metadata
                                 const homeDir = machine.metadata?.homeDir || '~';
-                                
+
                                 return (
-                                    <ItemGroup 
-                                        key={machineId} 
+                                    <ItemGroup
+                                        key={machineId}
                                         title={(
                                             <View>
                                                 <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                                                    <View style={{ 
-                                                        width: 6, 
-                                                        height: 6, 
-                                                        borderRadius: 3, 
+                                                    <View style={{
+                                                        width: 6,
+                                                        height: 6,
+                                                        borderRadius: 3,
                                                         backgroundColor: data.isOnline ? '#34C759' : '#C7C7CC',
                                                         marginRight: 6
                                                     }} />
-                                                    <Text style={[Typography.default(), { 
-                                                        fontSize: 12, 
+                                                    <Text style={[Typography.default(), {
+                                                        fontSize: 12,
                                                         color: data.isOnline ? '#34C759' : '#8E8E93'
                                                     }]}>
                                                         {data.isOnline ? 'online' : 'offline'}
@@ -228,10 +228,10 @@ export default function NewSessionScreen() {
                                                 </View>
                                                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
                                                     <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                                                        <Ionicons 
-                                                            name="desktop-outline" 
-                                                            size={20} 
-                                                            color="#007AFF" 
+                                                        <Ionicons
+                                                            name="desktop-outline"
+                                                            size={20}
+                                                            color="#007AFF"
                                                             style={{ marginRight: 8 }}
                                                         />
                                                         <Text style={[Typography.default(), { fontSize: 15, color: '#000' }]}>
@@ -243,8 +243,8 @@ export default function NewSessionScreen() {
                                                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                                         style={{ paddingLeft: 8 }}
                                                     >
-                                                        <Text style={[Typography.default(), { 
-                                                            fontSize: 15, 
+                                                        <Text style={[Typography.default(), {
+                                                            fontSize: 15,
                                                             color: '#007AFF'
                                                         }]}>
                                                             details

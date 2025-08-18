@@ -8,7 +8,7 @@ import { useRouter } from "expo-router";
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from "@/utils/sessionUtils";
 import { useSession, useSessionMessages, useSessionUsage, useSettings, useSetting, useDaemonStatusByMachine, useRealtimeStatus, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { sessionAbort, sessionSwitch, spawnRemoteSession } from '@/sync/ops';
+import { sessionAbort, sessionSwitch, machineSpawnNewSession } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
@@ -211,7 +211,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                             if (!isReviving && session.metadata?.machineId && session.metadata?.path) {
                                 setIsReviving(true);
                                 try {
-                                    const result = await spawnRemoteSession(session.metadata.machineId, session.metadata.path);
+                                    const result = await machineSpawnNewSession(session.metadata.machineId, session.metadata.path);
                                     if (result.sessionId && result.sessionId !== sessionId) {
                                         router.replace(`/session/${result.sessionId}`);
                                     }

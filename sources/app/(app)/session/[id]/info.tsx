@@ -239,7 +239,8 @@ export default React.memo(() => {
                                 title="Machine ID"
                                 subtitle={`${session.metadata.machineId.substring(0, 8)}...${session.metadata.machineId.substring(session.metadata.machineId.length - 8)}`}
                                 icon={<Ionicons name="server-outline" size={29} color="#5856D6" />}
-                                showChevron={false}
+                                onPress={() => router.push(`/machine/${session.metadata.machineId}`)}
+                                rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
                             />
                         )}
                         {session.metadata.hostPid && (

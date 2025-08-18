@@ -127,11 +127,29 @@ interface SessionKillResponse {
 /**
  * Spawn a new remote session on a specific machine
  */
-export async function spawnRemoteSession(machineId: string, directory: string): Promise<{ sessionId: string }> {
-    const result = await apiSocket.daemonRpc<{ sessionId: string }>(
+export async function machineSpawnNewSession(machineId: string, directory: string): Promise<{ sessionId: string }> {
+    const result = await apiSocket.rpc<{
+        sessionId: string
+    }, {
+        type: 'spawn-in-directory'
+        directory: string
+        // Later we should add different types of spawns - like by sessionId
+    }>(
         machineId,
         'spawn-happy-session',
-        { directory }
+        { type: 'spawn-in-directory', directory }
+    );
+    return result;
+}
+
+/**
+ * Stop the daemon on a specific machine
+ */
+export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {
+    const result = await apiSocket.rpc<{ message: string }, {}>(
+        machineId,
+        'stop-daemon',
+        {}
     );
     return result;
 }
@@ -314,11 +332,10 @@ export async function sessionRipgrep(
  */
 export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
     try {
-        const request: SessionKillRequest = {};
-        const response = await apiSocket.rpc<SessionKillResponse, SessionKillRequest>(
+        const response = await apiSocket.rpc<SessionKillResponse, {}>(
             sessionId,
             'killSession',
-            request
+            {}
         );
         return response;
     } catch (error) {
@@ -327,18 +344,6 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
             message: error instanceof Error ? error.message : 'Unknown error'
         };
     }
-}
-
-/**
- * Stop the daemon on a specific machine
- */
-export async function stopDaemon(machineId: string): Promise<{ message: string }> {
-    const result = await apiSocket.daemonRpc<{ message: string }>(
-        machineId,
-        'stop-daemon',
-        {}
-    );
-    return result;
 }
 
 // Export types for external use

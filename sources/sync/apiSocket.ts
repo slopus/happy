@@ -108,46 +108,18 @@ class ApiSocket {
         this.messageHandlers.delete(event);
     }
 
-    async rpc<R, A>(sessionId: string, method: string, params: A): Promise<R> {
+    /**
+     * listernerId is either sessionId or machineId
+     */
+    async rpc<R, A>(listernerId: string, method: string, params: A): Promise<R> {
         const result = await this.socket!.emitWithAck('rpc-call', {
-            method: `${sessionId}:${method}`,
+            method: `${listernerId}:${method}`,
             params: this.encryption!.encryptRaw(params)
         });
         if (result.ok) {
             return this.encryption?.decryptRaw(result.result) as R;
         }
         throw new Error('RPC call failed');
-    }
-    
-    async daemonRpc<R = any, A = any>(machineId: string, method: string, params: A): Promise<R> {
-        if (!this.socket) {
-            throw new Error('Socket not connected');
-        }
-        
-        if (!this.encryption) {
-            throw new Error('Encryption not initialized');
-        }
-        
-        console.log(`🔌 DaemonRPC: Calling ${machineId}:${method}`, params);
-        
-        try {
-            // For daemon RPCs, we prefix with machineId and encrypt params (SECURITY REQUIREMENT)
-            // Set timeout to 15 seconds for daemon operations like session spawning
-            const result = await this.socket.timeout(15000).emitWithAck('rpc-call', {
-                method: `${machineId}:${method}`,
-                params: this.encryption.encryptRaw(params)
-            });
-            
-            console.log(`🔌 DaemonRPC: Response for ${machineId}:${method}`, result);
-            
-            if (result.ok) {
-                return this.encryption.decryptRaw(result.result) as R;
-            }
-            throw new Error(result.error || 'Daemon RPC call failed');
-        } catch (error) {
-            console.error(`🔌 DaemonRPC: Error for ${machineId}:${method}`, error);
-            throw error;
-        }
     }
 
     send(event: string, data: any) {

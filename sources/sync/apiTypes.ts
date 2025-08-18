@@ -34,13 +34,6 @@ export const ApiUpdateNewSessionSchema = z.object({
     updatedAt: z.number(),
 });
 
-export const ApiUpdateNewMachineSchema = z.object({
-    t: z.literal('new-machine'),
-    id: z.string(), // Machine ID
-    createdAt: z.number(),
-    updatedAt: z.number(),
-});
-
 export const ApiUpdateSessionStateSchema = z.object({
     t: z.literal('update-session'),
     id: z.string(),
@@ -65,19 +58,22 @@ export const ApiUpdateAccountSchema = z.object({
 
 export const ApiUpdateMachineStateSchema = z.object({
     t: z.literal('update-machine'),
-    id: z.string(),
+    machineId: z.string(),  // Changed from 'id' to 'machineId' for clarity
     metadata: z.object({
         version: z.number(),
         value: z.string() // Encrypted, client decrypts
     }).nullish(),
+    daemonState: z.object({
+        version: z.number(),
+        value: z.string() // Encrypted, client decrypts
+    }).nullish(),
     active: z.boolean().optional(),
-    lastActiveAt: z.number().optional()
+    activeAt: z.number().optional()
 });
 
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
-    ApiUpdateNewMachineSchema,
     ApiUpdateSessionStateSchema,
     ApiUpdateAccountSchema,
     ApiUpdateMachineStateSchema
@@ -130,23 +126,16 @@ export const ApiEphemeralUsageUpdateSchema = z.object({
     }),
 });
 
-export const ApiEphemeralDaemonStatusUpdateSchema = z.object({
-    type: z.literal('daemon-status'),
-    machineId: z.string(),
-    status: z.enum(['online', 'offline']),
-});
-
 export const ApiEphemeralMachineActivityUpdateSchema = z.object({
     type: z.literal('machine-activity'),
     id: z.string(), // machine id
     active: z.boolean(),
-    lastActiveAt: z.number(),
+    activeAt: z.number(),
 });
 
 export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralActivityUpdateSchema,
     ApiEphemeralUsageUpdateSchema,
-    ApiEphemeralDaemonStatusUpdateSchema,
     ApiEphemeralMachineActivityUpdateSchema,
 ]);
 
