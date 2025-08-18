@@ -1,6 +1,6 @@
-import { ApiMachineClient } from '@/api/apiMachine';
+import { ApiClient } from '@/api/api';
 import { startDaemonControlServer } from './controlServer';
-import { DaemonFileState, TrackedSession } from './api/types';
+import { TrackedSession } from './api/types';
 import { MachineMetadata, DaemonState } from '@/api/types';
 import os from 'os';
 import { logger } from '@/ui/logger';
@@ -12,9 +12,9 @@ import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawn } from 'child_process';
 import { projectPath } from '@/projectPath';
-import { atomicFileWrite } from '@/utils/fileAtomic';
 import { Metadata } from '@/api/types';
 import { getDaemonState, cleanupDaemonState } from './utils';
+import { writeDaemonState, DaemonLocallyPersistedState } from '@/persistence/persistence';
 
 export async function startDaemon(): Promise<void> {
   logger.debug('[DAEMON RUN] Starting daemon process...');
@@ -217,8 +217,9 @@ export async function startDaemon(): Promise<void> {
       pidToTrackedSession.delete(pid);
     };
 
-    // Track server session for cleanup
-    let serverSession: ApiMachineClient | null = null;
+    // Track API client and machine session for cleanup
+    let apiClient: ApiClient | null = null;
+    let machineSession: any | null = null;
 
     // Setup shutdown promise
     let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown') => void;
@@ -235,14 +236,14 @@ export async function startDaemon(): Promise<void> {
       onHappySessionWebhook
     });
 
-    // Write daemon state atomically
-    const fileState: DaemonFileState = {
+    // Write daemon state using persistence module
+    const fileState: DaemonLocallyPersistedState = {
       pid: process.pid,
       httpPort: controlPort,
       startTime: new Date().toISOString(),
       startedWithCliVersion: packageJson.version
     };
-    await atomicFileWrite(configuration.daemonStateFile, JSON.stringify(fileState, null, 2));
+    await writeDaemonState(fileState);
     logger.debug('[DAEMON RUN] Daemon state written');
 
     // Prepare initial metadata
@@ -254,27 +255,45 @@ export async function startDaemon(): Promise<void> {
       happyHomeDir: configuration.happyHomeDir
     };
 
-    // Create server session with initial metadata
-    serverSession = new ApiMachineClient(
-      credentials,
+    // Prepare initial daemon state
+    const initialDaemonState: DaemonState = {
+      status: 'offline',
+      pid: process.pid,
+      httpPort: controlPort,
+      startedAt: Date.now()
+    };
+
+    // Create API client
+    apiClient = new ApiClient(credentials.token, credentials.secret);
+
+    // Get or create machine (similar to getOrCreateSession)
+    const machine = await apiClient.createOrReturnExistingAsIs({
       machineId,
-      initialMetadata,
+      metadata: initialMetadata,
+      daemonState: initialDaemonState
+    });
+    logger.debug(`[DAEMON RUN] Machine registered: ${machine.id}`);
+
+    // Create realtime machine session
+    machineSession = apiClient.machine(machine);
+
+    // Set RPC handlers
+    machineSession.setRPCHandlers(
       spawnSession,
       stopSession,
       () => requestShutdown('happy-app')
     );
 
-    // Initialize from server state (and create machine if needed) then connect
-    await serverSession.initialize();
-    serverSession.connect();
+    // Connect to server
+    machineSession.connect();
 
     // Setup signal handlers
     const cleanup = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown') => {
       logger.debug(`[DAEMON RUN] Starting cleanup (source: ${source})...`);
 
       // Update daemon state before shutting down
-      if (serverSession) {
-        await serverSession.updateDaemonState((state) => ({
+      if (machineSession) {
+        await machineSession.updateDaemonState((state: DaemonState) => ({
           ...state,
           status: 'shutting-down',
           shutdownRequestedAt: Date.now(),
@@ -297,9 +316,11 @@ export async function startDaemon(): Promise<void> {
       }
       logger.debug(`[DAEMON RUN] Killed ${killedCount} daemon-spawned children`);
 
-      // Shutdown server session
-      serverSession.shutdown();
-      logger.debug('[DAEMON RUN] Server session shutdown');
+      // Shutdown machine session
+      if (machineSession) {
+        machineSession.shutdown();
+      }
+      logger.debug('[DAEMON RUN] Machine session shutdown');
 
       // Stop control server
       await stopControlServer();

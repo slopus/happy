@@ -26,12 +26,12 @@ import os from 'node:os';
  */
 export async function handleAuthCommand(args: string[]): Promise<void> {
   const subcommand = args[0];
-  
+
   if (!subcommand || subcommand === 'help' || subcommand === '--help' || subcommand === '-h') {
     showAuthHelp();
     return;
   }
-  
+
   switch (subcommand) {
     case 'login':
       await handleAuthLogin(args.slice(1));
@@ -82,7 +82,7 @@ ${chalk.bold('Notes:')}
 
 async function handleAuthLogin(args: string[]): Promise<void> {
   const forceAuth = args.includes('--force') || args.includes('-f');
-  
+
   if (forceAuth) {
     // As per user's request: "--force-auth will clear credentials, clear machine ID, stop daemon"
     console.log(chalk.yellow('Force authentication requested.'));
@@ -91,7 +91,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     console.log(chalk.gray('  • Clear machine ID'));
     console.log(chalk.gray('  • Stop daemon if running'));
     console.log(chalk.gray('  • Re-authenticate and register machine\n'));
-    
+
     // Stop daemon if running
     try {
       logger.debug('Stopping daemon for force auth...');
@@ -100,23 +100,23 @@ async function handleAuthLogin(args: string[]): Promise<void> {
     } catch (error) {
       logger.debug('Daemon was not running or failed to stop:', error);
     }
-    
+
     // Clear credentials
     await clearCredentials();
     console.log(chalk.gray('✓ Cleared credentials'));
-    
+
     // Clear machine ID
     await clearMachineId();
     console.log(chalk.gray('✓ Cleared machine ID'));
-    
+
     console.log('');
   }
-  
+
   // Check if already authenticated (if not forcing)
   if (!forceAuth) {
     const existingCreds = await readCredentials();
     const settings = await readSettings();
-    
+
     if (existingCreds && settings?.machineId) {
       console.log(chalk.green('✓ Already authenticated'));
       console.log(chalk.gray(`  Machine ID: ${settings.machineId}`));
@@ -129,7 +129,7 @@ async function handleAuthLogin(args: string[]): Promise<void> {
       console.log(chalk.gray('  Fixing by setting up machine...\n'));
     }
   }
-  
+
   // Perform authentication and machine setup
   // "Finally we'll run the auth and setup machine if needed"
   try {
@@ -144,43 +144,43 @@ async function handleAuthLogin(args: string[]): Promise<void> {
 
 async function handleAuthLogout(): Promise<void> {
   // "auth logout will essentially clear the private key that originally came from the phone"
-  const happyDir = configuration.happyDir;
-  
+  const happyDir = configuration.happyHomeDir;
+
   // Check if authenticated
   const credentials = await readCredentials();
   if (!credentials) {
     console.log(chalk.yellow('Not currently authenticated'));
     return;
   }
-  
+
   console.log(chalk.blue('This will log you out of Happy'));
   console.log(chalk.yellow('⚠️  You will need to re-authenticate to use Happy again'));
-  
+
   // Ask for confirmation
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout
   });
-  
+
   const answer = await new Promise<string>((resolve) => {
     rl.question(chalk.yellow('Are you sure you want to log out? (y/N): '), resolve);
   });
-  
+
   rl.close();
-  
+
   if (answer.toLowerCase() === 'y' || answer.toLowerCase() === 'yes') {
     try {
       // Stop daemon if running
       try {
         await stopDaemon();
         console.log(chalk.gray('Stopped daemon'));
-      } catch {}
-      
+      } catch { }
+
       // Remove entire happy directory (as current logout does)
       if (existsSync(happyDir)) {
         rmSync(happyDir, { recursive: true, force: true });
       }
-      
+
       console.log(chalk.green('✓ Successfully logged out'));
       console.log(chalk.gray('  Run "happy auth login" to authenticate again'));
     } catch (error) {
@@ -195,60 +195,60 @@ async function handleAuthShowBackup(): Promise<void> {
   // "auth show-backup: Show backup key in the way that mobile client expects it and web client as well"
   // This is for when "I want to link another phone, or link my web to that same machine"
   // "The only place I can actually copy the backup key is from my phone"
-  
+
   const credentials = await readCredentials();
   const settings = await readSettings();
-  
+
   if (!credentials) {
     console.log(chalk.yellow('Not authenticated'));
     console.log(chalk.gray('Run "happy auth login" to authenticate first'));
     return;
   }
-  
+
   // Format the backup key exactly like the mobile client expects
   // Mobile client uses formatSecretKeyForBackup which converts to base32 with dashes
   const formattedBackupKey = formatSecretKeyForBackup(credentials.secret);
-  
+
   console.log(chalk.bold('\n📱 Backup Key\n'));
-  
+
   // Display in the format XXXXX-XXXXX-XXXXX-... that mobile expects
   console.log(chalk.cyan('Your backup key:'));
   console.log(chalk.bold(formattedBackupKey));
   console.log('');
-  
+
   console.log(chalk.cyan('Machine Information:'));
   console.log(`  Machine ID: ${settings?.machineId || 'not set'}`);
   console.log(`  Host: ${os.hostname()}`);
   console.log('');
-  
+
   console.log(chalk.bold('How to use this backup key:'));
   console.log(chalk.gray('• In Happy mobile app: Go to restore/link device and enter this key'));
   console.log(chalk.gray('• This key format matches what the mobile app expects'));
   console.log(chalk.gray('• You can type it with or without dashes - the app will normalize it'));
   console.log(chalk.gray('• Common typos (0→O, 1→I) are automatically corrected'));
   console.log('');
-  
+
   console.log(chalk.yellow('⚠️  Keep this key secure - it provides full access to your account'));
 }
 
 async function handleAuthStatus(): Promise<void> {
   const credentials = await readCredentials();
   const settings = await readSettings();
-  
+
   console.log(chalk.bold('\nAuthentication Status\n'));
-  
+
   if (!credentials) {
     console.log(chalk.red('✗ Not authenticated'));
     console.log(chalk.gray('  Run "happy auth login" to authenticate'));
     return;
   }
-  
+
   console.log(chalk.green('✓ Authenticated'));
-  
+
   // Token preview (first few chars for security)
   const tokenPreview = credentials.token.substring(0, 30) + '...';
   console.log(chalk.gray(`  Token: ${tokenPreview}`));
-  
+
   // Machine status
   if (settings?.machineId) {
     console.log(chalk.green('✓ Machine registered'));
@@ -258,10 +258,10 @@ async function handleAuthStatus(): Promise<void> {
     console.log(chalk.yellow('⚠️  Machine not registered'));
     console.log(chalk.gray('  Run "happy auth login --force" to fix this'));
   }
-  
+
   // Data location
-  console.log(chalk.gray(`\n  Data directory: ${configuration.happyDir}`));
-  
+  console.log(chalk.gray(`\n  Data directory: ${configuration.happyHomeDir}`));
+
   // Daemon status
   try {
     const { isDaemonRunning } = await import('@/daemon/utils');

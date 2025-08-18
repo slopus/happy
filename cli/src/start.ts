@@ -17,6 +17,8 @@ import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { Session } from '@/claude/session';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
+import { getDaemonState } from '@/daemon/utils';
+import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 
 export interface StartOptions {
     model?: string
@@ -31,7 +33,7 @@ export interface StartOptions {
 export async function start(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
     const workingDirectory = process.cwd();
     const sessionTag = randomUUID();
-    
+
     // Log environment info at startup
     logger.debugLargeJson('[START] Happy process started', getEnvironmentInfo());
     logger.debug(`[START] Options: startedBy=${options.startedBy}, startingMode=${options.startingMode}`);
@@ -49,12 +51,12 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Create a new session
     let state: AgentState = {};
-    
+
     // Get machine ID from settings (should already be set up)
     const settings = await readSettings();
     const machineId = settings?.machineId || 'unknown';
     logger.debug(`Using machineId: ${machineId}`);
-    
+
     let metadata: Metadata = {
         path: workingDirectory,
         host: os.hostname(),
@@ -62,7 +64,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         os: os.platform(),
         machineId: machineId,
         homeDir: os.homedir(),
-        happyHomeDir: configuration.happyDir,
+        happyHomeDir: configuration.happyHomeDir,
         startedFromDaemon: options.startedBy === 'daemon',
         hostPid: process.pid,
         startedBy: options.startedBy || 'terminal'
@@ -72,11 +74,9 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Always report to daemon if it exists
     try {
-        const { getDaemonState } = await import('@/daemon/utils');
         const daemonState = await getDaemonState();
-        
+
         if (daemonState?.httpPort) {
-            const { notifyDaemonSessionStarted } = await import('@/daemon/controlClient');
             await notifyDaemonSessionStarted(response.id, metadata);
             logger.debug(`[START] Reported session ${response.id} to daemon`);
         }
@@ -267,7 +267,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // Setup signal handlers for graceful shutdown
     const cleanup = async () => {
         logger.debug('[START] Received termination signal, cleaning up...');
-        
+
         try {
             // Send session death message if session exists
             if (session) {
@@ -275,10 +275,10 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                 await session.flush();
                 await session.close();
             }
-            
+
             // Stop caffeinate
             stopCaffeinate();
-            
+
             logger.debug('[START] Cleanup complete, exiting');
             process.exit(0);
         } catch (error) {
@@ -290,13 +290,13 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // Handle termination signals
     process.on('SIGTERM', cleanup);
     process.on('SIGINT', cleanup);
-    
+
     // Handle uncaught exceptions and rejections
     process.on('uncaughtException', (error) => {
         logger.debug('[START] Uncaught exception:', error);
         cleanup();
     });
-    
+
     process.on('unhandledRejection', (reason) => {
         logger.debug('[START] Unhandled rejection:', reason);
         cleanup();

@@ -6,10 +6,9 @@
 import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
-import { MachineMetadata, DaemonState, Machine, Update } from './types';
+import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { TrackedSession } from '@/daemon/api/types';
 import { encrypt, decrypt, encodeBase64, decodeBase64 } from './encryption';
-import { ApiClient } from './api';
 import { backoff } from '@/utils/time';
 
 
@@ -28,7 +27,7 @@ interface DaemonToServerEvents {
     machineId: string;
     time: number;
   }) => void;
-  
+
   'machine-update-metadata': (data: {
     machineId: string;
     metadata: string; // Encrypted MachineMetadata
@@ -44,7 +43,7 @@ interface DaemonToServerEvents {
     version: number,
     metadata: string
   }) => void) => void;
-  
+
   'machine-update-state': (data: {
     machineId: string;
     daemonState: string; // Encrypted DaemonState
@@ -60,7 +59,7 @@ interface DaemonToServerEvents {
     version: number,
     daemonState: string
   }) => void) => void;
-  
+
   'rpc-register': (data: { method: string }) => void;
   'rpc-unregister': (data: { method: string }) => void;
   'rpc-call': (data: { method: string, params: any }, callback: (response: {
@@ -73,68 +72,47 @@ interface DaemonToServerEvents {
 export class ApiMachineClient {
   private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
   private keepAliveInterval: NodeJS.Timeout | null = null;
-  private apiClient: ApiClient;
   private token: string;
   private secret: Uint8Array;
-  
+  private machineId: string;
+
   // Track versions like session does
   private metadata: MachineMetadata | null = null;
   private metadataVersion: number = 0;
   private daemonState: DaemonState | null = null;
   private daemonStateVersion: number = 0;
 
+  // RPC handlers
+  private spawnSession?: (directory: string, sessionId?: string) => Promise<TrackedSession | null>;
+  private stopSession?: (sessionId: string) => boolean;
+  private requestShutdown?: () => void;
+
   constructor(
-    credentials: { token: string; secret: Uint8Array },
-    private machineId: string,
-    private initialMetadata: MachineMetadata,
-    private spawnSession: (directory: string, sessionId?: string) => Promise<TrackedSession | null>,
-    private stopSession: (sessionId: string) => boolean,
-    private requestShutdown: () => void
+    token: string,
+    secret: Uint8Array,
+    machine: Machine
   ) {
-    this.token = credentials.token;
-    this.secret = credentials.secret;
-    this.apiClient = new ApiClient(credentials.token, credentials.secret);
+    this.token = token;
+    this.secret = secret;
+    this.machineId = machine.id;
     
-    // Initialize with provided metadata
-    this.metadata = initialMetadata;
+    // Initialize from machine state
+    this.metadata = machine.metadata;
+    this.metadataVersion = machine.metadataVersion;
+    this.daemonState = machine.daemonState;
+    this.daemonStateVersion = machine.daemonStateVersion;
   }
-  
-  /**
-   * Initialize machine state from server - creates machine if it doesn't exist
-   */
-  async initialize(): Promise<void> {
-    try {
-      // Try to get existing machine first
-      let machine = await this.apiClient.getMachine(this.machineId);
-      
-      if (!machine) {
-        // Machine doesn't exist, create it with initial metadata and state
-        logger.debug('[API MACHINE] Machine not found, creating new machine');
-        const initialDaemonState: DaemonState = {
-          status: 'offline',
-          pid: process.pid,
-          startedAt: Date.now()
-        };
-        
-        machine = await this.apiClient.createOrUpdateMachine(
-          this.machineId,
-          this.metadata!,
-          initialDaemonState
-        );
-        logger.debug('[API MACHINE] Machine created successfully');
-      }
-      
-      // Update local state from server
-      this.metadata = machine.metadata || this.metadata;
-      this.metadataVersion = machine.metadataVersion;
-      this.daemonState = machine.daemonState;
-      this.daemonStateVersion = machine.daemonStateVersion;
-      logger.debug('[API MACHINE] Initialized from server state');
-    } catch (error) {
-      logger.debug('[API MACHINE] Failed to initialize machine:', error);
-      // Continue anyway - machine will be created on next successful connection
-    }
+
+  setRPCHandlers(
+    spawnSession: (directory: string, sessionId?: string) => Promise<TrackedSession | null>,
+    stopSession: (sessionId: string) => boolean,
+    requestShutdown: () => void
+  ) {
+    this.spawnSession = spawnSession;
+    this.stopSession = stopSession;
+    this.requestShutdown = requestShutdown;
   }
+
 
   /**
    * Update machine metadata (static info) - similar to session updateMetadata
@@ -149,13 +127,13 @@ export class ApiMachineClient {
         homeDir: '',
         happyHomeDir: ''
       });
-      
+
       const answer = await this.socket.emitWithAck('machine-update-metadata', {
         machineId: this.machineId,
         metadata: encodeBase64(encrypt(updated, this.secret)),
         expectedVersion: this.metadataVersion
       });
-      
+
       if (answer.result === 'success') {
         this.metadata = decrypt(decodeBase64(answer.metadata), this.secret);
         this.metadataVersion = answer.version;
@@ -179,13 +157,13 @@ export class ApiMachineClient {
       const updated = handler(this.daemonState || {
         status: 'offline'
       });
-      
+
       const answer = await this.socket.emitWithAck('machine-update-state', {
         machineId: this.machineId,
         daemonState: encodeBase64(encrypt(updated, this.secret)),
         expectedVersion: this.daemonStateVersion
       });
-      
+
       if (answer.result === 'success') {
         this.daemonState = decrypt(decodeBase64(answer.daemonState), this.secret);
         this.daemonStateVersion = answer.version;
@@ -252,6 +230,10 @@ export class ApiMachineClient {
         const stopDaemonMethod = `${this.machineId}:stop-daemon`;
 
         if (data.method === spawnMethod) {
+          if (!this.spawnSession) {
+            throw new Error('Spawn session handler not set');
+          }
+          
           const { directory, sessionId } = decrypt(decodeBase64(data.params), this.secret) || {};
 
           if (!directory) {
@@ -278,6 +260,10 @@ export class ApiMachineClient {
           logger.debug('[API MACHINE] Received stop-session RPC request');
           const decryptedParams = decrypt(decodeBase64(data.params), this.secret);
           const { sessionId } = decryptedParams || {};
+          if (!this.stopSession) {
+            throw new Error('Stop session handler not set');
+          }
+          
           if (!sessionId) {
             throw new Error('Session ID is required');
           }
@@ -304,7 +290,9 @@ export class ApiMachineClient {
           // Trigger shutdown callback
           setTimeout(() => {
             logger.debug('[API MACHINE] Initiating daemon shutdown from RPC');
-            this.requestShutdown();
+            if (this.requestShutdown) {
+              this.requestShutdown();
+            }
           }, 100);
 
           return;
@@ -315,6 +303,29 @@ export class ApiMachineClient {
         logger.debug(`[API MACHINE] RPC handler failed:`, error.message || error);
         logger.debug(`[API MACHINE] Error stack:`, error.stack);
         callback(encodeBase64(encrypt({ error: error.message || String(error) }, this.secret)));
+      }
+    });
+
+    // Handle update events from server
+    this.socket.on('update', (data: Update) => {
+      // Machine clients should only care about machine updates
+      if (data.body.t === 'update-machine' && (data.body as UpdateMachineBody).machineId === this.machineId) {
+        // Handle machine metadata or daemon state updates from other clients (e.g., mobile app)
+        const update = data.body as UpdateMachineBody;
+
+        if (update.metadata) {
+          logger.debug('[API MACHINE] Received external metadata update');
+          this.metadata = decrypt(decodeBase64(update.metadata.value), this.secret);
+          this.metadataVersion = update.metadata.version;
+        }
+
+        if (update.daemonState) {
+          logger.debug('[API MACHINE] Received external daemon state update');
+          this.daemonState = decrypt(decodeBase64(update.daemonState.value), this.secret);
+          this.daemonStateVersion = update.daemonState.version;
+        }
+      } else {
+        logger.debug(`[API MACHINE] Received unknown update type: ${(data.body as any).t}`);
       }
     });
 

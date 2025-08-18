@@ -28,7 +28,7 @@ export function getEnvironmentInfo(): Record<string, any> {
         DEBUG: process.env.DEBUG,
         workingDirectory: process.cwd(),
         processArgv: process.argv,
-        happyDir: configuration?.happyDir,
+        happyDir: configuration?.happyHomeDir,
         serverUrl: configuration?.serverUrl,
         logsDir: configuration?.logsDir
     };
@@ -66,7 +66,7 @@ export async function runDoctorCommand(): Promise<void> {
 
     // Configuration
     console.log(chalk.bold('⚙️  Configuration'));
-    console.log(`Happy Home: ${chalk.blue(configuration.happyDir)}`);
+    console.log(`Happy Home: ${chalk.blue(configuration.happyHomeDir)}`);
     console.log(`Server URL: ${chalk.blue(configuration.serverUrl)}`);
     console.log(`Logs Dir: ${chalk.blue(configuration.logsDir)}`);
 

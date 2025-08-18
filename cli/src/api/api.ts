@@ -2,6 +2,7 @@ import axios from 'axios'
 import { logger } from '@/ui/logger'
 import type { AgentState, CreateSessionResponse, Metadata, Session, Machine, MachineMetadata, DaemonState } from '@/api/types'
 import { ApiSessionClient } from './apiSession';
+import { ApiMachineClient } from './apiMachine';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { PushNotificationClient } from './pushNotifications';
 import { configuration } from '@/configuration';
@@ -96,13 +97,17 @@ export class ApiClient {
    * Register or update machine with the server
    * Returns the current machine state from the server with decrypted metadata and daemonState
    */
-  async createOrUpdateMachine(machineId: string, metadata: MachineMetadata, daemonState?: DaemonState): Promise<Machine> {
+  async createOrReturnExistingAsIs(opts: { 
+    machineId: string, 
+    metadata: MachineMetadata, 
+    daemonState: DaemonState 
+  }): Promise<Machine> {
     const response = await axios.post(
       `${configuration.serverUrl}/v1/machines`,
       {
-        id: machineId,
-        metadata: encodeBase64(encrypt(metadata, this.secret)),
-        daemonState: daemonState ? encodeBase64(encrypt(daemonState, this.secret)) : undefined
+        id: opts.machineId,
+        metadata: encodeBase64(encrypt(opts.metadata, this.secret)),
+        daemonState: opts.daemonState ? encodeBase64(encrypt(opts.daemonState, this.secret)) : undefined
       },
       {
         headers: {
@@ -114,7 +119,7 @@ export class ApiClient {
     );
 
     const raw = response.data.machine;
-    logger.debug(`[API] Machine ${machineId} registered/updated with server`);
+    logger.debug(`[API] Machine ${opts.machineId} registered/updated with server`);
 
     // Return decrypted machine like we do for sessions
     const machine: Machine = {
@@ -138,6 +143,15 @@ export class ApiClient {
    */
   session(session: Session): ApiSessionClient {
     return new ApiSessionClient(this.token, this.secret, session);
+  }
+
+  /**
+   * Start realtime machine client
+   * @param machine - Machine information
+   * @returns Machine client
+   */
+  machine(machine: Machine): ApiMachineClient {
+    return new ApiMachineClient(this.token, this.secret, machine);
   }
 
   /**

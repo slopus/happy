@@ -5,11 +5,9 @@
  * Extracted to avoid circular dependencies with ui/doctor.ts
  */
 
-import { DaemonState } from './api/types';
 import { logger } from '@/ui/logger';
-import { existsSync, unlinkSync, readFileSync } from 'fs';
-import { configuration } from '@/configuration';
 import { stopCaffeinate } from '@/utils/caffeinate';
+import { readDaemonState, clearDaemonState, DaemonLocallyPersistedState } from '@/persistence/persistence';
 import { execSync } from 'node:child_process';
 
 export async function isDaemonRunning(): Promise<boolean> {
@@ -33,13 +31,9 @@ export async function isDaemonRunning(): Promise<boolean> {
   }
 }
 
-export async function getDaemonState(): Promise<DaemonState | null> {
+export async function getDaemonState(): Promise<DaemonLocallyPersistedState | null> {
   try {
-    if (!existsSync(configuration.daemonStateFile)) {
-      return null;
-    }
-    const content = readFileSync(configuration.daemonStateFile, 'utf-8');
-    return JSON.parse(content) as DaemonState;
+    return await readDaemonState();
   } catch (error) {
     logger.debug('[DAEMON RUN] Error reading daemon metadata', error);
     return null;
@@ -57,10 +51,8 @@ async function isDaemonProcessRunning(pid: number): Promise<boolean> {
 
 export async function cleanupDaemonState(): Promise<void> {
   try {
-    if (existsSync(configuration.daemonStateFile)) {
-      unlinkSync(configuration.daemonStateFile);
-      logger.debug('[DAEMON RUN] Daemon state file removed');
-    }
+    await clearDaemonState();
+    logger.debug('[DAEMON RUN] Daemon state file removed');
   } catch (error) {
     logger.debug('[DAEMON RUN] Error cleaning up daemon metadata', error);
   }

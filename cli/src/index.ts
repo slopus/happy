@@ -84,11 +84,11 @@ import { clearCredentials, clearMachineId, writeCredentials } from './persistenc
   } else if (subcommand === 'daemon') {
     // Show daemon management help
     const daemonSubcommand = args[1]
-    
+
     if (daemonSubcommand === 'list') {
       try {
         const sessions = await listDaemonSessions()
-        
+
         if (sessions.length === 0) {
           console.log('No active sessions')
         } else {
@@ -106,14 +106,14 @@ import { clearCredentials, clearMachineId, writeCredentials } from './persistenc
         console.log('No daemon running')
       }
       return
-      
+
     } else if (daemonSubcommand === 'stop-session') {
       const sessionId = args[2]
       if (!sessionId) {
         console.error('Session ID required')
         process.exit(1)
       }
-      
+
       try {
         const success = await stopDaemonSession(sessionId)
         console.log(success ? 'Session stopped' : 'Failed to stop session')
@@ -121,7 +121,7 @@ import { clearCredentials, clearMachineId, writeCredentials } from './persistenc
         console.log('No daemon running')
       }
       return
-      
+
     } else if (daemonSubcommand === 'start') {
       // Spawn detached daemon process
       const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
@@ -131,7 +131,7 @@ import { clearCredentials, clearMachineId, writeCredentials } from './persistenc
         env: process.env
       });
       child.unref();
-      
+
       // Wait for daemon to write state file (up to 5 seconds)
       let started = false;
       for (let i = 0; i < 50; i++) {
@@ -141,7 +141,7 @@ import { clearCredentials, clearMachineId, writeCredentials } from './persistenc
         }
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-      
+
       if (started) {
         console.log('Daemon started successfully');
       } else {
@@ -179,7 +179,7 @@ import { clearCredentials, clearMachineId, writeCredentials } from './persistenc
         process.exit(1)
       }
     } else {
-        console.log(`
+      console.log(`
 ${chalk.bold('happy daemon')} - Daemon management
 
 ${chalk.bold('Usage:')}
@@ -195,7 +195,7 @@ ${chalk.bold('Usage:')}
 ${chalk.bold('Note:')} The daemon runs in the background and provides persistent services.
 Installation is only supported on macOS.
 `)
-      }
+    }
     return;
   } else {
     // Parse command line arguments for main command
@@ -300,28 +300,28 @@ ${chalk.bold('Use "happy daemon" for background service management.')}
 
     // Ensure authentication and machine setup
     let credentials;
-    
+
     if (forceAuthNew) {
       // New --force-auth flag: clear everything first as requested
       console.log(chalk.yellow('Force authentication requested...'));
-      
+
       // Stop daemon if running
       try {
         await stopDaemon();
-      } catch {}
-      
+      } catch { }
+
       // Clear credentials and machine ID
       await clearCredentials();
       await clearMachineId();
-      
+
       // Now do normal auth flow which will re-auth and setup machine
       const result = await authAndSetupMachineIfNeeded();
       credentials = result.credentials;
-      
+
     } else if (forceAuth) {
       // Old --auth flag - fix the bug where it skipped machine setup
       console.log(chalk.yellow('Note: --auth is deprecated. Use "happy auth login" or --force-auth instead.\n'));
-      
+
       // The bug was that doAuth() only returned credentials without setting up machine
       // Fix: Always ensure machine setup even with old --auth flag
       const res = await doAuth();
@@ -332,7 +332,7 @@ ${chalk.bold('Use "happy daemon" for background service management.')}
       await writeCredentials(res);
       const result = await authAndSetupMachineIfNeeded();
       credentials = result.credentials;
-      
+
     } else {
       // Normal flow - auth and machine setup
       const result = await authAndSetupMachineIfNeeded();
@@ -349,24 +349,24 @@ ${chalk.bold('Use "happy daemon" for background service management.')}
         input: process.stdin,
         output: process.stdout
       });
-      
+
       console.log(chalk.cyan('\n📱 Happy can run a background service that allows you to:'));
       console.log(chalk.cyan('  • Spawn new conversations from your phone'));
       console.log(chalk.cyan('  • Continue closed conversations remotely'));
       console.log(chalk.cyan('  • Work with Claude while your computer has internet\n'));
-      
+
       const answer = await new Promise<string>((resolve) => {
         rl.question(chalk.green('Would you like Happy to start this service automatically? (recommended) [Y/n]: '), resolve);
       });
       rl.close();
-      
+
       const shouldAutoStart = answer.toLowerCase() !== 'n';
-      
+
       settings = await updateSettings(settings => ({
         ...settings,
         daemonAutoStartWhenRunningHappy: shouldAutoStart
       }));
-      
+
       if (shouldAutoStart) {
         console.log(chalk.green('✓ Happy will start the background service automatically'));
         console.log(chalk.gray('  The service will run whenever you use the happy command'));
@@ -378,18 +378,18 @@ ${chalk.bold('Use "happy daemon" for background service management.')}
     // Auto-start daemon if enabled
     if (settings && settings.daemonAutoStartWhenRunningHappy) {
       logger.debug('Starting Happy background service...');
-      
+
       if (!(await isDaemonRunning())) {
         // Use the built binary to spawn daemon
         const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
-        
+
         const daemonProcess = spawn(happyBinPath, ['daemon', 'start-sync'], {
           detached: true,
           stdio: 'ignore',
           env: process.env
         })
         daemonProcess.unref();
-        
+
         // Give daemon a moment to write PID file
         await new Promise(resolve => setTimeout(resolve, 500));
       }
@@ -412,7 +412,7 @@ ${chalk.bold('Use "happy daemon" for background service management.')}
  * Clean subcommand - remove the happy data directory after confirmation
  */
 async function cleanKey(): Promise<void> {
-  const happyDir = configuration.happyDir
+  const happyDir = configuration.happyHomeDir
 
   // Check if happy directory exists
   if (!existsSync(happyDir)) {
@@ -459,7 +459,7 @@ async function handleNotifyCommand(args: string[]): Promise<void> {
   // Parse arguments
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]
-    
+
     if (arg === '-p' && i + 1 < args.length) {
       message = args[++i]
     } else if (arg === '-t' && i + 1 < args.length) {
@@ -506,14 +506,14 @@ ${chalk.bold('Examples:')}
   }
 
   console.log(chalk.blue('📱 Sending push notification...'))
-  
+
   try {
     // Create API client and send push notification
     const api = new ApiClient(credentials.token, credentials.secret)
-    
+
     // Use custom title or default to "Happy"
     const notificationTitle = title || 'Happy'
-    
+
     // Send the push notification
     api.push().sendToAllDevices(
       notificationTitle,
@@ -528,10 +528,10 @@ ${chalk.bold('Examples:')}
     console.log(chalk.gray(`  Title: ${notificationTitle}`))
     console.log(chalk.gray(`  Message: ${message}`))
     console.log(chalk.gray('  Check your mobile device for the notification.'))
-    
+
     // Give a moment for the async operation to start
     await new Promise(resolve => setTimeout(resolve, 1000))
-    
+
   } catch (error) {
     console.error(chalk.red('✗ Failed to send push notification'))
     throw error

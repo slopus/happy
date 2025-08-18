@@ -26,6 +26,17 @@ const defaultSettings: Settings = {
   onboardingCompleted: false
 }
 
+/**
+ * Daemon state persisted locally (different from API DaemonState)
+ * This is written to disk by the daemon to track its local process state
+ */
+export interface DaemonLocallyPersistedState {
+  pid: number;
+  httpPort: number;
+  startTime: string;
+  startedWithCliVersion: string;
+}
+
 export async function readSettings(): Promise<Settings | null> {
   if (!existsSync(configuration.settingsFile)) {
     return { ...defaultSettings }
@@ -40,8 +51,8 @@ export async function readSettings(): Promise<Settings | null> {
 }
 
 export async function writeSettings(settings: Settings): Promise<void> {
-  if (!existsSync(configuration.happyDir)) {
-    await mkdir(configuration.happyDir, { recursive: true })
+  if (!existsSync(configuration.happyHomeDir)) {
+    await mkdir(configuration.happyHomeDir, { recursive: true })
   }
 
   await writeFile(configuration.settingsFile, JSON.stringify(settings, null, 2))
@@ -102,8 +113,8 @@ export async function updateSettings(
     const updated = await updater(current);
 
     // Ensure directory exists
-    if (!existsSync(configuration.happyDir)) {
-      await mkdir(configuration.happyDir, { recursive: true });
+    if (!existsSync(configuration.happyHomeDir)) {
+      await mkdir(configuration.happyHomeDir, { recursive: true });
     }
 
     // Write atomically using rename
@@ -144,8 +155,8 @@ export async function readCredentials(): Promise<{ secret: Uint8Array, token: st
 }
 
 export async function writeCredentials(credentials: { secret: Uint8Array, token: string }): Promise<void> {
-  if (!existsSync(configuration.happyDir)) {
-    await mkdir(configuration.happyDir, { recursive: true })
+  if (!existsSync(configuration.happyHomeDir)) {
+    await mkdir(configuration.happyHomeDir, { recursive: true })
   }
   await writeFile(configuration.privateKeyFile, JSON.stringify({
     secret: encodeBase64(credentials.secret),
@@ -164,4 +175,38 @@ export async function clearMachineId(): Promise<void> {
     ...settings,
     machineId: undefined
   }));
+}
+
+/**
+ * Read daemon state from local file
+ */
+export async function readDaemonState(): Promise<DaemonLocallyPersistedState | null> {
+  try {
+    if (!existsSync(configuration.daemonStateFile)) {
+      return null;
+    }
+    const content = await readFile(configuration.daemonStateFile, 'utf-8');
+    return JSON.parse(content) as DaemonLocallyPersistedState;
+  } catch (error) {
+    return null;
+  }
+}
+
+/**
+ * Write daemon state to local file
+ */
+export async function writeDaemonState(state: DaemonLocallyPersistedState): Promise<void> {
+  if (!existsSync(configuration.happyHomeDir)) {
+    await mkdir(configuration.happyHomeDir, { recursive: true });
+  }
+  await writeFile(configuration.daemonStateFile, JSON.stringify(state, null, 2));
+}
+
+/**
+ * Clean up daemon state file
+ */
+export async function clearDaemonState(): Promise<void> {
+  if (existsSync(configuration.daemonStateFile)) {
+    await unlink(configuration.daemonStateFile);
+  }
 }

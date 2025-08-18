@@ -235,13 +235,17 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
                 platform: process.platform,
                 happyCliVersion: packageJson.version,
                 homeDir: os.homedir(),
-                happyHomeDir: configuration.happyDir
+                happyHomeDir: configuration.happyHomeDir
             };
 
             // Choosig to do this synchronously for less variance in control flow
             try {
                 const apiClient = new ApiClient(credentials.token, credentials.secret);
-                await apiClient.createOrUpdateMachine(machineId, metadata);
+                await apiClient.createOrReturnExistingAsIs({
+                    machineId,
+                    metadata,
+                    daemonState: { status: 'offline' }
+                });
                 await updateSettings(s => {
                     return {
                         ...s,

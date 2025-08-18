@@ -47,12 +47,34 @@ export const UpdateSessionBodySchema = z.object({
 export type UpdateSessionBody = z.infer<typeof UpdateSessionBodySchema>
 
 /**
+ * Update body for machine updates
+ */
+export const UpdateMachineBodySchema = z.object({
+  t: z.literal('update-machine'),
+  machineId: z.string(),
+  metadata: z.object({
+    version: z.number(),
+    value: z.string()
+  }).nullish(),
+  daemonState: z.object({
+    version: z.number(),
+    value: z.string()
+  }).nullish()
+})
+
+export type UpdateMachineBody = z.infer<typeof UpdateMachineBodySchema>
+
+/**
  * Update event from server
  */
 export const UpdateSchema = z.object({
   id: z.string(),
   seq: z.number(),
-  body: z.union([UpdateBodySchema, UpdateSessionBodySchema]),
+  body: z.union([
+    UpdateBodySchema, 
+    UpdateSessionBodySchema, 
+    UpdateMachineBodySchema,
+  ]),
   createdAt: z.number()
 })
 

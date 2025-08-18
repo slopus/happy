@@ -143,6 +143,9 @@ export class ApiSessionClient extends EventEmitter {
                         this.agentState = data.body.agentState.value ? decrypt(decodeBase64(data.body.agentState.value), this.secret) : null;
                         this.agentStateVersion = data.body.agentState.version;
                     }
+                } else if (data.body.t === 'update-machine') {
+                    // Session clients shouldn't receive machine updates - log warning
+                    logger.debug(`[SOCKET] WARNING: Session client received unexpected machine update - ignoring`);
                 } else {
                     // If not a user message, it might be a permission response or other message type
                     this.emit('message', data.body);
