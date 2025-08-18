@@ -34,6 +34,13 @@ export const ApiUpdateNewSessionSchema = z.object({
     updatedAt: z.number(),
 });
 
+export const ApiUpdateNewMachineSchema = z.object({
+    t: z.literal('new-machine'),
+    id: z.string(), // Machine ID
+    createdAt: z.number(),
+    updatedAt: z.number(),
+});
+
 export const ApiUpdateSessionStateSchema = z.object({
     t: z.literal('update-session'),
     id: z.string(),
@@ -70,6 +77,7 @@ export const ApiUpdateMachineStateSchema = z.object({
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
+    ApiUpdateNewMachineSchema,
     ApiUpdateSessionStateSchema,
     ApiUpdateAccountSchema,
     ApiUpdateMachineStateSchema
@@ -128,11 +136,22 @@ export const ApiEphemeralDaemonStatusUpdateSchema = z.object({
     status: z.enum(['online', 'offline']),
 });
 
+export const ApiEphemeralMachineActivityUpdateSchema = z.object({
+    type: z.literal('machine-activity'),
+    id: z.string(), // machine id
+    active: z.boolean(),
+    lastActiveAt: z.number(),
+});
+
 export const ApiEphemeralUpdateSchema = z.union([
     ApiEphemeralActivityUpdateSchema,
     ApiEphemeralUsageUpdateSchema,
     ApiEphemeralDaemonStatusUpdateSchema,
+    ApiEphemeralMachineActivityUpdateSchema,
 ]);
 
 export type ApiEphemeralActivityUpdate = z.infer<typeof ApiEphemeralActivityUpdateSchema>;
 export type ApiEphemeralUpdate = z.infer<typeof ApiEphemeralUpdateSchema>;
+
+// Machine metadata updates use Partial<MachineMetadata> from storageTypes
+// This matches how session metadata updates work
