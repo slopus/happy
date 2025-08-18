@@ -203,7 +203,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     />
                 )}
             </Deferred>
-            {sessionStatus.state === 'disconnected' && machine?.active && (
+            {/* If session is not active (explicitly marked as dead) but machine is active, show a message */}
+            {!session.active && machine?.active && (
                 <View style={{ paddingHorizontal: 16, paddingVertical: 16, alignItems: 'center' }}>
                     <Text style={{ fontSize: 20, color: '#666', textAlign: 'center' }}>Session is dead, reviving a session in on our TODO, you are welcome to contribute. Repo: slopus/happy. For now you can start a new session from the machine view.</Text>
                     {/* <RoundButton
