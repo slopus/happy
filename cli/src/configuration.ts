@@ -26,7 +26,7 @@ class Configuration {
 
     // Check if we're running as daemon based on process args
     const args = process.argv.slice(2)
-    this.isDaemonProcess = args.length >= 2 && args[0] === 'daemon' && (args[1] === 'start' || args[1] === 'stop')
+    this.isDaemonProcess = args.length >= 2 && args[0] === 'daemon' && (args[1] === 'start-sync')
 
     // Directory configuration - Priority: HAPPY_HOME_DIR env > default home dir
     if (process.env.HAPPY_HOME_DIR) {
