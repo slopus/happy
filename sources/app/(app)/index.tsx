@@ -1,7 +1,7 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { Ionicons } from '@expo/vector-icons';
-import { ActivityIndicator, Image, Pressable, Text, View, Platform } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
+import { Image } from 'expo-image';
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
 import { encodeBase64 } from "@/auth/base64";
@@ -16,12 +16,8 @@ import { useIsTablet, useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
 import { EmptyMainScreen } from "@/components/EmptyMainScreen";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
-import { getServerInfo } from "@/sync/serverConfig";
 import { FAB } from "@/components/FAB";
-import { Header } from "@/components/navigation/Header";
 import { HomeHeader, HomeHeaderNotAuth } from "@/components/HomeHeader";
-import { Modal } from '@/modal';
-import * as Clipboard from 'expo-clipboard';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 
@@ -124,7 +120,7 @@ function NotAuthenticated() {
 
     const portraitLayout = (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-            <Image source={require('@/assets/images/happy-otter-2.png')} style={{ width: 200, height: 140 }} />
+            <Image source={require('@/assets/images/logotype-dark.png')} contentFit="contain" style={{ width: 300, height: 90 }} />
             <Text style={{ marginTop: 16, textAlign: 'center', fontSize: 24, ...Typography.default('semiBold') }}>
                 Claude Code mobile client
             </Text>
@@ -165,7 +161,7 @@ function NotAuthenticated() {
                 <View style={{
                     flexBasis: 0, flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingRight: 24
                 }}>
-                    <Image source={require('@/assets/images/happy-otter-2.png')} style={{ width: 200, height: 140 }} />
+                    <Image source={require('@/assets/images/logotype-dark.png')} contentFit="contain" style={{ width: 300, height: 90 }} />
                 </View>
                 <View style={{
                     flexBasis: 0,

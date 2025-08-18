@@ -17,7 +17,7 @@ export default {
         version: "1.3.1",
         runtimeVersion: "15",
         orientation: "default",
-        icon: "./sources/assets/images/happy-otter-icon.png",
+        icon: "./sources/assets/images/icon.png",
         scheme: "happy",
         userInterfaceStyle: "automatic",
         newArchEnabled: true,
@@ -40,8 +40,9 @@ export default {
         },
         android: {
             adaptiveIcon: {
-                foregroundImage: "./sources/assets/images/adaptive-icon.png",
-                backgroundColor: "#ffffff"
+                foregroundImage: "./sources/assets/images/icon-adaptive.png",
+                monochromeImage: "./sources/assets/images/icon-monochrome.png",
+                backgroundColor: "#18171C"
             },
             permissions: [
                 "android.permission.RECORD_AUDIO",

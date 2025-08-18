@@ -1,4 +1,5 @@
-import { View, ScrollView, Pressable, Platform, Image, Linking, TextInput, Alert } from 'react-native';
+import { View, ScrollView, Pressable, Platform, Linking, TextInput, Alert } from 'react-native';
+import { Image } from 'expo-image';
 import * as React from 'react';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
@@ -129,15 +130,10 @@ export default function SettingsScreen() {
             {/* App Info Header */}
             <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: 'white' }}>
                 <Image
-                    source={require('@/assets/images/happy-otter-2.png')}
-                    style={{ width: 100, height: 70, marginBottom: 12 }}
+                    source={require('@/assets/images/logotype-dark.png')}
+                    contentFit="contain"
+                    style={{ width: 300, height: 90, marginBottom: 12 }}
                 />
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={{ ...Typography.logo(), fontSize: 24, fontWeight: 'bold' }}>
-                        Happy
-                    </Text>
-                    {/* {isPro && <PlusPlus fontSize={24} />} */}
-                </View>
                 <Pressable onPress={handleVersionClick} hitSlop={20}>
                     <Text style={{ ...Typography.mono(), fontSize: 14, color: '#8E8E93' }}>
                         Version {appVersion}
