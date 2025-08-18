@@ -1,21 +1,34 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet, ViewStyle } from 'react-native';
 
 interface DividerLineProps {
     indent?: number;
     color?: string;
-    className?: string;
+    style?: ViewStyle;
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flexDirection: 'row',
+    },
+    divider: {
+        flex: 1,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+    },
+});
 
 export function DividerLine({ 
     indent = 0, 
-    color = 'border-gray-200',
-    className = '' 
+    color = '#E5E5E5',
+    style 
 }: DividerLineProps) {
     return (
-        <View className="flex-row">
+        <View style={[styles.container, style]}>
             {indent > 0 && <View style={{ width: indent }} />}
-            <View className={`flex-1 border-b ${color} ${className}`} />
+            <View style={[
+                styles.divider,
+                { borderBottomColor: color }
+            ]} />
         </View>
     );
 }

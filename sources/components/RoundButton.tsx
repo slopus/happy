@@ -61,7 +61,8 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
                     borderRadius: size.height / 2,
                     backgroundColor: display.backgroundColor,
                     borderColor: display.borderColor,
-                    opacity: props.disabled ? 0.5 : 1
+                    opacity: props.disabled ? 0.5 : 1,
+                    overflow: 'hidden',
                 },
                 {
                     opacity: p.pressed ? 0.9 : 1
@@ -70,19 +71,29 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
             onPress={doAction}
         >
             <View 
-                className="items-center justify-center min-w-16 px-4 rounded-full"
                 style={{ 
                     height: size.height - 2,
-                    backgroundColor: display.backgroundColor,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    minWidth: 64,
+                    paddingHorizontal: 16,
+                    borderRadius: 9999,
                 }}
             >
                 {doLoading && (
-                    <View className="absolute inset-0 items-center justify-center">
+                    <View style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }}>
                         <ActivityIndicator color={display.textColor} size='small' />
                     </View>
                 )}
                 <Text 
-                    className="font-semibold"
                     style={[iOSUIKit.title3, Typography.default('semiBold'), { 
                         marginTop: size.pad, 
                         opacity: doLoading ? 0 : 1, 

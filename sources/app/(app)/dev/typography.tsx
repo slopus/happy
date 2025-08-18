@@ -1,19 +1,19 @@
 import * as React from 'react';
-import { ScrollView, View, Text } from 'react-native';
+import { ScrollView, View, Text, StyleSheet } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 
 const TextSample = ({ title, style, text = "The quick brown fox jumps over the lazy dog" }: { title: string; style: any; text?: string }) => (
-    <View className="mb-6">
-        <Text className="text-sm text-gray-500 mb-1">{title}</Text>
+    <View style={styles.sampleContainer}>
+        <Text style={styles.sampleTitle}>{title}</Text>
         <Text style={[{ fontSize: 16 }, style]}>{text}</Text>
     </View>
 );
 
 const CodeSample = ({ title, style }: { title: string; style: any }) => (
-    <View className="mb-6">
-        <Text className="text-sm text-gray-500 mb-1">{title}</Text>
+    <View style={styles.sampleContainer}>
+        <Text style={styles.sampleTitle}>{title}</Text>
         <Text style={[{ fontSize: 14 }, style]}>
             {`const greeting = "Hello, World!";\nconsole.log(greeting);`}
         </Text>
@@ -22,11 +22,11 @@ const CodeSample = ({ title, style }: { title: string; style: any }) => (
 
 export default function TypographyScreen() {
     return (
-        <ScrollView className="flex-1 bg-white">
-            <View className="p-4">
+        <ScrollView style={styles.container}>
+            <View style={styles.content}>
                 {/* IBM Plex Sans (Default) */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4">IBM Plex Sans (Default)</Text>
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>IBM Plex Sans (Default)</Text>
                     
                     <TextSample 
                         title="Regular (400)" 
@@ -45,8 +45,8 @@ export default function TypographyScreen() {
                 </View>
 
                 {/* IBM Plex Mono */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4">IBM Plex Mono</Text>
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>IBM Plex Mono</Text>
                     
                     <CodeSample 
                         title="Regular (400)" 
@@ -65,25 +65,25 @@ export default function TypographyScreen() {
                 </View>
 
                 {/* Bricolage Grotesque (Logo) */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4">Bricolage Grotesque (Logo)</Text>
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Bricolage Grotesque (Logo)</Text>
                     
                     <TextSample 
                         title="Bold (700) - Logo Only" 
                         style={{ fontSize: 28, ...Typography.logo() }}
                         text="Happy"
                     />
-                    <Text className="text-sm text-gray-500 mt-2">
+                    <Text style={styles.note}>
                         Note: This font should only be used for the app logo and branding
                     </Text>
                 </View>
 
                 {/* Font Sizes */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4">Font Size Scale</Text>
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Font Size Scale</Text>
                     
                     {[12, 14, 16, 18, 20, 24, 28, 32, 36].map(size => (
-                        <View key={size} className="mb-3">
+                        <View key={size} style={styles.fontSizeItem}>
                             <Text style={{ fontSize: size, ...Typography.default() }}>
                                 {size}px - The quick brown fox
                             </Text>
@@ -92,8 +92,8 @@ export default function TypographyScreen() {
                 </View>
 
                 {/* Text in Components */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4">Typography in Components</Text>
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Typography in Components</Text>
                     
                     <ItemGroup title="List Item Typography">
                         <Item 
@@ -115,10 +115,10 @@ export default function TypographyScreen() {
                 </View>
 
                 {/* Usage Examples */}
-                <View className="mb-8">
-                    <Text className="text-xl font-semibold mb-4">Usage Examples</Text>
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>Usage Examples</Text>
                     
-                    <View className="bg-gray-100 p-4 rounded-lg">
+                    <View style={styles.codeBlock}>
                         <Text style={{ ...Typography.mono(), fontSize: 12 }}>
 {`// Default typography (IBM Plex Sans)
 <Text style={{ fontSize: 16, ...Typography.default() }}>Regular</Text>
@@ -136,3 +136,42 @@ export default function TypographyScreen() {
         </ScrollView>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: 'white',
+    },
+    content: {
+        padding: 16,
+    },
+    sampleContainer: {
+        marginBottom: 24,
+    },
+    sampleTitle: {
+        fontSize: 14,
+        color: 'rgba(0,0,0,0.5)',
+        marginBottom: 4,
+    },
+    section: {
+        marginBottom: 32,
+    },
+    sectionTitle: {
+        fontSize: 20,
+        fontWeight: '600',
+        marginBottom: 16,
+    },
+    note: {
+        fontSize: 14,
+        color: 'rgba(0,0,0,0.5)',
+        marginTop: 8,
+    },
+    fontSizeItem: {
+        marginBottom: 12,
+    },
+    codeBlock: {
+        backgroundColor: '#f0f0f0',
+        padding: 16,
+        borderRadius: 8,
+    },
+});

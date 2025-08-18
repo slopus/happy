@@ -13,7 +13,6 @@ interface DiffViewProps {
     showDiffStats?: boolean;
     oldTitle?: string;
     newTitle?: string;
-    className?: string;
     style?: ViewStyle;
     maxHeight?: number;
     wrapLines?: boolean;
@@ -84,7 +83,6 @@ export const DiffView: React.FC<DiffViewProps> = ({
     contextLines = 3,
     showLineNumbers = true,
     showPlusMinusSymbols = true,
-    className = '',
     style,
     fontScaleX = 1,
 }) => {
@@ -253,13 +251,13 @@ export const DiffView: React.FC<DiffViewProps> = ({
     };
 
     return (
-        <View style={[containerStyle, { overflow: 'hidden' }]} className={className}>
+        <View style={[containerStyle, { overflow: 'hidden' }]}>
             {renderDiffContent()}
         </View>
     );
 
     // return (
-    //     <View style={containerStyle} className={className}>
+    //     <View style={containerStyle}>
     //         {/* Header */}
     //         <View style={headerStyle}>
     //             <Text style={titleStyle}>

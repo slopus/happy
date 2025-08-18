@@ -1,51 +1,74 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, StyleSheet, ViewStyle } from 'react-native';
 import { Text } from '../StyledText';
 
 export type ToolState = 'running' | 'completed' | 'error' | 'pending';
 
 interface StatusBadgeProps {
     state: ToolState;
-    className?: string;
+    style?: ViewStyle;
 }
 
 const STATUS_CONFIG = {
     running: {
         icon: '⏳',
         text: 'Running',
-        bgColor: 'bg-warning-container',
-        borderColor: 'border-warning',
-        textColor: 'text-warning'
+        backgroundColor: '#FFF3E0',
+        borderColor: '#F57C00',
+        textColor: '#F57C00'
     },
     completed: {
         icon: '✅',
         text: 'Completed',
-        bgColor: 'bg-success-container',
-        borderColor: 'border-success',
-        textColor: 'text-success'
+        backgroundColor: '#E8F5E8',
+        borderColor: '#2E7D32',
+        textColor: '#2E7D32'
     },
     error: {
         icon: '❌',
         text: 'Error',
-        bgColor: 'bg-error-container',
-        borderColor: 'border-error',
-        textColor: 'text-error'
+        backgroundColor: '#FFEBEE',
+        borderColor: '#D32F2F',
+        textColor: '#D32F2F'
     },
     pending: {
         icon: '⏸️',
         text: 'Pending',
-        bgColor: 'bg-surface-variant',
-        borderColor: 'border-outline',
-        textColor: 'text-on-surface-variant'
+        backgroundColor: '#F5F5F5',
+        borderColor: '#E0E0E0',
+        textColor: '#666666'
     }
 };
 
-export function StatusBadge({ state, className = '' }: StatusBadgeProps) {
+const styles = StyleSheet.create({
+    badge: {
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 12,
+        borderWidth: 1,
+    },
+    text: {
+        fontSize: 14,
+        fontWeight: '500',
+    },
+});
+
+export function StatusBadge({ state, style }: StatusBadgeProps) {
     const config = STATUS_CONFIG[state];
     
     return (
-        <View className={`px-2 py-1 rounded-xl border ${config.bgColor} ${config.borderColor} ${className}`}>
-            <Text className={`text-sm font-medium ${config.textColor}`}>
+        <View style={[
+            styles.badge,
+            {
+                backgroundColor: config.backgroundColor,
+                borderColor: config.borderColor,
+            },
+            style
+        ]}>
+            <Text style={[
+                styles.text,
+                { color: config.textColor }
+            ]}>
                 {config.icon} {config.text}
             </Text>
         </View>
@@ -63,13 +86,13 @@ export function getStatusDisplay(state: string): string {
     }
 }
 
-// Helper function to get the color class for status text
-export function getStatusColorClass(state: string): string {
+// Helper function to get the color for status text
+export function getStatusColor(state: string): string {
     switch (state) {
-        case 'running': return 'text-warning';
-        case 'completed': return 'text-success';
-        case 'error': return 'text-error';
-        case 'pending': return 'text-on-surface-variant';
-        default: return 'text-on-surface-variant';
+        case 'running': return '#F57C00';
+        case 'completed': return '#2E7D32';
+        case 'error': return '#D32F2F';
+        case 'pending': return '#666666';
+        default: return '#666666';
     }
 }

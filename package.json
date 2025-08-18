@@ -99,7 +99,6 @@
     "fuse.js": "^7.1.0",
     "livekit-client": "^2.15.4",
     "lottie-react-native": "7.2.2",
-    "nativewind": "^4.1.23",
     "posthog-react-native": "^4.3.1",
     "react": "19.0.0",
     "react-dom": "19.0.0",
@@ -150,9 +149,7 @@
     "@types/react": "~19.0.10",
     "babel-plugin-transform-remove-console": "^6.9.4",
     "patch-package": "^8.0.0",
-    "prettier-plugin-tailwindcss": "^0.5.14",
     "react-test-renderer": "19.0.0",
-    "tailwindcss": "^3.4.17",
     "tsx": "^4.20.3",
     "typescript": "~5.8.3"
   },

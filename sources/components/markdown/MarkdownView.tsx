@@ -9,7 +9,7 @@ import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 export const MarkdownView = React.memo((props: { markdown: string }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
     return (
-        <View className="list-none">
+        <View>
             {blocks.map((block, index) => {
                 if (block.type === 'text') {
                     return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} />;
@@ -44,9 +44,9 @@ function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: Markdow
 function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean }) {
     const listStyle = [style.text, style.list];
     return (
-        <View className="list-none" style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
+        <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text selectable className="list-none" style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} /></Text>
+                <Text selectable style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} /></Text>
             ))}
         </View>
     );

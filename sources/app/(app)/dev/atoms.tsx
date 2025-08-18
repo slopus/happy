@@ -1,5 +1,5 @@
 import React from 'react';
-import { ScrollView, View } from 'react-native';
+import { ScrollView, View, StyleSheet } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { StatusBadge } from '@/components/atoms/StatusBadge';
 import { FileIcon } from '@/components/atoms/FileIcon';
@@ -14,13 +14,13 @@ import { JsonCopyBlock } from '@/components/atoms/JsonCopyBlock';
 
 export default function AtomsShowcase() {
     return (
-        <ScrollView className="flex-1 bg-white">
-            <View className="p-4">
-                <Text className="text-2xl font-bold mb-6">Atomic Components Showcase</Text>
+        <ScrollView style={styles.container}>
+            <View style={styles.content}>
+                <Text style={styles.title}>Atomic Components Showcase</Text>
 
                 {/* StatusBadge */}
                 <Section title="StatusBadge">
-                    <View className="flex-row flex-wrap gap-2">
+                    <View style={styles.flexRow}>
                         <StatusBadge state="running" />
                         <StatusBadge state="completed" />
                         <StatusBadge state="error" />
@@ -30,30 +30,30 @@ export default function AtomsShowcase() {
 
                 {/* FileIcon */}
                 <Section title="FileIcon">
-                    <View className="flex-row flex-wrap gap-4">
-                        <View className="items-center">
+                    <View style={styles.iconGrid}>
+                        <View style={styles.iconItem}>
                             <FileIcon fileName="app.tsx" size={24} />
-                            <Text className="text-xs mt-1">app.tsx</Text>
+                            <Text style={styles.iconLabel}>app.tsx</Text>
                         </View>
-                        <View className="items-center">
+                        <View style={styles.iconItem}>
                             <FileIcon fileName="styles.css" size={24} />
-                            <Text className="text-xs mt-1">styles.css</Text>
+                            <Text style={styles.iconLabel}>styles.css</Text>
                         </View>
-                        <View className="items-center">
+                        <View style={styles.iconItem}>
                             <FileIcon fileName="script.py" size={24} />
-                            <Text className="text-xs mt-1">script.py</Text>
+                            <Text style={styles.iconLabel}>script.py</Text>
                         </View>
-                        <View className="items-center">
+                        <View style={styles.iconItem}>
                             <FileIcon fileName="data.json" size={24} />
-                            <Text className="text-xs mt-1">data.json</Text>
+                            <Text style={styles.iconLabel}>data.json</Text>
                         </View>
-                        <View className="items-center">
+                        <View style={styles.iconItem}>
                             <FileIcon isDirectory size={24} />
-                            <Text className="text-xs mt-1">folder</Text>
+                            <Text style={styles.iconLabel}>folder</Text>
                         </View>
-                        <View className="items-center">
+                        <View style={styles.iconItem}>
                             <FileIcon fileName="image.png" size={24} />
-                            <Text className="text-xs mt-1">image.png</Text>
+                            <Text style={styles.iconLabel}>image.png</Text>
                         </View>
                     </View>
                 </Section>
@@ -74,7 +74,7 @@ Starting Metro Bundler
 █▄▄▄▄▄▄▄█▄▀ ▀▄█ █▄█▄▄▄▄▄▄▄█
 Metro waiting on exp://192.168.1.100:8081`}
                     />
-                    <View className="mt-2">
+                    <View style={styles.spacingTop}>
                         <TerminalBlock
                             command="git status"
                             error="fatal: not a git repository"
@@ -85,9 +85,9 @@ Metro waiting on exp://192.168.1.100:8081`}
                 {/* DividerLine */}
                 <Section title="DividerLine">
                     <DividerLine />
-                    <Text className="text-sm text-gray-500 my-2">With indent:</Text>
+                    <Text style={styles.dividerLabel}>With indent:</Text>
                     <DividerLine indent={40} />
-                    <Text className="text-sm text-gray-500 my-2">Custom color:</Text>
+                    <Text style={styles.dividerLabel}>Custom color:</Text>
                     <DividerLine color="border-blue-400" />
                 </Section>
 
@@ -112,31 +112,31 @@ Metro waiting on exp://192.168.1.100:8081`}
                 {/* InfoBox */}
                 <Section title="InfoBox">
                     <InfoBox title="Search Parameters" variant="info">
-                        <Text className="text-sm">Pattern: "useState"</Text>
-                        <Text className="text-sm">Files: *.tsx</Text>
+                        <Text style={styles.infoText}>Pattern: "useState"</Text>
+                        <Text style={styles.infoText}>Files: *.tsx</Text>
                     </InfoBox>
-                    <View className="mt-2">
+                    <View style={styles.spacingTop}>
                         <InfoBox variant="warning">
-                            <Text className="text-sm">This operation may take a while</Text>
+                            <Text style={styles.infoText}>This operation may take a while</Text>
                         </InfoBox>
                     </View>
-                    <View className="mt-2">
+                    <View style={styles.spacingTop}>
                         <InfoBox variant="error">
-                            <Text className="text-sm">Permission denied</Text>
+                            <Text style={styles.infoText}>Permission denied</Text>
                         </InfoBox>
                     </View>
-                    <View className="mt-2">
+                    <View style={styles.spacingTop}>
                         <InfoBox variant="success">
-                            <Text className="text-sm">Operation completed successfully</Text>
+                            <Text style={styles.infoText}>Operation completed successfully</Text>
                         </InfoBox>
                     </View>
                 </Section>
 
                 {/* Badge */}
                 <Section title="Badge">
-                    <View className="mb-2">
-                        <Text className="text-sm text-gray-600 mb-1">Variants:</Text>
-                        <View className="flex-row flex-wrap gap-2">
+                    <View style={styles.badgeGroup}>
+                        <Text style={styles.badgeLabel}>Variants:</Text>
+                        <View style={styles.flexRow}>
                             <Badge variant="default">DEFAULT</Badge>
                             <Badge variant="primary">PRIMARY</Badge>
                             <Badge variant="secondary">SECONDARY</Badge>
@@ -146,9 +146,9 @@ Metro waiting on exp://192.168.1.100:8081`}
                             <Badge variant="info">INFO</Badge>
                         </View>
                     </View>
-                    <View className="mt-4">
-                        <Text className="text-sm text-gray-600 mb-1">Sizes:</Text>
-                        <View className="flex-row items-center gap-2">
+                    <View style={styles.badgeGroupLarge}>
+                        <Text style={styles.badgeLabel}>Sizes:</Text>
+                        <View style={styles.flexRowCentered}>
                             <Badge size="sm">SMALL</Badge>
                             <Badge size="md">MEDIUM</Badge>
                             <Badge size="lg">LARGE</Badge>
@@ -186,9 +186,77 @@ sources/hooks/useAuth.ts
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
-        <View className="mb-8">
-            <Text className="text-lg font-semibold mb-3 text-gray-800">{title}</Text>
+        <View style={styles.section}>
+            <Text style={styles.sectionTitle}>{title}</Text>
             {children}
         </View>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: 'white',
+    },
+    content: {
+        padding: 16,
+    },
+    title: {
+        fontSize: 24,
+        fontWeight: 'bold',
+        marginBottom: 24,
+    },
+    section: {
+        marginBottom: 32,
+    },
+    sectionTitle: {
+        fontSize: 18,
+        fontWeight: '600',
+        marginBottom: 12,
+        color: '#374151',
+    },
+    flexRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+    },
+    flexRowCentered: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    iconGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 16,
+    },
+    iconItem: {
+        alignItems: 'center',
+    },
+    iconLabel: {
+        fontSize: 12,
+        marginTop: 4,
+    },
+    spacingTop: {
+        marginTop: 8,
+    },
+    dividerLabel: {
+        fontSize: 14,
+        color: 'rgba(0,0,0,0.5)',
+        marginVertical: 8,
+    },
+    infoText: {
+        fontSize: 14,
+    },
+    badgeGroup: {
+        marginBottom: 8,
+    },
+    badgeGroupLarge: {
+        marginTop: 16,
+    },
+    badgeLabel: {
+        fontSize: 14,
+        color: '#4b5563',
+        marginBottom: 4,
+    },
+});
