@@ -26,6 +26,7 @@ export async function startDaemon(): Promise<void> {
     try {
       process.kill(runningDaemon.pid, 0);
       logger.debug('[DAEMON RUN] Daemon already running');
+      console.log(`Daemon already running (PID: ${runningDaemon.pid})`);
       process.exit(0);
     } catch {
       logger.debug('[DAEMON RUN] Stale state found, cleaning up');

@@ -14,7 +14,7 @@
  * - HAPPY_SERVER_URL=http://localhost:3005 (local dev server)
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { spawn } from 'child_process';
 import { existsSync, unlinkSync } from 'fs';
 import { readFile } from 'fs/promises';
@@ -40,24 +40,6 @@ async function waitFor(
     await new Promise(resolve => setTimeout(resolve, interval));
   }
   throw new Error('Timeout waiting for condition');
-}
-
-// Kill daemon helper
-async function killDaemon(): Promise<void> {
-  if (existsSync(configuration.daemonStateFile)) {
-    try {
-      const metadata = JSON.parse(await readFile(configuration.daemonStateFile, 'utf8'));
-      process.kill(metadata.pid, 'SIGKILL');
-    } catch (e) {
-      // Ignore errors
-    }
-    // Clean up metadata file
-    try {
-      unlinkSync(configuration.daemonStateFile);
-    } catch (e) {
-      // Ignore
-    }
-  }
 }
 
 // Start daemon helper
@@ -92,7 +74,6 @@ async function startDaemon(): Promise<{ pid: number }> {
       if (!resolved) {
         try {
           await waitFor(async () => existsSync(configuration.daemonStateFile), 10000);
-          const metadata = JSON.parse(await readFile(configuration.daemonStateFile, 'utf8'));
           resolved = true;
           // Return the actual child PID since start-sync runs in foreground
           resolve({ pid: child.pid! });
@@ -131,25 +112,42 @@ async function isServerHealthy(): Promise<boolean> {
 describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
   let daemonPid: number;
 
-  beforeAll(async () => {
-    // Clean up any existing daemon
-    await killDaemon();
+  beforeEach(async () => {
+    // First ensure no daemon is running by checking PID in metadata file
+    if (existsSync(configuration.daemonStateFile)) {
+      try {
+        const metadata = JSON.parse(await readFile(configuration.daemonStateFile, 'utf8'));
+        // Try to kill the daemon based on PID in metadata
+        try {
+          process.kill(metadata.pid, 'SIGKILL');
+        } catch {
+          // Process already dead
+        }
+      } catch {
+        // Couldn't read metadata
+      }
+      // Clean up metadata file
+      try {
+        unlinkSync(configuration.daemonStateFile);
+      } catch {
+        // Ignore
+      }
+    }
     
-    // Start daemon
+    // Start fresh daemon for this test
     const daemon = await startDaemon();
     daemonPid = daemon.pid;
-    
-    console.log(`Daemon started: PID=${daemonPid}`);
+    console.log(`[TEST] Daemon started for test: PID=${daemonPid}`);
   });
 
-  afterAll(async () => {
-    // Kill the daemon child process directly
+  afterEach(async () => {
+    // Stop the daemon after each test
     if (daemonChild) {
-      console.log('Stopping daemon after tests...');
+      console.log('[TEST] Stopping daemon after test...');
       daemonChild.kill('SIGTERM');
       
       // Give it a moment to cleanup
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       // Force kill if still running
       try {
@@ -169,10 +167,8 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
         // Ignore
       }
     }
-  });
-
-  beforeEach(async () => {
-    // Give time between tests
+    
+    // Give a moment between tests
     await new Promise(resolve => setTimeout(resolve, 100));
   });
 
@@ -254,7 +250,6 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
 
   it('should handle daemon stop request gracefully', async () => {
     // This test verifies the stop endpoint works
-    // We'll test it but then restart the daemon for other tests
     
     await stopDaemonHttp();
 
@@ -271,9 +266,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
     // Verify metadata file is cleaned up
     await waitFor(async () => !existsSync(configuration.daemonStateFile), 1000);
     
-    // Restart daemon for afterAll cleanup
-    const daemon = await startDaemon();
-    daemonPid = daemon.pid;
+    // The afterEach will clean up and beforeEach will start fresh for next test
   });
 
   it('should track both daemon-spawned and terminal sessions', async () => {
@@ -332,6 +325,32 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
 
     // Clean up
     await stopDaemonSession('updated-session-xyz');
+  });
+
+  it('should not allow starting a second daemon', async () => {
+    // Daemon is already running from beforeEach
+    // Try to start another daemon
+    const secondChild = spawn('yarn', ['tsx', 'src/index.ts', 'daemon', 'start-sync'], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+
+    let output = '';
+    secondChild.stdout?.on('data', (data) => {
+      output += data.toString();
+    });
+    secondChild.stderr?.on('data', (data) => {
+      output += data.toString();
+    });
+
+    // Wait for the second daemon to exit
+    await new Promise<void>((resolve) => {
+      secondChild.on('exit', () => resolve());
+    });
+
+    // Should report that daemon is already running
+    expect(output).toContain('already running');
   });
 
   it('should handle concurrent session operations', async () => {
