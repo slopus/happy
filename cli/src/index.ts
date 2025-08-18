@@ -22,7 +22,7 @@ import packageJson from '../package.json'
 import { z } from 'zod'
 import { spawn } from 'child_process'
 import { startDaemon } from './daemon/run'
-import { isDaemonRunning, stopDaemon } from './daemon/utils'
+import { isDaemonRunning, stopDaemon, getDaemonState } from './daemon/utils'
 import { install } from './daemon/install'
 import { uninstall } from './daemon/uninstall'
 import { ApiClient } from './api/api'
@@ -150,11 +150,28 @@ import { clearCredentials, clearMachineId, writeCredentials } from './persistenc
       }
       process.exit(0);
     } else if (daemonSubcommand === 'start-sync') {
-      // This is the actual synchronous daemon start (called by detached process)
       await startDaemon()
       process.exit(0)
     } else if (daemonSubcommand === 'stop') {
       await stopDaemon()
+      process.exit(0)
+    } else if (daemonSubcommand === 'status') {
+      // Show daemon status
+      const state = await getDaemonState()
+      if (!state) {
+        console.log('Daemon is not running')
+      } else {
+        const isRunning = await isDaemonRunning()
+        if (isRunning) {
+          console.log('Daemon is running')
+          console.log(`  PID: ${state.pid}`)
+          console.log(`  Port: ${state.httpPort}`)
+          console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`)
+          console.log(`  CLI Version: ${state.startedWithCliVersion}`)
+        } else {
+          console.log('Daemon state file exists but daemon is not running (stale)')
+        }
+      }
       process.exit(0)
     } else if (daemonSubcommand === 'kill-runaway') {
       const { killRunawayHappyProcesses } = await import('./daemon/utils')
@@ -183,17 +200,16 @@ import { clearCredentials, clearMachineId, writeCredentials } from './persistenc
 ${chalk.bold('happy daemon')} - Daemon management
 
 ${chalk.bold('Usage:')}
-  happy daemon start            Start the daemon (detached)
-  happy daemon start-sync       Start the daemon (synchronous, for internal use)
-  happy daemon stop             Stop the daemon
-  happy daemon list             List active sessions
-  happy daemon stop-session <id>  Stop a specific session
-  happy daemon kill-runaway     Kill all runaway Happy processes
-  sudo happy daemon install     Install the daemon (requires sudo)
-  sudo happy daemon uninstall   Uninstall the daemon (requires sudo)
+  happy daemon start              Start the daemon (detached)
+  happy daemon stop               Stop the daemon (sessions stay alive)
+  happy daemon stop --kill-managed  Stop daemon and kill managed sessions
+  happy daemon status             Show daemon status
+  happy daemon list               List active sessions
+  happy daemon stop-session <id> Stop a specific session
+  happy daemon kill-runaway       Kill all runaway Happy processes
 
-${chalk.bold('Note:')} The daemon runs in the background and provides persistent services.
-Installation is only supported on macOS.
+${chalk.bold('Note:')} The daemon runs in the background and manages Claude sessions.
+Sessions spawned by the daemon will continue running after daemon stops unless --kill-managed is used.
 `)
     }
     return;

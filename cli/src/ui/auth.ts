@@ -225,42 +225,16 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
         logger.debug('[AUTH] Using existing credentials');
     }
 
+    // Make sure we have a machine ID, it will be used to 
+    // associate sessions with a machine when they are created
+    // Machine is created only by the daemon for now
+    // for simplicity of control flow
+    // We should create it here if its not created yet though
     const settings = await updateSettings(async s => {
-        // Machine not created or failed to be created - lets create it
-        if (!s.machineId || !s.machineIdConfirmedByServer) {
-            const machineId = s.machineId || randomUUID();
-
-            const metadata: MachineMetadata = {
-                host: hostname(),
-                platform: process.platform,
-                happyCliVersion: packageJson.version,
-                homeDir: os.homedir(),
-                happyHomeDir: configuration.happyHomeDir
-            };
-
-            // Choosig to do this synchronously for less variance in control flow
-            try {
-                const apiClient = new ApiClient(credentials.token, credentials.secret);
-                await apiClient.createOrReturnExistingAsIs({
-                    machineId,
-                    metadata,
-                    daemonState: { status: 'offline' }
-                });
-                await updateSettings(s => {
-                    return {
-                        ...s,
-                        machineIdConfirmedByServer: true
-                    }
-                });
-            } catch (error) {
-                logger.debug('[AUTH] Failed to register machine with server, will try again on next cli run:', error);
-            }
-
-            // This ID is used as the actual database ID on the server
-            // All machine operations use this ID
+        if (!s.machineId) {
             return {
                 ...s,
-                machineId
+                machineId: randomUUID()
             };
         }
         return s;

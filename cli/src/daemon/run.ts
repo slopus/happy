@@ -109,7 +109,7 @@ export async function startDaemon(): Promise<void> {
 
         const happyProcess = spawn(happyBinPath, args, {
           cwd: directory,
-          detached: false,  // Dies with daemon
+          detached: true,  // Sessions stay alive when daemon stops
           stdio: ['ignore', 'pipe', 'pipe']  // Capture stdout/stderr for debugging
           // env is inherited automatically from parent process
         });
@@ -217,9 +217,9 @@ export async function startDaemon(): Promise<void> {
       pidToTrackedSession.delete(pid);
     };
 
-    // Setup shutdown promise
+    // We don't have cleanup function at the time of server construction
     let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown') => void;
-    const shutdownPromise = new Promise<'happy-app' | 'happy-cli' | 'os-signal' | 'unknown'>((resolve) => {
+    let resolvesWhenShutdownRequested = new Promise<('happy-app' | 'happy-cli' | 'os-signal' | 'unknown')>((resolve) => {
       requestShutdown = resolve;
     });
 
@@ -274,22 +274,22 @@ export async function startDaemon(): Promise<void> {
     const apiMachine = api.machineSyncClient(machine);
 
     // Set RPC handlers
-    apiMachine.setRPCHandlers(
+    apiMachine.setRPCHandlers({
       spawnSession,
       stopSession,
-      () => requestShutdown('happy-app')
-    );
+      requestShutdown: () => requestShutdown('happy-app')
+    });
 
     // Connect to server
     apiMachine.connect();
 
     // Setup signal handlers
-    const cleanup = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown') => {
+    const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown') => {
       logger.debug(`[DAEMON RUN] Starting cleanup (source: ${source})...`);
 
       // Update daemon state before shutting down
       if (apiMachine) {
-        await apiMachine.updateDaemonState((state: DaemonState) => ({
+        await apiMachine.updateDaemonState((state: DaemonState | null) => ({
           ...state,
           status: 'shutting-down',
           shutdownRequestedAt: Date.now(),
@@ -299,18 +299,6 @@ export async function startDaemon(): Promise<void> {
         // Give time for metadata update to send
         await new Promise(resolve => setTimeout(resolve, 100));
       }
-
-      // Kill all daemon-spawned children
-      let killedCount = 0;
-      for (const session of pidToTrackedSession.values()) {
-        if (session.startedBy === 'daemon' && session.childProcess) {
-          try {
-            session.childProcess.kill('SIGTERM');
-            killedCount++;
-          } catch { }
-        }
-      }
-      logger.debug(`[DAEMON RUN] Killed ${killedCount} daemon-spawned children`);
 
       // Shutdown machine session
       if (apiMachine) {
@@ -335,47 +323,34 @@ export async function startDaemon(): Promise<void> {
 
     process.on('SIGINT', () => {
       logger.debug('[DAEMON RUN] Received SIGINT');
-      cleanup('os-signal');
+      cleanupAndShutdown('os-signal');
     });
 
     process.on('SIGTERM', () => {
       logger.debug('[DAEMON RUN] Received SIGTERM');
-      cleanup('os-signal');
-    });
-
-    process.on('exit', () => {
-      logger.debug('[DAEMON RUN] Process exit - killing children');
-      // Note: Only synchronous operations allowed in exit handler
-      let killedCount = 0;
-      for (const session of pidToTrackedSession.values()) {
-        if (session.startedBy === 'daemon' && session.childProcess) {
-          try {
-            session.childProcess.kill('SIGTERM');
-            killedCount++;
-          } catch { }
-        }
-      }
-      logger.debug(`[DAEMON RUN] Killed ${killedCount} daemon-spawned children on exit`);
+      cleanupAndShutdown('os-signal');
     });
 
     process.on('uncaughtException', (error) => {
       logger.debug('[DAEMON RUN] Uncaught exception - cleaning up before crash', error);
-      cleanup('unknown');
+      cleanupAndShutdown('unknown');
     });
 
-    process.on('unhandledRejection', (reason, promise) => {
+    process.on('unhandledRejection', (reason) => {
       logger.debug('[DAEMON RUN] Unhandled rejection - cleaning up before crash', reason);
-      cleanup('unknown');
+      cleanupAndShutdown('unknown');
+    });
+
+    process.on('exit', () => {
+      logger.debug('[DAEMON RUN] Process exit, not killing any children');
     });
 
     logger.debug('[DAEMON RUN] Daemon started successfully');
 
     // Wait for shutdown request
-    const shutdownSource = await shutdownPromise;
+    const shutdownSource = await resolvesWhenShutdownRequested;
     logger.debug(`[DAEMON RUN] Shutdown requested (source: ${shutdownSource})`);
-
-    // Cleanup and exit
-    await cleanup(shutdownSource);
+    await cleanupAndShutdown(shutdownSource);
 
   } catch (error) {
     logger.debug('[DAEMON RUN] Failed to start daemon', error);
@@ -384,4 +359,3 @@ export async function startDaemon(): Promise<void> {
     process.exit(1);
   }
 }
-
