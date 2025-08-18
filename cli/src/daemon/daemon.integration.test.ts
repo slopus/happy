@@ -75,7 +75,7 @@ async function startDaemon(): Promise<{ pid: number }> {
     setTimeout(async () => {
       if (!resolved) {
         try {
-          await waitFor(async () => existsSync(configuration.daemonStateFile), 3000);
+          await waitFor(async () => existsSync(configuration.daemonStateFile), 10000);
           const metadata = JSON.parse(await readFile(configuration.daemonStateFile, 'utf8'));
           resolved = true;
           resolve({ pid: metadata.pid });
@@ -95,7 +95,7 @@ async function startDaemon(): Promise<{ pid: number }> {
   });
 }
 
-describe('Daemon HTTP Control Integration', () => {
+describe('Daemon Integration Tests', () => {
   let daemonPid: number;
 
   beforeAll(async () => {

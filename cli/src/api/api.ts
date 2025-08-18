@@ -86,7 +86,7 @@ export class ApiClient {
       daemonState: raw.daemonState ? decrypt(decodeBase64(raw.daemonState), this.secret) : null,
       daemonStateVersion: raw.daemonStateVersion || 0,
       active: raw.active,
-      lastActiveAt: raw.lastActiveAt,
+      activeAt: raw.activeAt,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt
     };
@@ -97,10 +97,10 @@ export class ApiClient {
    * Register or update machine with the server
    * Returns the current machine state from the server with decrypted metadata and daemonState
    */
-  async createOrReturnExistingAsIs(opts: { 
-    machineId: string, 
-    metadata: MachineMetadata, 
-    daemonState: DaemonState 
+  async createOrReturnExistingAsIs(opts: {
+    machineId: string,
+    metadata: MachineMetadata,
+    daemonState: DaemonState
   }): Promise<Machine> {
     const response = await axios.post(
       `${configuration.serverUrl}/v1/machines`,
@@ -129,35 +129,21 @@ export class ApiClient {
       daemonState: raw.daemonState ? decrypt(decodeBase64(raw.daemonState), this.secret) : null,
       daemonStateVersion: raw.daemonStateVersion || 0,
       active: raw.active,
-      lastActiveAt: raw.lastActiveAt,
+      activeAt: raw.activeAt,
       createdAt: raw.createdAt,
       updatedAt: raw.updatedAt
     };
     return machine;
   }
 
-  /**
-   * Start realtime session client
-   * @param id - Session ID
-   * @returns Session client
-   */
-  session(session: Session): ApiSessionClient {
+  sessionSyncClient(session: Session): ApiSessionClient {
     return new ApiSessionClient(this.token, this.secret, session);
   }
 
-  /**
-   * Start realtime machine client
-   * @param machine - Machine information
-   * @returns Machine client
-   */
-  machine(machine: Machine): ApiMachineClient {
+  machineSyncClient(machine: Machine): ApiMachineClient {
     return new ApiMachineClient(this.token, this.secret, machine);
   }
 
-  /**
-   * Get push notification client
-   * @returns Push notification client
-   */
   push(): PushNotificationClient {
     return this.pushClient;
   }

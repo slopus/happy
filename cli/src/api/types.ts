@@ -185,14 +185,18 @@ export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
  */
 export const DaemonStateSchema = z.object({
   status: z.union([
-    z.enum(['running', 'shutting-down', 'offline']),
-    z.string() // We will likely add more statuses in the future
+    z.enum(['running', 'shutting-down']),
+    z.string() // Forward compatibility
   ]),
   pid: z.number().optional(),
   httpPort: z.number().optional(),
   startedAt: z.number().optional(),
   shutdownRequestedAt: z.number().optional(),
-  shutdownSource: z.enum(['mobile-app', 'cli', 'os-signal', 'unknown']).optional()
+  shutdownSource: 
+    z.union([
+      z.enum(['mobile-app', 'cli', 'os-signal', 'unknown']),
+      z.string() // Forward compatibility
+    ]).optional()
 })
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>
@@ -206,8 +210,11 @@ export const MachineSchema = z.object({
   metadataVersion: z.number(),
   daemonState: z.any().nullable(), // Decrypted DaemonState
   daemonStateVersion: z.number(),
+
+  // We don't really care about these on the CLI for now
+  // ApiMachineClient will not sync these
   active: z.boolean(),
-  lastActiveAt: z.number(),
+  activeAt: z.number(),
   createdAt: z.number(),
   updatedAt: z.number()
 })

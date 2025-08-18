@@ -89,7 +89,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         logger.debug('[start] SDK metadata extracted, updating session:', sdkMetadata);
         try {
             // Update session metadata with tools and slash commands
-            api.session(response).updateMetadata((currentMetadata) => ({
+            api.sessionSyncClient(response).updateMetadata((currentMetadata) => ({
                 ...currentMetadata,
                 tools: sdkMetadata.tools,
                 slashCommands: sdkMetadata.slashCommands
@@ -101,7 +101,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     });
 
     // Create realtime session
-    const session = api.session(response);
+    const session = api.sessionSyncClient(response);
 
     // Print log file path
     const logPath = await logger.logFilePathPromise;

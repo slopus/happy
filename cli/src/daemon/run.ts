@@ -217,10 +217,6 @@ export async function startDaemon(): Promise<void> {
       pidToTrackedSession.delete(pid);
     };
 
-    // Track API client and machine session for cleanup
-    let apiClient: ApiClient | null = null;
-    let machineSession: any | null = null;
-
     // Setup shutdown promise
     let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown') => void;
     const shutdownPromise = new Promise<'happy-app' | 'happy-cli' | 'os-signal' | 'unknown'>((resolve) => {
@@ -264,10 +260,10 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Create API client
-    apiClient = new ApiClient(credentials.token, credentials.secret);
+    const api = new ApiClient(credentials.token, credentials.secret);
 
     // Get or create machine (similar to getOrCreateSession)
-    const machine = await apiClient.createOrReturnExistingAsIs({
+    const machine = await api.createOrReturnExistingAsIs({
       machineId,
       metadata: initialMetadata,
       daemonState: initialDaemonState
@@ -275,25 +271,25 @@ export async function startDaemon(): Promise<void> {
     logger.debug(`[DAEMON RUN] Machine registered: ${machine.id}`);
 
     // Create realtime machine session
-    machineSession = apiClient.machine(machine);
+    const apiMachine = api.machineSyncClient(machine);
 
     // Set RPC handlers
-    machineSession.setRPCHandlers(
+    apiMachine.setRPCHandlers(
       spawnSession,
       stopSession,
       () => requestShutdown('happy-app')
     );
 
     // Connect to server
-    machineSession.connect();
+    apiMachine.connect();
 
     // Setup signal handlers
     const cleanup = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown') => {
       logger.debug(`[DAEMON RUN] Starting cleanup (source: ${source})...`);
 
       // Update daemon state before shutting down
-      if (machineSession) {
-        await machineSession.updateDaemonState((state: DaemonState) => ({
+      if (apiMachine) {
+        await apiMachine.updateDaemonState((state: DaemonState) => ({
           ...state,
           status: 'shutting-down',
           shutdownRequestedAt: Date.now(),
@@ -317,8 +313,8 @@ export async function startDaemon(): Promise<void> {
       logger.debug(`[DAEMON RUN] Killed ${killedCount} daemon-spawned children`);
 
       // Shutdown machine session
-      if (machineSession) {
-        machineSession.shutdown();
+      if (apiMachine) {
+        apiMachine.shutdown();
       }
       logger.debug('[DAEMON RUN] Machine session shutdown');
 

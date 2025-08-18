@@ -69,18 +69,15 @@ interface DaemonToServerEvents {
   }) => void) => void;
 }
 
+type MachineRpcHandlers = {
+  spawnSession: (directory: string, sessionId?: string) => Promise<TrackedSession | null>;
+  stopSession: (sessionId: string) => boolean;
+  requestShutdown: () => void;
+}
+
 export class ApiMachineClient {
   private socket!: Socket<ServerToDaemonEvents, DaemonToServerEvents>;
   private keepAliveInterval: NodeJS.Timeout | null = null;
-  private token: string;
-  private secret: Uint8Array;
-  private machineId: string;
-
-  // Track versions like session does
-  private metadata: MachineMetadata | null = null;
-  private metadataVersion: number = 0;
-  private daemonState: DaemonState | null = null;
-  private daemonStateVersion: number = 0;
 
   // RPC handlers
   private spawnSession?: (directory: string, sessionId?: string) => Promise<TrackedSession | null>;
@@ -88,60 +85,44 @@ export class ApiMachineClient {
   private requestShutdown?: () => void;
 
   constructor(
-    token: string,
-    secret: Uint8Array,
-    machine: Machine
-  ) {
-    this.token = token;
-    this.secret = secret;
-    this.machineId = machine.id;
-    
-    // Initialize from machine state
-    this.metadata = machine.metadata;
-    this.metadataVersion = machine.metadataVersion;
-    this.daemonState = machine.daemonState;
-    this.daemonStateVersion = machine.daemonStateVersion;
-  }
+    private token: string,
+    private secret: Uint8Array,
+    private machine: Machine
+  ) { }
 
-  setRPCHandlers(
-    spawnSession: (directory: string, sessionId?: string) => Promise<TrackedSession | null>,
-    stopSession: (sessionId: string) => boolean,
-    requestShutdown: () => void
-  ) {
+  setRPCHandlers({
+    spawnSession,
+    stopSession,
+    requestShutdown
+  }: MachineRpcHandlers) {
     this.spawnSession = spawnSession;
     this.stopSession = stopSession;
     this.requestShutdown = requestShutdown;
   }
 
-
   /**
-   * Update machine metadata (static info) - similar to session updateMetadata
-   * Simplified without lock - relies on backoff for retry
+   * Update machine metadata
+   * Currently unused, changes from the mobile client are more likely
+   * for example to set a custom name.
    */
-  async updateMachineMetadata(handler: (metadata: MachineMetadata) => MachineMetadata): Promise<void> {
+  async updateMachineMetadata(handler: (metadata: MachineMetadata | null) => MachineMetadata): Promise<void> {
     await backoff(async () => {
-      const updated = handler(this.metadata || {
-        host: '',
-        platform: '',
-        happyCliVersion: '',
-        homeDir: '',
-        happyHomeDir: ''
-      });
+      const updated = handler(this.machine.metadata);
 
       const answer = await this.socket.emitWithAck('machine-update-metadata', {
-        machineId: this.machineId,
+        machineId: this.machine.id,
         metadata: encodeBase64(encrypt(updated, this.secret)),
-        expectedVersion: this.metadataVersion
+        expectedVersion: this.machine.metadataVersion
       });
 
       if (answer.result === 'success') {
-        this.metadata = decrypt(decodeBase64(answer.metadata), this.secret);
-        this.metadataVersion = answer.version;
+        this.machine.metadata = decrypt(decodeBase64(answer.metadata), this.secret);
+        this.machine.metadataVersion = answer.version;
         logger.debug('[API MACHINE] Metadata updated successfully');
       } else if (answer.result === 'version-mismatch') {
-        if (answer.version > this.metadataVersion) {
-          this.metadataVersion = answer.version;
-          this.metadata = decrypt(decodeBase64(answer.metadata), this.secret);
+        if (answer.version > this.machine.metadataVersion) {
+          this.machine.metadataVersion = answer.version;
+          this.machine.metadata = decrypt(decodeBase64(answer.metadata), this.secret);
         }
         throw new Error('Metadata version mismatch'); // Triggers retry
       }
@@ -152,26 +133,24 @@ export class ApiMachineClient {
    * Update daemon state (runtime info) - similar to session updateAgentState
    * Simplified without lock - relies on backoff for retry
    */
-  async updateDaemonState(handler: (state: DaemonState) => DaemonState): Promise<void> {
+  async updateDaemonState(handler: (state: DaemonState | null) => DaemonState): Promise<void> {
     await backoff(async () => {
-      const updated = handler(this.daemonState || {
-        status: 'offline'
-      });
+      const updated = handler(this.machine.daemonState);
 
       const answer = await this.socket.emitWithAck('machine-update-state', {
-        machineId: this.machineId,
+        machineId: this.machine.id,
         daemonState: encodeBase64(encrypt(updated, this.secret)),
-        expectedVersion: this.daemonStateVersion
+        expectedVersion: this.machine.daemonStateVersion
       });
 
       if (answer.result === 'success') {
-        this.daemonState = decrypt(decodeBase64(answer.daemonState), this.secret);
-        this.daemonStateVersion = answer.version;
+        this.machine.daemonState = decrypt(decodeBase64(answer.daemonState), this.secret);
+        this.machine.daemonStateVersion = answer.version;
         logger.debug('[API MACHINE] Daemon state updated successfully');
       } else if (answer.result === 'version-mismatch') {
-        if (answer.version > this.daemonStateVersion) {
-          this.daemonStateVersion = answer.version;
-          this.daemonState = decrypt(decodeBase64(answer.daemonState), this.secret);
+        if (answer.version > this.machine.daemonStateVersion) {
+          this.machine.daemonStateVersion = answer.version;
+          this.machine.daemonState = decrypt(decodeBase64(answer.daemonState), this.secret);
         }
         throw new Error('Daemon state version mismatch'); // Triggers retry
       }
@@ -187,7 +166,7 @@ export class ApiMachineClient {
       auth: {
         token: this.token,
         clientType: 'machine-scoped' as const,
-        machineId: this.machineId
+        machineId: this.machine.id
       },
       path: '/v1/updates',
       reconnection: true,
@@ -195,20 +174,22 @@ export class ApiMachineClient {
       reconnectionDelayMax: 5000
     });
 
+    // Define RPC method names
+    const spawnMethod = `${this.machine.id}:spawn-happy-session`;
+    const stopMethod = `${this.machine.id}:stop-session`;
+    const stopDaemonMethod = `${this.machine.id}:stop-daemon`;
+
     this.socket.on('connect', () => {
       logger.debug('[API MACHINE] Connected to server');
 
-      // Define RPC method names
-      const spawnMethod = `${this.machineId}:spawn-happy-session`;
-      const stopMethod = `${this.machineId}:stop-session`;
-      const stopDaemonMethod = `${this.machineId}:stop-daemon`;
-
       // Update daemon state to running
+      // We need to override previous state because the daemon (this process)
+      // has restarted with new PID & port
       this.updateDaemonState((state) => ({
         ...state,
         status: 'running',
         pid: process.pid,
-        httpPort: 8080, // TODO: Get actual port from daemon
+        httpPort: this.machine.daemonState?.httpPort,
         startedAt: Date.now()
       }));
 
@@ -225,15 +206,15 @@ export class ApiMachineClient {
     this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
       logger.debugLargeJson(`[API MACHINE] Received RPC request:`, data);
       try {
-        const spawnMethod = `${this.machineId}:spawn-happy-session`;
-        const stopMethod = `${this.machineId}:stop-session`;
-        const stopDaemonMethod = `${this.machineId}:stop-daemon`;
+        const spawnMethod = `${this.machine.id}:spawn-happy-session`;
+        const stopMethod = `${this.machine.id}:stop-session`;
+        const stopDaemonMethod = `${this.machine.id}:stop-daemon`;
 
         if (data.method === spawnMethod) {
           if (!this.spawnSession) {
             throw new Error('Spawn session handler not set');
           }
-          
+
           const { directory, sessionId } = decrypt(decodeBase64(data.params), this.secret) || {};
 
           if (!directory) {
@@ -263,7 +244,7 @@ export class ApiMachineClient {
           if (!this.stopSession) {
             throw new Error('Stop session handler not set');
           }
-          
+
           if (!sessionId) {
             throw new Error('Session ID is required');
           }
@@ -309,20 +290,20 @@ export class ApiMachineClient {
     // Handle update events from server
     this.socket.on('update', (data: Update) => {
       // Machine clients should only care about machine updates
-      if (data.body.t === 'update-machine' && (data.body as UpdateMachineBody).machineId === this.machineId) {
+      if (data.body.t === 'update-machine' && (data.body as UpdateMachineBody).machineId === this.machine.id) {
         // Handle machine metadata or daemon state updates from other clients (e.g., mobile app)
         const update = data.body as UpdateMachineBody;
 
         if (update.metadata) {
           logger.debug('[API MACHINE] Received external metadata update');
-          this.metadata = decrypt(decodeBase64(update.metadata.value), this.secret);
-          this.metadataVersion = update.metadata.version;
+          this.machine.metadata = decrypt(decodeBase64(update.metadata.value), this.secret);
+          this.machine.metadataVersion = update.metadata.version;
         }
 
         if (update.daemonState) {
           logger.debug('[API MACHINE] Received external daemon state update');
-          this.daemonState = decrypt(decodeBase64(update.daemonState.value), this.secret);
-          this.daemonStateVersion = update.daemonState.version;
+          this.machine.daemonState = decrypt(decodeBase64(update.daemonState.value), this.secret);
+          this.machine.daemonStateVersion = update.daemonState.version;
         }
       } else {
         logger.debug(`[API MACHINE] Received unknown update type: ${(data.body as any).t}`);
@@ -336,10 +317,6 @@ export class ApiMachineClient {
 
     this.socket.io.on('reconnect', () => {
       logger.debug('[API MACHINE] Reconnected to server');
-      // Re-register RPC methods
-      const spawnMethod = `${this.machineId}:spawn-happy-session`;
-      const stopMethod = `${this.machineId}:stop-session`;
-      const stopDaemonMethod = `${this.machineId}:stop-daemon`;
       this.socket.emit('rpc-register', { method: spawnMethod });
       this.socket.emit('rpc-register', { method: stopMethod });
       this.socket.emit('rpc-register', { method: stopDaemonMethod });
@@ -358,7 +335,7 @@ export class ApiMachineClient {
     this.stopKeepAlive();
     this.keepAliveInterval = setInterval(() => {
       const payload = {
-        machineId: this.machineId,
+        machineId: this.machine.id,
         time: Date.now()
       };
       logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
