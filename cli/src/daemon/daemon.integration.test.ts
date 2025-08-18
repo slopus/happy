@@ -2,10 +2,19 @@
  * Integration tests for daemon HTTP control system
  * 
  * Tests the full flow of daemon startup, session tracking, and shutdown
- * Uses the same .env as dev:local-server for consistency
+ * 
+ * IMPORTANT: These tests MUST be run with the integration test environment:
+ * yarn test:integration-test-env
+ * 
+ * DO NOT run with regular 'npm test' or 'yarn test' - it will use the wrong environment
+ * and the daemon will not work properly!
+ * 
+ * The integration test environment uses .env.integration-test which sets:
+ * - HAPPY_HOME_DIR=~/.happy-dev-test (DIFFERENT from dev's ~/.happy-dev!)
+ * - HAPPY_SERVER_URL=http://localhost:3005 (local dev server)
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, test } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { spawn } from 'child_process';
 import { existsSync, unlinkSync } from 'fs';
 import { readFile } from 'fs/promises';
@@ -52,13 +61,20 @@ async function killDaemon(): Promise<void> {
 }
 
 // Start daemon helper
+// Store the daemon child process globally so we can kill it in afterAll
+let daemonChild: any = null;
+
 async function startDaemon(): Promise<{ pid: number }> {
   return new Promise((resolve, reject) => {
-    const child = spawn('yarn', ['tsx', 'src/index.ts', 'daemon', 'start'], {
+    const child = spawn('yarn', ['tsx', 'src/index.ts', 'daemon', 'start-sync'], {
       cwd: process.cwd(),
       env: process.env,  // Child inherits all env vars including HAPPY_HOME_DIR
-      stdio: ['ignore', 'pipe', 'pipe']
+      stdio: ['ignore', 'pipe', 'pipe'],
+      detached: false  // Keep it attached for testing
     });
+
+    // Store globally for cleanup
+    daemonChild = child;
 
     let resolved = false;
 
@@ -71,14 +87,15 @@ async function startDaemon(): Promise<{ pid: number }> {
       console.log('[DAEMON STDERR]', data.toString());
     });
 
-    // Wait for daemon to write metadata
+    // Wait for daemon to write metadata and be ready
     setTimeout(async () => {
       if (!resolved) {
         try {
           await waitFor(async () => existsSync(configuration.daemonStateFile), 10000);
           const metadata = JSON.parse(await readFile(configuration.daemonStateFile, 'utf8'));
           resolved = true;
-          resolve({ pid: metadata.pid });
+          // Return the actual child PID since start-sync runs in foreground
+          resolve({ pid: child.pid! });
         } catch (error) {
           resolved = true;
           reject(error);
@@ -91,6 +108,10 @@ async function startDaemon(): Promise<{ pid: number }> {
         resolved = true;
         reject(error);
       }
+    });
+
+    child.on('exit', (code, signal) => {
+      console.log(`[DAEMON EXIT] code=${code}, signal=${signal}`);
     });
   });
 }
@@ -122,22 +143,31 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
   });
 
   afterAll(async () => {
-    // Stop daemon via HTTP
-    try {
-      await stopDaemonHttp();
-      // Wait for daemon to die
-      await waitFor(async () => {
-        try {
-          process.kill(daemonPid, 0);
-          return false; // Still alive
-        } catch {
-          return true; // Dead
-        }
-      }, 3000);
-    } catch (error) {
-      // Force kill if HTTP stop failed
-      console.log('Force killing daemon after test');
-      await killDaemon();
+    // Kill the daemon child process directly
+    if (daemonChild) {
+      console.log('Stopping daemon after tests...');
+      daemonChild.kill('SIGTERM');
+      
+      // Give it a moment to cleanup
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Force kill if still running
+      try {
+        daemonChild.kill('SIGKILL');
+      } catch {
+        // Already dead
+      }
+      
+      daemonChild = null;
+    }
+    
+    // Clean up state file
+    if (existsSync(configuration.daemonStateFile)) {
+      try {
+        unlinkSync(configuration.daemonStateFile);
+      } catch {
+        // Ignore
+      }
     }
   });
 
