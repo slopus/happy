@@ -10,7 +10,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { Pressable } from 'react-native-gesture-handler';
-import { MachineItem } from './machines/MachineItem';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing }: { color: string; isPulsing?: boolean }) {
@@ -76,7 +75,6 @@ export function SessionsList() {
             case 'header': return `header-${item.title}-${index}`;
             case 'project-group': return `project-group-${item.machine.id}-${item.displayPath}-${index}`;
             case 'session': return `session-${item.session.id}`;
-            case 'machine': return `machine-${item.machine.id}`;
         }
     }, []);
 
@@ -89,15 +87,6 @@ export function SessionsList() {
                             {item.title}
                         </Text>
                     </View>
-                );
-
-            case 'machine':
-                return (
-                    <MachineItem 
-                        machine={item.machine}
-                        onPress={() => router.push(`/machine/${item.machine.id}`)}
-                        showStatus={false}
-                    />
                 );
 
             case 'project-group':
@@ -130,8 +119,8 @@ export function SessionsList() {
             return null;
         }
 
-        // Use different indentation for machine separators
-        const marginLeft = leadingItem?.type === 'machine' ? 52 : 88;
+        // Use standard indentation for separators
+        const marginLeft = 88;
 
         return <View style={{ height: 0.5, backgroundColor: '#E5E5E7', marginLeft }} />;
     }, []);

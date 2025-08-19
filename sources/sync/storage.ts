@@ -58,8 +58,7 @@ interface SessionMessages {
 export type SessionListViewItem =
     | { type: 'header'; title: string }
     | { type: 'project-group'; displayPath: string; machine: Machine }
-    | { type: 'session'; session: Session; variant?: 'default' | 'no-path' }
-    | { type: 'machine'; machine: Machine };
+    | { type: 'session'; session: Session; variant?: 'default' | 'no-path' };
 
 // Legacy type for backward compatibility - to be removed
 export type SessionListItem = string | Session;
@@ -194,9 +193,6 @@ function buildSessionListViewData(
         return groupB.oldestCreatedAt - groupA.oldestCreatedAt;
     });
 
-    // Get active machines
-    const activeMachines = Object.values(machines).filter(m => isMachineOnline(m));
-    
     // Sort standalone active sessions by creation date (newest first)
     standaloneActiveSessions.sort((a, b) => b.createdAt - a.createdAt);
 
@@ -237,14 +233,6 @@ function buildSessionListViewData(
                 session,
                 variant: 'default'
             })
-        );
-    }
-
-    // Machines section
-    if (activeMachines.length > 0) {
-        listData.push({ type: 'header', title: 'Machines Online' });
-        activeMachines.forEach(machine =>
-            listData.push({ type: 'machine', machine })
         );
     }
 
