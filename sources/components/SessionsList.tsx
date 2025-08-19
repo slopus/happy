@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Animated, FlatList, Platform } from 'react-native';
+import { View, Pressable, FlatList } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
 import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
@@ -9,46 +9,7 @@ import { Avatar } from './Avatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
-import { Pressable } from 'react-native-gesture-handler';
-
-// Animated status dot component
-function StatusDot({ color, isPulsing }: { color: string; isPulsing?: boolean }) {
-    const pulseAnim = React.useRef(new Animated.Value(1)).current;
-
-    React.useEffect(() => {
-        if (isPulsing) {
-            Animated.loop(
-                Animated.sequence([
-                    Animated.timing(pulseAnim, {
-                        toValue: 0.3,
-                        duration: 1000,
-                        useNativeDriver: true,
-                    }),
-                    Animated.timing(pulseAnim, {
-                        toValue: 1,
-                        duration: 1000,
-                        useNativeDriver: true,
-                    }),
-                ])
-            ).start();
-        } else {
-            pulseAnim.setValue(1);
-        }
-    }, [isPulsing, pulseAnim]);
-
-    return (
-        <Animated.View
-            style={{
-                width: 8,
-                height: 8,
-                borderRadius: 4,
-                backgroundColor: color,
-                opacity: pulseAnim,
-                marginRight: 4,
-            }}
-        />
-    );
-}
+import { StatusDot } from './StatusDot';
 
 export function SessionsList() {
     const router = useRouter();
