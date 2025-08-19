@@ -7,6 +7,7 @@ import { StatusDot } from './StatusDot';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useSegments } from 'expo-router';
 import { getServerInfo } from '@/sync/serverConfig';
+import { Image } from 'expo-image';
 
 
 export const HomeHeader = React.memo(() => {
@@ -62,8 +63,10 @@ function HeaderRightNotAuth() {
 
 function HeaderLeft() {
     return (
-        <View
-            style={{ marginLeft: 8, width: 24, height: 24 }}
+        <Image 
+            source={require('@/assets/images/logo-black.png')} 
+            contentFit="contain" 
+            style={{ height: 24, width: 24, marginLeft: 8 }} 
         />
     );
 }
@@ -116,20 +119,19 @@ function HeaderTitleWithSubtitle({ subtitle }: { subtitle?: string }) {
     const hasCustomSubtitle = !!subtitle;
     const connectionStatus = getConnectionStatus();
     const showConnectionStatus = !hasCustomSubtitle && connectionStatus.text;
-    const titleFontSize = (hasCustomSubtitle || showConnectionStatus) ? 20 : 24;
 
     return (
         <View style={{ alignItems: 'center' }}>
-            <Text style={{ fontSize: titleFontSize, color: '#000', ...Typography.logo() }}>
-                Happy
+            <Text style={{ fontSize: 17, color: '#000', fontWeight: '600', ...Typography.default('semiBold') }}>
+                Sessions
             </Text>
             {hasCustomSubtitle && (
-                <Text style={{ fontSize: 12, color: '#8E8E93', marginTop: 2 }}>
+                <Text style={{ fontSize: 12, color: '#8E8E93', marginTop: -2 }}>
                     {subtitle}
                 </Text>
             )}
             {showConnectionStatus && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -2 }}>
                     <StatusDot
                         color={connectionStatus.color}
                         isPulsing={connectionStatus.isPulsing}

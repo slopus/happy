@@ -12,6 +12,7 @@ import { StatusDot } from './StatusDot';
 import { FAB } from './FAB';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
+import { Image } from 'expo-image';
 
 export const SidebarView = React.memo(() => {
     const sessionListViewData = useSessionListViewData();
@@ -71,15 +72,23 @@ export const SidebarView = React.memo(() => {
     return (
         <>
             <View style={{ flex: 1, paddingTop: safeArea.top, borderRightWidth: 1, borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.05)' }}>
-                <View style={{ height: headerHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 }}>
-                    <View style={{ flex: 1 }} />
-                    <View style={{ flexDirection: 'column', alignItems: 'center' }}>
+                <View style={{ height: headerHeight, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 }}>
+                    <View style={{ width: 32 }}>
+                        <Image 
+                            source={require('@/assets/images/logo-black.png')} 
+                            contentFit="contain" 
+                            style={{ height: 24, width: 24 }} 
+                        />
+                    </View>
+                    <View style={{ flex: 1, flexDirection: 'column', alignItems: 'center' }}>
                         <Text style={{
-                            fontSize: Platform.OS === 'web' ? 18 : 16,
-                            ...Typography.logo()
-                        }}>Happy</Text>
+                            fontSize: 17,
+                            fontWeight: '600',
+                            color: '#000',
+                            ...Typography.default('semiBold')
+                        }}>Sessions</Text>
                         {getConnectionStatus().text && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -2 }}>
                                 <StatusDot
                                     color={getConnectionStatus().color}
                                     isPulsing={getConnectionStatus().isPulsing}
@@ -98,7 +107,7 @@ export const SidebarView = React.memo(() => {
                             </View>
                         )}
                     </View>
-                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                    <View style={{ width: 32, alignItems: 'flex-end' }}>
                         <Pressable
                             onPress={() => router.push('/settings')}
                             hitSlop={10}
