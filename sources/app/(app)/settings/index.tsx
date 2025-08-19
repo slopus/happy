@@ -18,6 +18,8 @@ import { trackPaywallButtonClicked } from '@/track';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
 import { PlusPlus } from '@/components/PlusPlus';
+import { useAllMachines } from '@/sync/storage';
+import { isMachineOnline } from '@/utils/machineUtils';
 
 // Manual Auth Modal Component for Android
 function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (url: string) => void }) {
@@ -80,6 +82,7 @@ export default function SettingsScreen() {
     const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
     const isPro = __DEV__ || useEntitlement('pro');
     const isCustomServer = isUsingCustomServer();
+    const allMachines = useAllMachines();
 
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
 
@@ -122,6 +125,11 @@ export default function SettingsScreen() {
         requiredClicks: 10,
         resetTimeout: 2000
     });
+
+    // Sort machines by created_at (newest first)
+    const sortedMachines = React.useMemo(() => {
+        return allMachines.sort((a, b) => b.createdAt - a.createdAt);
+    }, [allMachines]);
 
 
     return (
@@ -201,6 +209,34 @@ export default function SettingsScreen() {
                     onPress={isPro ? undefined : handleSubscribe}
                 />
             </ItemGroup>
+
+            {/* Machines */}
+            {sortedMachines.length > 0 && (
+                <ItemGroup title="Machines">
+                    {sortedMachines.map((machine) => {
+                        const isOnline = isMachineOnline(machine);
+                        const host = machine.metadata?.host || 'Unknown';
+                        const platform = machine.metadata?.platform || '';
+                        const subtitle = platform ? `${host} • ${platform}` : host;
+                        
+                        return (
+                            <Item
+                                key={machine.id}
+                                title={host}
+                                subtitle={`${subtitle} • ${isOnline ? 'Online' : 'Offline'}`}
+                                icon={
+                                    <Ionicons 
+                                        name="desktop-outline" 
+                                        size={29} 
+                                        color={isOnline ? "#34C759" : "#8E8E93"} 
+                                    />
+                                }
+                                onPress={() => router.push(`/machine/${machine.id}`)}
+                            />
+                        );
+                    })}
+                </ItemGroup>
+            )}
 
             {/* Features */}
             <ItemGroup title="Features">
