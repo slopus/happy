@@ -9,7 +9,6 @@ oclif.manifest.json
 
 
 
-yarn.lock
 pnpm-lock.yaml
 
 # Environment variables

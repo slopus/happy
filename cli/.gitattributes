@@ -1,0 +1,6 @@
+# Ensure Windows batch files always have CRLF line endings
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Default behavior for other text files (use platform line endings)
+* text=auto

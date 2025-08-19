@@ -32,7 +32,10 @@ This will:
 
 ## Requirements
 
-- Node.js >= 18.0.0
+- Node.js >= 20.0.0
+  - Required by `eventsource-parser@3.0.5`, which is required by
+  `@modelcontextprotocol/sdk`, which we used to implement permission forwarding
+  to mobile app
 - Claude CLI installed & logged in (`claude` command available in PATH)
 
 ## License
