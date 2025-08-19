@@ -170,9 +170,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 state: sessionStatus.state,
                 text: sessionStatus.state === 'disconnected' ? 'disconnected' :
                     sessionStatus.state === 'thinking' ? 'thinking...' :
-                        sessionStatus.state === 'idle' ? 'idle' :
-                            sessionStatus.state === 'permission_required' ? 'permission required' :
-                                sessionStatus.state === 'waiting' ? 'connected' : '',
+                        sessionStatus.state === 'permission_required' ? 'permission required' :
+                            sessionStatus.state === 'waiting' ? 'connected' : '',
                 color: sessionStatus.statusColor,
                 dotColor: sessionStatus.statusDotColor,
                 isPulsing: sessionStatus.isPulsing,

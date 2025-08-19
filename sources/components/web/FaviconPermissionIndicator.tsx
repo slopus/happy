@@ -13,12 +13,9 @@ export const FaviconPermissionIndicator = React.memo(() => {
     }
 
     const hasOnlineSessionWithPermissions = storage((state) => {
-        const now = Date.now();
-        const threshold = now - 30000;
-        
         return Object.values(state.sessions).some(session => {
-            const isOnline = session.presence === 'online' || 
-                (typeof session.presence === 'number' && session.presence > threshold);
+            // Use centralized presence logic - only "online" sessions matter
+            const isOnline = session.presence === 'online';
 
             const hasPermissions = session.agentState?.requests && 
                 Object.keys(session.agentState.requests).length > 0;

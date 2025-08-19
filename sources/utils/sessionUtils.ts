@@ -1,13 +1,13 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 
-// Timeout for considering a session disconnected (2 minutes)
+// Re-export timeout constant for backward compatibility
 export const DISCONNECTED_TIMEOUT_MS = 120000;
 
 // Timeout for considering a session idle (30 seconds)
 export const IDLE_TIMEOUT_MS = 30000;
 
-export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'idle' | 'permission_required';
+export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 
 export interface SessionStatus {
     state: SessionState;
@@ -20,32 +20,29 @@ export interface SessionStatus {
 }
 
 /**
- * Get the current state of a session based on activeAt and thinking status.
- * This centralizes the logic for determining session state across the app.
+ * Get the current state of a session based on presence and thinking status.
+ * Uses centralized session state from storage.ts
  */
 export function useSessionStatus(session: Session): SessionStatus {
-
-    const now = Date.now();
-    const isDisconnected = !session.activeAt || session.activeAt < now - DISCONNECTED_TIMEOUT_MS;
-    const isIdle = !isDisconnected && session.activeAt < now - IDLE_TIMEOUT_MS;
+    const isOnline = session.presence === "online";
     const hasPermissions = (session.agentState?.requests && Object.keys(session.agentState.requests).length > 0 ? true : false);
 
     const vibingMessage = React.useMemo(() => {
         return vibingMessages[Math.floor(Math.random() * vibingMessages.length)].toLowerCase() + '…';
-    }, [isDisconnected, hasPermissions, session.thinking]);
+    }, [isOnline, hasPermissions, session.thinking]);
 
-    if (isDisconnected) {
+    if (!isOnline) {
         return {
             state: 'disconnected',
             isConnected: false,
-            statusText: `last seen ${formatLastSeen(session.activeAt)}`,
+            statusText: `last seen ${formatLastSeen(session.presence)}`,
             shouldShowStatus: true,
             statusColor: '#999',
             statusDotColor: '#999'
         };
     }
 
-    // Check if permission is required (controlledByUser is true)
+    // Check if permission is required
     if (hasPermissions) {
         return {
             state: 'permission_required',
@@ -67,17 +64,6 @@ export function useSessionStatus(session: Session): SessionStatus {
             statusColor: '#007AFF',
             statusDotColor: '#007AFF',
             isPulsing: true
-        };
-    }
-
-    if (isIdle) {
-        return {
-            state: 'idle',
-            isConnected: true,
-            statusText: 'idle',
-            shouldShowStatus: true,
-            statusColor: '#666',
-            statusDotColor: '#666'
         };
     }
 
@@ -170,11 +156,10 @@ export function isSessionOnline(session: Session): boolean {
 
 /**
  * Checks if a session should be shown in the active sessions group.
- * Uses the same 5-second timeout as the disconnected state.
+ * Now uses centralized presence logic from storage.ts
  */
 export function isSessionActive(session: Session): boolean {
-    const now = Date.now();
-    return !!session.activeAt && (session.activeAt >= now - DISCONNECTED_TIMEOUT_MS);
+    return session.presence === "online";
 }
 
 /**

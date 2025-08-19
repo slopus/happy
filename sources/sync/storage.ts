@@ -4,7 +4,7 @@ import { Session, Machine, GitStatus } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
-import { isSessionActive, DISCONNECTED_TIMEOUT_MS, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
@@ -17,7 +17,30 @@ import { sync } from "./sync";
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
 import { isMutableTool } from "@/components/tools/knownTools";
 
-// Use the same timeout for both online status and disconnection detection
+// Timeout for considering a session disconnected (2 minutes)
+const DISCONNECTED_TIMEOUT_MS = 120000;
+
+/**
+ * Centralized session online state resolver
+ * Returns either "online" (string) or a timestamp (number) for last seen
+ */
+function resolveSessionOnlineState(session: { active: boolean; activeAt: number }): "online" | number {
+    const now = Date.now();
+    const threshold = now - DISCONNECTED_TIMEOUT_MS;
+    
+    // Session is online if it's active and was seen recently
+    const isOnline = session.active && session.activeAt > threshold;
+    
+    return isOnline ? "online" : session.activeAt;
+}
+
+/**
+ * Checks if a session should be shown in the active sessions group
+ */
+function isSessionActive(session: { activeAt: number }): boolean {
+    const now = Date.now();
+    return !!session.activeAt && (session.activeAt >= now - DISCONNECTED_TIMEOUT_MS);
+}
 
 // Known entitlement IDs
 export type KnownEntitlements = 'pro';
@@ -275,9 +298,6 @@ export const storage = create<StorageState>()((set, get) => {
             return Object.values(state.sessions).filter(s => s.active);
         },
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
-            const now = Date.now();
-            const threshold = now - DISCONNECTED_TIMEOUT_MS;
-
             // Load drafts and permission modes if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
             const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
@@ -285,11 +305,10 @@ export const storage = create<StorageState>()((set, get) => {
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
 
-            // Update sessions with calculated presence
+            // Update sessions with calculated presence using centralized resolver
             sessions.forEach(session => {
-                // Calculate presence based on active and activeAt
-                const isOnline = session.active && session.activeAt > threshold;
-                const presence: "online" | number = isOnline ? "online" : session.activeAt;
+                // Use centralized resolver for consistent state management
+                const presence = resolveSessionOnlineState(session);
 
                 // Preserve existing draft and permission mode if they exist, or load from saved data
                 const existingDraft = state.sessions[session.id]?.draft;
@@ -305,7 +324,6 @@ export const storage = create<StorageState>()((set, get) => {
             });
 
             // Build active set from all sessions (including existing ones)
-            // Use 30-second timeout for consistency with UI
             const activeSet = new Set<string>();
             Object.values(mergedSessions).forEach(session => {
                 if (isSessionActive(session)) {
@@ -560,16 +578,15 @@ export const storage = create<StorageState>()((set, get) => {
             const now = Date.now();
             const threshold = now - DISCONNECTED_TIMEOUT_MS;
 
-            // Update presence for all sessions
+            // Update presence for all sessions using centralized resolver
             const updatedSessions: Record<string, Session> = {};
             Object.entries(state.sessions).forEach(([id, session]) => {
-                const isOnline = session.active && session.activeAt > threshold;
                 const isDisconnected = !session.activeAt || session.activeAt <= threshold;
 
                 // Update session with presence and clear thinking/active if disconnected
                 updatedSessions[id] = {
                     ...session,
-                    presence: isOnline ? "online" : session.activeAt,
+                    presence: resolveSessionOnlineState(session),
                     // Clear thinking and active states when disconnected
                     thinking: isDisconnected ? false : session.thinking,
                     active: isDisconnected ? false : session.active
@@ -577,7 +594,6 @@ export const storage = create<StorageState>()((set, get) => {
             });
 
             // Build set of session IDs that should be active
-            // Use 30-second timeout for consistency with UI
             const shouldBeActiveSet = new Set<string>();
             Object.values(updatedSessions).forEach(session => {
                 if (isSessionActive(session)) {
