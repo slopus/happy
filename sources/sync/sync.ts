@@ -116,6 +116,16 @@ class Sync {
         this.purchasesSync.invalidate();
         this.machinesSync.invalidate();
         this.pushTokenSync.invalidate();
+
+        // Wait for both sessions and machines to load, then mark as ready
+        Promise.all([
+            this.sessionsSync.awaitQueue(),
+            this.machinesSync.awaitQueue()
+        ]).then(() => {
+            storage.getState().applyReady();
+        }).catch((error) => {
+            console.error('Failed to load initial data:', error);
+        });
     }
 
 

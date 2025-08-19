@@ -79,9 +79,11 @@ interface StorageState {
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
+    isDataReady: boolean;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyLoaded: () => void;
+    applyReady: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => string[];
     applyMessagesLoaded: (sessionId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
@@ -278,6 +280,7 @@ export const storage = create<StorageState>()((set, get) => {
         socketStatus: 'disconnected',
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
+        isDataReady: false,
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -453,6 +456,10 @@ export const storage = create<StorageState>()((set, get) => {
             };
             return result;
         }),
+        applyReady: () => set((state) => ({
+            ...state,
+            isDataReady: true
+        })),
         applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
             let changed = new Set<string>();
             set((state) => {
@@ -877,7 +884,7 @@ export const storage = create<StorageState>()((set, get) => {
 });
 
 export function useSessions() {
-    return storage(useShallow((state) => state.sessionsData));
+    return storage(useShallow((state) => state.isDataReady ? state.sessionsData : null));
 }
 
 export function useSession(id: string): Session | null {
@@ -932,7 +939,7 @@ export function useLocalSettings(): LocalSettings {
 
 export function useAllMachines(): Machine[] {
     return storage(useShallow((state) => {
-        return Object.values(state.machines)
+        return state.isDataReady ? Object.values(state.machines) : []
     }));
 }
 
@@ -941,7 +948,7 @@ export function useMachine(machineId: string): Machine | null {
 }
 
 export function useSessionListViewData(): SessionListViewItem[] | null {
-    return storage((state) => state.sessionListViewData);
+    return storage((state) => state.isDataReady ? state.sessionListViewData : null);
 }
 
 export function useLocalSettingMutable<K extends keyof LocalSettings>(name: K): [LocalSettings[K], (value: LocalSettings[K]) => void] {
@@ -974,4 +981,8 @@ export function useSocketStatus() {
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {
     return storage(useShallow((state) => state.sessionGitStatus[sessionId] ?? null));
+}
+
+export function useIsDataReady(): boolean {
+    return storage(useShallow((state) => state.isDataReady));
 }
