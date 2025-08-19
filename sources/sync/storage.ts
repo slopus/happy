@@ -37,9 +37,9 @@ function resolveSessionOnlineState(session: { active: boolean; activeAt: number 
 /**
  * Checks if a session should be shown in the active sessions group
  */
-function isSessionActive(session: { activeAt: number }): boolean {
+function isSessionActive(session: { active: boolean; activeAt: number }): boolean {
     const now = Date.now();
-    return !!session.activeAt && (session.activeAt >= now - DISCONNECTED_TIMEOUT_MS);
+    return session.active && !!session.activeAt && (session.activeAt >= now - DISCONNECTED_TIMEOUT_MS);
 }
 
 // Known entitlement IDs
