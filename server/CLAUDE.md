@@ -176,3 +176,96 @@ The project includes a multi-stage Dockerfile:
 4. NEVER proactively create documentation files (*.md) or README files unless explicitly requested
 5. Use 4 spaces for tabs (not 2 spaces)
 6. Use yarn instead of npm for all package management
+
+## Debugging Notes
+
+### Remote Logging Setup
+- Use `DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=true` env var to enable
+- Server logs to `.logs/` directory with timestamped files (format: `MM-DD-HH-MM-SS.log`)
+- Mobile and CLI send logs to `/logs-combined-from-cli-and-mobile-for-simple-ai-debugging` endpoint
+
+### Common Issues & Tells
+
+#### Socket/Connection Issues
+- **Tell**: "Sending update to user-scoped connection" but mobile not updating
+- **Tell**: Multiple "User disconnected" messages indicate socket instability
+- **Tell**: "Response from the Engine was empty" = Prisma database connection lost
+
+#### Auth Flow Debugging
+- CLI must hit `/v1/auth/request` to create auth request
+- Mobile scans QR and hits `/v1/auth/response` to approve
+- **Tell**: 404 on `/v1/auth/response` = server likely restarted/crashed
+- **Tell**: "Auth failed - user not found" = token issue or user doesn't exist
+
+#### Session Creation Flow
+- Sessions created via POST `/v1/sessions` with tag-based deduplication
+- Server emits "new-session" update to all user connections
+- **Tell**: Sessions created but not showing = mobile app not processing updates
+- **Tell**: "pathname /" in mobile logs = app stuck at root screen
+
+#### Environment Variables
+- CLI: Use `yarn dev:local-server` (NOT `yarn dev`) to load `.env.dev-local-server`
+- Server: Use `yarn dev` to start with proper env files
+- **Tell**: Wrong server URL = check `HAPPY_SERVER_URL` env var
+- **Tell**: Wrong home dir = check `HAPPY_HOME_DIR` (should be `~/.happy-dev` for local)
+
+### Quick Diagnostic Commands
+
+#### IMPORTANT: Always Start Debugging With These
+```bash
+# 1. CHECK CURRENT TIME - Logs use local time, know what's current!
+date
+
+# 2. CHECK LATEST LOG FILES - Server creates new logs on restart
+ls -la .logs/*.log | tail -5
+
+# 3. VERIFY YOU'RE LOOKING AT CURRENT LOGS
+# Server logs are named: MM-DD-HH-MM-SS.log (month-day-hour-min-sec)
+# If current time is 13:45 and latest log is 08-15-10-57-02.log from 10:57,
+# that log started 3 hours ago but may still be active!
+tail -1 .logs/[LATEST_LOG_FILE]  # Check last entry timestamp
+```
+
+#### Common Debugging Patterns
+```bash
+# Check server logs for errors
+tail -100 .logs/*.log | grep -E "(error|Error|ERROR|failed|Failed)"
+
+# Monitor session creation
+tail -f .logs/*.log | grep -E "(new-session|Session created)"
+
+# Check active connections
+tail -100 .logs/*.log | grep -E "(Token verified|User connected|User disconnected)"
+
+# See what endpoints are being hit
+tail -100 .logs/*.log | grep "incoming request"
+
+# Debug socket real-time updates
+tail -500 .logs/*.log | grep -A 2 -B 2 "new-session" | tail -30
+tail -200 .logs/*.log | grep -E "(websocket|Socket.*connected|Sending update)" | tail -30
+
+# Track socket events from mobile client
+tail -300 .logs/*.log | grep "remote-log.*mobile" | grep -E "(SyncSocket|handleUpdate)" | tail -20
+
+# Monitor session creation flow end-to-end
+tail -500 .logs/*.log | grep "session-create" | tail -20
+tail -500 .logs/*.log | grep "cmed556s4002bvb2020igg8jf" -A 3 -B 3  # Replace with actual session ID
+
+# Check auth flow for sessions API
+tail -300 .logs/*.log | grep "auth-decorator.*sessions" | tail -10
+
+# Debug machine registration and online status
+tail -500 .logs/*.log | grep -E "(machine-alive|machine-register|update-machine)" | tail -20
+tail -500 .logs/*.log | grep "GET /v1/machines" | tail -10
+tail -500 .logs/*.log | grep "POST /v1/machines" | tail -10
+
+# Check what mobile app is seeing
+tail -500 .logs/*.log | grep "📊 Storage" | tail -20
+tail -500 .logs/*.log | grep "applySessions.*active" | tail -10
+```
+
+#### Time Format Reference
+- **CLI logs**: `[HH:MM:SS.mmm]` in local time (e.g., `[13:45:23.738]`)
+- **Server logs**: Include both `time` (Unix ms) and `localTime` (HH:MM:ss.mmm)
+- **Mobile logs**: Sent with `timestamp` in UTC, converted to `localTime` on server
+- **All consolidated logs**: Have `localTime` field for easy correlation

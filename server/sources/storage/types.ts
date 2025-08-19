@@ -60,6 +60,18 @@ declare global {
                 value: string | null;
                 version: number;
             } | null | undefined;
+        } | {
+            t: 'update-machine';
+            machineId: string;
+            metadata?: {
+                value: string;
+                version: number;
+            };
+            daemonState?: {
+                value: string;
+                version: number;
+            };
+            activeAt?: number;
         };
     }
 }
