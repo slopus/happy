@@ -248,7 +248,6 @@ export class EventRouter {
                 continue;
             }
 
-            log({ module: 'websocket' }, `Sending ${params.eventName} to ${connection.connectionType} connection ${connection.socket.id}`);
             connection.socket.emit(params.eventName, params.payload);
         }
     }
