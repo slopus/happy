@@ -5,6 +5,7 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
+import type { MachineMetadata } from './storageTypes';
 
 // Strict type definitions for all operations
 
@@ -152,6 +153,66 @@ export async function machineStopDaemon(machineId: string): Promise<{ message: s
         {}
     );
     return result;
+}
+
+/**
+ * Update machine metadata with optimistic concurrency control and automatic retry
+ */
+export async function machineUpdateMetadata(
+    machineId: string, 
+    metadata: MachineMetadata, 
+    expectedVersion: number,
+    maxRetries: number = 3
+): Promise<{ version: number; metadata: string }> {
+    let currentVersion = expectedVersion;
+    let currentMetadata = { ...metadata };
+    let retryCount = 0;
+    
+    while (retryCount < maxRetries) {
+        const encryptedMetadata = sync.encryption.encryptRaw(currentMetadata);
+        
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+            message?: string;
+        }>('machine-update-metadata', {
+            machineId,
+            metadata: encryptedMetadata,
+            expectedVersion: currentVersion
+        });
+
+        if (result.result === 'success') {
+            return {
+                version: result.version!,
+                metadata: result.metadata!
+            };
+        } else if (result.result === 'version-mismatch') {
+            // Get the latest version and metadata from the response
+            currentVersion = result.version!;
+            const latestMetadata = sync.encryption.decryptRaw(result.metadata!) as MachineMetadata;
+            
+            // Merge our changes with the latest metadata
+            // Preserve the displayName we're trying to set, but use latest values for other fields
+            currentMetadata = {
+                ...latestMetadata,
+                displayName: metadata.displayName // Keep our intended displayName change
+            };
+            
+            retryCount++;
+            
+            // If we've exhausted retries, throw error
+            if (retryCount >= maxRetries) {
+                throw new Error(`Failed to update after ${maxRetries} retries due to version conflicts`);
+            }
+            
+            // Otherwise, loop will retry with updated version and merged metadata
+        } else {
+            throw new Error(result.message || 'Failed to update machine metadata');
+        }
+    }
+    
+    throw new Error('Unexpected error in machineUpdateMetadata');
 }
 
 /**

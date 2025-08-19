@@ -127,6 +127,13 @@ class ApiSocket {
         return true;
     }
 
+    async emitWithAck<T = any>(event: string, data: any): Promise<T> {
+        if (!this.socket) {
+            throw new Error('Socket not connected');
+        }
+        return await this.socket.emitWithAck(event, data);
+    }
+
     //
     // HTTP Requests
     //
