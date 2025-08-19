@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, TextInput, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -8,7 +8,7 @@ import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { machineSpawnNewSession, machineStopDaemon } from '@/sync/ops';
+import { machineSpawnNewSession, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -23,6 +23,7 @@ export default function MachineDetailScreen() {
     const machines = useAllMachines();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
+    const [isRenamingMachine, setIsRenamingMachine] = useState(false);
 
     const machine = useMemo(() => {
         return machines.find(m => m.id === machineId);
@@ -156,6 +157,45 @@ export default function MachineDetailScreen() {
         setIsRefreshing(false);
     };
 
+    const handleRenameMachine = async () => {
+        if (!machine || !machineId) return;
+
+        Modal.show({
+            component: ({ onClose }: { onClose: () => void }) => (
+                <RenameMachineModal
+                    machine={machine}
+                    onClose={onClose}
+                    onRename={async (newDisplayName: string) => {
+                        setIsRenamingMachine(true);
+                        try {
+                            const updatedMetadata = {
+                                ...machine.metadata!,
+                                displayName: newDisplayName.trim() || undefined
+                            };
+                            
+                            await machineUpdateMetadata(
+                                machineId,
+                                updatedMetadata,
+                                machine.metadataVersion
+                            );
+                            
+                            Modal.alert('Success', 'Machine renamed successfully');
+                        } catch (error) {
+                            Modal.alert(
+                                'Error',
+                                error instanceof Error ? error.message : 'Failed to rename machine'
+                            );
+                            // Refresh to get latest state
+                            await sync.refreshMachines();
+                        } finally {
+                            setIsRenamingMachine(false);
+                        }
+                    }}
+                />
+            )
+        });
+    };
+
     const pastUsedRelativePath = useCallback((session: Session) => {
         if (!session.metadata) return 'unknown path';
         return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
@@ -181,7 +221,7 @@ export default function MachineDetailScreen() {
     }
 
     const metadata = machine.metadata;
-    const machineName = metadata?.host || 'unknown machine';
+    const machineName = metadata?.displayName || metadata?.host || 'unknown machine';
 
     return (
         <>
@@ -217,6 +257,23 @@ export default function MachineDetailScreen() {
                                 </Text>
                             </View>
                         </View>
+                    ),
+                    headerRight: () => (
+                        <Pressable
+                            onPress={handleRenameMachine}
+                            style={{
+                                paddingHorizontal: 8,
+                                paddingVertical: 4,
+                                opacity: isRenamingMachine ? 0.5 : 1
+                            }}
+                            disabled={isRenamingMachine}
+                        >
+                            <Ionicons
+                                name="pencil"
+                                size={20}
+                                color="#007AFF"
+                            />
+                        </Pressable>
                     ),
                     headerBackTitle: 'Back'
                 }}
@@ -368,5 +425,126 @@ export default function MachineDetailScreen() {
                 </ItemGroup>
             </ItemList>
         </>
+    );
+}
+
+// Modal component for renaming machine
+function RenameMachineModal({ 
+    machine, 
+    onClose, 
+    onRename 
+}: { 
+    machine: any; 
+    onClose: () => void; 
+    onRename: (newDisplayName: string) => Promise<void>; 
+}) {
+    const [displayName, setDisplayName] = useState(machine.metadata?.displayName || '');
+    const [isRenaming, setIsRenaming] = useState(false);
+
+    const handleRename = async () => {
+        setIsRenaming(true);
+        try {
+            await onRename(displayName);
+            onClose();
+        } catch (error) {
+            // Error handling is done in the parent component
+        } finally {
+            setIsRenaming(false);
+        }
+    };
+
+    return (
+        <View style={{ 
+            padding: 20, 
+            backgroundColor: 'white', 
+            borderRadius: 12, 
+            minWidth: 300,
+            maxWidth: 400
+        }}>
+            <Text style={{ 
+                fontSize: 18, 
+                fontWeight: '600', 
+                marginBottom: 8,
+                ...Typography.default('semiBold')
+            }}>
+                Rename Machine
+            </Text>
+            
+            <Text style={{ 
+                fontSize: 14, 
+                color: '#666', 
+                marginBottom: 16,
+                ...Typography.default()
+            }}>
+                Give this machine a custom name. Leave empty to use the default hostname.
+            </Text>
+            
+            <TextInput
+                style={{
+                    borderWidth: 1,
+                    borderColor: '#ddd',
+                    borderRadius: 8,
+                    padding: 12,
+                    fontSize: 16,
+                    marginBottom: 8,
+                    ...Typography.default()
+                }}
+                value={displayName}
+                onChangeText={setDisplayName}
+                placeholder={machine.metadata?.host || 'Enter machine name'}
+                placeholderTextColor="#999"
+                autoFocus
+                editable={!isRenaming}
+            />
+            
+            <Text style={{ 
+                fontSize: 12, 
+                color: '#666', 
+                marginBottom: 20,
+                ...Typography.default()
+            }}>
+                Default: {machine.metadata?.host || 'Unknown'}
+            </Text>
+            
+            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                <Pressable
+                    onPress={onClose}
+                    style={{ 
+                        paddingVertical: 8, 
+                        paddingHorizontal: 16, 
+                        marginRight: 8,
+                        opacity: isRenaming ? 0.5 : 1
+                    }}
+                    disabled={isRenaming}
+                >
+                    <Text style={{ 
+                        color: '#007AFF', 
+                        fontSize: 16,
+                        ...Typography.default()
+                    }}>
+                        Cancel
+                    </Text>
+                </Pressable>
+                
+                <Pressable
+                    onPress={handleRename}
+                    style={{ 
+                        paddingVertical: 8, 
+                        paddingHorizontal: 16,
+                        opacity: isRenaming ? 0.5 : 1
+                    }}
+                    disabled={isRenaming}
+                >
+                    <Text style={{ 
+                        color: '#007AFF', 
+                        fontSize: 16, 
+                        fontWeight: '600',
+                        ...Typography.default('semiBold')
+                    }}>
+                        {isRenaming ? 'Renaming...' : 'Rename'}
+                    </Text>
+                </Pressable>
+            </View>
+        </View>
     );
 }

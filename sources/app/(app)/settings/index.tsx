@@ -216,14 +216,27 @@ export default function SettingsScreen() {
                     {sortedMachines.map((machine) => {
                         const isOnline = isMachineOnline(machine);
                         const host = machine.metadata?.host || 'Unknown';
+                        const displayName = machine.metadata?.displayName;
                         const platform = machine.metadata?.platform || '';
-                        const subtitle = platform ? `${host} • ${platform}` : host;
+                        
+                        // Use displayName if available, otherwise use host
+                        const title = displayName || host;
+                        
+                        // Build subtitle: show hostname if different from title, plus platform and status
+                        let subtitle = '';
+                        if (displayName && displayName !== host) {
+                            subtitle = host;
+                        }
+                        if (platform) {
+                            subtitle = subtitle ? `${subtitle} • ${platform}` : platform;
+                        }
+                        subtitle = subtitle ? `${subtitle} • ${isOnline ? 'Online' : 'Offline'}` : (isOnline ? 'Online' : 'Offline');
                         
                         return (
                             <Item
                                 key={machine.id}
-                                title={host}
-                                subtitle={`${subtitle} • ${isOnline ? 'Online' : 'Offline'}`}
+                                title={title}
+                                subtitle={subtitle}
                                 icon={
                                     <Ionicons 
                                         name="desktop-outline" 

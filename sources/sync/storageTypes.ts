@@ -93,6 +93,7 @@ export const MachineMetadataSchema = z.object({
     // Optional fields that may be added in future versions
     username: z.string().optional(),
     arch: z.string().optional(),
+    displayName: z.string().optional(), // Custom display name for the machine
     // Daemon status fields
     daemonLastKnownStatus: z.enum(['running', 'shutting-down']).optional(),
     daemonLastKnownPid: z.number().optional(),

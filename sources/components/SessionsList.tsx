@@ -100,7 +100,7 @@ export function SessionsList() {
                             {item.displayPath}
                         </Text>
                         <Text style={{ fontSize: 11, color: '#8E8E93', marginTop: 2, ...Typography.default() }}>
-                            {item.machine.metadata?.host || item.machine.id}
+                            {item.machine.metadata?.displayName || item.machine.metadata?.host || item.machine.id}
                         </Text>
                     </View>
                 );
