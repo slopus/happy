@@ -162,7 +162,8 @@ const SessionItem = React.memo(({ session, selected }: { session: Session; selec
                         alignItems: 'center',
                         justifyContent: 'center',
                         height: 16,
-                        marginTop: 2
+                        marginTop: 2,
+                        marginRight: 4
                     }}>
                         <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
                     </View>
