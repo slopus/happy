@@ -160,8 +160,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     }), [screenWidth]);
 
     const maintainVisibleContentPosition = useMemo(() => ({
-        minIndexForVisible: 0,
-        autoscrollToTopThreshold: 100,
+        minIndexForVisible: 1,
+        autoscrollToBottomThreshold: 50,
     }), []);
 
     const ListFooter = useCallback(() => (
