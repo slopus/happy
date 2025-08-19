@@ -616,14 +616,28 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             }
 
-            // Check if sets are equal
-            if (shouldBeActiveSet.size === currentActiveSet.size &&
-                [...shouldBeActiveSet].every(id => currentActiveSet.has(id))) {
-                // No changes needed, return same state
-                return state;
+            // Check if active/inactive categorization has changed
+            const setsAreEqual = shouldBeActiveSet.size === currentActiveSet.size &&
+                [...shouldBeActiveSet].every(id => currentActiveSet.has(id));
+
+            // Always update sessions to ensure presence changes trigger re-renders
+            // Only skip rebuilding sessionsData if categorization hasn't changed
+            if (setsAreEqual) {
+                // Build new unified list view data with updated sessions
+                const sessionListViewData = buildSessionListViewData(
+                    updatedSessions,
+                    state.machines,
+                    state.sessionListViewData
+                );
+
+                return {
+                    ...state,
+                    sessions: updatedSessions,
+                    sessionListViewData
+                };
             }
 
-            // Rebuild active and inactive lists
+            // Rebuild active and inactive lists when categorization has changed
             const newActiveSessions: Session[] = [];
             const newInactiveSessions: Session[] = [];
 
