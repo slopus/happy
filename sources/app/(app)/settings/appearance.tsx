@@ -7,12 +7,23 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { useSettingMutable } from '@/sync/storage';
 
+// Define known avatar styles for this version of the app
+type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
+
+const isKnownAvatarStyle = (style: string): style is KnownAvatarStyle => {
+    return style === 'pixelated' || style === 'gradient' || style === 'brutalist';
+};
+
 export default function AppearanceSettingsScreen() {
     const [viewInline, setViewInline] = useSettingMutable('viewInline');
     const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
     const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
     const [showLineNumbersInToolViews, setShowLineNumbersInToolViews] = useSettingMutable('showLineNumbersInToolViews');
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
+    const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
+    
+    // Ensure we have a valid style for display, defaulting to gradient for unknown values
+    const displayStyle: KnownAvatarStyle = isKnownAvatarStyle(avatarStyle) ? avatarStyle : 'gradient';
     return (
         <ItemList style={{ paddingTop: 0 }}>
 
@@ -114,6 +125,18 @@ export default function AppearanceSettingsScreen() {
                             thumbColor="#fff"
                         />
                     }
+                />
+                <Item
+                    title="Avatar Style"
+                    subtitle="Choose session avatar appearance"
+                    icon={<Ionicons name="person-circle-outline" size={29} color="#5856D6" />}
+                    detail={displayStyle === 'pixelated' ? 'Pixelated' : displayStyle === 'brutalist' ? 'Brutalist' : 'Gradient'}
+                    onPress={() => {
+                        const currentIndex = displayStyle === 'pixelated' ? 0 : displayStyle === 'gradient' ? 1 : 2;
+                        const nextIndex = (currentIndex + 1) % 3;
+                        const nextStyle = nextIndex === 0 ? 'pixelated' : nextIndex === 1 ? 'gradient' : 'brutalist';
+                        setAvatarStyle(nextStyle);
+                    }}
                 />
                 {/* <Item
                     title="Compact Mode"

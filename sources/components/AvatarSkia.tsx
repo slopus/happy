@@ -1,5 +1,5 @@
 import * as React from "react";
-import { View } from "react-native";
+import { Canvas, Rect, Group, Skia } from "@shopify/react-native-skia";
 
 const ELEMENTS = 64;
 const GRID_SIZE = 8; // 8x8 grid
@@ -54,10 +54,11 @@ interface AvatarProps {
 const colors = ['#0a0310', '#49007e', '#ff005b', '#ff7d10', '#ffb238'];
 const grayscaleColors = ['#070707', '#242424', '#575757', '#979797', '#bbbbbb'];
 
-export const Avatar = React.memo((props: AvatarProps) => {
+export const AvatarSkia = React.memo((props: AvatarProps) => {
     const { id, square, size = 48, monochrome } = props;
+    
     const defaultColors = monochrome ? grayscaleColors : colors;
-    const pixelColors = React.useMemo(() => generateColors(id, defaultColors, monochrome), [id, defaultColors]);
+    const pixelColors = generateColors(id, defaultColors, monochrome);
     
     // Calculate cell size based on the avatar size
     const cellSize = size / GRID_SIZE;
@@ -80,34 +81,31 @@ export const Avatar = React.memo((props: AvatarProps) => {
         return positions;
     }, [cellSize]);
 
+    // Create clipping path
+    const clipPath = React.useMemo(() => {
+        const path = Skia.Path.Make();
+        if (square) {
+            path.addRect(Skia.XYWHRect(0, 0, size, size));
+        } else {
+            path.addRRect(Skia.RRectXY(Skia.XYWHRect(0, 0, size, size), size/2, size/2));
+        }
+        return path;
+    }, [square, size]);
+
     return (
-        <View
-            style={{
-                width: size,
-                height: size,
-                overflow: 'hidden',
-                borderRadius: square ? 0 : size / 2,
-            }}
-        >
-            <svg
-                width={size}
-                height={size}
-                viewBox={`0 0 ${size} ${size}`}
-                style={{ display: 'block' }}
-            >
-                <g clipPath={square ? undefined : `url(#avatar-clip-${id})`}>
-                    {rects.map((rect, index) => (
-                        <rect
-                            key={index}
-                            x={rect.x}
-                            y={rect.y}
-                            width={cellSize}
-                            height={cellSize}
-                            fill={pixelColors[rect.colorIndex]}
-                        />
-                    ))}
-                </g>
-            </svg>
-        </View>
+        <Canvas style={{ width: size, height: size }}>
+            <Group clip={clipPath}>
+                {rects.map((rect, index) => (
+                    <Rect
+                        key={index}
+                        x={rect.x}
+                        y={rect.y}
+                        width={cellSize}
+                        height={cellSize}
+                        color={pixelColors[rect.colorIndex]}
+                    />
+                ))}
+            </Group>
+        </Canvas>
     );
 });

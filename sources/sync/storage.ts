@@ -4,7 +4,6 @@ import { Session, Machine, GitStatus } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
-import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
@@ -57,6 +56,7 @@ interface SessionMessages {
 // Unified list item type for SessionsList component
 export type SessionListViewItem =
     | { type: 'header'; title: string }
+    | { type: 'active-sessions'; sessions: Session[] }
     | { type: 'project-group'; displayPath: string; machine: Machine }
     | { type: 'session'; session: Session; variant?: 'default' | 'no-path' };
 
@@ -102,11 +102,9 @@ interface StorageState {
 
 // Helper function to build unified list view data from sessions and machines
 function buildSessionListViewData(
-    sessions: Record<string, Session>,
-    machines: Record<string, Machine>,
-    previousData?: SessionListViewItem[] | null
+    sessions: Record<string, Session>
 ): SessionListViewItem[] {
-    // Categorize sessions into active and inactive
+    // Separate all sessions into active and inactive
     const activeSessions: Session[] = [];
     const inactiveSessions: Session[] = [];
 
@@ -118,127 +116,25 @@ function buildSessionListViewData(
         }
     });
 
-    // Build project groups from active sessions
-    const projectGroups = new Map<string, {
-        machine: Machine;
-        path: string;
-        sessions: Session[];
-        oldestCreatedAt: number;
-    }>();
-
-    // Separate sessions with and without machineId/path
-    const standaloneActiveSessions: Session[] = [];
-
-    activeSessions.forEach(session => {
-        if (!session.metadata?.machineId || !session.metadata?.path) {
-            // Sessions without machineId/path will be shown as standalone
-            // console.log(`📊 Storage: Session ${session.id} missing machineId or path - machineId: ${session.metadata?.machineId}, path: ${session.metadata?.path}`);
-            standaloneActiveSessions.push(session);
-            return;
-        }
-
-        const machine = machines[session.metadata.machineId];
-        if (!machine) {
-            // Machine not found, show as standalone
-            // console.log(`📊 Storage: Machine ${session.metadata.machineId} not found for session ${session.id}`);
-            standaloneActiveSessions.push(session);
-            return;
-        }
-
-        const groupKey = `${session.metadata.machineId}:${session.metadata.path}`;
-        const existing = projectGroups.get(groupKey);
-
-        if (existing) {
-            existing.sessions.push(session);
-            existing.oldestCreatedAt = Math.min(existing.oldestCreatedAt, session.createdAt);
-        } else {
-            projectGroups.set(groupKey, {
-                machine,
-                path: session.metadata.path,
-                sessions: [session],
-                oldestCreatedAt: session.createdAt
-            });
-        }
-    });
-
-    // Sort sessions within each group by createdAt (oldest first)
-    projectGroups.forEach(group => {
-        group.sessions.sort((a, b) => a.createdAt - b.createdAt);
-    });
-
-    // Extract sort keys from previous data to maintain stability
-    const previousSortKeys = new Map<string, number>();
-    if (previousData) {
-        let sortKey = 0;
-        previousData.forEach(item => {
-            if (item.type === 'project-group') {
-                const groupKey = `${item.machine.id}:${item.displayPath}`;
-                previousSortKeys.set(groupKey, sortKey++);
-            }
-        });
-    }
-
-    // Sort project groups - use previous sort keys when available, otherwise use oldest session createdAt
-    const sortedGroups = Array.from(projectGroups.entries()).sort(([keyA, groupA], [keyB, groupB]) => {
-        const prevSortA = previousSortKeys.get(keyA);
-        const prevSortB = previousSortKeys.get(keyB);
-
-        if (prevSortA !== undefined && prevSortB !== undefined) {
-            return prevSortA - prevSortB;
-        }
-        if (prevSortA !== undefined) return -1;
-        if (prevSortB !== undefined) return 1;
-
-        // New groups - sort by oldest session creation time (newest groups first)
-        return groupB.oldestCreatedAt - groupA.oldestCreatedAt;
-    });
-
-    // Sort standalone active sessions by creation date (newest first)
-    standaloneActiveSessions.sort((a, b) => b.createdAt - a.createdAt);
-
-    // Sort inactive sessions by creation date
+    // Sort active sessions by creation date (newest first)
+    activeSessions.sort((a, b) => b.createdAt - a.createdAt);
+    
+    // Sort inactive sessions by creation date (newest first)
     inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
 
-    // Active sessions section with project groups and standalone sessions
-    if (sortedGroups.length > 0 || standaloneActiveSessions.length > 0) {
-        listData.push({ type: 'header', title: 'Active Sessions' });
-
-        sortedGroups.forEach(([_, group]) => {
-            // Use the first session's homeDir to format the path
-            const firstSession = group.sessions[0];
-            const displayPath = formatPathRelativeToHome(group.path, firstSession.metadata?.homeDir);
-
-            listData.push({
-                type: 'project-group',
-                displayPath,
-                machine: group.machine
-            });
-
-            group.sessions.forEach(session =>
-                listData.push({
-                    type: 'session',
-                    session,
-                    variant: 'no-path'
-                })
-            );
-        });
-
-        // Add standalone active sessions (without project groups)
-        standaloneActiveSessions.forEach(session =>
-            listData.push({
-                type: 'session',
-                session,
-                variant: 'default'
-            })
-        );
+    // Add active sessions as a single item at the top (if any)
+    if (activeSessions.length > 0) {
+        listData.push({ type: 'active-sessions', sessions: activeSessions });
     }
 
-    // Inactive sessions section
+    // Add previous sessions header if we have any inactive sessions
     if (inactiveSessions.length > 0) {
         listData.push({ type: 'header', title: 'Previous Sessions' });
+        
+        // Add all inactive sessions individually (no grouping)
         inactiveSessions.forEach(session =>
             listData.push({ type: 'session', session })
         );
@@ -424,9 +320,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Build new unified list view data
             const sessionListViewData = buildSessionListViewData(
-                mergedSessions,
-                state.machines,
-                state.sessionListViewData
+                mergedSessions
             );
 
             return {
@@ -620,9 +514,7 @@ export const storage = create<StorageState>()((set, get) => {
             if (setsAreEqual) {
                 // Build new unified list view data with updated sessions
                 const sessionListViewData = buildSessionListViewData(
-                    updatedSessions,
-                    state.machines,
-                    state.sessionListViewData
+                    updatedSessions
                 );
 
                 return {
@@ -666,9 +558,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Build new unified list view data
             const sessionListViewData = buildSessionListViewData(
-                updatedSessions,
-                state.machines,
-                state.sessionListViewData
+                updatedSessions
             );
 
             return {
@@ -777,9 +667,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Rebuild sessionListViewData to update the UI immediately
             const sessionListViewData = buildSessionListViewData(
-                updatedSessions,
-                state.machines,
-                state.sessionListViewData
+                updatedSessions
             );
 
             return {
@@ -857,9 +745,7 @@ export const storage = create<StorageState>()((set, get) => {
             
             // Rebuild sessionListViewData to reflect machine changes
             const sessionListViewData = buildSessionListViewData(
-                state.sessions,
-                mergedMachines,
-                state.sessionListViewData
+                state.sessions
             );
             
             return {
