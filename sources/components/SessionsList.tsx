@@ -4,15 +4,15 @@ import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
 import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
+import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
 
 export function SessionsList() {
-    const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const data = useSessionListViewData();
     const pathname = usePathname();
@@ -34,6 +34,7 @@ export function SessionsList() {
     const keyExtractor = React.useCallback((item: SessionListViewItem & { selected?: boolean }, index: number) => {
         switch (item.type) {
             case 'header': return `header-${item.title}-${index}`;
+            case 'active-sessions': return 'active-sessions';
             case 'project-group': return `project-group-${item.machine.id}-${item.displayPath}-${index}`;
             case 'session': return `session-${item.session.id}`;
         }
@@ -48,6 +49,14 @@ export function SessionsList() {
                             {item.title}
                         </Text>
                     </View>
+                );
+
+            case 'active-sessions':
+                return (
+                    <ActiveSessionsGroup 
+                        sessions={item.sessions} 
+                        selectedSessionId={pathname.startsWith('/session/') ? pathname.split('/session/')[1] : undefined}
+                    />
                 );
 
             case 'project-group':
@@ -71,7 +80,7 @@ export function SessionsList() {
                     <SessionItem session={item.session} selected={item.selected} />
                 );
         }
-    }, [router]);
+    }, [pathname]);
 
     // ItemSeparatorComponent for FlashList
     const ItemSeparatorComponent = React.useCallback(({ leadingItem, trailingItem }: any) => {
