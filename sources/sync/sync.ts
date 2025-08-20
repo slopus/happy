@@ -5,7 +5,7 @@ import { ApiEncryption } from '@/sync/apiEncryption';
 import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema, ApiEphemeralActivityUpdateSchema } from './apiTypes';
 import type { ApiEphemeralUpdate, ApiEphemeralActivityUpdate } from './apiTypes';
-import { DecryptedMessage, Session, Machine } from './storageTypes';
+import { DecryptedMessage, Session, Machine, MachineApi, MachineApiSchema, MachineMetadataSchema, DaemonStateSchema } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
@@ -473,33 +473,48 @@ class Sync {
 
         const data = await response.json();
         console.log(`📊 Sync: Fetched ${Array.isArray(data) ? data.length : 0} machines from server`);
-        const machines = data as Array<{
-            id: string;
-            metadata: string;
-            metadataVersion: number;
-            daemonState?: string | null;
-            daemonStateVersion?: number;
-            seq: number;
-            active: boolean;
-            activeAt: number;  // Changed from lastActiveAt
-            createdAt: number;
-            updatedAt: number;
-        }>;
+        
+        // Validate each machine from the API
+        const machines: MachineApi[] = [];
+        if (Array.isArray(data)) {
+            for (const rawMachine of data) {
+                const parsed = MachineApiSchema.safeParse(rawMachine);
+                if (parsed.success) {
+                    machines.push(parsed.data);
+                } else {
+                    console.error(`Invalid machine data from server:`, parsed.error.message);
+                }
+            }
+        }
 
         // Process all machines first, then update state once
         const decryptedMachines: Machine[] = [];
         
         for (const machine of machines) {
             try {
-                // Decrypt metadata if present - decryptRaw already returns parsed JSON
-                const metadata = machine.metadata 
-                    ? this.encryption.decryptRaw(machine.metadata)
-                    : null;
+                // Decrypt and validate metadata if present
+                let metadata = null;
+                if (machine.metadata) {
+                    const decryptedMeta = this.encryption.decryptRaw(machine.metadata);
+                    const parsedMeta = MachineMetadataSchema.safeParse(decryptedMeta);
+                    if (parsedMeta.success) {
+                        metadata = parsedMeta.data;
+                    } else {
+                        console.error(`Invalid machine metadata for ${machine.id}:`, parsedMeta.error.message);
+                    }
+                }
                 
-                // Decrypt daemonState if present
-                const daemonState = machine.daemonState 
-                    ? this.encryption.decryptRaw(machine.daemonState)
-                    : null;
+                // Decrypt and validate daemonState if present
+                let daemonState = null;
+                if (machine.daemonState) {
+                    const decryptedState = this.encryption.decryptRaw(machine.daemonState);
+                    const parsedState = DaemonStateSchema.safeParse(decryptedState);
+                    if (parsedState.success) {
+                        daemonState = parsedState.data;
+                    } else {
+                        console.error(`Invalid daemon state for ${machine.id}:`, parsedState.error.message);
+                    }
+                }
 
                 decryptedMachines.push({
                     id: machine.id,
@@ -512,7 +527,7 @@ class Sync {
                     metadataVersion: machine.metadataVersion,
                     daemonState,
                     daemonStateVersion: machine.daemonStateVersion || 0
-                });
+                } as Machine);
             } catch (error) {
                 console.error(`Failed to decrypt machine ${machine.id}:`, error);
                 // Still add the machine with null metadata
