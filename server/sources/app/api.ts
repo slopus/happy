@@ -34,7 +34,9 @@ import {
     decrementWebSocketConnection, 
     sessionAliveEventsCounter, 
     machineAliveEventsCounter,
-    websocketEventsCounter
+    websocketEventsCounter,
+    httpRequestsCounter,
+    httpRequestDurationHistogram
 } from "@/modules/metrics";
 import { activityCache } from "@/modules/sessionCache";
 
@@ -42,6 +44,7 @@ import { activityCache } from "@/modules/sessionCache";
 declare module 'fastify' {
     interface FastifyRequest {
         userId: string;
+        startTime?: number;
     }
     interface FastifyInstance {
         authenticate: any;
@@ -70,6 +73,25 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
     const typed = app.withTypeProvider<ZodTypeProvider>();
+
+    // Add metrics hooks
+    app.addHook('onRequest', async (request, reply) => {
+        request.startTime = Date.now();
+    });
+
+    app.addHook('onResponse', async (request, reply) => {
+        const duration = (Date.now() - (request.startTime || Date.now())) / 1000;
+        const method = request.method;
+        // Use routeOptions.url for the route template, fallback to parsed URL path
+        const route = request.routeOptions?.url || request.url.split('?')[0] || 'unknown';
+        const status = reply.statusCode.toString();
+
+        // Increment request counter
+        httpRequestsCounter.inc({ method, route, status });
+        
+        // Record request duration
+        httpRequestDurationHistogram.observe({ method, route, status }, duration);
+    });
 
     // Authentication decorator
     app.decorate('authenticate', async function (request: any, reply: any) {
