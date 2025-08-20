@@ -3,7 +3,7 @@
 
 generator client {
     provider        = "prisma-client-js"
-    previewFeatures = ["metrics"]
+    previewFeatures = ["metrics", "relationJoins"]
 }
 
 generator json {
@@ -88,6 +88,7 @@ model Session {
     usageReports      UsageReport[]
 
     @@unique([accountId, tag])
+    @@index([accountId, updatedAt(sort: Desc)])
 }
 
 model SessionMessage {
@@ -102,6 +103,7 @@ model SessionMessage {
     updatedAt DateTime @updatedAt
 
     @@unique([sessionId, localId])
+    @@index([sessionId, seq])
 }
 
 //
