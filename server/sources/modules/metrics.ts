@@ -1,4 +1,8 @@
 import { register, Counter, Gauge, Histogram } from 'prom-client';
+import { db } from '@/storage/db';
+import { forever } from '@/utils/forever';
+import { delay } from '@/utils/delay';
+import { shutdownSignal } from '@/utils/shutdown';
 
 // Application metrics
 export const websocketConnectionsGauge = new Gauge({
@@ -56,6 +60,14 @@ export const httpRequestDurationHistogram = new Histogram({
     registers: [register]
 });
 
+// Database count metrics
+export const databaseRecordCountGauge = new Gauge({
+    name: 'database_records_total',
+    help: 'Total number of records in database tables',
+    labelNames: ['table'] as const,
+    registers: [register]
+});
+
 // WebSocket connection tracking
 const connectionCounts = {
     'user-scoped': 0,
@@ -71,6 +83,32 @@ export function incrementWebSocketConnection(type: 'user-scoped' | 'session-scop
 export function decrementWebSocketConnection(type: 'user-scoped' | 'session-scoped' | 'machine-scoped'): void {
     connectionCounts[type] = Math.max(0, connectionCounts[type] - 1);
     websocketConnectionsGauge.set({ type }, connectionCounts[type]);
+}
+
+// Database metrics updater
+export async function updateDatabaseMetrics(): Promise<void> {
+    // Query counts for each table
+    const [accountCount, sessionCount, messageCount, machineCount] = await Promise.all([
+        db.account.count(),
+        db.session.count(),
+        db.sessionMessage.count(),
+        db.machine.count()
+    ]);
+
+    // Update metrics
+    databaseRecordCountGauge.set({ table: 'accounts' }, accountCount);
+    databaseRecordCountGauge.set({ table: 'sessions' }, sessionCount);
+    databaseRecordCountGauge.set({ table: 'messages' }, messageCount);
+    databaseRecordCountGauge.set({ table: 'machines' }, machineCount);
+}
+
+export function startDatabaseMetricsUpdater(): void {
+    forever('database-metrics-updater', async () => {
+        await updateDatabaseMetrics();
+        
+        // Wait 60 seconds before next update
+        await delay(60 * 1000, shutdownSignal);
+    });
 }
 
 // Export the register for combining metrics

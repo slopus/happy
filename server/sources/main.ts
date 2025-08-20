@@ -7,6 +7,7 @@ import { redis } from "./services/redis";
 import { startMetricsServer } from "@/app/metrics";
 import { activityCache } from "@/modules/sessionCache";
 import { auth } from "./modules/auth";
+import { startDatabaseMetricsUpdater } from "@/modules/metrics";
 
 async function main() {
 
@@ -29,6 +30,7 @@ async function main() {
 
     await startApi();
     await startMetricsServer();
+    startDatabaseMetricsUpdater();
     startTimeout();
 
     //
