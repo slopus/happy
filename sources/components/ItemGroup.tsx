@@ -9,6 +9,7 @@ import {
 } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { layout } from './layout';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 interface ItemChildProps {
     showDivider?: boolean;
@@ -27,7 +28,67 @@ export interface ItemGroupProps {
     containerStyle?: StyleProp<ViewStyle>;
 }
 
+const stylesheet = StyleSheet.create((theme, runtime) => ({
+    wrapper: {
+        alignItems: 'center',
+    },
+    container: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        paddingHorizontal: Platform.select({ ios: 0, default: 4 }),
+    },
+    header: {
+        paddingTop: Platform.select({ ios: 35, default: 16 }),
+        paddingBottom: Platform.select({ ios: 6, default: 8 }),
+        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+    },
+    headerNoTitle: {
+        paddingTop: Platform.select({ ios: 20, default: 16 }),
+    },
+    headerText: {
+        ...Typography.default('regular'),
+        color: theme.colors.headerText,
+        fontSize: Platform.select({ ios: 13, default: 14 }),
+        lineHeight: Platform.select({ ios: 18, default: 20 }),
+        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+        textTransform: 'uppercase',
+        fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+    },
+    contentContainer: {
+        backgroundColor: theme.colors.cardBackground,
+        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
+        borderRadius: Platform.select({ ios: 10, default: 16 }),
+        overflow: 'hidden',
+        ...Platform.select({
+            ios: {
+                shadowColor: theme.colors.shadowColor,
+                shadowOffset: { width: 0, height: 0.33 },
+                shadowOpacity: 0.05,
+                shadowRadius: 0,
+            },
+            default: {
+                elevation: 1,
+            },
+        }),
+    },
+    footer: {
+        paddingTop: Platform.select({ ios: 6, default: 8 }),
+        paddingBottom: Platform.select({ ios: 8, default: 16 }),
+        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+    },
+    footerText: {
+        ...Typography.default('regular'),
+        color: theme.colors.headerText,
+        fontSize: Platform.select({ ios: 13, default: 14 }),
+        lineHeight: Platform.select({ ios: 18, default: 20 }),
+        letterSpacing: Platform.select({ ios: -0.08, default: 0 }),
+    },
+}));
+
 export const ItemGroup = React.memo<ItemGroupProps>((props) => {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+    
     const {
         title,
         footer,
@@ -40,51 +101,14 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
         containerStyle
     } = props;
 
-    // Platform-specific measurements
-    const isIOS = Platform.OS === 'ios';
-    const isAndroid = Platform.OS === 'android';
-    const isWeb = Platform.OS === 'web';
-    const headerPaddingTop = (isIOS && !isWeb) ? 35 : 16;
-    const headerPaddingBottom = (isIOS && !isWeb) ? 6 : 8;
-    const footerPaddingTop = (isIOS && !isWeb) ? 6 : 8;
-    const footerPaddingBottom = (isIOS && !isWeb) ? 8 : 16;
-    const horizontalMargin = (isIOS && !isWeb) ? 16 : 12;
-    const borderRadius = (isIOS && !isWeb) ? 10 : 16; // Material 3 Expressive rounded corners
-
     return (
-        <View style={[{ alignItems: 'center' }, style]}>
-            <View style={{ width: '100%', maxWidth: layout.maxWidth, paddingHorizontal: (isAndroid || isWeb) ? 4 : 0 }}>
+        <View style={[styles.wrapper, style]}>
+            <View style={styles.container}>
                 {/* Header */}
                 {title ? (
-                    <View 
-                        style={[
-                            {
-                                paddingTop: headerPaddingTop,
-                                paddingBottom: headerPaddingBottom,
-                                paddingHorizontal: (isIOS && !isWeb) ? 32 : 24,
-                            },
-                            headerStyle
-                        ]}
-                    >
+                    <View style={[styles.header, headerStyle]}>
                         {typeof title === 'string' ? (
-                            <Text 
-                                style={[
-                                    Typography.default('regular'),
-                                    {
-                                        color: Platform.select({
-                                            ios: '#8E8E93',
-                                            android: '#49454F', // Material 3 onSurfaceVariant
-                                            default: '#8E8E93'
-                                        }),
-                                        fontSize: (isIOS && !isWeb) ? 13 : 14,
-                                        lineHeight: (isIOS && !isWeb) ? 18 : 20,
-                                        letterSpacing: (isIOS && !isWeb) ? -0.08 : 0.1,
-                                        textTransform: 'uppercase',
-                                        fontWeight: (isAndroid || isWeb) ? '500' : 'normal'
-                                    },
-                                    titleStyle
-                                ]}
-                            >
+                            <Text style={[styles.headerText, titleStyle]}>
                                 {title}
                             </Text>
                         ) : (
@@ -93,30 +117,11 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
                     </View>
                 ) : (
                     // Add top margin when there's no title
-                    <View style={{ paddingTop: (isIOS && !isWeb) ? 20 : 16 }} />
+                    <View style={styles.headerNoTitle} />
                 )}
 
                 {/* Content Container */}
-                <View 
-                    style={[
-                        {
-                            backgroundColor: '#FFFFFF',
-                            marginHorizontal: horizontalMargin,
-                            borderRadius: borderRadius,
-                            overflow: 'hidden',
-                            ...((isIOS && !isWeb) && {
-                                shadowColor: '#000',
-                                shadowOffset: { width: 0, height: 0.33 },
-                                shadowOpacity: 0.05,
-                                shadowRadius: 0
-                            }),
-                            ...((isAndroid || isWeb) && {
-                                elevation: 1, // Subtle elevation for Android
-                            })
-                        },
-                        containerStyle
-                    ]}
-                >
+                <View style={[styles.contentContainer, containerStyle]}>
                     {React.Children.map(children, (child, index) => {
                         if (React.isValidElement<ItemChildProps>(child)) {
                             // Don't add props to React.Fragment
@@ -136,32 +141,8 @@ export const ItemGroup = React.memo<ItemGroupProps>((props) => {
 
                 {/* Footer */}
                 {footer && (
-                    <View 
-                        style={[
-                            {
-                                paddingTop: footerPaddingTop,
-                                paddingBottom: footerPaddingBottom,
-                                paddingHorizontal: (isIOS && !isWeb) ? 32 : 24,
-                            },
-                            footerStyle
-                        ]}
-                    >
-                        <Text 
-                            style={[
-                                Typography.default('regular'),
-                                {
-                                    color: Platform.select({
-                                        ios: '#8E8E93',
-                                        android: '#49454F', // Material 3 onSurfaceVariant
-                                        default: '#8E8E93'
-                                    }),
-                                    fontSize: (isIOS && !isWeb) ? 13 : 14,
-                                    lineHeight: (isIOS && !isWeb) ? 18 : 20,
-                                    letterSpacing: (isIOS && !isWeb) ? -0.08 : 0
-                                },
-                                footerTextStyle
-                            ]}
-                        >
+                    <View style={[styles.footer, footerStyle]}>
+                        <Text style={[styles.footerText, footerTextStyle]}>
                             {footer}
                         </Text>
                     </View>

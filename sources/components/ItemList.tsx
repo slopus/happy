@@ -7,6 +7,7 @@ import {
     Platform,
     ScrollViewProps
 } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 export interface ItemListProps extends ScrollViewProps {
     children: React.ReactNode;
@@ -15,7 +16,21 @@ export interface ItemListProps extends ScrollViewProps {
     insetGrouped?: boolean;
 }
 
+const stylesheet = StyleSheet.create((theme, runtime) => ({
+    container: {
+        flex: 1,
+        backgroundColor: theme.colors.listBackground,
+    },
+    contentContainer: {
+        paddingBottom: Platform.select({ ios: 34, default: 16 }),
+        paddingTop: 0,
+    },
+}));
+
 export const ItemList = React.memo<ItemListProps>((props) => {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+    
     const {
         children,
         style,
@@ -26,27 +41,19 @@ export const ItemList = React.memo<ItemListProps>((props) => {
 
     const isIOS = Platform.OS === 'ios';
     const isWeb = Platform.OS === 'web';
-    const backgroundColor = Platform.select({
-        ios: isIOS && insetGrouped ? '#F2F2F7' : '#FFFFFF',
-        android: '#F5F5F5', // Light grey background
-        web: '#F5F5F5', // Match Android styling
-        default: '#FFFFFF'
-    });
+    
+    // Override background for non-inset grouped lists on iOS
+    const backgroundColor = (isIOS && !insetGrouped) ? '#FFFFFF' : theme.colors.listBackground;
 
     return (
         <ScrollView 
             style={[
-                {
-                    flex: 1,
-                    backgroundColor,
-                },
+                styles.container,
+                { backgroundColor },
                 style
             ]}
             contentContainerStyle={[
-                {
-                    paddingBottom: (isIOS && !isWeb) ? 34 : 16,
-                    paddingTop: 0,
-                },
+                styles.contentContainer,
                 containerStyle
             ]}
             showsVerticalScrollIndicator={scrollViewProps.showsVerticalScrollIndicator !== undefined 
@@ -66,6 +73,8 @@ export const ItemListStatic = React.memo<Omit<ItemListProps, keyof ScrollViewPro
     containerStyle?: StyleProp<ViewStyle>;
     insetGrouped?: boolean;
 }>((props) => {
+    const { theme } = useUnistyles();
+    
     const {
         children,
         style,
@@ -73,20 +82,15 @@ export const ItemListStatic = React.memo<Omit<ItemListProps, keyof ScrollViewPro
         insetGrouped = true
     } = props;
 
-    const isWeb = Platform.OS === 'web';
-    const backgroundColor = Platform.select({
-        ios: Platform.OS === 'ios' && insetGrouped ? '#F2F2F7' : '#FFFFFF',
-        android: '#F5F5F5', // Light grey background
-        web: '#F5F5F5', // Match Android styling
-        default: '#FFFFFF'
-    });
+    const isIOS = Platform.OS === 'ios';
+    
+    // Override background for non-inset grouped lists on iOS
+    const backgroundColor = (isIOS && !insetGrouped) ? '#FFFFFF' : theme.colors.listBackground;
 
     return (
         <View 
             style={[
-                {
-                    backgroundColor
-                },
+                { backgroundColor },
                 style
             ]}
         >

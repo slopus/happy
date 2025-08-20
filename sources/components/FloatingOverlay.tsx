@@ -1,27 +1,15 @@
 import * as React from 'react';
 import { Platform } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { StyleSheet } from 'react-native-unistyles';
 
-interface FloatingOverlayProps {
-    children: React.ReactNode;
-    maxHeight?: number;
-    showScrollIndicator?: boolean;
-    keyboardShouldPersistTaps?: boolean | 'always' | 'never' | 'handled';
-}
-
-export const FloatingOverlay = React.memo((props: FloatingOverlayProps) => {
-    const { 
-        children, 
-        maxHeight = 240, 
-        showScrollIndicator = false, 
-        keyboardShouldPersistTaps = 'handled' 
-    } = props;
-
-    // Container styles with shadow
-    const containerStyle = {
-        backgroundColor: 'white',
+const stylesheet = StyleSheet.create((theme, runtime) => ({
+    container: {
         borderRadius: 12,
-        maxHeight,
+        overflow: 'hidden',
+        backgroundColor: theme.colors.overlayBackground,
+        borderWidth: Platform.OS === 'web' ? 0 : 0.5,
+        borderColor: theme.colors.overlayBorder,
         ...Platform.select({
             ios: {
                 shadowColor: '#000',
@@ -36,13 +24,27 @@ export const FloatingOverlay = React.memo((props: FloatingOverlayProps) => {
                 boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.1)',
             },
         }),
-        borderWidth: Platform.OS === 'web' ? 0 : 0.5,
-        borderColor: 'rgba(0, 0, 0, 0.1)',
-        overflow: 'hidden' as const,
-    };
+    },
+}));
+
+interface FloatingOverlayProps {
+    children: React.ReactNode;
+    maxHeight?: number;
+    showScrollIndicator?: boolean;
+    keyboardShouldPersistTaps?: boolean | 'always' | 'never' | 'handled';
+}
+
+export const FloatingOverlay = React.memo((props: FloatingOverlayProps) => {
+    const styles = stylesheet;
+    const { 
+        children, 
+        maxHeight = 240, 
+        showScrollIndicator = false, 
+        keyboardShouldPersistTaps = 'handled' 
+    } = props;
 
     return (
-        <Animated.View style={containerStyle}>
+        <Animated.View style={[styles.container, { maxHeight }]}>
             <Animated.ScrollView
                 style={{ maxHeight }}
                 keyboardShouldPersistTaps={keyboardShouldPersistTaps}

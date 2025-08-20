@@ -6,6 +6,7 @@ import { Typography } from '@/constants/Typography';
 import { createHeader } from '@/components/navigation/Header';
 import { Platform } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
+import { useUnistyles } from 'react-native-unistyles';
 
 export const unstable_settings = {
     initialRouteName: 'index',
@@ -14,7 +15,8 @@ export const unstable_settings = {
 export default function RootLayout() {
     // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
     const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
-    
+    const { theme } = useUnistyles();
+
     return (
         <Stack
             initialRouteName='index'
@@ -23,14 +25,14 @@ export default function RootLayout() {
                 headerBackTitle: 'Back',
                 headerShadowVisible: false,
                 contentStyle: {
-                    backgroundColor: 'white',
+                    backgroundColor: theme.colors.background,
                 },
                 headerStyle: {
-                    backgroundColor: 'white',
+                    backgroundColor: theme.colors.headerBackground,
                 },
-                headerTintColor: '#000',
+                headerTintColor: theme.colors.primary,
                 headerTitleStyle: {
-                    color: '#000',
+                    color: theme.colors.primary,
                     ...Typography.default('semiBold'),
                 },
                 
