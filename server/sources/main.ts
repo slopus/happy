@@ -4,6 +4,8 @@ import { awaitShutdown, onShutdown } from "@/utils/shutdown";
 import { db } from './storage/db';
 import { startTimeout } from "./app/timeout";
 import { redis } from "./services/redis";
+import { startMetricsServer } from "@/app/metrics";
+import { activityCache } from "@/modules/sessionCache";
 
 async function main() {
 
@@ -12,6 +14,9 @@ async function main() {
     onShutdown('db', async () => {
         await db.$disconnect();
     });
+    onShutdown('activity-cache', async () => {
+        activityCache.shutdown();
+    });
     await redis.ping();
 
     //
@@ -19,6 +24,7 @@ async function main() {
     //
 
     await startApi();
+    await startMetricsServer();
     startTimeout();
 
     //

@@ -28,6 +28,14 @@ import {
     buildUsageEphemeral,
     buildMachineStatusEphemeral
 } from "@/modules/eventRouter";
+import { 
+    incrementWebSocketConnection, 
+    decrementWebSocketConnection, 
+    sessionAliveEventsCounter, 
+    machineAliveEventsCounter,
+    websocketEventsCounter
+} from "@/modules/metrics";
+import { activityCache } from "@/modules/sessionCache";
 
 
 declare module 'fastify' {
@@ -1223,6 +1231,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             };
         }
         eventRouter.addConnection(userId, connection);
+        incrementWebSocketConnection(connection.connectionType);
 
         // Broadcast daemon online status
         if (connection.connectionType === 'machine-scoped') {
@@ -1240,8 +1249,11 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         const receiveUsageLock = new AsyncLock();
 
         socket.on('disconnect', () => {
+            websocketEventsCounter.inc({ event_type: 'disconnect' });
+            
             // Cleanup connections
             eventRouter.removeConnection(userId, connection);
+            decrementWebSocketConnection(connection.connectionType);
 
             // Clean up RPC listeners for this socket
             const userRpcMap = rpcListeners.get(userId);
@@ -1284,6 +1296,10 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             thinking?: boolean;
         }) => {
             try {
+                // Track metrics
+                websocketEventsCounter.inc({ event_type: 'session-alive' });
+                sessionAliveEventsCounter.inc();
+                
                 // Basic validation
                 if (!data || typeof data.time !== 'number' || !data.sid) {
                     return;
@@ -1299,19 +1315,14 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
                 const { sid, thinking } = data;
 
-                // Resolve session
-                const session = await db.session.findUnique({
-                    where: { id: sid, accountId: userId }
-                });
-                if (!session) {
+                // Check session validity using cache
+                const isValid = await activityCache.isSessionValid(sid, userId);
+                if (!isValid) {
                     return;
                 }
 
-                // Update last active
-                await db.session.update({
-                    where: { id: sid },
-                    data: { lastActiveAt: new Date(t), active: true }
-                });
+                // Queue database update (will only update if time difference is significant)
+                activityCache.queueSessionUpdate(sid, t);
 
                 // Emit session activity update
                 const sessionActivity = buildSessionActivityEphemeral(sid, true, t, thinking || false);
@@ -1330,6 +1341,10 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             time: number;
         }) => {
             try {
+                // Track metrics
+                websocketEventsCounter.inc({ event_type: 'machine-alive' });
+                machineAliveEventsCounter.inc();
+                
                 // Basic validation
                 if (!data || typeof data.time !== 'number' || !data.machineId) {
                     return;
@@ -1343,35 +1358,16 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     return;
                 }
 
-                // Resolve machine
-                const machine = await db.machine.findUnique({
-                    where: {
-                        accountId_id: {
-                            accountId: userId,
-                            id: data.machineId
-                        }
-                    }
-                });
-
-                if (!machine) {
+                // Check machine validity using cache
+                const isValid = await activityCache.isMachineValid(data.machineId, userId);
+                if (!isValid) {
                     return;
                 }
 
-                // Update machine lastActiveAt in database
-                const updatedMachine = await db.machine.update({
-                    where: {
-                        accountId_id: {
-                            accountId: userId,
-                            id: data.machineId
-                        }
-                    },
-                    data: {
-                        lastActiveAt: new Date(t),
-                        active: true
-                    }
-                });
+                // Queue database update (will only update if time difference is significant)
+                activityCache.queueMachineUpdate(data.machineId, t);
 
-                const machineActivity = buildMachineActivityEphemeral(updatedMachine.id, true, t);
+                const machineActivity = buildMachineActivityEphemeral(data.machineId, true, t);
                 eventRouter.emitEphemeral({
                     userId,
                     payload: machineActivity,
@@ -1428,6 +1424,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         socket.on('message', async (data: any) => {
             await receiveMessageLock.inLock(async () => {
                 try {
+                    websocketEventsCounter.inc({ event_type: 'message' });
                     const { sid, message, localId } = data;
 
                     log({ module: 'websocket' }, `Received message from socket ${socket.id}: sessionId=${sid}, messageLength=${message.length} bytes, connectionType=${connection.connectionType}, connectionSessionId=${connection.connectionType === 'session-scoped' ? connection.sessionId : 'N/A'}`);
