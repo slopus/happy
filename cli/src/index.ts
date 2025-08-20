@@ -27,6 +27,7 @@ import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 import { projectPath } from './projectPath'
 import { handleAuthCommand } from './commands/auth'
 import { clearCredentials, clearMachineId, writeCredentials } from './persistence/persistence'
+import { spawnHappyCLI } from './utils/spawnHappyCLI'
 
 
 (async () => {
@@ -120,8 +121,7 @@ import { clearCredentials, clearMachineId, writeCredentials } from './persistenc
 
     } else if (daemonSubcommand === 'start') {
       // Spawn detached daemon process
-      const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
-      const child = spawn(happyBinPath, ['daemon', 'start-sync'], {
+      const child = spawnHappyCLI(['daemon', 'start-sync'], {
         detached: true,
         stdio: 'ignore',
         env: process.env
@@ -392,9 +392,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
       if (!(await isDaemonRunning())) {
         // Use the built binary to spawn daemon
-        const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
-
-        const daemonProcess = spawn(happyBinPath, ['daemon', 'start-sync'], {
+        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
           detached: true,
           stdio: 'ignore',
           env: process.env

@@ -12,6 +12,7 @@ import { isDaemonRunning, getDaemonState, findRunawayHappyProcesses, findAllHapp
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { projectPath } from '@/projectPath'
 import packageJson from '../../package.json'
 
 /**
@@ -62,6 +63,19 @@ export async function runDoctorCommand(): Promise<void> {
     console.log(`Happy CLI Version: ${chalk.green(packageJson.version)}`);
     console.log(`Platform: ${chalk.green(process.platform)} ${process.arch}`);
     console.log(`Node.js Version: ${chalk.green(process.version)}`);
+    console.log('');
+
+    // Daemon spawn diagnostics
+    console.log(chalk.bold('🔧 Daemon Spawn Diagnostics'));
+    const projectRoot = projectPath();
+    const wrapperPath = join(projectRoot, 'bin', 'happy.mjs');
+    const cliEntrypoint = join(projectRoot, 'dist', 'index.mjs');
+    
+    console.log(`Project Root: ${chalk.blue(projectRoot)}`);
+    console.log(`Wrapper Script: ${chalk.blue(wrapperPath)}`);
+    console.log(`CLI Entrypoint: ${chalk.blue(cliEntrypoint)}`);
+    console.log(`Wrapper Exists: ${existsSync(wrapperPath) ? chalk.green('✓ Yes') : chalk.red('❌ No')}`);
+    console.log(`CLI Exists: ${existsSync(cliEntrypoint) ? chalk.green('✓ Yes') : chalk.red('❌ No')}`);
     console.log('');
 
     // Configuration

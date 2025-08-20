@@ -13,6 +13,7 @@ import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawn } from 'child_process';
 import { projectPath } from '@/projectPath';
 import { Metadata } from '@/api/types';
+import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { getDaemonState, cleanupDaemonState } from './utils';
 import { writeDaemonState, DaemonLocallyPersistedState } from '@/persistence/persistence';
 
@@ -104,11 +105,7 @@ export async function startDaemon(): Promise<void> {
 
         // TODO: In future, sessionId could be used with --resume to continue existing sessions
         // For now, we ignore it - each spawn creates a new session
-
-        const fullCommand = `${happyBinPath} ${args.join(' ')}`;
-        logger.debug(`[DAEMON RUN] Spawning: ${fullCommand} in ${directory}`);
-
-        const happyProcess = spawn(happyBinPath, args, {
+        const happyProcess = spawnHappyCLI(args, {
           cwd: directory,
           detached: true,  // Sessions stay alive when daemon stops
           stdio: ['ignore', 'pipe', 'pipe']  // Capture stdout/stderr for debugging
