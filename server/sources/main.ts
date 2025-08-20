@@ -6,6 +6,7 @@ import { startTimeout } from "./app/timeout";
 import { redis } from "./services/redis";
 import { startMetricsServer } from "@/app/metrics";
 import { activityCache } from "@/modules/sessionCache";
+import { auth } from "./modules/auth";
 
 async function main() {
 
@@ -18,6 +19,9 @@ async function main() {
         activityCache.shutdown();
     });
     await redis.ping();
+
+    // Initialize auth module
+    await auth.init();
 
     //
     // Start

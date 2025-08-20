@@ -11,6 +11,7 @@ import { onShutdown } from "@/utils/shutdown";
 import { allocateSessionSeq, allocateUserSeq } from "@/services/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { AsyncLock } from "@/utils/lock";
+import { auth } from "@/modules/auth";
 import { 
     EventRouter, 
     ClientConnection, 
@@ -40,7 +41,7 @@ import { activityCache } from "@/modules/sessionCache";
 
 declare module 'fastify' {
     interface FastifyRequest {
-        user: Account;
+        userId: string;
     }
     interface FastifyInstance {
         authenticate: any;
@@ -52,14 +53,6 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
     // Configure
     log('Starting API...');
-    const tokenGenerator = await privacyKit.createPersistentTokenGenerator({
-        service: 'handy',
-        seed: process.env.HANDY_MASTER_SECRET!
-    });
-    const tokenVerifier = await privacyKit.createPersistentTokenVerifier({
-        service: 'handy',
-        publicKey: tokenGenerator.publicKey
-    });
 
     // Start API
     const app = fastify({
@@ -89,25 +82,14 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             }
 
             const token = authHeader.substring(7);
-            const verified = await tokenVerifier.verify(token);
+            const verified = await auth.verifyToken(token);
             if (!verified) {
                 log({ module: 'auth-decorator' }, `Auth failed - invalid token`);
                 return reply.code(401).send({ error: 'Invalid token' });
             }
 
-            // Get user from database
-            const user = await db.account.findUnique({
-                where: { id: verified.user as string }
-            });
-
-            if (!user) {
-                log({ module: 'auth-decorator' }, `Auth failed - user not found: ${verified.user}`);
-                return reply.code(401).send({ error: 'User not found' });
-            }
-
-            log({ module: 'auth-decorator' }, `Auth success - user: ${user.id}`);
-
-            request.user = user;
+            log({ module: 'auth-decorator' }, `Auth success - user: ${verified.userId}`);
+            request.userId = verified.userId;
         } catch (error) {
             return reply.code(401).send({ error: 'Authentication failed' });
         }
@@ -144,7 +126,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
         return reply.send({
             success: true,
-            token: await tokenGenerator.new({ user: user.id })
+            token: await auth.createToken(user.id)
         });
     });
 
@@ -183,7 +165,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         });
 
         if (answer.response && answer.responseAccountId) {
-            const token = await tokenGenerator.new({ user: answer.responseAccountId!, extras: { session: answer.id } });
+            const token = await auth.createToken(answer.responseAccountId!, { session: answer.id });
             return reply.send({
                 state: 'authorized',
                 token: token,
@@ -204,7 +186,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             })
         }
     }, async (request, reply) => {
-        log({ module: 'auth-response' }, `Auth response endpoint hit - user: ${request.user?.id || 'NO USER'}, publicKey: ${request.body.publicKey.substring(0, 20)}...`);
+        log({ module: 'auth-response' }, `Auth response endpoint hit - user: ${request.userId}, publicKey: ${request.body.publicKey.substring(0, 20)}...`);
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
         if (!isValid) {
@@ -229,7 +211,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         if (!authRequest.response) {
             await db.terminalAuthRequest.update({
                 where: { id: authRequest.id },
-                data: { response: request.body.response, responseAccountId: request.user.id }
+                data: { response: request.body.response, responseAccountId: request.userId }
             });
         }
         return reply.send({ success: true });
@@ -268,7 +250,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         });
 
         if (answer.response && answer.responseAccountId) {
-            const token = await tokenGenerator.new({ user: answer.responseAccountId! });
+            const token = await auth.createToken(answer.responseAccountId!);
             return reply.send({
                 state: 'authorized',
                 token: token,
@@ -303,7 +285,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         if (!authRequest.response) {
             await db.accountAuthRequest.update({
                 where: { id: authRequest.id },
-                data: { response: request.body.response, responseAccountId: request.user.id }
+                data: { response: request.body.response, responseAccountId: request.userId }
             });
         }
         return reply.send({ success: true });
@@ -372,7 +354,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
     typed.get('/v1/sessions', {
         preHandler: app.authenticate,
     }, async (request, reply) => {
-        const userId = request.user.id;
+        const userId = request.userId;
 
         const sessions = await db.session.findMany({
             where: { accountId: userId },
@@ -443,7 +425,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
-        const userId = request.user.id;
+        const userId = request.userId;
         const { tag, metadata } = request.body;
 
         const session = await db.session.findFirst({
@@ -535,7 +517,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
-        const userId = request.user.id;
+        const userId = request.userId;
         const { token } = request.body;
 
         try {
@@ -578,7 +560,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
-        const userId = request.user.id;
+        const userId = request.userId;
         const { token } = request.params;
 
         try {
@@ -599,7 +581,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
     typed.get('/v1/push-tokens', {
         preHandler: app.authenticate
     }, async (request, reply) => {
-        const userId = request.user.id;
+        const userId = request.userId;
 
         try {
             const tokens = await db.accountPushToken.findMany({
@@ -640,9 +622,18 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         }
     }, async (request, reply) => {
         try {
+            const user = await db.account.findUnique({
+                where: { id: request.userId },
+                select: { settings: true, settingsVersion: true }
+            });
+            
+            if (!user) {
+                return reply.code(500).send({ error: 'Failed to get account settings' });
+            }
+            
             return reply.send({
-                settings: request.user.settings,
-                settingsVersion: request.user.settingsVersion
+                settings: user.settings,
+                settingsVersion: user.settingsVersion
             });
         } catch (error) {
             return reply.code(500).send({ error: 'Failed to get account settings' });
@@ -674,17 +665,30 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
-        const userId = request.user.id;
+        const userId = request.userId;
         const { settings, expectedVersion } = request.body;
 
         try {
+            // Get current user data for version check
+            const currentUser = await db.account.findUnique({
+                where: { id: userId },
+                select: { settings: true, settingsVersion: true }
+            });
+            
+            if (!currentUser) {
+                return reply.code(500).send({
+                    success: false,
+                    error: 'Failed to update account settings'
+                });
+            }
+            
             // Check current version
-            if (request.user.settingsVersion !== expectedVersion) {
+            if (currentUser.settingsVersion !== expectedVersion) {
                 return reply.code(200).send({
                     success: false,
                     error: 'version-mismatch',
-                    currentVersion: request.user.settingsVersion,
-                    currentSettings: request.user.settings
+                    currentVersion: currentUser.settingsVersion,
+                    currentSettings: currentUser.settings
                 });
             }
 
@@ -754,7 +758,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
-        const userId = request.user.id;
+        const userId = request.userId;
         const { sessionId, startTime, endTime, groupBy } = request.body;
         const actualGroupBy = groupBy || 'day';
 
@@ -886,7 +890,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
-        const userId = request.user.id;
+        const userId = request.userId;
         const { sessionId } = request.params;
 
         // Verify session belongs to user
@@ -940,7 +944,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             })
         }
     }, async (request, reply) => {
-        const userId = request.user.id;
+        const userId = request.userId;
         const { id, metadata, daemonState } = request.body;
 
         // Check if machine exists (like sessions do)
@@ -1017,7 +1021,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
     typed.get('/v1/machines', {
         preHandler: app.authenticate,
     }, async (request, reply) => {
-        const userId = request.user.id;
+        const userId = request.userId;
 
         const machines = await db.machine.findMany({
             where: { accountId: userId },
@@ -1047,7 +1051,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             })
         }
     }, async (request, reply) => {
-        const userId = request.user.id;
+        const userId = request.userId;
         const { id } = request.params;
 
         const machine = await db.machine.findFirst({
@@ -1195,7 +1199,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             return;
         }
 
-        const verified = await tokenVerifier.verify(token);
+        const verified = await auth.verifyToken(token);
         if (!verified) {
             log({ module: 'websocket' }, `Invalid token provided`);
             socket.emit('error', { message: 'Invalid authentication token' });
@@ -1203,7 +1207,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             return;
         }
 
-        const userId = verified.user as string;
+        const userId = verified.userId;
         log({ module: 'websocket' }, `Token verified: ${userId}, clientType: ${clientType || 'user-scoped'}, sessionId: ${sessionId || 'none'}, machineId: ${machineId || 'none'}, socketId: ${socket.id}`);
 
         // Store connection based on type

@@ -16,6 +16,10 @@ spec:
     metadata:
       labels:
         app: handy-server
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "9090"
+        prometheus.io/path: "/metrics"
     spec:
       containers:
       - name: handy
