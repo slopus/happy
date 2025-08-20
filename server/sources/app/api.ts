@@ -393,44 +393,38 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 agentStateVersion: true,
                 active: true,
                 lastActiveAt: true,
-                messages: {
-                    orderBy: { seq: 'desc' },
-                    take: 1,
-                    select: {
-                        id: true,
-                        seq: true,
-                        content: true,
-                        localId: true,
-                        createdAt: true
-                    }
-                }
+                // messages: {
+                //     orderBy: { seq: 'desc' },
+                //     take: 1,
+                //     select: {
+                //         id: true,
+                //         seq: true,
+                //         content: true,
+                //         localId: true,
+                //         createdAt: true
+                //     }
+                // }
             }
         });
 
         return reply.send({
             sessions: sessions.map((v) => {
-                const lastMessage = v.messages[0];
+                // const lastMessage = v.messages[0];
                 const sessionUpdatedAt = v.updatedAt.getTime();
-                const lastMessageCreatedAt = lastMessage ? lastMessage.createdAt.getTime() : 0;
+                // const lastMessageCreatedAt = lastMessage ? lastMessage.createdAt.getTime() : 0;
 
                 return {
                     id: v.id,
                     seq: v.seq,
                     createdAt: v.createdAt.getTime(),
-                    updatedAt: Math.max(sessionUpdatedAt, lastMessageCreatedAt),
+                    updatedAt: sessionUpdatedAt,
                     active: v.active,
                     activeAt: v.lastActiveAt.getTime(),
                     metadata: v.metadata,
                     metadataVersion: v.metadataVersion,
                     agentState: v.agentState,
                     agentStateVersion: v.agentStateVersion,
-                    lastMessage: lastMessage ? {
-                        id: lastMessage.id,
-                        seq: lastMessage.seq,
-                        localId: lastMessage.localId,
-                        content: lastMessage.content,
-                        createdAt: lastMessageCreatedAt
-                    } : null
+                    lastMessage: null
                 };
             })
         });
