@@ -16,7 +16,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     section: {
         marginBottom: 24,
-        backgroundColor: 'white',
+        backgroundColor: theme.colors.cardBackground,
         borderRadius: 12,
         padding: 16,
         shadowColor: '#000',
@@ -40,7 +40,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         marginBottom: 12,
         backgroundColor: theme.colors.primary,
         borderWidth: 2,
-        borderColor: theme.colors.secondary,
+        borderColor: theme.colors.primary,
     },
     themeText: {
         color: 'white',
@@ -79,11 +79,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
             xs: 'column',
             md: 'row',
         },
-        gap: theme.gap(1),
     },
     responsiveBox: {
         flex: 1,
-        backgroundColor: theme.colors.secondary,
+        backgroundColor: theme.colors.primary,
         padding: 16,
         borderRadius: 8,
         minHeight: 80,
@@ -106,22 +105,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontSize: 16,
         fontWeight: 'bold',
     },
-    gapContainer: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: theme.gap(2),
-    },
-    gapBox: {
-        backgroundColor: '#3498DB',
-        padding: 12,
-        borderRadius: 6,
-        minWidth: 80,
-        alignItems: 'center',
-    },
-    gapText: {
-        color: 'white',
-        fontWeight: '600',
-    },
     runtimeBox: {
         backgroundColor: '#9B59B6',
         padding: 12,
@@ -134,7 +117,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontFamily: 'monospace',
     },
     themeButton: {
-        backgroundColor: theme.colors.secondary,
+        backgroundColor: theme.colors.primary,
         padding: 12,
         borderRadius: 8,
         marginHorizontal: 4,
@@ -187,7 +170,7 @@ export default function UnistylesDemo() {
     const styles = stylesheet;
     const [showRuntimeInfo, setShowRuntimeInfo] = useState(true);
 
-    const switchTheme = (themeName: 'light' | 'other') => {
+    const switchTheme = (themeName: 'light' | 'dark') => {  
         UnistylesRuntime.setTheme(themeName);
     };
 
@@ -207,7 +190,7 @@ export default function UnistylesDemo() {
                             Current Theme: {rt.themeName}
                         </Text>
                         <Text style={[styles.themeText, { fontSize: 14, opacity: 0.8 }]}>
-                            Primary: {theme.colors.primary} | Secondary: {theme.colors.secondary}
+                            Primary: {theme.colors.primary}
                         </Text>
                     </View>
 
@@ -220,9 +203,9 @@ export default function UnistylesDemo() {
                         </Pressable>
                         <Pressable
                             style={styles.themeButton}
-                            onPress={() => switchTheme('other')}
+                            onPress={() => switchTheme('dark')}
                         >
-                            <Text style={styles.themeButtonText}>Other</Text>
+                            <Text style={styles.themeButtonText}>Dark</Text>
                         </Pressable>
                     </View>
                 </View>
@@ -250,25 +233,6 @@ export default function UnistylesDemo() {
                         <View style={styles.responsiveBox}>
                             <Text style={{ color: 'white', fontWeight: 'bold' }}>Box 2</Text>
                         </View>
-                    </View>
-                </View>
-
-                {/* Gap Function Demo */}
-                <View style={styles.section}>
-                    <Text style={styles.sectionTitle}>📏 Gap Function</Text>
-                    <Text style={{ marginBottom: 12, color: '#666' }}>
-                        Using theme.gap() function for consistent spacing
-                    </Text>
-
-                    <View style={styles.gapContainer}>
-                        {[1, 2, 3, 4].map((multiplier) => (
-                            <View key={multiplier} style={styles.gapBox}>
-                                <Text style={styles.gapText}>×{multiplier}</Text>
-                                <Text style={[styles.gapText, { fontSize: 10 }]}>
-                                    {theme.gap(multiplier)}px
-                                </Text>
-                            </View>
-                        ))}
                     </View>
                 </View>
 
@@ -312,8 +276,8 @@ export default function UnistylesDemo() {
                         <Switch
                             value={showRuntimeInfo}
                             onValueChange={setShowRuntimeInfo}
-                            trackColor={{ false: '#767577', true: theme.colors.primary }}
-                            thumbColor="#FFFFFF"
+                            trackColor={{ false: theme.colors.switchTrackInactive, true: theme.colors.switchTrackActive }}
+                            thumbColor={theme.colors.switchThumb}
                         />
                     </View>
 

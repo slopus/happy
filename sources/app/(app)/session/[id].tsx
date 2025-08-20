@@ -34,6 +34,7 @@ import { useIsTablet } from '@/utils/responsive';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { machineSpawnNewSession } from '@/sync/ops';
+import { useUnistyles } from 'react-native-unistyles';
 
 
 export default React.memo(() => {
@@ -54,6 +55,7 @@ export default React.memo(() => {
 
 
 function SessionView({ sessionId, session }: { sessionId: string, session: Session }) {
+    const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
@@ -205,7 +207,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             {/* If session is not active (explicitly marked as dead) but machine is active, show a message */}
             {!session.active && machine?.active && (
                 <View style={{ paddingHorizontal: 16, paddingVertical: 16, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 20, color: '#666', textAlign: 'center' }}>Session is dead, reviving a session in on our TODO, you are welcome to contribute. Repo: slopus/happy. For now you can start a new session from the machine view.</Text>
+                    <Text style={{ fontSize: 20, color: theme.colors.subtitleText, textAlign: 'center' }}>Session is dead, reviving a session in on our TODO, you are welcome to contribute. Repo: slopus/happy. For now you can start a new session from the machine view.</Text>
                     {/* <RoundButton
                         title={isReviving ? "Reviving..." : "Revive session"}
                         onPress={async () => {
@@ -289,8 +291,6 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
 
     return (
         <>
-            <StatusBar style="dark" translucent backgroundColor="transparent" />
-
             {/* Status bar shadow for landscape mode */}
             {isLandscape && deviceType === 'phone' && (
                 <View style={{
@@ -299,7 +299,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     left: 0,
                     right: 0,
                     height: safeArea.top,
-                    backgroundColor: 'white',
+                    backgroundColor: theme.colors.cardBackground,
                     zIndex: 1000,
                     shadowColor: '#000',
                     shadowOffset: {
@@ -368,7 +368,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                             width: 44,
                             height: 44,
                             borderRadius: 22,
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            backgroundColor: `rgba(${theme.dark ? '28, 23, 28' : '255, 255, 255'}, 0.9)`,
                             alignItems: 'center',
                             justifyContent: 'center',
                             ...Platform.select({

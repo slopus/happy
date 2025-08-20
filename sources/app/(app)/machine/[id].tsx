@@ -15,6 +15,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { MachineSessionLauncher } from '@/components/machines/MachineSessionLauncher';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { useUnistyles } from 'react-native-unistyles';
 
 export default function MachineDetailScreen() {
     const { id: machineId } = useLocalSearchParams<{ id: string }>();
@@ -438,6 +439,7 @@ function RenameMachineModal({
     onClose: () => void; 
     onRename: (newDisplayName: string) => Promise<void>; 
 }) {
+    const { theme } = useUnistyles();
     const [displayName, setDisplayName] = useState(machine.metadata?.displayName || '');
     const [isRenaming, setIsRenaming] = useState(false);
 
@@ -456,7 +458,7 @@ function RenameMachineModal({
     return (
         <View style={{ 
             padding: 20, 
-            backgroundColor: 'white', 
+            backgroundColor: theme.colors.cardBackground, 
             borderRadius: 12, 
             minWidth: 300,
             maxWidth: 400
@@ -472,7 +474,7 @@ function RenameMachineModal({
             
             <Text style={{ 
                 fontSize: 14, 
-                color: '#666', 
+                color: theme.colors.subtitleText, 
                 marginBottom: 16,
                 ...Typography.default()
             }}>
@@ -482,24 +484,26 @@ function RenameMachineModal({
             <TextInput
                 style={{
                     borderWidth: 1,
-                    borderColor: '#ddd',
+                    borderColor: theme.colors.divider,
                     borderRadius: 8,
                     padding: 12,
                     fontSize: 16,
                     marginBottom: 8,
+                    color: theme.colors.inputText,
+                    backgroundColor: theme.colors.inputBackground,
                     ...Typography.default()
                 }}
                 value={displayName}
                 onChangeText={setDisplayName}
                 placeholder={machine.metadata?.host || 'Enter machine name'}
-                placeholderTextColor="#999"
+                placeholderTextColor={theme.colors.inputPlaceholder}
                 autoFocus
                 editable={!isRenaming}
             />
             
             <Text style={{ 
                 fontSize: 12, 
-                color: '#666', 
+                color: theme.colors.subtitleText, 
                 marginBottom: 20,
                 ...Typography.default()
             }}>

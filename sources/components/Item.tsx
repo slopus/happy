@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 export interface ItemProps {
     title: string;
@@ -38,7 +39,77 @@ export interface ItemProps {
     copy?: boolean | string;
 }
 
+const stylesheet = StyleSheet.create((theme, runtime) => ({
+    container: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        minHeight: Platform.select({ ios: 44, default: 56 }),
+    },
+    containerWithSubtitle: {
+        paddingVertical: Platform.select({ ios: 11, default: 16 }),
+    },
+    containerWithoutSubtitle: {
+        paddingVertical: Platform.select({ ios: 12, default: 16 }),
+    },
+    iconContainer: {
+        marginRight: 12,
+        width: Platform.select({ ios: 29, default: 32 }),
+        height: Platform.select({ ios: 29, default: 32 }),
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    centerContent: {
+        flex: 1,
+        justifyContent: 'center',
+    },
+    title: {
+        ...Typography.default('regular'),
+        fontSize: Platform.select({ ios: 17, default: 16 }),
+        lineHeight: Platform.select({ ios: 22, default: 24 }),
+        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+    },
+    titleNormal: {
+        color: theme.colors.titleText,
+    },
+    titleSelected: {
+        color: theme.colors.titleSelected,
+    },
+    titleDestructive: {
+        color: theme.colors.titleDestructive,
+    },
+    subtitle: {
+        ...Typography.default('regular'),
+        color: theme.colors.subtitleText,
+        fontSize: Platform.select({ ios: 15, default: 14 }),
+        lineHeight: 20,
+        letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
+        marginTop: Platform.select({ ios: 2, default: 0 }),
+    },
+    rightSection: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 8,
+    },
+    detail: {
+        ...Typography.default('regular'),
+        color: theme.colors.detailText,
+        fontSize: 17,
+        letterSpacing: -0.41,
+    },
+    divider: {
+        height: Platform.select({ ios: 0.33, default: 0 }),
+        backgroundColor: theme.colors.divider,
+    },
+    pressablePressed: {
+        backgroundColor: theme.colors.pressedOverlay,
+    },
+}));
+
 export const Item = React.memo<ItemProps>((props) => {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+    
     // Platform-specific measurements
     const isIOS = Platform.OS === 'ios';
     const isAndroid = Platform.OS === 'android';
@@ -125,72 +196,32 @@ export const Item = React.memo<ItemProps>((props) => {
     
     const isInteractive = handlePress || onLongPress || (copy && !isWeb);
     const showAccessory = isInteractive && showChevron && !rightElement;
-    const horizontalPadding = 16; // Same for both platforms per Material Design
-    const iconSize = (isIOS && !isWeb) ? 29 : 32; // iOS standard vs Material 3 icon container
     const chevronSize = (isIOS && !isWeb) ? 17 : 24;
-    const minHeight = (isIOS && !isWeb) ? 44 : 56; // Material 3 list item height
 
+    const titleColor = destructive ? styles.titleDestructive : (selected ? styles.titleSelected : styles.titleNormal);
+    const containerPadding = subtitle ? styles.containerWithSubtitle : styles.containerWithoutSubtitle;
+    
     const content = (
         <>
-            <View 
-                style={[
-                    {
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        paddingHorizontal: horizontalPadding,
-                        minHeight: minHeight,
-                        paddingVertical: (isIOS && !isWeb) ? (subtitle ? 11 : 12) : 16, // Material 3 consistent padding
-                    },
-                    style
-                ]}
-            >
+            <View style={[styles.container, containerPadding, style]}>
                 {/* Left Section */}
                 {(icon || leftElement) && (
-                    <View style={{ 
-                        marginRight: 12,
-                        width: iconSize,
-                        height: iconSize,
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                    }}>
+                    <View style={styles.iconContainer}>
                         {leftElement || icon}
                     </View>
                 )}
 
                 {/* Center Section */}
-                <View style={{ flex: 1, justifyContent: 'center' }}>
+                <View style={styles.centerContent}>
                     <Text 
-                        style={[
-                            Typography.default('regular'),
-                            {
-                                color: destructive ? ((isIOS && !isWeb) ? '#FF3B30' : '#F44336') : (selected ? ((isIOS && !isWeb) ? '#007AFF' : '#1976D2') : '#000000'),
-                                fontSize: (isIOS && !isWeb) ? 17 : 16,
-                                lineHeight: (isIOS && !isWeb) ? 22 : 24,
-                                letterSpacing: (isIOS && !isWeb) ? -0.41 : 0.15
-                            },
-                            titleStyle
-                        ]}
+                        style={[styles.title, titleColor, titleStyle]}
                         numberOfLines={subtitle ? 1 : 2}
                     >
                         {title}
                     </Text>
                     {subtitle && (
                         <Text 
-                            style={[
-                                Typography.default('regular'),
-                                {
-                                    color: Platform.select({
-                                        ios: '#8E8E93',
-                                        android: '#49454F', // Material 3 onSurfaceVariant
-                                        default: '#8E8E93'
-                                    }),
-                                    fontSize: (isIOS && !isWeb) ? 15 : 14,
-                                    lineHeight: 20,
-                                    letterSpacing: (isIOS && !isWeb) ? -0.24 : 0.1,
-                                    marginTop: (isIOS && !isWeb) ? 2 : 0
-                                },
-                                subtitleStyle
-                            ]}
+                            style={[styles.subtitle, subtitleStyle]}
                             numberOfLines={1}
                         >
                             {subtitle}
@@ -199,25 +230,12 @@ export const Item = React.memo<ItemProps>((props) => {
                 </View>
 
                 {/* Right Section */}
-                <View style={{ 
-                    flexDirection: 'row', 
-                    alignItems: 'center',
-                    marginLeft: 8
-                }}>
+                <View style={styles.rightSection}>
                     {detail && !rightElement && (
                         <Text 
                             style={[
-                                Typography.default('regular'),
-                                {
-                                    color: Platform.select({
-                                        ios: '#8E8E93',
-                                        android: '#49454F', // Material 3 onSurfaceVariant
-                                        default: '#8E8E93'
-                                    }),
-                                    fontSize: 17,
-                                    letterSpacing: -0.41,
-                                    marginRight: showAccessory ? 6 : 0
-                                },
+                                styles.detail, 
+                                { marginRight: showAccessory ? 6 : 0 },
                                 detailStyle
                             ]}
                             numberOfLines={1}
@@ -228,11 +246,7 @@ export const Item = React.memo<ItemProps>((props) => {
                     {loading && (
                         <ActivityIndicator 
                             size="small" 
-                            color={Platform.select({
-                                ios: "#8E8E93",
-                                android: "#49454F", // Material 3 onSurfaceVariant
-                                default: "#8E8E93"
-                            })}
+                            color={theme.colors.subtitleText}
                             style={{ marginRight: showAccessory ? 6 : 0 }}
                         />
                     )}
@@ -241,11 +255,7 @@ export const Item = React.memo<ItemProps>((props) => {
                         <Ionicons 
                             name="chevron-forward" 
                             size={chevronSize} 
-                            color={Platform.select({
-                                ios: "#C7C7CC",
-                                android: "#49454F", // Material 3 onSurfaceVariant
-                                default: "#C7C7CC"
-                            })}
+                            color={theme.colors.chevron}
                             style={{ marginLeft: 4 }}
                         />
                     )}
@@ -255,15 +265,12 @@ export const Item = React.memo<ItemProps>((props) => {
             {/* Divider */}
             {showDivider && (
                 <View 
-                    style={{ 
-                        height: (isIOS && !isWeb) ? 0.33 : 0,
-                        backgroundColor: Platform.select({
-                            ios: '#C6C6C8',
-                            android: '#CAC4D0', // Material 3 outlineVariant
-                            default: '#C6C6C8'
-                        }),
-                        marginLeft: (isAndroid || isWeb) ? 0 : (dividerInset + (icon || leftElement ? (horizontalPadding + iconSize + 15) : horizontalPadding))
-                    }}
+                    style={[
+                        styles.divider,
+                        { 
+                            marginLeft: (isAndroid || isWeb) ? 0 : (dividerInset + (icon || leftElement ? (16 + ((isIOS && !isWeb) ? 29 : 32) + 15) : 16))
+                        }
+                    ]}
                 />
             )}
         </>
@@ -279,13 +286,13 @@ export const Item = React.memo<ItemProps>((props) => {
                 disabled={disabled || loading}
                 style={({ pressed }) => [
                     {
-                        backgroundColor: pressed && isIOS && !isWeb ? '#D1D1D6' : 'transparent',
+                        backgroundColor: pressed && isIOS && !isWeb ? theme.colors.pressedOverlay : 'transparent',
                         opacity: disabled ? 0.5 : 1
                     },
                     pressableStyle
                 ]}
                 android_ripple={(isAndroid || isWeb) ? {
-                    color: 'rgba(0, 0, 0, 0.08)',
+                    color: theme.colors.ripple,
                     borderless: false,
                     foreground: true
                 } : undefined}

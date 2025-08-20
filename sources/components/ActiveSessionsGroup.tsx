@@ -9,6 +9,89 @@ import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { useAllMachines } from '@/sync/storage';
+import { StyleSheet } from 'react-native-unistyles';
+
+const stylesheet = StyleSheet.create((theme, runtime) => ({
+    container: {
+        backgroundColor: theme.colors.cardBackground,
+    },
+    machineHeader: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        backgroundColor: theme.colors.listBackground,
+        borderBottomWidth: 0.5,
+        borderBottomColor: theme.colors.divider,
+    },
+    machineHeaderText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: theme.colors.titleText,
+        ...Typography.default('semiBold'),
+    },
+    projectHeader: {
+        paddingHorizontal: 16,
+        paddingVertical: 6,
+        backgroundColor: theme.colors.listBackground,
+    },
+    projectHeaderText: {
+        fontSize: 11,
+        color: theme.colors.subtitleText,
+        ...Typography.default(),
+    },
+    sessionRow: {
+        height: 88,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        backgroundColor: theme.colors.cardBackground,
+    },
+    sessionRowSelected: {
+        backgroundColor: theme.colors.pressedOverlay,
+    },
+    sessionContent: {
+        flex: 1,
+        marginLeft: 16,
+        justifyContent: 'center',
+    },
+    sessionTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 4,
+    },
+    sessionTitle: {
+        fontSize: 15,
+        fontWeight: '500',
+        flex: 1,
+        ...Typography.default('semiBold'),
+    },
+    sessionTitleConnected: {
+        color: theme.colors.titleText,
+    },
+    sessionTitleDisconnected: {
+        color: theme.colors.subtitleText,
+    },
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    statusDotContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 16,
+        marginTop: 2,
+        marginRight: 4,
+    },
+    statusText: {
+        fontSize: 12,
+        fontWeight: '500',
+        lineHeight: 16,
+        ...Typography.default(),
+    },
+    draftIcon: {
+        marginLeft: 6,
+        color: theme.colors.subtitleText,
+    },
+}));
 
 interface ActiveSessionsGroupProps {
     sessions: Session[];
@@ -26,6 +109,7 @@ interface MachineGroup {
 }
 
 export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
+    const styles = stylesheet;
     const machines = useAllMachines();
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
@@ -94,23 +178,12 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
     }, [machineGroups]);
 
     return (
-        <View style={{ backgroundColor: '#fff' }}>
+        <View style={styles.container}>
             {sortedMachineGroups.map(([machineId, machineGroup]) => (
                 <View key={machineId}>
                     {/* Machine header */}
-                    <View style={{
-                        paddingHorizontal: 16,
-                        paddingVertical: 8,
-                        backgroundColor: '#F8F8F8',
-                        borderBottomWidth: 0.5,
-                        borderBottomColor: '#E5E5E7'
-                    }}>
-                        <Text style={{ 
-                            fontSize: 13, 
-                            fontWeight: '600', 
-                            color: '#000',
-                            ...Typography.default('semiBold') 
-                        }}>
+                    <View style={styles.machineHeader}>
+                        <Text style={styles.machineHeaderText}>
                             {machineGroup.machineName}
                         </Text>
                     </View>
@@ -121,16 +194,8 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                         .map(([projectPath, projectGroup]) => (
                             <View key={`${machineId}-${projectPath}`}>
                                 {/* Project path header */}
-                                <View style={{
-                                    paddingHorizontal: 16,
-                                    paddingVertical: 6,
-                                    backgroundColor: '#FAFAFA'
-                                }}>
-                                    <Text style={{ 
-                                        fontSize: 11, 
-                                        color: '#8E8E93',
-                                        ...Typography.default() 
-                                    }}>
+                                <View style={styles.projectHeader}>
+                                    <Text style={styles.projectHeaderText}>
                                         {projectGroup.displayPath}
                                     </Text>
                                 </View>
@@ -153,6 +218,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
 
 // Compact session row component with status line
 const CompactSessionRow = React.memo(({ session, selected }: { session: Session; selected?: boolean }) => {
+    const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
     const router = useRouter();
@@ -163,58 +229,42 @@ const CompactSessionRow = React.memo(({ session, selected }: { session: Session;
 
     return (
         <Pressable
-            style={{
-                height: 88,
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 16,
-                backgroundColor: selected ? '#f9f9f9' : '#fff'
-            }}
+            style={[
+                styles.sessionRow,
+                selected && styles.sessionRowSelected
+            ]}
             onPress={() => {
                 router.push(`/session/${session.id}`);
             }}
         >
             <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} />
-            <View style={{ flex: 1, marginLeft: 16, justifyContent: 'center' }}>
+            <View style={styles.sessionContent}>
                 {/* Title line with draft icon */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-                    <Text style={{
-                        fontSize: 15,
-                        fontWeight: '500',
-                        color: sessionStatus.isConnected ? '#000' : '#999',
-                        flex: 1,
-                        ...Typography.default('semiBold')
-                    }} numberOfLines={2}>
+                <View style={styles.sessionTitleRow}>
+                    <Text style={[
+                        styles.sessionTitle,
+                        sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                    ]} numberOfLines={2}>
                         {sessionName}
                     </Text>
                     {session.draft && (
                         <Ionicons
                             name="create-outline"
                             size={16}
-                            color="#8E8E93"
-                            style={{ marginLeft: 6 }}
+                            style={styles.draftIcon}
                         />
                     )}
                 </View>
 
                 {/* Status line with dot */}
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: 16,
-                        marginTop: 2,
-                        marginRight: 4
-                    }}>
+                <View style={styles.statusRow}>
+                    <View style={styles.statusDotContainer}>
                         <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
                     </View>
-                    <Text style={{
-                        fontSize: 12,
-                        color: sessionStatus.statusColor,
-                        fontWeight: '500',
-                        lineHeight: 16,
-                        ...Typography.default()
-                    }}>
+                    <Text style={[
+                        styles.statusText,
+                        { color: sessionStatus.statusColor }
+                    ]}>
                         {sessionStatus.statusText}
                     </Text>
                 </View>

@@ -20,32 +20,36 @@ import { useMultiClick } from '@/hooks/useMultiClick';
 import { PlusPlus } from '@/components/PlusPlus';
 import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { useUnistyles } from 'react-native-unistyles';
 
 // Manual Auth Modal Component for Android
 function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (url: string) => void }) {
+    const { theme } = useUnistyles();
     const [url, setUrl] = React.useState('');
     
     return (
-        <View style={{ padding: 20, backgroundColor: 'white', borderRadius: 12, minWidth: 300 }}>
+        <View style={{ padding: 20, backgroundColor: theme.colors.cardBackground, borderRadius: 12, minWidth: 300 }}>
             <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>
                 Authenticate Terminal
             </Text>
-            <Text style={{ fontSize: 14, color: '#666', marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, color: theme.colors.subtitleText, marginBottom: 16 }}>
                 Paste the authentication URL from your terminal
             </Text>
             <TextInput
                 style={{
                     borderWidth: 1,
-                    borderColor: '#ddd',
+                    borderColor: theme.colors.divider,
                     borderRadius: 8,
                     padding: 12,
                     fontSize: 14,
-                    marginBottom: 20
+                    marginBottom: 20,
+                    color: theme.colors.inputText,
+                    backgroundColor: theme.colors.inputBackground
                 }}
                 value={url}
                 onChangeText={setUrl}
                 placeholder="happy://terminal?..."
-                placeholderTextColor="#999"
+                placeholderTextColor={theme.colors.inputPlaceholder}
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoFocus
@@ -76,6 +80,7 @@ function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
 }
 
 export default function SettingsScreen() {
+    const { theme } = useUnistyles();
     const router = useRouter();
     const appVersion = Constants.expoConfig?.version || '1.0.0';
     const auth = useAuth();
@@ -136,14 +141,14 @@ export default function SettingsScreen() {
 
         <ItemList style={{ paddingTop: 0 }}>
             {/* App Info Header */}
-            <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: 'white' }}>
+            <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.cardBackground }}>
                 <Image
-                    source={require('@/assets/images/logotype-dark.png')}
+                    source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
                     contentFit="contain"
                     style={{ width: 300, height: 90, marginBottom: 12 }}
                 />
                 <Pressable onPress={handleVersionClick} hitSlop={20}>
-                    <Text style={{ ...Typography.mono(), fontSize: 14, color: '#8E8E93' }}>
+                    <Text style={{ ...Typography.mono(), fontSize: 14, color: theme.colors.subtitleText }}>
                         Version {appVersion}
                     </Text>
                 </Pressable>

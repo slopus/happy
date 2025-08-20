@@ -7,6 +7,7 @@ import { Avatar } from '@/components/Avatar';
 import { Typography } from '@/constants/Typography';
 import { useHeaderHeight } from '@/utils/responsive';
 import { layout } from '@/components/layout';
+import { useUnistyles } from 'react-native-unistyles';
 
 interface ChatHeaderViewProps {
     title: string;
@@ -25,10 +26,9 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     onBackPress,
     onAvatarPress,
     avatarId,
-    backgroundColor = '#fff',
-    tintColor = '#000',
     isConnected = true,
 }) => {
+    const { theme } = useUnistyles();
     const navigation = useNavigation();
     const insets = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
@@ -42,14 +42,14 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top, backgroundColor }]}>
+        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.headerBackground }]}>
             <View style={styles.contentWrapper}>
                 <View style={[styles.content, { height: headerHeight }]}>
                 <Pressable onPress={handleBackPress} style={styles.backButton} hitSlop={15}>
                     <Ionicons
                         name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
                         size={Platform.select({ ios: 28, default: 24 })}
-                        color={tintColor}
+                        color={theme.colors.headerTint}
                     />
                 </Pressable>
                 
@@ -60,7 +60,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                         style={[
                             styles.title,
                             {
-                                color: tintColor,
+                                color: theme.colors.headerTint,
                                 ...Typography.default('semiBold')
                             }
                         ]}
@@ -74,7 +74,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             style={[
                                 styles.subtitle,
                                 {
-                                    color: tintColor,
+                                    color: theme.colors.headerTint,
                                     opacity: 0.7,
                                     ...Typography.default()
                                 }

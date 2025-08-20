@@ -1,12 +1,12 @@
 import * as React from 'react';
-import { View, Text, StyleSheet, Platform, StatusBar, Pressable } from 'react-native';
+import { View, Text, Platform, StatusBar, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
 import { layout } from '../layout';
-import { useIsLandscape, getDeviceType, getHeaderHeight, useHeaderHeight } from '@/utils/responsive';
+import { useHeaderHeight } from '@/utils/responsive';
 import { Typography } from '@/constants/Typography';
+import { StyleSheet } from 'react-native-unistyles';
 
 interface HeaderProps {
     title?: React.ReactNode;
@@ -24,6 +24,8 @@ interface HeaderProps {
 }
 
 export const Header = React.memo((props: HeaderProps) => {
+    const styles = stylesheet;
+
     const {
         title,
         subtitle,
@@ -32,8 +34,8 @@ export const Header = React.memo((props: HeaderProps) => {
         headerStyle,
         headerTitleStyle,
         headerSubtitleStyle,
-        headerTintColor = '#000',
-        headerBackgroundColor = '#fff',
+        headerTintColor, // Accept but ignore - using theme instead
+        headerBackgroundColor, // Accept but ignore - using theme instead
         headerShadowVisible = true,
         headerTransparent = false,
         safeAreaEnabled = true,
@@ -45,32 +47,21 @@ export const Header = React.memo((props: HeaderProps) => {
 
     const containerStyle = [
         styles.container,
+        headerTransparent && styles.containerTransparent,
         {
             paddingTop,
-            backgroundColor: headerTransparent ? 'transparent' : headerBackgroundColor,
         },
         headerShadowVisible && styles.shadow,
         headerStyle,
     ];
 
-    const titleStyle = [
-        styles.title,
-        { color: headerTintColor },
-        headerTitleStyle,
-    ];
-
     const subtitleStyle = [
         styles.subtitle,
-        { color: headerTintColor },
         headerSubtitleStyle,
     ];
 
     return (
-        <View style={containerStyle}>
-            <StatusBar
-                barStyle={headerTintColor === '#fff' || headerTintColor === 'white' ? 'light-content' : 'dark-content'}
-                backgroundColor={headerTransparent ? 'transparent' : headerBackgroundColor}
-            />
+        <View style={[containerStyle]}>
             <View style={styles.contentWrapper}>
                 <View style={[styles.content, { height: headerHeight }]}>
                     <View style={styles.leftContainer}>
@@ -237,12 +228,6 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
             headerStyle={options.headerStyle}
             headerTitleStyle={options.headerTitleStyle}
             headerSubtitleStyle={extendedOptions.headerSubtitleStyle}
-            headerTintColor={options.headerTintColor}
-            headerBackgroundColor={
-                options.headerStyle && typeof options.headerStyle === 'object' && 'backgroundColor' in options.headerStyle
-                    ? options.headerStyle.backgroundColor as string
-                    : undefined
-            }
             headerShadowVisible={options.headerShadowVisible}
             headerTransparent={options.headerTransparent}
         />
@@ -256,3 +241,77 @@ export const createHeader = (props: NativeStackHeaderProps) => {
     }
     return <NavigationHeaderComponent {...props} />;
 };
+
+const stylesheet = StyleSheet.create((theme, runtime) => ({
+    container: {
+        position: 'relative',
+        zIndex: 100,
+        backgroundColor: theme.colors.headerBackground,
+    },
+    containerTransparent: {
+        backgroundColor: 'transparent',
+    },
+    contentWrapper: {
+        width: '100%',
+        alignItems: 'center',
+    },
+    content: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: Platform.select({ ios: 8, default: 16 }),
+        width: '100%',
+        maxWidth: layout.headerMaxWidth,
+    },
+    leftContainer: {
+        flexGrow: 0,
+        flexShrink: 0,
+        alignItems: 'flex-start',
+    },
+    centerContainer: {
+        flexGrow: 1,
+        flexBasis: 0,
+        alignSelf: 'stretch',
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    rightContainer: {
+        flexGrow: 0,
+        flexShrink: 0,
+        alignItems: 'flex-end',
+    },
+    title: {
+        fontSize: 17,
+        fontWeight: '600',
+        textAlign: 'center',
+        color: theme.colors.headerTint,
+        ...Typography.default('semiBold'),
+    },
+    subtitle: {
+        fontSize: 13,
+        fontWeight: '400',
+        textAlign: 'center',
+        marginTop: 2,
+        color: theme.colors.headerTint,
+        ...Typography.default('regular'),
+    },
+    shadow: {
+        ...Platform.select({
+            ios: {
+                shadowColor: theme.colors.shadowColor,
+                shadowOffset: { width: 0, height: 1 },
+                shadowOpacity: 0.15,
+                shadowRadius: 3,
+            },
+            default: {
+                elevation: 4,
+            },
+            web: {
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
+            },
+        }),
+    },
+    backButton: {
+        color: theme.colors.headerTint,
+    },
+}));

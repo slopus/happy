@@ -12,6 +12,7 @@ import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeT
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill } from '@/sync/ops';
+import { useUnistyles } from 'react-native-unistyles';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -53,6 +54,7 @@ function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: 
 }
 
 export default React.memo(() => {
+    const { theme } = useUnistyles();
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
     const session = useSession(id);
@@ -117,7 +119,7 @@ export default React.memo(() => {
     if (!session) {
         return (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: '#8E8E93', fontSize: 17 }}>Session not found</Text>
+                <Text style={{ color: theme.colors.subtitleText, fontSize: 17 }}>Session not found</Text>
             </View>
         );
     }
@@ -125,34 +127,18 @@ export default React.memo(() => {
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
 
-    const screenOptions = {
-        // headerShown: true,
-        headerTitle: 'Session Info',
-        headerStyle: {
-            backgroundColor: 'white',
-        },
-        headerTintColor: '#000',
-        headerTitleStyle: {
-            color: '#000',
-            fontSize: 17,
-            fontWeight: '600' as const,
-            ...Typography.default('semiBold'),
-        }
-    };
-
     return (
         <>
-            <Stack.Screen options={screenOptions} />
-
             <ItemList>
                 {/* Session Header */}
-                <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: 'white', marginBottom: 35 }}>
+                <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.cardBackground, marginBottom: 35 }}>
                     <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} />
                     <Text style={{
                         fontSize: 20,
                         fontWeight: '600',
                         marginTop: 12,
                         textAlign: 'center',
+                        color: theme.colors.primary,
                         ...Typography.default('semiBold')
                     }}>
                         {sessionName}

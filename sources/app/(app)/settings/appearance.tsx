@@ -6,6 +6,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { useSettingMutable } from '@/sync/storage';
+import { useUnistyles } from 'react-native-unistyles';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
@@ -15,6 +16,7 @@ const isKnownAvatarStyle = (style: string): style is KnownAvatarStyle => {
 };
 
 export default function AppearanceSettingsScreen() {
+    const { theme } = useUnistyles();
     const [viewInline, setViewInline] = useSettingMutable('viewInline');
     const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
     const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
@@ -69,8 +71,8 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={viewInline}
                             onValueChange={setViewInline}
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
+                            trackColor={{ false: theme.colors.switchTrackInactive, true: theme.colors.switchTrackActive }}
+                            thumbColor={theme.colors.switchThumb}
                         />
                     }
                 />
@@ -82,8 +84,8 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={expandTodos}
                             onValueChange={setExpandTodos}
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
+                            trackColor={{ false: theme.colors.switchTrackInactive, true: theme.colors.switchTrackActive }}
+                            thumbColor={theme.colors.switchThumb}
                         />
                     }
                 />
@@ -95,8 +97,8 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={showLineNumbers}
                             onValueChange={setShowLineNumbers}
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
+                            trackColor={{ false: theme.colors.switchTrackInactive, true: theme.colors.switchTrackActive }}
+                            thumbColor={theme.colors.switchThumb}
                         />
                     }
                 />
@@ -108,8 +110,8 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={showLineNumbersInToolViews}
                             onValueChange={setShowLineNumbersInToolViews}
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
+                            trackColor={{ false: theme.colors.switchTrackInactive, true: theme.colors.switchTrackActive }}
+                            thumbColor={theme.colors.switchThumb}
                         />
                     }
                 />
@@ -121,8 +123,8 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={alwaysShowContextSize}
                             onValueChange={setAlwaysShowContextSize}
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
+                            trackColor={{ false: theme.colors.switchTrackInactive, true: theme.colors.switchTrackActive }}
+                            thumbColor={theme.colors.switchThumb}
                         />
                     }
                 />

@@ -11,8 +11,112 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
+import { StyleSheet } from 'react-native-unistyles';
+
+const stylesheet = StyleSheet.create((theme, runtime) => ({
+    container: {
+        flex: 1,
+        backgroundColor: theme.colors.listBackground,
+    },
+    headerSection: {
+        paddingHorizontal: 16,
+        paddingTop: 20,
+        paddingBottom: 8,
+        backgroundColor: theme.colors.listBackground,
+    },
+    headerText: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: theme.colors.subtitleText,
+        letterSpacing: 0.3,
+        textTransform: 'uppercase',
+        ...Typography.default('semiBold'),
+    },
+    projectGroup: {
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        backgroundColor: theme.colors.listBackground,
+    },
+    projectGroupTitle: {
+        fontSize: 13,
+        fontWeight: '600',
+        color: theme.colors.titleText,
+        ...Typography.default('semiBold'),
+    },
+    projectGroupSubtitle: {
+        fontSize: 11,
+        color: theme.colors.subtitleText,
+        marginTop: 2,
+        ...Typography.default(),
+    },
+    sessionItem: {
+        height: 88,
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        backgroundColor: theme.colors.cardBackground,
+    },
+    sessionItemSelected: {
+        backgroundColor: theme.colors.pressedOverlay,
+    },
+    sessionContent: {
+        flex: 1,
+        marginLeft: 16,
+        justifyContent: 'center',
+    },
+    sessionTitleRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 2,
+    },
+    sessionTitle: {
+        fontSize: 15,
+        fontWeight: '500',
+        flex: 1,
+        ...Typography.default('semiBold'),
+    },
+    sessionTitleConnected: {
+        color: theme.colors.titleText,
+    },
+    sessionTitleDisconnected: {
+        color: theme.colors.subtitleText,
+    },
+    sessionSubtitle: {
+        fontSize: 13,
+        color: theme.colors.subtitleText,
+        marginBottom: 4,
+        ...Typography.default(),
+    },
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    statusDotContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        height: 16,
+        marginTop: 2,
+        marginRight: 4,
+    },
+    statusText: {
+        fontSize: 12,
+        fontWeight: '500',
+        lineHeight: 16,
+        ...Typography.default(),
+    },
+    separator: {
+        height: 0.5,
+        backgroundColor: theme.colors.divider,
+        marginLeft: 88,
+    },
+    draftIcon: {
+        marginLeft: 6,
+        color: theme.colors.subtitleText,
+    },
+}));
 
 export function SessionsList() {
+    const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
     const data = useSessionListViewData();
     const pathname = usePathname();
@@ -27,7 +131,7 @@ export function SessionsList() {
     // Early return if no data yet
     if (!data) {
         return (
-            <View style={{ flex: 1, backgroundColor: '#F2F2F7' }} />
+            <View style={styles.container} />
         );
     }
 
@@ -44,8 +148,8 @@ export function SessionsList() {
         switch (item.type) {
             case 'header':
                 return (
-                    <View style={{ paddingHorizontal: 16, paddingTop: 20, paddingBottom: 8, backgroundColor: '#F2F2F7' }}>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#8E8E93', letterSpacing: 0.3, textTransform: 'uppercase', ...Typography.default('semiBold') }}>
+                    <View style={styles.headerSection}>
+                        <Text style={styles.headerText}>
                             {item.title}
                         </Text>
                     </View>
@@ -61,15 +165,11 @@ export function SessionsList() {
 
             case 'project-group':
                 return (
-                    <View style={{
-                        paddingHorizontal: 16,
-                        paddingVertical: 10,
-                        backgroundColor: '#F8F8F8'
-                    }}>
-                        <Text style={{ fontSize: 13, fontWeight: '600', color: '#000', ...Typography.default('semiBold') }}>
+                    <View style={styles.projectGroup}>
+                        <Text style={styles.projectGroupTitle}>
                             {item.displayPath}
                         </Text>
-                        <Text style={{ fontSize: 11, color: '#8E8E93', marginTop: 2, ...Typography.default() }}>
+                        <Text style={styles.projectGroupSubtitle}>
                             {item.machine.metadata?.displayName || item.machine.metadata?.host || item.machine.id}
                         </Text>
                     </View>
@@ -92,11 +192,11 @@ export function SessionsList() {
         // Use standard indentation for separators
         const marginLeft = 88;
 
-        return <View style={{ height: 0.5, backgroundColor: '#E5E5E7', marginLeft }} />;
+        return <View style={styles.separator} />;
     }, []);
 
     return (
-        <View style={{ flex: 1, backgroundColor: '#F2F2F7' }}>
+        <View style={styles.container}>
             <FlatList
                 data={dataWithSelected!}
                 renderItem={renderItem}
@@ -110,6 +210,7 @@ export function SessionsList() {
 
 // Sub-component that handles session message logic
 const SessionItem = React.memo(({ session, selected }: { session: Session; selected?: boolean }) => {
+    const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
@@ -121,68 +222,47 @@ const SessionItem = React.memo(({ session, selected }: { session: Session; selec
 
     return (
         <Pressable
-            style={{
-                height: 88,
-                flexDirection: 'row',
-                alignItems: 'center',
-                paddingHorizontal: 16,
-                backgroundColor: selected ? '#f9f9f9' : '#fff'
-            }}
+            style={[
+                styles.sessionItem,
+                selected && styles.sessionItemSelected
+            ]}
             onPress={() => {
                 router.push(`/session/${session.id}`);
             }}
         >
             <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} />
-            <View style={{ flex: 1, marginLeft: 16, justifyContent: 'center' }}>
+            <View style={styles.sessionContent}>
                 {/* Title line */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
-                    <Text style={{
-                        fontSize: 15,
-                        fontWeight: '500',
-                        color: sessionStatus.isConnected ? '#000' : '#999',
-                        flex: 1,
-                        ...Typography.default('semiBold')
-                    }} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
+                <View style={styles.sessionTitleRow}>
+                    <Text style={[
+                        styles.sessionTitle,
+                        sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                    ]} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
                         {sessionName}
                     </Text>
                     {session.draft && (
                         <Ionicons
                             name="create-outline"
                             size={16}
-                            color="#8E8E93"
-                            style={{ marginLeft: 6 }}
+                            style={styles.draftIcon}
                         />
                     )}
                 </View>
 
                 {/* Subtitle line */}
-                <Text style={{
-                    fontSize: 13,
-                    color: '#8E8E93',
-                    marginBottom: 4,
-                    ...Typography.default()
-                }} numberOfLines={1}>
+                <Text style={styles.sessionSubtitle} numberOfLines={1}>
                     {sessionSubtitle}
                 </Text>
 
                 {/* Status line with dot */}
-                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                    <View style={{
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: 16,
-                        marginTop: 2,
-                        marginRight: 4
-                    }}>
+                <View style={styles.statusRow}>
+                    <View style={styles.statusDotContainer}>
                         <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
                     </View>
-                    <Text style={{
-                        fontSize: 12,
-                        color: sessionStatus.statusColor,
-                        fontWeight: '500',
-                        lineHeight: 16,
-                        ...Typography.default()
-                    }}>
+                    <Text style={[
+                        styles.statusText,
+                        { color: sessionStatus.statusColor }
+                    ]}>
                         {sessionStatus.statusText}
                     </Text>
                 </View>

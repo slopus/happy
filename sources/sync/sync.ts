@@ -860,9 +860,10 @@ class Sync {
 
                     // Update messages
                     if (lastMessage) {
+                        console.log('🔄 Sync: Applying message:', JSON.stringify(lastMessage));
                         this.applyMessages(updateData.body.sid, [lastMessage]);
                         let hasMutableTool = false;
-                        if (lastMessage.role === 'agent' && lastMessage.content[0].type === 'tool-result') {
+                        if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
                             hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
                         }
                         if (hasMutableTool) {
