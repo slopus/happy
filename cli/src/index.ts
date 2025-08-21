@@ -352,15 +352,12 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       credentials = result.credentials;
     }
 
-    // Feature flag: daemon auto-start is experimental until mobile app is ready
-    const isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
-
     // Daemon auto-start preference (machine already set up)
     let settings = await readSettings();
-    if (isExperimentalEnabled && settings && settings.daemonAutoStartWhenRunningHappy === undefined) {
+    if (settings && settings.daemonAutoStartWhenRunningHappy === undefined) {
       const shouldAutoStart = await new Promise<boolean>((resolve) => {
         let hasResolved = false;
-        
+
         const onSelect = (autoStart: boolean) => {
           if (!hasResolved) {
             hasResolved = true;
@@ -368,7 +365,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
             resolve(autoStart);
           }
         };
-        
+
         const app = render(React.createElement(DaemonPrompt, { onSelect }), {
           exitOnCtrlC: false,
           patchConsole: false
@@ -389,7 +386,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     }
 
     // Auto-start daemon if enabled and experimental features are enabled
-    if (isExperimentalEnabled && settings && settings.daemonAutoStartWhenRunningHappy) {
+    if (settings && settings.daemonAutoStartWhenRunningHappy) {
       logger.debug('Starting Happy background service...');
 
       if (!(await isDaemonRunning())) {

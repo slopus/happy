@@ -20,6 +20,8 @@ class Configuration {
   public readonly privateKeyFile: string
   public readonly daemonStateFile: string
 
+  public readonly isExperimentalEnabled: boolean
+
   constructor() {
     // Server configuration - priority: parameter > environment > default
     this.serverUrl = process.env.HAPPY_SERVER_URL || 'https://handy-api.korshakov.org'
@@ -42,6 +44,8 @@ class Configuration {
     this.settingsFile = join(this.happyHomeDir, 'settings.json')
     this.privateKeyFile = join(this.happyHomeDir, 'access.key')
     this.daemonStateFile = join(this.happyHomeDir, 'daemon.state.json')
+
+    this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
   }
 }
 
