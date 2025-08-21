@@ -350,9 +350,12 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       credentials = result.credentials;
     }
 
+    // Feature flag: daemon auto-start is experimental until mobile app is ready
+    const isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
+
     // Daemon auto-start preference (machine already set up)
     let settings = await readSettings();
-    if (settings && settings.daemonAutoStartWhenRunningHappy === undefined) {
+    if (isExperimentalEnabled && settings && settings.daemonAutoStartWhenRunningHappy === undefined) {
 
       console.log(chalk.cyan('\n🚀 Happy Daemon Setup\n'));
       // Ask about daemon auto-start
@@ -386,8 +389,8 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       }
     }
 
-    // Auto-start daemon if enabled
-    if (settings && settings.daemonAutoStartWhenRunningHappy) {
+    // Auto-start daemon if enabled and experimental features are enabled
+    if (isExperimentalEnabled && settings && settings.daemonAutoStartWhenRunningHappy) {
       logger.debug('Starting Happy background service...');
 
       if (!(await isDaemonRunning())) {
