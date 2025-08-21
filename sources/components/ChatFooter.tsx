@@ -7,6 +7,7 @@ import { layout } from './layout';
 import { PermissionModeSelector, PermissionMode } from './PermissionModeSelector';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
+import { Ionicons } from '@expo/vector-icons';
 
 interface ChatFooterProps {
     status?: {
@@ -20,6 +21,7 @@ interface ChatFooterProps {
     permissionMode?: PermissionMode;
     onPermissionModeChange?: (mode: PermissionMode) => void;
     onSwitch?: () => void;
+    controlledByUser?: boolean;
     children?: React.ReactNode;
 }
 
@@ -134,6 +136,24 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
         marginRight: 8,
     };
 
+    const warningContainerStyle: ViewStyle = {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        backgroundColor: Platform.select({ ios: '#FFF3CD', default: '#FFF9E6' }),
+        borderRadius: 8,
+        marginHorizontal: 32,
+        marginTop: 4,
+    };
+
+    const warningTextStyle: TextStyle = {
+        fontSize: 12,
+        color: Platform.select({ ios: '#856404', default: '#795548' }),
+        marginLeft: 6,
+        ...Typography.default()
+    };
+
     const abortButtonStyle: ViewStyle = {
         paddingHorizontal: 12,
         paddingVertical: 6,
@@ -201,6 +221,20 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
                     </Shaker>
                 )} */}
             </View>
+            
+            {/* Warning when permissions are controlled from terminal */}
+            {props.controlledByUser && (
+                <View style={warningContainerStyle}>
+                    <Ionicons 
+                        name="information-circle" 
+                        size={16} 
+                        color={Platform.select({ ios: '#856404', default: '#795548' })}
+                    />
+                    <Text style={warningTextStyle}>
+                        Permissions shown in terminal only. Reset or send a message to control from app.
+                    </Text>
+                </View>
+            )}
         </View>
     );
 });

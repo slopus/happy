@@ -181,8 +181,9 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
             onSwitch={() => sessionSwitch(sessionId, 'remote')}
+            controlledByUser={session.agentState?.controlledByUser || false}
         />
-    ), [sessionStatus, permissionMode, sessionId]);
+    ), [sessionStatus, permissionMode, sessionId, session.agentState?.controlledByUser]);
 
     const content = (
         <>

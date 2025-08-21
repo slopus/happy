@@ -46,7 +46,7 @@ export const lightTheme = {
         fabBackground: '#FFFFFF',
         fabBackgroundPressed: 'rgb(240,240,240)',
         fabIcon: '#000000',
-        fabShadow: '#000',
+        fabShadow: Platform.select({ ios: 'black', default: 'rgba(0, 0, 0, 0.1)' }),
         
         // Input colors
         inputBackground: '#F5F5F5',
