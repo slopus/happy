@@ -12,11 +12,11 @@ import { allocateSessionSeq, allocateUserSeq } from "@/services/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { AsyncLock } from "@/utils/lock";
 import { auth } from "@/modules/auth";
-import { 
-    EventRouter, 
-    ClientConnection, 
-    SessionScopedConnection, 
-    UserScopedConnection, 
+import {
+    EventRouter,
+    ClientConnection,
+    SessionScopedConnection,
+    UserScopedConnection,
     MachineScopedConnection,
     RecipientFilter,
     buildNewSessionUpdate,
@@ -29,10 +29,10 @@ import {
     buildUsageEphemeral,
     buildMachineStatusEphemeral
 } from "@/modules/eventRouter";
-import { 
-    incrementWebSocketConnection, 
-    decrementWebSocketConnection, 
-    sessionAliveEventsCounter, 
+import {
+    incrementWebSocketConnection,
+    decrementWebSocketConnection,
+    sessionAliveEventsCounter,
     machineAliveEventsCounter,
     websocketEventsCounter,
     httpRequestsCounter,
@@ -88,7 +88,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
         // Increment request counter
         httpRequestsCounter.inc({ method, route, status });
-        
+
         // Record request duration
         httpRequestDurationHistogram.observe({ method, route, status }, duration);
     });
@@ -331,11 +331,11 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             // Check if OpenAI API key is configured on server
             const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
             if (!OPENAI_API_KEY) {
-                return reply.code(500).send({ 
-                    error: 'OpenAI API key not configured on server' 
+                return reply.code(500).send({
+                    error: 'OpenAI API key not configured on server'
                 });
             }
-            
+
             // Generate ephemeral token from OpenAI
             const response = await fetch('https://api.openai.com/v1/realtime/sessions', {
                 method: 'POST',
@@ -348,11 +348,11 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     voice: 'verse',
                 }),
             });
-            
+
             if (!response.ok) {
                 throw new Error(`OpenAI API error: ${response.status}`);
             }
-            
+
             const data = await response.json() as {
                 client_secret: {
                     value: string;
@@ -360,14 +360,14 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 };
                 id: string;
             };
-            
+
             return reply.send({
                 token: data.client_secret.value
             });
         } catch (error) {
             log({ module: 'openai', level: 'error' }, 'Failed to generate ephemeral token', error);
-            return reply.code(500).send({ 
-                error: 'Failed to generate ephemeral token' 
+            return reply.code(500).send({
+                error: 'Failed to generate ephemeral token'
             });
         }
     });
@@ -642,11 +642,11 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 where: { id: request.userId },
                 select: { settings: true, settingsVersion: true }
             });
-            
+
             if (!user) {
                 return reply.code(500).send({ error: 'Failed to get account settings' });
             }
-            
+
             return reply.send({
                 settings: user.settings,
                 settingsVersion: user.settingsVersion
@@ -690,14 +690,14 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 where: { id: userId },
                 select: { settings: true, settingsVersion: true }
             });
-            
+
             if (!currentUser) {
                 return reply.code(500).send({
                     success: false,
                     error: 'Failed to update account settings'
                 });
             }
-            
+
             // Check current version
             if (currentUser.settingsVersion !== expectedVersion) {
                 return reply.code(200).send({
@@ -998,9 +998,10 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     metadata,
                     metadataVersion: 1,
                     daemonState: daemonState || null,
-                    daemonStateVersion: daemonState ? 1 : 0
-                    // active defaults to true in schema
-                    // lastActiveAt defaults to now() in schema
+                    daemonStateVersion: daemonState ? 1 : 0,
+                    // Default to offline - in case the user does not start daemon
+                    active: false,
+                    // lastActiveAt and activeAt defaults to now() in schema
                 }
             });
 
@@ -1270,7 +1271,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
         socket.on('disconnect', () => {
             websocketEventsCounter.inc({ event_type: 'disconnect' });
-            
+
             // Cleanup connections
             eventRouter.removeConnection(userId, connection);
             decrementWebSocketConnection(connection.connectionType);
@@ -1319,7 +1320,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 // Track metrics
                 websocketEventsCounter.inc({ event_type: 'session-alive' });
                 sessionAliveEventsCounter.inc();
-                
+
                 // Basic validation
                 if (!data || typeof data.time !== 'number' || !data.sid) {
                     return;
@@ -1364,7 +1365,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 // Track metrics
                 websocketEventsCounter.inc({ event_type: 'machine-alive' });
                 machineAliveEventsCounter.inc();
-                
+
                 // Basic validation
                 if (!data || typeof data.time !== 'number' || !data.machineId) {
                     return;
