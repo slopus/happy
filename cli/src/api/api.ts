@@ -97,10 +97,10 @@ export class ApiClient {
    * Register or update machine with the server
    * Returns the current machine state from the server with decrypted metadata and daemonState
    */
-  async createOrReturnExistingAsIs(opts: {
+  async createMachineOrGetExistingAsIs(opts: {
     machineId: string,
     metadata: MachineMetadata,
-    daemonState: DaemonState
+    daemonState?: DaemonState
   }): Promise<Machine> {
     const response = await axios.post(
       `${configuration.serverUrl}/v1/machines`,

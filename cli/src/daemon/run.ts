@@ -17,6 +17,15 @@ import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { getDaemonState, cleanupDaemonState } from './utils';
 import { writeDaemonState, DaemonLocallyPersistedState } from '@/persistence/persistence';
 
+// Prepare initial metadata
+export const initialMachineMetadata: MachineMetadata = {
+  host: os.hostname(),
+  platform: os.platform(),
+  happyCliVersion: packageJson.version,
+  homeDir: os.homedir(),
+  happyHomeDir: configuration.happyHomeDir
+};
+
 export async function startDaemon(): Promise<void> {
   logger.debug('[DAEMON RUN] Starting daemon process...');
   logger.debugLargeJson('[DAEMON RUN] Environment', getEnvironmentInfo());
@@ -240,15 +249,6 @@ export async function startDaemon(): Promise<void> {
     await writeDaemonState(fileState);
     logger.debug('[DAEMON RUN] Daemon state written');
 
-    // Prepare initial metadata
-    const initialMetadata: MachineMetadata = {
-      host: os.hostname(),
-      platform: os.platform(),
-      happyCliVersion: packageJson.version,
-      homeDir: os.homedir(),
-      happyHomeDir: configuration.happyHomeDir
-    };
-
     // Prepare initial daemon state
     const initialDaemonState: DaemonState = {
       status: 'offline',
@@ -260,10 +260,10 @@ export async function startDaemon(): Promise<void> {
     // Create API client
     const api = new ApiClient(credentials.token, credentials.secret);
 
-    // Get or create machine (similar to getOrCreateSession)
-    const machine = await api.createOrReturnExistingAsIs({
+    // Get or create machine
+    const machine = await api.createMachineOrGetExistingAsIs({
       machineId,
-      metadata: initialMetadata,
+      metadata: initialMachineMetadata,
       daemonState: initialDaemonState
     });
     logger.debug(`[DAEMON RUN] Machine registered: ${machine.id}`);

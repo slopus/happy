@@ -19,6 +19,7 @@ import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
 import { getDaemonState } from '@/daemon/utils';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
+import { initialMachineMetadata } from './daemon/run';
 
 export interface StartOptions {
     model?: string
@@ -54,7 +55,11 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Get machine ID from settings (should already be set up)
     const settings = await readSettings();
-    const machineId = settings?.machineId || 'unknown';
+    let machineId = settings?.machineId
+    if (!machineId) {
+        console.error(`[START] No machine ID found in settings, which is unexepcted since authAndSetupMachineIfNeeded should have created it, using 'unknown' id instead`);
+        machineId = 'unknown';
+    }
     logger.debug(`Using machineId: ${machineId}`);
 
     let metadata: Metadata = {
@@ -71,6 +76,12 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);
+
+    // Create machine if it doesn't exist
+    await api.createMachineOrGetExistingAsIs({
+        machineId,
+        metadata: initialMachineMetadata
+    });
 
     // Always report to daemon if it exists
     try {

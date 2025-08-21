@@ -10,7 +10,6 @@
 import chalk from 'chalk'
 import { start, StartOptions } from '@/start'
 import { join } from 'node:path'
-import { createInterface } from 'node:readline'
 import { logger } from './ui/logger'
 import { readCredentials, readSettings, updateSettings } from './persistence/persistence'
 import { doAuth, authAndSetupMachineIfNeeded } from './ui/auth'
@@ -28,6 +27,9 @@ import { projectPath } from './projectPath'
 import { handleAuthCommand } from './commands/auth'
 import { clearCredentials, clearMachineId, writeCredentials } from './persistence/persistence'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
+import { render } from 'ink'
+import React from 'react'
+import { DaemonPrompt } from './ui/ink/DaemonPrompt'
 
 
 (async () => {
@@ -356,25 +358,22 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     // Daemon auto-start preference (machine already set up)
     let settings = await readSettings();
     if (isExperimentalEnabled && settings && settings.daemonAutoStartWhenRunningHappy === undefined) {
-
-      console.log(chalk.cyan('\n🚀 Happy Daemon Setup\n'));
-      // Ask about daemon auto-start
-      const rl = createInterface({
-        input: process.stdin,
-        output: process.stdout
+      const shouldAutoStart = await new Promise<boolean>((resolve) => {
+        let hasResolved = false;
+        
+        const onSelect = (autoStart: boolean) => {
+          if (!hasResolved) {
+            hasResolved = true;
+            app.unmount();
+            resolve(autoStart);
+          }
+        };
+        
+        const app = render(React.createElement(DaemonPrompt, { onSelect }), {
+          exitOnCtrlC: false,
+          patchConsole: false
+        });
       });
-
-      console.log(chalk.cyan('\n📱 Happy can run a background service that allows you to:'));
-      console.log(chalk.cyan('  • Spawn new conversations from your phone'));
-      console.log(chalk.cyan('  • Continue closed conversations remotely'));
-      console.log(chalk.cyan('  • Work with Claude while your computer has internet\n'));
-
-      const answer = await new Promise<string>((resolve) => {
-        rl.question(chalk.green('Would you like Happy to start this service automatically? (recommended) [Y/n]: '), resolve);
-      });
-      rl.close();
-
-      const shouldAutoStart = answer.toLowerCase() !== 'n';
 
       settings = await updateSettings(settings => ({
         ...settings,
@@ -382,10 +381,10 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       }));
 
       if (shouldAutoStart) {
-        console.log(chalk.green('✓ Happy will start the background service automatically'));
+        console.log(chalk.green('\n✓ Happy will start the background service automatically'));
         console.log(chalk.gray('  The service will run whenever you use the happy command'));
       } else {
-        console.log(chalk.yellow('  You can enable this later by running: happy daemon install'));
+        console.log(chalk.yellow('\n  You can enable this later by running: happy daemon install'));
       }
     }
 
