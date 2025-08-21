@@ -230,7 +230,7 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
     const settings = await updateSettings(async s => {
         if (!s.machineId) {
             const newMachineId = randomUUID();
-            console.log(`[AUTH] No machine ID found, generating new one: ${newMachineId}; We will not create machine on startup since we don't have api client intialized`);
+            logger.debug(`[AUTH] No machine ID found, generating new one: ${newMachineId}; We will not create machine on startup since we don't have api client intialized`);
 
             return {
                 ...s,
