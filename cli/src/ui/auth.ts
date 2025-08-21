@@ -225,13 +225,13 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
         logger.debug('[AUTH] Using existing credentials');
     }
 
-    // Make sure we have a machine ID, it will be used to 
-    // associate sessions with a machine when they are created
-    // Machine is created only by the daemon for now
-    // for simplicity of control flow
-    // We should create it here if its not created yet though
+    // Make sure we have a machine ID
+    // Server machine entity will be created either by the daemon or by the CLI
     const settings = await updateSettings(async s => {
         if (!s.machineId) {
+            const newMachineId = randomUUID();
+            console.log(`[AUTH] No machine ID found, generating new one: ${newMachineId}; We will not create machine on startup since we don't have api client intialized`);
+
             return {
                 ...s,
                 machineId: randomUUID()
