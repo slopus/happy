@@ -1,5 +1,6 @@
 import * as React from "react";
 import { View, Text } from "react-native";
+import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
@@ -14,15 +15,8 @@ export const MessageView = (props: {
   getMessageById?: (id: string) => Message | null;
 }) => {
   return (
-    <View style={{ flexDirection: 'row', justifyContent: 'center' }} renderToHardwareTextureAndroid={true}>
-      <View
-        style={{
-          flexDirection: "column",
-          flexGrow: 1,
-          flexBasis: 0,
-          maxWidth: layout.maxWidth,
-        }}
-      >
+    <View style={styles.messageContainer} renderToHardwareTextureAndroid={true}>
+      <View style={styles.messageContent}>
         <RenderBlock
           message={props.message}
           metadata={props.metadata}
@@ -72,21 +66,11 @@ function UserTextBlock(props: {
   metadata: Metadata | null;
 }) {
   return (
-    <View style={{ maxWidth: '100%', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-end', paddingHorizontal: 16 }}>
-      <View
-        style={{
-          backgroundColor: "#f0eee6",
-          paddingHorizontal: 12,
-          paddingVertical: 4,
-          borderRadius: 12,
-          marginBottom: 12,
-          maxWidth: '100%'
-        }}
-      >
-
+    <View style={styles.userMessageContainer}>
+      <View style={styles.userMessageBubble}>
         <MarkdownView markdown={props.message.text} />
         {/* {__DEV__ && (
-          <Text style={{ color: '#666666', fontSize: 12 }}>{JSON.stringify(props.message.meta)}</Text>
+          <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
       </View>
     </View>
@@ -98,14 +82,7 @@ function AgentTextBlock(props: {
   metadata: Metadata | null;
 }) {
   return (
-    <View
-      style={{
-        marginHorizontal: 16,
-        marginBottom: 12,
-        borderRadius: 16,
-        alignSelf: "flex-start",
-      }}
-    >
+    <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} />
     </View>
   );
@@ -117,23 +94,15 @@ function AgentEventBlock(props: {
 }) {
   if (props.event.type === 'switch') {
     return (
-      <View style={{
-        marginHorizontal: 8,
-        alignItems: 'center',
-        paddingVertical: 8,
-      }}>
-        <Text style={{ color: '#666666', fontSize: 14 }}>Switched to {props.event.mode} mode</Text>
+      <View style={styles.agentEventContainer}>
+        <Text style={styles.agentEventText}>Switched to {props.event.mode} mode</Text>
       </View>
     );
   }
   if (props.event.type === 'message') {
     return (
-      <View style={{
-        marginVertical: 8,
-        alignItems: 'center',
-        paddingVertical: 8,
-      }}>
-        <Text style={{ color: '#666666', fontSize: 14 }}>{props.event.message}</Text>
+      <View style={styles.agentEventContainer}>
+        <Text style={styles.agentEventText}>{props.event.message}</Text>
       </View>
     );
   }
@@ -148,24 +117,16 @@ function AgentEventBlock(props: {
     };
 
     return (
-      <View style={{
-        marginHorizontal: 8,
-        alignItems: 'center',
-        paddingVertical: 8,
-      }}>
-        <Text style={{ color: '#666666', fontSize: 14 }}>
+      <View style={styles.agentEventContainer}>
+        <Text style={styles.agentEventText}>
           Usage limit reached until {formatTime(props.event.endsAt)}
         </Text>
       </View>
     );
   }
   return (
-    <View style={{
-      marginHorizontal: 8,
-      alignItems: 'center',
-      paddingVertical: 8,
-    }}>
-      <Text style={{ color: '#666666', fontSize: 14 }}>Unknown event</Text>
+    <View style={styles.agentEventContainer}>
+      <Text style={styles.agentEventText}>Unknown event</Text>
     </View>
   );
 }
@@ -180,7 +141,7 @@ function ToolCallBlock(props: {
     return null;
   }
   return (
-    <View style={{ marginHorizontal: 8 }}>
+    <View style={styles.toolContainer}>
       <ToolView
         tool={props.message.tool}
         metadata={props.metadata}
@@ -191,4 +152,54 @@ function ToolCallBlock(props: {
     </View>
   );
 }
+
+const styles = StyleSheet.create((theme) => ({
+  messageContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  messageContent: {
+    flexDirection: 'column',
+    flexGrow: 1,
+    flexBasis: 0,
+    maxWidth: layout.maxWidth,
+  },
+  userMessageContainer: {
+    maxWidth: '100%',
+    flexDirection: 'column',
+    alignItems: 'flex-end',
+    justifyContent: 'flex-end',
+    paddingHorizontal: 16,
+  },
+  userMessageBubble: {
+    backgroundColor: theme.colors.userMessageBackground,
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginBottom: 12,
+    maxWidth: '100%',
+  },
+  agentMessageContainer: {
+    marginHorizontal: 16,
+    marginBottom: 12,
+    borderRadius: 16,
+    alignSelf: 'flex-start',
+  },
+  agentEventContainer: {
+    marginHorizontal: 8,
+    alignItems: 'center',
+    paddingVertical: 8,
+  },
+  agentEventText: {
+    color: theme.colors.agentEventText,
+    fontSize: 14,
+  },
+  toolContainer: {
+    marginHorizontal: 8,
+  },
+  debugText: {
+    color: theme.colors.agentEventText,
+    fontSize: 12,
+  },
+}));
 

@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Text, View, StyleSheet } from 'react-native';
+import { Text, View } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 
 interface ToolSectionViewProps {
     title?: string;
@@ -18,7 +19,7 @@ export const ToolSectionView = React.memo<ToolSectionViewProps>(({ title, childr
     );
 });
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
     section: {
         marginBottom: 12,
         overflow: 'visible',
@@ -32,9 +33,9 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 13,
         fontWeight: '600',
-        color: '#666',
+        color: theme.colors.toolDescriptionText,
         marginBottom: 6,
         marginHorizontal: 12, // Add padding back for title when full width
         textTransform: 'uppercase',
     },
-});
+}));

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { View, Text } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 
@@ -10,32 +11,15 @@ interface CommandSuggestionProps {
 
 export const CommandSuggestion = React.memo(({ command, description }: CommandSuggestionProps) => {
     return (
-        <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 12,
-            height: 48,
-        }}>
+        <View style={styles.suggestionContainer}>
             <Text 
-                style={{
-                    fontSize: 14,
-                    color: '#007AFF',
-                    fontWeight: '600',
-                    marginRight: description ? 12 : 0,
-                    ...Typography.default('semiBold'),
-                }}
+                style={[styles.commandText, { marginRight: description ? 12 : 0 }]}
             >
                 /{command}
             </Text>
             {description && (
                 <Text
-                    style={{
-                        flex: 1,
-                        fontSize: 13,
-                        color: '#666',
-                        ...Typography.default(),
-                    }}
+                    style={styles.descriptionText}
                     numberOfLines={1}
                 >
                     {description}
@@ -53,47 +37,69 @@ interface FileMentionProps {
 
 export const FileMentionSuggestion = React.memo(({ fileName, filePath, fileType = 'file' }: FileMentionProps) => {
     return (
-        <View style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            paddingHorizontal: 16,
-            paddingVertical: 12,
-            height: 48,
-        }}>
-            <View style={{
-                width: 32,
-                height: 32,
-                borderRadius: 16,
-                backgroundColor: '#E8E8E8',
-                alignItems: 'center',
-                justifyContent: 'center',
-                marginRight: 12,
-            }}>
+        <View style={styles.suggestionContainer}>
+            <View style={styles.iconContainer}>
                 <Ionicons
                     name={fileType === 'folder' ? 'folder' : 'document-text'}
                     size={18}
-                    color="#333"
+                    color={styles.iconColor.color}
                 />
             </View>
             <Text 
-                style={{
-                    flex: 1,
-                    fontSize: 14,
-                    color: '#000',
-                    ...Typography.default(),
-                }}
+                style={styles.fileNameText}
                 numberOfLines={1}
             >
                 {filePath}{fileName}
             </Text>
-            <Text style={{
-                fontSize: 12,
-                color: '#999',
-                marginLeft: 8,
-                ...Typography.default(),
-            }}>
+            <Text style={styles.labelText}>
                 {fileType === 'folder' ? 'FOLDER' : 'FILE'}
             </Text>
         </View>
     );
 });
+
+const styles = StyleSheet.create((theme) => ({
+    suggestionContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        height: 48,
+    },
+    commandText: {
+        fontSize: 14,
+        color: theme.colors.autocompleteCommandText,
+        fontWeight: '600',
+        ...Typography.default('semiBold'),
+    },
+    descriptionText: {
+        flex: 1,
+        fontSize: 13,
+        color: theme.colors.autocompleteDescriptionText,
+        ...Typography.default(),
+    },
+    iconContainer: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: theme.colors.autocompleteIconBackground,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    iconColor: {
+        color: theme.colors.autocompleteIconColor,
+    },
+    fileNameText: {
+        flex: 1,
+        fontSize: 14,
+        color: theme.colors.autocompleteFileNameText,
+        ...Typography.default(),
+    },
+    labelText: {
+        fontSize: 12,
+        color: theme.colors.autocompleteLabelText,
+        marginLeft: 8,
+        ...Typography.default(),
+    },
+}));

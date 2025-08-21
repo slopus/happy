@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { View } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 import TextareaAutosize from 'react-textarea-autosize';
 import { Typography } from '@/constants/Typography';
 
@@ -51,6 +52,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         onStateChange
     } = props;
     
+    const { theme } = useUnistyles();
     const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
     // Convert maxHeight to approximate maxRows (assuming ~24px line height)
@@ -171,7 +173,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     width: '100%',
                     padding: '0',
                     fontSize: '16px',
-                    color: '#000',
+                    color: theme.colors.inputText,
                     border: 'none',
                     outline: 'none',
                     resize: 'none' as const,
