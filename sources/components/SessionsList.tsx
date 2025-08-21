@@ -13,6 +13,7 @@ import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
 import { StyleSheet } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
+import { requestReview } from '@/utils/requestReview';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -143,6 +144,13 @@ export function SessionsList() {
             selected: pathname.startsWith(`/session/${item.type === 'session' ? item.session.id : ''}`)
         }));
     }, [data, pathname]) : data;
+
+    // Request review
+    React.useEffect(() => {
+        if (data && data.length > 0) {
+            requestReview();
+        }
+    }, [data && data.length > 0]);
 
     // Early return if no data yet
     if (!data) {

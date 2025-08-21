@@ -101,7 +101,9 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'gradient'
+                avatarStyle: 'gradient',
+                reviewPromptAnswered: false,
+                reviewPromptLikedApp: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: true
@@ -129,7 +131,9 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'gradient'
+                avatarStyle: 'gradient',
+                reviewPromptAnswered: false,
+                reviewPromptLikedApp: null,
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual({
@@ -148,7 +152,9 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'gradient'
+                avatarStyle: 'gradient',
+                reviewPromptAnswered: false,
+                reviewPromptLikedApp: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: false
@@ -175,7 +181,9 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'gradient'
+                avatarStyle: 'gradient',
+                reviewPromptAnswered: false,
+                reviewPromptLikedApp: null,
             };
             expect(applySettings(currentSettings, {})).toEqual({
                 ...settingsDefaults,
@@ -208,7 +216,9 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'gradient'
+                avatarStyle: 'gradient',
+                reviewPromptAnswered: false,
+                reviewPromptLikedApp: null,
             };
             const delta: any = {
                 viewInline: false,
