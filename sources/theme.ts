@@ -15,6 +15,8 @@ export const lightTheme = {
         chevron: Platform.select({ ios: '#C7C7CC', default: '#49454F' }),
         divider: Platform.select({ ios: '#C6C6C8', default: '#CAC4D0' }),
         pressedOverlay: Platform.select({ ios: '#D1D1D6', default: 'transparent' }),
+        selectedBackground: '#f0f0f2',
+
         ripple: 'rgba(0, 0, 0, 0.08)',
         
         // List colors
@@ -161,6 +163,7 @@ export const darkTheme = {
         chevron: Platform.select({ ios: '#48484A', default: '#CAC4D0' }),
         divider: Platform.select({ ios: '#38383A', default: '#49454F' }),
         pressedOverlay: Platform.select({ ios: '#2C2C2E', default: 'transparent' }),
+        selectedBackground: '#2C2C2E',
         ripple: 'rgba(255, 255, 255, 0.08)',
         
         // List colors

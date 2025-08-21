@@ -57,7 +57,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         backgroundColor: theme.colors.cardBackground,
     },
     sessionItemSelected: {
-        backgroundColor: theme.colors.pressedOverlay,
+        backgroundColor: theme.colors.selectedBackground,
     },
     sessionContent: {
         flex: 1,
@@ -106,8 +106,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     separator: {
         height: 0.5,
-        backgroundColor: theme.colors.divider,
-        marginLeft: 88,
+        // backgroundColor: theme.colors.divider,
+        // marginLeft: 88,
     },
     draftIcon: {
         marginLeft: 6,
@@ -156,10 +156,16 @@ export function SessionsList() {
                 );
 
             case 'active-sessions':
+                // Extract just the session ID from pathname (e.g., /session/abc123/file -> abc123)
+                let selectedId: string | undefined;
+                if (pathname.startsWith('/session/')) {
+                    const parts = pathname.split('/');
+                    selectedId = parts[2]; // parts[0] is empty, parts[1] is 'session', parts[2] is the ID
+                }
                 return (
                     <ActiveSessionsGroup 
                         sessions={item.sessions} 
-                        selectedSessionId={pathname.startsWith('/session/') ? pathname.split('/session/')[1] : undefined}
+                        selectedSessionId={selectedId}
                     />
                 );
 

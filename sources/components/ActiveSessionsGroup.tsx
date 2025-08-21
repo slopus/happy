@@ -46,7 +46,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         backgroundColor: theme.colors.cardBackground,
     },
     sessionRowSelected: {
-        backgroundColor: theme.colors.pressedOverlay,
+        backgroundColor: theme.colors.selectedBackground,
     },
     sessionContent: {
         flex: 1,
