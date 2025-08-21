@@ -1,52 +1,10 @@
 import React from 'react';
-import { View, Text, Platform, TextInput } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { Modal } from '@/modal';
-import { Alert } from 'react-native';
-import { useUnistyles } from 'react-native-unistyles';
 
-function ManualAuthModal({ onClose, onSubmit }: { 
-    onClose: () => void; 
-    onSubmit: (url: string) => void }
-) {
-    const { theme } = useUnistyles();
-    const [url, setUrl] = React.useState('');
-    return (
-        <View style={{ padding: 20, backgroundColor: theme.colors.cardBackground, borderRadius: 12, minWidth: 300 }}>
-            <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>
-                Enter URL manually
-            </Text>
-            <Text style={{ fontSize: 14, color: theme.colors.subtitleText, marginBottom: 16 }}>
-                Paste the authentication URL from your terminal
-            </Text>
-            <TextInput
-                style={{
-                    borderWidth: 1,
-                    borderColor: theme.colors.divider,
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: 14,
-                    marginBottom: 20,
-                    color: theme.colors.inputText,
-                    backgroundColor: theme.colors.inputBackground
-                }}
-                value={url}
-                onChangeText={setUrl}
-                placeholder="happy://terminal?..."
-                placeholderTextColor={theme.colors.inputPlaceholder}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                <Text onPress={onClose} style={{ color: '#007AFF', fontSize: 16, paddingVertical: 8, paddingHorizontal: 16, marginRight: 8 }}>Cancel</Text>
-                <Text onPress={() => { if (url.trim()) { onSubmit(url.trim()); onClose(); } }} style={{ color: '#007AFF', fontSize: 16, fontWeight: '600', paddingVertical: 8, paddingHorizontal: 16 }}>Authenticate</Text>
-            </View>
-        </View>
-    );
-}
 
 export function EmptyMainScreen() {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
@@ -116,33 +74,19 @@ export function EmptyMainScreen() {
                                 title="Enter URL manually"
                                 size="normal"
                                 display="inverted"
-                                onPress={() => {
-                                    if (Platform.OS === 'ios') {
-                                        Alert.prompt(
-                                            'Authenticate Terminal',
-                                            'Paste the authentication URL from your terminal',
-                                            [
-                                                { text: 'Cancel', style: 'cancel' },
-                                                {
-                                                    text: 'Authenticate',
-                                                    onPress: (url?: string) => {
-                                                        if (url?.trim()) {
-                                                            connectWithUrl(url.trim());
-                                                        }
-                                                    }
-                                                }
-                                            ],
-                                            'plain-text',
-                                            '',
-                                            'happy://terminal?...'
-                                        );
-                                    } else {
-                                        Modal.show({
-                                            component: ManualAuthModal,
-                                            props: {
-                                                onSubmit: (url: string) => connectWithUrl(url)
-                                            }
-                                        });
+                                onPress={async () => {
+                                    const url = await Modal.prompt(
+                                        'Authenticate Terminal',
+                                        'Paste the authentication URL from your terminal',
+                                        {
+                                            placeholder: 'happy://terminal?...',
+                                            cancelText: 'Cancel',
+                                            confirmText: 'Authenticate'
+                                        }
+                                    );
+                                    
+                                    if (url?.trim()) {
+                                        connectWithUrl(url.trim());
                                     }
                                 }}
                             />

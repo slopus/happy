@@ -3,6 +3,7 @@ import { View, Platform } from 'react-native';
 import { ModalState, ModalConfig, ModalContextValue } from './types';
 import { Modal } from './ModalManager';
 import { WebAlertModal } from './components/WebAlertModal';
+import { WebPromptModal } from './components/WebPromptModal';
 import { CustomModal } from './components/CustomModal';
 
 const ModalContext = createContext<ModalContextValue | undefined>(undefined);
@@ -76,6 +77,16 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
                             onClose={() => hideModal(currentModal.id)}
                             onConfirm={(value) => {
                                 Modal.resolveConfirm(currentModal.id, value);
+                                hideModal(currentModal.id);
+                            }}
+                        />
+                    )}
+                    {currentModal.type === 'prompt' && (
+                        <WebPromptModal
+                            config={currentModal}
+                            onClose={() => hideModal(currentModal.id)}
+                            onConfirm={(value) => {
+                                Modal.resolvePrompt(currentModal.id, value);
                                 hideModal(currentModal.id);
                             }}
                         />
