@@ -1,7 +1,8 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import { Link } from 'expo-router';
 import * as React from 'react';
-import { ScrollView, StyleSheet, View, Platform } from 'react-native';
+import { ScrollView, View, Platform } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
@@ -16,7 +17,7 @@ export const MarkdownView = React.memo((props: { markdown: string }) => {
                 } else if (block.type === 'header') {
                     return <RenderHeaderBlock level={block.level} spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} />;
                 } else if (block.type === 'horizontal-rule') {
-                    return <View style={{ height: 1, backgroundColor: 'rgb(236, 236, 236)', marginTop: 8, marginBottom: 8 }} key={index} />;
+                    return <View style={style.horizontalRule} key={index} />;
                 } else if (block.type === 'list') {
                     return <RenderListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} />;
                 } else if (block.type === 'numbered-list') {
@@ -86,7 +87,7 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
     return (<>
         {props.spans.map((span, index) => {
             if (span.url) {
-                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, { color: '#2BACCC' }, span.styles.map(s => style[s])]}>{span.text}</Link>
+                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
             } else {
                 return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
             }
@@ -95,7 +96,7 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
 }
 
 
-const style = StyleSheet.create({
+const style = StyleSheet.create((theme) => ({
 
     // Plain text
 
@@ -105,8 +106,7 @@ const style = StyleSheet.create({
         lineHeight: 24, // Reduced from 28 to 24
         marginTop: 8,
         marginBottom: 8,
-        // color: 'rgb(236, 236, 236)',
-        color: 'rgb(0, 0, 0)',
+        color: theme.colors.markdownText,
         fontWeight: '400',
     },
 
@@ -123,15 +123,12 @@ const style = StyleSheet.create({
         ...Typography.mono(),
         fontSize: 16,
         lineHeight: 21,  // Reduced from 24 to 21
-        // backgroundColor: 'rgb(66, 66, 66)',
-        // backgroundColor: 'rgb(244, 244, 244)',
-        // color: 'rgb(78, 78, 78)',
-        color: '#737373',
+        backgroundColor: theme.colors.markdownCodeBackground,
+        color: theme.colors.markdownCodeText,
     },
     link: {
         ...Typography.default(),
-        // color: 'rgb(122, 183, 255)',
-        color: 'rgb(0, 0, 0)',
+        color: theme.colors.markdownLinkText,
         fontWeight: '400',
     },
 
@@ -139,8 +136,7 @@ const style = StyleSheet.create({
 
     header: {
         ...Typography.default('semiBold'),
-        // color: 'rgb(236, 236, 236)',
-        color: 'rgb(0, 0, 0)',
+        color: theme.colors.markdownHeaderText,
     },
     header1: {
         fontSize: 16,
@@ -187,8 +183,7 @@ const style = StyleSheet.create({
 
     list: {
         ...Typography.default(),
-        // color: 'rgb(236, 236, 236)',
-        color: 'rgb(0, 0, 0)',
+        color: theme.colors.markdownListText,
         marginTop: 0,
         marginBottom: 0,
     },
@@ -209,15 +204,13 @@ const style = StyleSheet.create({
     //
 
     codeBlock: {
-        // backgroundColor: 'rgb(66, 66, 66)',
-        backgroundColor: 'rgb(236, 236, 236)',
+        backgroundColor: theme.colors.markdownBlockBackground,
         borderRadius: 8,
         marginVertical: 8,
     },
     codeLanguage: {
         ...Typography.mono(),
-        // color: 'rgb(122, 183, 255)',
-        color: 'rgb(0, 0, 0)',
+        color: theme.colors.markdownText,
         fontSize: 12,
         marginTop: 8,
         paddingHorizontal: 16,
@@ -225,9 +218,14 @@ const style = StyleSheet.create({
     },
     codeText: {
         ...Typography.mono(),
-        // color: 'rgb(236, 236, 236)',
-        color: 'rgb(0, 0, 0)',
+        color: theme.colors.markdownText,
         fontSize: 14,
         lineHeight: 20,
     },
-});
+    horizontalRule: {
+        height: 1,
+        backgroundColor: theme.colors.markdownHorizontalRule,
+        marginTop: 8,
+        marginBottom: 8,
+    },
+}));

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { TextInput, Platform, View, NativeSyntheticEvent, TextInputKeyPressEventData, TextInputSelectionChangeEventData } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 
 export type SupportedKey = 'Enter' | 'Escape' | 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight' | 'Tab';
@@ -50,6 +51,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         onStateChange
     } = props;
 
+    const { theme } = useUnistyles();
     // Track latest selection in a ref
     const selectionRef = React.useRef({ start: 0, end: 0 });
     const inputRef = React.useRef<TextInput>(null);
@@ -182,7 +184,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     width: '100%',
                     fontSize: 16,
                     maxHeight,
-                    color: '#000',
+                    color: theme.colors.inputText,
                     textAlignVertical: 'center',
                     padding:0,
                     paddingTop: props.paddingTop,
@@ -192,11 +194,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     ...Typography.default(),
                 }}
                 placeholder={placeholder}
-                placeholderTextColor={Platform.select({ 
-                    ios: '#9D9FA3', 
-                    android: '#757575',
-                    default: '#9D9FA3'
-                })}
+                placeholderTextColor={theme.colors.inputPlaceholder}
                 value={value}
                 onChangeText={handleTextChange}
                 onKeyPress={handleKeyPress}

@@ -79,7 +79,70 @@ export const lightTheme = {
         
         // Context warning colors
         contextWarningCritical: '#FF3B30',
-        contextWarningNormal: '#8E8E93'
+        contextWarningNormal: '#8E8E93',
+        
+        // Message View colors
+        userMessageBackground: '#f0eee6',
+        userMessageText: '#000000',
+        agentMessageText: '#000000',
+        agentEventText: '#666666',
+        
+        // Tool View colors
+        toolBackground: '#F8F8F8',
+        toolHeaderBackground: '#f0f0f0',
+        toolIconColor: '#000000',
+        toolTitleText: '#000000',
+        toolDescriptionText: '#666666',
+        toolStatusText: '#666666',
+        toolElapsedText: '#666666',
+        toolErrorBackground: '#FFF0F0',
+        toolErrorBorder: '#FF3B30',
+        toolErrorText: '#FF3B30',
+        toolWarningBackground: '#FFF8F0',
+        toolWarningBorder: '#FF9500',
+        toolWarningText: '#FF9500',
+        
+        // Code/Syntax colors
+        codeBackground: '#1E1E1E',
+        codeText: '#E0E0E0',
+        syntaxKeyword: '#1d4ed8',
+        syntaxString: '#059669',
+        syntaxComment: '#6b7280',
+        syntaxNumber: '#0891b2',
+        syntaxFunction: '#9333ea',
+        syntaxBracket1: '#ff6b6b',
+        syntaxBracket2: '#4ecdc4',
+        syntaxBracket3: '#45b7d1',
+        syntaxBracket4: '#f7b731',
+        syntaxBracket5: '#5f27cd',
+        syntaxDefault: '#374151',
+        
+        // Markdown colors
+        markdownText: '#000000',
+        markdownHeaderText: '#000000',
+        markdownCodeBackground: '#F4F4F4',
+        markdownCodeText: '#737373',
+        markdownBlockBackground: '#ECECEC',
+        markdownLinkText: '#2BACCC',
+        markdownListText: '#000000',
+        markdownHorizontalRule: '#ECECEC',
+        
+        // Autocomplete colors
+        autocompleteCommandText: '#007AFF',
+        autocompleteDescriptionText: '#666666',
+        autocompleteFileNameText: '#000000',
+        autocompleteIconBackground: '#E8E8E8',
+        autocompleteIconColor: '#333333',
+        autocompleteLabelText: '#999999',
+        autocompleteSelectedBackground: 'rgba(0, 122, 255, 0.1)',
+        autocompletePressedBackground: 'rgba(0, 0, 0, 0.05)',
+        autocompleteSelectedBorder: '#007AFF',
+        
+        // Git status colors
+        gitBranchText: '#6b7280',
+        gitFileCountText: '#6b7280',
+        gitAddedText: '#22c55e',
+        gitRemovedText: '#ef4444',
     },
 };
 
@@ -162,7 +225,70 @@ export const darkTheme = {
         
         // Context warning colors
         contextWarningCritical: '#FF453A',
-        contextWarningNormal: '#8E8E93'
+        contextWarningNormal: '#8E8E93',
+        
+        // Message View colors
+        userMessageBackground: '#2C2C2E',
+        userMessageText: '#FFFFFF',
+        agentMessageText: '#FFFFFF',
+        agentEventText: '#8E8E93',
+        
+        // Tool View colors
+        toolBackground: Platform.select({ ios: '#2C2C2E', default: '#2e2e2e' }),
+        toolHeaderBackground: Platform.select({ ios: '#38383A', default: '#3a3a3a' }),
+        toolIconColor: '#FFFFFF',
+        toolTitleText: '#FFFFFF',
+        toolDescriptionText: '#8E8E93',
+        toolStatusText: '#8E8E93',
+        toolElapsedText: '#8E8E93',
+        toolErrorBackground: 'rgba(255, 69, 58, 0.15)',
+        toolErrorBorder: '#FF453A',
+        toolErrorText: '#FF6B6B',
+        toolWarningBackground: 'rgba(255, 159, 10, 0.15)',
+        toolWarningBorder: '#FF9F0A',
+        toolWarningText: '#FFAB00',
+        
+        // Code/Syntax colors (brighter for dark mode)
+        codeBackground: '#1C1C1E',
+        codeText: '#E0E0E0',
+        syntaxKeyword: '#569CD6',
+        syntaxString: '#CE9178',
+        syntaxComment: '#6A9955',
+        syntaxNumber: '#B5CEA8',
+        syntaxFunction: '#DCDCAA',
+        syntaxBracket1: '#FFD700',
+        syntaxBracket2: '#DA70D6',
+        syntaxBracket3: '#179FFF',
+        syntaxBracket4: '#FF8C00',
+        syntaxBracket5: '#00FF00',
+        syntaxDefault: '#D4D4D4',
+        
+        // Markdown colors
+        markdownText: '#FFFFFF',
+        markdownHeaderText: '#FFFFFF',
+        markdownCodeBackground: Platform.select({ ios: '#38383A', default: '#3a3a3a' }),
+        markdownCodeText: '#E0E0E0',
+        markdownBlockBackground: Platform.select({ ios: '#2C2C2E', default: '#2e2e2e' }),
+        markdownLinkText: '#0A84FF',
+        markdownListText: '#FFFFFF',
+        markdownHorizontalRule: '#48484A',
+        
+        // Autocomplete colors
+        autocompleteCommandText: '#0A84FF',
+        autocompleteDescriptionText: '#8E8E93',
+        autocompleteFileNameText: '#FFFFFF',
+        autocompleteIconBackground: Platform.select({ ios: '#38383A', default: '#3a3a3a' }),
+        autocompleteIconColor: '#FFFFFF',
+        autocompleteLabelText: '#8E8E93',
+        autocompleteSelectedBackground: 'rgba(10, 132, 255, 0.2)',
+        autocompletePressedBackground: 'rgba(255, 255, 255, 0.08)',
+        autocompleteSelectedBorder: '#0A84FF',
+        
+        // Git status colors
+        gitBranchText: '#8E8E93',
+        gitFileCountText: '#8E8E93',
+        gitAddedText: '#34C759',
+        gitRemovedText: '#FF453A',
     },
 } satisfies typeof lightTheme;
 

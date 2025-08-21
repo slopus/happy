@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Text, View, StyleSheet, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { Text, View, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { getToolViewComponent } from './views/_all';
 import { Message, ToolCall } from '@/sync/typesMessage';
@@ -25,6 +26,7 @@ interface ToolViewProps {
 export const ToolView = React.memo<ToolViewProps>((props) => {
     const { tool, onPress, sessionId, messageId } = props;
     const router = useRouter();
+    const { theme } = useUnistyles();
 
     // Create default onPress handler for navigation
     const handlePress = React.useCallback(() => {
@@ -75,7 +77,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         minimal = knownTool.minimal;
     }
     if (knownTool && typeof knownTool.icon === 'function') {
-        icon = knownTool.icon(18, '#000');
+        icon = knownTool.icon(18, theme.colors.toolIconColor);
     }
     if (knownTool && typeof knownTool.noStatus === 'boolean') {
         noStatus = knownTool.noStatus;
@@ -103,7 +105,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         switch (tool.state) {
             case 'running':
                 if (!noStatus) {
-                    statusIcon = <ActivityIndicator size="small" color="black" style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }} />;
+                    statusIcon = <ActivityIndicator size="small" color={theme.colors.toolIconColor} style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }} />;
                 }
                 break;
             case 'completed':
@@ -231,9 +233,9 @@ function ElapsedView(props: { from: number }) {
     return <Text style={styles.elapsedText}>{elapsed.toFixed(1)}s</Text>;
 }
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
     container: {
-        backgroundColor: '#F8F8F8',
+        backgroundColor: theme.colors.toolBackground,
         borderRadius: 8,
         marginVertical: 4,
         overflow: 'hidden'
@@ -243,7 +245,7 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: 12,
-        backgroundColor: '#f0f0f0',
+        backgroundColor: theme.colors.toolHeaderBackground,
     },
     headerLeft: {
         flexDirection: 'row',
@@ -265,13 +267,13 @@ const styles = StyleSheet.create({
     },
     elapsedText: {
         fontSize: 13,
-        color: '#666',
-        fontFamily: 'monospace',
+        color: theme.colors.toolElapsedText,
+        fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
     },
     toolName: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#000',
+        color: theme.colors.toolTitleText,
     },
     status: {
         fontWeight: '400',
@@ -280,7 +282,7 @@ const styles = StyleSheet.create({
     },
     toolDescription: {
         fontSize: 13,
-        color: '#666',
+        color: theme.colors.toolDescriptionText,
         marginTop: 2,
     },
     content: {
@@ -288,4 +290,4 @@ const styles = StyleSheet.create({
         paddingTop: 8,
         overflow: 'visible'
     },
-});
+}));

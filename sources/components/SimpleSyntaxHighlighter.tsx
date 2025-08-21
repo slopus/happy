@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text, View } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 
 interface SimpleSyntaxHighlighterProps {
@@ -7,52 +8,45 @@ interface SimpleSyntaxHighlighterProps {
   language: string | null;
 }
 
-// Comprehensive color scheme - saturated pastel colors with unique bracket colors
-const colors = {
-  // Language constructs
-  keyword: '#1d4ed8',        // Deep blue for keywords (function, const, etc.)
-  controlFlow: '#9333ea',    // Deep purple for control flow (if, else, for, etc.)
-  type: '#ea580c',           // Orange for types and classes
-  modifier: '#c2410c',       // Orange-red for modifiers (public, private, etc.)
+// Get theme-aware colors
+const getColors = (theme: any) => ({
+  // Use theme colors directly for syntax highlighting
+  keyword: theme.colors.syntaxKeyword,
+  controlFlow: theme.colors.syntaxKeyword,
+  type: theme.colors.syntaxKeyword,
+  modifier: theme.colors.syntaxKeyword,
   
-  // Literals and values
-  string: '#059669',         // Emerald green for strings
-  number: '#0891b2',         // Cyan/teal for numbers
-  boolean: '#db2777',        // Pink for true/false/null
-  regex: '#16a34a',          // Green for regex
+  string: theme.colors.syntaxString,
+  number: theme.colors.syntaxNumber,
+  boolean: theme.colors.syntaxNumber,
+  regex: theme.colors.syntaxString,
   
-  // Functions and methods
-  function: '#9333ea',       // Deep purple for function names
-  method: '#0ea5e9',         // Sky blue for method calls
-  property: '#ea580c',       // Orange for properties
+  function: theme.colors.syntaxFunction,
+  method: theme.colors.syntaxFunction,
+  property: theme.colors.syntaxDefault,
   
-  // Comments and documentation
-  comment: '#6b7280',        // Gray for comments
-  docstring: '#6b7280',      // Gray for docstrings
+  comment: theme.colors.syntaxComment,
+  docstring: theme.colors.syntaxComment,
   
-  // Operators and punctuation
-  operator: '#374151',       // Dark gray for operators
-  assignment: '#1d4ed8',     // Deep blue for assignment operators
-  comparison: '#9333ea',     // Deep purple for comparison operators
-  logical: '#0891b2',        // Teal for logical operators
+  operator: theme.colors.syntaxDefault,
+  assignment: theme.colors.syntaxKeyword,
+  comparison: theme.colors.syntaxKeyword,
+  logical: theme.colors.syntaxKeyword,
   
-  // Brackets with UNIQUE colors - not used anywhere else
-  bracket1: '#ff6b6b',       // Coral red - level 1
-  bracket2: '#4ecdc4',       // Turquoise - level 2  
-  bracket3: '#45b7d1',       // Light blue - level 3
-  bracket4: '#f7b731',       // Golden yellow - level 4
-  bracket5: '#5f27cd',       // Deep violet - level 5
+  bracket1: theme.colors.syntaxBracket1,
+  bracket2: theme.colors.syntaxBracket2,
+  bracket3: theme.colors.syntaxBracket3,
+  bracket4: theme.colors.syntaxBracket4,
+  bracket5: theme.colors.syntaxBracket5,
   
-  // Special tokens
-  decorator: '#c2410c',      // Orange-red for decorators (@decorator)
-  import: '#0891b2',         // Teal for import/export
-  variable: '#374151',       // Dark gray for variables
-  parameter: '#ea580c',      // Orange for parameters
+  decorator: theme.colors.syntaxKeyword,
+  import: theme.colors.syntaxKeyword,
+  variable: theme.colors.syntaxDefault,
+  parameter: theme.colors.syntaxDefault,
   
-  // Default
-  default: '#374151',        // Dark gray default
-  punctuation: '#6b7280',    // Gray for general punctuation
-};
+  default: theme.colors.syntaxDefault,
+  punctuation: theme.colors.syntaxDefault,
+});
 
 // Bracket pairs for nesting detection
 const bracketPairs = {
@@ -256,6 +250,8 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
   code,
   language
 }) => {
+  const { theme } = useUnistyles();
+  const colors = getColors(theme);
   const tokens = tokenizeCode(code, language);
 
   const getColorForType = (type: string, nestLevel?: number): string => {

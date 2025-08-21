@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text } from 'react-native';
 import { useSessionGitStatus } from '@/sync/storage';
 import { GitStatus } from '@/sync/storageTypes';
+import { useUnistyles } from 'react-native-unistyles';
 
 // Custom hook to check if git status should be shown
 export function useHasMeaningfulGitStatus(sessionId: string): boolean {
@@ -15,6 +16,7 @@ interface GitStatusBadgeProps {
 
 export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
     const gitStatus = useSessionGitStatus(sessionId);
+    const { theme } = useUnistyles();
 
     // Don't render if no git status (not a git repository) or no meaningful changes
     if (!gitStatus || !hasMeaningfulChanges(gitStatus)) {
@@ -29,7 +31,7 @@ export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
             {/* Branch name */}
             <Text style={{
                 fontSize: 12,
-                color: '#6b7280',
+                color: theme.colors.gitBranchText,
                 fontWeight: '500'
             }}>
                 {gitStatus.branch || 'main'}
@@ -39,7 +41,7 @@ export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
             {fileCount > 0 && (
                 <Text style={{
                     fontSize: 12,
-                    color: '#6b7280',
+                    color: theme.colors.gitFileCountText,
                     fontWeight: '500'
                 }}>
                     {fileCount} files
@@ -52,7 +54,7 @@ export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
                     {gitStatus.unstagedLinesAdded > 0 && (
                         <Text style={{
                             fontSize: 12,
-                            color: '#22c55e',
+                            color: theme.colors.gitAddedText,
                             fontWeight: '600'
                         }}>
                             +{gitStatus.unstagedLinesAdded}
@@ -61,7 +63,7 @@ export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
                     {gitStatus.unstagedLinesRemoved > 0 && (
                         <Text style={{
                             fontSize: 12,
-                            color: '#ef4444',
+                            color: theme.colors.gitRemovedText,
                             fontWeight: '600'
                         }}>
                             -{gitStatus.unstagedLinesRemoved}

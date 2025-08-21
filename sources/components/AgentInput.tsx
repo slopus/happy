@@ -507,7 +507,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                     alignItems: 'center',
                                                     paddingHorizontal: 16,
                                                     paddingVertical: 8,
-                                                    backgroundColor: pressed ? 'rgba(0, 0, 0, 0.05)' : 'transparent'
+                                                    backgroundColor: pressed ? theme.colors.overlayPressed : 'transparent'
                                                 })}
                                             >
                                                 <View style={{
@@ -515,7 +515,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                     height: 16,
                                                     borderRadius: 8,
                                                     borderWidth: 2,
-                                                    borderColor: isSelected ? '#007AFF' : '#C0C0C0',
+                                                    borderColor: isSelected ? theme.colors.selectionActive : theme.colors.selectionInactive,
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
                                                     marginRight: 12
@@ -525,13 +525,13 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                             width: 6,
                                                             height: 6,
                                                             borderRadius: 3,
-                                                            backgroundColor: '#007AFF'
+                                                            backgroundColor: theme.colors.selectionDot
                                                         }} />
                                                     )}
                                                 </View>
                                                 <Text style={{
                                                     fontSize: 14,
-                                                    color: isSelected ? '#007AFF' : '#000',
+                                                    color: isSelected ? theme.colors.selectionActive : theme.colors.titleText,
                                                     ...Typography.default()
                                                 }}>
                                                     {config.label}
@@ -544,7 +544,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 {/* Divider */}
                                 <View style={{
                                     height: 1,
-                                    backgroundColor: '#F0F0F0',
+                                    backgroundColor: theme.colors.overlayDivider,
                                     marginHorizontal: 16
                                 }} />
 
@@ -579,7 +579,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                     alignItems: 'center',
                                                     paddingHorizontal: 16,
                                                     paddingVertical: 8,
-                                                    backgroundColor: pressed ? 'rgba(0, 0, 0, 0.05)' : 'transparent'
+                                                    backgroundColor: pressed ? theme.colors.overlayPressed : 'transparent'
                                                 })}
                                             >
                                                 <View style={{
@@ -587,7 +587,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                     height: 16,
                                                     borderRadius: 8,
                                                     borderWidth: 2,
-                                                    borderColor: isSelected ? '#007AFF' : '#C0C0C0',
+                                                    borderColor: isSelected ? theme.colors.selectionActive : theme.colors.selectionInactive,
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
                                                     marginRight: 12
@@ -597,13 +597,13 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                             width: 6,
                                                             height: 6,
                                                             borderRadius: 3,
-                                                            backgroundColor: '#007AFF'
+                                                            backgroundColor: theme.colors.selectionDot
                                                         }} />
                                                     )}
                                                 </View>
                                                 <Text style={{
                                                     fontSize: 14,
-                                                    color: isSelected ? '#007AFF' : '#000',
+                                                    color: isSelected ? theme.colors.selectionActive : theme.colors.titleText,
                                                     ...Typography.default()
                                                 }}>
                                                     {config.label}
@@ -657,9 +657,9 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                             {props.permissionMode && props.permissionMode !== 'default' && (
                                 <Text style={{
                                     fontSize: 11,
-                                    color: props.permissionMode === 'acceptEdits' ? '#007AFF' :
-                                        props.permissionMode === 'bypassPermissions' ? '#FF9500' :
-                                            props.permissionMode === 'plan' ? '#34C759' : '#8E8E93',
+                                    color: props.permissionMode === 'acceptEdits' ? theme.colors.permissionAcceptEdits :
+                                        props.permissionMode === 'bypassPermissions' ? theme.colors.permissionBypass :
+                                            props.permissionMode === 'plan' ? theme.colors.permissionPlan : theme.colors.permissionDefault,
                                     ...Typography.default()
                                 }}>
                                     {props.permissionMode === 'acceptEdits' ? 'Accept All Edits' :
@@ -710,7 +710,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                     <Octicons
                                         name={'gear'}
                                         size={16}
-                                        style={styles.actionButtonIcon}
+                                        color={theme.colors.buttonIconDefault}
                                     />
                                 </Pressable>
                             )}
@@ -744,7 +744,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                             <Octicons
                                                 name={"stop"}
                                                 size={16}
-                                                style={styles.actionButtonIcon}
+                                                color={theme.colors.buttonIconDefault}
                                             />
                                         )}
                                     </Pressable>
@@ -788,7 +788,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                         name="arrow-up" 
                                         size={16} 
                                         style={[
-                                            { color: '#FFFFFF' },
+                                            styles.sendButtonIcon,
                                             { marginTop: Platform.OS === 'web' ? 2 : 0 }
                                         ]}
                                     />
@@ -799,14 +799,14 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                             width: 24,
                                             height: 24,
                                         }}
-                                        tintColor="#FFFFFF"
+                                        tintColor={theme.colors.sendButtonIcon}
                                     />
                                 ) : (
                                     <Octicons 
                                         name="arrow-up" 
                                         size={16} 
                                         style={[
-                                            { color: '#FFFFFF' },
+                                            styles.sendButtonIcon,
                                             { marginTop: Platform.OS === 'web' ? 2 : 0 }
                                         ]}
                                     />
@@ -823,6 +823,8 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
 // Git Status Button Component
 function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
     const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
+    const styles = stylesheet;
+    const { theme } = useUnistyles();
 
     if (!sessionId || !onPress) {
         return null;
@@ -852,7 +854,7 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                 <Octicons 
                     name="file-directory" 
                     size={16} 
-                    style={stylesheet.actionButtonIconSecondary}
+                    color={theme.colors.buttonIconSecondary}
                 />
             )}
         </Pressable>
