@@ -331,7 +331,7 @@ export const knownTools = {
                 content: z.string().describe('The todo item content'),
                 status: z.enum(['pending', 'in_progress', 'completed']).describe('The status of the todo'),
                 priority: z.enum(['high', 'medium', 'low']).optional().describe('The priority of the todo'),
-                id: z.string().describe('Unique identifier for the todo')
+                id: z.string().optional().describe('Unique identifier for the todo')
             }).loose()).describe('The updated todo list')
         }).partial().loose(),
         result: z.object({

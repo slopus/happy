@@ -31,7 +31,7 @@ export const TodoView = React.memo<ToolViewProps>(({ tool }) => {
         return (
             <ToolSectionView>
                 <View style={styles.container}>
-                    {todosList.map((todo) => {
+                    {todosList.map((todo, index) => {
                         const isCompleted = todo.status === 'completed';
                         const isInProgress = todo.status === 'in_progress';
                         const isPending = todo.status === 'pending';
@@ -50,7 +50,7 @@ export const TodoView = React.memo<ToolViewProps>(({ tool }) => {
                         }
 
                         return (
-                            <View key={todo.id} style={styles.todoItem}>
+                            <View key={todo.id || `todo-${index}`} style={styles.todoItem}>
                                 <Text style={textStyle}>
                                     {icon} {todo.content}
                                 </Text>
