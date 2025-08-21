@@ -204,34 +204,6 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     />
                 )}
             </Deferred>
-            {/* If session is not active (explicitly marked as dead) but machine is active, show a message */}
-            {!session.active && machine?.active && (
-                <View style={{ paddingHorizontal: 16, paddingVertical: 16, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 20, color: theme.colors.subtitleText, textAlign: 'center' }}>Session is dead, reviving a session in on our TODO, you are welcome to contribute. Repo: slopus/happy. For now you can start a new session from the machine view.</Text>
-                    {/* <RoundButton
-                        title={isReviving ? "Reviving..." : "Revive session"}
-                        onPress={async () => {
-                            let machineId = session.metadata?.machineId;
-                            if (!isReviving && machineId && session.metadata?.path) {
-                                setIsReviving(true);
-                                try {
-                                    const result = await machineSpawnNewSession(machineId, session.metadata.path);
-                                    if (result.sessionId && result.sessionId !== sessionId) {
-                                        router.replace(`/session/${result.sessionId}`);
-                                    }
-                                } catch (error) {
-                                    Modal.alert('Error', 'Failed to revive session');
-                                } finally {
-                                    setIsReviving(false);
-                                }
-                            }
-                        }}
-                        size="normal"
-                        disabled={isReviving}
-                        loading={isReviving}
-                    /> */}
-                </View>
-            )}
         </>
     );
 

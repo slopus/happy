@@ -787,6 +787,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                     <Octicons 
                                         name="arrow-up" 
                                         size={16} 
+                                        color={theme.colors.sendButtonIcon}
                                         style={[
                                             styles.sendButtonIcon,
                                             { marginTop: Platform.OS === 'web' ? 2 : 0 }
@@ -805,6 +806,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                     <Octicons 
                                         name="arrow-up" 
                                         size={16} 
+                                        color={theme.colors.sendButtonIcon}
                                         style={[
                                             styles.sendButtonIcon,
                                             { marginTop: Platform.OS === 'web' ? 2 : 0 }
