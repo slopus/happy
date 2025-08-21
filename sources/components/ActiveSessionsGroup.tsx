@@ -18,9 +18,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     machineHeader: {
         paddingHorizontal: 16,
         paddingVertical: 8,
-        backgroundColor: theme.colors.listBackground,
-        borderBottomWidth: 0.5,
+        backgroundColor: theme.colors.cardBackground,
+        borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: theme.colors.divider,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: theme.colors.divider,
     },
     machineHeaderText: {
         fontSize: 13,
@@ -32,6 +34,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: 16,
         paddingVertical: 6,
         backgroundColor: theme.colors.listBackground,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: theme.colors.divider,
     },
     projectHeaderText: {
         fontSize: 11,
@@ -44,6 +48,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         paddingHorizontal: 16,
         backgroundColor: theme.colors.cardBackground,
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: theme.colors.divider,
     },
     sessionRowSelected: {
         backgroundColor: theme.colors.selectedBackground,
@@ -87,8 +93,21 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         lineHeight: 16,
         ...Typography.default(),
     },
-    draftIcon: {
-        marginLeft: 6,
+    avatarContainer: {
+        position: 'relative',
+        width: 48,
+        height: 48,
+    },
+    draftIconContainer: {
+        position: 'absolute',
+        bottom: -2,
+        right: -2,
+        width: 18,
+        height: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    draftIconOverlay: {
         color: theme.colors.subtitleText,
     },
 }));
@@ -237,9 +256,20 @@ const CompactSessionRow = React.memo(({ session, selected }: { session: Session;
                 router.push(`/session/${session.id}`);
             }}
         >
-            <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} />
+            <View style={styles.avatarContainer}>
+                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} />
+                {session.draft && (
+                    <View style={styles.draftIconContainer}>
+                        <Ionicons
+                            name="create-outline"
+                            size={12}
+                            style={styles.draftIconOverlay}
+                        />
+                    </View>
+                )}
+            </View>
             <View style={styles.sessionContent}>
-                {/* Title line with draft icon */}
+                {/* Title line */}
                 <View style={styles.sessionTitleRow}>
                     <Text style={[
                         styles.sessionTitle,
@@ -247,13 +277,6 @@ const CompactSessionRow = React.memo(({ session, selected }: { session: Session;
                     ]} numberOfLines={2}>
                         {sessionName}
                     </Text>
-                    {session.draft && (
-                        <Ionicons
-                            name="create-outline"
-                            size={16}
-                            style={styles.draftIcon}
-                        />
-                    )}
                 </View>
 
                 {/* Status line with dot */}

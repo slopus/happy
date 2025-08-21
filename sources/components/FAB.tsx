@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View } from 'react-native';
-import { Pressable } from 'react-native-gesture-handler';
+import { View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native-unistyles';
 
@@ -17,8 +16,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         padding: 16,
         shadowColor: theme.colors.fabShadow,
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
         shadowRadius: 3.84,
+        shadowOpacity: 0.1,
         elevation: 5,
     },
     buttonDefault: {

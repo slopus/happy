@@ -12,6 +12,7 @@ import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
 import { StyleSheet } from 'react-native-unistyles';
+import { useIsTablet } from '@/utils/responsive';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -105,12 +106,26 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         ...Typography.default(),
     },
     separator: {
-        height: 0.5,
+        height: StyleSheet.hairlineWidth,
+        backgroundColor: theme.colors.divider,
         // backgroundColor: theme.colors.divider,
         // marginLeft: 88,
     },
-    draftIcon: {
-        marginLeft: 6,
+    avatarContainer: {
+        position: 'relative',
+        width: 48,
+        height: 48,
+    },
+    draftIconContainer: {
+        position: 'absolute',
+        bottom: -2,
+        right: -2,
+        width: 18,
+        height: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    draftIconOverlay: {
         color: theme.colors.subtitleText,
     },
 }));
@@ -120,7 +135,8 @@ export function SessionsList() {
     const safeArea = useSafeAreaInsets();
     const data = useSessionListViewData();
     const pathname = usePathname();
-    const selectable = true; //Platform.OS === 'web';
+    const isTablet = useIsTablet();
+    const selectable = isTablet;
     const dataWithSelected = selectable ? React.useMemo(() => {
         return data?.map(item => ({
             ...item,
@@ -158,13 +174,13 @@ export function SessionsList() {
             case 'active-sessions':
                 // Extract just the session ID from pathname (e.g., /session/abc123/file -> abc123)
                 let selectedId: string | undefined;
-                if (pathname.startsWith('/session/')) {
+                if (isTablet && pathname.startsWith('/session/')) {
                     const parts = pathname.split('/');
                     selectedId = parts[2]; // parts[0] is empty, parts[1] is 'session', parts[2] is the ID
                 }
                 return (
-                    <ActiveSessionsGroup 
-                        sessions={item.sessions} 
+                    <ActiveSessionsGroup
+                        sessions={item.sessions}
                         selectedSessionId={selectedId}
                     />
                 );
@@ -191,7 +207,7 @@ export function SessionsList() {
     // ItemSeparatorComponent for FlashList
     const ItemSeparatorComponent = React.useCallback(({ leadingItem, trailingItem }: any) => {
         // Don't render separator if either item is a header
-        if (leadingItem?.type === 'header' || trailingItem?.type === 'header') {
+        if (leadingItem?.type === 'header' || trailingItem?.type === 'header' || leadingItem?.type === 'active-sessions' || trailingItem?.type === 'active-sessions') {
             return null;
         }
 
@@ -236,7 +252,18 @@ const SessionItem = React.memo(({ session, selected }: { session: Session; selec
                 router.push(`/session/${session.id}`);
             }}
         >
-            <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} />
+            <View style={styles.avatarContainer}>
+                <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} />
+                {session.draft && (
+                    <View style={styles.draftIconContainer}>
+                        <Ionicons
+                            name="create-outline"
+                            size={12}
+                            style={styles.draftIconOverlay}
+                        />
+                    </View>
+                )}
+            </View>
             <View style={styles.sessionContent}>
                 {/* Title line */}
                 <View style={styles.sessionTitleRow}>
@@ -246,13 +273,6 @@ const SessionItem = React.memo(({ session, selected }: { session: Session; selec
                     ]} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
                         {sessionName}
                     </Text>
-                    {session.draft && (
-                        <Ionicons
-                            name="create-outline"
-                            size={16}
-                            style={styles.draftIcon}
-                        />
-                    )}
                 </View>
 
                 {/* Subtitle line */}
