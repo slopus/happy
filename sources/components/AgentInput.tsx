@@ -18,6 +18,7 @@ import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useSetting } from '@/sync/storage';
 
 interface AgentInputProps {
     value: string;
@@ -82,7 +83,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingVertical: 4,
         minHeight: 40,
     },
-    
+
     // Overlay styles
     autocompleteOverlay: {
         position: 'absolute',
@@ -124,7 +125,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         backgroundColor: theme.colors.overlayDivider,
         marginHorizontal: 16,
     },
-    
+
     // Selection styles
     selectionItem: {
         flexDirection: 'row',
@@ -167,7 +168,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     selectionLabelInactive: {
         color: theme.colors.titleText,
     },
-    
+
     // Status styles
     statusContainer: {
         flexDirection: 'row',
@@ -197,7 +198,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         marginLeft: 8,
         ...Typography.default(),
     },
-    
+
     // Button styles
     actionButtonsContainer: {
         flexDirection: 'row',
@@ -257,7 +258,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: any) => {
     const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
     const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
-    
+
     if (percentageRemaining <= 5) {
         return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.contextWarningCritical };
     } else if (percentageRemaining <= 10) {
@@ -273,12 +274,13 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
+    const experimental = useSetting('experiments');
 
     const hasText = props.value.trim().length > 0;
 
     // Calculate context warning
-    const contextWarning = props.usageData?.contextSize 
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme) 
+    const contextWarning = props.usageData?.contextSize
+        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
         : null;
 
 
@@ -752,15 +754,17 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                             )}
 
                             {/* Git Status Badge */}
-                            <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                            {experimental && (
+                                <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                            )}
                         </View>
 
                         {/* Send/Voice button */}
                         <View
                             style={[
                                 styles.sendButton,
-                                (hasText || (props.onMicPress && !props.isMicActive)) 
-                                    ? styles.sendButtonActive 
+                                (hasText || (props.onMicPress && !props.isMicActive))
+                                    ? styles.sendButtonActive
                                     : styles.sendButtonInactive
                             ]}
                         >
@@ -784,9 +788,9 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 disabled={!hasText && !props.onMicPress}
                             >
                                 {hasText ? (
-                                    <Octicons 
-                                        name="arrow-up" 
-                                        size={16} 
+                                    <Octicons
+                                        name="arrow-up"
+                                        size={16}
                                         color={theme.colors.sendButtonIcon}
                                         style={[
                                             styles.sendButtonIcon,
@@ -803,9 +807,9 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                         tintColor={theme.colors.sendButtonIcon}
                                     />
                                 ) : (
-                                    <Octicons 
-                                        name="arrow-up" 
-                                        size={16} 
+                                    <Octicons
+                                        name="arrow-up"
+                                        size={16}
                                         color={theme.colors.sendButtonIcon}
                                         style={[
                                             styles.sendButtonIcon,
@@ -853,9 +857,9 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
             {hasMeaningfulGitStatus ? (
                 <GitStatusBadge sessionId={sessionId} />
             ) : (
-                <Octicons 
-                    name="file-directory" 
-                    size={16} 
+                <Octicons
+                    name="file-directory"
+                    size={16}
                     color={theme.colors.buttonIconSecondary}
                 />
             )}
