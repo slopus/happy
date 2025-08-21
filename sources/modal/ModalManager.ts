@@ -6,6 +6,7 @@ class ModalManagerClass {
     private hideModalFn: ((id: string) => void) | null = null;
     private hideAllModalsFn: (() => void) | null = null;
     private confirmResolvers: Map<string, (value: boolean) => void> = new Map();
+    private promptResolvers: Map<string, (value: string | null) => void> = new Map();
 
     setFunctions(
         showModal: (config: Omit<ModalConfig, 'id'>) => string,
@@ -128,6 +129,72 @@ class ModalManagerClass {
         if (resolver) {
             resolver(value);
             this.confirmResolvers.delete(id);
+        }
+    }
+
+    resolvePrompt(id: string, value: string | null): void {
+        const resolver = this.promptResolvers.get(id);
+        if (resolver) {
+            resolver(value);
+            this.promptResolvers.delete(id);
+        }
+    }
+
+    async prompt(
+        title: string,
+        message?: string,
+        options?: {
+            placeholder?: string;
+            defaultValue?: string;
+            cancelText?: string;
+            confirmText?: string;
+            inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
+        }
+    ): Promise<string | null> {
+        if (Platform.OS === 'ios' && !options?.inputType) {
+            // Use native Alert.prompt on iOS (only supports basic text input)
+            return new Promise<string | null>((resolve) => {
+                // @ts-ignore - Alert.prompt is iOS only
+                Alert.prompt(
+                    title,
+                    message,
+                    [
+                        {
+                            text: options?.cancelText || 'Cancel',
+                            style: 'cancel',
+                            onPress: () => resolve(null)
+                        },
+                        {
+                            text: options?.confirmText || 'OK',
+                            onPress: (text?: string) => resolve(text || null)
+                        }
+                    ],
+                    'plain-text',
+                    options?.defaultValue,
+                    'default'
+                );
+            });
+        } else {
+            // Use custom modal for web and Android
+            if (!this.showModalFn) {
+                console.error('ModalManager not initialized. Make sure ModalProvider is mounted.');
+                return null;
+            }
+
+            const modalId = this.showModalFn({
+                type: 'prompt',
+                title,
+                message,
+                placeholder: options?.placeholder,
+                defaultValue: options?.defaultValue,
+                cancelText: options?.cancelText,
+                confirmText: options?.confirmText,
+                inputType: options?.inputType
+            } as Omit<ModalConfig, 'id'>);
+
+            return new Promise<string | null>((resolve) => {
+                this.promptResolvers.set(modalId, resolve);
+            });
         }
     }
 }
