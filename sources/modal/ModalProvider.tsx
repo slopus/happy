@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { View, Platform } from 'react-native';
 import { ModalState, ModalConfig, ModalContextValue } from './types';
 import { Modal } from './ModalManager';
 import { WebAlertModal } from './components/WebAlertModal';
@@ -63,7 +62,7 @@ export function ModalProvider({ children }: { children: React.ReactNode }) {
     return (
         <ModalContext.Provider value={contextValue}>
             {children}
-            {Platform.OS === 'web' && currentModal && (
+            {currentModal && (
                 <>
                     {currentModal.type === 'alert' && (
                         <WebAlertModal
