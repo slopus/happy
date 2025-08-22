@@ -22,7 +22,7 @@ export const lightTheme = {
         surfacePressedOverlay: Platform.select({ ios: '#D1D1D6', default: 'transparent' }),
         surfaceHigh: '#F8F8F8',
         surfaceHighest: '#f0f0f0',
-        divider: Platform.select({ ios: '#C6C6C8', default: '#eaeaea' }),
+        divider: Platform.select({ ios: '#eaeaea', default: '#eaeaea' }),
         shadow: {
             color: Platform.select({ default: '#000000', web: 'rgba(0, 0, 0, 0.1)' }),
             opacity: 0.1,
@@ -215,13 +215,13 @@ export const darkTheme = {
         warningCritical: '#FF453A',
         warning: '#8E8E93',
         success: '#32D74B',
-        surface: '#18171C',
+        surface: Platform.select({ ios: '#18171C', default: '#212121' }),
         surfaceRipple: 'rgba(255, 255, 255, 0.08)',
         surfacePressed: '#2C2C2E',
         surfaceSelected: '#2C2C2E',
         surfacePressedOverlay: Platform.select({ ios: '#2C2C2E', default: 'transparent' }),
-        surfaceHigh: Platform.select({ ios: '#2C2C2E', default: '#2e2e2e' }),
-        surfaceHighest: Platform.select({ ios: '#38383A', default: '#3a3a3a' }),
+        surfaceHigh: Platform.select({ ios: '#2C2C2E', default: '#171717' }),
+        surfaceHighest: Platform.select({ ios: '#38383A', default: '#292929' }),
         divider: Platform.select({ ios: '#38383A', default: '#292929' }),
         shadow: {
             color: Platform.select({ default: '#000000', web: 'rgba(0, 0, 0, 0.1)' }),
@@ -233,7 +233,7 @@ export const darkTheme = {
         //
 
         header: {
-            background: '#18171C',
+            background: Platform.select({ ios: '#18171C', default: '#212121' }),
             tint: '#ffffff'
         },
         switch: {
@@ -272,7 +272,7 @@ export const darkTheme = {
             }
         },
         input: {
-            background: Platform.select({ ios: '#1C1C1E', default: '#1e1e1e' }),
+            background: Platform.select({ ios: '#1C1C1E', default: '#303030' }),
             text: '#FFFFFF',
             placeholder: '#8E8E93',
         },

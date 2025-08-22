@@ -73,13 +73,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 export const HomeHeader = React.memo(() => {
     const { theme } = useUnistyles();
     return (
-        <Header
-            title={<HeaderTitleWithSubtitle />}
-            headerRight={() => <HeaderRight />}
-            headerLeft={() => <HeaderLeft />}
-            headerShadowVisible={false}
-            headerBackgroundColor={theme.colors.header.background}
-        />
+        <View style={{ backgroundColor: theme.colors.groupped.background }}>
+            <Header
+                title={<HeaderTitleWithSubtitle />}
+                headerRight={() => <HeaderRight />}
+                headerLeft={() => <HeaderLeft />}
+                headerShadowVisible={false}
+                headerTransparent={true}
+            />
+        </View>
     )
 })
 
@@ -93,7 +95,7 @@ export const HomeHeaderNotAuth = React.memo(() => {
             headerRight={() => <HeaderRightNotAuth />}
             headerLeft={() => <HeaderLeft />}
             headerShadowVisible={false}
-            headerBackgroundColor={theme.colors.header.background}
+            headerBackgroundColor={theme.colors.groupped.background}
         />
     )
 });
@@ -103,13 +105,27 @@ function HeaderRight() {
     const styles = stylesheet;
     const { theme } = useUnistyles();
 
+    // return (
+    //     <Pressable
+    //         onPress={() => router.push('/settings')}
+    //         hitSlop={15}
+    //         style={styles.headerButton}
+    //     >
+    //         <Ionicons name="settings-outline" size={24} color={theme.colors.header.tint} />
+    //     </Pressable>
+    // );
     return (
         <Pressable
             onPress={() => router.push('/settings')}
             hitSlop={15}
             style={styles.headerButton}
         >
-            <Ionicons name="settings-outline" size={24} color={theme.colors.header.tint} />
+            <Image
+                source={require('@/assets/images/brutalist/Brutalism 9.png')}
+                contentFit="contain"
+                style={[{ width: 32, height: 32, marginRight: 12, marginTop: -2 }]}
+                tintColor={theme.colors.header.tint}
+            />
         </Pressable>
     );
 }
@@ -118,7 +134,7 @@ function HeaderRightNotAuth() {
     const router = useRouter();
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    
+
 
     return (
         <Pressable

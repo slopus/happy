@@ -208,7 +208,8 @@ const styles = StyleSheet.create((theme) => ({
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
-        marginBottom: 32,
+        paddingBottom: 32,
+        backgroundColor: theme.colors.groupped.background,
     },
     // NotAuthenticated styles
     portraitContainer: {

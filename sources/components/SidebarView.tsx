@@ -19,7 +19,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         flex: 1,
         borderStyle: 'solid',
-        backgroundColor: theme.colors.surface,
+        backgroundColor: theme.colors.groupped.background,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
     },
@@ -27,7 +27,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
-        backgroundColor: theme.colors.header.background,
+        backgroundColor: theme.colors.groupped.background,
     },
     logoContainer: {
         width: 32,
@@ -188,9 +188,14 @@ export const SidebarView = React.memo(() => {
                     <View style={styles.rightContainer}>
                         <Pressable
                             onPress={() => router.push('/settings')}
-                            hitSlop={10}
+                            hitSlop={15}
                         >
-                            <Ionicons name="settings-outline" size={24} color={styles.settingsButton.color} />
+                            <Image
+                                source={require('@/assets/images/brutalist/Brutalism 9.png')}
+                                contentFit="contain"
+                                style={[{ width: 32, height: 32 }]}
+                                tintColor={theme.colors.header.tint}
+                            />
                         </Pressable>
                     </View>
                 </View>
