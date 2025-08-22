@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, Platform, Switch } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -16,6 +16,7 @@ import { useSettingMutable } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { getServerInfo, isUsingCustomServer } from '@/sync/serverConfig';
 import { useUnistyles } from 'react-native-unistyles';
+import { Switch } from '@/components/Switch';
 
 export default React.memo(() => {
     const { theme } = useUnistyles();
@@ -112,7 +113,7 @@ export default React.memo(() => {
                     <ItemGroup>
                         <Pressable onPress={handleCopySecret}>
                             <View style={{
-                                backgroundColor: theme.colors.cardBackground,
+                                backgroundColor: theme.colors.surface,
                                 paddingHorizontal: 16,
                                 paddingVertical: 14,
                                 width: '100%',
@@ -122,7 +123,7 @@ export default React.memo(() => {
                                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                     <Text style={{
                                         fontSize: 11,
-                                        color: theme.colors.subtitleText,
+                                        color: theme.colors.textSecondary,
                                         letterSpacing: 0.5,
                                         textTransform: 'uppercase',
                                         ...Typography.default('semiBold')
@@ -132,14 +133,14 @@ export default React.memo(() => {
                                     <Ionicons
                                         name={copiedRecently ? "checkmark-circle" : "copy-outline"}
                                         size={18}
-                                        color={copiedRecently ? "#34C759" : theme.colors.subtitleText}
+                                        color={copiedRecently ? "#34C759" : theme.colors.textSecondary}
                                     />
                                 </View>
                                 <Text style={{
                                     fontSize: 13,
                                     letterSpacing: 0.5,
                                     lineHeight: 20,
-                                    color: theme.colors.titleText,
+                                    color: theme.colors.text,
                                     ...Typography.mono()
                                 }}>
                                     {formattedSecret}

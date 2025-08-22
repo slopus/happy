@@ -2,7 +2,7 @@ import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -14,24 +14,22 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         width: 56,
         height: 56,
         padding: 16,
-        shadowColor: theme.colors.fabShadow,
+        shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 2 },
         shadowRadius: 3.84,
-        shadowOpacity: 0.1,
+        shadowOpacity: theme.colors.shadow.opacity,
         elevation: 5,
     },
     buttonDefault: {
-        backgroundColor: theme.colors.fabBackground,
+        backgroundColor: theme.colors.fab.background,
     },
     buttonPressed: {
-        backgroundColor: theme.colors.fabBackgroundPressed,
-    },
-    icon: {
-        color: theme.colors.fabIcon,
+        backgroundColor: theme.colors.fab.backgroundPressed,
     },
 }));
 
 export const FAB = React.memo(({ onPress }: { onPress: () => void }) => {
+    const { theme } = useUnistyles();
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
     return (
@@ -48,7 +46,7 @@ export const FAB = React.memo(({ onPress }: { onPress: () => void }) => {
                 ]}
                 onPress={onPress}
             >
-                <Ionicons name="add" size={24} style={styles.icon} />
+                <Ionicons name="add" size={24} color={theme.colors.fab.icon} />
             </Pressable>
         </View>
     )

@@ -26,13 +26,11 @@ export const AgentInputAutocomplete = React.memo((props: AgentInputAutocompleteP
                     onPress={() => onSelect(index)}
                     style={({ pressed }) => ({
                         height: itemHeight,
-                        backgroundColor: pressed 
-                            ? theme.colors.autocompletePressedBackground
-                            : selectedIndex === index 
-                                ? theme.colors.autocompleteSelectedBackground
+                        backgroundColor: pressed
+                            ? theme.colors.surfacePressed
+                            : selectedIndex === index
+                                ? theme.colors.surfaceSelected
                                 : 'transparent',
-                        borderLeftWidth: 3,
-                        borderLeftColor: selectedIndex === index ? theme.colors.autocompleteSelectedBorder : 'transparent',
                     })}
                 >
                     {suggestion}

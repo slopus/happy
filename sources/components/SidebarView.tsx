@@ -18,16 +18,16 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         flex: 1,
-        borderRightWidth: 1,
         borderStyle: 'solid',
-        borderColor: theme.colors.headerBorder,
-        backgroundColor: theme.colors.headerBackground,
+        backgroundColor: theme.colors.surface,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
     },
     header: {
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
-        backgroundColor: theme.colors.headerBackground,
+        backgroundColor: theme.colors.header.background,
     },
     logoContainer: {
         width: 32,
@@ -44,7 +44,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     titleText: {
         fontSize: 17,
         fontWeight: '600',
-        color: theme.colors.headerTint,
+        color: theme.colors.header.tint,
         ...Typography.default('semiBold'),
     },
     statusContainer: {
@@ -66,7 +66,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'flex-end',
     },
     settingsButton: {
-        color: theme.colors.headerTint,
+        color: theme.colors.header.tint,
     },
     contentContainer: {
         flex: 1,
@@ -82,19 +82,19 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     // Status colors
     statusConnected: {
-        color: theme.colors.statusConnected,
+        color: theme.colors.status.connected,
     },
     statusConnecting: {
-        color: theme.colors.statusConnecting,
+        color: theme.colors.status.connecting,
     },
     statusDisconnected: {
-        color: theme.colors.statusDisconnected,
+        color: theme.colors.status.disconnected,
     },
     statusError: {
-        color: theme.colors.statusError,
+        color: theme.colors.status.error,
     },
     statusDefault: {
-        color: theme.colors.statusDefault,
+        color: theme.colors.status.default,
     },
 }));
 
@@ -200,7 +200,7 @@ export const SidebarView = React.memo(() => {
                 <View style={styles.contentContainer}>
                     {sessionListViewData === null && (
                         <View style={styles.loadingContainer}>
-                            <ActivityIndicator />
+                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                         </View>
                     )}
                     {sessionListViewData !== null && sessionListViewData.length === 0 && (

@@ -8,6 +8,26 @@ import { ToolFullView } from '@/components/tools/ToolFullView';
 import { ToolHeader } from '@/components/tools/ToolHeader';
 import { ToolStatusIndicator } from '@/components/tools/ToolStatusIndicator';
 import { Message } from '@/sync/typesMessage';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { Typography } from '@/constants/Typography';
+
+const stylesheet = StyleSheet.create((theme) => ({
+    loadingContainer: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    fullViewContainer: {
+        flex: 1,
+        padding: 16,
+    },
+    messageText: {
+        color: theme.colors.text,
+        fontSize: 16,
+        lineHeight: 24,
+        ...Typography.default(),
+    },
+}));
 
 export default React.memo(() => {
     const { id: sessionId, messageId } = useLocalSearchParams<{ id: string; messageId: string }>();
@@ -15,6 +35,8 @@ export default React.memo(() => {
     const session = useSession(sessionId!);
     const { isLoaded: messagesLoaded } = useSessionMessages(sessionId!);
     const message = useMessage(sessionId!, messageId!);
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
     
     // Trigger session visibility when component mounts
     React.useEffect(() => {
@@ -40,8 +62,8 @@ export default React.memo(() => {
     // Show loader while waiting for session and messages to load
     if (!session || !messagesLoaded) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#666" />
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
             </View>
         );
     }
@@ -50,8 +72,8 @@ export default React.memo(() => {
     // The useEffect above will navigate back
     if (!message) {
         return (
-            <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#666" />
+            <View style={styles.loadingContainer}>
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
             </View>
         );
     }
@@ -63,6 +85,11 @@ export default React.memo(() => {
                     options={{
                         headerTitle: () => <ToolHeader tool={message.tool} />,
                         headerRight: () => <ToolStatusIndicator tool={message.tool} />,
+                        headerStyle: {
+                            backgroundColor: theme.colors.header.background,
+                        },
+                        headerTintColor: theme.colors.header.tint,
+                        headerShadowVisible: false,
                     }}
                 />
             )}
@@ -74,20 +101,23 @@ export default React.memo(() => {
 });
 
 function FullView(props: { message: Message }) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+    
     if (props.message.kind === 'tool-call') {
         return <ToolFullView tool={props.message.tool} />
     }
     if (props.message.kind === 'agent-text') {
         return (
-            <View style={{ flex: 1, padding: 16 }}>
-                <Text>{props.message.text}</Text>
+            <View style={styles.fullViewContainer}>
+                <Text style={styles.messageText}>{props.message.text}</Text>
             </View>
         )
     }
     if (props.message.kind === 'user-text') {
         return (
-            <View style={{ flex: 1, padding: 16 }}>
-                <Text>{props.message.text}</Text>
+            <View style={styles.fullViewContainer}>
+                <Text style={styles.messageText}>{props.message.text}</Text>
             </View>
         )
     }

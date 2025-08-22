@@ -9,6 +9,7 @@ import { sessionReadFile, sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { StatusBar } from 'expo-status-bar';
 import { Modal } from '@/modal';
+import { useUnistyles } from 'react-native-unistyles';
 
 interface FileContent {
     content: string;
@@ -66,6 +67,7 @@ const DiffDisplay: React.FC<{ diffContent: string }> = ({ diffContent }) => {
 
 export default function FileScreen() {
     const route = useRoute();
+    const { theme } = useUnistyles();
     const { id: sessionId } = useLocalSearchParams<{ id: string }>();
     const searchParams = useLocalSearchParams();
     const encodedPath = searchParams.path as string;
@@ -284,7 +286,7 @@ export default function FileScreen() {
                 alignItems: 'center' 
             }}>
                 <StatusBar style="dark" />
-                <ActivityIndicator size="large" color="#666" />
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                 <Text style={{ 
                     marginTop: 16, 
                     fontSize: 16, 

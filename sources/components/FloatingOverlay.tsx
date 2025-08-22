@@ -7,23 +7,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         borderRadius: 12,
         overflow: 'hidden',
-        backgroundColor: theme.colors.overlayBackground,
+        backgroundColor: theme.colors.surface,
         borderWidth: Platform.OS === 'web' ? 0 : 0.5,
-        borderColor: theme.colors.overlayBorder,
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: -2 },
-                shadowOpacity: 0.1,
-                shadowRadius: 8,
-            },
-            android: {
-                elevation: 4,
-            },
-            default: {
-                boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.1)',
-            },
-        }),
+        borderColor: theme.colors.modal.border,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 2 },
+        shadowRadius: 3.84,
+        shadowOpacity: theme.colors.shadow.opacity,
+        elevation: 5,
     },
 }));
 

@@ -1,0 +1,43 @@
+/* Theme-aware scrollbar styles using Unistyles CSS variables */
+
+/* Webkit Scrollbars (Chrome, Safari, Edge) */
+::-webkit-scrollbar {
+    width: 12px;
+    height: 12px;
+}
+
+::-webkit-scrollbar-track {
+    background: var(--colors-surface-high);
+    border-radius: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: var(--colors-divider);
+    border-radius: 6px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--colors-text-secondary);
+    background-clip: padding-box;
+}
+
+::-webkit-scrollbar-corner {
+    background: var(--colors-surface-high);
+}
+
+/* Firefox */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: var(--colors-divider) var(--colors-surface-high);
+}
+
+/* Ensure scrollbars are visible on hover for macOS */
+::-webkit-scrollbar:horizontal {
+    height: 12px;
+}
+
+::-webkit-scrollbar:vertical {
+    width: 12px;
+}

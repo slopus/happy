@@ -9,8 +9,74 @@ import { RoundButton } from '@/components/RoundButton';
 import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
 import { getServerUrl, setServerUrl, validateServerUrl, getServerInfo } from '@/sync/serverConfig';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+const stylesheet = StyleSheet.create((theme) => ({
+    keyboardAvoidingView: {
+        flex: 1,
+    },
+    itemListContainer: {
+        flex: 1,
+    },
+    contentContainer: {
+        backgroundColor: theme.colors.surface,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+    },
+    labelText: {
+        ...Typography.default('semiBold'),
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+        marginBottom: 8,
+    },
+    textInput: {
+        backgroundColor: theme.colors.input.background,
+        padding: 12,
+        borderRadius: 8,
+        marginBottom: 8,
+        ...Typography.mono(),
+        fontSize: 14,
+        color: theme.colors.input.text,
+    },
+    textInputValidating: {
+        opacity: 0.6,
+    },
+    errorText: {
+        ...Typography.default(),
+        fontSize: 12,
+        color: theme.colors.textDestructive,
+        marginBottom: 12,
+    },
+    validatingText: {
+        ...Typography.default(),
+        fontSize: 12,
+        color: theme.colors.status.connecting,
+        marginBottom: 12,
+    },
+    buttonRow: {
+        flexDirection: 'row',
+        gap: 12,
+        marginBottom: 12,
+    },
+    buttonWrapper: {
+        flex: 1,
+    },
+    statusText: {
+        ...Typography.default(),
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+    },
+}));
 
 export default function ServerConfigScreen() {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
     const router = useRouter();
     const serverInfo = getServerInfo();
     const [inputUrl, setInputUrl] = useState(serverInfo.isCustom ? getServerUrl() : '');
@@ -102,73 +168,44 @@ export default function ServerConfigScreen() {
             />
 
             <KeyboardAvoidingView 
-                style={{ flex: 1 }}
+                style={styles.keyboardAvoidingView}
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             >
-                <ItemList style={{ flex: 1 }}>
+                <ItemList style={styles.itemListContainer}>
                     <ItemGroup footer="This is an advanced feature. Only change the server if you know what you're doing. You will need to log out and log in again after changing servers.">
-                        <View style={{ 
-                            backgroundColor: 'white',
-                            paddingHorizontal: 16,
-                            paddingVertical: 12,
-                            width: '100%',
-                            maxWidth: layout.maxWidth,
-                            alignSelf: 'center'
-                        }}>
-                            <Text style={{
-                                ...Typography.default('semiBold'),
-                                fontSize: 12,
-                                color: '#8E8E93',
-                                textTransform: 'uppercase',
-                                letterSpacing: 0.5,
-                                marginBottom: 8
-                            }}>
+                        <View style={styles.contentContainer}>
+                            <Text style={styles.labelText}>
                                 CUSTOM SERVER URL
                             </Text>
                             <TextInput
-                                style={{
-                                    backgroundColor: '#f3f4f6',
-                                    padding: 12,
-                                    borderRadius: 8,
-                                    marginBottom: 8,
-                                    ...Typography.mono(),
-                                    fontSize: 14,
-                                    opacity: isValidating ? 0.6 : 1,
-                                }}
+                                style={[
+                                    styles.textInput,
+                                    isValidating && styles.textInputValidating
+                                ]}
                                 value={inputUrl}
                                 onChangeText={(text) => {
                                     setInputUrl(text);
                                     setError(null);
                                 }}
                                 placeholder="https://example.com"
-                                placeholderTextColor="#C7C7CC"
+                                placeholderTextColor={theme.colors.input.placeholder}
                                 autoCapitalize="none"
                                 autoCorrect={false}
                                 keyboardType="url"
                                 editable={!isValidating}
                             />
                             {error && (
-                                <Text style={{ 
-                                    ...Typography.default(), 
-                                    fontSize: 12, 
-                                    color: '#FF3B30', 
-                                    marginBottom: 12 
-                                }}>
+                                <Text style={styles.errorText}>
                                     {error}
                                 </Text>
                             )}
                             {isValidating && (
-                                <Text style={{ 
-                                    ...Typography.default(), 
-                                    fontSize: 12, 
-                                    color: '#007AFF', 
-                                    marginBottom: 12 
-                                }}>
+                                <Text style={styles.validatingText}>
                                     Validating server...
                                 </Text>
                             )}
-                            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
-                                <View style={{ flex: 1 }}>
+                            <View style={styles.buttonRow}>
+                                <View style={styles.buttonWrapper}>
                                     <RoundButton
                                         title="Reset to Default"
                                         size="normal"
@@ -176,7 +213,7 @@ export default function ServerConfigScreen() {
                                         onPress={handleReset}
                                     />
                                 </View>
-                                <View style={{ flex: 1 }}>
+                                <View style={styles.buttonWrapper}>
                                     <RoundButton
                                         title={isValidating ? "Validating..." : "Save"}
                                         size="normal"
@@ -186,12 +223,7 @@ export default function ServerConfigScreen() {
                                 </View>
                             </View>
                             {serverInfo.isCustom && (
-                                <Text style={{ 
-                                    ...Typography.default(), 
-                                    fontSize: 12, 
-                                    color: '#8E8E93', 
-                                    textAlign: 'center' 
-                                }}>
+                                <Text style={styles.statusText}>
                                     Currently using custom server
                                 </Text>
                             )}

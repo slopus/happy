@@ -1,8 +1,10 @@
 import React from 'react';
-import { View, Text, Pressable, StyleSheet } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { BaseModal } from './BaseModal';
 import { AlertModalConfig, ConfirmModalConfig } from '../types';
 import { Typography } from '@/constants/Typography';
+import { StyleSheet } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
 
 interface WebAlertModalProps {
     config: AlertModalConfig | ConfirmModalConfig;
@@ -11,6 +13,7 @@ interface WebAlertModalProps {
 }
 
 export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps) {
+    const { theme } = useUnistyles();
     const isConfirm = config.type === 'confirm';
     
     const handleButtonPress = (buttonIndex: number) => {
@@ -28,6 +31,70 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
             { text: config.confirmText || 'OK', style: config.destructive ? 'destructive' as const : 'default' as const }
         ]
         : config.buttons || [{ text: 'OK', style: 'default' as const }];
+
+    const styles = StyleSheet.create({
+        container: {
+            backgroundColor: theme.colors.surface,
+            borderRadius: 14,
+            width: 270,
+            overflow: 'hidden',
+            shadowColor: theme.colors.shadow.color,
+            shadowOffset: {
+                width: 0,
+                height: 2
+            },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+            elevation: 5
+        },
+        content: {
+            paddingHorizontal: 16,
+            paddingTop: 20,
+            paddingBottom: 16,
+            alignItems: 'center'
+        },
+        title: {
+            fontSize: 17,
+            textAlign: 'center',
+            color: theme.colors.text,
+            marginBottom: 4
+        },
+        message: {
+            fontSize: 13,
+            textAlign: 'center',
+            color: theme.colors.text,
+            marginTop: 4,
+            lineHeight: 18
+        },
+        buttonContainer: {
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.divider,
+            flexDirection: 'row'
+        },
+        button: {
+            flex: 1,
+            paddingVertical: 11,
+            alignItems: 'center',
+            justifyContent: 'center'
+        },
+        buttonPressed: {
+            backgroundColor: theme.colors.divider
+        },
+        buttonSeparator: {
+            width: 1,
+            backgroundColor: theme.colors.divider
+        },
+        buttonText: {
+            fontSize: 17,
+            color: theme.colors.textLink
+        },
+        cancelText: {
+            fontWeight: '400'
+        },
+        destructiveText: {
+            color: theme.colors.textDestructive
+        }
+    });
 
     return (
         <BaseModal visible={true} onClose={onClose} closeOnBackdrop={false}>
@@ -70,67 +137,3 @@ export function WebAlertModal({ config, onClose, onConfirm }: WebAlertModalProps
         </BaseModal>
     );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        backgroundColor: 'rgba(255, 255, 255, 0.98)',
-        borderRadius: 14,
-        width: 270,
-        overflow: 'hidden',
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2
-        },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-        elevation: 5
-    },
-    content: {
-        paddingHorizontal: 16,
-        paddingTop: 20,
-        paddingBottom: 16,
-        alignItems: 'center'
-    },
-    title: {
-        fontSize: 17,
-        textAlign: 'center',
-        color: '#000',
-        marginBottom: 4
-    },
-    message: {
-        fontSize: 13,
-        textAlign: 'center',
-        color: '#000',
-        marginTop: 4,
-        lineHeight: 18
-    },
-    buttonContainer: {
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: 'rgba(0, 0, 0, 0.2)',
-        flexDirection: 'row'
-    },
-    button: {
-        flex: 1,
-        paddingVertical: 11,
-        alignItems: 'center',
-        justifyContent: 'center'
-    },
-    buttonPressed: {
-        backgroundColor: 'rgba(0, 0, 0, 0.05)'
-    },
-    buttonSeparator: {
-        width: StyleSheet.hairlineWidth,
-        backgroundColor: 'rgba(0, 0, 0, 0.2)'
-    },
-    buttonText: {
-        fontSize: 17,
-        color: '#007AFF'
-    },
-    cancelText: {
-        fontWeight: '400'
-    },
-    destructiveText: {
-        color: '#FF3B30'
-    }
-});

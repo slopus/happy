@@ -13,33 +13,33 @@ import { StyleSheet } from 'react-native-unistyles';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
-        backgroundColor: theme.colors.cardBackground,
+        backgroundColor: theme.colors.surface,
+        paddingTop: 12,
     },
-    machineHeader: {
+    projectCard: {
+        backgroundColor: theme.colors.surface,
+        marginBottom: 12,
+        overflow: 'hidden',
+    },
+    projectCardHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
         paddingHorizontal: 16,
-        paddingVertical: 8,
-        backgroundColor: theme.colors.cardBackground,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: theme.colors.divider,
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: theme.colors.divider,
+        paddingVertical: 12,
+        backgroundColor: theme.colors.surfaceHigh,
     },
-    machineHeaderText: {
-        fontSize: 13,
+    projectCardTitle: {
+        fontSize: 15,
         fontWeight: '600',
-        color: theme.colors.titleText,
+        color: theme.colors.text,
+        flex: 1,
+        marginRight: 8,
         ...Typography.default('semiBold'),
     },
-    projectHeader: {
-        paddingHorizontal: 16,
-        paddingVertical: 6,
-        backgroundColor: theme.colors.listBackground,
-        borderBottomWidth: StyleSheet.hairlineWidth,
-        borderBottomColor: theme.colors.divider,
-    },
-    projectHeaderText: {
-        fontSize: 11,
-        color: theme.colors.subtitleText,
+    projectCardMachine: {
+        fontSize: 13,
+        color: theme.colors.textSecondary,
         ...Typography.default(),
     },
     sessionRow: {
@@ -47,12 +47,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
-        backgroundColor: theme.colors.cardBackground,
+        backgroundColor: theme.colors.surface,
+    },
+    sessionRowWithBorder: {
         borderBottomWidth: StyleSheet.hairlineWidth,
         borderBottomColor: theme.colors.divider,
     },
     sessionRowSelected: {
-        backgroundColor: theme.colors.selectedBackground,
+        backgroundColor: theme.colors.surfaceSelected,
     },
     sessionContent: {
         flex: 1,
@@ -71,10 +73,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         ...Typography.default('semiBold'),
     },
     sessionTitleConnected: {
-        color: theme.colors.titleText,
+        color: theme.colors.text,
     },
     sessionTitleDisconnected: {
-        color: theme.colors.subtitleText,
+        color: theme.colors.textSecondary,
     },
     statusRow: {
         flexDirection: 'row',
@@ -108,7 +110,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: 'center',
     },
     draftIconOverlay: {
-        color: theme.colors.subtitleText,
+        color: theme.colors.textSecondary,
     },
 }));
 
@@ -117,15 +119,6 @@ interface ActiveSessionsGroupProps {
     selectedSessionId?: string;
 }
 
-interface MachineGroup {
-    machine: Machine | null;
-    machineName: string;
-    projects: Map<string, {
-        path: string;
-        displayPath: string;
-        sessions: Session[];
-    }>;
-}
 
 export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
@@ -138,13 +131,21 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
         return map;
     }, [machines]);
 
-    // Group sessions by machine and project
-    const machineGroups = React.useMemo(() => {
-        const groups = new Map<string, MachineGroup>();
+    // Group sessions by project, then associate with machine
+    const projectGroups = React.useMemo(() => {
+        const groups = new Map<string, {
+            path: string;
+            displayPath: string;
+            machines: Map<string, {
+                machine: Machine | null;
+                machineName: string;
+                sessions: Session[];
+            }>;
+        }>();
 
         sessions.forEach(session => {
-            const machineId = session.metadata?.machineId || 'unknown';
             const projectPath = session.metadata?.path || '';
+            const machineId = session.metadata?.machineId || 'unknown';
             
             // Get machine info
             const machine = machineId !== 'unknown' ? machinesMap[machineId] : null;
@@ -152,91 +153,98 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                               machine?.metadata?.host || 
                               (machineId !== 'unknown' ? machineId : '<unknown>');
 
-            // Get or create machine group
-            let machineGroup = groups.get(machineId);
-            if (!machineGroup) {
-                machineGroup = {
-                    machine,
-                    machineName,
-                    projects: new Map()
-                };
-                groups.set(machineId, machineGroup);
-            }
-
-            // Get or create project group within machine
-            let projectGroup = machineGroup.projects.get(projectPath);
+            // Get or create project group
+            let projectGroup = groups.get(projectPath);
             if (!projectGroup) {
                 const displayPath = formatPathRelativeToHome(projectPath, session.metadata?.homeDir);
                 projectGroup = {
                     path: projectPath,
                     displayPath,
-                    sessions: []
+                    machines: new Map()
                 };
-                machineGroup.projects.set(projectPath, projectGroup);
+                groups.set(projectPath, projectGroup);
             }
 
-            // Add session to project group
-            projectGroup.sessions.push(session);
+            // Get or create machine group within project
+            let machineGroup = projectGroup.machines.get(machineId);
+            if (!machineGroup) {
+                machineGroup = {
+                    machine,
+                    machineName,
+                    sessions: []
+                };
+                projectGroup.machines.set(machineId, machineGroup);
+            }
+
+            // Add session to machine group
+            machineGroup.sessions.push(session);
         });
 
-        // Sort sessions within each project by creation time (newest first)
-        groups.forEach(machineGroup => {
-            machineGroup.projects.forEach(projectGroup => {
-                projectGroup.sessions.sort((a, b) => b.createdAt - a.createdAt);
+        // Sort sessions within each machine group by creation time (newest first)
+        groups.forEach(projectGroup => {
+            projectGroup.machines.forEach(machineGroup => {
+                machineGroup.sessions.sort((a, b) => b.createdAt - a.createdAt);
             });
         });
 
         return groups;
     }, [sessions, machinesMap]);
 
-    // Sort machine groups by name
-    const sortedMachineGroups = React.useMemo(() => {
-        return Array.from(machineGroups.entries()).sort(([, groupA], [, groupB]) => {
-            return groupA.machineName.localeCompare(groupB.machineName);
+    // Sort project groups by display path
+    const sortedProjectGroups = React.useMemo(() => {
+        return Array.from(projectGroups.entries()).sort(([, groupA], [, groupB]) => {
+            return groupA.displayPath.localeCompare(groupB.displayPath);
         });
-    }, [machineGroups]);
+    }, [projectGroups]);
 
     return (
         <View style={styles.container}>
-            {sortedMachineGroups.map(([machineId, machineGroup]) => (
-                <View key={machineId}>
-                    {/* Machine header */}
-                    <View style={styles.machineHeader}>
-                        <Text style={styles.machineHeaderText}>
-                            {machineGroup.machineName}
-                        </Text>
-                    </View>
+            {sortedProjectGroups.map(([projectPath, projectGroup]) => {
+                // Get the first machine name from this project's machines
+                const firstMachine = Array.from(projectGroup.machines.values())[0];
+                const machineName = projectGroup.machines.size === 1 
+                    ? firstMachine?.machineName 
+                    : `${projectGroup.machines.size} machines`;
+                
+                return (
+                    <View key={projectPath} style={styles.projectCard}>
+                        {/* Card header with project path and machine name */}
+                        <View style={styles.projectCardHeader}>
+                            <Text style={styles.projectCardTitle} numberOfLines={1}>
+                                {projectGroup.displayPath}
+                            </Text>
+                            {machineName && (
+                                <Text style={styles.projectCardMachine} numberOfLines={1}>
+                                    {machineName}
+                                </Text>
+                            )}
+                        </View>
 
-                    {/* Project groups */}
-                    {Array.from(machineGroup.projects.entries())
-                        .sort(([, projectA], [, projectB]) => projectA.displayPath.localeCompare(projectB.displayPath))
-                        .map(([projectPath, projectGroup]) => (
-                            <View key={`${machineId}-${projectPath}`}>
-                                {/* Project path header */}
-                                <View style={styles.projectHeader}>
-                                    <Text style={styles.projectHeaderText}>
-                                        {projectGroup.displayPath}
-                                    </Text>
+                        {/* Sessions grouped by machine within the card */}
+                        {Array.from(projectGroup.machines.entries())
+                            .sort(([, machineA], [, machineB]) => machineA.machineName.localeCompare(machineB.machineName))
+                            .map(([machineId, machineGroup]) => (
+                                <View key={`${projectPath}-${machineId}`}>
+                                    {machineGroup.sessions.map((session, index) => (
+                                        <CompactSessionRow 
+                                            key={session.id} 
+                                            session={session} 
+                                            selected={selectedSessionId === session.id}
+                                            showBorder={index < machineGroup.sessions.length - 1 || 
+                                                       Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
+                                        />
+                                    ))}
                                 </View>
-
-                                {/* Sessions */}
-                                {projectGroup.sessions.map(session => (
-                                    <CompactSessionRow 
-                                        key={session.id} 
-                                        session={session} 
-                                        selected={selectedSessionId === session.id}
-                                    />
-                                ))}
-                            </View>
-                        ))}
-                </View>
-            ))}
+                            ))}
+                    </View>
+                );
+            })}
         </View>
     );
 }
 
 // Compact session row component with status line
-const CompactSessionRow = React.memo(({ session, selected }: { session: Session; selected?: boolean }) => {
+const CompactSessionRow = React.memo(({ session, selected, showBorder }: { session: Session; selected?: boolean; showBorder?: boolean }) => {
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
@@ -250,6 +258,7 @@ const CompactSessionRow = React.memo(({ session, selected }: { session: Session;
         <Pressable
             style={[
                 styles.sessionRow,
+                showBorder && styles.sessionRowWithBorder,
                 selected && styles.sessionRowSelected
             ]}
             onPress={() => {

@@ -106,7 +106,7 @@ const style = StyleSheet.create((theme) => ({
         lineHeight: 24, // Reduced from 28 to 24
         marginTop: 8,
         marginBottom: 8,
-        color: theme.colors.markdownText,
+        color: theme.colors.text,
         fontWeight: '400',
     },
 
@@ -123,12 +123,12 @@ const style = StyleSheet.create((theme) => ({
         ...Typography.mono(),
         fontSize: 16,
         lineHeight: 21,  // Reduced from 24 to 21
-        backgroundColor: theme.colors.markdownCodeBackground,
-        color: theme.colors.markdownCodeText,
+        backgroundColor: theme.colors.surfaceHighest,
+        color: theme.colors.text,
     },
     link: {
         ...Typography.default(),
-        color: theme.colors.markdownLinkText,
+        color: theme.colors.textLink,
         fontWeight: '400',
     },
 
@@ -136,7 +136,7 @@ const style = StyleSheet.create((theme) => ({
 
     header: {
         ...Typography.default('semiBold'),
-        color: theme.colors.markdownHeaderText,
+        color: theme.colors.text,
     },
     header1: {
         fontSize: 16,
@@ -183,7 +183,7 @@ const style = StyleSheet.create((theme) => ({
 
     list: {
         ...Typography.default(),
-        color: theme.colors.markdownListText,
+        color: theme.colors.text,
         marginTop: 0,
         marginBottom: 0,
     },
@@ -204,13 +204,13 @@ const style = StyleSheet.create((theme) => ({
     //
 
     codeBlock: {
-        backgroundColor: theme.colors.markdownBlockBackground,
+        backgroundColor: theme.colors.surfaceHighest,
         borderRadius: 8,
         marginVertical: 8,
     },
     codeLanguage: {
         ...Typography.mono(),
-        color: theme.colors.markdownText,
+        color: theme.colors.textSecondary,
         fontSize: 12,
         marginTop: 8,
         paddingHorizontal: 16,
@@ -218,13 +218,13 @@ const style = StyleSheet.create((theme) => ({
     },
     codeText: {
         ...Typography.mono(),
-        color: theme.colors.markdownText,
+        color: theme.colors.text,
         fontSize: 14,
         lineHeight: 20,
     },
     horizontalRule: {
         height: 1,
-        backgroundColor: theme.colors.markdownHorizontalRule,
+        backgroundColor: theme.colors.divider,
         marginTop: 8,
         marginBottom: 8,
     },

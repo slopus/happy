@@ -19,7 +19,7 @@ export interface ItemListProps extends ScrollViewProps {
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.listBackground,
+        backgroundColor: theme.colors.groupped.background,
     },
     contentContainer: {
         paddingBottom: Platform.select({ ios: 34, default: 16 }),
@@ -43,7 +43,7 @@ export const ItemList = React.memo<ItemListProps>((props) => {
     const isWeb = Platform.OS === 'web';
     
     // Override background for non-inset grouped lists on iOS
-    const backgroundColor = (isIOS && !insetGrouped) ? '#FFFFFF' : theme.colors.listBackground;
+    const backgroundColor = (isIOS && !insetGrouped) ? '#FFFFFF' : theme.colors.groupped.background;
 
     return (
         <ScrollView 
@@ -85,7 +85,7 @@ export const ItemListStatic = React.memo<Omit<ItemListProps, keyof ScrollViewPro
     const isIOS = Platform.OS === 'ios';
     
     // Override background for non-inset grouped lists on iOS
-    const backgroundColor = (isIOS && !insetGrouped) ? '#FFFFFF' : theme.colors.listBackground;
+    const backgroundColor = (isIOS && !insetGrouped) ? '#FFFFFF' : theme.colors.groupped.background;
 
     return (
         <View 

@@ -45,7 +45,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     let description: string | null = null;
     let status: string | null = null;
     let minimal = false;
-    let icon = <Ionicons name="construct-outline" size={18} />;
+    let icon = <Ionicons name="construct-outline" size={18} color={theme.colors.textSecondary} />;
     let noStatus = false;
     let hideDefaultError = false;
 
@@ -77,7 +77,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
         minimal = knownTool.minimal;
     }
     if (knownTool && typeof knownTool.icon === 'function') {
-        icon = knownTool.icon(18, theme.colors.toolIconColor);
+        icon = knownTool.icon(18, theme.colors.text);
     }
     if (knownTool && typeof knownTool.noStatus === 'boolean') {
         noStatus = knownTool.noStatus;
@@ -96,16 +96,16 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
     // Check permission status first for denied/canceled states
     if (tool.permission && (tool.permission.status === 'denied' || tool.permission.status === 'canceled')) {
-        statusIcon = <Ionicons name="remove-circle-outline" size={20} color="#8E8E93" />;
+        statusIcon = <Ionicons name="remove-circle-outline" size={20} color={theme.colors.textSecondary} />;
     } else if (isToolUseError) {
-        statusIcon = <Ionicons name="remove-circle-outline" size={20} color="#8E8E93" />;
+        statusIcon = <Ionicons name="remove-circle-outline" size={20} color={theme.colors.textSecondary} />;
         hideDefaultError = true;
         minimal = true;
     } else {
         switch (tool.state) {
             case 'running':
                 if (!noStatus) {
-                    statusIcon = <ActivityIndicator size="small" color={theme.colors.toolIconColor} style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }} />;
+                    statusIcon = <ActivityIndicator size="small" color={theme.colors.text} style={{ transform: [{ scaleX: 0.8 }, { scaleY: 0.8 }] }} />;
                 }
                 break;
             case 'completed':
@@ -114,7 +114,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                 // }
                 break;
             case 'error':
-                statusIcon = <Ionicons name="alert-circle-outline" size={20} color="#FF9500" />;
+                statusIcon = <Ionicons name="alert-circle-outline" size={20} color={theme.colors.warning} />;
                 break;
         }
     }
@@ -146,7 +146,9 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             ) : (
                 <View style={styles.header}>
                     <View style={styles.headerLeft}>
-                        <Ionicons name={icon as any} size={20} />
+                        <View style={styles.iconContainer}>
+                            {icon}
+                        </View>
                         <View style={styles.titleContainer}>
                             <Text style={styles.toolName} numberOfLines={1}>{toolTitle}{status ? <Text style={styles.status}>{` ${status}`}</Text> : null}</Text>
                             {description && (
@@ -235,7 +237,7 @@ function ElapsedView(props: { from: number }) {
 
 const styles = StyleSheet.create((theme) => ({
     container: {
-        backgroundColor: theme.colors.toolBackground,
+        backgroundColor: theme.colors.surfaceHigh,
         borderRadius: 8,
         marginVertical: 4,
         overflow: 'hidden'
@@ -245,7 +247,7 @@ const styles = StyleSheet.create((theme) => ({
         alignItems: 'center',
         justifyContent: 'space-between',
         padding: 12,
-        backgroundColor: theme.colors.toolHeaderBackground,
+        backgroundColor: theme.colors.surfaceHighest,
     },
     headerLeft: {
         flexDirection: 'row',
@@ -267,13 +269,13 @@ const styles = StyleSheet.create((theme) => ({
     },
     elapsedText: {
         fontSize: 13,
-        color: theme.colors.toolElapsedText,
+        color: theme.colors.textSecondary,
         fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
     },
     toolName: {
         fontSize: 14,
         fontWeight: '500',
-        color: theme.colors.toolTitleText,
+        color: theme.colors.text,
     },
     status: {
         fontWeight: '400',
@@ -282,7 +284,7 @@ const styles = StyleSheet.create((theme) => ({
     },
     toolDescription: {
         fontSize: 13,
-        color: theme.colors.toolDescriptionText,
+        color: theme.colors.textSecondary,
         marginTop: 2,
     },
     content: {

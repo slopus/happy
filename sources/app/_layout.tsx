@@ -1,4 +1,5 @@
 import 'react-native-quick-base64';
+import '../theme.css';
 import * as React from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Fonts from 'expo-font';
@@ -20,7 +21,7 @@ import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
-import * as SystemUI from 'expo-system-ui';
+// import * as SystemUI from 'expo-system-ui';
 import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
 
 export {
@@ -35,8 +36,8 @@ SplashScreen.setOptions({
 })
 SplashScreen.preventAutoHideAsync();
 
-// Set window background color
-SystemUI.setBackgroundColorAsync('white');
+// Set window background color - now handled by Unistyles
+// SystemUI.setBackgroundColorAsync('white');
 
 // NEVER ENABLE REMOTE LOGGING IN PRODUCTION
 // This is for local debugging with AI only

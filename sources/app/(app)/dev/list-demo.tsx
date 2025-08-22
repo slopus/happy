@@ -1,9 +1,9 @@
 import * as React from 'react';
-import { Switch, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
+import { Switch } from '@/components/Switch';
 
 export default function ListDemoScreen() {
     const [isEnabled, setIsEnabled] = React.useState(false);
@@ -57,8 +57,6 @@ export default function ListDemoScreen() {
                         <Switch
                             value={isEnabled}
                             onValueChange={setIsEnabled}
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#FFFFFF"
                         />
                     }
                     showChevron={false}

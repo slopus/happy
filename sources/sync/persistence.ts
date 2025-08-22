@@ -60,6 +60,21 @@ export function saveLocalSettings(settings: LocalSettings) {
     mmkv.set('local-settings', JSON.stringify(settings));
 }
 
+export function loadThemePreference(): 'light' | 'dark' | 'adaptive' {
+    const localSettings = mmkv.getString('local-settings');
+    if (localSettings) {
+        try {
+            const parsed = JSON.parse(localSettings);
+            const settings = localSettingsParse(parsed);
+            return settings.themePreference;
+        } catch (e) {
+            console.error('Failed to parse local settings for theme preference', e);
+            return localSettingsDefaults.themePreference;
+        }
+    }
+    return localSettingsDefaults.themePreference;
+}
+
 export function loadPurchases(): Purchases {
     const purchases = mmkv.getString('purchases');
     if (purchases) {

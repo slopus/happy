@@ -3,6 +3,73 @@ import { View, TextInput, ActivityIndicator, Pressable, Text } from 'react-nativ
 import { Item } from '@/components/Item';
 import { Ionicons } from '@expo/vector-icons';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+const stylesheet = StyleSheet.create((theme) => ({
+    container: {
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+    },
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'flex-start',
+        gap: 8,
+    },
+    pathInput: {
+        flex: 1,
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 14,
+        fontFamily: 'Menlo',
+        backgroundColor: theme.colors.groupped.background,
+        minHeight: 44,
+        textAlignVertical: 'top',
+        color: theme.colors.text,
+    },
+    pathItemTitle: {
+        fontFamily: 'Menlo',
+        fontSize: 14,
+    },
+    pathItemTitleEnabled: {
+        color: theme.colors.text,
+    },
+    pathItemTitleDisabled: {
+        color: theme.colors.textSecondary,
+    },
+    playButton: {
+        width: 44,
+        height: 44,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderRadius: 22,
+    },
+    playButtonEnabled: {
+        backgroundColor: theme.colors.button.primary.background,
+    },
+    playButtonDisabled: {
+        backgroundColor: theme.colors.surfaceHigh,
+    },
+    playButtonSpawning: {
+        opacity: 0.6,
+    },
+    playIcon: {
+        marginLeft: 2, // Slight offset to center visually
+    },
+    playIconEnabled: {
+        color: theme.colors.button.primary.tint,
+    },
+    playIconDisabled: {
+        color: theme.colors.textSecondary,
+    },
+    offlineContainer: {
+        alignItems: 'center',
+    },
+    offlineText: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        fontStyle: 'italic',
+    },
+}));
 
 interface MachineSessionLauncherProps {
     machineId: string;
@@ -19,6 +86,8 @@ export const MachineSessionLauncher: React.FC<MachineSessionLauncherProps> = ({
     isOnline,
     onStartSession
 }) => {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
     const [customPath, setCustomPath] = useState('');
     const [isSpawning, setIsSpawning] = useState(false);
 
@@ -47,11 +116,10 @@ export const MachineSessionLauncher: React.FC<MachineSessionLauncherProps> = ({
                 <Item
                     key={path}
                     title={formatPathRelativeToHome(path, homeDir)}
-                    titleStyle={{ 
-                        fontFamily: 'Menlo', 
-                        fontSize: 14,
-                        color: isOnline ? '#000' : '#8E8E93'
-                    }}
+                    titleStyle={[
+                        styles.pathItemTitle,
+                        isOnline ? styles.pathItemTitleEnabled : styles.pathItemTitleDisabled
+                    ]}
                     onPress={() => handlePathSelect(path)}
                     disabled={!isOnline}
                     selected={isOnline && customPath === path}
@@ -61,28 +129,11 @@ export const MachineSessionLauncher: React.FC<MachineSessionLauncherProps> = ({
             
             {/* Custom path input with play button OR offline message */}
             {isOnline ? (
-                <View style={{ 
-                    paddingHorizontal: 16, 
-                    paddingVertical: 12,
-                    flexDirection: 'row',
-                    alignItems: 'flex-start',
-                    gap: 8
-                }}>
+                <View style={[styles.container, styles.inputContainer]}>
                     <TextInput
-                        style={{
-                            flex: 1,
-                            borderWidth: 1,
-                            borderColor: '#C7C7CC',
-                            borderRadius: 8,
-                            padding: 12,
-                            fontSize: 14,
-                            fontFamily: 'Menlo',
-                            backgroundColor: '#F2F2F7',
-                            minHeight: 44,
-                            textAlignVertical: 'top'
-                        }}
+                        style={styles.pathInput}
                         placeholder="Enter custom path"
-                        placeholderTextColor="#8E8E93"
+                        placeholderTextColor={theme.colors.textSecondary}
                         value={customPath}
                         onChangeText={setCustomPath}
                         autoCapitalize="none"
@@ -94,39 +145,29 @@ export const MachineSessionLauncher: React.FC<MachineSessionLauncherProps> = ({
                         onPress={handleStartSession}
                         disabled={!canStart || isSpawning}
                         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                        style={{
-                            width: 44,
-                            height: 44,
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            backgroundColor: canStart ? '#007AFF' : '#E5E5EA',
-                            borderRadius: 22,
-                            opacity: isSpawning ? 0.6 : 1
-                        }}
+                        style={[
+                            styles.playButton,
+                            canStart ? styles.playButtonEnabled : styles.playButtonDisabled,
+                            isSpawning && styles.playButtonSpawning
+                        ]}
                     >
                         {isSpawning ? (
-                            <ActivityIndicator size="small" color="white" />
+                            <ActivityIndicator size="small" color={theme.colors.button.primary.tint} />
                         ) : (
                             <Ionicons 
                                 name="play" 
                                 size={20} 
-                                color={canStart ? 'white' : '#8E8E93'}
-                                style={{ marginLeft: 2 }} // Slight offset to center visually
+                                style={[
+                                    styles.playIcon,
+                                    canStart ? styles.playIconEnabled : styles.playIconDisabled
+                                ]}
                             />
                         )}
                     </Pressable>
                 </View>
             ) : (
-                <View style={{ 
-                    paddingHorizontal: 16, 
-                    paddingVertical: 12,
-                    alignItems: 'center'
-                }}>
-                    <Text style={{
-                        fontSize: 14,
-                        color: '#8E8E93',
-                        fontStyle: 'italic'
-                    }}>
+                <View style={[styles.container, styles.offlineContainer]}>
+                    <Text style={styles.offlineText}>
                         Unable to spawn new session, offline
                     </Text>
                 </View>

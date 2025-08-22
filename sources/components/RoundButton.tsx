@@ -2,6 +2,7 @@ import * as React from 'react';
 import { ActivityIndicator, Platform, Pressable, StyleProp, Text, TextStyle, View, ViewStyle } from 'react-native';
 import { iOSUIKit } from 'react-native-typography';
 import { Typography } from '@/constants/Typography';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 export type RoundButtonSize = 'large' | 'normal' | 'small';
 const sizes: { [key in RoundButtonSize]: { height: number, fontSize: number, hitSlop: number, pad: number } } = {
@@ -12,7 +13,33 @@ const sizes: { [key in RoundButtonSize]: { height: number, fontSize: number, hit
 
 export type RoundButtonDisplay = 'default' | 'inverted';
 
+const stylesheet = StyleSheet.create((theme) => ({
+    loadingContainer: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    contentContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        minWidth: 64,
+        paddingHorizontal: 16,
+        borderRadius: 9999,
+    },
+    text: {
+        ...Typography.default('semiBold'),
+        fontWeight: '600',
+        includeFontPadding: false,
+    },
+}));
+
 export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?: RoundButtonDisplay, title?: any, style?: StyleProp<ViewStyle>, textStyle?: StyleProp<TextStyle>, disabled?: boolean, loading?: boolean, onPress?: () => void, action?: () => Promise<any> }) => {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
     const [loading, setLoading] = React.useState(false);
     const doLoading = props.loading !== undefined ? props.loading : loading;
     const doAction = React.useCallback(() => {
@@ -37,14 +64,14 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
         borderColor: string,
     } } = {
         default: {
-            backgroundColor: '#000',
+            backgroundColor: theme.colors.button.primary.background,
             borderColor: 'transparent',
-            textColor: '#fff'
+            textColor: theme.colors.button.primary.tint
         },
         inverted: {
             backgroundColor: 'transparent',
             borderColor: 'transparent',
-            textColor: '#000',
+            textColor: theme.colors.text,
         }
     }
 
@@ -71,37 +98,28 @@ export const RoundButton = React.memo((props: { size?: RoundButtonSize, display?
             onPress={doAction}
         >
             <View 
-                style={{ 
-                    height: size.height - 2,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    minWidth: 64,
-                    paddingHorizontal: 16,
-                    borderRadius: 9999,
-                }}
+                style={[
+                    styles.contentContainer,
+                    { height: size.height - 2 }
+                ]}
             >
                 {doLoading && (
-                    <View style={{
-                        position: 'absolute',
-                        top: 0,
-                        left: 0,
-                        right: 0,
-                        bottom: 0,
-                        alignItems: 'center',
-                        justifyContent: 'center'
-                    }}>
+                    <View style={styles.loadingContainer}>
                         <ActivityIndicator color={display.textColor} size='small' />
                     </View>
                 )}
                 <Text 
-                    style={[iOSUIKit.title3, Typography.default('semiBold'), { 
-                        marginTop: size.pad, 
-                        opacity: doLoading ? 0 : 1, 
-                        color: display.textColor, 
-                        fontSize: size.fontSize, 
-                        fontWeight: '600', 
-                        includeFontPadding: false 
-                    }, props.textStyle]} 
+                    style={[
+                        iOSUIKit.title3, 
+                        styles.text,
+                        { 
+                            marginTop: size.pad, 
+                            opacity: doLoading ? 0 : 1, 
+                            color: display.textColor, 
+                            fontSize: size.fontSize, 
+                        }, 
+                        props.textStyle
+                    ]} 
                     numberOfLines={1}
                 >
                     {props.title}

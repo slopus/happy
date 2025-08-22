@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Text, View, StyleSheet, ScrollView, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
+import { Text, View, ScrollView, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
@@ -7,6 +7,7 @@ import { Metadata } from '@/sync/storageTypes';
 import { getToolFullViewComponent } from './views/_all';
 import { layout } from '../layout';
 import { useLocalSetting } from '@/sync/storage';
+import { StyleSheet } from 'react-native-unistyles';
 
 interface ToolFullViewProps {
     tool: ToolCall;
@@ -126,10 +127,10 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
     );
 }
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
-        backgroundColor: '#fff',
+        backgroundColor: theme.colors.surface,
         paddingTop: 12,
     },
     contentWrapper: {
@@ -154,28 +155,28 @@ const styles = StyleSheet.create({
     sectionTitle: {
         fontSize: 17,
         fontWeight: '600',
-        color: '#000',
+        color: theme.colors.text,
     },
     description: {
         fontSize: 14,
         lineHeight: 20,
-        color: '#333',
+        color: theme.colors.textSecondary,
     },
     toolId: {
         fontSize: 12,
         fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace' }),
-        color: '#666',
+        color: theme.colors.textSecondary,
     },
     errorContainer: {
-        backgroundColor: '#FFE5E5',
+        backgroundColor: theme.colors.box.error.background,
         borderRadius: 8,
         padding: 16,
         borderWidth: 1,
-        borderColor: '#FFD0D0',
+        borderColor: theme.colors.box.error.border,
     },
     errorText: {
         fontSize: 14,
-        color: '#FF3B30',
+        color: theme.colors.box.error.text,
         lineHeight: 20,
     },
     emptyOutputContainer: {
@@ -186,11 +187,11 @@ const styles = StyleSheet.create({
     emptyOutputText: {
         fontSize: 16,
         fontWeight: '600',
-        color: '#34C759',
+        color: theme.colors.text,
     },
     emptyOutputSubtext: {
         fontSize: 14,
-        color: '#666',
+        color: theme.colors.textSecondary,
     },
     runningContainer: {
         alignItems: 'center',
@@ -199,9 +200,9 @@ const styles = StyleSheet.create({
     },
     runningText: {
         fontSize: 16,
-        color: '#007AFF',
+        color: theme.colors.text,
     },
-});
+}));
 
 // Export styles for use in specialized views
 export const toolFullViewStyles = styles;

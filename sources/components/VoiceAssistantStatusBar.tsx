@@ -6,6 +6,7 @@ import { StatusDot } from './StatusDot';
 import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
 import { stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { useUnistyles } from 'react-native-unistyles';
 
 interface VoiceAssistantStatusBarProps {
     variant?: 'full' | 'sidebar';
@@ -13,6 +14,7 @@ interface VoiceAssistantStatusBarProps {
 }
 
 export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: VoiceAssistantStatusBarProps) => {
+    const { theme } = useUnistyles();
     const realtimeStatus = useRealtimeStatus();
 
     // Don't render if disconnected
@@ -24,35 +26,35 @@ export const VoiceAssistantStatusBar = React.memo(({ variant = 'full', style }: 
         switch (realtimeStatus) {
             case 'connecting':
                 return {
-                    color: '#007AFF',
-                    backgroundColor: '#E3F2FD',
+                    color: theme.colors.status.connecting,
+                    backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: true,
                     text: 'Connecting...',
-                    textColor: '#1976D2'
+                    textColor: theme.colors.text
                 };
             case 'connected':
                 return {
-                    color: '#34C759',
-                    backgroundColor: '#E8F5E8',
+                    color: theme.colors.status.connected,
+                    backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: false,
                     text: 'Voice Assistant Active',
-                    textColor: '#2E7D32'
+                    textColor: theme.colors.text
                 };
             case 'error':
                 return {
-                    color: '#FF3B30',
-                    backgroundColor: '#FFEBEE',
+                    color: theme.colors.status.error,
+                    backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: false,
                     text: 'Connection Error',
-                    textColor: '#C62828'
+                    textColor: theme.colors.text
                 };
             default:
                 return {
-                    color: '#8E8E93',
-                    backgroundColor: '#F5F5F5',
+                    color: theme.colors.status.default,
+                    backgroundColor: theme.colors.surfaceHighest,
                     isPulsing: false,
                     text: 'Voice Assistant',
-                    textColor: '#616161'
+                    textColor: theme.colors.text
                 };
         }
     };

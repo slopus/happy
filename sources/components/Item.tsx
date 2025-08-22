@@ -70,17 +70,17 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
     },
     titleNormal: {
-        color: theme.colors.titleText,
+        color: theme.colors.text,
     },
     titleSelected: {
-        color: theme.colors.titleSelected,
+        color: theme.colors.text,
     },
     titleDestructive: {
-        color: theme.colors.titleDestructive,
+        color: theme.colors.textDestructive,
     },
     subtitle: {
         ...Typography.default('regular'),
-        color: theme.colors.subtitleText,
+        color: theme.colors.textSecondary,
         fontSize: Platform.select({ ios: 15, default: 14 }),
         lineHeight: 20,
         letterSpacing: Platform.select({ ios: -0.24, default: 0.1 }),
@@ -93,7 +93,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     detail: {
         ...Typography.default('regular'),
-        color: theme.colors.detailText,
+        color: theme.colors.textSecondary,
         fontSize: 17,
         letterSpacing: -0.41,
     },
@@ -102,7 +102,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         backgroundColor: theme.colors.divider,
     },
     pressablePressed: {
-        backgroundColor: theme.colors.pressedOverlay,
+        backgroundColor: theme.colors.surfacePressedOverlay,
     },
 }));
 
@@ -246,7 +246,7 @@ export const Item = React.memo<ItemProps>((props) => {
                     {loading && (
                         <ActivityIndicator 
                             size="small" 
-                            color={theme.colors.subtitleText}
+                            color={theme.colors.textSecondary}
                             style={{ marginRight: showAccessory ? 6 : 0 }}
                         />
                     )}
@@ -255,7 +255,7 @@ export const Item = React.memo<ItemProps>((props) => {
                         <Ionicons 
                             name="chevron-forward" 
                             size={chevronSize} 
-                            color={theme.colors.chevron}
+                            color={theme.colors.groupped.chevron}
                             style={{ marginLeft: 4 }}
                         />
                     )}
@@ -286,13 +286,13 @@ export const Item = React.memo<ItemProps>((props) => {
                 disabled={disabled || loading}
                 style={({ pressed }) => [
                     {
-                        backgroundColor: pressed && isIOS && !isWeb ? theme.colors.pressedOverlay : 'transparent',
+                        backgroundColor: pressed && isIOS && !isWeb ? theme.colors.surfacePressedOverlay : 'transparent',
                         opacity: disabled ? 0.5 : 1
                     },
                     pressableStyle
                 ]}
                 android_ripple={(isAndroid || isWeb) ? {
-                    color: theme.colors.ripple,
+                    color: theme.colors.surfaceRipple,
                     borderless: false,
                     foreground: true
                 } : undefined}

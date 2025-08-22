@@ -20,14 +20,14 @@ export const CodeView = React.memo<CodeViewProps>(({
 
 const styles = StyleSheet.create((theme) => ({
     codeBlock: {
-        backgroundColor: theme.colors.codeBackground,
+        backgroundColor: theme.colors.surfaceHigh,
         borderRadius: 6,
         padding: 12,
     },
     codeText: {
         fontFamily: Platform.select({ ios: 'Menlo', android: 'monospace', default: 'monospace' }),
         fontSize: 12,
-        color: theme.colors.codeText,
+        color: theme.colors.text,
         lineHeight: 18,
     },
 }));
