@@ -115,7 +115,6 @@ export default {
             [
                 'expo-splash-screen',
                 {
-                    image: "./sources/assets/images/transparent.png",
                     ios: {
                         backgroundColor: "#F2F2F7",
                         dark: {
@@ -123,8 +122,10 @@ export default {
                         }
                     },
                     android: {
+                        image: "./sources/assets/images/splash-android-light.png",
                         backgroundColor: "#F5F5F5",
                         dark: {
+                            image: "./sources/assets/images/splash-android-dark.png",
                             backgroundColor: "#1e1e1e",
                         }
                     }
