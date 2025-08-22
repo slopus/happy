@@ -400,3 +400,4 @@ export const darkTheme = {
     },
 } satisfies typeof lightTheme;
 
+export type Theme = typeof lightTheme;

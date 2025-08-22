@@ -71,7 +71,7 @@ export default function RootLayout() {
                 name="session/[id]/info"
                 options={{
                     headerShown: true,
-                    headerTitle: 'Session Info',
+                    headerTitle: '',
                     headerBackTitle: 'Back',
                 }}
             />
