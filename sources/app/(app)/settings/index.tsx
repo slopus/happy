@@ -290,7 +290,7 @@ export default React.memo(function SettingsScreen() {
             <ItemGroup title="About" footer="Happy Coder is a Claude Code mobile client. It's fully end-to-end encrypted and your account is stored only on your device. Not affiliated with Anthropic.">
                 <Item
                     title="GitHub"
-                    icon={<Ionicons name="logo-github" size={29} color="#000" />}
+                    icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
                     detail="slopus/happy"
                     onPress={handleGitHub}
                 />

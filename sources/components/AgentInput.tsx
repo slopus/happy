@@ -19,6 +19,7 @@ import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
+import { Theme } from '@/theme';
 
 interface AgentInputProps {
     value: string;
@@ -252,17 +253,17 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
 }));
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: any) => {
+const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
     const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
     const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
 
     if (percentageRemaining <= 5) {
-        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.contextWarningCritical };
+        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.warningCritical };
     } else if (percentageRemaining <= 10) {
-        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.contextWarningNormal };
+        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.warning };
     } else if (alwaysShow) {
         // Show context remaining in neutral color when not near limit
-        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.contextWarningNormal };
+        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.warning };
     }
     return null; // No display needed
 };
