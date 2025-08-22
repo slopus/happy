@@ -6,13 +6,13 @@ import * as Fonts from 'expo-font';
 import { FontAwesome } from '@expo/vector-icons';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { AuthProvider } from '@/auth/AuthContext';
-import { DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SidebarNavigator } from '@/components/SidebarNavigator';
 import sodium from 'react-native-libsodium';
-import { View } from 'react-native';
+import { View, Platform } from 'react-native';
 import { ModalProvider } from '@/modal';
 import { PostHogProvider } from 'posthog-react-native';
 import { tracking } from '@/track/tracking';
@@ -24,6 +24,7 @@ import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPalet
 import { StatusBarProvider } from '@/components/StatusBarProvider';
 // import * as SystemUI from 'expo-system-ui';
 import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
+import { useUnistyles } from 'react-native-unistyles';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -62,8 +63,25 @@ function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) 
 }
 
 export default function RootLayout() {
-
-    // console.log('RootLayout', initialWindowMetrics);
+    const { theme } = useUnistyles();
+    const navigationTheme = React.useMemo(() => {
+        if (theme.dark) {
+            return {
+                ...DarkTheme,
+                colors: {
+                    ...DarkTheme.colors,
+                    background: theme.colors.groupped.background,
+                }
+            }
+        }
+        return {
+            ...DefaultTheme,
+            colors: {
+                ...DefaultTheme.colors,
+                background: theme.colors.groupped.background,
+            }
+        };
+    }, [theme.dark]);
 
     //
     // Init sequence
@@ -72,25 +90,61 @@ export default function RootLayout() {
     React.useEffect(() => {
         (async () => {
             try {
-                await Fonts.loadAsync({
-                    // Keep existing font
-                    SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
+                // Check if running in Tauri
+                const isTauri = Platform.OS === 'web' &&
+                    typeof window !== 'undefined' &&
+                    (window as any).__TAURI_INTERNALS__ !== undefined;
 
-                    // IBM Plex Sans family
-                    'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
-                    'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
-                    'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
+                if (!isTauri) {
+                    // Normal font loading for non-Tauri environments (native and regular web)
+                    await Fonts.loadAsync({
+                        // Keep existing font
+                        SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
 
-                    // IBM Plex Mono family  
-                    'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
-                    'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
-                    'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
+                        // IBM Plex Sans family
+                        'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
+                        'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
+                        'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
 
-                    // Bricolage Grotesque  
-                    'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
+                        // IBM Plex Mono family  
+                        'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
+                        'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
+                        'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
 
-                    ...FontAwesome.font,
-                });
+                        // Bricolage Grotesque  
+                        'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
+
+                        ...FontAwesome.font,
+                    });
+                } else {
+                    // For Tauri, skip Font Face Observer as fonts are loaded via CSS
+                    console.log('Do not wait for fonts to load');
+                    (async () => {
+                        try {
+                            await Fonts.loadAsync({
+                                // Keep existing font
+                                SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
+
+                                // IBM Plex Sans family
+                                'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
+                                'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
+                                'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
+
+                                // IBM Plex Mono family  
+                                'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
+                                'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
+                                'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
+
+                                // Bricolage Grotesque  
+                                'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
+
+                                ...FontAwesome.font,
+                            });
+                        } catch (e) {
+                            // Ignore
+                        }
+                    })();
+                }
                 await sodium.ready;
                 const credentials = await TokenStorage.getCredentials();
                 console.log('credentials', credentials);
@@ -133,7 +187,7 @@ export default function RootLayout() {
             <KeyboardProvider>
                 <GestureHandlerRootView style={{ flex: 1 }}>
                     <AuthProvider initialCredentials={initState.credentials}>
-                        <ThemeProvider value={DefaultTheme}>
+                        <ThemeProvider value={navigationTheme}>
                             <StatusBarProvider />
                             <ModalProvider>
                                 <CommandPaletteProvider>
