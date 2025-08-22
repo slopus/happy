@@ -19,12 +19,11 @@ export default {
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
         scheme: "happy",
-        userInterfaceStyle: "light",
+        userInterfaceStyle: "automatic",
         newArchEnabled: true,
-        splash: {
-            image: "./sources/assets/images/splash-icon.png",
-            imageWidth: 256,
-            backgroundColor: "#ffffff"
+        notification: {
+            icon: "./sources/assets/images/icon-notification.png",
+            iosDisplayInForeground: true
         },
         ios: {
             supportsTablet: true,
@@ -36,6 +35,12 @@ export default {
                 NSMicrophoneUsageDescription: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations with AI.",
                 NSLocalNetworkUsageDescription: "Allow $(PRODUCT_NAME) to find and connect to local devices on your network.",
                 NSBonjourServices: ["_http._tcp", "_https._tcp"]
+            },
+            splash: {
+                backgroundColor: "#F2F2F7",
+                dark: {
+                    backgroundColor: "#1C1C1E",
+                }
             }
         },
         android: {
@@ -54,7 +59,13 @@ export default {
             ],
             edgeToEdgeEnabled: true,
             package: bundleId,
-            googleServicesFile: "./google-services.json"
+            googleServicesFile: "./google-services.json",
+            splash: {
+                backgroundColor: "#F5F5F5",
+                dark: {
+                    backgroundColor: "#1e1e1e",
+                }
+            }
         },
         web: {
             bundler: "metro",

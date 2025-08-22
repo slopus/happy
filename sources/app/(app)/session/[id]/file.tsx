@@ -7,7 +7,6 @@ import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
 import { Typography } from '@/constants/Typography';
 import { sessionReadFile, sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
-import { StatusBar } from 'expo-status-bar';
 import { Modal } from '@/modal';
 import { useUnistyles } from 'react-native-unistyles';
 
@@ -285,7 +284,6 @@ export default function FileScreen() {
                 justifyContent: 'center', 
                 alignItems: 'center' 
             }}>
-                <StatusBar style="dark" />
                 <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                 <Text style={{ 
                     marginTop: 16, 
@@ -308,7 +306,6 @@ export default function FileScreen() {
                 alignItems: 'center',
                 padding: 20
             }}>
-                <StatusBar style="dark" />
                 <Text style={{ 
                     fontSize: 18, 
                     fontWeight: 'bold',
@@ -339,7 +336,6 @@ export default function FileScreen() {
                 alignItems: 'center',
                 padding: 20
             }}>
-                <StatusBar style="dark" />
                 <Text style={{ 
                     fontSize: 18, 
                     fontWeight: 'bold',
@@ -372,7 +368,6 @@ export default function FileScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: 'white' }}>
-            <StatusBar style="dark" />
             
             {/* File path header */}
             <View style={{

@@ -46,7 +46,10 @@ export const lightTheme = {
                 active: Platform.select({ ios: '#34C759', default: '#1976D2' }),
                 inactive: '#767577',
             },
-            thumb: '#FFFFFF',
+            thumb: {
+                active: '#FFFFFF',
+                inactive: '#767577',
+            },
         },
         fab: {
             background: '#FFFFFF',
@@ -241,7 +244,10 @@ export const darkTheme = {
                 active: Platform.select({ ios: 'white', default: '#1976D2' }),
                 inactive: 'white',
             },
-            thumb: '#FFFFFF',
+            thumb: {
+                active: '#FFFFFF',
+                inactive: '#767577',
+            },
         },
         groupped: {
             background: Platform.select({ ios: '#1C1C1E', default: '#1e1e1e' }),
