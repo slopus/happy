@@ -2,6 +2,7 @@ import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { darkTheme, lightTheme } from './theme';
 import { loadThemePreference } from './sync/persistence';
 import { Appearance } from 'react-native';
+import * as SystemUI from 'expo-system-ui';
 
 //
 // Theme
@@ -33,7 +34,7 @@ const getInitialTheme = (): 'light' | 'dark' => {
     return themePreference;
 };
 
-const settings = themePreference === 'adaptive' 
+const settings = themePreference === 'adaptive'
     ? {
         // When adaptive, let Unistyles handle theme switching automatically
         adaptiveThemes: true,
@@ -69,9 +70,11 @@ const setRootBackgroundColor = () => {
         const systemTheme = Appearance.getColorScheme();
         const color = systemTheme === 'dark' ? '#18171C' : '#ffffff';
         UnistylesRuntime.setRootViewBackgroundColor(color);
+        SystemUI.setBackgroundColorAsync(color);
     } else {
         const color = themePreference === 'dark' ? '#18171C' : '#ffffff';
         UnistylesRuntime.setRootViewBackgroundColor(color);
+        SystemUI.setBackgroundColorAsync(color);
     }
 };
 

@@ -35,12 +35,6 @@ export default {
                 NSMicrophoneUsageDescription: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations with AI.",
                 NSLocalNetworkUsageDescription: "Allow $(PRODUCT_NAME) to find and connect to local devices on your network.",
                 NSBonjourServices: ["_http._tcp", "_https._tcp"]
-            },
-            splash: {
-                backgroundColor: "#F2F2F7",
-                dark: {
-                    backgroundColor: "#1C1C1E",
-                }
             }
         },
         android: {
@@ -60,12 +54,6 @@ export default {
             edgeToEdgeEnabled: true,
             package: bundleId,
             googleServicesFile: "./google-services.json",
-            splash: {
-                backgroundColor: "#F5F5F5",
-                dark: {
-                    backgroundColor: "#1e1e1e",
-                }
-            }
         },
         web: {
             bundler: "metro",
@@ -122,6 +110,24 @@ export default {
                 "expo-notifications",
                 {
                     "enableBackgroundRemoteNotifications": true
+                }
+            ],
+            [
+                'expo-splash-screen',
+                {
+                    image: "./sources/assets/images/transparent.png",
+                    ios: {
+                        backgroundColor: "#F2F2F7",
+                        dark: {
+                            backgroundColor: "#1C1C1E",
+                        }
+                    },
+                    android: {
+                        backgroundColor: "#F5F5F5",
+                        dark: {
+                            backgroundColor: "#1e1e1e",
+                        }
+                    }
                 }
             ]
         ],
