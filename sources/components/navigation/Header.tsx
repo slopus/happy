@@ -48,12 +48,14 @@ export const Header = React.memo((props: HeaderProps) => {
     const containerStyle = [
         styles.container,
         headerTransparent && styles.containerTransparent,
+        !headerTransparent && styles.containerNormal,
         {
             paddingTop,
         },
         headerShadowVisible && styles.shadow,
         headerStyle,
     ];
+    console.log('headerTransparent', headerTransparent);
 
     const subtitleStyle = [
         styles.subtitle,
@@ -80,71 +82,6 @@ export const Header = React.memo((props: HeaderProps) => {
             </View>
         </View>
     );
-});
-
-const styles = StyleSheet.create({
-    container: {
-        position: 'relative',
-        zIndex: 100,
-    },
-    contentWrapper: {
-        width: '100%',
-        alignItems: 'center',
-    },
-    content: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingHorizontal: Platform.OS === 'ios' ? 8 : 16,
-        width: '100%',
-        maxWidth: layout.headerMaxWidth, // Standard max width for content
-    },
-    leftContainer: {
-        flexGrow: 0,
-        flexShrink: 0,
-        alignItems: 'flex-start',
-    },
-    centerContainer: {
-        flexGrow: 1,
-        flexBasis: 0,
-        alignSelf: 'stretch',
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    rightContainer: {
-        flexGrow: 0,
-        flexShrink: 0,
-        alignItems: 'flex-end',
-    },
-    title: {
-        fontSize: 17,
-        fontWeight: '600',
-        textAlign: 'center',
-        ...Typography.default('semiBold'),
-    },
-    subtitle: {
-        fontSize: 13,
-        fontWeight: '400',
-        textAlign: 'center',
-        marginTop: 2,
-        ...Typography.default('regular'),
-    },
-    shadow: {
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.15,
-                shadowRadius: 3,
-            },
-            android: {
-                elevation: 4,
-            },
-            web: {
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
-            },
-        }),
-    },
 });
 
 // Extended navigation options to support subtitle
@@ -246,10 +183,12 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         position: 'relative',
         zIndex: 100,
-        backgroundColor: theme.colors.header.background,
     },
     containerTransparent: {
         backgroundColor: 'transparent',
+    },
+    containerNormal: {
+        backgroundColor: theme.colors.header.background,
     },
     contentWrapper: {
         width: '100%',

@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, FlatList } from 'react-native';
+import { View, Pressable, FlatList, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname, useRouter } from 'expo-router';
 import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
@@ -22,6 +22,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     contentContainer: {
         flex: 1,
         overflow: 'hidden',
+        backgroundColor: theme.colors.groupped.background,
     },
     headerSection: {
         backgroundColor: theme.colors.surface,
@@ -36,9 +37,34 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         textTransform: 'uppercase',
         ...Typography.default('semiBold'),
     },
+    archivedContainer: {
+        backgroundColor: theme.colors.groupped.background,
+        paddingTop: 8,
+    },
+    archivedSectionHeader: {
+        paddingTop: Platform.select({ ios: 20, default: 16 }),
+        paddingBottom: Platform.select({ ios: 6, default: 8 }),
+        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
+    },
+    archivedSectionHeaderText: {
+        ...Typography.default('regular'),
+        color: theme.colors.groupped.sectionTitle,
+        fontSize: Platform.select({ ios: 13, default: 14 }),
+        lineHeight: Platform.select({ ios: 18, default: 20 }),
+        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+        fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+    },
     archivedSessionsCard: {
         backgroundColor: theme.colors.surface,
+        marginBottom: 12,
+        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
+        borderRadius: Platform.select({ ios: 10, default: 16 }),
         overflow: 'hidden',
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 0.33 },
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 0,
+        elevation: 1,
     },
     projectGroup: {
         paddingHorizontal: 16,
@@ -232,11 +258,11 @@ export function SessionsList() {
     // Group archived sessions in a card
     const renderContent = React.useMemo(() => {
         if (!dataWithSelected) return [];
-        
+
         const result: React.ReactElement[] = [];
         let archivedItems: (SessionListViewItem & { selected?: boolean })[] = [];
         let isCollectingArchived = false;
-        
+
         dataWithSelected.forEach((item, index) => {
             if (item.type === 'header' && item.title === 'Previous Sessions') {
                 // Skip rendering the header, just start collecting archived items
@@ -271,37 +297,47 @@ export function SessionsList() {
                 archivedItems.push(item);
             }
         });
-        
+
         // Render archived items in a card
         if (archivedItems.length > 0) {
             result.push(
-                <View key="archived-card" style={styles.archivedSessionsCard}>
-                    {archivedItems.map((item, index) => {
-                        const showSeparator = index < archivedItems.length - 1 && 
-                                            !(item.type === 'project-group' && archivedItems[index + 1]?.type === 'session');
-                        
-                        return (
-                            <React.Fragment key={keyExtractor(item, index)}>
-                                {item.type === 'project-group' ? (
-                                    <View style={styles.projectGroup}>
-                                        <Text style={styles.projectGroupTitle}>
-                                            {item.displayPath}
-                                        </Text>
-                                        <Text style={styles.projectGroupSubtitle}>
-                                            {item.machine.metadata?.displayName || item.machine.metadata?.host || item.machine.id}
-                                        </Text>
-                                    </View>
-                                ) : item.type === 'session' ? (
-                                    <SessionItem session={item.session} selected={item.selected} />
-                                ) : null}
-                                {showSeparator && <View style={styles.separator} />}
-                            </React.Fragment>
-                        );
-                    })}
+                <View key="archived-container" style={styles.archivedContainer}>
+                    {/* Section header for Archived Sessions */}
+                    <View style={styles.archivedSectionHeader}>
+                        <Text style={styles.archivedSectionHeaderText}>
+                            Archived Sessions
+                        </Text>
+                    </View>
+
+                    {/* Card with rounded corners containing archived sessions */}
+                    <View style={styles.archivedSessionsCard}>
+                        {archivedItems.map((item, index) => {
+                            const showSeparator = index < archivedItems.length - 1 &&
+                                !(item.type === 'project-group' && archivedItems[index + 1]?.type === 'session');
+
+                            return (
+                                <React.Fragment key={keyExtractor(item, index)}>
+                                    {item.type === 'project-group' ? (
+                                        <View style={styles.projectGroup}>
+                                            <Text style={styles.projectGroupTitle}>
+                                                {item.displayPath}
+                                            </Text>
+                                            <Text style={styles.projectGroupSubtitle}>
+                                                {item.machine.metadata?.displayName || item.machine.metadata?.host || item.machine.id}
+                                            </Text>
+                                        </View>
+                                    ) : item.type === 'session' ? (
+                                        <SessionItem session={item.session} selected={item.selected} />
+                                    ) : null}
+                                    {showSeparator && <View style={styles.separator} />}
+                                </React.Fragment>
+                            );
+                        })}
+                    </View>
                 </View>
             );
         }
-        
+
         return result;
     }, [dataWithSelected, isTablet, pathname, keyExtractor]);
 

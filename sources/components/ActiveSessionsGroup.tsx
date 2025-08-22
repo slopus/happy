@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable } from 'react-native';
+import { View, Pressable, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
@@ -13,34 +13,52 @@ import { StyleSheet } from 'react-native-unistyles';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
-        backgroundColor: theme.colors.surface,
-        paddingTop: 12,
+        backgroundColor: theme.colors.groupped.background,
+        paddingTop: 8,
     },
     projectCard: {
         backgroundColor: theme.colors.surface,
-        marginBottom: 12,
+        marginBottom: 8,
+        marginHorizontal: Platform.select({ ios: 16, default: 12 }),
+        borderRadius: Platform.select({ ios: 10, default: 16 }),
         overflow: 'hidden',
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 0.33 },
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 0,
+        elevation: 1,
     },
-    projectCardHeader: {
+    sectionHeader: {
+        paddingTop: 12,
+        paddingBottom: Platform.select({ ios: 6, default: 8 }),
+        paddingHorizontal: Platform.select({ ios: 32, default: 24 }),
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        backgroundColor: theme.colors.surfaceHigh,
     },
-    projectCardTitle: {
-        fontSize: 15,
-        fontWeight: '600',
-        color: theme.colors.text,
+    sectionHeaderLeft: {
+        flexDirection: 'row',
+        alignItems: 'center',
         flex: 1,
         marginRight: 8,
-        ...Typography.default('semiBold'),
     },
-    projectCardMachine: {
-        fontSize: 13,
-        color: theme.colors.textSecondary,
-        ...Typography.default(),
+    sectionHeaderPath: {
+        ...Typography.default('regular'),
+        color: theme.colors.groupped.sectionTitle,
+        fontSize: Platform.select({ ios: 13, default: 14 }),
+        lineHeight: Platform.select({ ios: 18, default: 20 }),
+        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+        fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+    },
+    sectionHeaderMachine: {
+        ...Typography.default('regular'),
+        color: theme.colors.groupped.sectionTitle,
+        fontSize: Platform.select({ ios: 13, default: 14 }),
+        lineHeight: Platform.select({ ios: 18, default: 20 }),
+        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+        fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+        maxWidth: 150,
+        textAlign: 'right',
     },
     sessionRow: {
         height: 88,
@@ -207,35 +225,38 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                     : `${projectGroup.machines.size} machines`;
                 
                 return (
-                    <View key={projectPath} style={styles.projectCard}>
-                        {/* Card header with project path and machine name */}
-                        <View style={styles.projectCardHeader}>
-                            <Text style={styles.projectCardTitle} numberOfLines={1}>
-                                {projectGroup.displayPath}
-                            </Text>
-                            {machineName && (
-                                <Text style={styles.projectCardMachine} numberOfLines={1}>
-                                    {machineName}
+                    <View key={projectPath}>
+                        {/* Section header on grouped background */}
+                        <View style={styles.sectionHeader}>
+                            <View style={styles.sectionHeaderLeft}>
+                                <Text style={styles.sectionHeaderPath}>
+                                    {projectGroup.displayPath}
                                 </Text>
-                            )}
+                            </View>
+                            <Text style={styles.sectionHeaderMachine} numberOfLines={1}>
+                                {machineName}
+                            </Text>
                         </View>
-
-                        {/* Sessions grouped by machine within the card */}
-                        {Array.from(projectGroup.machines.entries())
-                            .sort(([, machineA], [, machineB]) => machineA.machineName.localeCompare(machineB.machineName))
-                            .map(([machineId, machineGroup]) => (
-                                <View key={`${projectPath}-${machineId}`}>
-                                    {machineGroup.sessions.map((session, index) => (
-                                        <CompactSessionRow 
-                                            key={session.id} 
-                                            session={session} 
-                                            selected={selectedSessionId === session.id}
-                                            showBorder={index < machineGroup.sessions.length - 1 || 
-                                                       Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
-                                        />
-                                    ))}
-                                </View>
-                            ))}
+                        
+                        {/* Card with just the sessions */}
+                        <View style={styles.projectCard}>
+                            {/* Sessions grouped by machine within the card */}
+                            {Array.from(projectGroup.machines.entries())
+                                .sort(([, machineA], [, machineB]) => machineA.machineName.localeCompare(machineB.machineName))
+                                .map(([machineId, machineGroup]) => (
+                                    <View key={`${projectPath}-${machineId}`}>
+                                        {machineGroup.sessions.map((session, index) => (
+                                            <CompactSessionRow 
+                                                key={session.id} 
+                                                session={session} 
+                                                selected={selectedSessionId === session.id}
+                                                showBorder={index < machineGroup.sessions.length - 1 || 
+                                                           Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
+                                            />
+                                        ))}
+                                    </View>
+                                ))}
+                        </View>
                     </View>
                 );
             })}
