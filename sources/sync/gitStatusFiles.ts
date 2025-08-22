@@ -117,7 +117,7 @@ function parseGitStatusFiles(
         
         const indexStatus = line[0]; // Staged status
         const workingStatus = line[1]; // Working directory status
-        const fileName = line.slice(3); // File path
+        const fileName = line.slice(2).trim(); // File path
 
         // Handle renamed files (format: "R  old_name -> new_name")
         let filePath = fileName;
