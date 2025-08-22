@@ -210,6 +210,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     actionButtonsLeft: {
         flexDirection: 'row',
         gap: 8,
+        flex: 1,
+        overflow: 'hidden',
     },
     actionButton: {
         flexDirection: 'row',
@@ -232,6 +234,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         borderRadius: 16,
         justifyContent: 'center',
         alignItems: 'center',
+        flexShrink: 0,
+        marginLeft: 8,
     },
     sendButtonActive: {
         backgroundColor: theme.colors.button.primary.background,
@@ -845,6 +849,8 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                 justifyContent: 'center',
                 height: 32,
                 opacity: p.pressed ? 0.7 : 1,
+                flex: 1,
+                overflow: 'hidden',
             })}
             hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
             onPress={() => {
