@@ -29,6 +29,7 @@ import { gitStatusSync } from './gitStatusSync';
 import { isMutableTool } from '@/components/tools/knownTools';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
+import { EncryptionCache } from './encryptionCache';
 
 class Sync {
 
@@ -36,6 +37,7 @@ class Sync {
     serverID!: string;
     anonID!: string;
     private credentials!: AuthCredentials;
+    public encryptionCache = new EncryptionCache();
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionEncryption = new Map<string, SessionEncryption>();
@@ -418,7 +420,7 @@ class Sync {
             // Load decrypted metadata
             //
 
-            let metadata = this.encryption.decryptMetadata(session.metadata);
+            let metadata = this.encryption.decryptMetadata(session.id, session.metadataVersion, session.metadata);
 
             //
             // Create encryption
@@ -427,9 +429,9 @@ class Sync {
             let encryption: SessionEncryption;
             if (!this.sessionEncryption.has(session.id)) {
                 if (metadata?.encryption) {
-                    encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'aes-gcm-256', key: decodeBase64(metadata.encryption.key) });
+                    encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'aes-gcm-256', key: decodeBase64(metadata.encryption.key) }, this.encryptionCache);
                 } else {
-                    encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'libsodium' });
+                    encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'libsodium' }, this.encryptionCache);
                 }
                 this.sessionEncryption.set(session.id, encryption);
             } else {
@@ -440,7 +442,7 @@ class Sync {
             // Decrypt agent state
             //
 
-            let agentState = this.encryption.decryptAgentState(session.agentState);
+            let agentState = this.encryption.decryptAgentState(session.id, session.agentStateVersion, session.agentState);
 
             //
             // Put it all together
@@ -744,6 +746,7 @@ class Sync {
             }
         }
         console.log('Decrypted and normalized messages in', Date.now() - start, 'ms');
+        console.log('Cache stats:', this.encryption.getCacheStats());
         // console.log('messages', JSON.stringify(normalizedMessages));
 
         // Apply to storage
@@ -885,13 +888,13 @@ class Sync {
                 this.applySessions([{
                     ...session,
                     agentState: updateData.body.agentState
-                        ? this.encryption.decryptAgentState(updateData.body.agentState.value)
+                        ? this.encryption.decryptAgentState(updateData.body.id, updateData.body.agentState.version, updateData.body.agentState.value)
                         : session.agentState,
                     agentStateVersion: updateData.body.agentState
                         ? updateData.body.agentState.version
                         : session.agentStateVersion,
                     metadata: updateData.body.metadata
-                        ? this.encryption.decryptMetadata(updateData.body.metadata.value)
+                        ? this.encryption.decryptMetadata(updateData.body.id, updateData.body.metadata.version, updateData.body.metadata.value)
                         : session.metadata,
                     metadataVersion: updateData.body.metadata
                         ? updateData.body.metadata.version
@@ -905,7 +908,7 @@ class Sync {
                     gitStatusSync.invalidate(updateData.body.id);
 
                     // Check for new permission requests and notify voice assistant
-                    const newAgentState = this.encryption.decryptAgentState(updateData.body.agentState.value);
+                    const newAgentState = this.encryption.decryptAgentState(updateData.body.id, updateData.body.agentState.version, updateData.body.agentState.value);
                     if (newAgentState?.requests && Object.keys(newAgentState.requests).length > 0) {
                         const requestIds = Object.keys(newAgentState.requests);
                         const firstRequest = newAgentState.requests[requestIds[0]];
@@ -1062,6 +1065,27 @@ class Sync {
             }
         }
     }
+
+    /**
+     * Clear cache for a specific session (useful when session is deleted)
+     */
+    clearSessionCache(sessionId: string): void {
+        this.encryption.clearSessionCache(sessionId);
+    }
+
+    /**
+     * Clear all cached data (useful on logout)
+     */
+    clearAllCache(): void {
+        this.encryption.clearAllCache();
+    }
+
+    /**
+     * Get cache statistics for debugging performance
+     */
+    getCacheStats() {
+        return this.encryption.getCacheStats();
+    }
 }
 
 // Global singleton instance
@@ -1093,7 +1117,7 @@ export async function syncRestore(credentials: AuthCredentials) {
 async function syncInit(credentials: AuthCredentials, restore: boolean) {
 
     // Initialize sync engine
-    const encryption = await ApiEncryption.create(credentials.secret);
+    const encryption = await ApiEncryption.create(credentials.secret, sync.encryptionCache);
 
     // Initialize tracking
     initializeTracking(encryption.anonID);

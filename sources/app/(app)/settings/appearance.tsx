@@ -6,6 +6,7 @@ import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
 import { Appearance } from 'react-native';
+import * as SystemUI from 'expo-system-ui';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
@@ -51,12 +52,14 @@ export default function AppearanceSettingsScreen() {
                             const systemTheme = Appearance.getColorScheme();
                             const color = systemTheme === 'dark' ? '#18171C' : '#ffffff';
                             UnistylesRuntime.setRootViewBackgroundColor(color);
+                            SystemUI.setBackgroundColorAsync(color);
                         } else {
                             // Disable adaptive themes and set explicit theme
                             UnistylesRuntime.setAdaptiveThemes(false);
                             UnistylesRuntime.setTheme(nextTheme);
                             const color = nextTheme === 'dark' ? '#18171C' : '#ffffff';
                             UnistylesRuntime.setRootViewBackgroundColor(color);
+                            SystemUI.setBackgroundColorAsync(color);
                         }
                     }}
                 />

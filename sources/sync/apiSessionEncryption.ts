@@ -4,6 +4,7 @@ import { RawRecord } from './typesRaw';
 import { ApiMessage } from './apiTypes';
 import { DecryptedMessage } from './storageTypes';
 import { decryptAES, encryptAES } from '@/encryption/aes';
+import { EncryptionCache } from './encryptionCache';
 
 export class SessionEncryption {
     private secretKey: Uint8Array;
@@ -11,8 +12,9 @@ export class SessionEncryption {
     private sessionKey: Uint8Array;
     private sessionKeyB64: string;
     private mode: 'libsodium' | 'aes';
+    private cache: EncryptionCache;
 
-    constructor(sessionId: string, secretKey: Uint8Array, mode: { type: 'libsodium' } | { type: 'aes-gcm-256', key: Uint8Array } = { type: 'libsodium' }) {
+    constructor(sessionId: string, secretKey: Uint8Array, mode: { type: 'libsodium' } | { type: 'aes-gcm-256', key: Uint8Array } = { type: 'libsodium' }, cache?: EncryptionCache) {
         this.sessionId = sessionId;
         this.secretKey = secretKey;
 
@@ -29,32 +31,46 @@ export class SessionEncryption {
 
         // Encode session key
         this.sessionKeyB64 = encodeBase64(this.sessionKey);
+        
+        // Initialize cache
+        this.cache = cache || new EncryptionCache();
     }
 
     decryptMessage(encryptedMessage: ApiMessage | null | undefined): DecryptedMessage | null {
         if (!encryptedMessage) {
             return null;
         }
+
+        // Check cache first (messages are immutable, so cache by ID)
+        const cached = this.cache.getCachedMessage(encryptedMessage.id);
+        if (cached) {
+            return cached;
+        }
+
+        // Create the decrypted message
+        let decryptedMessage: DecryptedMessage;
+        
         if (encryptedMessage.content.t === 'encrypted') {
             const decrypted = this.#decrypt(encryptedMessage.content.c);
             if (!decrypted) {
-                return {
+                decryptedMessage = {
                     id: encryptedMessage.id,
                     seq: encryptedMessage.seq,
                     localId: encryptedMessage.localId ?? null,
                     content: null,
                     createdAt: encryptedMessage.createdAt,
                 }
-            }
-            return {
-                id: encryptedMessage.id,
-                seq: encryptedMessage.seq,
-                localId: encryptedMessage.localId ?? null,
-                content: decrypted,
-                createdAt: encryptedMessage.createdAt,
+            } else {
+                decryptedMessage = {
+                    id: encryptedMessage.id,
+                    seq: encryptedMessage.seq,
+                    localId: encryptedMessage.localId ?? null,
+                    content: decrypted,
+                    createdAt: encryptedMessage.createdAt,
+                }
             }
         } else {
-            return {
+            decryptedMessage = {
                 id: encryptedMessage.id,
                 seq: encryptedMessage.seq,
                 localId: encryptedMessage.localId ?? null,
@@ -62,6 +78,10 @@ export class SessionEncryption {
                 createdAt: encryptedMessage.createdAt,
             }
         }
+
+        // Cache the result
+        this.cache.setCachedMessage(encryptedMessage.id, decryptedMessage);
+        return decryptedMessage;
     }
 
     encryptRawRecord(data: RawRecord): string {
