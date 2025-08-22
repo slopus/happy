@@ -27,45 +27,60 @@ export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
     const hasLineChanges = gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0;
 
     return (
-        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, overflow: 'hidden' }}>
             {/* Branch name */}
-            <Text style={{
-                fontSize: 12,
-                color: theme.colors.button.secondary.tint,
-                fontWeight: '500'
-            }}>
+            <Text
+                style={{
+                    fontSize: 12,
+                    color: theme.colors.button.secondary.tint,
+                    fontWeight: '500',
+                    flexShrink: 1,
+                }}
+                numberOfLines={1}
+                ellipsizeMode="middle"
+            >
                 {gitStatus.branch || 'main'}
             </Text>
 
             {/* Files changed - only show if there are files */}
             {fileCount > 0 && (
-                <Text style={{
-                    fontSize: 12,
-                    color: theme.colors.button.secondary.tint,
-                    fontWeight: '500'
-                }}>
+                <Text
+                    style={{
+                        fontSize: 12,
+                        color: theme.colors.button.secondary.tint,
+                        fontWeight: '500',
+                        flexShrink: 0,
+                    }}
+                    numberOfLines={1}
+                >
                     {fileCount} files
                 </Text>
             )}
 
             {/* Line changes - GitHub style */}
             {hasLineChanges && (
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 2, flexShrink: 0 }}>
                     {gitStatus.unstagedLinesAdded > 0 && (
-                        <Text style={{
-                            fontSize: 12,
-                            color: theme.colors.gitAddedText,
-                            fontWeight: '600'
-                        }}>
+                        <Text
+                            style={{
+                                fontSize: 12,
+                                color: theme.colors.gitAddedText,
+                                fontWeight: '600',
+                            }}
+                            numberOfLines={1}
+                        >
                             +{gitStatus.unstagedLinesAdded}
                         </Text>
                     )}
                     {gitStatus.unstagedLinesRemoved > 0 && (
-                        <Text style={{
-                            fontSize: 12,
-                            color: theme.colors.gitRemovedText,
-                            fontWeight: '600'
-                        }}>
+                        <Text
+                            style={{
+                                fontSize: 12,
+                                color: theme.colors.gitRemovedText,
+                                fontWeight: '600',
+                            }}
+                            numberOfLines={1}
+                        >
                             -{gitStatus.unstagedLinesRemoved}
                         </Text>
                     )}
