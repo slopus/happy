@@ -14,15 +14,20 @@ import { StatusDot } from './StatusDot';
 import { StyleSheet } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { requestReview } from '@/utils/requestReview';
+import { UpdateBanner } from './UpdateBanner';
+import { layout } from './layout';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
-        flex: 1
+        flex: 1,
+        flexDirection: 'row',
+        justifyContent: 'center',
+        alignItems: 'stretch',
+        backgroundColor: theme.colors.groupped.background,
     },
     contentContainer: {
         flex: 1,
-        overflow: 'hidden',
-        backgroundColor: theme.colors.groupped.background,
+        maxWidth: layout.maxWidth,
     },
     headerSection: {
         backgroundColor: theme.colors.surface,
@@ -341,6 +346,15 @@ export function SessionsList() {
         return result;
     }, [dataWithSelected, isTablet, pathname, keyExtractor]);
 
+
+    const HeaderComponent = React.useCallback(() => {
+        return (
+            <View style={{ marginHorizontal: -4 }}>
+                <UpdateBanner />
+            </View>
+        );
+    }, []);
+
     return (
         <View style={styles.container}>
             <View style={styles.contentContainer}>
@@ -348,7 +362,8 @@ export function SessionsList() {
                     data={renderContent}
                     renderItem={({ item }) => item}
                     keyExtractor={(_, index) => `item-${index}`}
-                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 16 }}
+                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 16, maxWidth: layout.maxWidth }}
+                    ListHeaderComponent={HeaderComponent}
                 />
             </View>
         </View>

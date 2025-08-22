@@ -33,7 +33,7 @@ export default function Home() {
 
 function Authenticated() {
     const { theme } = useUnistyles();
-    const sessionListViewData = useSessionListViewData();
+    let sessionListViewData = useSessionListViewData();
     const { updateAvailable, reloadApp } = useUpdates();
     const isTablet = useIsTablet();
     const isExperimental = useSetting('experiments');
@@ -60,7 +60,6 @@ function Authenticated() {
             </>
         )
     }
-
     if (sessionListViewData === null) {
         return (
             <>
@@ -68,8 +67,11 @@ function Authenticated() {
                 {!isTablet && realtimeStatus !== 'disconnected' && (
                     <VoiceAssistantStatusBar variant="full" />
                 )}
-                <View style={styles.loadingContainer}>
-                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                <View style={styles.loadingContainerWrapper}>
+                    <UpdateBanner />
+                    <View style={styles.loadingContainer}>
+                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    </View>
                 </View>
                 {isExperimental && (
                     <FAB onPress={handleNewSession} />
@@ -78,7 +80,14 @@ function Authenticated() {
         )
     }
 
-    const emptyState = <EmptyMainScreen />;
+    const emptyState = (
+        <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, flexDirection: 'column', backgroundColor: theme.colors.groupped.background }}>
+            <UpdateBanner />
+            <View style={{ flex: 1, flexBasis: 0, flexGrow: 1 }}>
+                <EmptyMainScreen />
+            </View>
+        </View>
+    );
 
     // On phones, use the existing navigation pattern
     return (
@@ -88,7 +97,6 @@ function Authenticated() {
                 <VoiceAssistantStatusBar variant="full" />
             )}
             <View style={styles.container}>
-                {updateAvailable && <UpdateBanner onReload={reloadApp} />}
                 {!sessionListViewData || sessionListViewData.length === 0 ? emptyState : (
                     <SessionsList />
                 )}
@@ -204,12 +212,17 @@ const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1
     },
+    loadingContainerWrapper: {
+        flex: 1,
+        flexBasis: 0,
+        flexGrow: 1,
+        backgroundColor: theme.colors.groupped.background,
+    },
     loadingContainer: {
         flex: 1,
         alignItems: 'center',
         justifyContent: 'center',
         paddingBottom: 32,
-        backgroundColor: theme.colors.groupped.background,
     },
     // NotAuthenticated styles
     portraitContainer: {

@@ -14,6 +14,7 @@ import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { UpdateBanner } from './UpdateBanner';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -209,7 +210,10 @@ export const SidebarView = React.memo(() => {
                         </View>
                     )}
                     {sessionListViewData !== null && sessionListViewData.length === 0 && (
-                        <EmptySessionsTablet />
+                        <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, flexDirection: 'column', backgroundColor: theme.colors.groupped.background }}>
+                            <UpdateBanner />
+                            <EmptySessionsTablet />
+                        </View>
                     )}
                     {sessionListViewData !== null && sessionListViewData.length > 0 && (
                         <SessionsList />

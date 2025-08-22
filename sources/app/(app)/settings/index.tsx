@@ -138,11 +138,11 @@ export default React.memo(function SettingsScreen() {
             {/* App Info Header */}
             <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
                 <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.surface, marginTop: 16, borderRadius: 12, marginHorizontal: 16 }}>
-                <Image
-                    source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                    contentFit="contain"
-                    style={{ width: 300, height: 90, marginBottom: 12 }}
-                />
+                    <Image
+                        source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
+                        contentFit="contain"
+                        style={{ width: 300, height: 90, marginBottom: 12 }}
+                    />
                     <Pressable onPress={handleVersionClick} hitSlop={20}>
                         <Text style={{ ...Typography.mono(), fontSize: 14, color: theme.colors.textSecondary }}>
                             Version {appVersion}
@@ -256,10 +256,10 @@ export default React.memo(function SettingsScreen() {
             {/* Features */}
             <ItemGroup title="Features">
                 <Item
-                    title="Features"
-                    subtitle="Enable or disable app features"
-                    icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
-                    onPress={() => router.push('/settings/features')}
+                    title="Account"
+                    subtitle="Manage your account details"
+                    icon={<Ionicons name="person-circle-outline" size={29} color="#007AFF" />}
+                    onPress={() => router.push('/settings/account')}
                 />
                 <Item
                     title="Appearance"
@@ -268,10 +268,10 @@ export default React.memo(function SettingsScreen() {
                     onPress={() => router.push('/settings/appearance')}
                 />
                 <Item
-                    title="Account"
-                    subtitle="Manage your account details"
-                    icon={<Ionicons name="person-circle-outline" size={29} color="#007AFF" />}
-                    onPress={() => router.push('/settings/account')}
+                    title="Features"
+                    subtitle="Enable or disable app features"
+                    icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
+                    onPress={() => router.push('/settings/features')}
                 />
             </ItemGroup>
 
