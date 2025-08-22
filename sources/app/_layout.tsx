@@ -21,6 +21,7 @@ import { useTrackScreens } from '@/track/useTrackScreens';
 import { RealtimeProvider } from '@/realtime/RealtimeProvider';
 import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
+import { StatusBarProvider } from '@/components/StatusBarProvider';
 // import * as SystemUI from 'expo-system-ui';
 import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
 
@@ -133,6 +134,7 @@ export default function RootLayout() {
                 <GestureHandlerRootView style={{ flex: 1 }}>
                     <AuthProvider initialCredentials={initState.credentials}>
                         <ThemeProvider value={DefaultTheme}>
+                            <StatusBarProvider />
                             <ModalProvider>
                                 <CommandPaletteProvider>
                                     <RealtimeProvider>

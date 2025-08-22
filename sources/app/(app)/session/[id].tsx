@@ -18,7 +18,6 @@ import { Session } from '@/sync/storageTypes';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsLandscape, useDeviceType, useHeaderHeight } from '@/utils/responsive';
-import { StatusBar } from 'expo-status-bar';
 import { AgentContentView } from '@/components/AgentContentView';
 import { isRunningOnMac } from '@/utils/platform';
 import { Modal } from '@/modal';

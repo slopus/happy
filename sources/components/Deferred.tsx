@@ -1,7 +1,7 @@
 import * as React from 'react';
 
-export const Deferred = React.memo((props: { children: React.ReactNode }) => {
-    const [enabled, setEnabled] = React.useState(false);
+export const Deferred = React.memo((props: { children: React.ReactNode, enabled?: boolean }) => {
+    const [enabled, setEnabled] = React.useState(props.enabled ?? false);
 
     React.useEffect(() => {
         let timeout = setTimeout(() => {

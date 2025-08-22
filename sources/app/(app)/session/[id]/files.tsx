@@ -11,7 +11,6 @@ import { Typography } from '@/constants/Typography';
 import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
 import { useSessionGitStatus } from '@/sync/storage';
-import { StatusBar } from 'expo-status-bar';
 import { useUnistyles } from 'react-native-unistyles';
 
 export default function FilesScreen() {
@@ -164,7 +163,6 @@ export default function FilesScreen() {
 
     return (
         <View style={{ flex: 1, backgroundColor: 'white' }}>
-            <StatusBar style="dark" />
             
             {/* Search Input - Always Visible */}
             <View style={{
