@@ -68,11 +68,11 @@ StyleSheet.configure({
 const setRootBackgroundColor = () => {
     if (themePreference === 'adaptive') {
         const systemTheme = Appearance.getColorScheme();
-        const color = systemTheme === 'dark' ? '#18171C' : '#ffffff';
+        const color = systemTheme === 'dark' ? appThemes.dark.colors.groupped.background : appThemes.light.colors.groupped.background;
         UnistylesRuntime.setRootViewBackgroundColor(color);
         SystemUI.setBackgroundColorAsync(color);
     } else {
-        const color = themePreference === 'dark' ? '#18171C' : '#ffffff';
+        const color = themePreference === 'dark' ? appThemes.dark.colors.groupped.background : appThemes.light.colors.groupped.background;
         UnistylesRuntime.setRootViewBackgroundColor(color);
         SystemUI.setBackgroundColorAsync(color);
     }
