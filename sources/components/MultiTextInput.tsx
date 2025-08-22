@@ -184,7 +184,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     width: '100%',
                     fontSize: 16,
                     maxHeight,
-                    color: theme.colors.inputText,
+                    color: theme.colors.input.text,
                     textAlignVertical: 'center',
                     padding:0,
                     paddingTop: props.paddingTop,
@@ -194,7 +194,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     ...Typography.default(),
                 }}
                 placeholder={placeholder}
-                placeholderTextColor={theme.colors.inputPlaceholder}
+                placeholderTextColor={theme.colors.input.placeholder}
                 value={value}
                 onChangeText={handleTextChange}
                 onKeyPress={handleKeyPress}

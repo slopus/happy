@@ -4,6 +4,47 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { useSessionStatus, formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+const stylesheet = StyleSheet.create((theme) => ({
+    container: {
+        flex: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 48,
+    },
+    iconContainer: {
+        marginBottom: 12,
+    },
+    hostText: {
+        fontSize: 18,
+        color: theme.colors.text,
+        textAlign: 'center',
+        marginBottom: 4,
+        ...Typography.default('semiBold'),
+    },
+    pathText: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        marginBottom: 40,
+        ...Typography.default('regular'),
+    },
+    noMessagesText: {
+        fontSize: 20,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        marginBottom: 8,
+        ...Typography.default('regular'),
+    },
+    createdText: {
+        fontSize: 16,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+        lineHeight: 24,
+        ...Typography.default(),
+    },
+}));
 
 interface EmptyMessagesProps {
     session: Session;
@@ -42,65 +83,38 @@ function formatRelativeTime(timestamp: number): string {
 }
 
 export function EmptyMessages({ session }: EmptyMessagesProps) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
     const osIcon = getOSIcon(session.metadata?.os);
     const sessionStatus = useSessionStatus(session);
     const startedTime = formatRelativeTime(session.createdAt);
     
     return (
-        <View style={{ 
-            flex: 1, 
-            justifyContent: 'center', 
-            alignItems: 'center',
-            paddingHorizontal: 48
-        }}>
+        <View style={styles.container}>
             <Ionicons 
                 name={osIcon}
                 size={72} 
-                color="#E5E5E7" 
-                style={{ marginBottom: 12 }}
+                color={theme.colors.textSecondary}
+                style={styles.iconContainer}
             />
             
             {session.metadata?.host && (
-                <Text style={{ 
-                    fontSize: 18, 
-                    color: '#000',
-                    textAlign: 'center',
-                    marginBottom: 4,
-                    ...Typography.default('semiBold')
-                }}>
+                <Text style={styles.hostText}>
                     {session.metadata.host}
                 </Text>
             )}
             
             {session.metadata?.path && (
-                <Text style={{ 
-                    fontSize: 14, 
-                    color: '#8E8E93',
-                    textAlign: 'center',
-                    marginBottom: 40,
-                    ...Typography.default('regular')
-                }}>
+                <Text style={styles.pathText}>
                     {formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir)}
                 </Text>
             )}
             
-            <Text style={{ 
-                fontSize: 20, 
-                color: '#8E8E93',
-                textAlign: 'center',
-                marginBottom: 8,
-                ...Typography.default('regular')
-            }}>
+            <Text style={styles.noMessagesText}>
                 No messages yet
             </Text>
             
-            <Text style={{ 
-                fontSize: 16, 
-                color: '#C7C7CC',
-                textAlign: 'center',
-                lineHeight: 24,
-                ...Typography.default()
-            }}>
+            <Text style={styles.createdText}>
                 Created {startedTime}
             </Text>
         </View>

@@ -15,7 +15,8 @@
     "ota": "APP_ENV=preview NODE_ENV=preview yarn typecheck && eas update --branch preview",
     "ota:production": "NODE_ENV=production APP_ENV=production yarn typecheck && eas update --branch production",
     "typecheck": "tsc --noEmit",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "generate-theme": "tsx sources/theme.gen.ts"
   },
   "jest": {
     "preset": "jest-expo"
@@ -45,6 +46,7 @@
     "@types/resolve-path": "^1.4.3",
     "@types/uuid": "^10.0.0",
     "axios": "^1.10.0",
+    "color": "^5.0.0",
     "diff": "^8.0.2",
     "expo": "~53.0.17",
     "expo-application": "~6.1.5",
@@ -145,6 +147,7 @@
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@expo/ngrok": "^4.1.0",
+    "@material/material-color-utilities": "^0.3.0",
     "@stablelib/hex": "^2.0.1",
     "@types/react": "~19.0.10",
     "babel-plugin-transform-remove-console": "^6.9.4",

@@ -1,8 +1,5 @@
 import React from 'react';
 import { View, Text, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
-import { Item } from '@/components/Item';
-import { ItemGroup } from '@/components/ItemGroup';
-import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -12,16 +9,15 @@ import { storage } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router';
 import { Modal } from '@/modal';
-import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { MachineSessionLauncher } from '@/components/machines/MachineSessionLauncher';
-import { StyleSheet } from 'react-native-unistyles';
+import { MachineSessionLauncher } from '@/components/MachineSessionLauncher';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         flex: 1,
-        backgroundColor: theme.colors.listBackground,
+        backgroundColor: theme.colors.groupped.background,
     },
     scrollContainer: {
         flex: 1,
@@ -42,7 +38,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     emptyText: {
         fontSize: 16,
-        color: theme.colors.subtitleText,
+        color: theme.colors.textSecondary,
         textAlign: 'center',
         ...Typography.default(),
     },
@@ -51,35 +47,32 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         marginTop: 16,
         marginBottom: 8,
         padding: 16,
-        backgroundColor: '#FFF3CD',
+        backgroundColor: theme.colors.box.warning.background,
         borderRadius: 12,
         borderWidth: 1,
-        borderColor: '#FFE69C',
+        borderColor: theme.colors.box.warning.border,
     },
     offlineWarningTitle: {
         fontSize: 14,
-        color: '#664D03',
+        color: theme.colors.box.warning.text,
         marginBottom: 8,
         ...Typography.default('semiBold'),
     },
     offlineWarningText: {
         fontSize: 13,
-        color: '#664D03',
+        color: theme.colors.box.warning.text,
         lineHeight: 20,
         marginBottom: 4,
         ...Typography.default(),
     },
     machineCard: {
-        backgroundColor: theme.colors.cardBackground,
+        backgroundColor: theme.colors.surface,
         marginHorizontal: 16,
         marginBottom: 12,
         borderRadius: 12,
-        shadowColor: Platform.select({ 
-            web: 'rgba(0, 0, 0, 0.05)',
-            default: theme.colors.shadowColor 
-        }),
+        shadowColor: theme.colors.shadow.color,
         shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: Platform.select({ web: 1, default: 0.05 }),
+        shadowOpacity: theme.colors.shadow.opacity,
         shadowRadius: 3,
         elevation: 2,
     },
@@ -108,13 +101,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     machineName: {
         fontSize: 17,
         fontWeight: '600',
-        color: theme.colors.titleText,
+        color: theme.colors.text,
         marginBottom: 2,
         ...Typography.default('semiBold'),
     },
     machineHost: {
         fontSize: 13,
-        color: theme.colors.subtitleText,
+        color: theme.colors.textSecondary,
         ...Typography.default(),
     },
     statusContainer: {
@@ -123,7 +116,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         paddingHorizontal: 8,
         paddingVertical: 4,
         borderRadius: 12,
-        backgroundColor: theme.colors.listBackground,
+        backgroundColor: theme.colors.groupped.background,
     },
     statusDot: {
         width: 6,
@@ -143,12 +136,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     detailsButtonText: {
         fontSize: 14,
-        color: theme.colors.primary,
+        color: theme.colors.text,
         ...Typography.default(),
     },
 }));
 
 export default function NewSessionScreen() {
+    const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
     const sessions = useSessions();
@@ -161,7 +155,8 @@ export default function NewSessionScreen() {
             paths: Set<string>,
             isOnline: boolean,
             lastSeen?: number,
-            metadata?: any
+            metadata?: any,
+            createdAt: number
         }> = {};
 
         // First, add all active machines with their proper host names
@@ -171,7 +166,8 @@ export default function NewSessionScreen() {
                 paths: new Set(),
                 isOnline: isMachineOnline(machine),
                 lastSeen: machine.activeAt,
-                metadata: machine.metadata
+                metadata: machine.metadata,
+                createdAt: machine.createdAt
             };
         });
 
@@ -256,7 +252,7 @@ export default function NewSessionScreen() {
     if (!sessions) {
         return (
             <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#666" />
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
             </View>
         );
     }
@@ -265,7 +261,7 @@ export default function NewSessionScreen() {
         // Sort by online status first, then by last seen
         if (a.isOnline && !b.isOnline) return -1;
         if (!a.isOnline && b.isOnline) return 1;
-        return (b.lastSeen || 0) - (a.lastSeen || 0);
+        return (b.createdAt || 0) - (a.createdAt || 0);
     });
 
     return (
@@ -303,70 +299,70 @@ export default function NewSessionScreen() {
                                 </View>
                             )}
                             {sortedMachines.map(([machineId, data]) => {
-                            const machine = machines.find(m => m.id === machineId);
-                            if (!machine) return null;
+                                const machine = machines.find(m => m.id === machineId);
+                                if (!machine) return null;
 
-                            // Get home directory and display name from machine metadata
-                            const homeDir = machine.metadata?.homeDir || '~';
-                            const displayName = machine.metadata?.displayName || data.machineHost;
-                            const hostName = machine.metadata?.host || machineId;
+                                // Get home directory and display name from machine metadata
+                                const homeDir = machine.metadata?.homeDir || '~';
+                                const displayName = machine.metadata?.displayName || data.machineHost;
+                                const hostName = machine.metadata?.host || machineId;
 
-                            return (
-                                <View key={machineId} style={styles.machineCard}>
-                                    <View style={styles.machineHeader}>
-                                        <View style={styles.machineHeaderTop}>
-                                            <View style={styles.machineInfo}>
-                                                <View style={styles.machineIcon}>
-                                                    <Ionicons
-                                                        name="desktop-outline"
-                                                        size={24}
-                                                        color={data.isOnline ? '#007AFF' : '#8E8E93'}
-                                                    />
-                                                </View>
-                                                <View style={styles.machineTextContainer}>
-                                                    <Text style={styles.machineName}>
-                                                        {displayName}
-                                                    </Text>
-                                                    {displayName !== hostName && (
-                                                        <Text style={styles.machineHost}>
-                                                            {hostName}
+                                return (
+                                    <View key={machineId} style={styles.machineCard}>
+                                        <View style={styles.machineHeader}>
+                                            <View style={styles.machineHeaderTop}>
+                                                <View style={styles.machineInfo}>
+                                                    <View style={styles.machineIcon}>
+                                                        <Ionicons
+                                                            name="desktop-outline"
+                                                            size={24}
+                                                            color={data.isOnline ? theme.colors.status.connected : theme.colors.status.disconnected}
+                                                        />
+                                                    </View>
+                                                    <View style={styles.machineTextContainer}>
+                                                        <Text style={styles.machineName}>
+                                                            {displayName}
                                                         </Text>
-                                                    )}
+                                                        {displayName !== hostName && (
+                                                            <Text style={styles.machineHost}>
+                                                                {hostName}
+                                                            </Text>
+                                                        )}
+                                                    </View>
+                                                </View>
+                                                <View style={styles.statusContainer}>
+                                                    <View style={[
+                                                        styles.statusDot,
+                                                        { backgroundColor: data.isOnline ? theme.colors.status.connected : theme.colors.status.disconnected }
+                                                    ]} />
+                                                    <Text style={[
+                                                        styles.statusText,
+                                                        { color: data.isOnline ? theme.colors.status.connected : theme.colors.status.disconnected }
+                                                    ]}>
+                                                        {data.isOnline ? 'online' : 'offline'}
+                                                    </Text>
                                                 </View>
                                             </View>
-                                            <View style={styles.statusContainer}>
-                                                <View style={[
-                                                    styles.statusDot,
-                                                    { backgroundColor: data.isOnline ? '#34C759' : '#C7C7CC' }
-                                                ]} />
-                                                <Text style={[
-                                                    styles.statusText,
-                                                    { color: data.isOnline ? '#34C759' : '#8E8E93' }
-                                                ]}>
-                                                    {data.isOnline ? 'online' : 'offline'}
+                                            <Pressable
+                                                onPress={() => router.push(`/machine/${machineId}`)}
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                style={styles.detailsButton}
+                                            >
+                                                <Text style={styles.detailsButtonText}>
+                                                    View machine details →
                                                 </Text>
-                                            </View>
+                                            </Pressable>
                                         </View>
-                                        <Pressable
-                                            onPress={() => router.push(`/machine/${machineId}`)}
-                                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                            style={styles.detailsButton}
-                                        >
-                                            <Text style={styles.detailsButtonText}>
-                                                View machine details →
-                                            </Text>
-                                        </Pressable>
+                                        <MachineSessionLauncher
+                                            machineId={machineId}
+                                            recentPaths={Array.from(data.paths).sort()}
+                                            homeDir={homeDir}
+                                            isOnline={data.isOnline}
+                                            onStartSession={(path) => handleStartSession(machineId, path)}
+                                        />
                                     </View>
-                                    <MachineSessionLauncher
-                                        machineId={machineId}
-                                        recentPaths={Array.from(data.paths).sort()}
-                                        homeDir={homeDir}
-                                        isOnline={data.isOnline}
-                                        onStartSession={(path) => handleStartSession(machineId, path)}
-                                    />
-                                </View>
-                            );
-                        })}
+                                );
+                            })}
                         </View>
                     </ScrollView>
                 )}

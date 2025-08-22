@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, StyleSheet, KeyboardTypeOptions, Plat
 import { BaseModal } from './BaseModal';
 import { PromptModalConfig } from '../types';
 import { Typography } from '@/constants/Typography';
+import { useUnistyles } from 'react-native-unistyles';
 
 interface WebPromptModalProps {
     config: PromptModalConfig;
@@ -11,6 +12,7 @@ interface WebPromptModalProps {
 }
 
 export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalProps) {
+    const { theme } = useUnistyles();
     const [inputValue, setInputValue] = useState(config.defaultValue || '');
     const inputRef = useRef<TextInput>(null);
 
@@ -43,6 +45,79 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
         }
     };
 
+    const styles = StyleSheet.create({
+        container: {
+            backgroundColor: theme.colors.surface,
+            borderRadius: 14,
+            width: 270,
+            overflow: 'hidden',
+            shadowColor: theme.colors.shadow.color,
+            shadowOffset: {
+                width: 0,
+                height: 2
+            },
+            shadowOpacity: 0.25,
+            shadowRadius: 4,
+            elevation: 5
+        },
+        content: {
+            paddingHorizontal: 16,
+            paddingTop: 20,
+            paddingBottom: 16,
+            alignItems: 'center'
+        },
+        title: {
+            fontSize: 17,
+            textAlign: 'center',
+            color: theme.colors.text,
+            marginBottom: 4
+        },
+        message: {
+            fontSize: 13,
+            textAlign: 'center',
+            color: theme.colors.text,
+            marginTop: 4,
+            lineHeight: 18
+        },
+        input: {
+            width: '100%',
+            height: 36,
+            borderWidth: 1,
+            borderColor: theme.colors.divider,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            marginTop: 16,
+            fontSize: 14,
+            color: theme.colors.text,
+            backgroundColor: theme.colors.input.background
+        },
+        buttonContainer: {
+            borderTopWidth: 1,
+            borderTopColor: theme.colors.divider,
+            flexDirection: 'row'
+        },
+        button: {
+            flex: 1,
+            paddingVertical: 11,
+            alignItems: 'center',
+            justifyContent: 'center'
+        },
+        buttonPressed: {
+            backgroundColor: theme.colors.divider
+        },
+        buttonSeparator: {
+            width: 1,
+            backgroundColor: theme.colors.divider
+        },
+        buttonText: {
+            fontSize: 17,
+            color: theme.colors.textLink
+        },
+        cancelText: {
+            fontWeight: '400'
+        }
+    });
+
     return (
         <BaseModal visible={true} onClose={handleCancel} closeOnBackdrop={false}>
             <View style={styles.container}>
@@ -61,7 +136,7 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
                         value={inputValue}
                         onChangeText={setInputValue}
                         placeholder={config.placeholder}
-                        placeholderTextColor="#8E8E93"
+                        placeholderTextColor={theme.colors.input.placeholder}
                         keyboardType={getKeyboardType()}
                         secureTextEntry={config.inputType === 'secure-text'}
                         autoCapitalize="none"
@@ -108,76 +183,3 @@ export function WebPromptModal({ config, onClose, onConfirm }: WebPromptModalPro
         </BaseModal>
     );
 }
-
-const styles = StyleSheet.create({
-    container: {
-        backgroundColor: 'rgba(255, 255, 255, 0.98)',
-        borderRadius: 14,
-        width: 270,
-        overflow: 'hidden',
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 2
-        },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
-        elevation: 5
-    },
-    content: {
-        paddingHorizontal: 16,
-        paddingTop: 20,
-        paddingBottom: 16,
-        alignItems: 'center'
-    },
-    title: {
-        fontSize: 17,
-        textAlign: 'center',
-        color: '#000',
-        marginBottom: 4
-    },
-    message: {
-        fontSize: 13,
-        textAlign: 'center',
-        color: '#000',
-        marginTop: 4,
-        lineHeight: 18
-    },
-    input: {
-        width: '100%',
-        height: 36,
-        borderWidth: 1,
-        borderColor: '#C7C7CC',
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        marginTop: 16,
-        fontSize: 14,
-        color: '#000',
-        backgroundColor: '#F2F2F7'
-    },
-    buttonContainer: {
-        borderTopWidth: StyleSheet.hairlineWidth,
-        borderTopColor: 'rgba(0, 0, 0, 0.2)',
-        flexDirection: 'row'
-    },
-    button: {
-        flex: 1,
-        paddingVertical: 11,
-        alignItems: 'center',
-        justifyContent: 'center'
-    },
-    buttonPressed: {
-        backgroundColor: 'rgba(0, 0, 0, 0.05)'
-    },
-    buttonSeparator: {
-        width: StyleSheet.hairlineWidth,
-        backgroundColor: 'rgba(0, 0, 0, 0.2)'
-    },
-    buttonText: {
-        fontSize: 17,
-        color: '#007AFF'
-    },
-    cancelText: {
-        fontWeight: '400'
-    }
-});

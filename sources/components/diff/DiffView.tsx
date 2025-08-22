@@ -2,6 +2,7 @@ import React, { useMemo } from 'react';
 import { View, Text, ViewStyle } from 'react-native';
 import { calculateUnifiedDiff, DiffToken } from '@/components/diff/calculateDiff';
 import { Typography } from '@/constants/Typography';
+import { useUnistyles } from 'react-native-unistyles';
 
 
 interface DiffViewProps {
@@ -19,64 +20,6 @@ interface DiffViewProps {
     fontScaleX?: number;
 }
 
-// Define colors inline - using traditional diff colors
-const COLORS = {
-    light: {
-        surface: '#FFFFFF',
-        surfaceVariant: '#F8F8F8',
-        onSurface: '#000000',
-        onSurfaceVariant: '#666666',
-        outline: '#E0E0E0',
-        success: '#28A745',
-        error: '#DC3545',
-        // Traditional diff colors
-        addedBg: '#E6FFED',
-        addedBorder: '#34D058',
-        addedText: '#24292E',
-        removedBg: '#FFEEF0',
-        removedBorder: '#D73A49',
-        removedText: '#24292E',
-        contextBg: '#F6F8FA',
-        contextText: '#586069',
-        lineNumberBg: '#F6F8FA',
-        lineNumberText: '#959DA5',
-        hunkHeaderBg: '#F1F8FF',
-        hunkHeaderText: '#005CC5',
-        leadingSpaceDot: '#E8E8E8',
-        inlineAddedBg: '#ACFFA6',
-        inlineAddedText: '#0A3F0A',
-        inlineRemovedBg: '#FFCECB',
-        inlineRemovedText: '#5A0A05',
-    },
-    dark: {
-        surface: '#0D1117',
-        surfaceVariant: '#161B22',
-        onSurface: '#C9D1D9',
-        onSurfaceVariant: '#8B949E',
-        outline: '#30363D',
-        success: '#3FB950',
-        error: '#F85149',
-        // Traditional diff colors for dark mode
-        addedBg: '#0D2E1F',
-        addedBorder: '#3FB950',
-        addedText: '#C9D1D9',
-        removedBg: '#3F1B23',
-        removedBorder: '#F85149',
-        removedText: '#C9D1D9',
-        contextBg: '#161B22',
-        contextText: '#8B949E',
-        lineNumberBg: '#161B22',
-        lineNumberText: '#6E7681',
-        hunkHeaderBg: '#161B22',
-        hunkHeaderText: '#58A6FF',
-        leadingSpaceDot: '#2A2A2A',
-        inlineAddedBg: '#2A5A2A',
-        inlineAddedText: '#7AFF7A',
-        inlineRemovedBg: '#5A2A2A',
-        inlineRemovedText: '#FF7A7A',
-    }
-};
-
 export const DiffView: React.FC<DiffViewProps> = ({
     oldText,
     newText,
@@ -87,7 +30,8 @@ export const DiffView: React.FC<DiffViewProps> = ({
     fontScaleX = 1,
 }) => {
     // Always use light theme colors
-    const colors = COLORS.light;
+    const { theme } = useUnistyles();
+    const colors = theme.colors.diff;
 
     // Calculate diff with inline highlighting
     const { hunks } = useMemo(() => {
@@ -96,7 +40,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
 
     // Styles
     const containerStyle: ViewStyle = {
-        backgroundColor: colors.surface,
+        backgroundColor: theme.colors.surface,
         borderWidth: 0,
         flex: 1,
         ...style,

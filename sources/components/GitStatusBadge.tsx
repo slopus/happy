@@ -31,7 +31,7 @@ export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
             {/* Branch name */}
             <Text style={{
                 fontSize: 12,
-                color: theme.colors.gitBranchText,
+                color: theme.colors.button.secondary.tint,
                 fontWeight: '500'
             }}>
                 {gitStatus.branch || 'main'}
@@ -41,7 +41,7 @@ export function GitStatusBadge({ sessionId }: GitStatusBadgeProps) {
             {fileCount > 0 && (
                 <Text style={{
                     fontSize: 12,
-                    color: theme.colors.gitFileCountText,
+                    color: theme.colors.button.secondary.tint,
                     fontWeight: '500'
                 }}>
                     {fileCount} files

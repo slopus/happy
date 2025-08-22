@@ -12,7 +12,7 @@ import { machineSpawnNewSession, machineStopDaemon, machineUpdateMetadata } from
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { MachineSessionLauncher } from '@/components/machines/MachineSessionLauncher';
+import { MachineSessionLauncher } from '@/components/MachineSessionLauncher';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
@@ -239,10 +239,10 @@ export default function MachineDetailScreen() {
                                 <Ionicons
                                     name="desktop-outline"
                                     size={18}
-                                    color="#000"
+                                    color={theme.colors.header.tint}
                                     style={{ marginRight: 6 }}
                                 />
-                                <Text style={[Typography.default('semiBold'), { fontSize: 17 }]}>
+                                <Text style={[Typography.default('semiBold'), { fontSize: 17, color: theme.colors.header.tint }]}>
                                     {machineName}
                                 </Text>
                             </View>
@@ -275,7 +275,7 @@ export default function MachineDetailScreen() {
                             <Octicons
                                 name="pencil"
                                 size={24}
-                                color={theme.colors.primary}
+                                color={theme.colors.text}
                             />
                         </Pressable>
                     ),
@@ -320,7 +320,7 @@ export default function MachineDetailScreen() {
                             disabled={isStoppingDaemon || daemonStatus === 'stopped'}
                             rightElement={
                                 isStoppingDaemon ? (
-                                    <ActivityIndicator size="small" color="#FF9500" />
+                                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                                 ) : (
                                     <Ionicons 
                                         name="stop-circle" 

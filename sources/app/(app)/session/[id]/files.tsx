@@ -12,6 +12,7 @@ import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStat
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
 import { useSessionGitStatus } from '@/sync/storage';
 import { StatusBar } from 'expo-status-bar';
+import { useUnistyles } from 'react-native-unistyles';
 
 export default function FilesScreen() {
     const route = useRoute();
@@ -24,7 +25,8 @@ export default function FilesScreen() {
     const [searchResults, setSearchResults] = React.useState<FileItem[]>([]);
     const [isSearching, setIsSearching] = React.useState(false);
     const gitStatus = useSessionGitStatus(sessionId);
-
+    const { theme } = useUnistyles();
+    
     // Load git status files
     const loadGitStatusFiles = React.useCallback(async () => {
         try {
@@ -236,7 +238,7 @@ export default function FilesScreen() {
                         alignItems: 'center',
                         paddingTop: 40
                     }}>
-                        <ActivityIndicator size="large" color="#666" />
+                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
                 ) : !gitStatusFiles ? (
                     <View style={{ 
@@ -275,7 +277,7 @@ export default function FilesScreen() {
                             alignItems: 'center',
                             paddingTop: 40
                         }}>
-                            <ActivityIndicator size="large" color="#666" />
+                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                             <Text style={{
                                 fontSize: 16,
                                 color: '#666',

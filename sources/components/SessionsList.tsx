@@ -17,37 +17,43 @@ import { requestReview } from '@/utils/requestReview';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
+        flex: 1
+    },
+    contentContainer: {
         flex: 1,
-        backgroundColor: theme.colors.listBackground,
+        overflow: 'hidden',
     },
     headerSection: {
+        backgroundColor: theme.colors.surface,
         paddingHorizontal: 16,
-        paddingTop: 20,
-        paddingBottom: 8,
-        backgroundColor: theme.colors.listBackground,
+        paddingTop: 12,
     },
     headerText: {
         fontSize: 13,
         fontWeight: '600',
-        color: theme.colors.subtitleText,
+        color: theme.colors.textSecondary,
         letterSpacing: 0.3,
         textTransform: 'uppercase',
         ...Typography.default('semiBold'),
     },
+    archivedSessionsCard: {
+        backgroundColor: theme.colors.surface,
+        overflow: 'hidden',
+    },
     projectGroup: {
         paddingHorizontal: 16,
         paddingVertical: 10,
-        backgroundColor: theme.colors.listBackground,
+        backgroundColor: theme.colors.surface,
     },
     projectGroupTitle: {
         fontSize: 13,
         fontWeight: '600',
-        color: theme.colors.titleText,
+        color: theme.colors.text,
         ...Typography.default('semiBold'),
     },
     projectGroupSubtitle: {
         fontSize: 11,
-        color: theme.colors.subtitleText,
+        color: theme.colors.textSecondary,
         marginTop: 2,
         ...Typography.default(),
     },
@@ -56,10 +62,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         paddingHorizontal: 16,
-        backgroundColor: theme.colors.cardBackground,
+        backgroundColor: theme.colors.surface,
     },
     sessionItemSelected: {
-        backgroundColor: theme.colors.selectedBackground,
+        backgroundColor: theme.colors.surfaceSelected,
     },
     sessionContent: {
         flex: 1,
@@ -78,14 +84,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         ...Typography.default('semiBold'),
     },
     sessionTitleConnected: {
-        color: theme.colors.titleText,
+        color: theme.colors.text,
     },
     sessionTitleDisconnected: {
-        color: theme.colors.subtitleText,
+        color: theme.colors.textSecondary,
     },
     sessionSubtitle: {
         fontSize: 13,
-        color: theme.colors.subtitleText,
+        color: theme.colors.textSecondary,
         marginBottom: 4,
         ...Typography.default(),
     },
@@ -109,8 +115,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     separator: {
         height: StyleSheet.hairlineWidth,
         backgroundColor: theme.colors.divider,
-        // backgroundColor: theme.colors.divider,
-        // marginLeft: 88,
     },
     avatarContainer: {
         position: 'relative',
@@ -127,7 +131,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         justifyContent: 'center',
     },
     draftIconOverlay: {
-        color: theme.colors.subtitleText,
+        color: theme.colors.textSecondary,
     },
 }));
 
@@ -225,15 +229,92 @@ export function SessionsList() {
         return <View style={styles.separator} />;
     }, []);
 
+    // Group archived sessions in a card
+    const renderContent = React.useMemo(() => {
+        if (!dataWithSelected) return [];
+        
+        const result: React.ReactElement[] = [];
+        let archivedItems: (SessionListViewItem & { selected?: boolean })[] = [];
+        let isCollectingArchived = false;
+        
+        dataWithSelected.forEach((item, index) => {
+            if (item.type === 'header' && item.title === 'Previous Sessions') {
+                // Skip rendering the header, just start collecting archived items
+                isCollectingArchived = true;
+            } else if (item.type === 'header' || item.type === 'active-sessions') {
+                // Render non-archived items directly
+                if (item.type === 'active-sessions') {
+                    let selectedId: string | undefined;
+                    if (isTablet && pathname.startsWith('/session/')) {
+                        const parts = pathname.split('/');
+                        selectedId = parts[2];
+                    }
+                    result.push(
+                        <ActiveSessionsGroup
+                            key="active-sessions"
+                            sessions={item.sessions}
+                            selectedSessionId={selectedId}
+                        />
+                    );
+                } else {
+                    result.push(
+                        <View key={`header-${item.title}-${index}`} style={styles.headerSection}>
+                            <Text style={styles.headerText}>
+                                {item.title}
+                            </Text>
+                        </View>
+                    );
+                }
+                isCollectingArchived = false;
+            } else if (isCollectingArchived) {
+                // Collect archived items
+                archivedItems.push(item);
+            }
+        });
+        
+        // Render archived items in a card
+        if (archivedItems.length > 0) {
+            result.push(
+                <View key="archived-card" style={styles.archivedSessionsCard}>
+                    {archivedItems.map((item, index) => {
+                        const showSeparator = index < archivedItems.length - 1 && 
+                                            !(item.type === 'project-group' && archivedItems[index + 1]?.type === 'session');
+                        
+                        return (
+                            <React.Fragment key={keyExtractor(item, index)}>
+                                {item.type === 'project-group' ? (
+                                    <View style={styles.projectGroup}>
+                                        <Text style={styles.projectGroupTitle}>
+                                            {item.displayPath}
+                                        </Text>
+                                        <Text style={styles.projectGroupSubtitle}>
+                                            {item.machine.metadata?.displayName || item.machine.metadata?.host || item.machine.id}
+                                        </Text>
+                                    </View>
+                                ) : item.type === 'session' ? (
+                                    <SessionItem session={item.session} selected={item.selected} />
+                                ) : null}
+                                {showSeparator && <View style={styles.separator} />}
+                            </React.Fragment>
+                        );
+                    })}
+                </View>
+            );
+        }
+        
+        return result;
+    }, [dataWithSelected, isTablet, pathname, keyExtractor]);
+
     return (
         <View style={styles.container}>
-            <FlatList
-                data={dataWithSelected!}
-                renderItem={renderItem}
-                keyExtractor={keyExtractor}
-                contentContainerStyle={{ paddingBottom: safeArea.bottom + 16 }}
-                ItemSeparatorComponent={ItemSeparatorComponent}
-            />
+            <View style={styles.contentContainer}>
+                <FlatList
+                    data={renderContent}
+                    renderItem={({ item }) => item}
+                    keyExtractor={(_, index) => `item-${index}`}
+                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 16 }}
+                />
+            </View>
         </View>
     );
 }

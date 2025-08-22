@@ -17,24 +17,24 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         height: 24,
     },
     iconButton: {
-        color: theme.colors.headerTint,
+        color: theme.colors.header.tint,
     },
     logoContainer: {
         marginLeft: 8,
-        tintColor: theme.colors.headerTint,
+        tintColor: theme.colors.header.tint,
     },
     titleContainer: {
         alignItems: 'center',
     },
     titleText: {
         fontSize: 17,
-        color: theme.colors.headerTint,
+        color: theme.colors.header.tint,
         fontWeight: '600',
         ...Typography.default('semiBold'),
     },
     subtitleText: {
         fontSize: 12,
-        color: theme.colors.subtitleText,
+        color: theme.colors.textSecondary,
         marginTop: -2,
     },
     statusContainer: {
@@ -53,30 +53,32 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     // Status colors
     statusConnected: {
-        color: theme.colors.statusConnected,
+        color: theme.colors.status.connected,
     },
     statusConnecting: {
-        color: theme.colors.statusConnecting,
+        color: theme.colors.status.connecting,
     },
     statusDisconnected: {
-        color: theme.colors.statusDisconnected,
+        color: theme.colors.status.disconnected,
     },
     statusError: {
-        color: theme.colors.statusError,
+        color: theme.colors.status.error,
     },
     statusDefault: {
-        color: theme.colors.statusDefault,
+        color: theme.colors.status.default,
     },
 }));
 
 
 export const HomeHeader = React.memo(() => {
+    const { theme } = useUnistyles();
     return (
         <Header
             title={<HeaderTitleWithSubtitle />}
             headerRight={() => <HeaderRight />}
             headerLeft={() => <HeaderLeft />}
             headerShadowVisible={false}
+            headerBackgroundColor={theme.colors.header.background}
         />
     )
 })
@@ -84,12 +86,14 @@ export const HomeHeader = React.memo(() => {
 export const HomeHeaderNotAuth = React.memo(() => {
     useSegments(); // Re-rendered automatically when screen navigates back
     const serverInfo = getServerInfo();
+    const { theme } = useUnistyles();
     return (
         <Header
             title={<HeaderTitleWithSubtitle subtitle={serverInfo.isCustom ? serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '') : undefined} />}
             headerRight={() => <HeaderRightNotAuth />}
             headerLeft={() => <HeaderLeft />}
             headerShadowVisible={false}
+            headerBackgroundColor={theme.colors.header.background}
         />
     )
 });
@@ -105,7 +109,7 @@ function HeaderRight() {
             hitSlop={15}
             style={styles.headerButton}
         >
-            <Ionicons name="settings-outline" size={24} color={theme.colors.headerTint} />
+            <Ionicons name="settings-outline" size={24} color={theme.colors.header.tint} />
         </Pressable>
     );
 }
@@ -122,7 +126,7 @@ function HeaderRightNotAuth() {
             hitSlop={15}
             style={styles.headerButton}
         >
-            <Ionicons name="server-outline" size={24} color={theme.colors.headerTint} />
+            <Ionicons name="server-outline" size={24} color={theme.colors.header.tint} />
         </Pressable>
     );
 }
@@ -135,7 +139,7 @@ function HeaderLeft() {
             source={require('@/assets/images/logo-black.png')}
             contentFit="contain"
             style={[{ width: 24, height: 24 }, styles.logoContainer]}
-            tintColor={theme.colors.headerTint}
+            tintColor={theme.colors.header.tint}
         />
     );
 }

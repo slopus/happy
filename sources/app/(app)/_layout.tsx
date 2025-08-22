@@ -25,14 +25,14 @@ export default function RootLayout() {
                 headerBackTitle: 'Back',
                 headerShadowVisible: false,
                 contentStyle: {
-                    backgroundColor: theme.colors.background,
+                    backgroundColor: theme.colors.surface,
                 },
                 headerStyle: {
-                    backgroundColor: theme.colors.headerBackground,
+                    backgroundColor: theme.colors.header.background,
                 },
-                headerTintColor: theme.colors.primary,
+                headerTintColor: theme.colors.header.tint,
                 headerTitleStyle: {
-                    color: theme.colors.primary,
+                    color: theme.colors.header.tint,
                     ...Typography.default('semiBold'),
                 },
                 

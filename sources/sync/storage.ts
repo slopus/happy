@@ -765,7 +765,7 @@ export function useSession(id: string): Session | null {
     return storage(useShallow((state) => state.sessions[id] ?? null));
 }
 
-const emptyArray: Message[] = [];
+const emptyArray: unknown[] = [];
 
 export function useSessionMessages(sessionId: string): { messages: Message[], isLoaded: boolean } {
     return storage(useShallow((state) => {
@@ -812,9 +812,8 @@ export function useLocalSettings(): LocalSettings {
 }
 
 export function useAllMachines(): Machine[] {
-    return storage(useShallow((state) => {
-        return state.isDataReady ? Object.values(state.machines) : []
-    }));
+    const m = storage((state) => state.machines);
+    return React.useMemo(() => Object.values(m).sort((a, b) => b.id.localeCompare(a.id)), [m]);
 }
 
 export function useMachine(machineId: string): Machine | null {

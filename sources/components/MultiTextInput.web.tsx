@@ -173,7 +173,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     width: '100%',
                     padding: '0',
                     fontSize: '16px',
-                    color: theme.colors.inputText,
+                    color: theme.colors.input.text,
                     border: 'none',
                     outline: 'none',
                     resize: 'none' as const,

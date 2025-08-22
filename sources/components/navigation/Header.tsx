@@ -246,7 +246,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
         position: 'relative',
         zIndex: 100,
-        backgroundColor: theme.colors.headerBackground,
+        backgroundColor: theme.colors.header.background,
     },
     containerTransparent: {
         backgroundColor: 'transparent',
@@ -284,7 +284,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontSize: 17,
         fontWeight: '600',
         textAlign: 'center',
-        color: theme.colors.headerTint,
+        color: theme.colors.header.tint,
         ...Typography.default('semiBold'),
     },
     subtitle: {
@@ -292,26 +292,18 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontWeight: '400',
         textAlign: 'center',
         marginTop: 2,
-        color: theme.colors.headerTint,
+        color: theme.colors.header.tint,
         ...Typography.default('regular'),
     },
     shadow: {
-        ...Platform.select({
-            ios: {
-                shadowColor: theme.colors.shadowColor,
-                shadowOffset: { width: 0, height: 1 },
-                shadowOpacity: 0.15,
-                shadowRadius: 3,
-            },
-            default: {
-                elevation: 4,
-            },
-            web: {
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
-            },
-        }),
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 1 },
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 3,
+        elevation: 4,
+        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.15)',
     },
     backButton: {
-        color: theme.colors.headerTint,
+        color: theme.colors.header.tint,
     },
 }));

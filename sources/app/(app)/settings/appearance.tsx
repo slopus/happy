@@ -1,12 +1,11 @@
-import { View, Switch } from 'react-native';
-import { Text } from '@/components/StyledText';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { Typography } from '@/constants/Typography';
-import { useSettingMutable } from '@/sync/storage';
-import { useUnistyles } from 'react-native-unistyles';
+import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
+import { useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
+import { Switch } from '@/components/Switch';
+import { Appearance } from 'react-native';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
@@ -23,6 +22,7 @@ export default function AppearanceSettingsScreen() {
     const [showLineNumbersInToolViews, setShowLineNumbersInToolViews] = useSettingMutable('showLineNumbersInToolViews');
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
+    const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
     
     // Ensure we have a valid style for display, defaulting to gradient for unknown values
     const displayStyle: KnownAvatarStyle = isKnownAvatarStyle(avatarStyle) ? avatarStyle : 'gradient';
@@ -30,16 +30,37 @@ export default function AppearanceSettingsScreen() {
         <ItemList style={{ paddingTop: 0 }}>
 
             {/* Theme Settings */}
-            {/* <ItemGroup title="Theme" footer="Choose your preferred color scheme">
+            <ItemGroup title="Theme" footer="Choose your preferred color scheme">
                 <Item
                     title="Appearance"
-                    subtitle="Match system settings"
-                    icon={<Ionicons name="contrast-outline" size={29} color="#007AFF" />}
-                    detail="System"
-                    onPress={() => { }}
-                    disabled
+                    subtitle={themePreference === 'adaptive' ? 'Match system settings' : themePreference === 'light' ? 'Always use light theme' : 'Always use dark theme'}
+                    icon={<Ionicons name="contrast-outline" size={29} color={theme.colors.status.connecting} />}
+                    detail={themePreference === 'adaptive' ? 'Adaptive' : themePreference === 'light' ? 'Light' : 'Dark'}
+                    onPress={() => {
+                        const currentIndex = themePreference === 'adaptive' ? 0 : themePreference === 'light' ? 1 : 2;
+                        const nextIndex = (currentIndex + 1) % 3;
+                        const nextTheme = nextIndex === 0 ? 'adaptive' : nextIndex === 1 ? 'light' : 'dark';
+                        
+                        // Update the setting
+                        setThemePreference(nextTheme);
+                        
+                        // Apply the theme change immediately
+                        if (nextTheme === 'adaptive') {
+                            // Enable adaptive themes and set to system theme
+                            UnistylesRuntime.setAdaptiveThemes(true);
+                            const systemTheme = Appearance.getColorScheme();
+                            const color = systemTheme === 'dark' ? '#18171C' : '#ffffff';
+                            UnistylesRuntime.setRootViewBackgroundColor(color);
+                        } else {
+                            // Disable adaptive themes and set explicit theme
+                            UnistylesRuntime.setAdaptiveThemes(false);
+                            UnistylesRuntime.setTheme(nextTheme);
+                            const color = nextTheme === 'dark' ? '#18171C' : '#ffffff';
+                            UnistylesRuntime.setRootViewBackgroundColor(color);
+                        }
+                    }}
                 />
-            </ItemGroup> */}
+            </ItemGroup>
 
             {/* Text Settings */}
             {/* <ItemGroup title="Text" footer="Adjust text size and font preferences">
@@ -71,8 +92,6 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={viewInline}
                             onValueChange={setViewInline}
-                            trackColor={{ false: theme.colors.switchTrackInactive, true: theme.colors.switchTrackActive }}
-                            thumbColor={theme.colors.switchThumb}
                         />
                     }
                 />
@@ -84,8 +103,6 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={expandTodos}
                             onValueChange={setExpandTodos}
-                            trackColor={{ false: theme.colors.switchTrackInactive, true: theme.colors.switchTrackActive }}
-                            thumbColor={theme.colors.switchThumb}
                         />
                     }
                 />
@@ -97,8 +114,6 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={showLineNumbers}
                             onValueChange={setShowLineNumbers}
-                            trackColor={{ false: theme.colors.switchTrackInactive, true: theme.colors.switchTrackActive }}
-                            thumbColor={theme.colors.switchThumb}
                         />
                     }
                 />
@@ -110,8 +125,6 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={showLineNumbersInToolViews}
                             onValueChange={setShowLineNumbersInToolViews}
-                            trackColor={{ false: theme.colors.switchTrackInactive, true: theme.colors.switchTrackActive }}
-                            thumbColor={theme.colors.switchThumb}
                         />
                     }
                 />
@@ -123,8 +136,6 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={alwaysShowContextSize}
                             onValueChange={setAlwaysShowContextSize}
-                            trackColor={{ false: theme.colors.switchTrackInactive, true: theme.colors.switchTrackActive }}
-                            thumbColor={theme.colors.switchThumb}
                         />
                     }
                 />
@@ -149,8 +160,6 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={false}
                             disabled
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
                         />
                     }
                 />
@@ -163,8 +172,6 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={true}
                             disabled
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#fff"
                         />
                     }
                 /> */}

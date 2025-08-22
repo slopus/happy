@@ -41,10 +41,11 @@ export default React.memo(() => {
     const route = useRoute();
     const sessionId = (route.params! as any).id as string;
     const session = useSession(sessionId);
+    const { theme } = useUnistyles();
     if (!session) {
         return (
             <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#666" />
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
             </View>
         )
     }
@@ -213,7 +214,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             {isLoaded ? (
                 <EmptyMessages session={session} />
             ) : (
-                <ActivityIndicator size="large" color="#C7C7CC" />
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
             )}
         </>
     ) : null;
@@ -272,14 +273,14 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     left: 0,
                     right: 0,
                     height: safeArea.top,
-                    backgroundColor: theme.colors.cardBackground,
+                    backgroundColor: theme.colors.surface,
                     zIndex: 1000,
-                    shadowColor: '#000',
+                    shadowColor: theme.colors.shadow.color,
                     shadowOffset: {
                         width: 0,
                         height: 2,
                     },
-                    shadowOpacity: 0.1,
+                    shadowOpacity: theme.colors.shadow.opacity,
                     shadowRadius: 3,
                     elevation: 5,
                 }} />

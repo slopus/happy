@@ -6,7 +6,6 @@ import { ItemList } from '@/components/ItemList';
 import { testRunner, TestSuite, TestResult } from '@/dev/testRunner';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
-import { InfoBox } from '@/components/atoms/InfoBox';
 
 // Import all test files here
 import '@/encryption/hmac_sha512.appspec';
@@ -166,7 +165,7 @@ export default function TestsScreen() {
                             </View>
                             {test.error && (
                                 <View style={{ paddingHorizontal: 16, paddingBottom: 16 }}>
-                                    <InfoBox variant="error">
+                                    <Text style={{ ...Typography.mono(), fontSize: 12, color: '#FF3B30' }}>
                                         <Text style={{ ...Typography.mono(), fontSize: 12, color: '#FF3B30' }}>
                                             {test.error.message}
                                         </Text>
@@ -180,7 +179,7 @@ export default function TestsScreen() {
                                                 {test.error.stack}
                                             </Text>
                                         )}
-                                    </InfoBox>
+                                    </Text>
                                 </View>
                             )}
                         </View>

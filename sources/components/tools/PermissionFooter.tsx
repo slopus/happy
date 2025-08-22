@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
+import { useUnistyles } from 'react-native-unistyles';
 
 interface PermissionFooterProps {
     permission: {
@@ -13,6 +14,7 @@ interface PermissionFooterProps {
 }
 
 export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, sessionId, toolName }) => {
+    const { theme } = useUnistyles();
     const [loading, setLoading] = useState(false);
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
 
@@ -59,6 +61,91 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const isDenied = permission.status === 'denied';
     const isPending = permission.status === 'pending';
 
+    const styles = StyleSheet.create({
+        container: {
+            minHeight: 60,
+            paddingHorizontal: 12,
+            paddingVertical: 10,
+            justifyContent: 'center',
+        },
+        buttonContainer: {
+            flexDirection: 'row',
+            gap: 10,
+        },
+        button: {
+            flex: 1,
+            paddingHorizontal: 20,
+            paddingVertical: 12,
+            borderRadius: 8,
+            backgroundColor: theme.colors.permissionButton.inactive.background,
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: 44,
+            borderWidth: 1,
+            borderColor: theme.colors.permissionButton.inactive.border,
+        },
+        buttonAllow: {
+            backgroundColor: theme.colors.permissionButton.allow.background,
+            borderColor: theme.colors.permissionButton.allow.background,
+        },
+        buttonDeny: {
+            backgroundColor: theme.colors.permissionButton.deny.background,
+            borderColor: theme.colors.permissionButton.deny.background,
+        },
+        buttonAllowAll: {
+            backgroundColor: theme.colors.permissionButton.allowAll.background,
+            borderColor: theme.colors.permissionButton.allowAll.background,
+        },
+        buttonSelected: {
+            backgroundColor: theme.colors.permissionButton.selected.background,
+            borderColor: theme.colors.permissionButton.selected.border,
+        },
+        buttonInactive: {
+            opacity: 0.3,
+        },
+        buttonContent: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+        },
+        icon: {
+            marginRight: 2,
+        },
+        buttonText: {
+            fontSize: 15,
+            fontWeight: '500',
+            color: theme.colors.permissionButton.inactive.text,
+        },
+        buttonTextAllow: {
+            color: theme.colors.permissionButton.allow.text,
+        },
+        buttonTextDeny: {
+            color: theme.colors.permissionButton.deny.text,
+        },
+        buttonTextAllowAll: {
+            color: theme.colors.permissionButton.allowAll.text,
+        },
+        buttonTextSelected: {
+            color: theme.colors.permissionButton.selected.text,
+            fontWeight: '600',
+        },
+        loadingIndicatorAllow: {
+            color: theme.colors.permissionButton.allow.background,
+        },
+        loadingIndicatorDeny: {
+            color: theme.colors.permissionButton.deny.background,
+        },
+        loadingIndicatorAllowAll: {
+            color: theme.colors.permissionButton.allowAll.background,
+        },
+        iconApproved: {
+            color: theme.colors.permissionButton.allow.background,
+        },
+        iconDenied: {
+            color: theme.colors.permissionButton.deny.background,
+        },
+    });
+
     return (
         <View style={styles.container}>
             <View style={styles.buttonContainer}>
@@ -74,11 +161,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loading && isPending ? (
-                        <ActivityIndicator size="small" color="#34C759" />
+                        <ActivityIndicator size="small" color={styles.loadingIndicatorAllow.color} />
                     ) : (
                         <View style={styles.buttonContent}>
                             {isApproved && (
-                                <Ionicons name="checkmark" size={16} color="#34C759" style={styles.icon} />
+                                <Ionicons name="checkmark" size={16} color={styles.iconApproved.color} style={styles.icon} />
                             )}
                             <Text style={[
                                 styles.buttonText,
@@ -105,7 +192,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingAllEdits && isPending ? (
-                            <ActivityIndicator size="small" color="#007AFF" />
+                            <ActivityIndicator size="small" color={styles.loadingIndicatorAllowAll.color} />
                         ) : (
                             <View style={styles.buttonContent}>
                                 <Text style={[
@@ -131,11 +218,11 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loading && isPending ? (
-                        <ActivityIndicator size="small" color="#FF3B30" />
+                        <ActivityIndicator size="small" color={styles.loadingIndicatorDeny.color} />
                     ) : (
                         <View style={styles.buttonContent}>
                             {isDenied && (
-                                <Ionicons name="close" size={16} color="#FF3B30" style={styles.icon} />
+                                <Ionicons name="close" size={16} color={styles.iconDenied.color} style={styles.icon} />
                             )}
                             <Text style={[
                                 styles.buttonText,
@@ -151,73 +238,3 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         </View>
     );
 };
-
-const styles = StyleSheet.create({
-    container: {
-        minHeight: 60,
-        paddingHorizontal: 12,
-        paddingVertical: 10,
-        justifyContent: 'center',
-    },
-    buttonContainer: {
-        flexDirection: 'row',
-        gap: 10,
-    },
-    button: {
-        flex: 1,
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 8,
-        backgroundColor: '#E5E5EA',
-        alignItems: 'center',
-        justifyContent: 'center',
-        height: 44,
-        borderWidth: 1,
-        borderColor: '#D1D1D6',
-    },
-    buttonAllow: {
-        backgroundColor: '#34C759',
-        borderColor: '#34C759',
-    },
-    buttonDeny: {
-        backgroundColor: '#FF3B30',
-        borderColor: '#FF3B30',
-    },
-    buttonAllowAll: {
-        backgroundColor: '#007AFF',
-        borderColor: '#007AFF',
-    },
-    buttonSelected: {
-        backgroundColor: '#F2F2F7',
-        borderColor: '#D1D1D6',
-    },
-    buttonInactive: {
-        opacity: 0.3,
-    },
-    buttonContent: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-    },
-    icon: {
-        marginRight: 2,
-    },
-    buttonText: {
-        fontSize: 15,
-        fontWeight: '500',
-        color: '#8E8E93',
-    },
-    buttonTextAllow: {
-        color: 'white',
-    },
-    buttonTextDeny: {
-        color: 'white',
-    },
-    buttonTextAllowAll: {
-        color: 'white',
-    },
-    buttonTextSelected: {
-        color: '#3C3C43',
-        fontWeight: '600',
-    },
-});

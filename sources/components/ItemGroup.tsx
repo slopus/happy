@@ -1,9 +1,9 @@
 import * as React from 'react';
-import { 
-    View, 
-    Text, 
-    StyleProp, 
-    ViewStyle, 
+import {
+    View,
+    Text,
+    StyleProp,
+    ViewStyle,
     TextStyle,
     Platform
 } from 'react-native';
@@ -47,7 +47,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     headerText: {
         ...Typography.default('regular'),
-        color: theme.colors.headerText,
+        color: theme.colors.groupped.sectionTitle,
         fontSize: Platform.select({ ios: 13, default: 14 }),
         lineHeight: Platform.select({ ios: 18, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
@@ -55,21 +55,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
     },
     contentContainer: {
-        backgroundColor: theme.colors.cardBackground,
+        backgroundColor: theme.colors.surface,
         marginHorizontal: Platform.select({ ios: 16, default: 12 }),
         borderRadius: Platform.select({ ios: 10, default: 16 }),
         overflow: 'hidden',
-        ...Platform.select({
-            ios: {
-                shadowColor: theme.colors.shadowColor,
-                shadowOffset: { width: 0, height: 0.33 },
-                shadowOpacity: 0.05,
-                shadowRadius: 0,
-            },
-            default: {
-                elevation: 1,
-            },
-        }),
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 0.33 },
+        shadowOpacity: theme.colors.shadow.opacity,
+        shadowRadius: 0,
+        elevation: 1
     },
     footer: {
         paddingTop: Platform.select({ ios: 6, default: 8 }),
@@ -78,7 +72,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     footerText: {
         ...Typography.default('regular'),
-        color: theme.colors.headerText,
+        color: theme.colors.groupped.sectionTitle,
         fontSize: Platform.select({ ios: 13, default: 14 }),
         lineHeight: Platform.select({ ios: 18, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0 }),
@@ -88,7 +82,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 export const ItemGroup = React.memo<ItemGroupProps>((props) => {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    
+
     const {
         title,
         footer,

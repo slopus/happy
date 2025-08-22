@@ -1,5 +1,7 @@
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
 import { darkTheme, lightTheme } from './theme';
+import { loadThemePreference } from './sync/persistence';
+import { Appearance } from 'react-native';
 
 //
 // Theme
@@ -19,9 +21,29 @@ const breakpoints = {
     // use as many breakpoints as you need
 };
 
-const settings = {
-    initialTheme: 'light' as const,
+// Load theme preference from storage
+const themePreference = loadThemePreference();
+
+// Determine initial theme and adaptive settings
+const getInitialTheme = (): 'light' | 'dark' => {
+    if (themePreference === 'adaptive') {
+        const systemTheme = Appearance.getColorScheme();
+        return systemTheme === 'dark' ? 'dark' : 'light';
+    }
+    return themePreference;
 };
+
+const settings = themePreference === 'adaptive' 
+    ? {
+        // When adaptive, let Unistyles handle theme switching automatically
+        adaptiveThemes: true,
+        CSSVars: true, // Enable CSS variables for web
+    }
+    : {
+        // When fixed theme, set the initial theme explicitly
+        initialTheme: getInitialTheme(),
+        CSSVars: true, // Enable CSS variables for web
+    };
 
 //
 // Bootstrap
@@ -40,3 +62,18 @@ StyleSheet.configure({
     breakpoints,
     themes: appThemes,
 })
+
+// Set initial root view background color based on theme
+const setRootBackgroundColor = () => {
+    if (themePreference === 'adaptive') {
+        const systemTheme = Appearance.getColorScheme();
+        const color = systemTheme === 'dark' ? '#18171C' : '#ffffff';
+        UnistylesRuntime.setRootViewBackgroundColor(color);
+    } else {
+        const color = themePreference === 'dark' ? '#18171C' : '#ffffff';
+        UnistylesRuntime.setRootViewBackgroundColor(color);
+    }
+};
+
+// Set initial background color
+setRootBackgroundColor();

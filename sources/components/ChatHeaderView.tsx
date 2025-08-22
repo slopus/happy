@@ -42,14 +42,14 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     };
 
     return (
-        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.headerBackground }]}>
+        <View style={[styles.container, { paddingTop: insets.top, backgroundColor: theme.colors.header.background }]}>
             <View style={styles.contentWrapper}>
                 <View style={[styles.content, { height: headerHeight }]}>
                 <Pressable onPress={handleBackPress} style={styles.backButton} hitSlop={15}>
                     <Ionicons
                         name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
                         size={Platform.select({ ios: 28, default: 24 })}
-                        color={theme.colors.headerTint}
+                        color={theme.colors.header.tint}
                     />
                 </Pressable>
                 
@@ -60,7 +60,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                         style={[
                             styles.title,
                             {
-                                color: theme.colors.headerTint,
+                                color: theme.colors.header.tint,
                                 ...Typography.default('semiBold')
                             }
                         ]}
@@ -74,7 +74,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             style={[
                                 styles.subtitle,
                                 {
-                                    color: theme.colors.headerTint,
+                                    color: theme.colors.header.tint,
                                     opacity: 0.7,
                                     ...Typography.default()
                                 }
