@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, Platform } from 'react-native';
+import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
@@ -10,6 +10,10 @@ import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { useAllMachines } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { storage } from '@/sync/storage';
+import { Modal } from '@/modal';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -130,6 +134,35 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     draftIconOverlay: {
         color: theme.colors.textSecondary,
     },
+    newSessionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: theme.colors.divider,
+        backgroundColor: theme.colors.surface,
+    },
+    newSessionButtonDisabled: {
+        opacity: 0.5,
+    },
+    newSessionButtonContent: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    newSessionButtonIcon: {
+        marginRight: 6,
+    },
+    newSessionButtonText: {
+        fontSize: 14,
+        fontWeight: '500',
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    newSessionButtonTextDisabled: {
+        color: theme.colors.textSecondary,
+    },
 }));
 
 interface ActiveSessionsGroupProps {
@@ -140,7 +173,10 @@ interface ActiveSessionsGroupProps {
 
 export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
+    const router = useRouter();
     const machines = useAllMachines();
+    const [startingSessionFor, setStartingSessionFor] = React.useState<string | null>(null);
+    
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
         machines.forEach(machine => {
@@ -148,6 +184,57 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
         });
         return map;
     }, [machines]);
+
+    const handleStartSession = async (machineId: string, path: string) => {
+        try {
+            setStartingSessionFor(`${machineId}-${path}`);
+            const result = await machineSpawnNewSession(machineId, path);
+
+            if (result.sessionId) {
+                // Poll for the session to appear in our local state
+                const pollInterval = 100;
+                const maxAttempts = 20;
+                let attempts = 0;
+
+                const pollForSession = () => {
+                    const state = storage.getState();
+                    const newSession = Object.values(state.sessions).find((s: Session) => s.id === result.sessionId);
+
+                    if (newSession) {
+                        router.push(`/session/${result.sessionId}`);
+                        setStartingSessionFor(null);
+                        return;
+                    }
+
+                    attempts++;
+                    if (attempts < maxAttempts) {
+                        setTimeout(pollForSession, pollInterval);
+                    } else {
+                        Modal.alert('Session started', 'The session was started but may take a moment to appear.');
+                        setStartingSessionFor(null);
+                    }
+                };
+
+                pollForSession();
+            } else {
+                throw new Error('Session spawning failed - no session ID returned.');
+            }
+        } catch (error) {
+            console.error('Failed to start session', error);
+
+            let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
+            if (error instanceof Error) {
+                if (error.message.includes('timeout')) {
+                    errorMessage = 'Session startup timed out. The machine may be slow or the daemon may not be responding.';
+                } else if (error.message.includes('Socket not connected')) {
+                    errorMessage = 'Not connected to server. Check your internet connection.';
+                }
+            }
+
+            Modal.alert('Error', errorMessage);
+            setStartingSessionFor(null);
+        }
+    };
 
     // Group sessions by project, then associate with machine
     const projectGroups = React.useMemo(() => {
@@ -256,6 +343,53 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                         ))}
                                     </View>
                                 ))}
+                            
+                            {/* New Session Button - only show if at least one machine is online */}
+                            {(() => {
+                                const machineIds = Array.from(projectGroup.machines.keys());
+                                const hasOnlineMachine = machineIds.some(machineId => {
+                                    const machine = machinesMap[machineId];
+                                    return machine && isMachineOnline(machine);
+                                });
+                                
+                                // Use the first machine for the session creation
+                                const firstMachineId = machineIds[0];
+                                const isLoading = startingSessionFor === `${firstMachineId}-${projectGroup.path}`;
+                                
+                                return (
+                                    <Pressable
+                                        style={[
+                                            styles.newSessionButton,
+                                            (!hasOnlineMachine || isLoading) && styles.newSessionButtonDisabled
+                                        ]}
+                                        disabled={!hasOnlineMachine || isLoading}
+                                        onPress={() => handleStartSession(firstMachineId, projectGroup.path)}
+                                    >
+                                        <View style={styles.newSessionButtonContent}>
+                                            {isLoading ? (
+                                                <ActivityIndicator 
+                                                    size="small" 
+                                                    color={hasOnlineMachine ? "#007AFF" : "#999"} 
+                                                    style={styles.newSessionButtonIcon}
+                                                />
+                                            ) : (
+                                                <Ionicons
+                                                    name="add"
+                                                    size={18}
+                                                    color={hasOnlineMachine ? "#007AFF" : "#999"}
+                                                    style={styles.newSessionButtonIcon}
+                                                />
+                                            )}
+                                            <Text style={[
+                                                styles.newSessionButtonText,
+                                                (!hasOnlineMachine || isLoading) && styles.newSessionButtonTextDisabled
+                                            ]}>
+                                                {isLoading ? 'Starting session...' : 'Start new session in this folder'}
+                                            </Text>
+                                        </View>
+                                    </Pressable>
+                                );
+                            })()}
                         </View>
                     </View>
                 );
