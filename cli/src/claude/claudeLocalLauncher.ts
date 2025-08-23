@@ -115,6 +115,8 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
                     abort: processAbortController.signal,
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
+                    mcpServers: session.mcpServers,
+                    allowedTools: session.allowedTools,
                 });
 
                 // Normal exit

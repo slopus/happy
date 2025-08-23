@@ -30,6 +30,7 @@ interface LoopOptions {
     claudeEnvVars?: Record<string, string>
     claudeArgs?: string[]
     messageQueue: MessageQueue2<EnhancedMode>
+    allowedTools?: string[]
     onSessionReady?: (session: Session) => void
 }
 
@@ -47,6 +48,7 @@ export async function loop(opts: LoopOptions) {
         mcpServers: opts.mcpServers,
         logPath: logPath,
         messageQueue: opts.messageQueue,
+        allowedTools: opts.allowedTools,
         onModeChange: opts.onModeChange
     });
 

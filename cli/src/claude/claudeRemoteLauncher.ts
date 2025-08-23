@@ -12,44 +12,44 @@ import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { createSessionScanner } from "./utils/sessionScanner";
-import { ApiSessionClient } from "@/api/apiSession";
 import { TitleGenerator } from "./utils/titleGenerator";
+import { systemPrompt } from "./utils/systemPrompt";
 
 export async function claudeRemoteLauncher(session: Session): Promise<'switch' | 'exit'> {
     logger.debug('[claudeRemoteLauncher] Starting remote launcher');
-    
+
     // Check if we have a TTY for UI rendering
     const hasTTY = process.stdout.isTTY && process.stdin.isTTY;
     logger.debug(`[claudeRemoteLauncher] TTY available: ${hasTTY}`);
-    
+
     // Configure terminal
     let messageBuffer = new MessageBuffer();
     let inkInstance: any = null;
-    
+
     if (hasTTY) {
         console.clear();
         inkInstance = render(React.createElement(RemoteModeDisplay, {
-        messageBuffer,
-        logPath: process.env.DEBUG ? session.logPath : undefined,
-        onExit: async () => {
-            // Exit the entire client
-            logger.debug('[remote]: Exiting client via Ctrl-C');
-            if (!exitReason) {
-                exitReason = 'exit';
+            messageBuffer,
+            logPath: process.env.DEBUG ? session.logPath : undefined,
+            onExit: async () => {
+                // Exit the entire client
+                logger.debug('[remote]: Exiting client via Ctrl-C');
+                if (!exitReason) {
+                    exitReason = 'exit';
+                }
+                await abort();
+            },
+            onSwitchToLocal: () => {
+                // Switch to local mode
+                logger.debug('[remote]: Switching to local mode via double space');
+                doSwitch();
             }
-            await abort();
-        },
-        onSwitchToLocal: () => {
-            // Switch to local mode
-            logger.debug('[remote]: Switching to local mode via double space');
-            doSwitch();
-        }
         }), {
             exitOnCtrlC: false,
             patchConsole: false
         });
     }
-    
+
     if (hasTTY) {
         process.stdin.resume();
         if (process.stdin.isTTY) {
@@ -271,8 +271,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     model: messageData.mode.model,
                     fallbackModel: messageData.mode.fallbackModel,
                     customSystemPrompt: messageData.mode.customSystemPrompt,
-                    appendSystemPrompt: messageData.mode.appendSystemPrompt,
-                    allowedTools: messageData.mode.allowedTools,
+                    appendSystemPrompt: messageData.mode.appendSystemPrompt ? messageData.mode.appendSystemPrompt + '\n' + systemPrompt : systemPrompt,
+                    allowedTools: messageData.mode.allowedTools ? [...messageData.mode.allowedTools, ...(session.allowedTools ? session.allowedTools : [])] : (session.allowedTools ? [...session.allowedTools] : undefined),
                     disallowedTools: messageData.mode.disallowedTools,
                     onSessionFound: (sessionId) => {
                         // Update converter's session ID when new session is found

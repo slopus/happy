@@ -8,6 +8,7 @@ import { logger } from "@/ui/logger";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { getProjectPath } from "./utils/path";
 import { projectPath } from "@/projectPath";
+import { systemPrompt } from "./utils/systemPrompt";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -16,14 +17,14 @@ function getProjectRoot() {
     if (process.env.HAPPY_PROJECT_ROOT) {
         return resolve(process.env.HAPPY_PROJECT_ROOT);
     }
-    
+
     // Check if we're in a bundled build (dist/ with no scripts/)
     const distRoot = resolve(join(__dirname, '..', '..'));
     if (existsSync(join(distRoot, 'scripts'))) {
         // Production with scripts directory available
         return distRoot;
     }
-    
+
     // Bundled build - scripts should be embedded or not needed
     return null;
 }
@@ -31,11 +32,13 @@ function getProjectRoot() {
 export async function claudeLocal(opts: {
     abort: AbortSignal,
     sessionId: string | null,
+    mcpServers?: Record<string, any>,
     path: string,
     onSessionFound: (id: string) => void,
     onThinkingChange?: (thinking: boolean) => void,
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[]
+    allowedTools?: string[]
 }) {
 
     // Start a watcher for to detect the session id
@@ -95,6 +98,15 @@ export async function claudeLocal(opts: {
             if (startFrom) {
                 args.push('--resume', startFrom)
             }
+            args.push('--append-system-prompt', systemPrompt);
+
+            if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {
+                args.push('--mcp-config', JSON.stringify({ mcpServers: opts.mcpServers }));
+            }
+
+            if (opts.allowedTools && opts.allowedTools.length > 0) {
+                args.push('--allowedTools', opts.allowedTools.join(','));
+            }
 
             // Add custom Claude arguments
             if (opts.claudeArgs) {
@@ -103,7 +115,7 @@ export async function claudeLocal(opts: {
 
             // Get Claude CLI path from project root
             const claudeCliPath = resolve(join(projectPath(), 'scripts', 'claude_local_launcher.cjs'))
-            
+
             if (!claudeCliPath || !existsSync(claudeCliPath)) {
                 throw new Error('Claude local launcher not found. Please ensure HAPPY_PROJECT_ROOT is set correctly for development.');
             }

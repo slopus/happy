@@ -1,0 +1,1 @@
+export const systemPrompt = `ALWAYS when you start a new chat - you must call a tool "mcp__happy__change_title" to set a chat title. When you think chat title is not relevant anymore - call the tool again to change it.`;

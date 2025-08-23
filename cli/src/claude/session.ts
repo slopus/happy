@@ -12,6 +12,7 @@ export class Session {
     readonly claudeEnvVars?: Record<string, string>;
     readonly claudeArgs?: string[];
     readonly mcpServers: Record<string, any>;
+    readonly allowedTools?: string[];
     readonly _onModeChange: (mode: 'local' | 'remote') => void;
 
     sessionId: string | null;
@@ -29,6 +30,7 @@ export class Session {
         mcpServers: Record<string, any>,
         messageQueue: MessageQueue2<EnhancedMode>,
         onModeChange: (mode: 'local' | 'remote') => void,
+        allowedTools?: string[],
     }) {
         this.path = opts.path;
         this.api = opts.api;
@@ -39,6 +41,7 @@ export class Session {
         this.claudeEnvVars = opts.claudeEnvVars;
         this.claudeArgs = opts.claudeArgs;
         this.mcpServers = opts.mcpServers;
+        this.allowedTools = opts.allowedTools;
         this._onModeChange = opts.onModeChange;
 
         // Start keep alive

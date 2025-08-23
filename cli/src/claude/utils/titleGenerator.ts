@@ -22,20 +22,20 @@ export class TitleGenerator {
         sessionPath: string,
         client: ApiSessionClient
     ) {
-        if (this.isFirstMessage || this.needsNewSummary) {
-            logger.debug('[TitleGenerator] Triggering async chat name generation');
+        // if (this.isFirstMessage || this.needsNewSummary) {
+        //     logger.debug('[TitleGenerator] Triggering async chat name generation');
             
-            // Fire and forget - don't await to avoid blocking main flow
-            this.generateChatNameAsync(
-                userMessage,
-                sessionPath,
-                client,
-                randomUUID() // Generate UUID for summary leafUuid
-            ).catch(err => logger.debug('[TitleGenerator] Failed:', err));
+        //     // Fire and forget - don't await to avoid blocking main flow
+        //     this.generateChatNameAsync(
+        //         userMessage,
+        //         sessionPath,
+        //         client,
+        //         randomUUID() // Generate UUID for summary leafUuid
+        //     ).catch(err => logger.debug('[TitleGenerator] Failed:', err));
             
-            this.isFirstMessage = false;
-            this.needsNewSummary = false;
-        }
+        //     this.isFirstMessage = false;
+        //     this.needsNewSummary = false;
+        // }
     }
     
     /**
