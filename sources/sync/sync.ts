@@ -12,7 +12,7 @@ import {
     encrypt,
     decrypt,
     generateSecretKey
-} from '@happy/api-client';
+} from '@happy-engineering/happy-api-client';
 import { deriveKey } from '@/encryption/deriveKey';
 import { encodeHex } from '@/encryption/hex';
 import { AuthCredentials } from '@/auth/tokenStorage';

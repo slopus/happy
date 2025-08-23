@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { EphemeralActivityUpdate } from '@happy/api-client';
+import type { EphemeralActivityUpdate } from '@happy-engineering/happy-api-client';
 import { ActivityUpdateAccumulator } from './activityUpdateAccumulator';
 
 describe('ActivityUpdateAccumulator Smart Debounce', () => {
