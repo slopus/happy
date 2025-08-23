@@ -475,7 +475,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                     </View>
                     
                     {/* Status indicators on the right side */}
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
                         {/* Git status indicator */}
                         <CompactGitStatus sessionId={session.id} />
                         

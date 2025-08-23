@@ -13,7 +13,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 6,
         height: 16,
         borderRadius: 4,
-        marginBottom: -2,
     },
     fileCountText: {
         fontSize: 10,
