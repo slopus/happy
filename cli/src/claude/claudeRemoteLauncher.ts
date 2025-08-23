@@ -12,7 +12,6 @@ import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { createSessionScanner } from "./utils/sessionScanner";
-import { TitleGenerator } from "./utils/titleGenerator";
 import { systemPrompt } from "./utils/systemPrompt";
 
 export async function claudeRemoteLauncher(session: Session): Promise<'switch' | 'exit'> {
@@ -110,8 +109,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         version: process.env.npm_package_version
     }, permissions.responses);
 
-    // Create title generator
-    const titleGenerator = new TitleGenerator();
 
     // Handle messages
     let planModeToolCalls = new Set<string>();
@@ -239,12 +236,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             abortFuture = null;
             abortController = null;
 
-            // Generate chat name asynchronously if needed
-            titleGenerator.onUserMessage(
-                messageData.message,
-                session.path,
-                session.client
-            );
 
             // Run claude
             logger.debug('[remote]: launch');
@@ -292,7 +283,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     onSessionReset: () => {
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
-                        titleGenerator.onSessionReset(); // Generate new chat name after context reset
                     },
                     signal: abortController.signal,
                 });

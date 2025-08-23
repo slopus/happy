@@ -3,7 +3,6 @@ import { claudeLocal } from "./claudeLocal";
 import { Session } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
-import { TitleGenerator } from "./utils/titleGenerator";
 
 export async function claudeLocalLauncher(session: Session): Promise<'switch' | 'exit'> {
 
@@ -19,15 +18,6 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
         }
     });
 
-    // Create title generator
-    const titleGenerator = new TitleGenerator();
-    
-    // Hook into session reset for title generation
-    const originalClearSessionId = session.clearSessionId;
-    session.clearSessionId = () => {
-        titleGenerator.onSessionReset();
-        originalClearSessionId();
-    };
 
     // Handle abort
     let exitReason: 'switch' | 'exit' | null = null;
@@ -76,13 +66,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
         session.client.setHandler('abort', doAbort); // Abort current process, clean queue and switch to remote mode
         session.client.setHandler('switch', doSwitch); // When user wants to switch to remote mode
         session.queue.setOnMessage((message: string, mode) => {
-            // Generate chat name on first message or after reset
-            titleGenerator.onUserMessage(
-                message,
-                session.path,
-                session.client
-            );
-            // Then switch to remote mode as before
+            // Switch to remote mode when message received
             doSwitch();
         }); // When any message is received, abort current process, clean queue and switch to remote mode
 
@@ -147,9 +131,6 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
 
         // Cleanup
         await scanner.cleanup();
-        
-        // Restore original clearSessionId
-        session.clearSessionId = originalClearSessionId;
     }
 
     // Return
