@@ -26,7 +26,7 @@
     "@elevenlabs/react-native": "^0.2.1",
     "@expo/ui": "~0.1.1-alpha.10",
     "@expo/vector-icons": "^14.1.0",
-    "@happy/api-client": "file:../happy-api-client",
+    "@happy/api-client": "file:/Users/kirilldubovitskiy/projects/happy/happy-api-client",
     "@happy/shared-types": "file:../happy-shared-types",
     "@legendapp/list": "^1.1.4",
     "@livekit/react-native": "^2.9.0",

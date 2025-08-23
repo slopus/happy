@@ -1,16 +1,16 @@
-import type { ApiEphemeralActivityUpdate } from '../apiTypes';
+import type { EphemeralActivityUpdate } from '@happy/api-client';
 
 export class ActivityUpdateAccumulator {
-    private pendingUpdates = new Map<string, ApiEphemeralActivityUpdate>();
+    private pendingUpdates = new Map<string, EphemeralActivityUpdate>();
     private lastEmittedStates = new Map<string, { active: boolean; thinking: boolean; activeAt: number }>();
     private timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     constructor(
-        private flushHandler: (updates: Map<string, ApiEphemeralActivityUpdate>) => void,
+        private flushHandler: (updates: Map<string, EphemeralActivityUpdate>) => void,
         private debounceDelay: number = 500
     ) {}
 
-    addUpdate(update: ApiEphemeralActivityUpdate): void {
+    addUpdate(update: EphemeralActivityUpdate): void {
         const sessionId = update.id;
         const lastState = this.lastEmittedStates.get(sessionId);
 

@@ -39,7 +39,6 @@ import { gitStatusSync } from './gitStatusSync';
 import { isMutableTool } from '@/components/tools/knownTools';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
-import { apiSocketRpc } from './apiSocketRpc';
 
 class Sync {
     private mobileClient!: MobileApiClient;
@@ -172,12 +171,7 @@ class Sync {
         // Connect and start syncing
         await this.mobileClient.connect();
         
-        // Initialize RPC wrapper with the socket
-        // @ts-ignore - getSocket method exists but not in types yet
-        const socket = (this.mobileClient as any).getSocket?.();
-        if (socket) {
-            apiSocketRpc.initialize(socket, this.secretKey);
-        }
+        // RPC is now handled directly by MobileApiClient
         
         // Store encryption for dev tools
         this.encryption = { secretKey: this.secretKey };
@@ -437,6 +431,11 @@ class Sync {
 
     disconnect() {
         this.mobileClient?.disconnect();
+    }
+
+    // Get the mobile API client for RPC operations
+    getMobileClient() {
+        return this.mobileClient;
     }
 }
 
