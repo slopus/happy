@@ -97,6 +97,14 @@ export async function claudeRemote(opts: {
     // Track if this is a compact command for completion message
     const isCompactCommand = specialCommand.type === 'compact';
 
+    // Send compaction started message immediately for compact commands
+    if (isCompactCommand) {
+        logger.debug('[claudeRemote] Compaction started');
+        if (opts.onCompletionEvent) {
+            opts.onCompletionEvent('Compaction started');
+        }
+    }
+
     let message = new PushableAsyncIterable<SDKUserMessage>();
     message.push({
         type: 'user',
@@ -153,12 +161,6 @@ export async function claudeRemote(opts: {
                     opts.onSessionFound(systemInit.session_id);
                 }
 
-                if (isCompactCommand) {
-                    logger.debug('[claudeRemote] Compaction started');
-                    if (opts.onCompletionEvent) {
-                        opts.onCompletionEvent('Compaction started');
-                    }
-                }
             }
 
             // Stop thinking when result is received and exit

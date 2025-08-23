@@ -3,6 +3,7 @@ import { claudeLocal } from "./claudeLocal";
 import { Session } from "./session";
 import { Future } from "@/utils/future";
 import { createSessionScanner } from "./utils/sessionScanner";
+import { TitleGenerator } from "./utils/titleGenerator";
 
 export async function claudeLocalLauncher(session: Session): Promise<'switch' | 'exit'> {
 
@@ -10,8 +11,23 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
     const scanner = await createSessionScanner({
         sessionId: session.sessionId,
         workingDirectory: session.path,
-        onMessage: (message) => { session.client.sendClaudeSessionMessage(message) }
+        onMessage: (message) => { 
+            // Block SDK summary messages - we generate our own
+            if (message.type !== 'summary') {
+                session.client.sendClaudeSessionMessage(message)
+            }
+        }
     });
+
+    // Create title generator
+    const titleGenerator = new TitleGenerator();
+    
+    // Hook into session reset for title generation
+    const originalClearSessionId = session.clearSessionId;
+    session.clearSessionId = () => {
+        titleGenerator.onSessionReset();
+        originalClearSessionId();
+    };
 
     // Handle abort
     let exitReason: 'switch' | 'exit' | null = null;
@@ -59,7 +75,16 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
         // When to abort
         session.client.setHandler('abort', doAbort); // Abort current process, clean queue and switch to remote mode
         session.client.setHandler('switch', doSwitch); // When user wants to switch to remote mode
-        session.queue.setOnMessage(doSwitch); // When any message is received, abort current process, clean queue and switch to remote mode
+        session.queue.setOnMessage((message: string, mode) => {
+            // Generate chat name on first message or after reset
+            titleGenerator.onUserMessage(
+                message,
+                session.path,
+                session.client
+            );
+            // Then switch to remote mode as before
+            doSwitch();
+        }); // When any message is received, abort current process, clean queue and switch to remote mode
 
         // Exit if there are messages in the queue
         if (session.queue.size() > 0) {
@@ -120,6 +145,9 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
 
         // Cleanup
         await scanner.cleanup();
+        
+        // Restore original clearSessionId
+        session.clearSessionId = originalClearSessionId;
     }
 
     // Return
