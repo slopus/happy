@@ -103,6 +103,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     statusRow: {
         flexDirection: 'row',
         alignItems: 'center',
+        justifyContent: 'space-between',
+        flex: 1,
     },
     statusDotContainer: {
         alignItems: 'center',
@@ -162,6 +164,20 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     newSessionButtonTextDisabled: {
         color: theme.colors.textSecondary,
+    },
+    taskStatusContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: theme.colors.textSecondary,
+        paddingHorizontal: 4,
+        paddingVertical: 1,
+        borderRadius: 4,
+    },
+    taskStatusText: {
+        fontSize: 10,
+        fontWeight: '500',
+        color: theme.colors.surface,
+        ...Typography.default(),
     },
 }));
 
@@ -445,15 +461,42 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
                 {/* Status line with dot */}
                 <View style={styles.statusRow}>
-                    <View style={styles.statusDotContainer}>
-                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={styles.statusDotContainer}>
+                            <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+                        </View>
+                        <Text style={[
+                            styles.statusText,
+                            { color: sessionStatus.statusColor }
+                        ]}>
+                            {sessionStatus.statusText}
+                        </Text>
                     </View>
-                    <Text style={[
-                        styles.statusText,
-                        { color: sessionStatus.statusColor }
-                    ]}>
-                        {sessionStatus.statusText}
-                    </Text>
+                    
+                    {/* Task status on the right side of status line */}
+                    {session.todos && session.todos.length > 0 && (() => {
+                        const totalTasks = session.todos.length;
+                        const completedTasks = session.todos.filter(t => t.status === 'completed').length;
+                        
+                        // Don't show if all tasks are completed
+                        if (completedTasks === totalTasks) {
+                            return null;
+                        }
+                        
+                        return (
+                            <View style={styles.taskStatusContainer}>
+                                <Ionicons
+                                    name="bulb-outline"
+                                    size={10}
+                                    color={styles.taskStatusText.color}
+                                    style={{ marginRight: 2 }}
+                                />
+                                <Text style={styles.taskStatusText}>
+                                    {completedTasks}/{totalTasks}
+                                </Text>
+                            </View>
+                        );
+                    })()}
                 </View>
             </View>
         </Pressable>
