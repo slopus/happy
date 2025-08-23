@@ -20,7 +20,7 @@ import { storage } from './storage';
 import { DecryptedMessage, Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
-import { randomUUID } from 'expo-crypto';
+import { SessionListViewDataRebuilder } from './reducer/rebuilders';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
@@ -39,6 +39,8 @@ import { gitStatusSync } from './gitStatusSync';
 import { isMutableTool } from '@/components/tools/knownTools';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
+import { EncryptionCache } from './encryptionCache';
+import { randomUUID } from 'expo-crypto';
 
 class Sync {
     private mobileClient!: MobileApiClient;
@@ -46,6 +48,7 @@ class Sync {
     anonID!: string;
     private credentials!: AuthCredentials;
     private secretKey!: Uint8Array;
+    public encryptionCache = new EncryptionCache();
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
     private purchasesSync: InvalidateSync;
@@ -106,25 +109,33 @@ class Sync {
                         normalizedMessages.push(normalized);
                     }
                 });
-                storage.getState().applyMessages(sessionId, normalizedMessages);
+                if (normalizedMessages.length > 0) {
+                    this.applyMessages(sessionId, normalizedMessages);
+                }
             },
             
             applyMachines: (machines: ApiMachine[]) => {
                 // Convert API machines to storage machines
-                const storageMachines = machines.map(m => this.convertApiMachineToStorage(m));
-                storage.getState().applyMachines(storageMachines);
+                const storageMachines: Machine[] = machines.map(m => ({
+                    id: m.id,
+                    seq: m.seq,
+                    createdAt: m.createdAt,
+                    updatedAt: m.updatedAt,
+                    active: m.active,
+                    activeAt: m.activeAt,
+                    metadata: m.metadata,
+                    metadataVersion: m.metadataVersion,
+                    daemonState: m.daemonState,
+                    daemonStateVersion: m.daemonStateVersion
+                }));
+                storage.getState().applyMachines(storageMachines, true);
             },
             
-            applySettings: (settings: ApiSettings, version: number) => {
-                // Apply settings through existing settings system
-                const parsedSettings = settingsParse(settings);
+            applySettings: (settings: ApiSettings | null, version: number) => {
+                const parsedSettings = settings ? settingsParse(settings) : { ...settingsDefaults };
                 storage.getState().applySettings(parsedSettings, version);
                 
-                // Clear pending settings
-                this.pendingSettings = {};
-                savePendingSettings({});
-                
-                // Sync analytics opt-out
+                // Sync PostHog opt-out state with settings
                 if (tracking) {
                     if (parsedSettings.analyticsOptOut) {
                         tracking.optOut();
@@ -134,47 +145,62 @@ class Sync {
                 }
             },
             
-            onAppStateChange: (handler: (state: string) => void) => {
-                const sub = AppState.addEventListener('change', handler);
-                return () => sub.remove();
-            },
-            
-            getPushToken: async () => {
-                if (Platform.OS === 'web') return null;
-                
-                try {
-                    const { status } = await Notifications.getPermissionsAsync();
-                    if (status !== 'granted') return null;
+            onSessionUpdate: (sessionId: string, agentState: any, metadata: any) => {
+                const session = storage.getState().sessions[sessionId];
+                if (session && (agentState || metadata)) {
+                    gitStatusSync.invalidate(sessionId);
                     
-                    const token = await Notifications.getExpoPushTokenAsync({
-                        projectId: Constants.expoConfig?.extra?.eas?.projectId
-                    });
-                    return token.data;
-                } catch (error) {
-                    console.log('Failed to get push token:', error);
-                    return null;
+                    // Check for new permission requests
+                    if (agentState?.requests && Object.keys(agentState.requests).length > 0) {
+                        const requestIds = Object.keys(agentState.requests);
+                        const firstRequest = agentState.requests[requestIds[0]];
+                        const toolName = firstRequest?.tool;
+                        voiceHooks.onPermissionRequested(sessionId, requestIds[0], toolName, firstRequest?.arguments);
+                    }
                 }
             },
             
-            log: (message: string) => console.log(message)
+            onConnectionChange: (connected: boolean) => {
+                storage.getState().setSocketStatus(connected ? 'connected' : 'disconnected');
+                
+                if (connected) {
+                    // Invalidate git status for all sessions on reconnection
+                    const sessionsData = storage.getState().sessionsData;
+                    if (sessionsData) {
+                        for (const item of sessionsData) {
+                            if (typeof item !== 'string') {
+                                this.messagesSync.get(item.id)?.invalidate();
+                                gitStatusSync.invalidate(item.id);
+                            }
+                        }
+                    }
+                }
+            }
         };
         
-        // Create MobileApiClient
+        // Create and initialize MobileApiClient with encryptionCache
         this.mobileClient = new MobileApiClient({
-            endpoint: serverUrl,
+            serverUrl,
             token: credentials.token,
             secret: this.secretKey,
             callbacks,
-            logger: new ConsoleLogger()
+            logger: new ConsoleLogger(),
+            pendingSettings: this.pendingSettings,
+            encryptionCache: this.encryptionCache
         });
         
-        // Connect and start syncing
+        // Connect to server
         await this.mobileClient.connect();
         
-        // RPC is now handled directly by MobileApiClient
-        
-        // Store encryption for dev tools
-        this.encryption = { secretKey: this.secretKey };
+        // Store encryption helper for compatibility
+        this.encryption = {
+            secretKey: this.secretKey,
+            encryptRaw: (data: unknown) => encodeBase64(encrypt(data, this.secretKey)),
+            decryptRaw: (data: string) => decrypt(decodeBase64(data), this.secretKey),
+            clearSessionCache: (sessionId: string) => this.encryptionCache.clearSessionCache(sessionId),
+            clearAllCache: () => this.encryptionCache.clearCache(),
+            getCacheStats: () => this.encryptionCache.getStats()
+        };
         
         // Initialize tracking with user ID from token
         const serverID = parseToken(credentials.token);
@@ -188,6 +214,8 @@ class Sync {
         }
         
         // Initial sync happens automatically through MobileApiClient
+        // Mark as ready after initial load
+        storage.getState().applyReady();
     }
 
     private convertApiSessionToStorage(apiSession: ApiSession): Session {
@@ -198,192 +226,95 @@ class Sync {
             seq: apiSession.seq,
             createdAt: apiSession.createdAt,
             updatedAt: apiSession.updatedAt,
+            active: apiSession.active,
+            activeAt: apiSession.activeAt,
             metadata: apiSession.metadata,
             metadataVersion: apiSession.metadataVersion,
             agentState: apiSession.agentState,
             agentStateVersion: apiSession.agentStateVersion,
-            // Mobile-specific fields with proper defaults
-            active: apiSession.active ?? false,
-            activeAt: apiSession.activeAt ?? 0,
             thinking: false,
             thinkingAt: 0,
-            presence: "online"
+            presence: 'offline' as const,
+            draft: null,
+            permissionMode: null,
+            modelMode: null
         };
     }
 
-    private convertApiMessageToStorage(apiMsg: DecryptedMessageContent, sessionId: string, index: number): DecryptedMessage {
-        // Convert from API message to storage message
-        const messageId = randomUUID();
-        return {
-            id: messageId,
-            localId: messageId,
-            sessionId,
-            content: apiMsg,
-            createdAt: Date.now(),
-            seq: index
-        } as DecryptedMessage;
-    }
-
-    private convertApiMachineToStorage(apiMachine: ApiMachine): Machine {
-        // Direct mapping as types should be compatible
-        return apiMachine as Machine;
-    }
-
-    onSessionVisible = (sessionId: string) => {
-        // Notify the API client about session visibility
-        this.mobileClient.onSessionVisible(sessionId);
+    private applyMessages(sessionId: string, messages: NormalizedMessage[]) {
+        storage.getState().applyMessages(sessionId, messages);
         
-        // Create messages sync if doesn't exist
-        if (!this.messagesSync.has(sessionId)) {
-            const sync = new InvalidateSync(() => this.fetchMessages(sessionId));
-            this.messagesSync.set(sessionId, sync);
-        }
-        this.messagesSync.get(sessionId)?.invalidate();
-        
-        // Also invalidate git status sync for this session
-        gitStatusSync.getSync(sessionId).invalidate();
-        
-        // Notify voice assistant about session visibility
-        const session = storage.getState().sessions[sessionId];
-        if (session) {
-            voiceHooks.onSessionFocus(sessionId, session.metadata || undefined);
-        }
-    }
-
-    private async fetchMessages(sessionId: string) {
-        // Messages are fetched automatically by MobileApiClient
-        // This is kept for compatibility but the actual fetching happens in the client
-    }
-
-    sendMessage(sessionId: string, text: string) {
-        const session = storage.getState().sessions[sessionId];
-        if (!session) {
-            console.error(`Session ${sessionId} not found in storage`);
-            return;
-        }
-
-        // Read permission mode and model mode from session state
-        const permissionMode = session.permissionMode || 'default';
-        const modelMode = session.modelMode || 'default';
-
-        // Determine sentFrom based on platform
-        let sentFrom: string;
-        if (Platform.OS === 'web') {
-            sentFrom = 'web';
-        } else if (Platform.OS === 'android') {
-            sentFrom = 'android';
-        } else if (Platform.OS === 'ios') {
-            sentFrom = isRunningOnMac() ? 'mac' : 'ios';
-        } else {
-            sentFrom = 'web'; // fallback
-        }
-
-        // Send message through API client
-        this.mobileClient.sendMessage(sessionId, text, {
-            sentFrom,
-            permissionMode,
-            modelMode: modelMode === 'default' ? undefined : modelMode
-        });
-    }
-
-    applySettings = (delta: Partial<Settings>) => {
-        storage.getState().applySettingsLocal(delta);
-
-        // Save pending settings
-        this.pendingSettings = { ...this.pendingSettings, ...delta };
-        savePendingSettings(this.pendingSettings);
-
-        // Sync PostHog opt-out state if it was changed
-        if (tracking && 'analyticsOptOut' in delta) {
-            const currentSettings = storage.getState().settings;
-            if (currentSettings.analyticsOptOut) {
-                tracking.optOut();
-            } else {
-                tracking.optIn();
+        // Check for mutable tool calls
+        for (const msg of messages) {
+            if (msg.role === 'agent' && msg.content[0]?.type === 'tool-result') {
+                const hasMutableTool = storage.getState().isMutableToolCall(sessionId, msg.content[0].tool_use_id);
+                if (hasMutableTool) {
+                    gitStatusSync.invalidate(sessionId);
+                }
             }
         }
+    }
 
-        // Sync settings through API client
-        this.mobileClient.updateSettings(delta as ApiSettings);
+    private fetchPurchases = async () => {
+        // This will be called by purchasesSync InvalidateSync
+        if (!this.revenueCatInitialized) {
+            return;
+        }
+        
+        try {
+            await RevenueCat.syncPurchases();
+            const customerInfo = await RevenueCat.getCustomerInfo();
+            storage.getState().applyPurchases(customerInfo);
+        } catch (error) {
+            console.error('Failed to fetch purchases:', error);
+        }
     }
 
     refreshPurchases = () => {
         this.purchasesSync.invalidate();
     }
 
-    private async fetchPurchases() {
-        if (!this.revenueCatInitialized || Platform.OS === 'web') {
-            return;
-        }
-
-        try {
-            const customerInfo = await RevenueCat.getCustomerInfo();
-            storage.getState().applyPurchases(customerInfo);
-        } catch (error) {
-            console.log('Failed to fetch purchases:', error);
-        }
-    }
-
-    purchaseProduct = async (productId: string): Promise<{ success: boolean; error?: string }> => {
+    async presentPaywall(): Promise<PaywallResult> {
         try {
             if (!this.revenueCatInitialized) {
-                return { success: false, error: 'RevenueCat not initialized' };
+                console.error('RevenueCat not initialized');
+                return PaywallResult.ERROR;
             }
 
-            const products = await RevenueCat.getProducts([productId]);
-            if (products.length === 0) {
-                return { success: false, error: `Product '${productId}' not found` };
-            }
-
-            const product = products[0];
-            const { customerInfo } = await RevenueCat.purchaseStoreProduct(product);
-            storage.getState().applyPurchases(customerInfo);
-
-            return { success: true };
-        } catch (error: any) {
-            if (error.userCancelled) {
-                return { success: false, error: 'Purchase cancelled' };
-            }
-            return { success: false, error: error.message || 'Purchase failed' };
-        }
-    }
-
-    getOfferings = async (): Promise<{ success: boolean; offerings?: any; error?: string }> => {
-        try {
-            if (!this.revenueCatInitialized) {
-                return { success: false, error: 'RevenueCat not initialized' };
-            }
-
-            const offerings = await RevenueCat.getOfferings();
-            return { success: true, offerings };
-        } catch (error: any) {
-            return { success: false, error: error.message || 'Failed to get offerings' };
-        }
-    }
-
-    presentPaywall = async (): Promise<PaywallResult> => {
-        try {
-            if (!this.revenueCatInitialized) {
-                return PaywallResult.NOT_INITIALIZED;
-            }
-
+            // Track that paywall was presented
             trackPaywallPresented();
-            const presentPaywall = (RevenueCat as RevenueCatInterface).presentPaywall;
-            const result = presentPaywall ? await presentPaywall() : PaywallResult.NOT_PRESENTED;
 
-            if (result === PaywallResult.PURCHASED) {
-                trackPaywallPurchased();
-                this.refreshPurchases();
-            } else if (result === PaywallResult.CANCELLED) {
-                trackPaywallCancelled();
-            } else if (result === PaywallResult.RESTORED) {
-                trackPaywallRestored();
-                this.refreshPurchases();
-            } else if (result === PaywallResult.ERROR) {
-                trackPaywallError('Paywall presentation error');
+            const paywallResult = await RevenueCat.presentPaywall();
+
+            // Handle the result
+            switch (paywallResult) {
+                case PaywallResult.PURCHASED:
+                    trackPaywallPurchased();
+                    
+                    // Fetch latest customer info to update entitlements
+                    const customerInfo = await RevenueCat.getCustomerInfo();
+                    storage.getState().applyPurchases(customerInfo);
+                    
+                    return PaywallResult.PURCHASED;
+                    
+                case PaywallResult.RESTORED:
+                    trackPaywallRestored();
+                    
+                    // Fetch latest customer info after restore
+                    const restoredInfo = await RevenueCat.getCustomerInfo();
+                    storage.getState().applyPurchases(restoredInfo);
+                    
+                    return PaywallResult.RESTORED;
+                    
+                case PaywallResult.CANCELLED:
+                    trackPaywallCancelled();
+                    return PaywallResult.CANCELLED;
+                    
+                case PaywallResult.ERROR:
+                default:
+                    trackPaywallError('Unknown error');
+                    return PaywallResult.ERROR;
             }
-
-            return result;
         } catch (error: any) {
             const errorMessage = error.message ?? 'Unknown error';
             trackPaywallError(errorMessage);
@@ -429,6 +360,29 @@ class Sync {
         }
     }
 
+    onSessionVisible(sessionId: string) {
+        // Initialize messages sync for this session if not already done
+        if (!this.messagesSync.has(sessionId)) {
+            this.messagesSync.set(sessionId, new InvalidateSync(async () => {
+                // Messages are fetched automatically by MobileApiClient
+            }));
+        }
+    }
+
+    sendDraft(sessionId: string, draft: string | null) {
+        this.mobileClient.sendSessionUpdate(sessionId, { draft });
+    }
+
+    sendMessage(sessionId: string, message: Message) {
+        this.mobileClient.sendMessage(sessionId, message);
+    }
+
+    updateSettings(settings: Partial<Settings>) {
+        Object.assign(this.pendingSettings, settings);
+        savePendingSettings(this.pendingSettings);
+        this.mobileClient.updateSettings(settings);
+    }
+
     disconnect() {
         this.mobileClient?.disconnect();
     }
@@ -436,6 +390,27 @@ class Sync {
     // Get the mobile API client for RPC operations
     getMobileClient() {
         return this.mobileClient;
+    }
+
+    /**
+     * Clear cache for a specific session (useful when session is deleted)
+     */
+    clearSessionCache(sessionId: string): void {
+        this.encryptionCache.clearSessionCache(sessionId);
+    }
+
+    /**
+     * Clear all cached data (useful on logout)
+     */
+    clearAllCache(): void {
+        this.encryptionCache.clearCache();
+    }
+
+    /**
+     * Get cache statistics for debugging performance
+     */
+    getCacheStats() {
+        return this.encryptionCache.getStats();
     }
 }
 

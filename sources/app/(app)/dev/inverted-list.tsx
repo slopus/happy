@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, FlatList, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, FlatList, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Stack } from 'expo-router';
 import { useKeyboardHandler, useKeyboardState, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
@@ -48,8 +48,8 @@ export default function InvertedListTest() {
     };
 
     const renderItem = ({ item }: { item: { id: string; text: string } }) => (
-        <View className="p-4 mx-4 my-2 bg-gray-100 rounded-lg">
-            <Text className="text-gray-800">{item.text}</Text>
+        <View style={styles.messageItem}>
+            <Text style={styles.messageText}>{item.text}</Text>
         </View>
     );
 
@@ -61,52 +61,52 @@ export default function InvertedListTest() {
                 }}
             />
 
-            <Animated.View className="flex-1 bg-white" style={{ transform: [{ translateY: height }] }}>
-                <View className="bg-gray-100 p-2 space-y-2">
+            <Animated.View style={[styles.container, { transform: [{ translateY: height }] }]}>
+                <View style={styles.controlsContainer}>
                     <View>
-                        <Text className="text-xs font-semibold mb-1">List Implementation:</Text>
-                        <View className="flex-row space-x-2">
+                        <Text style={styles.controlLabel}>List Implementation:</Text>
+                        <View style={styles.buttonRow}>
                             <TouchableOpacity
                                 onPress={() => setListType('flash')}
-                                className={`px-3 py-1 rounded ${listType === 'flash' ? 'bg-blue-500' : 'bg-gray-300'}`}
+                                style={[styles.button, listType === 'flash' ? styles.buttonActive : styles.buttonInactive]}
                             >
-                                <Text className={`text-xs ${listType === 'flash' ? 'text-white' : 'text-gray-700'}`}>FlashList</Text>
+                                <Text style={[styles.buttonText, listType === 'flash' ? styles.buttonTextActive : styles.buttonTextInactive]}>FlashList</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={() => setListType('flat')}
-                                className={`px-3 py-1 rounded ${listType === 'flat' ? 'bg-blue-500' : 'bg-gray-300'}`}
+                                style={[styles.button, listType === 'flat' ? styles.buttonActive : styles.buttonInactive]}
                             >
-                                <Text className={`text-xs ${listType === 'flat' ? 'text-white' : 'text-gray-700'}`}>FlatList</Text>
+                                <Text style={[styles.buttonText, listType === 'flat' ? styles.buttonTextActive : styles.buttonTextInactive]}>FlatList</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 onPress={() => setListType('legend')}
-                                className={`px-3 py-1 rounded ${listType === 'legend' ? 'bg-blue-500' : 'bg-gray-300'}`}
+                                style={[styles.button, listType === 'legend' ? styles.buttonActive : styles.buttonInactive]}
                             >
-                                <Text className={`text-xs ${listType === 'legend' ? 'text-white' : 'text-gray-700'}`}>LegendList</Text>
+                                <Text style={[styles.buttonText, listType === 'legend' ? styles.buttonTextActive : styles.buttonTextInactive]}>LegendList</Text>
                             </TouchableOpacity>
                         </View>
                     </View>
                     <View>
-                        <Text className="text-xs font-semibold mb-1">Padding Method:</Text>
+                        <Text style={styles.controlLabel}>Padding Method:</Text>
                         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-                            <View className="flex-row space-x-2">
+                            <View style={styles.buttonRow}>
                                 <TouchableOpacity
                                     onPress={() => setPaddingType('animated')}
-                                    className={`px-3 py-1 rounded ${paddingType === 'animated' ? 'bg-blue-500' : 'bg-gray-300'}`}
+                                    style={[styles.button, paddingType === 'animated' ? styles.buttonActive : styles.buttonInactive]}
                                 >
-                                    <Text className={`text-xs ${paddingType === 'animated' ? 'text-white' : 'text-gray-700'}`}>Animated</Text>
+                                    <Text style={[styles.buttonText, paddingType === 'animated' ? styles.buttonTextActive : styles.buttonTextInactive]}>Animated</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     onPress={() => setPaddingType('non-animated')}
-                                    className={`px-3 py-1 rounded ${paddingType === 'non-animated' ? 'bg-blue-500' : 'bg-gray-300'}`}
+                                    style={[styles.button, paddingType === 'non-animated' ? styles.buttonActive : styles.buttonInactive]}
                                 >
-                                    <Text className={`text-xs ${paddingType === 'non-animated' ? 'text-white' : 'text-gray-700'}`}>Non-Animated</Text>
+                                    <Text style={[styles.buttonText, paddingType === 'non-animated' ? styles.buttonTextActive : styles.buttonTextInactive]}>Non-Animated</Text>
                                 </TouchableOpacity>
                                 <TouchableOpacity
                                     onPress={() => setPaddingType('header-footer')}
-                                    className={`px-3 py-1 rounded ${paddingType === 'header-footer' ? 'bg-blue-500' : 'bg-gray-300'}`}
+                                    style={[styles.button, paddingType === 'header-footer' ? styles.buttonActive : styles.buttonInactive]}
                                 >
-                                    <Text className={`text-xs ${paddingType === 'header-footer' ? 'text-white' : 'text-gray-700'}`}>Header/Footer</Text>
+                                    <Text style={[styles.buttonText, paddingType === 'header-footer' ? styles.buttonTextActive : styles.buttonTextInactive]}>Header/Footer</Text>
                                 </TouchableOpacity>
                             </View>
                         </ScrollView>
@@ -115,8 +115,8 @@ export default function InvertedListTest() {
                 
                 {(() => {
                     const ListEmptyComponent = (
-                        <View className="flex-1 items-center justify-center p-8">
-                            <Text className="text-gray-500 text-center">
+                        <View style={styles.emptyState}>
+                            <Text style={styles.emptyStateText}>
                                 No messages yet. Type something below!
                             </Text>
                         </View>
@@ -183,10 +183,10 @@ export default function InvertedListTest() {
                     }
                 })()}
 
-                <View className="border-t border-gray-200 p-4" style={{ paddingBottom: insets.bottom + 4 }}>
-                    <View className="flex-row items-center">
+                <View style={[styles.inputContainer, { paddingBottom: insets.bottom + 4 }]}>
+                    <View style={styles.inputRow}>
                         <TextInput
-                            className="flex-1 px-4 py-2 bg-gray-100 rounded-full mr-2"
+                            style={styles.textInput}
                             placeholder="Type a message..."
                             value={inputText}
                             onChangeText={setInputText}
@@ -195,9 +195,9 @@ export default function InvertedListTest() {
                         />
                         <TouchableOpacity
                             onPress={addMessage}
-                            className="px-4 py-2 bg-blue-500 rounded-full"
+                            style={styles.sendButton}
                         >
-                            <Text className="text-white font-semibold">Send</Text>
+                            <Text style={styles.sendButtonText}>Send</Text>
                         </TouchableOpacity>
                     </View>
                 </View>
@@ -205,3 +205,91 @@ export default function InvertedListTest() {
         </>
     );
 }
+
+const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+        backgroundColor: 'white',
+    },
+    controlsContainer: {
+        backgroundColor: '#f3f4f6',
+        padding: 8,
+        gap: 8,
+    },
+    controlLabel: {
+        fontSize: 12,
+        fontWeight: '600',
+        marginBottom: 4,
+    },
+    buttonRow: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    button: {
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        borderRadius: 4,
+    },
+    buttonActive: {
+        backgroundColor: '#3b82f6',
+    },
+    buttonInactive: {
+        backgroundColor: '#d1d5db',
+    },
+    buttonText: {
+        fontSize: 12,
+    },
+    buttonTextActive: {
+        color: 'white',
+    },
+    buttonTextInactive: {
+        color: '#374151',
+    },
+    messageItem: {
+        padding: 16,
+        marginHorizontal: 16,
+        marginVertical: 8,
+        backgroundColor: '#f3f4f6',
+        borderRadius: 8,
+    },
+    messageText: {
+        color: '#1f2937',
+    },
+    emptyState: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 32,
+    },
+    emptyStateText: {
+        color: '#6b7280',
+        textAlign: 'center',
+    },
+    inputContainer: {
+        borderTopWidth: 1,
+        borderTopColor: '#e5e7eb',
+        padding: 16,
+    },
+    inputRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    textInput: {
+        flex: 1,
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        backgroundColor: '#f3f4f6',
+        borderRadius: 20,
+        marginRight: 8,
+    },
+    sendButton: {
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        backgroundColor: '#3b82f6',
+        borderRadius: 20,
+    },
+    sendButtonText: {
+        color: 'white',
+        fontWeight: '600',
+    },
+});

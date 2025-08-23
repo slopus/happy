@@ -1,6 +1,22 @@
 import * as React from 'react';
 import { Platform } from 'react-native';
 import Animated from 'react-native-reanimated';
+import { StyleSheet } from 'react-native-unistyles';
+
+const stylesheet = StyleSheet.create((theme, runtime) => ({
+    container: {
+        borderRadius: 12,
+        overflow: 'hidden',
+        backgroundColor: theme.colors.surface,
+        borderWidth: Platform.OS === 'web' ? 0 : 0.5,
+        borderColor: theme.colors.modal.border,
+        shadowColor: theme.colors.shadow.color,
+        shadowOffset: { width: 0, height: 2 },
+        shadowRadius: 3.84,
+        shadowOpacity: theme.colors.shadow.opacity,
+        elevation: 5,
+    },
+}));
 
 interface FloatingOverlayProps {
     children: React.ReactNode;
@@ -10,6 +26,7 @@ interface FloatingOverlayProps {
 }
 
 export const FloatingOverlay = React.memo((props: FloatingOverlayProps) => {
+    const styles = stylesheet;
     const { 
         children, 
         maxHeight = 240, 
@@ -17,32 +34,8 @@ export const FloatingOverlay = React.memo((props: FloatingOverlayProps) => {
         keyboardShouldPersistTaps = 'handled' 
     } = props;
 
-    // Container styles with shadow
-    const containerStyle = {
-        backgroundColor: 'white',
-        borderRadius: 12,
-        maxHeight,
-        ...Platform.select({
-            ios: {
-                shadowColor: '#000',
-                shadowOffset: { width: 0, height: -2 },
-                shadowOpacity: 0.1,
-                shadowRadius: 8,
-            },
-            android: {
-                elevation: 4,
-            },
-            default: {
-                boxShadow: '0 -2px 8px rgba(0, 0, 0, 0.1)',
-            },
-        }),
-        borderWidth: Platform.OS === 'web' ? 0 : 0.5,
-        borderColor: 'rgba(0, 0, 0, 0.1)',
-        overflow: 'hidden' as const,
-    };
-
     return (
-        <Animated.View style={containerStyle}>
+        <Animated.View style={[styles.container, { maxHeight }]}>
             <Animated.ScrollView
                 style={{ maxHeight }}
                 keyboardShouldPersistTaps={keyboardShouldPersistTaps}

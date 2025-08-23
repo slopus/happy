@@ -7,6 +7,8 @@ import { layout } from './layout';
 import { PermissionModeSelector, PermissionMode } from './PermissionModeSelector';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
+import { Ionicons } from '@expo/vector-icons';
+import { useUnistyles } from 'react-native-unistyles';
 
 interface ChatFooterProps {
     status?: {
@@ -20,10 +22,13 @@ interface ChatFooterProps {
     permissionMode?: PermissionMode;
     onPermissionModeChange?: (mode: PermissionMode) => void;
     onSwitch?: () => void;
+    controlledByUser?: boolean;
     children?: React.ReactNode;
 }
 
 export const ChatFooter = React.memo((props: ChatFooterProps) => {
+    const { theme } = useUnistyles();
+    
     // Double press abort button states
     const [isFirstPress, setIsFirstPress] = React.useState(false);
     const [isAborting, setIsAborting] = React.useState(false);
@@ -134,6 +139,24 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
         marginRight: 8,
     };
 
+    const warningContainerStyle: ViewStyle = {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        paddingVertical: 4,
+        backgroundColor: theme.colors.box.warning.background,
+        borderRadius: 8,
+        marginHorizontal: 32,
+        marginTop: 4,
+    };
+
+    const warningTextStyle: TextStyle = {
+        fontSize: 12,
+        color: theme.colors.box.warning.text,
+        marginLeft: 6,
+        ...Typography.default()
+    };
+
     const abortButtonStyle: ViewStyle = {
         paddingHorizontal: 12,
         paddingVertical: 6,
@@ -146,8 +169,8 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
     const abortButtonTextStyle: TextStyle = {
         fontSize: 13,
         color: isFirstPress 
-            ? Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })!
-            : '#000',
+            ? theme.colors.warning
+            : theme.colors.text,
         fontWeight: '600',
         ...Typography.default('semiBold')
     };
@@ -174,8 +197,8 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
                                 backgroundColor: abortButtonBgAnim.interpolate({
                                     inputRange: [0, 1],
                                     outputRange: [
-                                        Platform.select({ ios: '#F2F2F7', android: '#E0E0E0', default: '#F2F2F7' })!,
-                                        Platform.select({ ios: '#FF3B30', android: '#F44336', default: '#FF3B30' })!
+                                        theme.colors.surface,
+                                        theme.colors.textDestructive
                                     ]
                                 }),
                                 borderRadius: Platform.select({ default: 16, android: 20 }),
@@ -189,7 +212,7 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
                                 {isAborting ? (
                                     <ActivityIndicator 
                                         size="small" 
-                                        color={Platform.select({ ios: '#FFF', android: '#FFF', default: '#FFF' })}
+                                        color={theme.colors.text}
                                     />
                                 ) : (
                                     <Text style={abortButtonTextStyle}>
@@ -201,6 +224,20 @@ export const ChatFooter = React.memo((props: ChatFooterProps) => {
                     </Shaker>
                 )} */}
             </View>
+            
+            {/* Warning when permissions are controlled from terminal */}
+            {props.controlledByUser && (
+                <View style={warningContainerStyle}>
+                    <Ionicons 
+                        name="information-circle" 
+                        size={16} 
+                        color={theme.colors.box.warning.text}
+                    />
+                    <Text style={warningTextStyle}>
+                        Permissions shown in terminal only. Reset or send a message to control from app.
+                    </Text>
+                </View>
+            )}
         </View>
     );
 });

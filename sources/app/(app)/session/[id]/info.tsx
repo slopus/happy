@@ -12,6 +12,8 @@ import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeT
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { sessionKill } from '@/sync/ops';
+import { useUnistyles } from 'react-native-unistyles';
+import { layout } from '@/components/layout';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -53,6 +55,7 @@ function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: 
 }
 
 export default React.memo(() => {
+    const { theme } = useUnistyles();
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
     const session = useSession(id);
@@ -83,7 +86,7 @@ export default React.memo(() => {
 
     const handleKillSession = useCallback(async () => {
         if (!session) return;
-        
+
         Modal.alert(
             'Kill Session',
             'Are you sure you want to terminate this session? This will immediately stop the session process.',
@@ -117,7 +120,7 @@ export default React.memo(() => {
     if (!session) {
         return (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: '#8E8E93', fontSize: 17 }}>Session not found</Text>
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 17, ...Typography.default('semiBold') }}>Session not found</Text>
             </View>
         );
     }
@@ -125,52 +128,39 @@ export default React.memo(() => {
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
 
-    const screenOptions = {
-        // headerShown: true,
-        headerTitle: 'Session Info',
-        headerStyle: {
-            backgroundColor: 'white',
-        },
-        headerTintColor: '#000',
-        headerTitleStyle: {
-            color: '#000',
-            fontSize: 17,
-            fontWeight: '600' as const,
-        }
-    };
-
     return (
         <>
-            <Stack.Screen options={screenOptions} />
-
             <ItemList>
                 {/* Session Header */}
-                <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: 'white', marginBottom: 35 }}>
-                    <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} />
-                    <Text style={{
-                        fontSize: 20,
-                        fontWeight: '600',
-                        marginTop: 12,
-                        textAlign: 'center',
-                        ...Typography.default('semiBold')
-                    }}>
-                        {sessionName}
-                    </Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                        <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} size={10} />
+                <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
+                    <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.surface, marginBottom: 8, borderRadius: 12, marginHorizontal: 16, marginTop: 16 }}>
+                        <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} />
                         <Text style={{
-                            fontSize: 15,
-                            color: sessionStatus.statusColor,
-                            fontWeight: '500',
-                            ...Typography.default()
+                            fontSize: 20,
+                            fontWeight: '600',
+                            marginTop: 12,
+                            textAlign: 'center',
+                            color: theme.colors.text,
+                            ...Typography.default('semiBold')
                         }}>
-                            {sessionStatus.statusText}
+                            {sessionName}
                         </Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                            <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} size={10} />
+                            <Text style={{
+                                fontSize: 15,
+                                color: sessionStatus.statusColor,
+                                fontWeight: '500',
+                                ...Typography.default()
+                            }}>
+                                {sessionStatus.statusText}
+                            </Text>
+                        </View>
                     </View>
                 </View>
 
                 {/* Session Details */}
-                <ItemGroup title="Session Details">
+                <ItemGroup>
                     <Item
                         title="Session ID"
                         subtitle={`${session.id.substring(0, 8)}...${session.id.substring(session.id.length - 8)}`}

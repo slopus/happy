@@ -18,7 +18,6 @@ import { Session } from '@/sync/storageTypes';
 import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsLandscape, useDeviceType, useHeaderHeight } from '@/utils/responsive';
-import { StatusBar } from 'expo-status-bar';
 import { AgentContentView } from '@/components/AgentContentView';
 import { isRunningOnMac } from '@/utils/platform';
 import { Modal } from '@/modal';
@@ -34,16 +33,18 @@ import { useIsTablet } from '@/utils/responsive';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { machineSpawnNewSession } from '@/sync/ops';
+import { useUnistyles } from 'react-native-unistyles';
 
 
 export default React.memo(() => {
     const route = useRoute();
     const sessionId = (route.params! as any).id as string;
     const session = useSession(sessionId);
+    const { theme } = useUnistyles();
     if (!session) {
         return (
             <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#666" />
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
             </View>
         )
     }
@@ -54,6 +55,7 @@ export default React.memo(() => {
 
 
 function SessionView({ sessionId, session }: { sessionId: string, session: Session }) {
+    const { theme } = useUnistyles();
     const router = useRouter();
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
@@ -160,8 +162,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     }), [screenWidth]);
 
     const maintainVisibleContentPosition = useMemo(() => ({
-        minIndexForVisible: 0,
-        autoscrollToTopThreshold: 100,
+        minIndexForVisible: 1,
+        autoscrollToBottomThreshold: 50,
     }), []);
 
     const ListFooter = useCallback(() => (
@@ -170,9 +172,8 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 state: sessionStatus.state,
                 text: sessionStatus.state === 'disconnected' ? 'disconnected' :
                     sessionStatus.state === 'thinking' ? 'thinking...' :
-                        sessionStatus.state === 'idle' ? 'idle' :
-                            sessionStatus.state === 'permission_required' ? 'permission required' :
-                                sessionStatus.state === 'waiting' ? 'connected' : '',
+                        sessionStatus.state === 'permission_required' ? 'permission required' :
+                            sessionStatus.state === 'waiting' ? 'connected' : '',
                 color: sessionStatus.statusColor,
                 dotColor: sessionStatus.statusDotColor,
                 isPulsing: sessionStatus.isPulsing,
@@ -180,8 +181,9 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
             onSwitch={() => sessionSwitch(sessionId, 'remote')}
+            controlledByUser={session.agentState?.controlledByUser || false}
         />
-    ), [sessionStatus, permissionMode, sessionId]);
+    ), [sessionStatus, permissionMode, sessionId, session.agentState?.controlledByUser]);
 
     const content = (
         <>
@@ -203,34 +205,6 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     />
                 )}
             </Deferred>
-            {/* If session is not active (explicitly marked as dead) but machine is active, show a message */}
-            {!session.active && machine?.active && (
-                <View style={{ paddingHorizontal: 16, paddingVertical: 16, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 20, color: '#666', textAlign: 'center' }}>Session is dead, reviving a session in on our TODO, you are welcome to contribute. Repo: slopus/happy. For now you can start a new session from the machine view.</Text>
-                    {/* <RoundButton
-                        title={isReviving ? "Reviving..." : "Revive session"}
-                        onPress={async () => {
-                            let machineId = session.metadata?.machineId;
-                            if (!isReviving && machineId && session.metadata?.path) {
-                                setIsReviving(true);
-                                try {
-                                    const result = await machineSpawnNewSession(machineId, session.metadata.path);
-                                    if (result.sessionId && result.sessionId !== sessionId) {
-                                        router.replace(`/session/${result.sessionId}`);
-                                    }
-                                } catch (error) {
-                                    Modal.alert('Error', 'Failed to revive session');
-                                } finally {
-                                    setIsReviving(false);
-                                }
-                            }
-                        }}
-                        size="normal"
-                        disabled={isReviving}
-                        loading={isReviving}
-                    /> */}
-                </View>
-            )}
         </>
     );
 
@@ -239,7 +213,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             {isLoaded ? (
                 <EmptyMessages session={session} />
             ) : (
-                <ActivityIndicator size="large" color="#C7C7CC" />
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
             )}
         </>
     ) : null;
@@ -290,8 +264,6 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
 
     return (
         <>
-            <StatusBar style="dark" translucent backgroundColor="transparent" />
-
             {/* Status bar shadow for landscape mode */}
             {isLandscape && deviceType === 'phone' && (
                 <View style={{
@@ -300,14 +272,14 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     left: 0,
                     right: 0,
                     height: safeArea.top,
-                    backgroundColor: 'white',
+                    backgroundColor: theme.colors.surface,
                     zIndex: 1000,
-                    shadowColor: '#000',
+                    shadowColor: theme.colors.shadow.color,
                     shadowOffset: {
                         width: 0,
                         height: 2,
                     },
-                    shadowOpacity: 0.1,
+                    shadowOpacity: theme.colors.shadow.opacity,
                     shadowRadius: 3,
                     elevation: 5,
                 }} />
@@ -369,7 +341,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                             width: 44,
                             height: 44,
                             borderRadius: 22,
-                            backgroundColor: 'rgba(255, 255, 255, 0.9)',
+                            backgroundColor: `rgba(${theme.dark ? '28, 23, 28' : '255, 255, 255'}, 0.9)`,
                             alignItems: 'center',
                             justifyContent: 'center',
                             ...Platform.select({

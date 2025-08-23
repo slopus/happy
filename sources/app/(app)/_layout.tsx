@@ -6,6 +6,7 @@ import { Typography } from '@/constants/Typography';
 import { createHeader } from '@/components/navigation/Header';
 import { Platform } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
+import { useUnistyles } from 'react-native-unistyles';
 
 export const unstable_settings = {
     initialRouteName: 'index',
@@ -14,7 +15,8 @@ export const unstable_settings = {
 export default function RootLayout() {
     // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
     const shouldUseCustomHeader = Platform.OS === 'android' || isRunningOnMac() || Platform.OS === 'web';
-    
+    const { theme } = useUnistyles();
+
     return (
         <Stack
             initialRouteName='index'
@@ -23,14 +25,15 @@ export default function RootLayout() {
                 headerBackTitle: 'Back',
                 headerShadowVisible: false,
                 contentStyle: {
-                    backgroundColor: 'white',
+                    backgroundColor: theme.colors.surface,
                 },
                 headerStyle: {
-                    backgroundColor: 'white',
+                    backgroundColor: theme.colors.header.background,
                 },
-                headerTintColor: '#000',
+                headerTintColor: theme.colors.header.tint,
                 headerTitleStyle: {
-                    color: '#000',
+                    color: theme.colors.header.tint,
+                    ...Typography.default('semiBold'),
                 },
                 
             }}
@@ -68,7 +71,7 @@ export default function RootLayout() {
                 name="session/[id]/info"
                 options={{
                     headerShown: true,
-                    headerTitle: 'Session Info',
+                    headerTitle: '',
                     headerBackTitle: 'Back',
                 }}
             />

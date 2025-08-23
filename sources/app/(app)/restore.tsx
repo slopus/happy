@@ -9,8 +9,45 @@ import { authGetToken } from '@/auth/authGetToken';
 import { decodeBase64 } from '@/auth/base64';
 import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+const stylesheet = StyleSheet.create((theme) => ({
+    scrollView: {
+        flex: 1,
+        backgroundColor: theme.colors.surface,
+    },
+    container: {
+        flex: 1,
+        alignItems: 'center',
+        paddingHorizontal: 24,
+    },
+    contentWrapper: {
+        width: '100%',
+        maxWidth: layout.maxWidth,
+        paddingVertical: 24,
+    },
+    instructionText: {
+        fontSize: 16,
+        color: theme.colors.textSecondary,
+        marginBottom: 20,
+        ...Typography.default(),
+    },
+    textInput: {
+        backgroundColor: theme.colors.input.background,
+        padding: 16,
+        borderRadius: 8,
+        marginBottom: 24,
+        fontFamily: 'IBMPlexMono-Regular',
+        fontSize: 14,
+        minHeight: 120,
+        textAlignVertical: 'top',
+        color: theme.colors.input.text,
+    },
+}));
 
 export default function Restore() {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
     const auth = useAuth();
     const router = useRouter();
     const [restoreKey, setRestoreKey] = useState('');
@@ -52,39 +89,17 @@ export default function Restore() {
     };
 
     return (
-        <ScrollView style={{ flex: 1, backgroundColor: 'white' }}>
-            <View style={{ 
-                flex: 1, 
-                alignItems: 'center',
-                paddingHorizontal: 24
-            }}>
-                <View style={{ 
-                    width: '100%', 
-                    maxWidth: layout.maxWidth,
-                    paddingVertical: 24
-                }}>
-                    <Text style={{ 
-                        fontSize: 16, 
-                        color: '#666', 
-                        marginBottom: 20, 
-                        ...Typography.default() 
-                    }}>
+        <ScrollView style={styles.scrollView}>
+            <View style={styles.container}>
+                <View style={styles.contentWrapper}>
+                    <Text style={styles.instructionText}>
                         Enter your secret key to restore access to your account.
                     </Text>
 
                     <TextInput
-                        style={{
-                            backgroundColor: '#f3f4f6',
-                            padding: 16,
-                            borderRadius: 8,
-                            marginBottom: 24,
-                            fontFamily: 'IBMPlexMono-Regular',
-                            fontSize: 14,
-                            minHeight: 120,
-                            textAlignVertical: 'top'
-                        }}
+                        style={styles.textInput}
                         placeholder="XXXXX-XXXXX-XXXXX..."
-                        placeholderTextColor="#999"
+                        placeholderTextColor={theme.colors.input.placeholder}
                         value={restoreKey}
                         onChangeText={setRestoreKey}
                         autoCapitalize="characters"

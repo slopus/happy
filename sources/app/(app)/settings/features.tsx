@@ -1,9 +1,10 @@
-import { Switch, Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
+import { Switch } from '@/components/Switch';
 
 export default function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
@@ -24,8 +25,6 @@ export default function FeaturesSettingsScreen() {
                         <Switch
                             value={experiments}
                             onValueChange={setExperiments}
-                            trackColor={{ false: '#767577', true: '#34C759' }}
-                            thumbColor="#FFFFFF"
                         />
                     }
                     showChevron={false}
@@ -46,8 +45,6 @@ export default function FeaturesSettingsScreen() {
                             <Switch
                                 value={commandPaletteEnabled}
                                 onValueChange={setCommandPaletteEnabled}
-                                trackColor={{ false: '#767577', true: '#34C759' }}
-                                thumbColor="#FFFFFF"
                             />
                         }
                         showChevron={false}

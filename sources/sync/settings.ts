@@ -13,6 +13,9 @@ export const SettingsSchema = z.object({
     analyticsOptOut: z.boolean().describe('Whether to opt out of anonymous analytics'),
     experiments: z.boolean().describe('Whether to enable experimental features'),
     alwaysShowContextSize: z.boolean().describe('Always show context size in agent input'),
+    avatarStyle: z.string().describe('Avatar display style'),
+    reviewPromptAnswered: z.boolean().describe('Whether the review prompt has been answered'),
+    reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
 });
 
 //
@@ -42,7 +45,10 @@ export const settingsDefaults: Settings = {
     showLineNumbersInToolViews: false,
     analyticsOptOut: false,
     experiments: false,
-    alwaysShowContextSize: false
+    alwaysShowContextSize: false,
+    avatarStyle: 'gradient',
+    reviewPromptAnswered: false,
+    reviewPromptLikedApp: null,
 };
 Object.freeze(settingsDefaults);
 

@@ -14,17 +14,16 @@ export default {
     expo: {
         name,
         slug: "happy",
-        version: "1.3.1",
-        runtimeVersion: "15",
+        version: "1.4.1",
+        runtimeVersion: "16",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
         scheme: "happy",
         userInterfaceStyle: "automatic",
         newArchEnabled: true,
-        splash: {
-            image: "./sources/assets/images/splash-icon.png",
-            imageWidth: 256,
-            backgroundColor: "#ffffff"
+        notification: {
+            icon: "./sources/assets/images/icon-notification.png",
+            iosDisplayInForeground: true
         },
         ios: {
             supportsTablet: true,
@@ -54,7 +53,7 @@ export default {
             ],
             edgeToEdgeEnabled: true,
             package: bundleId,
-            googleServicesFile: "./google-services.json"
+            googleServicesFile: "./google-services.json",
         },
         web: {
             bundler: "metro",
@@ -111,6 +110,25 @@ export default {
                 "expo-notifications",
                 {
                     "enableBackgroundRemoteNotifications": true
+                }
+            ],
+            [
+                'expo-splash-screen',
+                {
+                    ios: {
+                        backgroundColor: "#F2F2F7",
+                        dark: {
+                            backgroundColor: "#1C1C1E",
+                        }
+                    },
+                    android: {
+                        image: "./sources/assets/images/splash-android-light.png",
+                        backgroundColor: "#F5F5F5",
+                        dark: {
+                            image: "./sources/assets/images/splash-android-dark.png",
+                            backgroundColor: "#1e1e1e",
+                        }
+                    }
                 }
             ]
         ],

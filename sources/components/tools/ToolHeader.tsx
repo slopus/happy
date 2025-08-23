@@ -1,14 +1,16 @@
 import * as React from 'react';
-import { Text, View, StyleSheet } from 'react-native';
+import { Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { knownTools } from '@/components/tools/knownTools';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 interface ToolHeaderProps {
     tool: ToolCall;
 }
 
 export function ToolHeader({ tool }: ToolHeaderProps) {
+    const { theme } = useUnistyles();
     const knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
 
     // Extract status first for Bash tool to potentially use as title
@@ -30,7 +32,7 @@ export function ToolHeader({ tool }: ToolHeaderProps) {
         }
     }
 
-    const icon = knownTool?.icon ? knownTool.icon(18, 'black') : <Ionicons name="construct-outline" size={18} color="black" />;
+    const icon = knownTool?.icon ? knownTool.icon(18, theme.colors.header.tint) : <Ionicons name="construct-outline" size={18} color={theme.colors.header.tint} />;
 
     // Extract subtitle using the same logic as ToolView
     let subtitle = null;
@@ -56,7 +58,7 @@ export function ToolHeader({ tool }: ToolHeaderProps) {
     );
 }
 
-const styles = StyleSheet.create({
+const styles = StyleSheet.create((theme) => ({
     container: {
         flexDirection: 'row',
         justifyContent: 'center',
@@ -79,13 +81,13 @@ const styles = StyleSheet.create({
     title: {
         fontSize: 14,
         fontWeight: '500',
-        color: '#000',
+        color: theme.colors.text,
         textAlign: 'center',
     },
     subtitle: {
         fontSize: 11,
-        color: '#666',
+        color: theme.colors.textSecondary,
         textAlign: 'center',
         marginTop: 2,
     },
-});
+}));

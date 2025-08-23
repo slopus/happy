@@ -1,70 +1,103 @@
 import React from 'react';
-import { View, Text, Platform, TextInput } from 'react-native';
+import { View, Text, Platform } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { Modal } from '@/modal';
-import { Alert } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
-function ManualAuthModal({ onClose, onSubmit }: { 
-    onClose: () => void; 
-    onSubmit: (url: string) => void }
-) {
-    const [url, setUrl] = React.useState('');
-    return (
-        <View style={{ padding: 20, backgroundColor: 'white', borderRadius: 12, minWidth: 300 }}>
-            <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>
-                Enter URL manually
-            </Text>
-            <Text style={{ fontSize: 14, color: '#666', marginBottom: 16 }}>
-                Paste the authentication URL from your terminal
-            </Text>
-            <TextInput
-                style={{
-                    borderWidth: 1,
-                    borderColor: '#ddd',
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: 14,
-                    marginBottom: 20
-                }}
-                value={url}
-                onChangeText={setUrl}
-                placeholder="happy://terminal?..."
-                placeholderTextColor="#999"
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                <Text onPress={onClose} style={{ color: '#007AFF', fontSize: 16, paddingVertical: 8, paddingHorizontal: 16, marginRight: 8 }}>Cancel</Text>
-                <Text onPress={() => { if (url.trim()) { onSubmit(url.trim()); onClose(); } }} style={{ color: '#007AFF', fontSize: 16, fontWeight: '600', paddingVertical: 8, paddingHorizontal: 16 }}>Authenticate</Text>
-            </View>
-        </View>
-    );
-}
+const stylesheet = StyleSheet.create((theme) => ({
+    container: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginBottom: 32,
+    },
+    title: {
+        marginBottom: 16,
+        textAlign: 'center',
+        fontSize: 24,
+        color: theme.colors.text,
+        ...Typography.default('semiBold'),
+    },
+    terminalBlock: {
+        backgroundColor: theme.colors.surfaceHighest,
+        borderRadius: 8,
+        padding: 20,
+        marginHorizontal: 24,
+        marginBottom: 20,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+    },
+    terminalText: {
+        ...Typography.mono(),
+        fontSize: 16,
+        color: theme.colors.status.connected,
+    },
+    terminalTextFirst: {
+        marginBottom: 8,
+    },
+    stepsContainer: {
+        marginTop: 12,
+        marginHorizontal: 24,
+        marginBottom: 48,
+        width: 250,
+    },
+    stepRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 8,
+    },
+    stepRowLast: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    stepNumber: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: theme.colors.surfaceHigh,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    stepNumberText: {
+        ...Typography.default('semiBold'),
+        fontSize: 14,
+        color: theme.colors.text,
+    },
+    stepText: {
+        ...Typography.default(),
+        fontSize: 18,
+        color: theme.colors.textSecondary,
+    },
+    buttonsContainer: {
+        alignItems: 'center',
+        width: '100%',
+    },
+    buttonWrapper: {
+        width: 240,
+        marginBottom: 12,
+    },
+    buttonWrapperSecondary: {
+        width: 240,
+    },
+}));
 
 export function EmptyMainScreen() {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
 
     return (
-        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', marginBottom: 32 }}>
+        <View style={styles.container}>
             {/* Terminal-style code block */}
-            <Text style={{ marginBottom: 16, textAlign: 'center', fontSize: 24, ...Typography.default('semiBold') }}>Ready to code?</Text>
-            <View style={{
-                backgroundColor: '#444',
-                borderRadius: 8,
-                padding: 20,
-                marginHorizontal: 24,
-                marginBottom: 20,
-                borderWidth: 1,
-                borderColor: '#333'
-            }}>
-
-                <Text style={{ ...Typography.mono(), fontSize: 16, color: '#00ff00', marginBottom: 8 }}>
+            <Text style={styles.title}>Ready to code?</Text>
+            <View style={styles.terminalBlock}>
+                <Text style={[styles.terminalText, styles.terminalTextFirst]}>
                     $ npm i -g happy-coder
                 </Text>
-                <Text style={{ ...Typography.mono(), fontSize: 16, color: '#00ff00' }}>
+                <Text style={styles.terminalText}>
                     $ happy
                 </Text>
             </View>
@@ -72,34 +105,34 @@ export function EmptyMainScreen() {
 
             {Platform.OS !== 'web' && (
                 <>
-                    <View style={{ marginTop: 12, marginHorizontal: 24, marginBottom: 48, width: 250 }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                                <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>1</Text>
+                    <View style={styles.stepsContainer}>
+                        <View style={styles.stepRow}>
+                            <View style={styles.stepNumber}>
+                                <Text style={styles.stepNumberText}>1</Text>
                             </View>
-                            <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
+                            <Text style={styles.stepText}>
                                 Install the Happy CLI
                             </Text>
                         </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-                            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                                <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>2</Text>
+                        <View style={styles.stepRow}>
+                            <View style={styles.stepNumber}>
+                                <Text style={styles.stepNumberText}>2</Text>
                             </View>
-                            <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
+                            <Text style={styles.stepText}>
                                 Run it
                             </Text>
                         </View>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                            <View style={{ width: 24, height: 24, borderRadius: 12, backgroundColor: 'rgba(0,0,0,0.1)', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                                <Text style={{ ...Typography.default('semiBold'), fontSize: 14, color: 'rgba(0,0,0,0.7)' }}>3</Text>
+                        <View style={styles.stepRowLast}>
+                            <View style={styles.stepNumber}>
+                                <Text style={styles.stepNumberText}>3</Text>
                             </View>
-                            <Text style={{ ...Typography.default(), fontSize: 18, color: 'rgba(0,0,0,0.6)' }}>
+                            <Text style={styles.stepText}>
                                 Scan the QR code
                             </Text>
                         </View>
                     </View>
-                    <View style={{ alignItems: 'center', width: '100%' }}>
-                        <View style={{ width: 240, marginBottom: 12 }}>
+                    <View style={styles.buttonsContainer}>
+                        <View style={styles.buttonWrapper}>
                             <RoundButton
                                 title="Open Camera"
                                 size="large"
@@ -107,38 +140,24 @@ export function EmptyMainScreen() {
                                 onPress={connectTerminal}
                             />
                         </View>
-                        <View style={{ width: 240 }}>
+                        <View style={styles.buttonWrapperSecondary}>
                             <RoundButton
                                 title="Enter URL manually"
                                 size="normal"
                                 display="inverted"
-                                onPress={() => {
-                                    if (Platform.OS === 'ios') {
-                                        Alert.prompt(
-                                            'Authenticate Terminal',
-                                            'Paste the authentication URL from your terminal',
-                                            [
-                                                { text: 'Cancel', style: 'cancel' },
-                                                {
-                                                    text: 'Authenticate',
-                                                    onPress: (url?: string) => {
-                                                        if (url?.trim()) {
-                                                            connectWithUrl(url.trim());
-                                                        }
-                                                    }
-                                                }
-                                            ],
-                                            'plain-text',
-                                            '',
-                                            'happy://terminal?...'
-                                        );
-                                    } else {
-                                        Modal.show({
-                                            component: ManualAuthModal,
-                                            props: {
-                                                onSubmit: (url: string) => connectWithUrl(url)
-                                            }
-                                        });
+                                onPress={async () => {
+                                    const url = await Modal.prompt(
+                                        'Authenticate Terminal',
+                                        'Paste the authentication URL from your terminal',
+                                        {
+                                            placeholder: 'happy://terminal?...',
+                                            cancelText: 'Cancel',
+                                            confirmText: 'Authenticate'
+                                        }
+                                    );
+                                    
+                                    if (url?.trim()) {
+                                        connectWithUrl(url.trim());
                                     }
                                 }}
                             />

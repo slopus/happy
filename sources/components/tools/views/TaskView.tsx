@@ -1,9 +1,10 @@
 import * as React from 'react';
 import { ToolViewProps } from './_all';
-import { Text, View, StyleSheet, ActivityIndicator } from 'react-native';
+import { Text, View, ActivityIndicator, StyleSheet } from 'react-native';
 import { knownTools } from '../../tools/knownTools';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
+import { useUnistyles } from 'react-native-unistyles';
 
 interface FilteredTool {
     tool: ToolCall;
@@ -12,6 +13,7 @@ interface FilteredTool {
 }
 
 export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages }) => {
+    const { theme } = useUnistyles();
     const filtered: FilteredTool[] = [];
 
     for (let m of messages) {
@@ -43,6 +45,52 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
         }
     }
 
+    const styles = StyleSheet.create({
+        container: {
+            paddingVertical: 4,
+            paddingBottom: 12
+        },
+        toolItem: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 4,
+            paddingLeft: 4,
+            paddingRight: 2
+        },
+        toolTitle: {
+            fontSize: 14,
+            fontWeight: '500',
+            color: theme.colors.textSecondary,
+            fontFamily: 'monospace',
+            flex: 1,
+        },
+        statusContainer: {
+            marginLeft: 'auto',
+            paddingLeft: 8,
+        },
+        loadingItem: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            paddingVertical: 8,
+            paddingHorizontal: 4,
+        },
+        loadingText: {
+            marginLeft: 8,
+            fontSize: 14,
+            color: theme.colors.textSecondary,
+        },
+        moreToolsItem: {
+            paddingVertical: 4,
+            paddingHorizontal: 4,
+        },
+        moreToolsText: {
+            fontSize: 14,
+            color: theme.colors.textSecondary,
+            fontStyle: 'italic',
+            opacity: 0.7,
+        },
+    });
+
     if (filtered.length === 0) {
         if (tool.state === 'error') {
             return null;
@@ -50,7 +98,7 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
         return (
             <View style={styles.container}>
                 <View style={styles.loadingItem}>
-                    <ActivityIndicator size="small" color="#666" />
+                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     <Text style={styles.loadingText}>Initializing agent...</Text>
                 </View>
             </View>
@@ -67,13 +115,13 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
                     <Text style={styles.toolTitle}>{item.title}</Text>
                     <View style={styles.statusContainer}>
                         {item.state === 'running' && (
-                            <ActivityIndicator size="small" color="#5856D6" />
+                            <ActivityIndicator size="small" color={theme.colors.warning} />
                         )}
                         {item.state === 'completed' && (
-                            <Ionicons name="checkmark-circle" size={16} color="#34C759" />
+                            <Ionicons name="checkmark-circle" size={16} color={theme.colors.success} />
                         )}
                         {item.state === 'error' && (
-                            <Ionicons name="close-circle" size={16} color="#FF3B30" />
+                            <Ionicons name="close-circle" size={16} color={theme.colors.textDestructive} />
                         )}
                     </View>
                 </View>
@@ -87,49 +135,4 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
             )}
         </View>
     );
-});
-
-const styles = StyleSheet.create({
-    container: {
-        paddingVertical: 4,
-        paddingBottom: 12
-    },
-    toolItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 4,
-        paddingLeft: 4,
-        paddingRight: 2
-    },
-    toolTitle: {
-        fontSize: 14,
-        fontWeight: '500',
-        color: '#666',
-        fontFamily: 'monospace',
-        flex: 1,
-    },
-    statusContainer: {
-        marginLeft: 'auto',
-        paddingLeft: 8,
-    },
-    loadingItem: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        paddingVertical: 8,
-        paddingHorizontal: 4,
-    },
-    loadingText: {
-        marginLeft: 8,
-        fontSize: 14,
-        color: '#666',
-    },
-    moreToolsItem: {
-        paddingVertical: 4,
-        paddingHorizontal: 4,
-    },
-    moreToolsText: {
-        fontSize: 14,
-        color: '#999',
-        fontStyle: 'italic',
-    },
 });

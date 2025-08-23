@@ -9,6 +9,7 @@ export const LocalSettingsSchema = z.object({
     debugMode: z.boolean().describe('Enable debug logging'),
     devModeEnabled: z.boolean().describe('Enable developer menu in settings'),
     commandPaletteEnabled: z.boolean().describe('Enable CMD+K command palette (web only)'),
+    themePreference: z.enum(['light', 'dark', 'adaptive']).describe('Theme preference: light, dark, or adaptive (follows system)'),
 });
 
 //
@@ -28,6 +29,7 @@ export const localSettingsDefaults: LocalSettings = {
     debugMode: false,
     devModeEnabled: false,
     commandPaletteEnabled: false,
+    themePreference: 'adaptive',
 };
 Object.freeze(localSettingsDefaults);
 

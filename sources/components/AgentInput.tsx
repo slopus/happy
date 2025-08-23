@@ -1,6 +1,6 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback } from 'react-native';
+import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage } from 'react-native';
 import { Image } from 'expo-image';
 import { Pressable } from 'react-native-gesture-handler';
 import { layout } from './layout';
@@ -17,6 +17,9 @@ import { FloatingOverlay } from './FloatingOverlay';
 import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { useSetting } from '@/sync/storage';
+import { Theme } from '@/theme';
 
 interface AgentInputProps {
     value: string;
@@ -54,29 +57,228 @@ interface AgentInputProps {
 
 const MAX_CONTEXT_SIZE = 190000;
 
-const getContextWarning = (contextSize: number, alwaysShow: boolean = false) => {
+const stylesheet = StyleSheet.create((theme, runtime) => ({
+    container: {
+        alignItems: 'center',
+        paddingBottom: 8,
+        paddingTop: 8,
+    },
+    innerContainer: {
+        width: '100%',
+        position: 'relative',
+    },
+    unifiedPanel: {
+        backgroundColor: theme.colors.input.background,
+        borderRadius: Platform.select({ default: 16, android: 20 }),
+        overflow: 'hidden',
+        paddingVertical: 2,
+        paddingBottom: 8,
+        paddingHorizontal: 8,
+    },
+    inputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderWidth: 0,
+        paddingLeft: 8,
+        paddingRight: 8,
+        paddingVertical: 4,
+        minHeight: 40,
+    },
+
+    // Overlay styles
+    autocompleteOverlay: {
+        position: 'absolute',
+        bottom: '100%',
+        left: 0,
+        right: 0,
+        marginBottom: 8,
+        zIndex: 1000,
+    },
+    settingsOverlay: {
+        position: 'absolute',
+        bottom: '100%',
+        left: 0,
+        right: 0,
+        marginBottom: 8,
+        zIndex: 1000,
+    },
+    overlayBackdrop: {
+        position: 'absolute',
+        top: -1000,
+        left: -1000,
+        right: -1000,
+        bottom: -1000,
+        zIndex: 999,
+    },
+    overlaySection: {
+        paddingVertical: 8,
+    },
+    overlaySectionTitle: {
+        fontSize: 12,
+        fontWeight: '600',
+        color: theme.colors.textSecondary,
+        paddingHorizontal: 16,
+        paddingBottom: 4,
+        ...Typography.default('semiBold'),
+    },
+    overlayDivider: {
+        height: 1,
+        backgroundColor: theme.colors.divider,
+        marginHorizontal: 16,
+    },
+
+    // Selection styles
+    selectionItem: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingVertical: 8,
+        backgroundColor: 'transparent',
+    },
+    selectionItemPressed: {
+        backgroundColor: theme.colors.surfacePressed,
+    },
+    radioButton: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        borderWidth: 2,
+        alignItems: 'center',
+        justifyContent: 'center',
+        marginRight: 12,
+    },
+    radioButtonActive: {
+        borderColor: theme.colors.radio.active,
+    },
+    radioButtonInactive: {
+        borderColor: theme.colors.radio.inactive,
+    },
+    radioButtonDot: {
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: theme.colors.radio.dot,
+    },
+    selectionLabel: {
+        fontSize: 14,
+        ...Typography.default(),
+    },
+    selectionLabelActive: {
+        color: theme.colors.radio.active,
+    },
+    selectionLabelInactive: {
+        color: theme.colors.text,
+    },
+
+    // Status styles
+    statusContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 16,
+        paddingBottom: 4,
+    },
+    statusRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+    },
+    statusText: {
+        fontSize: 11,
+        ...Typography.default(),
+    },
+    permissionModeContainer: {
+        flexDirection: 'column',
+        alignItems: 'flex-end',
+    },
+    permissionModeText: {
+        fontSize: 11,
+        ...Typography.default(),
+    },
+    contextWarningText: {
+        fontSize: 11,
+        marginLeft: 8,
+        ...Typography.default(),
+    },
+
+    // Button styles
+    actionButtonsContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: 0,
+    },
+    actionButtonsLeft: {
+        flexDirection: 'row',
+        gap: 8,
+    },
+    actionButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        borderRadius: Platform.select({ default: 16, android: 20 }),
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        justifyContent: 'center',
+        height: 32,
+    },
+    actionButtonPressed: {
+        opacity: 0.7,
+    },
+    actionButtonIcon: {
+        color: theme.colors.button.secondary.tint,
+    },
+    sendButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    sendButtonActive: {
+        backgroundColor: theme.colors.button.primary.background,
+    },
+    sendButtonInactive: {
+        backgroundColor: theme.colors.button.primary.disabled,
+    },
+    sendButtonInner: {
+        width: '100%',
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    sendButtonInnerPressed: {
+        opacity: 0.7,
+    },
+    sendButtonIcon: {
+        color: theme.colors.button.primary.tint,
+    },
+}));
+
+const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
     const percentageUsed = (contextSize / MAX_CONTEXT_SIZE) * 100;
     const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
-    
+
     if (percentageRemaining <= 5) {
-        return { text: `${Math.round(percentageRemaining)}% left`, color: '#FF3B30' }; // Red
+        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.warningCritical };
     } else if (percentageRemaining <= 10) {
-        return { text: `${Math.round(percentageRemaining)}% left`, color: '#8E8E93' }; // Grey
+        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.warning };
     } else if (alwaysShow) {
         // Show context remaining in neutral color when not near limit
-        return { text: `${Math.round(percentageRemaining)}% left`, color: '#8E8E93' }; // Grey
+        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.warning };
     }
     return null; // No display needed
 };
 
 export const AgentInput = React.memo((props: AgentInputProps) => {
+    const styles = stylesheet;
+    const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
+    const experimental = useSetting('experiments');
 
     const hasText = props.value.trim().length > 0;
 
     // Calculate context warning
-    const contextWarning = props.usageData?.contextSize 
-        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false) 
+    const contextWarning = props.usageData?.contextSize
+        ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
         : null;
 
 
@@ -242,46 +444,22 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
 
 
 
-    const containerStyle: ViewStyle = {
-        alignItems: 'center',
-        paddingHorizontal: screenWidth > 700 ? 16 : 8,
-        paddingBottom: 8,
-        paddingTop: 8,
-    };
-
-    const unifiedPanelStyle: ViewStyle = {
-        backgroundColor: '#F5F5F5',
-        borderRadius: Platform.select({ default: 16, android: 20 })!,
-        overflow: 'hidden',
-        paddingVertical: 2,
-        paddingBottom: 8,
-        paddingHorizontal: 8,
-    };
-
-    const inputContainerStyle: ViewStyle = {
-        flexDirection: 'row',
-        alignItems: 'center',
-        borderWidth: 0,
-        paddingLeft: 8,
-        paddingRight: 8,
-        paddingVertical: 4,
-        minHeight: 40
-    };
 
     return (
-        <View style={containerStyle}>
-            <View style={{ width: '100%', maxWidth: layout.maxWidth, position: 'relative' }}>
+        <View style={[
+            styles.container,
+            { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
+        ]}>
+            <View style={[
+                styles.innerContainer,
+                { maxWidth: layout.maxWidth }
+            ]}>
                 {/* Autocomplete suggestions overlay */}
                 {suggestions.length > 0 && (
-                    <View style={{
-                        position: 'absolute',
-                        bottom: '100%',
-                        left: 0,
-                        right: 0,
-                        marginBottom: 8,
-                        zIndex: 1000,
-                        paddingHorizontal: screenWidth > 700 ? 0 : 8,
-                    }}>
+                    <View style={[
+                        styles.autocompleteOverlay,
+                        { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
+                    ]}>
                         <AgentInputAutocomplete
                             suggestions={suggestions.map(s => {
                                 const Component = s.component;
@@ -298,35 +476,16 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                 {showSettings && (
                     <>
                         <TouchableWithoutFeedback onPress={() => setShowSettings(false)}>
-                            <View style={{
-                                position: 'absolute',
-                                top: -1000,
-                                left: -1000,
-                                right: -1000,
-                                bottom: -1000,
-                                zIndex: 999,
-                            }} />
+                            <View style={styles.overlayBackdrop} />
                         </TouchableWithoutFeedback>
-                        <View style={{
-                            position: 'absolute',
-                            bottom: '100%',
-                            left: 0,
-                            right: 0,
-                            marginBottom: 8,
-                            zIndex: 1000,
-                            paddingHorizontal: screenWidth > 700 ? 0 : 8,
-                        }}>
+                        <View style={[
+                            styles.settingsOverlay,
+                            { paddingHorizontal: screenWidth > 700 ? 0 : 8 }
+                        ]}>
                             <FloatingOverlay maxHeight={280} keyboardShouldPersistTaps="always">
                                 {/* Permission Mode Section */}
-                                <View style={{ paddingVertical: 8 }}>
-                                    <Text style={{
-                                        fontSize: 12,
-                                        fontWeight: '600',
-                                        color: '#666',
-                                        paddingHorizontal: 16,
-                                        paddingBottom: 4,
-                                        ...Typography.default('semiBold')
-                                    }}>
+                                <View style={styles.overlaySection}>
+                                    <Text style={styles.overlaySectionTitle}>
                                         PERMISSION MODE
                                     </Text>
                                     {(['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const).map((mode) => {
@@ -348,7 +507,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                     alignItems: 'center',
                                                     paddingHorizontal: 16,
                                                     paddingVertical: 8,
-                                                    backgroundColor: pressed ? 'rgba(0, 0, 0, 0.05)' : 'transparent'
+                                                    backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
                                                 })}
                                             >
                                                 <View style={{
@@ -356,7 +515,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                     height: 16,
                                                     borderRadius: 8,
                                                     borderWidth: 2,
-                                                    borderColor: isSelected ? '#007AFF' : '#C0C0C0',
+                                                    borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
                                                     marginRight: 12
@@ -366,13 +525,13 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                             width: 6,
                                                             height: 6,
                                                             borderRadius: 3,
-                                                            backgroundColor: '#007AFF'
+                                                            backgroundColor: theme.colors.radio.dot
                                                         }} />
                                                     )}
                                                 </View>
                                                 <Text style={{
                                                     fontSize: 14,
-                                                    color: isSelected ? '#007AFF' : '#000',
+                                                    color: isSelected ? theme.colors.radio.active : theme.colors.text,
                                                     ...Typography.default()
                                                 }}>
                                                     {config.label}
@@ -385,7 +544,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 {/* Divider */}
                                 <View style={{
                                     height: 1,
-                                    backgroundColor: '#F0F0F0',
+                                    backgroundColor: theme.colors.divider,
                                     marginHorizontal: 16
                                 }} />
 
@@ -420,7 +579,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                     alignItems: 'center',
                                                     paddingHorizontal: 16,
                                                     paddingVertical: 8,
-                                                    backgroundColor: pressed ? 'rgba(0, 0, 0, 0.05)' : 'transparent'
+                                                    backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
                                                 })}
                                             >
                                                 <View style={{
@@ -428,7 +587,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                     height: 16,
                                                     borderRadius: 8,
                                                     borderWidth: 2,
-                                                    borderColor: isSelected ? '#007AFF' : '#C0C0C0',
+                                                    borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
                                                     alignItems: 'center',
                                                     justifyContent: 'center',
                                                     marginRight: 12
@@ -438,13 +597,13 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                                             width: 6,
                                                             height: 6,
                                                             borderRadius: 3,
-                                                            backgroundColor: '#007AFF'
+                                                            backgroundColor: theme.colors.radio.dot
                                                         }} />
                                                     )}
                                                 </View>
                                                 <Text style={{
                                                     fontSize: 14,
-                                                    color: isSelected ? '#007AFF' : '#000',
+                                                    color: isSelected ? theme.colors.radio.active : theme.colors.text,
                                                     ...Typography.default()
                                                 }}>
                                                     {config.label}
@@ -498,9 +657,9 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                             {props.permissionMode && props.permissionMode !== 'default' && (
                                 <Text style={{
                                     fontSize: 11,
-                                    color: props.permissionMode === 'acceptEdits' ? '#007AFF' :
-                                        props.permissionMode === 'bypassPermissions' ? '#FF9500' :
-                                            props.permissionMode === 'plan' ? '#34C759' : '#8E8E93',
+                                    color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
+                                        props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
+                                            props.permissionMode === 'plan' ? theme.colors.permission.plan : theme.colors.permission.default,
                                     ...Typography.default()
                                 }}>
                                     {props.permissionMode === 'acceptEdits' ? 'Accept All Edits' :
@@ -512,9 +671,9 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                     </View>
                 )}
                 {/* Unified panel containing input and action buttons */}
-                <View style={unifiedPanelStyle}>
+                <View style={styles.unifiedPanel}>
                     {/* Input field */}
-                    <View style={inputContainerStyle}>
+                    <View style={styles.inputContainer}>
                         <MultiTextInput
                             ref={inputRef}
                             value={props.value}
@@ -529,13 +688,8 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                     </View>
 
                     {/* Action buttons below input */}
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        paddingHorizontal: 0,
-                    }}>
-                        <View style={{ flexDirection: 'row', gap: 8 }}>
+                    <View style={styles.actionButtonsContainer}>
+                        <View style={styles.actionButtonsLeft}>
 
                             {/* Settings button */}
                             {props.onPermissionModeChange && (
@@ -556,7 +710,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                     <Octicons
                                         name={'gear'}
                                         size={16}
-                                        color={'black'}
+                                        color={theme.colors.button.secondary.tint}
                                     />
                                 </Pressable>
                             )}
@@ -584,13 +738,13 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                         {isAborting ? (
                                             <ActivityIndicator
                                                 size="small"
-                                                color={Platform.select({ ios: '#FF9500', android: '#FF6F00', default: '#FF9500' })}
+                                                color={theme.colors.button.secondary.tint}
                                             />
                                         ) : (
                                             <Octicons
                                                 name={"stop"}
                                                 size={16}
-                                                color={'black'}
+                                                color={theme.colors.button.secondary.tint}
                                             />
                                         )}
                                     </Pressable>
@@ -598,21 +752,19 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                             )}
 
                             {/* Git Status Badge */}
-                            <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                            {experimental && (
+                                <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                            )}
                         </View>
 
                         {/* Send/Voice button */}
                         <View
-                            style={{
-                                backgroundColor: hasText 
-                                    ? 'black'
-                                    : (props.onMicPress && !props.isMicActive) ? 'black' : '#E0E0E0',
-                                width: 32,
-                                height: 32,
-                                borderRadius: 16,
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                            }}
+                            style={[
+                                styles.sendButton,
+                                (hasText || (props.onMicPress && !props.isMicActive))
+                                    ? styles.sendButtonActive
+                                    : styles.sendButtonInactive
+                            ]}
                         >
                             <Pressable
                                 style={(p) => ({
@@ -634,30 +786,33 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 disabled={!hasText && !props.onMicPress}
                             >
                                 {hasText ? (
-                                    <Octicons 
-                                        name="arrow-up" 
-                                        size={16} 
-                                        color="#fff" 
-                                        style={{
-                                            marginTop: Platform.OS === 'web' ? 2 : 0
-                                        }}
+                                    <Octicons
+                                        name="arrow-up"
+                                        size={16}
+                                        color={theme.colors.button.primary.tint}
+                                        style={[
+                                            styles.sendButtonIcon,
+                                            { marginTop: Platform.OS === 'web' ? 2 : 0 }
+                                        ]}
                                     />
                                 ) : props.onMicPress && !props.isMicActive ? (
                                     <Image
                                         source={require('@/assets/images/icon-voice-white.png')}
                                         style={{
                                             width: 24,
-                                            height: 24
+                                            height: 24,
                                         }}
+                                        tintColor={theme.colors.button.primary.tint}
                                     />
                                 ) : (
-                                    <Octicons 
-                                        name="arrow-up" 
-                                        size={16} 
-                                        color="#fff" 
-                                        style={{
-                                            marginTop: Platform.OS === 'web' ? 2 : 0
-                                        }}
+                                    <Octicons
+                                        name="arrow-up"
+                                        size={16}
+                                        color={theme.colors.button.primary.tint}
+                                        style={[
+                                            styles.sendButtonIcon,
+                                            { marginTop: Platform.OS === 'web' ? 2 : 0 }
+                                        ]}
                                     />
                                 )}
                             </Pressable>
@@ -672,6 +827,8 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
 // Git Status Button Component
 function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
     const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
+    const styles = stylesheet;
+    const { theme } = useUnistyles();
 
     if (!sessionId || !onPress) {
         return null;
@@ -698,10 +855,10 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
             {hasMeaningfulGitStatus ? (
                 <GitStatusBadge sessionId={sessionId} />
             ) : (
-                <Octicons 
-                    name="file-directory" 
-                    size={16} 
-                    color="#666" 
+                <Octicons
+                    name="file-directory"
+                    size={16}
+                    color={theme.colors.button.secondary.tint}
                 />
             )}
         </Pressable>

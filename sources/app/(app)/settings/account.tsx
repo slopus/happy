@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable, Platform, Switch } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,8 +15,11 @@ import { tracking } from '@/track/tracking';
 import { useSettingMutable } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { getServerInfo, isUsingCustomServer } from '@/sync/serverConfig';
+import { useUnistyles } from 'react-native-unistyles';
+import { Switch } from '@/components/Switch';
 
 export default React.memo(() => {
+    const { theme } = useUnistyles();
     const auth = useAuth();
     const router = useRouter();
     const [showSecret, setShowSecret] = useState(false);
@@ -58,22 +61,6 @@ export default React.memo(() => {
 
     return (
         <>
-            <Stack.Screen
-                options={{
-                    headerShown: true,
-                    headerTitle: 'Account',
-                    headerStyle: {
-                        backgroundColor: 'white',
-                    },
-                    headerTintColor: '#000',
-                    headerTitleStyle: {
-                        color: '#000',
-                        fontSize: 17,
-                        fontWeight: '600',
-                    }
-                }}
-            />
-
             <ItemList>
                 {/* Account Info */}
                 <ItemGroup title="Account Information">
@@ -126,7 +113,7 @@ export default React.memo(() => {
                     <ItemGroup>
                         <Pressable onPress={handleCopySecret}>
                             <View style={{
-                                backgroundColor: '#fff',
+                                backgroundColor: theme.colors.surface,
                                 paddingHorizontal: 16,
                                 paddingVertical: 14,
                                 width: '100%',
@@ -136,7 +123,7 @@ export default React.memo(() => {
                                 <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
                                     <Text style={{
                                         fontSize: 11,
-                                        color: '#8E8E93',
+                                        color: theme.colors.textSecondary,
                                         letterSpacing: 0.5,
                                         textTransform: 'uppercase',
                                         ...Typography.default('semiBold')
@@ -146,14 +133,14 @@ export default React.memo(() => {
                                     <Ionicons
                                         name={copiedRecently ? "checkmark-circle" : "copy-outline"}
                                         size={18}
-                                        color={copiedRecently ? "#34C759" : "#8E8E93"}
+                                        color={copiedRecently ? "#34C759" : theme.colors.textSecondary}
                                     />
                                 </View>
                                 <Text style={{
                                     fontSize: 13,
                                     letterSpacing: 0.5,
                                     lineHeight: 20,
-                                    color: '#000',
+                                    color: theme.colors.text,
                                     ...Typography.mono()
                                 }}>
                                     {formattedSecret}

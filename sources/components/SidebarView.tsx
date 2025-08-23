@@ -12,8 +12,96 @@ import { StatusDot } from './StatusDot';
 import { FAB } from './FAB';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
+import { Image } from 'expo-image';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { UpdateBanner } from './UpdateBanner';
+
+const stylesheet = StyleSheet.create((theme, runtime) => ({
+    container: {
+        flex: 1,
+        borderStyle: 'solid',
+        backgroundColor: theme.colors.groupped.background,
+        borderWidth: StyleSheet.hairlineWidth,
+        borderColor: theme.colors.divider,
+    },
+    header: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        backgroundColor: theme.colors.groupped.background,
+    },
+    logoContainer: {
+        width: 32,
+    },
+    logo: {
+        height: 24,
+        width: 24,
+    },
+    titleContainer: {
+        flex: 1,
+        flexDirection: 'column',
+        alignItems: 'center',
+    },
+    titleText: {
+        fontSize: 17,
+        fontWeight: '600',
+        color: theme.colors.header.tint,
+        ...Typography.default('semiBold'),
+    },
+    statusContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: -2,
+    },
+    statusDot: {
+        marginRight: 4,
+    },
+    statusText: {
+        fontSize: 11,
+        fontWeight: '500',
+        lineHeight: 16,
+        ...Typography.default(),
+    },
+    rightContainer: {
+        width: 32,
+        alignItems: 'flex-end',
+    },
+    settingsButton: {
+        color: theme.colors.header.tint,
+    },
+    contentContainer: {
+        flex: 1,
+        flexBasis: 0,
+        flexGrow: 1,
+    },
+    loadingContainer: {
+        flex: 1,
+        flexBasis: 0,
+        flexGrow: 1,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    // Status colors
+    statusConnected: {
+        color: theme.colors.status.connected,
+    },
+    statusConnecting: {
+        color: theme.colors.status.connecting,
+    },
+    statusDisconnected: {
+        color: theme.colors.status.disconnected,
+    },
+    statusError: {
+        color: theme.colors.status.error,
+    },
+    statusDefault: {
+        color: theme.colors.status.default,
+    },
+}));
 
 export const SidebarView = React.memo(() => {
+    const styles = stylesheet;
+    const { theme } = useUnistyles();
     const sessionListViewData = useSessionListViewData();
     const safeArea = useSafeAreaInsets();
     const router = useRouter();
@@ -28,38 +116,38 @@ export const SidebarView = React.memo(() => {
         switch (status) {
             case 'connected':
                 return {
-                    color: '#34C759',
+                    color: styles.statusConnected.color,
                     isPulsing: false,
                     text: 'connected',
-                    textColor: '#34C759'
+                    textColor: styles.statusConnected.color
                 };
             case 'connecting':
                 return {
-                    color: '#007AFF',
+                    color: styles.statusConnecting.color,
                     isPulsing: true,
                     text: 'connecting',
-                    textColor: '#007AFF'
+                    textColor: styles.statusConnecting.color
                 };
             case 'disconnected':
                 return {
-                    color: '#999',
+                    color: styles.statusDisconnected.color,
                     isPulsing: false,
                     text: 'disconnected',
-                    textColor: '#999'
+                    textColor: styles.statusDisconnected.color
                 };
             case 'error':
                 return {
-                    color: '#FF3B30',
+                    color: styles.statusError.color,
                     isPulsing: false,
                     text: 'error',
-                    textColor: '#FF3B30'
+                    textColor: styles.statusError.color
                 };
             default:
                 return {
-                    color: '#8E8E93',
+                    color: styles.statusDefault.color,
                     isPulsing: false,
                     text: '',
-                    textColor: '#8E8E93'
+                    textColor: styles.statusDefault.color
                 };
         }
     };
@@ -70,54 +158,62 @@ export const SidebarView = React.memo(() => {
 
     return (
         <>
-            <View style={{ flex: 1, paddingTop: safeArea.top, borderRightWidth: 1, borderStyle: 'solid', borderColor: 'rgba(0,0,0,0.05)' }}>
-                <View style={{ height: headerHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16 }}>
-                    <View style={{ flex: 1 }} />
-                    <View style={{ flexDirection: 'column', alignItems: 'center' }}>
-                        <Text style={{
-                            fontSize: Platform.OS === 'web' ? 18 : 16,
-                            ...Typography.logo()
-                        }}>Happy</Text>
+            <View style={[styles.container, { paddingTop: safeArea.top }]}>
+                <View style={[styles.header, { height: headerHeight }]}>
+                    <View style={styles.logoContainer}>
+                        <Image
+                            source={theme.dark ? require('@/assets/images/logo-white.png') : require('@/assets/images/logo-black.png')}
+                            contentFit="contain"
+                            style={[styles.logo, { height: 24, width: 24 }]}
+                        />
+                    </View>
+                    <View style={styles.titleContainer}>
+                        <Text style={styles.titleText}>Sessions</Text>
                         {getConnectionStatus().text && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                            <View style={styles.statusContainer}>
                                 <StatusDot
                                     color={getConnectionStatus().color}
                                     isPulsing={getConnectionStatus().isPulsing}
                                     size={6}
-                                    style={{ marginRight: 4 }}
+                                    style={styles.statusDot}
                                 />
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: getConnectionStatus().textColor,
-                                    fontWeight: '500',
-                                    lineHeight: 16,
-                                    ...Typography.default()
-                                }}>
+                                <Text style={[
+                                    styles.statusText,
+                                    { color: getConnectionStatus().textColor }
+                                ]}>
                                     {getConnectionStatus().text}
                                 </Text>
                             </View>
                         )}
                     </View>
-                    <View style={{ flex: 1, alignItems: 'flex-end' }}>
+                    <View style={styles.rightContainer}>
                         <Pressable
                             onPress={() => router.push('/settings')}
-                            hitSlop={10}
+                            hitSlop={15}
                         >
-                            <Ionicons name="settings-outline" size={24} color="#000" />
+                            <Image
+                                source={require('@/assets/images/brutalist/Brutalism 9.png')}
+                                contentFit="contain"
+                                style={[{ width: 32, height: 32 }]}
+                                tintColor={theme.colors.header.tint}
+                            />
                         </Pressable>
                     </View>
                 </View>
                 {realtimeStatus !== 'disconnected' && (
                     <VoiceAssistantStatusBar variant="sidebar" />
                 )}
-                <View style={{ flex: 1, flexBasis: 0, flexGrow: 1 }}>
+                <View style={styles.contentContainer}>
                     {sessionListViewData === null && (
-                        <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}>
-                            <ActivityIndicator />
+                        <View style={styles.loadingContainer}>
+                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                         </View>
                     )}
                     {sessionListViewData !== null && sessionListViewData.length === 0 && (
-                        <EmptySessionsTablet />
+                        <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, flexDirection: 'column', backgroundColor: theme.colors.groupped.background }}>
+                            <UpdateBanner />
+                            <EmptySessionsTablet />
+                        </View>
                     )}
                     {sessionListViewData !== null && sessionListViewData.length > 0 && (
                         <SessionsList />

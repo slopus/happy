@@ -4,7 +4,6 @@ import { Session, Machine, GitStatus } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
-import { isSessionActive, DISCONNECTED_TIMEOUT_MS, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
@@ -17,7 +16,30 @@ import { sync } from "./sync";
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
 import { isMutableTool } from "@/components/tools/knownTools";
 
-// Use the same timeout for both online status and disconnection detection
+// Timeout for considering a session disconnected (2 minutes)
+const DISCONNECTED_TIMEOUT_MS = 120000;
+
+/**
+ * Centralized session online state resolver
+ * Returns either "online" (string) or a timestamp (number) for last seen
+ */
+function resolveSessionOnlineState(session: { active: boolean; activeAt: number }): "online" | number {
+    const now = Date.now();
+    const threshold = now - DISCONNECTED_TIMEOUT_MS;
+    
+    // Session is online if it's active and was seen recently
+    const isOnline = session.active && session.activeAt > threshold;
+    
+    return isOnline ? "online" : session.activeAt;
+}
+
+/**
+ * Checks if a session should be shown in the active sessions group
+ */
+function isSessionActive(session: { active: boolean; activeAt: number }): boolean {
+    const now = Date.now();
+    return session.active && !!session.activeAt && (session.activeAt >= now - DISCONNECTED_TIMEOUT_MS);
+}
 
 // Known entitlement IDs
 export type KnownEntitlements = 'pro';
@@ -34,9 +56,9 @@ interface SessionMessages {
 // Unified list item type for SessionsList component
 export type SessionListViewItem =
     | { type: 'header'; title: string }
+    | { type: 'active-sessions'; sessions: Session[] }
     | { type: 'project-group'; displayPath: string; machine: Machine }
-    | { type: 'session'; session: Session; variant?: 'default' | 'no-path' }
-    | { type: 'machine'; machine: Machine };
+    | { type: 'session'; session: Session; variant?: 'default' | 'no-path' };
 
 // Legacy type for backward compatibility - to be removed
 export type SessionListItem = string | Session;
@@ -56,9 +78,11 @@ interface StorageState {
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
+    isDataReady: boolean;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyLoaded: () => void;
+    applyReady: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => string[];
     applyMessagesLoaded: (sessionId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
@@ -78,11 +102,9 @@ interface StorageState {
 
 // Helper function to build unified list view data from sessions and machines
 function buildSessionListViewData(
-    sessions: Record<string, Session>,
-    machines: Record<string, Machine>,
-    previousData?: SessionListViewItem[] | null
+    sessions: Record<string, Session>
 ): SessionListViewItem[] {
-    // Categorize sessions into active and inactive
+    // Separate all sessions into active and inactive
     const activeSessions: Session[] = [];
     const inactiveSessions: Session[] = [];
 
@@ -94,138 +116,25 @@ function buildSessionListViewData(
         }
     });
 
-    // Build project groups from active sessions
-    const projectGroups = new Map<string, {
-        machine: Machine;
-        path: string;
-        sessions: Session[];
-        oldestCreatedAt: number;
-    }>();
-
-    // Separate sessions with and without machineId/path
-    const standaloneActiveSessions: Session[] = [];
-
-    activeSessions.forEach(session => {
-        if (!session.metadata?.machineId || !session.metadata?.path) {
-            // Sessions without machineId/path will be shown as standalone
-            // console.log(`📊 Storage: Session ${session.id} missing machineId or path - machineId: ${session.metadata?.machineId}, path: ${session.metadata?.path}`);
-            standaloneActiveSessions.push(session);
-            return;
-        }
-
-        const machine = machines[session.metadata.machineId];
-        if (!machine) {
-            // Machine not found, show as standalone
-            // console.log(`📊 Storage: Machine ${session.metadata.machineId} not found for session ${session.id}`);
-            standaloneActiveSessions.push(session);
-            return;
-        }
-
-        const groupKey = `${session.metadata.machineId}:${session.metadata.path}`;
-        const existing = projectGroups.get(groupKey);
-
-        if (existing) {
-            existing.sessions.push(session);
-            existing.oldestCreatedAt = Math.min(existing.oldestCreatedAt, session.createdAt);
-        } else {
-            projectGroups.set(groupKey, {
-                machine,
-                path: session.metadata.path,
-                sessions: [session],
-                oldestCreatedAt: session.createdAt
-            });
-        }
-    });
-
-    // Sort sessions within each group by createdAt (oldest first)
-    projectGroups.forEach(group => {
-        group.sessions.sort((a, b) => a.createdAt - b.createdAt);
-    });
-
-    // Extract sort keys from previous data to maintain stability
-    const previousSortKeys = new Map<string, number>();
-    if (previousData) {
-        let sortKey = 0;
-        previousData.forEach(item => {
-            if (item.type === 'project-group') {
-                const groupKey = `${item.machine.id}:${item.displayPath}`;
-                previousSortKeys.set(groupKey, sortKey++);
-            }
-        });
-    }
-
-    // Sort project groups - use previous sort keys when available, otherwise use oldest session createdAt
-    const sortedGroups = Array.from(projectGroups.entries()).sort(([keyA, groupA], [keyB, groupB]) => {
-        const prevSortA = previousSortKeys.get(keyA);
-        const prevSortB = previousSortKeys.get(keyB);
-
-        if (prevSortA !== undefined && prevSortB !== undefined) {
-            return prevSortA - prevSortB;
-        }
-        if (prevSortA !== undefined) return -1;
-        if (prevSortB !== undefined) return 1;
-
-        // New groups - sort by oldest session creation time (newest groups first)
-        return groupB.oldestCreatedAt - groupA.oldestCreatedAt;
-    });
-
-    // Get active machines
-    const activeMachines = Object.values(machines).filter(m => isMachineOnline(m));
+    // Sort active sessions by creation date (newest first)
+    activeSessions.sort((a, b) => b.createdAt - a.createdAt);
     
-    // Sort standalone active sessions by creation date (newest first)
-    standaloneActiveSessions.sort((a, b) => b.createdAt - a.createdAt);
-
-    // Sort inactive sessions by creation date
+    // Sort inactive sessions by creation date (newest first)
     inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
 
-    // Active sessions section with project groups and standalone sessions
-    if (sortedGroups.length > 0 || standaloneActiveSessions.length > 0) {
-        listData.push({ type: 'header', title: 'Active Sessions' });
-
-        sortedGroups.forEach(([_, group]) => {
-            // Use the first session's homeDir to format the path
-            const firstSession = group.sessions[0];
-            const displayPath = formatPathRelativeToHome(group.path, firstSession.metadata?.homeDir);
-
-            listData.push({
-                type: 'project-group',
-                displayPath,
-                machine: group.machine
-            });
-
-            group.sessions.forEach(session =>
-                listData.push({
-                    type: 'session',
-                    session,
-                    variant: 'no-path'
-                })
-            );
-        });
-
-        // Add standalone active sessions (without project groups)
-        standaloneActiveSessions.forEach(session =>
-            listData.push({
-                type: 'session',
-                session,
-                variant: 'default'
-            })
-        );
+    // Add active sessions as a single item at the top (if any)
+    if (activeSessions.length > 0) {
+        listData.push({ type: 'active-sessions', sessions: activeSessions });
     }
 
-    // Machines section
-    if (activeMachines.length > 0) {
-        listData.push({ type: 'header', title: 'Machines Online' });
-        activeMachines.forEach(machine =>
-            listData.push({ type: 'machine', machine })
-        );
-    }
-
-    // Inactive sessions section
+    // Add previous sessions header if we have any inactive sessions
     if (inactiveSessions.length > 0) {
         listData.push({ type: 'header', title: 'Previous Sessions' });
+        
+        // Add all inactive sessions individually (no grouping)
         inactiveSessions.forEach(session =>
             listData.push({ type: 'session', session })
         );
@@ -255,6 +164,7 @@ export const storage = create<StorageState>()((set, get) => {
         socketStatus: 'disconnected',
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
+        isDataReady: false,
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -275,9 +185,6 @@ export const storage = create<StorageState>()((set, get) => {
             return Object.values(state.sessions).filter(s => s.active);
         },
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
-            const now = Date.now();
-            const threshold = now - DISCONNECTED_TIMEOUT_MS;
-
             // Load drafts and permission modes if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
             const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
@@ -285,11 +192,10 @@ export const storage = create<StorageState>()((set, get) => {
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
 
-            // Update sessions with calculated presence
+            // Update sessions with calculated presence using centralized resolver
             sessions.forEach(session => {
-                // Calculate presence based on active and activeAt
-                const isOnline = session.active && session.activeAt > threshold;
-                const presence: "online" | number = isOnline ? "online" : session.activeAt;
+                // Use centralized resolver for consistent state management
+                const presence = resolveSessionOnlineState(session);
 
                 // Preserve existing draft and permission mode if they exist, or load from saved data
                 const existingDraft = state.sessions[session.id]?.draft;
@@ -305,7 +211,6 @@ export const storage = create<StorageState>()((set, get) => {
             });
 
             // Build active set from all sessions (including existing ones)
-            // Use 30-second timeout for consistency with UI
             const activeSet = new Set<string>();
             Object.values(mergedSessions).forEach(session => {
                 if (isSessionActive(session)) {
@@ -415,9 +320,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Build new unified list view data
             const sessionListViewData = buildSessionListViewData(
-                mergedSessions,
-                state.machines,
-                state.sessionListViewData
+                mergedSessions
             );
 
             return {
@@ -435,6 +338,10 @@ export const storage = create<StorageState>()((set, get) => {
             };
             return result;
         }),
+        applyReady: () => set((state) => ({
+            ...state,
+            isDataReady: true
+        })),
         applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
             let changed = new Set<string>();
             set((state) => {
@@ -560,16 +467,15 @@ export const storage = create<StorageState>()((set, get) => {
             const now = Date.now();
             const threshold = now - DISCONNECTED_TIMEOUT_MS;
 
-            // Update presence for all sessions
+            // Update presence for all sessions using centralized resolver
             const updatedSessions: Record<string, Session> = {};
             Object.entries(state.sessions).forEach(([id, session]) => {
-                const isOnline = session.active && session.activeAt > threshold;
                 const isDisconnected = !session.activeAt || session.activeAt <= threshold;
 
                 // Update session with presence and clear thinking/active if disconnected
                 updatedSessions[id] = {
                     ...session,
-                    presence: isOnline ? "online" : session.activeAt,
+                    presence: resolveSessionOnlineState(session),
                     // Clear thinking and active states when disconnected
                     thinking: isDisconnected ? false : session.thinking,
                     active: isDisconnected ? false : session.active
@@ -577,7 +483,6 @@ export const storage = create<StorageState>()((set, get) => {
             });
 
             // Build set of session IDs that should be active
-            // Use 30-second timeout for consistency with UI
             const shouldBeActiveSet = new Set<string>();
             Object.values(updatedSessions).forEach(session => {
                 if (isSessionActive(session)) {
@@ -600,14 +505,26 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             }
 
-            // Check if sets are equal
-            if (shouldBeActiveSet.size === currentActiveSet.size &&
-                [...shouldBeActiveSet].every(id => currentActiveSet.has(id))) {
-                // No changes needed, return same state
-                return state;
+            // Check if active/inactive categorization has changed
+            const setsAreEqual = shouldBeActiveSet.size === currentActiveSet.size &&
+                [...shouldBeActiveSet].every(id => currentActiveSet.has(id));
+
+            // Always update sessions to ensure presence changes trigger re-renders
+            // Only skip rebuilding sessionsData if categorization hasn't changed
+            if (setsAreEqual) {
+                // Build new unified list view data with updated sessions
+                const sessionListViewData = buildSessionListViewData(
+                    updatedSessions
+                );
+
+                return {
+                    ...state,
+                    sessions: updatedSessions,
+                    sessionListViewData
+                };
             }
 
-            // Rebuild active and inactive lists
+            // Rebuild active and inactive lists when categorization has changed
             const newActiveSessions: Session[] = [];
             const newInactiveSessions: Session[] = [];
 
@@ -641,9 +558,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Build new unified list view data
             const sessionListViewData = buildSessionListViewData(
-                updatedSessions,
-                state.machines,
-                state.sessionListViewData
+                updatedSessions
             );
 
             return {
@@ -752,9 +667,7 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Rebuild sessionListViewData to update the UI immediately
             const sessionListViewData = buildSessionListViewData(
-                updatedSessions,
-                state.machines,
-                state.sessionListViewData
+                updatedSessions
             );
 
             return {
@@ -832,9 +745,7 @@ export const storage = create<StorageState>()((set, get) => {
             
             // Rebuild sessionListViewData to reflect machine changes
             const sessionListViewData = buildSessionListViewData(
-                state.sessions,
-                mergedMachines,
-                state.sessionListViewData
+                state.sessions
             );
             
             return {
@@ -847,14 +758,14 @@ export const storage = create<StorageState>()((set, get) => {
 });
 
 export function useSessions() {
-    return storage(useShallow((state) => state.sessionsData));
+    return storage(useShallow((state) => state.isDataReady ? state.sessionsData : null));
 }
 
 export function useSession(id: string): Session | null {
     return storage(useShallow((state) => state.sessions[id] ?? null));
 }
 
-const emptyArray: Message[] = [];
+const emptyArray: unknown[] = [];
 
 export function useSessionMessages(sessionId: string): { messages: Message[], isLoaded: boolean } {
     return storage(useShallow((state) => {
@@ -901,9 +812,8 @@ export function useLocalSettings(): LocalSettings {
 }
 
 export function useAllMachines(): Machine[] {
-    return storage(useShallow((state) => {
-        return Object.values(state.machines)
-    }));
+    const m = storage((state) => state.machines);
+    return React.useMemo(() => Object.values(m).sort((a, b) => b.id.localeCompare(a.id)), [m]);
 }
 
 export function useMachine(machineId: string): Machine | null {
@@ -911,7 +821,7 @@ export function useMachine(machineId: string): Machine | null {
 }
 
 export function useSessionListViewData(): SessionListViewItem[] | null {
-    return storage((state) => state.sessionListViewData);
+    return storage((state) => state.isDataReady ? state.sessionListViewData : null);
 }
 
 export function useLocalSettingMutable<K extends keyof LocalSettings>(name: K): [LocalSettings[K], (value: LocalSettings[K]) => void] {
@@ -944,4 +854,8 @@ export function useSocketStatus() {
 
 export function useSessionGitStatus(sessionId: string): GitStatus | null {
     return storage(useShallow((state) => state.sessionGitStatus[sessionId] ?? null));
+}
+
+export function useIsDataReady(): boolean {
+    return storage(useShallow((state) => state.isDataReady));
 }

@@ -18,33 +18,39 @@ import { trackPaywallButtonClicked } from '@/track';
 import { PaywallResult } from '@/sync/revenueCat';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
-import { PlusPlus } from '@/components/PlusPlus';
+import { useAllMachines } from '@/sync/storage';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { useUnistyles } from 'react-native-unistyles';
+import { layout } from '@/components/layout';
 
 // Manual Auth Modal Component for Android
 function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (url: string) => void }) {
+    const { theme } = useUnistyles();
     const [url, setUrl] = React.useState('');
-    
+
     return (
-        <View style={{ padding: 20, backgroundColor: 'white', borderRadius: 12, minWidth: 300 }}>
+        <View style={{ padding: 20, backgroundColor: theme.colors.surface, borderRadius: 12, minWidth: 300 }}>
             <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>
                 Authenticate Terminal
             </Text>
-            <Text style={{ fontSize: 14, color: '#666', marginBottom: 16 }}>
+            <Text style={{ fontSize: 14, color: theme.colors.textSecondary, marginBottom: 16 }}>
                 Paste the authentication URL from your terminal
             </Text>
             <TextInput
                 style={{
                     borderWidth: 1,
-                    borderColor: '#ddd',
+                    borderColor: theme.colors.divider,
                     borderRadius: 8,
                     padding: 12,
                     fontSize: 14,
-                    marginBottom: 20
+                    marginBottom: 20,
+                    color: theme.colors.input.text,
+                    backgroundColor: theme.colors.input.background
                 }}
                 value={url}
                 onChangeText={setUrl}
                 placeholder="happy://terminal?..."
-                placeholderTextColor="#999"
+                placeholderTextColor={theme.colors.input.placeholder}
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoFocus
@@ -74,13 +80,15 @@ function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
     );
 }
 
-export default function SettingsScreen() {
+export default React.memo(function SettingsScreen() {
+    const { theme } = useUnistyles();
     const router = useRouter();
     const appVersion = Constants.expoConfig?.version || '1.0.0';
     const auth = useAuth();
     const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
     const isPro = __DEV__ || useEntitlement('pro');
     const isCustomServer = isUsingCustomServer();
+    const allMachines = useAllMachines();
 
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
 
@@ -145,22 +153,24 @@ export default function SettingsScreen() {
 
         <ItemList style={{ paddingTop: 0 }}>
             {/* App Info Header */}
-            <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: 'white' }}>
-                <Image
-                    source={require('@/assets/images/logotype-dark.png')}
-                    contentFit="contain"
-                    style={{ width: 300, height: 90, marginBottom: 12 }}
-                />
-                <Pressable onPress={handleVersionClick} hitSlop={20}>
-                    <Text style={{ ...Typography.mono(), fontSize: 14, color: '#8E8E93' }}>
-                        Version {appVersion}
-                    </Text>
-                </Pressable>
+            <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
+                <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.surface, marginTop: 16, borderRadius: 12, marginHorizontal: 16 }}>
+                    <Image
+                        source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
+                        contentFit="contain"
+                        style={{ width: 300, height: 90, marginBottom: 12 }}
+                    />
+                    <Pressable onPress={handleVersionClick} hitSlop={20}>
+                        <Text style={{ ...Typography.mono(), fontSize: 14, color: theme.colors.textSecondary }}>
+                            Version {appVersion}
+                        </Text>
+                    </Pressable>
+                </View>
             </View>
 
             {/* Connect Terminal - Only show on native platforms */}
             {Platform.OS !== 'web' && (
-                <ItemGroup title="Connect Terminal">
+                <ItemGroup>
                     <Item
                         title="Scan QR code to authenticate"
                         icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
@@ -219,13 +229,54 @@ export default function SettingsScreen() {
                 />
             </ItemGroup>
 
+            {/* Machines */}
+            {allMachines.length > 0 && (
+                <ItemGroup title="Machines">
+                    {allMachines.map((machine) => {
+                        const isOnline = isMachineOnline(machine);
+                        const host = machine.metadata?.host || 'Unknown';
+                        const displayName = machine.metadata?.displayName;
+                        const platform = machine.metadata?.platform || '';
+
+                        // Use displayName if available, otherwise use host
+                        const title = displayName || host;
+
+                        // Build subtitle: show hostname if different from title, plus platform and status
+                        let subtitle = '';
+                        if (displayName && displayName !== host) {
+                            subtitle = host;
+                        }
+                        if (platform) {
+                            subtitle = subtitle ? `${subtitle} • ${platform}` : platform;
+                        }
+                        subtitle = subtitle ? `${subtitle} • ${isOnline ? 'Online' : 'Offline'}` : (isOnline ? 'Online' : 'Offline');
+
+                        return (
+                            <Item
+                                key={machine.id}
+                                title={title}
+                                subtitle={subtitle}
+                                icon={
+                                    <Ionicons
+                                        name="desktop-outline"
+                                        size={29}
+                                        color={isOnline ? theme.colors.status.connected : theme.colors.status.disconnected}
+                                    />
+                                }
+                                onPress={() => router.push(`/machine/${machine.id}`)}
+                            />
+                        );
+                    })}
+                </ItemGroup>
+            )}
+
             {/* Features */}
             <ItemGroup title="Features">
                 <Item
-                    title="Features"
-                    subtitle="Enable or disable app features"
-                    icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
-                    onPress={() => router.push('/settings/features')}
+                    title="Account"
+                    subtitle="Manage your account details"
+                    icon={<Ionicons name="person-circle-outline" size={29} color="#007AFF" />}
+                    onPress={() => router.push('/settings/account')}
                 />
                 <Item
                     title="Appearance"
@@ -234,10 +285,10 @@ export default function SettingsScreen() {
                     onPress={() => router.push('/settings/appearance')}
                 />
                 <Item
-                    title="Account"
-                    subtitle="Manage your account details"
-                    icon={<Ionicons name="person-circle-outline" size={29} color="#007AFF" />}
-                    onPress={() => router.push('/settings/account')}
+                    title="Features"
+                    subtitle="Enable or disable app features"
+                    icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
+                    onPress={() => router.push('/settings/features')}
                 />
             </ItemGroup>
 
@@ -256,7 +307,7 @@ export default function SettingsScreen() {
             <ItemGroup title="About" footer="Happy Coder is a Claude Code mobile client. It's fully end-to-end encrypted and your account is stored only on your device. Not affiliated with Anthropic.">
                 <Item
                     title="GitHub"
-                    icon={<Ionicons name="logo-github" size={29} color="#000" />}
+                    icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
                     detail="slopus/happy"
                     onPress={handleGitHub}
                 />
@@ -301,7 +352,7 @@ export default function SettingsScreen() {
                     />
                 )}
             </ItemGroup>
-            
+
         </ItemList>
     );
-}
+});

@@ -1,28 +1,31 @@
 import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines } from '@/sync/storage';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { machineSpawnNewSession, machineStopDaemon } from '@/sync/ops';
+import { machineSpawnNewSession, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { MachineSessionLauncher } from '@/components/machines/MachineSessionLauncher';
+import { MachineSessionLauncher } from '@/components/MachineSessionLauncher';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { useUnistyles } from 'react-native-unistyles';
 
 export default function MachineDetailScreen() {
+    const { theme } = useUnistyles();
     const { id: machineId } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
     const sessions = useSessions();
     const machines = useAllMachines();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
+    const [isRenamingMachine, setIsRenamingMachine] = useState(false);
 
     const machine = useMemo(() => {
         return machines.find(m => m.id === machineId);
@@ -156,6 +159,48 @@ export default function MachineDetailScreen() {
         setIsRefreshing(false);
     };
 
+    const handleRenameMachine = async () => {
+        if (!machine || !machineId) return;
+
+        const newDisplayName = await Modal.prompt(
+            'Rename Machine',
+            'Give this machine a custom name. Leave empty to use the default hostname.',
+            {
+                defaultValue: machine.metadata?.displayName || '',
+                placeholder: machine.metadata?.host || 'Enter machine name',
+                cancelText: 'Cancel',
+                confirmText: 'Rename'
+            }
+        );
+
+        if (newDisplayName !== null) {
+            setIsRenamingMachine(true);
+            try {
+                const updatedMetadata = {
+                    ...machine.metadata!,
+                    displayName: newDisplayName.trim() || undefined
+                };
+                
+                await machineUpdateMetadata(
+                    machineId,
+                    updatedMetadata,
+                    machine.metadataVersion
+                );
+                
+                Modal.alert('Success', 'Machine renamed successfully');
+            } catch (error) {
+                Modal.alert(
+                    'Error',
+                    error instanceof Error ? error.message : 'Failed to rename machine'
+                );
+                // Refresh to get latest state
+                await sync.refreshMachines();
+            } finally {
+                setIsRenamingMachine(false);
+            }
+        }
+    };
+
     const pastUsedRelativePath = useCallback((session: Session) => {
         if (!session.metadata) return 'unknown path';
         return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
@@ -181,7 +226,7 @@ export default function MachineDetailScreen() {
     }
 
     const metadata = machine.metadata;
-    const machineName = metadata?.host || 'unknown machine';
+    const machineName = metadata?.displayName || metadata?.host || 'unknown machine';
 
     return (
         <>
@@ -194,10 +239,10 @@ export default function MachineDetailScreen() {
                                 <Ionicons
                                     name="desktop-outline"
                                     size={18}
-                                    color="#000"
+                                    color={theme.colors.header.tint}
                                     style={{ marginRight: 6 }}
                                 />
-                                <Text style={[Typography.default('semiBold'), { fontSize: 17 }]}>
+                                <Text style={[Typography.default('semiBold'), { fontSize: 17, color: theme.colors.header.tint }]}>
                                     {machineName}
                                 </Text>
                             </View>
@@ -217,6 +262,22 @@ export default function MachineDetailScreen() {
                                 </Text>
                             </View>
                         </View>
+                    ),
+                    headerRight: () => (
+                        <Pressable
+                            onPress={handleRenameMachine}
+                            hitSlop={10}
+                            style={{
+                                opacity: isRenamingMachine ? 0.5 : 1
+                            }}
+                            disabled={isRenamingMachine}
+                        >
+                            <Octicons
+                                name="pencil"
+                                size={24}
+                                color={theme.colors.text}
+                            />
+                        </Pressable>
                     ),
                     headerBackTitle: 'Back'
                 }}
@@ -259,7 +320,7 @@ export default function MachineDetailScreen() {
                             disabled={isStoppingDaemon || daemonStatus === 'stopped'}
                             rightElement={
                                 isStoppingDaemon ? (
-                                    <ActivityIndicator size="small" color="#FF9500" />
+                                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                                 ) : (
                                     <Ionicons 
                                         name="stop-circle" 
