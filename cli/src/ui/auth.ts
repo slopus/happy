@@ -119,10 +119,15 @@ async function doWebAuth(keypair: tweetnacl.BoxKeyPair): Promise<{ secret: Uint8
         console.log('✓ Browser opened\n');
         console.log('Complete authentication in your browser window.');
     } else {
-        console.log('Could not open browser automatically.\n');
-        console.log('Please open this URL manually:');
-        console.log(webUrl);
+        console.log('Could not open browser automatically.');
     }
+    
+    // I changed this to always show the URL because we got a report from
+    // someone running happy inside a devcontainer that they saw the
+    // "Complete authentication in your browser window." but nothing opened.
+    // https://github.com/slopus/happy/issues/19
+    console.log('\nIf the browser did not open, please copy and paste this URL:');
+    console.log(webUrl);
     console.log('');
 
     return await waitForAuthentication(keypair);
