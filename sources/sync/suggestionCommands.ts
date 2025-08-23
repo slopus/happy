@@ -20,8 +20,10 @@ interface SearchOptions {
 export const IGNORED_COMMANDS = [
     "add-dir",
     "agents",
-    "clear",
     "config",
+    "statusline",
+    "bashes",
+    "settings",
     "cost",
     "doctor",
     "exit",
