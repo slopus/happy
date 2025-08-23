@@ -171,7 +171,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         backgroundColor: theme.colors.surfaceHighest,
         paddingHorizontal: 4,
-        paddingVertical: 1,
+        height: 16,
         borderRadius: 4,
     },
     taskStatusText: {

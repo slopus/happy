@@ -11,7 +11,7 @@ const stylesheet = StyleSheet.create((theme) => ({
         alignItems: 'center',
         backgroundColor: theme.colors.surfaceHighest,
         paddingHorizontal: 6,
-        paddingVertical: 2,
+        height: 16,
         borderRadius: 4,
         marginBottom: -2,
     },
