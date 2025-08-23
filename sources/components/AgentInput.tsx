@@ -846,7 +846,6 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
                 borderRadius: Platform.select({ default: 16, android: 20 }),
                 paddingHorizontal: 8,
                 paddingVertical: 6,
-                justifyContent: 'center',
                 height: 32,
                 opacity: p.pressed ? 0.7 : 1,
                 flex: 1,
