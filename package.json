@@ -148,6 +148,7 @@
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
+    "@expo/config-plugins": "^10.1.2",
     "@expo/ngrok": "^4.1.0",
     "@material/material-color-utilities": "^0.3.0",
     "@stablelib/hex": "^2.0.1",
@@ -155,7 +156,7 @@
     "babel-plugin-transform-remove-console": "^6.9.4",
     "patch-package": "^8.0.0",
     "react-test-renderer": "19.0.0",
-    "tsx": "^4.20.3",
+    "tsx": "^4.20.4",
     "typescript": "~5.8.3"
   },
   "private": true,
