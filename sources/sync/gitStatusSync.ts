@@ -7,6 +7,9 @@ import { InvalidateSync } from '@/utils/sync';
 import { sessionBash } from './ops';
 import { GitStatus } from './storageTypes';
 import { storage } from './storage';
+import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/parseStatus';
+import { parseCurrentBranch } from './git-parsers/parseBranch';
+import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
 
 export class GitStatusSync {
     private syncMap = new Map<string, InvalidateSync>();
@@ -119,7 +122,7 @@ export class GitStatusSync {
     }
 
     /**
-     * Parse git status porcelain output into structured data
+     * Parse git status porcelain output into structured data using simple-git parsers
      */
     private parseGitStatus(
         branchName: string | null, 
@@ -127,35 +130,15 @@ export class GitStatusSync {
         diffStatOutput: string = '',
         stagedDiffStatOutput: string = ''
     ): GitStatus {
-        const lines = porcelainOutput.trim().split('\n').filter(line => line.length > 0);
-        
-        let modifiedCount = 0;
-        let untrackedCount = 0;
-        let stagedCount = 0;
+        // Parse status using simple-git parser
+        const statusSummary = parseStatusSummary(porcelainOutput);
+        const counts = getStatusCounts(statusSummary);
+        const repoIsDirty = isDirty(statusSummary);
 
-        for (const line of lines) {
-            if (line.length < 2) continue;
-            
-            const indexStatus = line[0];
-            const workingStatus = line[1];
-
-            // Check for staged changes (index status)
-            if (indexStatus !== ' ' && indexStatus !== '?') {
-                stagedCount++;
-            }
-
-            // Check for working directory changes
-            if (workingStatus === 'M' || workingStatus === 'D') {
-                modifiedCount++;
-            } else if (indexStatus === '?' && workingStatus === '?') {
-                untrackedCount++;
-            }
-        }
-
-        const isDirty = modifiedCount > 0 || untrackedCount > 0 || stagedCount > 0;
-
-        // Parse diff statistics for line changes (separately for staged vs unstaged)
-        const { stagedAdded, stagedRemoved, unstagedAdded, unstagedRemoved } = this.parseDiffStatsSeparately(diffStatOutput, stagedDiffStatOutput);
+        // Parse diff statistics
+        const unstagedDiff = parseNumStat(diffStatOutput);
+        const stagedDiff = parseNumStat(stagedDiffStatOutput);
+        const { stagedAdded, stagedRemoved, unstagedAdded, unstagedRemoved } = mergeDiffSummaries(stagedDiff, unstagedDiff);
         
         // Calculate totals
         const linesAdded = stagedAdded + unstagedAdded;
@@ -164,10 +147,10 @@ export class GitStatusSync {
 
         return {
             branch: branchName || null,
-            isDirty,
-            modifiedCount,
-            untrackedCount,
-            stagedCount,
+            isDirty: repoIsDirty,
+            modifiedCount: counts.modified,
+            untrackedCount: counts.untracked,
+            stagedCount: counts.staged,
             stagedLinesAdded: stagedAdded,
             stagedLinesRemoved: stagedRemoved,
             unstagedLinesAdded: unstagedAdded,
@@ -179,56 +162,6 @@ export class GitStatusSync {
         };
     }
 
-    /**
-     * Parse git diff --numstat output to extract line addition/deletion statistics separately for staged vs unstaged
-     * Format: <added>\t<removed>\t<filename>
-     */
-    private parseDiffStatsSeparately(diffStatOutput: string, stagedDiffStatOutput: string): { 
-        stagedAdded: number; 
-        stagedRemoved: number; 
-        unstagedAdded: number; 
-        unstagedRemoved: number; 
-    } {
-        let unstagedAdded = 0;
-        let unstagedRemoved = 0;
-        let stagedAdded = 0;
-        let stagedRemoved = 0;
-
-        // Parse unstaged changes
-        const unstagedLines = diffStatOutput.trim().split('\n').filter(line => line.length > 0);
-        for (const line of unstagedLines) {
-            const parts = line.split('\t');
-            if (parts.length >= 2) {
-                const added = parseInt(parts[0], 10);
-                const removed = parseInt(parts[1], 10);
-                
-                // Handle binary files (git shows '-' for binary files)
-                if (!isNaN(added)) unstagedAdded += added;
-                if (!isNaN(removed)) unstagedRemoved += removed;
-            }
-        }
-
-        // Parse staged changes
-        const stagedLines = stagedDiffStatOutput.trim().split('\n').filter(line => line.length > 0);
-        for (const line of stagedLines) {
-            const parts = line.split('\t');
-            if (parts.length >= 2) {
-                const added = parseInt(parts[0], 10);
-                const removed = parseInt(parts[1], 10);
-                
-                // Handle binary files (git shows '-' for binary files)
-                if (!isNaN(added)) stagedAdded += added;
-                if (!isNaN(removed)) stagedRemoved += removed;
-            }
-        }
-
-        return {
-            stagedAdded,
-            stagedRemoved,
-            unstagedAdded,
-            unstagedRemoved
-        };
-    }
 }
 
 // Global singleton instance

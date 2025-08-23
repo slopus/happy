@@ -5,6 +5,9 @@
 
 import { sessionBash } from './ops';
 import { storage } from './storage';
+import { parseStatusSummary } from './git-parsers/parseStatus';
+import { parseCurrentBranch } from './git-parsers/parseBranch';
+import { parseNumStat, createDiffStatsMap } from './git-parsers/parseDiff';
 
 export interface GitFileStatus {
     fileName: string;
@@ -80,8 +83,8 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
             timeout: 10000
         });
 
-        // Parse the results
-        const branchName = branchResult.success ? branchResult.stdout.trim() : null;
+        // Parse the results using simple-git parsers
+        const branchName = branchResult.success ? parseCurrentBranch(branchResult.stdout) : null;
         const statusOutput = statusResult.stdout;
         const diffStatOutput = diffStatResult.success ? diffStatResult.stdout : '';
         const stagedDiffStatOutput = stagedDiffStatResult.success ? stagedDiffStatResult.stdout : '';
@@ -95,7 +98,7 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
 }
 
 /**
- * Parse git status and diff outputs into structured file data
+ * Parse git status and diff outputs into structured file data using simple-git parsers
  */
 function parseGitStatusFiles(
     branchName: string | null,
@@ -103,69 +106,54 @@ function parseGitStatusFiles(
     diffStatOutput: string,
     stagedDiffStatOutput: string
 ): GitStatusFiles {
-    const statusLines = statusOutput.trim().split('\n').filter(line => line.length > 0);
+    // Parse status using simple-git parser
+    const statusSummary = parseStatusSummary(statusOutput);
     
-    // Parse diff statistics for line changes
-    const unstagedStats = parseDiffStats(diffStatOutput);
-    const stagedStats = parseDiffStats(stagedDiffStatOutput);
+    // Parse diff statistics
+    const unstagedDiff = parseNumStat(diffStatOutput);
+    const stagedDiff = parseNumStat(stagedDiffStatOutput);
+    const unstagedStats = createDiffStatsMap(unstagedDiff);
+    const stagedStats = createDiffStatsMap(stagedDiff);
 
     const stagedFiles: GitFileStatus[] = [];
     const unstagedFiles: GitFileStatus[] = [];
 
-    for (const line of statusLines) {
-        if (line.length < 3) continue;
-        
-        const indexStatus = line[0]; // Staged status
-        const workingStatus = line[1]; // Working directory status
-        const fileName = line.slice(3); // File path
-
-        // Handle renamed files (format: "R  old_name -> new_name")
-        let filePath = fileName;
-        let oldPath: string | undefined;
-        
-        if (indexStatus === 'R' || workingStatus === 'R') {
-            const renameParts = fileName.split(' -> ');
-            if (renameParts.length === 2) {
-                oldPath = renameParts[0];
-                filePath = renameParts[1];
-            }
-        }
-
-        const parts = filePath.split('/');
-        const fileNameOnly = parts[parts.length - 1] || filePath;
+    for (const file of statusSummary.files) {
+        const parts = file.path.split('/');
+        const fileNameOnly = parts[parts.length - 1] || file.path;
         const filePathOnly = parts.slice(0, -1).join('/');
 
         // Create file status for staged changes
-        if (indexStatus !== ' ' && indexStatus !== '?') {
-            const status = getFileStatus(indexStatus);
-            const stats = stagedStats[filePath] || { added: 0, removed: 0 };
+        if (file.index !== ' ' && file.index !== '?') {
+            const status = getFileStatus(file.index);
+            const stats = stagedStats[file.path] || { added: 0, removed: 0, binary: false };
             
             stagedFiles.push({
                 fileName: fileNameOnly,
                 filePath: filePathOnly,
-                fullPath: filePath,
+                fullPath: file.path,
                 status,
                 isStaged: true,
                 linesAdded: stats.added,
                 linesRemoved: stats.removed,
-                oldPath
+                oldPath: file.from
             });
         }
 
         // Create file status for unstaged changes
-        if (workingStatus !== ' ') {
-            const status = getFileStatus(workingStatus);
-            const stats = unstagedStats[filePath] || { added: 0, removed: 0 };
+        if (file.working_dir !== ' ') {
+            const status = getFileStatus(file.working_dir);
+            const stats = unstagedStats[file.path] || { added: 0, removed: 0, binary: false };
             
             unstagedFiles.push({
                 fileName: fileNameOnly,
                 filePath: filePathOnly,
-                fullPath: filePath,
+                fullPath: file.path,
                 status,
                 isStaged: false,
                 linesAdded: stats.added,
                 linesRemoved: stats.removed,
-                oldPath
+                oldPath: file.from
             });
         }
     }
@@ -179,30 +167,6 @@ function parseGitStatusFiles(
     };
 }
 
-/**
- * Parse git diff --numstat output into a map of file paths to line statistics
- */
-function parseDiffStats(diffStatOutput: string): Record<string, { added: number; removed: number }> {
-    const stats: Record<string, { added: number; removed: number }> = {};
-    
-    const lines = diffStatOutput.trim().split('\n').filter(line => line.length > 0);
-    
-    for (const line of lines) {
-        const parts = line.split('\t');
-        if (parts.length >= 3) {
-            const added = parseInt(parts[0], 10);
-            const removed = parseInt(parts[1], 10);
-            const filePath = parts[2];
-            
-            stats[filePath] = {
-                added: !isNaN(added) ? added : 0,
-                removed: !isNaN(removed) ? removed : 0
-            };
-        }
-    }
-    
-    return stats;
-}
 
 /**
  * Convert git status character to readable status
