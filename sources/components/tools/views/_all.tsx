@@ -11,6 +11,7 @@ import { TaskView } from './TaskView';
 import { BashViewFull } from './BashViewFull';
 import { EditViewFull } from './EditViewFull';
 import { MultiEditViewFull } from './MultiEditViewFull';
+import { MCPToolView } from './MCPToolView';
 
 export type ToolViewProps = {
     tool: ToolCall;
@@ -41,6 +42,11 @@ export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
 
 // Helper function to get the appropriate view component for a tool
 export function getToolViewComponent(toolName: string): ToolViewComponent | null {
+    // Check if it's an MCP tool (starts with "mcp__")
+    if (toolName.startsWith('mcp__')) {
+        return MCPToolView;
+    }
+    
     return toolViewRegistry[toolName] || null;
 }
 
@@ -58,3 +64,4 @@ export { MultiEditViewFull } from './MultiEditViewFull';
 export { ExitPlanToolView } from './ExitPlanToolView';
 export { MultiEditView } from './MultiEditView';
 export { TaskView } from './TaskView';
+export { MCPToolView } from './MCPToolView';
