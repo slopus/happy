@@ -90,9 +90,12 @@ export const MachineSessionLauncher: React.FC<MachineSessionLauncherProps> = ({
     const styles = stylesheet;
     const [customPath, setCustomPath] = useState('');
     const [isSpawning, setIsSpawning] = useState(false);
+    const [showAllPaths, setShowAllPaths] = useState(false);
 
     const handlePathSelect = (path: string) => {
-        setCustomPath(path);
+        // Store the relative path in the input
+        const relativePath = formatPathRelativeToHome(path, homeDir);
+        setCustomPath(relativePath);
     };
 
     const handleStartSession = async () => {
@@ -108,24 +111,42 @@ export const MachineSessionLauncher: React.FC<MachineSessionLauncherProps> = ({
     };
 
     const canStart = isOnline && customPath.trim() !== '';
+    
+    // Determine how many paths to show
+    const INITIAL_PATHS_COUNT = 3;
+    const pathsToShow = showAllPaths ? recentPaths : recentPaths.slice(0, INITIAL_PATHS_COUNT);
+    const hasMorePaths = recentPaths.length > INITIAL_PATHS_COUNT;
 
     return (
         <>
             {/* Show recent paths - click to populate input */}
-            {recentPaths.slice(0, 3).map(path => (
+            {pathsToShow.map(path => {
+                const relativePath = formatPathRelativeToHome(path, homeDir);
+                return (
+                    <Item
+                        key={path}
+                        title={relativePath}
+                        titleStyle={[
+                            styles.pathItemTitle,
+                            isOnline ? styles.pathItemTitleEnabled : styles.pathItemTitleDisabled
+                        ]}
+                        onPress={() => handlePathSelect(path)}
+                        disabled={!isOnline}
+                        selected={isOnline && customPath === relativePath}
+                        showChevron={false}
+                    />
+                );
+            })}
+            
+            {/* Show all/less button */}
+            {hasMorePaths && (
                 <Item
-                    key={path}
-                    title={formatPathRelativeToHome(path, homeDir)}
-                    titleStyle={[
-                        styles.pathItemTitle,
-                        isOnline ? styles.pathItemTitleEnabled : styles.pathItemTitleDisabled
-                    ]}
-                    onPress={() => handlePathSelect(path)}
-                    disabled={!isOnline}
-                    selected={isOnline && customPath === path}
+                    title={showAllPaths ? "Show less" : `Show all (${recentPaths.length} paths)`}
+                    titleStyle={{ color: theme.colors.primary }}
+                    onPress={() => setShowAllPaths(!showAllPaths)}
                     showChevron={false}
                 />
-            ))}
+            )}
             
             {/* Custom path input with play button OR offline message */}
             {isOnline ? (
