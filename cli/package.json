@@ -50,7 +50,7 @@
     "test": "yarn build && vitest run",
     "test:watch": "vitest",
     "test:integration-test-env": "yarn build && tsx --env-file .env.integration-test node_modules/.bin/vitest run",
-    "dev": "DEBUG=1 yarn build && npx tsx src/index.ts",
+    "dev": "yarn build && DEBUG=1 npx tsx src/index.ts",
     "dev:local-server": "yarn build && tsx --env-file .env.dev-local-server src/index.ts",
     "dev:integration-test-env": "yarn build && tsx --env-file .env.integration-test src/index.ts",
     "prepublishOnly": "yarn build && yarn test",
@@ -61,7 +61,7 @@
     "beta:publish": "yarn version:prerelease && yarn publish:prerelease"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "^1.0.73",
+    "@anthropic-ai/claude-code": "^1.0.89",
     "@anthropic-ai/sdk": "^0.56.0",
     "@modelcontextprotocol/sdk": "^1.15.1",
     "@stablelib/base64": "^2.0.1",

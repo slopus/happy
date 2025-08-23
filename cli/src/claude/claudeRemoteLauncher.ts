@@ -11,7 +11,6 @@ import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
-import { createSessionScanner } from "./utils/sessionScanner";
 import { systemPrompt } from "./utils/systemPrompt";
 
 export async function claudeRemoteLauncher(session: Session): Promise<'switch' | 'exit'> {
@@ -56,18 +55,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         }
         process.stdin.setEncoding("utf8");
     }
-
-    // Start the scanner
-    const scanner = await createSessionScanner({
-        sessionId: session.sessionId,
-        workingDirectory: session.path,
-        onMessage: (message) => {
-            // Block SDK summary messages - we'll generate our own
-            // if (message.type === 'summary') {
-            //     session.client.sendClaudeSessionMessage(message);
-            // }
-        }
-    });
 
     // Handle abort
     let exitReason: 'switch' | 'exit' | null = null;
@@ -269,7 +256,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         // Update converter's session ID when new session is found
                         sdkToLogConverter.updateSessionId(sessionId);
                         session.onSessionFound(sessionId);
-                        scanner.onNewSession(sessionId);
                     },
                     onThinkingChange: session.onThinkingChange,
                     message: messageData.message,
@@ -333,9 +319,6 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         if (abortFuture) { // Just in case of error
             abortFuture.resolve(undefined);
         }
-
-        // Stop the scanner
-        await scanner.cleanup();
     }
 
     return exitReason || 'exit';
