@@ -297,7 +297,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     if (agentState) {
         // Process pending permission requests
         if (agentState.requests) {
-            for (const [permId, request] of Object.entries(agentState.requests)) {
+            for (const [permId, request] of Object.entries(agentState.requests) as Array<[string, {tool: string, arguments: any, createdAt?: number | null}]>) {
                 // Skip if this permission is also in completedRequests (completed takes precedence)
                 if (agentState.completedRequests && agentState.completedRequests[permId]) {
                     continue;
@@ -368,7 +368,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
         // Process completed permission requests
         if (agentState.completedRequests) {
-            for (const [permId, completed] of Object.entries(agentState.completedRequests)) {
+            for (const [permId, completed] of Object.entries(agentState.completedRequests) as Array<[string, {tool: string, arguments: any, createdAt?: number | null, completedAt?: number | null, status: 'canceled' | 'denied' | 'approved', reason?: string | null}]>) {
                 // Check if we have a message for this permission ID
                 const messageId = state.toolIdToMessageId.get(permId);
                 if (messageId) {

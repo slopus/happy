@@ -283,7 +283,7 @@ export const storage = create<StorageState>()((set, get) => {
                         const newRequests = newSession.agentState?.requests || {};
 
                         // Find NEW permission requests only
-                        for (const [requestId, request] of Object.entries(newRequests)) {
+                        for (const [requestId, request] of Object.entries(newRequests) as Array<[string, {tool: string, arguments: any, createdAt?: number | null}]>) {
                             if (!oldRequests[requestId]) {
                                 // This is a NEW permission request
                                 const toolName = request.tool;
@@ -797,7 +797,7 @@ export function useSettings(): Settings {
 
 export function useSettingMutable<K extends keyof Settings>(name: K): [Settings[K], (value: Settings[K]) => void] {
     const setValue = React.useCallback((value: Settings[K]) => {
-        sync.applySettings({ [name]: value });
+        sync.updateSettings({ [name]: value });
     }, [name]);
     const value = useSetting(name);
     return [value, setValue];

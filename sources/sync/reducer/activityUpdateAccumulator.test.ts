@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { ApiEphemeralActivityUpdate } from '../apiTypes';
+import type { EphemeralActivityUpdate } from 'happy-api-client';
 import { ActivityUpdateAccumulator } from './activityUpdateAccumulator';
 
 describe('ActivityUpdateAccumulator Smart Debounce', () => {
@@ -18,7 +18,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
 
     describe('immediate emission for significant state changes', () => {
         it('should emit immediately when thinking state changes from false to true', () => {
-            const update1: ApiEphemeralActivityUpdate = {
+            const update1: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -26,7 +26,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const update2: ApiEphemeralActivityUpdate = {
+            const update2: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -48,7 +48,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
         });
 
         it('should emit immediately when thinking state changes from true to false', () => {
-            const update1: ApiEphemeralActivityUpdate = {
+            const update1: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -56,7 +56,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: true
             };
 
-            const update2: ApiEphemeralActivityUpdate = {
+            const update2: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -74,7 +74,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
         });
 
         it('should emit immediately when active state changes', () => {
-            const update1: ApiEphemeralActivityUpdate = {
+            const update1: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -82,7 +82,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const update2: ApiEphemeralActivityUpdate = {
+            const update2: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: false,
@@ -100,7 +100,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
         });
 
         it('should emit immediately for first update to new session', () => {
-            const update: ApiEphemeralActivityUpdate = {
+            const update: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -119,7 +119,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
 
     describe('debounced emission for timestamp-only changes', () => {
         it('should debounce when only activeAt timestamp changes', () => {
-            const update1: ApiEphemeralActivityUpdate = {
+            const update1: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -127,7 +127,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const update2: ApiEphemeralActivityUpdate = {
+            const update2: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -135,7 +135,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const update3: ApiEphemeralActivityUpdate = {
+            const update3: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -161,7 +161,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
         });
 
         it('should accumulate multiple sessions with timestamp changes', () => {
-            const session1Update1: ApiEphemeralActivityUpdate = {
+            const session1Update1: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -169,7 +169,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const session2Update1: ApiEphemeralActivityUpdate = {
+            const session2Update1: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session2',
                 active: true,
@@ -177,7 +177,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const session1Update2: ApiEphemeralActivityUpdate = {
+            const session1Update2: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -185,7 +185,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const session2Update2: ApiEphemeralActivityUpdate = {
+            const session2Update2: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session2',
                 active: true,
@@ -208,7 +208,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
             expect(mockFlushHandler).toHaveBeenCalledTimes(3);
             
             // Should batch both sessions in one call
-            const lastCall = mockFlushHandler.mock.calls[2][0] as Map<string, ApiEphemeralActivityUpdate>;
+            const lastCall = mockFlushHandler.mock.calls[2][0] as Map<string, EphemeralActivityUpdate>;
             expect(lastCall.size).toBe(2);
             expect(lastCall.get('session1')).toEqual(session1Update2);
             expect(lastCall.get('session2')).toEqual(session2Update2);
@@ -216,7 +216,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
 
         it('should flush regularly arriving updates without indefinite delay', () => {
             // This test verifies the fix for the timer reset bug
-            const update1: ApiEphemeralActivityUpdate = {
+            const update1: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -224,7 +224,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const update2: ApiEphemeralActivityUpdate = {
+            const update2: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -232,7 +232,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const update3: ApiEphemeralActivityUpdate = {
+            const update3: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -263,7 +263,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
 
     describe('mixed scenarios', () => {
         it('should flush pending updates when significant change occurs', () => {
-            const update1: ApiEphemeralActivityUpdate = {
+            const update1: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -271,7 +271,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const update2: ApiEphemeralActivityUpdate = {
+            const update2: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -279,7 +279,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const update3: ApiEphemeralActivityUpdate = {
+            const update3: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -307,7 +307,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
 
         it('should batch pending updates from multiple sessions when significant change occurs', () => {
             // Set up initial states for two sessions
-            const session1Initial: ApiEphemeralActivityUpdate = {
+            const session1Initial: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -315,7 +315,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const session2Initial: ApiEphemeralActivityUpdate = {
+            const session2Initial: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session2',
                 active: true,
@@ -329,7 +329,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
             expect(mockFlushHandler).toHaveBeenCalledTimes(2);
 
             // Add debounced updates for both sessions
-            const session1Debounced: ApiEphemeralActivityUpdate = {
+            const session1Debounced: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -337,7 +337,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const session2Debounced: ApiEphemeralActivityUpdate = {
+            const session2Debounced: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session2',
                 active: true,
@@ -350,7 +350,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
             expect(mockFlushHandler).toHaveBeenCalledTimes(2); // Still 2, these are pending
 
             // Add a significant change for session1
-            const session1Significant: ApiEphemeralActivityUpdate = {
+            const session1Significant: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -362,14 +362,14 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
             expect(mockFlushHandler).toHaveBeenCalledTimes(3);
 
             // Should have batched all pending updates with the significant change
-            const lastCall = mockFlushHandler.mock.calls[2][0] as Map<string, ApiEphemeralActivityUpdate>;
+            const lastCall = mockFlushHandler.mock.calls[2][0] as Map<string, EphemeralActivityUpdate>;
             expect(lastCall.size).toBe(2); // Both sessions
             expect(lastCall.get('session1')).toEqual(session1Significant);
             expect(lastCall.get('session2')).toEqual(session2Debounced);
         });
 
         it('should handle rapid state toggles correctly', () => {
-            const updates: ApiEphemeralActivityUpdate[] = [
+            const updates: EphemeralActivityUpdate[] = [
                 { type: 'activity', id: 'session1', active: true, activeAt: 1000, thinking: false },
                 { type: 'activity', id: 'session1', active: true, activeAt: 1100, thinking: true },
                 { type: 'activity', id: 'session1', active: true, activeAt: 1200, thinking: false },
@@ -393,7 +393,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
 
     describe('control methods', () => {
         it('should cancel pending updates', () => {
-            const update1: ApiEphemeralActivityUpdate = {
+            const update1: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -401,7 +401,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const update2: ApiEphemeralActivityUpdate = {
+            const update2: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -422,7 +422,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
         });
 
         it('should flush pending updates immediately', () => {
-            const update1: ApiEphemeralActivityUpdate = {
+            const update1: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -430,7 +430,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const update2: ApiEphemeralActivityUpdate = {
+            const update2: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -453,7 +453,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
         });
 
         it('should reset all state', () => {
-            const update1: ApiEphemeralActivityUpdate = {
+            const update1: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -461,7 +461,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
                 thinking: false
             };
 
-            const update2: ApiEphemeralActivityUpdate = {
+            const update2: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,
@@ -475,7 +475,7 @@ describe('ActivityUpdateAccumulator Smart Debounce', () => {
             accumulator.reset();
 
             // After reset, next update should be treated as new session (immediate)
-            const update3: ApiEphemeralActivityUpdate = {
+            const update3: EphemeralActivityUpdate = {
                 type: 'activity',
                 id: 'session1',
                 active: true,

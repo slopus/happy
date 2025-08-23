@@ -3,7 +3,6 @@
  * Provides strictly typed functions for all session-related RPC operations
  */
 
-import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import type { MachineMetadata } from './storageTypes';
 
@@ -129,7 +128,11 @@ interface SessionKillResponse {
  * Spawn a new remote session on a specific machine
  */
 export async function machineSpawnNewSession(machineId: string, directory: string): Promise<{ sessionId: string }> {
-    const result = await apiSocket.rpc<{
+    const client = sync.getMobileClient();
+    if (!client) {
+        throw new Error('Mobile client not initialized');
+    }
+    const result = await client.rpc<{
         sessionId: string
     }, {
         type: 'spawn-in-directory'
@@ -147,7 +150,11 @@ export async function machineSpawnNewSession(machineId: string, directory: strin
  * Stop the daemon on a specific machine
  */
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {
-    const result = await apiSocket.rpc<{ message: string }, {}>(
+    const client = sync.getMobileClient();
+    if (!client) {
+        throw new Error('Mobile client not initialized');
+    }
+    const result = await client.rpc<{ message: string }, {}>(
         machineId,
         'stop-daemon',
         {}
@@ -171,16 +178,20 @@ export async function machineUpdateMetadata(
     while (retryCount < maxRetries) {
         const encryptedMetadata = sync.encryption.encryptRaw(currentMetadata);
         
-        const result = await apiSocket.emitWithAck<{
+        const socket = sync.getMobileClient().getSocket();
+        if (!socket) {
+            throw new Error('Socket not connected');
+        }
+        const result = await socket.emitWithAck('machine-update-metadata', {
+            machineId,
+            metadata: encryptedMetadata,
+            expectedVersion: currentVersion
+        }) as {
             result: 'success' | 'version-mismatch' | 'error';
             version?: number;
             metadata?: string;
             message?: string;
-        }>('machine-update-metadata', {
-            machineId,
-            metadata: encryptedMetadata,
-            expectedVersion: currentVersion
-        });
+        };
 
         if (result.result === 'success') {
             return {
@@ -219,7 +230,11 @@ export async function machineUpdateMetadata(
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {
-    await apiSocket.rpc(sessionId, 'abort', {
+    const client = sync.getMobileClient();
+    if (!client) {
+        throw new Error('Mobile client not initialized');
+    }
+    await client.rpc(sessionId, 'abort', {
         reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`
     });
 }
@@ -228,24 +243,36 @@ export async function sessionAbort(sessionId: string): Promise<void> {
  * Allow a permission request
  */
 export async function sessionAllow(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'): Promise<void> {
+    const client = sync.getMobileClient();
+    if (!client) {
+        throw new Error('Mobile client not initialized');
+    }
     const request: SessionPermissionRequest = { id, approved: true, mode };
-    await apiSocket.rpc(sessionId, 'permission', request);
+    await client.rpc(sessionId, 'permission', request);
 }
 
 /**
  * Deny a permission request
  */
 export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'): Promise<void> {
+    const client = sync.getMobileClient();
+    if (!client) {
+        throw new Error('Mobile client not initialized');
+    }
     const request: SessionPermissionRequest = { id, approved: false, mode };
-    await apiSocket.rpc(sessionId, 'permission', request);
+    await client.rpc(sessionId, 'permission', request);
 }
 
 /**
  * Request mode change for a session
  */
 export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): Promise<boolean> {
+    const client = sync.getMobileClient();
+    if (!client) {
+        throw new Error('Mobile client not initialized');
+    }
     const request: SessionModeChangeRequest = { to };
-    const response = await apiSocket.rpc<boolean, SessionModeChangeRequest>(
+    const response = await client.rpc<boolean, SessionModeChangeRequest>(
         sessionId,
         'switch',
         request,
@@ -258,7 +285,11 @@ export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): 
  */
 export async function sessionBash(sessionId: string, request: SessionBashRequest): Promise<SessionBashResponse> {
     try {
-        const response = await apiSocket.rpc<SessionBashResponse, SessionBashRequest>(
+        const client = sync.getMobileClient();
+        if (!client) {
+            throw new Error('Mobile client not initialized');
+        }
+        const response = await client.rpc<SessionBashResponse, SessionBashRequest>(
             sessionId,
             'bash',
             request
@@ -281,7 +312,11 @@ export async function sessionBash(sessionId: string, request: SessionBashRequest
 export async function sessionReadFile(sessionId: string, path: string): Promise<SessionReadFileResponse> {
     try {
         const request: SessionReadFileRequest = { path };
-        const response = await apiSocket.rpc<SessionReadFileResponse, SessionReadFileRequest>(
+        const client = sync.getMobileClient();
+        if (!client) {
+            throw new Error('Mobile client not initialized');
+        }
+        const response = await client.rpc<SessionReadFileResponse, SessionReadFileRequest>(
             sessionId,
             'readFile',
             request
@@ -306,7 +341,11 @@ export async function sessionWriteFile(
 ): Promise<SessionWriteFileResponse> {
     try {
         const request: SessionWriteFileRequest = { path, content, expectedHash };
-        const response = await apiSocket.rpc<SessionWriteFileResponse, SessionWriteFileRequest>(
+        const client = sync.getMobileClient();
+        if (!client) {
+            throw new Error('Mobile client not initialized');
+        }
+        const response = await client.rpc<SessionWriteFileResponse, SessionWriteFileRequest>(
             sessionId,
             'writeFile',
             request
@@ -326,7 +365,11 @@ export async function sessionWriteFile(
 export async function sessionListDirectory(sessionId: string, path: string): Promise<SessionListDirectoryResponse> {
     try {
         const request: SessionListDirectoryRequest = { path };
-        const response = await apiSocket.rpc<SessionListDirectoryResponse, SessionListDirectoryRequest>(
+        const client = sync.getMobileClient();
+        if (!client) {
+            throw new Error('Mobile client not initialized');
+        }
+        const response = await client.rpc<SessionListDirectoryResponse, SessionListDirectoryRequest>(
             sessionId,
             'listDirectory',
             request
@@ -350,7 +393,11 @@ export async function sessionGetDirectoryTree(
 ): Promise<SessionGetDirectoryTreeResponse> {
     try {
         const request: SessionGetDirectoryTreeRequest = { path, maxDepth };
-        const response = await apiSocket.rpc<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
+        const client = sync.getMobileClient();
+        if (!client) {
+            throw new Error('Mobile client not initialized');
+        }
+        const response = await client.rpc<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
             sessionId,
             'getDirectoryTree',
             request
@@ -374,7 +421,11 @@ export async function sessionRipgrep(
 ): Promise<SessionRipgrepResponse> {
     try {
         const request: SessionRipgrepRequest = { args, cwd };
-        const response = await apiSocket.rpc<SessionRipgrepResponse, SessionRipgrepRequest>(
+        const client = sync.getMobileClient();
+        if (!client) {
+            throw new Error('Mobile client not initialized');
+        }
+        const response = await client.rpc<SessionRipgrepResponse, SessionRipgrepRequest>(
             sessionId,
             'ripgrep',
             request
@@ -393,7 +444,11 @@ export async function sessionRipgrep(
  */
 export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
     try {
-        const response = await apiSocket.rpc<SessionKillResponse, {}>(
+        const client = sync.getMobileClient();
+        if (!client) {
+            throw new Error('Mobile client not initialized');
+        }
+        const response = await client.rpc<SessionKillResponse, {}>(
             sessionId,
             'killSession',
             {}

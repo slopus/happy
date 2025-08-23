@@ -15,6 +15,7 @@ import { useEntitlement, useLocalSettingMutable } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { isUsingCustomServer } from '@/sync/serverConfig';
 import { trackPaywallButtonClicked } from '@/track';
+import { PaywallResult } from '@/sync/revenueCat';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
 import { useAllMachines } from '@/sync/storage';
@@ -110,10 +111,26 @@ export default React.memo(function SettingsScreen() {
     const handleSubscribe = async () => {
         trackPaywallButtonClicked();
         const result = await sync.presentPaywall();
-        if (!result.success) {
-            console.error('Failed to present paywall:', result.error);
-        } else if (result.purchased) {
-            console.log('Purchase successful!');
+        
+        switch (result) {
+            case PaywallResult.PURCHASED:
+                console.log('Purchase successful!');
+                break;
+            case PaywallResult.RESTORED:
+                console.log('Purchases restored!');
+                break;
+            case PaywallResult.CANCELLED:
+                console.log('Purchase cancelled');
+                break;
+            case PaywallResult.NOT_INITIALIZED:
+                console.error('RevenueCat not initialized');
+                break;
+            case PaywallResult.ERROR:
+                console.error('Failed to present paywall');
+                break;
+            case PaywallResult.NOT_PRESENTED:
+                console.log('Paywall not presented');
+                break;
         }
     };
 
