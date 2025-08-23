@@ -60,7 +60,8 @@ export enum PaywallResult {
     ERROR = 'ERROR',
     CANCELLED = 'CANCELLED',
     PURCHASED = 'PURCHASED',
-    RESTORED = 'RESTORED'
+    RESTORED = 'RESTORED',
+    NOT_INITIALIZED = 'NOT_INITIALIZED'
 }
 
 export interface PaywallOptions {

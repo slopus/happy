@@ -3,7 +3,7 @@
  * Provides strictly typed functions for all session-related RPC operations
  */
 
-import { apiSocket } from './apiSocket';
+import { apiSocketRpc } from './apiSocketRpc';
 import { sync } from './sync';
 
 // Strict type definitions for all operations
@@ -128,7 +128,7 @@ interface SessionKillResponse {
  * Spawn a new remote session on a specific machine
  */
 export async function machineSpawnNewSession(machineId: string, directory: string): Promise<{ sessionId: string }> {
-    const result = await apiSocket.rpc<{
+    const result = await apiSocketRpc.rpc<{
         sessionId: string
     }, {
         type: 'spawn-in-directory'
@@ -146,7 +146,7 @@ export async function machineSpawnNewSession(machineId: string, directory: strin
  * Stop the daemon on a specific machine
  */
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {
-    const result = await apiSocket.rpc<{ message: string }, {}>(
+    const result = await apiSocketRpc.rpc<{ message: string }, {}>(
         machineId,
         'stop-daemon',
         {}
@@ -158,7 +158,7 @@ export async function machineStopDaemon(machineId: string): Promise<{ message: s
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {
-    await apiSocket.rpc(sessionId, 'abort', {
+    await apiSocketRpc.rpc(sessionId, 'abort', {
         reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`
     });
 }
@@ -168,7 +168,7 @@ export async function sessionAbort(sessionId: string): Promise<void> {
  */
 export async function sessionAllow(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'): Promise<void> {
     const request: SessionPermissionRequest = { id, approved: true, mode };
-    await apiSocket.rpc(sessionId, 'permission', request);
+    await apiSocketRpc.rpc(sessionId, 'permission', request);
 }
 
 /**
@@ -176,7 +176,7 @@ export async function sessionAllow(sessionId: string, id: string, mode?: 'defaul
  */
 export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'): Promise<void> {
     const request: SessionPermissionRequest = { id, approved: false, mode };
-    await apiSocket.rpc(sessionId, 'permission', request);
+    await apiSocketRpc.rpc(sessionId, 'permission', request);
 }
 
 /**
@@ -184,7 +184,7 @@ export async function sessionDeny(sessionId: string, id: string, mode?: 'default
  */
 export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): Promise<boolean> {
     const request: SessionModeChangeRequest = { to };
-    const response = await apiSocket.rpc<boolean, SessionModeChangeRequest>(
+    const response = await apiSocketRpc.rpc<boolean, SessionModeChangeRequest>(
         sessionId,
         'switch',
         request,
@@ -197,7 +197,7 @@ export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): 
  */
 export async function sessionBash(sessionId: string, request: SessionBashRequest): Promise<SessionBashResponse> {
     try {
-        const response = await apiSocket.rpc<SessionBashResponse, SessionBashRequest>(
+        const response = await apiSocketRpc.rpc<SessionBashResponse, SessionBashRequest>(
             sessionId,
             'bash',
             request
@@ -220,7 +220,7 @@ export async function sessionBash(sessionId: string, request: SessionBashRequest
 export async function sessionReadFile(sessionId: string, path: string): Promise<SessionReadFileResponse> {
     try {
         const request: SessionReadFileRequest = { path };
-        const response = await apiSocket.rpc<SessionReadFileResponse, SessionReadFileRequest>(
+        const response = await apiSocketRpc.rpc<SessionReadFileResponse, SessionReadFileRequest>(
             sessionId,
             'readFile',
             request
@@ -245,7 +245,7 @@ export async function sessionWriteFile(
 ): Promise<SessionWriteFileResponse> {
     try {
         const request: SessionWriteFileRequest = { path, content, expectedHash };
-        const response = await apiSocket.rpc<SessionWriteFileResponse, SessionWriteFileRequest>(
+        const response = await apiSocketRpc.rpc<SessionWriteFileResponse, SessionWriteFileRequest>(
             sessionId,
             'writeFile',
             request
@@ -265,7 +265,7 @@ export async function sessionWriteFile(
 export async function sessionListDirectory(sessionId: string, path: string): Promise<SessionListDirectoryResponse> {
     try {
         const request: SessionListDirectoryRequest = { path };
-        const response = await apiSocket.rpc<SessionListDirectoryResponse, SessionListDirectoryRequest>(
+        const response = await apiSocketRpc.rpc<SessionListDirectoryResponse, SessionListDirectoryRequest>(
             sessionId,
             'listDirectory',
             request
@@ -289,7 +289,7 @@ export async function sessionGetDirectoryTree(
 ): Promise<SessionGetDirectoryTreeResponse> {
     try {
         const request: SessionGetDirectoryTreeRequest = { path, maxDepth };
-        const response = await apiSocket.rpc<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
+        const response = await apiSocketRpc.rpc<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
             sessionId,
             'getDirectoryTree',
             request
@@ -313,7 +313,7 @@ export async function sessionRipgrep(
 ): Promise<SessionRipgrepResponse> {
     try {
         const request: SessionRipgrepRequest = { args, cwd };
-        const response = await apiSocket.rpc<SessionRipgrepResponse, SessionRipgrepRequest>(
+        const response = await apiSocketRpc.rpc<SessionRipgrepResponse, SessionRipgrepRequest>(
             sessionId,
             'ripgrep',
             request
@@ -332,7 +332,7 @@ export async function sessionRipgrep(
  */
 export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
     try {
-        const response = await apiSocket.rpc<SessionKillResponse, {}>(
+        const response = await apiSocketRpc.rpc<SessionKillResponse, {}>(
             sessionId,
             'killSession',
             {}
