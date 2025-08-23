@@ -152,7 +152,7 @@ export default function NewSessionScreen() {
     const machineGroups = React.useMemo(() => {
         const groups: Record<string, {
             machineHost: string,
-            paths: Set<string>,
+            pathsWithTimestamps: Map<string, number>,
             isOnline: boolean,
             lastSeen?: number,
             metadata?: any,
@@ -163,7 +163,7 @@ export default function NewSessionScreen() {
         machines.forEach(machine => {
             groups[machine.id] = {
                 machineHost: machine.metadata?.host || machine.id,
-                paths: new Set(),
+                pathsWithTimestamps: new Map(),
                 isOnline: isMachineOnline(machine),
                 lastSeen: machine.activeAt,
                 metadata: machine.metadata,
@@ -171,7 +171,7 @@ export default function NewSessionScreen() {
             };
         });
 
-        // Then, collect paths from existing sessions
+        // Then, collect paths from existing sessions with their timestamps
         if (sessions) {
             sessions.forEach(item => {
                 if (typeof item === 'string') return; // Skip section headers
@@ -182,7 +182,11 @@ export default function NewSessionScreen() {
 
                     // Only add path to existing machine groups
                     if (groups[machineId] && session.metadata.path) {
-                        groups[machineId].paths.add(session.metadata.path);
+                        const existingTimestamp = groups[machineId].pathsWithTimestamps.get(session.metadata.path);
+                        // Update with the most recent timestamp for this path
+                        if (!existingTimestamp || session.updatedAt > existingTimestamp) {
+                            groups[machineId].pathsWithTimestamps.set(session.metadata.path, session.updatedAt);
+                        }
                     }
                 }
             });
@@ -281,7 +285,11 @@ export default function NewSessionScreen() {
                         </Text>
                     </View>
                 ) : (
-                    <ScrollView style={styles.scrollContainer} contentContainerStyle={styles.scrollContent}>
+                    <ScrollView 
+                        style={styles.scrollContainer} 
+                        contentContainerStyle={styles.scrollContent}
+                        keyboardShouldPersistTaps="handled"
+                    >
                         <View style={styles.contentWrapper}>
                             {sortedMachines.every(([, data]) => !data.isOnline) && (
                                 <View style={styles.offlineWarning}>
@@ -355,7 +363,9 @@ export default function NewSessionScreen() {
                                         </View>
                                         <MachineSessionLauncher
                                             machineId={machineId}
-                                            recentPaths={Array.from(data.paths).sort()}
+                                            recentPaths={Array.from(data.pathsWithTimestamps.entries())
+                                                .sort((a, b) => b[1] - a[1]) // Sort by timestamp (most recent first)
+                                                .map(([path]) => path)} // Extract just the paths
                                             homeDir={homeDir}
                                             isOnline={data.isOnline}
                                             onStartSession={(path) => handleStartSession(machineId, path)}
