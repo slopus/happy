@@ -1,12 +1,12 @@
 // Import shared types and schemas directly
 import { 
-    MetadataSchema, 
+    SessionMetadataSchema as MetadataSchema, 
     AgentStateSchema, 
     MachineMetadataSchema,
     DaemonStateSchema,
     EncryptedMachineSchema,
     EncryptedSessionSchema,
-    type Metadata,
+    type SessionMetadata as Metadata,
     type AgentState,
     type MachineMetadata,
     type DaemonState,

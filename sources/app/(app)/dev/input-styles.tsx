@@ -813,6 +813,7 @@ export default function InputStylesDemo() {
                             borderColor: 'rgba(255, 255, 255, 0.2)',
                             paddingHorizontal: 16,
                             paddingVertical: 12,
+                            // @ts-ignore - backdropFilter not in RN types yet
                             backdropFilter: 'blur(10px)',
                         }}>
                             <TextInput
