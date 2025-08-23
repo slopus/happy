@@ -94,7 +94,7 @@ export function requestReview() {
             trackReviewPromptResponse(likesApp);
 
             // Store the answer in sync settings (synced across devices)
-            sync.applySettings({
+            sync.updateSettings({
                 reviewPromptAnswered: true,
                 reviewPromptLikedApp: likesApp,
             });
@@ -127,7 +127,7 @@ export function resetReviewState(): void {
     localStorage.delete(LOCAL_KEYS.STORE_REVIEW_LAST_SHOWN);
 
     // Reset sync settings
-    sync.applySettings({
+    sync.updateSettings({
         reviewPromptAnswered: false,
         reviewPromptLikedApp: null,
     });

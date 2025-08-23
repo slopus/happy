@@ -34,6 +34,7 @@ import { gitStatusSync } from '@/sync/gitStatusSync';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
+import { UserTextMessage } from '@/sync/typesMessage';
 
 
 export default React.memo(() => {
@@ -238,7 +239,15 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 if (message.trim()) {
                     setMessage('');
                     clearDraft();
-                    sync.sendMessage(sessionId, message);
+                    // Create a proper UserTextMessage object
+                    const userMessage: UserTextMessage = {
+                        kind: 'user-text',
+                        id: Date.now().toString(),
+                        localId: null,
+                        createdAt: Date.now(),
+                        text: message
+                    };
+                    sync.sendMessage(sessionId, userMessage);
                     trackMessageSent();
                 }
             }}

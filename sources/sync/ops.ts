@@ -178,16 +178,20 @@ export async function machineUpdateMetadata(
     while (retryCount < maxRetries) {
         const encryptedMetadata = sync.encryption.encryptRaw(currentMetadata);
         
-        const result = await apiSocket.emitWithAck<{
+        const socket = sync.getMobileClient().getSocket();
+        if (!socket) {
+            throw new Error('Socket not connected');
+        }
+        const result = await socket.emitWithAck('machine-update-metadata', {
+            machineId,
+            metadata: encryptedMetadata,
+            expectedVersion: currentVersion
+        }) as {
             result: 'success' | 'version-mismatch' | 'error';
             version?: number;
             metadata?: string;
             message?: string;
-        }>('machine-update-metadata', {
-            machineId,
-            metadata: encryptedMetadata,
-            expectedVersion: currentVersion
-        });
+        };
 
         if (result.result === 'success') {
             return {

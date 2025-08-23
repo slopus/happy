@@ -4,6 +4,7 @@ import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { trackPermissionResponse } from '@/track';
 import { getCurrentRealtimeSessionId } from './RealtimeSession';
+import { UserTextMessage } from '@/sync/typesMessage';
 
 /**
  * Static client tools for the realtime voice interface.
@@ -34,7 +35,15 @@ export const realtimeClientTools = {
         }
         
         console.log('🔍 messageClaudeCode called with:', message);
-        sync.sendMessage(sessionId, message);
+        // Create a proper UserTextMessage object
+        const userMessage: UserTextMessage = {
+            kind: 'user-text',
+            id: Date.now().toString(),
+            localId: null,
+            createdAt: Date.now(),
+            text: message
+        };
+        sync.sendMessage(sessionId, userMessage);
         return "sent [DO NOT say anything else, simply say 'sent']";
     },
 

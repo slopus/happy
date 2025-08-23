@@ -1,19 +1,19 @@
 // Import shared types and schemas directly
 import { 
-    SessionMetadataSchema as MetadataSchema, 
+    MetadataSchema, 
     AgentStateSchema, 
     MachineMetadataSchema,
     DaemonStateSchema,
     EncryptedMachineSchema,
     EncryptedSessionSchema,
-    type SessionMetadata as Metadata,
+    type Metadata,
     type AgentState,
     type MachineMetadata,
     type DaemonState,
     type Machine,
     type EncryptedMachine,
     type EncryptedSession
-} from '@happy/shared-types';
+} from 'happy-api-client';
 
 // Export the schemas and types we use
 export { 

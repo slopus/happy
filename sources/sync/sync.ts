@@ -12,7 +12,7 @@ import {
     encrypt,
     decrypt,
     generateSecretKey
-} from '@happy-engineering/happy-api-client';
+} from 'happy-api-client';
 import { deriveKey } from '@/encryption/deriveKey';
 import { encodeHex } from '@/encryption/hex';
 import { AuthCredentials } from '@/auth/tokenStorage';
@@ -20,7 +20,7 @@ import { storage } from './storage';
 import { DecryptedMessage, Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
-import { SessionListViewDataRebuilder } from './reducer/rebuilders';
+// import { SessionListViewDataRebuilder } from './reducer/rebuilders';
 import * as Notifications from 'expo-notifications';
 import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
@@ -180,13 +180,11 @@ class Sync {
         
         // Create and initialize MobileApiClient with encryptionCache
         this.mobileClient = new MobileApiClient({
-            serverUrl,
+            endpoint: serverUrl,
             token: credentials.token,
             secret: this.secretKey,
             callbacks,
-            logger: new ConsoleLogger(),
-            pendingSettings: this.pendingSettings,
-            encryptionCache: this.encryptionCache
+            logger: new ConsoleLogger()
         });
         
         // Connect to server
@@ -198,7 +196,7 @@ class Sync {
             encryptRaw: (data: unknown) => encodeBase64(encrypt(data, this.secretKey)),
             decryptRaw: (data: string) => decrypt(decodeBase64(data), this.secretKey),
             clearSessionCache: (sessionId: string) => this.encryptionCache.clearSessionCache(sessionId),
-            clearAllCache: () => this.encryptionCache.clearCache(),
+            clearAllCache: () => this.encryptionCache.clearAll ? this.encryptionCache.clearAll() : undefined,
             getCacheStats: () => this.encryptionCache.getStats()
         };
         
@@ -226,15 +224,15 @@ class Sync {
             seq: apiSession.seq,
             createdAt: apiSession.createdAt,
             updatedAt: apiSession.updatedAt,
-            active: apiSession.active,
-            activeAt: apiSession.activeAt,
+            active: apiSession.active ?? false,
+            activeAt: apiSession.activeAt ?? Date.now(),
             metadata: apiSession.metadata,
             metadataVersion: apiSession.metadataVersion,
             agentState: apiSession.agentState,
             agentStateVersion: apiSession.agentStateVersion,
             thinking: false,
             thinkingAt: 0,
-            presence: 'offline' as const,
+            presence: 'offline' as any,
             draft: null,
             permissionMode: null,
             modelMode: null
@@ -338,6 +336,42 @@ class Sync {
         }
     }
 
+    purchaseProduct = async (productId: string): Promise<{ success: boolean; error?: string }> => {
+        try {
+            if (!this.revenueCatInitialized) {
+                return { success: false, error: 'RevenueCat not initialized' };
+            }
+
+            // Get product first, then purchase it
+            const products = await RevenueCat.getProducts([productId]);
+            if (products && products.length > 0) {
+                const purchaseResult = await RevenueCat.purchaseStoreProduct(products[0]);
+                if (purchaseResult) {
+                    // Refresh customer info after purchase
+                    const customerInfo = await RevenueCat.getCustomerInfo();
+                    storage.getState().applyPurchases(customerInfo);
+                    return { success: true };
+                }
+            }
+            return { success: false, error: 'Product not found' };
+        } catch (error: any) {
+            return { success: false, error: error.message || 'Failed to purchase product' };
+        }
+    }
+
+    getOfferings = async (): Promise<{ success: boolean; offerings?: any; error?: string }> => {
+        try {
+            if (!this.revenueCatInitialized) {
+                return { success: false, error: 'RevenueCat not initialized' };
+            }
+
+            const offerings = await RevenueCat.getOfferings();
+            return { success: true, offerings };
+        } catch (error: any) {
+            return { success: false, error: error.message || 'Failed to get offerings' };
+        }
+    }
+
     private initRevenueCat(userId: string) {
         try {
             if (Platform.OS === 'ios') {
@@ -370,11 +404,19 @@ class Sync {
     }
 
     sendDraft(sessionId: string, draft: string | null) {
-        this.mobileClient.sendSessionUpdate(sessionId, { draft });
+        // TODO: Implement draft sending through RPC or REST API
+        // this.mobileClient.sendSessionUpdate(sessionId, { draft });
     }
 
-    sendMessage(sessionId: string, message: Message) {
-        this.mobileClient.sendMessage(sessionId, message);
+    async sendMessage(sessionId: string, message: Message) {
+        // Encrypt and send message through socket
+        const encrypted = this.encryption.encryptRaw(message);
+        if (this.mobileClient.getSocket()) {
+            this.mobileClient.getSocket()!.emit('message', { 
+                sid: sessionId, 
+                message: encrypted 
+            });
+        }
     }
 
     updateSettings(settings: Partial<Settings>) {
@@ -403,7 +445,9 @@ class Sync {
      * Clear all cached data (useful on logout)
      */
     clearAllCache(): void {
-        this.encryptionCache.clearCache();
+        if (this.encryptionCache.clearAll) {
+            this.encryptionCache.clearAll();
+        }
     }
 
     /**

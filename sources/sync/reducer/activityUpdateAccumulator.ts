@@ -1,4 +1,4 @@
-import type { EphemeralActivityUpdate } from '@happy-engineering/happy-api-client';
+import type { EphemeralActivityUpdate } from 'happy-api-client';
 
 export class ActivityUpdateAccumulator {
     private pendingUpdates = new Map<string, EphemeralActivityUpdate>();
