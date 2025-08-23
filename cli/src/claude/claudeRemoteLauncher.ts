@@ -3,7 +3,7 @@ import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import React from "react";
-import { claudeRemote } from "./claudeRemote";
+import { claudeRemote2 } from "./claudeRemote2";
 import { startPermissionResolver } from "./utils/startPermissionResolver";
 import { Future } from "@/utils/future";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
@@ -11,7 +11,7 @@ import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
 import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
-import { systemPrompt } from "./utils/systemPrompt";
+import { EnhancedMode } from "./loop";
 
 export async function claudeRemoteLauncher(session: Session): Promise<'switch' | 'exit'> {
     logger.debug('[claudeRemoteLauncher] Starting remote launcher');
@@ -202,41 +202,25 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     }
 
     try {
+        let pending: {
+            message: string;
+            mode: EnhancedMode;
+        } | null = null;
         while (!exitReason) {
-
-            // Fetch next message
-            logger.debug('[remote]: fetch next message');
-            abortController = new AbortController();
-            abortFuture = new Future<void>();
-            const messageData = await session.queue.waitForMessagesAndGetAsString(abortController.signal);
-            if (!messageData || abortController.signal.aborted) {
-                logger.debug('[remote]: fetch next message done: no message or aborted');
-                abortFuture?.resolve(undefined);
-                if (exitReason) {
-                    return exitReason;
-                } else {
-                    continue;
-                }
-            }
-            logger.debug('[remote]: fetch next message done: message received');
-            abortFuture?.resolve(undefined);
-            abortFuture = null;
-            abortController = null;
-
-
-            // Run claude
             logger.debug('[remote]: launch');
             messageBuffer.addMessage('═'.repeat(40), 'status');
             messageBuffer.addMessage('Starting new Claude session...', 'status');
-            abortController = new AbortController();
+            const controller = new AbortController();
+            abortController = controller;
             abortFuture = new Future<void>();
             permissions.reset(); // Reset permissions before starting new session
             sdkToLogConverter.resetParentChain(); // Reset parent chain for new conversation
+            let modeHash: string | null = null;
             try {
-                await claudeRemote({
+                await claudeRemote2({
                     sessionId: session.sessionId,
                     path: session.path,
-                    responses: permissions.responses,
+                    allowedTools: session.allowedTools ?? [],
                     mcpServers: {
                         ...session.mcpServers,
                         permission: {
@@ -245,20 +229,41 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         }
                     },
                     permissionPromptToolName: 'mcp__permission__' + permissions.server.toolName,
-                    permissionMode: messageData.mode.permissionMode,
-                    model: messageData.mode.model,
-                    fallbackModel: messageData.mode.fallbackModel,
-                    customSystemPrompt: messageData.mode.customSystemPrompt,
-                    appendSystemPrompt: messageData.mode.appendSystemPrompt ? messageData.mode.appendSystemPrompt + '\n' + systemPrompt : systemPrompt,
-                    allowedTools: messageData.mode.allowedTools ? [...messageData.mode.allowedTools, ...(session.allowedTools ? session.allowedTools : [])] : (session.allowedTools ? [...session.allowedTools] : undefined),
-                    disallowedTools: messageData.mode.disallowedTools,
+                    isRejected: (toolCallId: string) => {
+                        return permissions.responses.get(toolCallId)?.approved === false;
+                    },
+                    nextMessage: async () => {
+                        if (pending) {
+                            let p = pending;
+                            pending = null;
+                            return p;
+                        }
+
+                        let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
+
+                        // Check if mode has changed
+                        if (msg) {
+                            if ((modeHash && msg.hash !== modeHash) || msg.isolate) {
+                                logger.debug('[remote]: mode has changed, pending message');
+                                pending = msg;
+                                return null;
+                            }
+                            modeHash = msg.hash;
+                            return {
+                                message: msg.message,
+                                mode: msg.mode
+                            }
+                        }
+
+                        // Exit
+                        return null;
+                    },
                     onSessionFound: (sessionId) => {
                         // Update converter's session ID when new session is found
                         sdkToLogConverter.updateSessionId(sessionId);
                         session.onSessionFound(sessionId);
                     },
                     onThinkingChange: session.onThinkingChange,
-                    message: messageData.message,
                     claudeEnvVars: session.claudeEnvVars,
                     claudeArgs: session.claudeArgs,
                     onMessage,
@@ -276,11 +281,14 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 }
             } catch (e) {
+                logger.debug('[remote]: launch error', e);
                 if (!exitReason) {
                     session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                     continue;
                 }
             } finally {
+
+                logger.debug('[remote]: launch finally');
 
                 // Terminate all ongoing tool calls
                 for (let [toolCallId, { parentToolCallId }] of ongoingToolCalls) {
@@ -298,6 +306,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 abortFuture = null;
                 logger.debug('[remote]: launch done');
                 permissions.reset();
+                modeHash = null;
             }
         }
     } finally {
