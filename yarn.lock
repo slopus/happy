@@ -4794,8 +4794,10 @@ graceful-fs@^4.1.11, graceful-fs@^4.1.6, graceful-fs@^4.2.0, graceful-fs@^4.2.4,
   resolved "https://registry.yarnpkg.com/graceful-fs/-/graceful-fs-4.2.11.tgz#4183e4e8bf08bb6e05bbb2f7d2e0c8f712ca40e3"
   integrity sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==
 
-"happy-api-client@file:../happy-api-client":
+happy-api-client@^0.1.0:
   version "0.1.0"
+  resolved "https://registry.yarnpkg.com/happy-api-client/-/happy-api-client-0.1.0.tgz#2e9c91d32c6945538dd407cac8648f18e0e182c0"
+  integrity sha512-wJzZn7R3/wN6u5xtZTEIGf6EFj7VFjbxOPB0d1A70ipl4/r5amIgJC2znPptvL7d/82DCdbF/XTOoGeUzPxWwA==
   dependencies:
     axios "^1.7.9"
     socket.io-client "^4.8.1"
