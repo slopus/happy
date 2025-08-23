@@ -14,6 +14,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
+import { CompactGitStatus } from './CompactGitStatus';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -168,7 +169,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     taskStatusContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: theme.colors.textSecondary,
+        backgroundColor: theme.colors.surfaceHighest,
         paddingHorizontal: 4,
         paddingVertical: 1,
         borderRadius: 4,
@@ -176,7 +177,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     taskStatusText: {
         fontSize: 10,
         fontWeight: '500',
-        color: theme.colors.surface,
+        color: theme.colors.textSecondary,
         ...Typography.default(),
     },
 }));
@@ -473,30 +474,36 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                         </Text>
                     </View>
                     
-                    {/* Task status on the right side of status line */}
-                    {session.todos && session.todos.length > 0 && (() => {
-                        const totalTasks = session.todos.length;
-                        const completedTasks = session.todos.filter(t => t.status === 'completed').length;
+                    {/* Status indicators on the right side */}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                        {/* Git status indicator */}
+                        <CompactGitStatus sessionId={session.id} />
                         
-                        // Don't show if all tasks are completed
-                        if (completedTasks === totalTasks) {
-                            return null;
-                        }
-                        
-                        return (
-                            <View style={styles.taskStatusContainer}>
-                                <Ionicons
-                                    name="bulb-outline"
-                                    size={10}
-                                    color={styles.taskStatusText.color}
-                                    style={{ marginRight: 2 }}
-                                />
-                                <Text style={styles.taskStatusText}>
-                                    {completedTasks}/{totalTasks}
-                                </Text>
-                            </View>
-                        );
-                    })()}
+                        {/* Task status indicator */}
+                        {session.todos && session.todos.length > 0 && (() => {
+                            const totalTasks = session.todos.length;
+                            const completedTasks = session.todos.filter(t => t.status === 'completed').length;
+                            
+                            // Don't show if all tasks are completed
+                            if (completedTasks === totalTasks) {
+                                return null;
+                            }
+                            
+                            return (
+                                <View style={styles.taskStatusContainer}>
+                                    <Ionicons
+                                        name="bulb-outline"
+                                        size={10}
+                                        color={styles.taskStatusText.color}
+                                        style={{ marginRight: 2 }}
+                                    />
+                                    <Text style={styles.taskStatusText}>
+                                        {completedTasks}/{totalTasks}
+                                    </Text>
+                                </View>
+                            );
+                        })()}
+                    </View>
                 </View>
             </View>
         </Pressable>
