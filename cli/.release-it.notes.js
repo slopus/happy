@@ -56,6 +56,7 @@ Please format the output as markdown with:
 - Use bullet points for each change
 - Keep descriptions concise but informative
 - Focus on user-facing changes
+- New line after each section
 
 Do not include any preamble or explanations, just return the markdown release notes.`;
 
