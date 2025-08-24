@@ -14,16 +14,17 @@ interface PermissionFooterProps {
         allowedTools?: string[];
     };
     sessionId: string;
-    toolName?: string;
+    toolName: string;
 }
 
 export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, sessionId, toolName }) => {
     const { theme } = useUnistyles();
     const [loadingButton, setLoadingButton] = useState<'allow' | 'deny' | null>(null);
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
+    const [loadingForSession, setLoadingForSession] = useState(false);
 
     const handleApprove = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
 
         setLoadingButton('allow');
         try {
@@ -36,7 +37,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
 
     const handleApproveAllEdits = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
 
         setLoadingAllEdits(true);
         try {
@@ -50,8 +51,21 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
         }
     };
 
+    const handleApproveForSession = async () => {
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession || !toolName) return;
+
+        setLoadingForSession(true);
+        try {
+            await sessionAllow(sessionId, permission.id, undefined, [toolName]);
+        } catch (error) {
+            console.error('Failed to approve for session:', error);
+        } finally {
+            setLoadingForSession(false);
+        }
+    };
+
     const handleDeny = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
 
         setLoadingButton('deny');
         try {
@@ -68,8 +82,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const isPending = permission.status === 'pending';
 
     // Detect which button was used based on mode
-    const isApprovedViaAllow = isApproved && permission.mode !== 'acceptEdits';
+    const isApprovedViaAllow = isApproved && permission.mode !== 'acceptEdits' && !permission.allowedTools?.includes(toolName || '');
     const isApprovedViaAllEdits = isApproved && permission.mode === 'acceptEdits';
+    const isApprovedForSession = isApproved && permission.allowedTools?.includes(toolName || '');
 
     const styles = StyleSheet.create({
         container: {
@@ -139,6 +154,13 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             color: theme.colors.permissionButton.selected.text,
             fontWeight: '600',
         },
+        buttonForSession: {
+            backgroundColor: theme.colors.permissionButton.allowAll.background,
+            borderColor: theme.colors.permissionButton.allowAll.background,
+        },
+        buttonTextForSession: {
+            color: theme.colors.permissionButton.allowAll.text,
+        },
         loadingIndicatorAllow: {
             color: theme.colors.permissionButton.allow.background,
         },
@@ -146,6 +168,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             color: theme.colors.permissionButton.deny.background,
         },
         loadingIndicatorAllowAll: {
+            color: theme.colors.permissionButton.allowAll.background,
+        },
+        loadingIndicatorForSession: {
             color: theme.colors.permissionButton.allowAll.background,
         },
         iconApproved: {
@@ -164,10 +189,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         styles.button,
                         isPending && styles.buttonAllow,
                         isApprovedViaAllow && styles.buttonSelected,
-                        (isDenied || isApprovedViaAllEdits) && styles.buttonInactive
+                        (isDenied || isApprovedViaAllEdits || isApprovedForSession) && styles.buttonInactive
                     ]}
                     onPress={handleApprove}
-                    disabled={!isPending || loadingButton !== null || loadingAllEdits}
+                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loadingButton === 'allow' && isPending ? (
@@ -195,10 +220,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             styles.button,
                             isPending && styles.buttonAllowAll,
                             isApprovedViaAllEdits && styles.buttonSelected,
-                            (isDenied || isApprovedViaAllow) && styles.buttonInactive
+                            (isDenied || isApprovedViaAllow || isApprovedForSession) && styles.buttonInactive
                         ]}
                         onPress={handleApproveAllEdits}
-                        disabled={!isPending || loadingButton !== null || loadingAllEdits}
+                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingAllEdits && isPending ? (
@@ -220,6 +245,38 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     </TouchableOpacity>
                 )}
 
+                {/* Allow for session button - only show for non-edit, non-bash, non-exit-plan tools */}
+                {toolName && toolName !== 'Edit' && toolName !== 'MultiEdit' && toolName !== 'Write' && toolName !== 'NotebookEdit' && toolName !== 'exit_plan_mode' && toolName !== 'ExitPlanMode' && toolName !== 'Bash' && (
+                    <TouchableOpacity
+                        style={[
+                            styles.button,
+                            isPending && styles.buttonForSession,
+                            isApprovedForSession && styles.buttonSelected,
+                            (isDenied || isApprovedViaAllow || isApprovedViaAllEdits) && styles.buttonInactive
+                        ]}
+                        onPress={handleApproveForSession}
+                        disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
+                        activeOpacity={isPending ? 0.7 : 1}
+                    >
+                        {loadingForSession && isPending ? (
+                            <ActivityIndicator size="small" color={styles.loadingIndicatorForSession.color} />
+                        ) : (
+                            <View style={styles.buttonContent}>
+                                {isApprovedForSession && (
+                                    <Ionicons name="checkmark" size={16} color={styles.iconApproved.color} style={styles.icon} />
+                                )}
+                                <Text style={[
+                                    styles.buttonText,
+                                    isPending && styles.buttonTextForSession,
+                                    isApprovedForSession && styles.buttonTextSelected
+                                ]}>
+                                    For session
+                                </Text>
+                            </View>
+                        )}
+                    </TouchableOpacity>
+                )}
+
                 <TouchableOpacity
                     style={[
                         styles.button,
@@ -228,7 +285,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         (isApproved) && styles.buttonInactive
                     ]}
                     onPress={handleDeny}
-                    disabled={!isPending || loadingButton !== null || loadingAllEdits}
+                    disabled={!isPending || loadingButton !== null || loadingAllEdits || loadingForSession}
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loadingButton === 'deny' && isPending ? (
