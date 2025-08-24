@@ -37,10 +37,10 @@ function RenderBlock(props: {
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
-      return <UserTextBlock message={props.message} metadata={props.metadata} />;
+      return <UserTextBlock message={props.message} />;
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} metadata={props.metadata} />;
+      return <AgentTextBlock message={props.message} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -63,7 +63,6 @@ function RenderBlock(props: {
 
 function UserTextBlock(props: {
   message: UserTextMessage;
-  metadata: Metadata | null;
 }) {
   return (
     <View style={styles.userMessageContainer}>
@@ -79,7 +78,6 @@ function UserTextBlock(props: {
 
 function AgentTextBlock(props: {
   message: AgentTextMessage;
-  metadata: Metadata | null;
 }) {
   return (
     <View style={styles.agentMessageContainer}>
