@@ -12,6 +12,14 @@ import { logger } from "@/ui/logger";
 import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode } from "./loop";
+import { RawJSONLines } from "@/claude/types";
+
+interface PermissionsField {
+    date: number;
+    result: 'approved' | 'denied';
+    mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+    allowedTools?: string[];
+}
 
 export async function claudeRemoteLauncher(session: Session): Promise<'switch' | 'exit'> {
     logger.debug('[claudeRemoteLauncher] Starting remote launcher');
@@ -179,6 +187,44 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
         const logMessage = sdkToLogConverter.convert(msg);
         if (logMessage) {
+            // Add permissions field to tool result content
+            if (logMessage.type === 'user' && logMessage.message?.content) {
+                const content = Array.isArray(logMessage.message.content) 
+                    ? logMessage.message.content 
+                    : [];
+                
+                // Modify the content array to add permissions to each tool_result
+                for (let i = 0; i < content.length; i++) {
+                    const c = content[i];
+                    if (c.type === 'tool_result' && c.tool_use_id) {
+                        const responses = permissionHandler.getResponses();
+                        const response = responses.get(c.tool_use_id);
+                        
+                        if (response) {
+                            const permissions: PermissionsField = {
+                                date: response.receivedAt || Date.now(),
+                                result: response.approved ? 'approved' : 'denied'
+                            };
+                            
+                            // Add optional fields if they exist
+                            if (response.mode) {
+                                permissions.mode = response.mode;
+                            }
+                            
+                            if (response.allowTools && response.allowTools.length > 0) {
+                                permissions.allowedTools = response.allowTools;
+                            }
+                            
+                            // Add permissions directly to the tool_result content object
+                            content[i] = {
+                                ...c,
+                                permissions
+                            };
+                        }
+                    }
+                }
+            }
+            
             // Filter out system messages - they're usually not sent to logs
             if (logMessage.type !== 'system') {
                 session.client.sendClaudeSessionMessage(logMessage);

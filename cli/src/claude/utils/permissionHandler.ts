@@ -14,6 +14,7 @@ import { deepEqual } from "@/utils/deepEqual";
 import { getToolName } from "./getToolName";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
+import { delay } from "@/utils/time";
 
 interface PermissionResponse {
     id: string;
@@ -21,6 +22,7 @@ interface PermissionResponse {
     reason?: string;
     mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
     allowTools?: string[];
+    receivedAt?: number;
 }
 
 
@@ -33,10 +35,10 @@ interface PendingRequest {
 
 export class PermissionHandler {
     private toolCalls: { id: string, name: string, input: any, used: boolean }[] = [];
-    private responses = new Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>();
+    private responses = new Map<string, PermissionResponse>();
     private pendingRequests = new Map<string, PendingRequest>();
     private session: Session;
-    private allowedTools: string[] = [];
+    private allowedTools = new Set<string>();
     private permissionMode: PermissionMode = 'default';
 
     constructor(session: Session) {
@@ -58,7 +60,7 @@ export class PermissionHandler {
 
         // Update allowed tools
         if (response.allowTools && response.allowTools.length > 0) {
-            this.allowedTools.push(...response.allowTools);
+            response.allowTools.forEach(tool => this.allowedTools.add(tool));
         }
 
         // Update permission mode
@@ -95,11 +97,11 @@ export class PermissionHandler {
     /**
      * Creates the canCallTool callback for the SDK
      */
-    handleToolCall = (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }): Promise<PermissionResult> => {
-        
+    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }): Promise<PermissionResult> => {
+
         // Check if tool is explicitlyallowed
-        if (this.allowedTools.includes(toolName)) {
-            return Promise.resolve({ behavior: 'allow', updatedInput: input as Record<string, unknown> });
+        if (this.allowedTools.has(toolName)) {
+            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
         // Calculate descriptor
@@ -110,20 +112,24 @@ export class PermissionHandler {
         //
 
         if (this.permissionMode === 'bypassPermissions') {
-            return Promise.resolve({ behavior: 'allow', updatedInput: input as Record<string, unknown> });
+            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
         if (this.permissionMode === 'acceptEdits' && descriptor.edit) {
-            return Promise.resolve({ behavior: 'allow', updatedInput: input as Record<string, unknown> });
+            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
         //
         // Approval flow
         //
 
-        const toolCallId = this.resolveToolCallId(toolName, input);
-        if (!toolCallId) { // Now it is guaranteed order
-            throw new Error(`Could not resolve tool call ID for ${toolName}`);
+        let toolCallId = this.resolveToolCallId(toolName, input);
+        if (!toolCallId) { // What if we got permission before tool call
+            await delay(1000);
+            toolCallId = this.resolveToolCallId(toolName, input);
+            if (!toolCallId) {
+                throw new Error(`Could not resolve tool call ID for ${toolName}`);
+            }
         }
         return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
     }
@@ -314,8 +320,8 @@ export class PermissionHandler {
                 return;
             }
 
-            // Store the response
-            this.responses.set(id, message);
+            // Store the response with timestamp
+            this.responses.set(id, { ...message, receivedAt: Date.now() });
             this.pendingRequests.delete(id);
 
             // Handle the permission response based on tool type
@@ -349,7 +355,7 @@ export class PermissionHandler {
     /**
      * Gets the responses map (for compatibility with existing code)
      */
-    getResponses(): Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }> {
+    getResponses(): Map<string, PermissionResponse> {
         return this.responses;
     }
 }
