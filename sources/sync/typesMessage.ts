@@ -16,6 +16,7 @@ export type ToolCall = {
         reason?: string;
         mode?: string;
         allowedTools?: string[];
+        date?: number;
     };
 }
 

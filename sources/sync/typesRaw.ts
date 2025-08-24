@@ -47,6 +47,12 @@ const rawToolResultContentSchema = z.object({
     tool_use_id: z.string(),
     content: z.union([z.array(z.object({ type: z.literal('text'), text: z.string() })), z.string()]),
     is_error: z.boolean().optional(),
+    permissions: z.object({
+        date: z.number(),
+        result: z.enum(['approved', 'denied']),
+        mode: z.string().optional(),
+        allowedTools: z.array(z.string()).optional(),
+    }).optional(),
 });
 export type RawToolResultContent = z.infer<typeof rawToolResultContentSchema>;
 
@@ -125,6 +131,12 @@ type NormalizedAgentContent =
         is_error: boolean;
         uuid: string;
         parentUUID: string | null;
+        permissions?: {
+            date: number;
+            result: 'approved' | 'denied';
+            mode?: string;
+            allowedTools?: string[];
+        };
     } | {
         type: 'summary',
         summary: string;
@@ -261,7 +273,13 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                             content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text),
                             is_error: c.is_error || false,
                             uuid: raw.content.data.uuid,
-                            parentUUID: raw.content.data.parentUuid ?? null
+                            parentUUID: raw.content.data.parentUuid ?? null,
+                            permissions: c.permissions ? {
+                                date: c.permissions.date,
+                                result: c.permissions.result,
+                                mode: c.permissions.mode,
+                                allowedTools: c.permissions.allowedTools
+                            } : undefined
                         });
                     }
                 }
