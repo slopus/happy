@@ -8,24 +8,9 @@ import { MessageView } from './MessageView';
 import { Metadata, Session } from '@/sync/storageTypes';
 import { ChatFooter } from './ChatFooter';
 import { Message } from '@/sync/typesMessage';
-import { EmptyMessages } from './EmptyMessages';
-import { useUnistyles } from 'react-native-unistyles';
-import { FlashList } from '@shopify/flash-list';
-import { LegendList } from '@legendapp/list';
 
 export const ChatList = React.memo((props: { session: Session }) => {
-    const { messages, isLoaded } = useSessionMessages(props.session.id);
-    const { theme } = useUnistyles();
-    // const placeholder = messages.length === 0 ? (
-    //     <>
-    //         {isLoaded ? (
-    //             <EmptyMessages session={props.session} />
-    //         ) : (
-    //             <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-    //         )}
-    //     </>
-    // ) : null;
-
+    const { messages } = useSessionMessages(props.session.id);
     return (
         <ChatListInternal
             metadata={props.session.metadata}
@@ -57,56 +42,20 @@ const ChatListInternal = React.memo((props: {
     const renderItem = useCallback(({ item }: { item: any }) => (
         <MessageView message={item} metadata={props.metadata} sessionId={props.sessionId} />
     ), [props.metadata, props.sessionId]);
-    const maintainVisibleContentPosition = React.useMemo(() => ({
-        minIndexForVisible: 0,
-        // autoscrollToBottomThreshold: 10,
-    }), []);
     return (
         <FlatList
-            // removeClippedSubviews={true}
             data={props.messages}
             inverted={true}
             keyExtractor={keyExtractor}
-            maintainVisibleContentPosition={maintainVisibleContentPosition}
+            maintainVisibleContentPosition={{
+                minIndexForVisible: 0,
+                autoscrollToTopThreshold: 10,
+            }}
             keyboardShouldPersistTaps="handled"
-            keyboardDismissMode="none"
+            keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'none'}
             renderItem={renderItem}
-            // contentContainerStyle={contentContainerStyle}
             ListHeaderComponent={<ListFooter sessionId={props.sessionId} />}
             ListFooterComponent={<ListHeader />}
         />
     )
-
-    // return (
-    //     <FlashList
-    //         // removeClippedSubviews={true}
-    //         data={props.messages}
-    //         // inverted={true}
-    //         keyExtractor={keyExtractor}
-    //         // maintainVisibleContentPosition={maintainVisibleContentPosition}
-    //         keyboardShouldPersistTaps="handled"
-    //         keyboardDismissMode="none"
-    //         renderItem={renderItem}
-    //         // contentContainerStyle={contentContainerStyle}
-    //         ListHeaderComponent={<ListHeader />}
-    //         ListFooterComponent={<ListFooter sessionId={props.sessionId} />}
-    //     />
-    // )
-
-    // return (
-    //     <LegendList
-    //         // removeClippedSubviews={true}
-    //         data={props.messages}
-    //         // inverted={true}
-    //         keyExtractor={keyExtractor}
-            
-    //         // maintainVisibleContentPosition={maintainVisibleContentPosition}
-    //         keyboardShouldPersistTaps="handled"
-    //         keyboardDismissMode="none"
-    //         renderItem={renderItem}
-    //         // contentContainerStyle={contentContainerStyle}
-    //         ListHeaderComponent={<ListHeader />}
-    //         ListFooterComponent={<ListFooter sessionId={props.sessionId} />}
-    //     />
-    // )
 });
