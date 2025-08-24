@@ -123,18 +123,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         width: 48,
         height: 48,
     },
-    draftIconContainer: {
-        position: 'absolute',
-        bottom: -2,
-        right: -2,
-        width: 18,
-        height: 18,
-        alignItems: 'center',
-        justifyContent: 'center',
-    },
-    draftIconOverlay: {
-        color: theme.colors.textSecondary,
-    },
     newSessionButton: {
         flexDirection: 'row',
         alignItems: 'center',
@@ -437,15 +425,6 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
         >
             <View style={styles.avatarContainer}>
                 <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} />
-                {session.draft && (
-                    <View style={styles.draftIconContainer}>
-                        <Ionicons
-                            name="create-outline"
-                            size={12}
-                            style={styles.draftIconOverlay}
-                        />
-                    </View>
-                )}
             </View>
             <View style={styles.sessionContent}>
                 {/* Title line */}
@@ -477,6 +456,17 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
 
                     {/* Status indicators on the right side */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
+                        {/* Draft status indicator */}
+                        {session.draft && (
+                            <View style={styles.taskStatusContainer}>
+                                <Ionicons
+                                    name="create-outline"
+                                    size={10}
+                                    color={styles.taskStatusText.color}
+                                />
+                            </View>
+                        )}
+
                         {/* Git status indicator */}
                         <CompactGitStatus sessionId={session.id} />
 
