@@ -381,6 +381,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             continue;
                         }
 
+                        // Skip if permission already has date (came from tool result - preferred over agentState)
+                        if (message.tool.permission?.date) {
+                            continue;
+                        }
+
                         // Skip if already has the same status
                         if (message.tool.permission?.status === completed.status &&
                             message.tool.permission?.reason === completed.reason) {
@@ -483,7 +488,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         permission: {
                             id: permId,
                             status: completed.status,
-                            reason: completed.reason || undefined
+                            reason: completed.reason || undefined,
+                            mode: completed.mode || undefined,
+                            allowedTools: completed.allowedTools || undefined
                         }
                     };
 
@@ -506,7 +513,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         createdAt: completed.createdAt || Date.now(),
                         completedAt: completed.completedAt || undefined,
                         status: completed.status,
-                        reason: completed.reason || undefined
+                        reason: completed.reason || undefined,
+                        mode: completed.mode || undefined,
+                        allowedTools: completed.allowedTools || undefined
                     });
 
                     changed.add(mid);
@@ -642,7 +651,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             startedAt: msg.createdAt,
                             completedAt: null,
                             description: c.description,
-                            result: undefined
+                            result: undefined,
                         };
 
                         // Add permission info if found
@@ -724,6 +733,18 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     message.tool.state = c.is_error ? 'error' : 'completed';
                     message.tool.result = c.content;
                     message.tool.completedAt = msg.createdAt;
+
+                    // Update permission data if provided by backend
+                    if (c.permissions) {
+                        message.tool.permission = {
+                            id: c.tool_use_id,
+                            status: c.permissions.result === 'approved' ? 'approved' : 'denied',
+                            date: c.permissions.date,
+                            mode: c.permissions.mode,
+                            allowedTools: c.permissions.allowedTools
+                        };
+                    }
+
                     changed.add(messageId);
                 }
             }
@@ -837,6 +858,17 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             sidechainMessage.tool.state = c.is_error ? 'error' : 'completed';
                             sidechainMessage.tool.result = c.content;
                             sidechainMessage.tool.completedAt = msg.createdAt;
+                            
+                            // Update permission data if provided by backend
+                            if (c.permissions) {
+                                sidechainMessage.tool.permission = {
+                                    id: c.tool_use_id,
+                                    status: c.permissions.result === 'approved' ? 'approved' : 'denied',
+                                    date: c.permissions.date,
+                                    mode: c.permissions.mode,
+                                    allowedTools: c.permissions.allowedTools
+                                };
+                            }
                         }
                     }
 
@@ -848,6 +880,18 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             permissionMessage.tool.state = c.is_error ? 'error' : 'completed';
                             permissionMessage.tool.result = c.content;
                             permissionMessage.tool.completedAt = msg.createdAt;
+                            
+                            // Update permission data if provided by backend
+                            if (c.permissions) {
+                                permissionMessage.tool.permission = {
+                                    id: c.tool_use_id,
+                                    status: c.permissions.result === 'approved' ? 'approved' : 'denied',
+                                    date: c.permissions.date,
+                                    mode: c.permissions.mode,
+                                    allowedTools: c.permissions.allowedTools
+                                };
+                            }
+                            
                             changed.add(permissionMessageId);
                         }
                     }
