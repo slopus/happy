@@ -7,8 +7,10 @@
 
 import chalk from 'chalk'
 import { configuration } from '@/configuration'
-import { readSettings, readCredentials } from '@/persistence/persistence'
-import { isDaemonRunning, getDaemonState, findRunawayHappyProcesses, findAllHappyProcesses } from '@/daemon/utils'
+import { readSettings, readCredentials } from '@/persistence'
+import { checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient'
+import { findRunawayHappyProcesses, findAllHappyProcesses } from '@/daemon/doctor'
+import { getDaemonState } from '@/persistence'
 import { existsSync, readdirSync, statSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -48,8 +50,7 @@ function getLogFiles(logDir: string): { file: string, path: string, modified: Da
                 const stats = statSync(path);
                 return { file, path, modified: stats.mtime };
             })
-            .sort((a, b) => b.modified.getTime() - a.modified.getTime())
-            .slice(0, 10); // Show most recent 10 files
+            .sort((a, b) => b.modified.getTime() - a.modified.getTime());
     } catch {
         return [];
     }
@@ -119,7 +120,7 @@ export async function runDoctorCommand(): Promise<void> {
     // Daemon status
     console.log(chalk.bold('\n🤖 Daemon Status'));
     try {
-        const isRunning = await isDaemonRunning();
+        const isRunning = await checkIfDaemonRunningAndCleanupStaleState();
         const state = await getDaemonState();
 
         if (isRunning && state) {
@@ -178,6 +179,8 @@ export async function runDoctorCommand(): Promise<void> {
                     console.log(`  ${color(`PID ${pid}`)}: ${chalk.gray(command)}`);
                 });
             });
+        } else {
+            console.log(chalk.red('❌ No happy processes found'));
         }
 
         // Runaway processes
@@ -188,12 +191,12 @@ export async function runDoctorCommand(): Promise<void> {
             runawayProcesses.forEach(({ pid, command }) => {
                 console.log(`  ${chalk.yellow(`PID ${pid}`)}: ${chalk.gray(command)}`);
             });
-            console.log(chalk.blue('\nTo clean up: happy daemon kill-runaway'));
+            console.log(chalk.blue('\nTo clean up: happy doctor kill-all'));
         }
 
         if (allProcesses.length > 1) { // More than just current process
             console.log(chalk.bold('\n💡 Process Management'));
-            console.log(chalk.gray('To kill runaway processes: happy daemon kill-runaway'));
+            console.log(chalk.gray('To kill runaway processes: happy doctor kill-all'));
         }
     } catch (error) {
         console.log(chalk.red('❌ Error checking daemon status'));
@@ -202,28 +205,43 @@ export async function runDoctorCommand(): Promise<void> {
     // Log files
     console.log(chalk.bold('\n📝 Log Files'));
 
-    // Main logs
-    const mainLogs = getLogFiles(configuration.logsDir);
-    if (mainLogs.length > 0) {
-        console.log(chalk.blue('\nMain Logs:'));
-        mainLogs.forEach(({ file, path, modified }) => {
-            console.log(`  ${chalk.green(file)} - ${modified.toLocaleString()}`);
-            console.log(chalk.gray(`    ${path}`));
-        });
-    } else {
-        console.log(chalk.yellow('No main log files found'));
-    }
+    // Get ALL log files
+    const allLogs = getLogFiles(configuration.logsDir);
+    
+    if (allLogs.length > 0) {
+        // Separate daemon and regular logs
+        const daemonLogs = allLogs.filter(({ file }) => file.includes('daemon'));
+        const regularLogs = allLogs.filter(({ file }) => !file.includes('daemon'));
 
-    // Daemon logs (filter main logs for daemon-specific ones)
-    const daemonLogs = mainLogs.filter(({ file }) => file.includes('daemon'));
-    if (daemonLogs.length > 0) {
-        console.log(chalk.blue('\nDaemon Logs:'));
-        daemonLogs.forEach(({ file, path, modified }) => {
-            console.log(`  ${chalk.green(file)} - ${modified.toLocaleString()}`);
-            console.log(chalk.gray(`    ${path}`));
-        });
+        // Show regular logs (max 10)
+        if (regularLogs.length > 0) {
+            console.log(chalk.blue('\nRecent Logs:'));
+            const logsToShow = regularLogs.slice(0, 10);
+            logsToShow.forEach(({ file, path, modified }) => {
+                console.log(`  ${chalk.green(file)} - ${modified.toLocaleString()}`);
+                console.log(chalk.gray(`    ${path}`));
+            });
+            if (regularLogs.length > 10) {
+                console.log(chalk.gray(`  ... and ${regularLogs.length - 10} more log files`));
+            }
+        }
+
+        // Show daemon logs (max 5)
+        if (daemonLogs.length > 0) {
+            console.log(chalk.blue('\nDaemon Logs:'));
+            const daemonLogsToShow = daemonLogs.slice(0, 5);
+            daemonLogsToShow.forEach(({ file, path, modified }) => {
+                console.log(`  ${chalk.green(file)} - ${modified.toLocaleString()}`);
+                console.log(chalk.gray(`    ${path}`));
+            });
+            if (daemonLogs.length > 5) {
+                console.log(chalk.gray(`  ... and ${daemonLogs.length - 5} more daemon log files`));
+            }
+        } else {
+            console.log(chalk.yellow('\nNo daemon log files found'));
+        }
     } else {
-        console.log(chalk.yellow('No daemon log files found'));
+        console.log(chalk.yellow('No log files found'));
     }
 
     // Support and bug reports

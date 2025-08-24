@@ -11,21 +11,23 @@ import chalk from 'chalk'
 import { start, StartOptions } from '@/start'
 import { join } from 'node:path'
 import { logger } from './ui/logger'
-import { readCredentials, readSettings, updateSettings } from './persistence/persistence'
+import { readCredentials, readSettings, updateSettings } from './persistence'
 import { doAuth, authAndSetupMachineIfNeeded } from './ui/auth'
 import packageJson from '../package.json'
 import { z } from 'zod'
 import { spawn } from 'child_process'
 import { startDaemon } from './daemon/run'
-import { isDaemonRunning, stopDaemon, getDaemonState } from './daemon/utils'
+import { checkIfDaemonRunningAndCleanupStaleState, stopDaemon } from './daemon/controlClient'
+import { getLatestDaemonLog } from './ui/logger'
+import { killRunawayHappyProcesses } from './daemon/doctor'
+import { getDaemonState } from './persistence'
 import { install } from './daemon/install'
 import { uninstall } from './daemon/uninstall'
 import { ApiClient } from './api/api'
 import { runDoctorCommand } from './ui/doctor'
 import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
-import { projectPath } from './projectPath'
 import { handleAuthCommand } from './commands/auth'
-import { clearCredentials, clearMachineId, writeCredentials } from './persistence/persistence'
+import { clearCredentials, clearMachineId, writeCredentials } from './persistence'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { render } from 'ink'
 import React from 'react'
@@ -41,6 +43,15 @@ import { DaemonPrompt } from './ui/ink/DaemonPrompt'
   const subcommand = args[0]
 
   if (subcommand === 'doctor') {
+    // Check for kill-all subcommand
+    if (args[1] === 'kill-all' || args[1] === 'kill-runaway') {
+      const result = await killRunawayHappyProcesses()
+      console.log(`Killed ${result.killed} runaway processes`)
+      if (result.errors.length > 0) {
+        console.log('Errors:', result.errors)
+      }
+      process.exit(0)
+    }
     await runDoctorCommand();
     return;
   } else if (subcommand === 'auth') {
@@ -89,17 +100,10 @@ import { DaemonPrompt } from './ui/ink/DaemonPrompt'
         const sessions = await listDaemonSessions()
 
         if (sessions.length === 0) {
-          console.log('No active sessions')
+          console.log('No active sessions this daemon is aware of (they might have been started by a previous version of the daemon)')
         } else {
           console.log('Active sessions:')
-          // Clean up session data for display
-          const cleanSessions = sessions.map(s => ({
-            pid: s.pid,
-            sessionId: s.happySessionId || `PID-${s.pid}`,
-            startedBy: s.startedBy,
-            directory: s.happySessionMetadataFromLocalWebhook?.directory || 'unknown'
-          }))
-          console.log(JSON.stringify(cleanSessions, null, 2))
+          console.log(JSON.stringify(sessions, null, 2))
         }
       } catch (error) {
         console.log('No daemon running')
@@ -133,7 +137,7 @@ import { DaemonPrompt } from './ui/ink/DaemonPrompt'
       // Wait for daemon to write state file (up to 5 seconds)
       let started = false;
       for (let i = 0; i < 50; i++) {
-        if (await isDaemonRunning()) {
+        if (await checkIfDaemonRunningAndCleanupStaleState()) {
           started = true;
           break;
         }
@@ -159,7 +163,7 @@ import { DaemonPrompt } from './ui/ink/DaemonPrompt'
       if (!state) {
         console.log('Daemon is not running')
       } else {
-        const isRunning = await isDaemonRunning()
+        const isRunning = await checkIfDaemonRunningAndCleanupStaleState()
         if (isRunning) {
           console.log('Daemon is running')
           console.log(`  PID: ${state.pid}`)
@@ -172,11 +176,22 @@ import { DaemonPrompt } from './ui/ink/DaemonPrompt'
       }
       process.exit(0)
     } else if (daemonSubcommand === 'kill-runaway') {
-      const { killRunawayHappyProcesses } = await import('./daemon/utils')
+      // Redirect to new location
+      console.log(chalk.yellow('Note: "happy daemon kill-runaway" has moved to "happy doctor kill-all"'));
+      console.log(chalk.gray('Running the command for you...\n'));
       const result = await killRunawayHappyProcesses()
       console.log(`Killed ${result.killed} runaway processes`)
       if (result.errors.length > 0) {
         console.log('Errors:', result.errors)
+      }
+      process.exit(0)
+    } else if (daemonSubcommand === 'logs') {
+      // Simply print the path to the latest daemon log file
+      const latest = getLatestDaemonLog()
+      if (!latest) {
+        console.log('No daemon logs found')
+      } else {
+        console.log(latest.path)
       }
       process.exit(0)
     } else if (daemonSubcommand === 'install') {
@@ -204,10 +219,11 @@ ${chalk.bold('Usage:')}
   happy daemon status             Show daemon status
   happy daemon list               List active sessions
   happy daemon stop-session <id> Stop a specific session
-  happy daemon kill-runaway       Kill all runaway Happy processes
 
 ${chalk.bold('Note:')} The daemon runs in the background and manages Claude sessions.
 Sessions spawned by the daemon will continue running after daemon stops unless --kill-managed is used.
+
+${chalk.bold('To kill runaway processes:')} Use ${chalk.cyan('happy doctor kill-all')}
 `)
     }
     return;
@@ -265,29 +281,23 @@ Sessions spawned by the daemon will continue running after daemon stops unless -
 ${chalk.bold('happy')} - Claude Code On the Go
 
 ${chalk.bold('Usage:')}
-  happy [options]          Start Claude with mobile control
-  happy auth              Manage authentication  
-  happy notify            Send push notification
-  happy daemon            Manage background service
-
-${chalk.bold('Happy Options:')}
-  --help                  Show this help message
-  --yolo                  Skip all permissions (--dangerously-skip-permissions)
-  --force-auth            Force re-authentication
-
-${chalk.bold('🎯 Happy supports ALL Claude options!')}
-  Use any claude flag exactly as you normally would.
+  happy [options]         Start Claude with mobile control
+  happy auth              Manage authentication
+  happy daemon            Manage background service that allows
+                            to spawn new sessions away from your computer
+  happy doctor            System diagnostics & troubleshooting
 
 ${chalk.bold('Examples:')}
-  happy                   Start session
-  happy --yolo            Start without permissions
-  happy --verbose         Enable verbose mode
-  happy -c                Continue last conversation
-  happy auth login        Authenticate
-  happy notify -p "Done!" Send notification
+  happy                    Start session
+  happy --yolo             Bypass permissions
+  happy --verbose          Enable verbose mode
+  happy auth login --force Authenticate
+  happy doctor             Run diagnostics
 
 ${chalk.bold('Happy is a wrapper around Claude Code that enables remote control via mobile app.')}
-${chalk.bold('Use "happy daemon" for background service management.')}
+
+${chalk.bold('Happy supports ALL Claude options!')}
+  Use any claude flag exactly as you normally would.
 
 ${chalk.gray('─'.repeat(60))}
 ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
@@ -389,7 +399,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
     if (settings && settings.daemonAutoStartWhenRunningHappy) {
       logger.debug('Starting Happy background service...');
 
-      if (!(await isDaemonRunning())) {
+      if (!(await checkIfDaemonRunningAndCleanupStaleState())) {
         // Use the built binary to spawn daemon
         const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
           detached: true,
@@ -399,7 +409,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
         daemonProcess.unref();
 
         // Give daemon a moment to write PID file
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 100));
       }
     }
 

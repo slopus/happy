@@ -1,21 +1,21 @@
+import fs from 'fs/promises';
+import os from 'os';
+
 import { ApiClient } from '@/api/api';
-import { startDaemonControlServer } from './controlServer';
 import { TrackedSession } from './api/types';
 import { MachineMetadata, DaemonState } from '@/api/types';
-import os from 'os';
 import { logger } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
-import { join } from 'path';
 import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
-import { spawn } from 'child_process';
-import { projectPath } from '@/projectPath';
 import { Metadata } from '@/api/types';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { getDaemonState, cleanupDaemonState } from './utils';
-import { writeDaemonState, DaemonLocallyPersistedState } from '@/persistence/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState } from '@/persistence';
+
+import { cleanupDaemonState, checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningSameVersion, stopDaemon } from './controlClient';
+import { startDaemonControlServer } from './controlServer';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -31,18 +31,20 @@ export async function startDaemon(): Promise<void> {
   logger.debugLargeJson('[DAEMON RUN] Environment', getEnvironmentInfo());
 
   // Check if already running
-  const runningDaemon = await getDaemonState();
-  if (runningDaemon) {
-    try {
-      process.kill(runningDaemon.pid, 0);
-      logger.debug('[DAEMON RUN] Daemon already running');
-      console.log(`Daemon already running (PID: ${runningDaemon.pid})`);
-      process.exit(0);
-    } catch {
-      logger.debug('[DAEMON RUN] Stale state found, cleaning up');
-      await cleanupDaemonState();
-    }
+  // Check if running daemon version matches current CLI version
+  const runningDaemonVersionMatches = await isDaemonRunningSameVersion();
+  if (!runningDaemonVersionMatches) {
+    logger.debug('[DAEMON RUN] Daemon version mismatch detected, restarting daemon with current CLI version');
+    await stopDaemon();
+  } else {
+    logger.debug('[DAEMON RUN] Daemon version matches, keeping existing daemon');
+    console.log('Daemon already running with matching version');
+    process.exit(0);
   }
+
+  // At this point we should be safe to startup the daemon:
+  // 1. Not have a stale daemon state
+  // 2. Should not have another daemon process running
 
   // Start caffeinate
   const caffeinateStarted = startCaffeinate();
@@ -66,9 +68,11 @@ export async function startDaemon(): Promise<void> {
 
     // Handle webhook from happy session reporting itself
     const onHappySessionWebhook = (sessionId: string, sessionMetadata: Metadata) => {
+      logger.debugLargeJson(`[DAEMON RUN] Session reported`, sessionMetadata);
+
       const pid = sessionMetadata.hostPid;
       if (!pid) {
-        logger.debug(`[DAEMON RUN] Session webhook missing hostPid for session ${sessionId}`);
+        logger.debug(`[DAEMON RUN] Session webhook missing hostPid for `);
         return;
       }
 
@@ -105,8 +109,40 @@ export async function startDaemon(): Promise<void> {
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = async (directory: string, sessionId?: string): Promise<TrackedSession | null> => {
+      let directoryCreated = false;
+        
       try {
-        const happyBinPath = join(projectPath(), 'bin', 'happy.mjs');
+        await fs.access(directory);
+        logger.debug(`[DAEMON RUN] Directory exists: ${directory}`);
+      } catch (error) {
+        logger.debug(`[DAEMON RUN] Directory doesn't exist, creating: ${directory}`);
+        try {
+          await fs.mkdir(directory, { recursive: true });
+          logger.debug(`[DAEMON RUN] Successfully created directory: ${directory}`);
+          directoryCreated = true;
+        } catch (mkdirError: any) {
+          let errorMessage = `Unable to create directory at '${directory}'. `;
+          
+          // Provide more helpful error messages based on the error code
+          if (mkdirError.code === 'EACCES') {
+            errorMessage += `Permission denied. You don't have write access to create a folder at this location. Try using a different path or check your permissions.`;
+          } else if (mkdirError.code === 'ENOTDIR') {
+            errorMessage += `A file already exists at this path or in the parent path. Cannot create a directory here. Please choose a different location.`;
+          } else if (mkdirError.code === 'ENOSPC') {
+            errorMessage += `No space left on device. Your disk is full. Please free up some space and try again.`;
+          } else if (mkdirError.code === 'EROFS') {
+            errorMessage += `The file system is read-only. Cannot create directories here. Please choose a writable location.`;
+          } else {
+            errorMessage += `System error: ${mkdirError.message || mkdirError}. Please verify the path is valid and you have the necessary permissions.`;
+          }
+          
+          logger.debug(`[DAEMON RUN] Directory creation failed: ${errorMessage}`);
+          // Return null on error for cleaner API
+          return null;
+        }
+      }
+
+      try {
         const args = [
           '--happy-starting-mode', 'remote',
           '--started-by', 'daemon'
@@ -139,7 +175,9 @@ export async function startDaemon(): Promise<void> {
         const trackedSession: TrackedSession = {
           startedBy: 'daemon',
           pid: happyProcess.pid,
-          childProcess: happyProcess
+          childProcess: happyProcess,
+          directoryCreated,
+          message: directoryCreated ? `The path '${directory}' did not exist. We created a new folder and spawned a new session there.` : undefined
         };
 
         pidToTrackedSession.set(happyProcess.pid, trackedSession);
@@ -243,8 +281,9 @@ export async function startDaemon(): Promise<void> {
     const fileState: DaemonLocallyPersistedState = {
       pid: process.pid,
       httpPort: controlPort,
-      startTime: new Date().toISOString(),
-      startedWithCliVersion: packageJson.version
+      startTime: new Date().toLocaleString(),
+      startedWithCliVersion: packageJson.version,
+      daemonLogPath: await logger.logFilePathPromise
     };
     await writeDaemonState(fileState);
     logger.debug('[DAEMON RUN] Daemon state written');
@@ -282,7 +321,7 @@ export async function startDaemon(): Promise<void> {
     apiMachine.connect();
 
     // Setup signal handlers
-    const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown') => {
+    const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown', restart: boolean = false) => {
       logger.debug(`[DAEMON RUN] Starting cleanup (source: ${source})...`);
 
       // Update daemon state before shutting down
@@ -304,6 +343,12 @@ export async function startDaemon(): Promise<void> {
       }
       logger.debug('[DAEMON RUN] Machine session shutdown');
 
+      // Clear health check interval
+      if (restartOnStaleVersionAndHeartbeat) {
+        clearInterval(restartOnStaleVersionAndHeartbeat);
+        logger.debug('[DAEMON RUN] Health check interval cleared');
+      }
+
       // Stop control server
       await stopControlServer();
       logger.debug('[DAEMON RUN] Control server stopped');
@@ -313,9 +358,20 @@ export async function startDaemon(): Promise<void> {
       logger.debug('[DAEMON RUN] State cleaned up');
 
       // Stop caffeinate
-      stopCaffeinate();
+      await stopCaffeinate();
       logger.debug('[DAEMON RUN] Caffeinate stopped');
 
+      logger.debug('[DAEMON RUN] Cleanup completed, exiting process');
+      
+      // If restart requested, spawn new daemon before exiting
+      if (restart) {
+        logger.debug('[DAEMON RUN] Restarting daemon with latest version');
+        spawnHappyCLI(['daemon', 'start-sync'], {
+          detached: true,
+          stdio: 'ignore'
+        });
+      }
+      
       process.exit(0);
     };
 
@@ -330,26 +386,88 @@ export async function startDaemon(): Promise<void> {
     });
 
     process.on('uncaughtException', (error) => {
-      logger.debug('[DAEMON RUN] Uncaught exception - cleaning up before crash', error);
+      logger.debug('[DAEMON RUN] FATAL: Uncaught exception', error);
+      logger.debug(`[DAEMON RUN] Stack trace: ${error.stack}`);
       cleanupAndShutdown('unknown');
     });
 
-    process.on('unhandledRejection', (reason) => {
-      logger.debug('[DAEMON RUN] Unhandled rejection - cleaning up before crash', reason);
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.debug('[DAEMON RUN] FATAL: Unhandled promise rejection', reason);
+      logger.debug(`[DAEMON RUN] Rejected promise:`, promise);
+      if (reason instanceof Error) {
+        logger.debug(`[DAEMON RUN] Stack trace: ${reason.stack}`);
+      }
       cleanupAndShutdown('unknown');
     });
 
-    process.on('exit', () => {
-      logger.debug('[DAEMON RUN] Process exit, not killing any children');
+    process.on('exit', (code) => {
+      logger.debug(`[DAEMON RUN] Process exiting with code: ${code}`);
+    });
+
+    process.on('beforeExit', (code) => {
+      logger.debug(`[DAEMON RUN] Process about to exit with code: ${code}`);
     });
 
     logger.debug('[DAEMON RUN] Daemon started successfully');
+
+    const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
+      logger.debug('[DAEMON RUN] Starting healing process - prune stale sessions and check for CLI version update & restart if needed');
+      
+      // Prune stale sessions
+      for (const [pid, _] of pidToTrackedSession.entries()) {
+        try {
+          // Check if process is still alive (signal 0 doesn't kill, just checks)
+          process.kill(pid, 0);
+        } catch (error) {
+          // Process is dead, remove from tracking
+          logger.debug(`[DAEMON RUN] Removing stale session with PID ${pid} (process no longer exists)`);
+          pidToTrackedSession.delete(pid);
+        }
+      }
+      
+      // Check if daemon needs update
+      const isLatestVersion = await isDaemonRunningSameVersion();
+      if (!isLatestVersion) {
+        logger.debug('[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version');
+        
+        // Spawn new daemon through the CLI
+        spawnHappyCLI(['daemon', 'start'], {
+          detached: true,
+          stdio: 'ignore'
+        });
+
+        // We do not need to clean ourselves up - we will be killed by
+        // the CLI start command. It will first check if daemon is running (yes in this case)
+        // if the version is stale - kill it - that is our destiny
+        // Next it will start a new daemon with the latest version with daemon-sync :D
+        // Done!
+
+        // So we can just hang forever
+        logger.debug('[DAEMON RUN] Hanging forever - waiting for CLI to kill us because we are running outdated version of the code');
+        await new Promise(() => {});
+      }
+      
+      // Then write heartbeat
+      try {
+        const updatedState: DaemonLocallyPersistedState = {
+          pid: process.pid,
+          httpPort: controlPort,
+          startTime: fileState.startTime,
+          startedWithCliVersion: packageJson.version,
+          lastHeartbeat: new Date().toLocaleString(),
+          daemonLogPath: fileState.daemonLogPath
+        };
+        await writeDaemonState(updatedState);
+        logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
+      } catch (error) {
+        logger.debug('[DAEMON RUN] Failed to write heartbeat', error);
+      }
+    }, 60000); // Every 60 seconds
 
     // Wait for shutdown request
     const shutdownSource = await resolvesWhenShutdownRequested;
     logger.debug(`[DAEMON RUN] Shutdown requested (source: ${shutdownSource})`);
     await cleanupAndShutdown(shutdownSource);
-
   } catch (error) {
     logger.debug('[DAEMON RUN] Failed to start daemon', error);
     await cleanupDaemonState();

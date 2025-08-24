@@ -4,7 +4,7 @@ import { existsSync, readFileSync, rmdirSync, unlinkSync } from 'fs'
 import path from 'path'
 import os from 'os'
 import { configuration } from '@/configuration'
-import { stopDaemon } from '@/daemon/utils'
+import { stopDaemon } from '@/daemon/controlClient'
 
 async function killAllDaemons() {
   try {

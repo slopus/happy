@@ -225,13 +225,21 @@ export class ApiMachineClient {
             throw new Error('Failed to spawn session');
           }
 
+          // Check if session has an error (e.g., directory creation failed)
+          if (session.error) {
+            throw new Error(session.error);
+          }
+
           logger.debug(`[API MACHINE] Spawned session ${session.happySessionId || 'pending'} with PID ${session.pid}`);
 
           if (!session.happySessionId) {
             throw new Error(`Session spawned (PID ${session.pid}) but no sessionId received from webhook. The session process may still be initializing.`);
           }
 
-          const response = { sessionId: session.happySessionId };
+          const response = { 
+            sessionId: session.happySessionId,
+            message: session.message 
+          };
           logger.debug(`[API MACHINE] Sending RPC response:`, response);
           callback(encodeBase64(encrypt(response, this.secret)));
           return;
@@ -338,12 +346,7 @@ export class ApiMachineClient {
         machineId: this.machine.id,
         time: Date.now()
       };
-      if (process.env.VERBOSE) {
-        // Polutes the logs, not useful most of the time
-        // Definetely do not want to log this on user's machines
-        // to avoid MBs of logs :D
-        logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
-      }
+      logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
       this.socket.emit('machine-alive', payload);
     }, 20000);
     logger.debug('[API MACHINE] Keep-alive started (20s interval)');

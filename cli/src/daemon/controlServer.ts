@@ -90,11 +90,15 @@ export function startDaemonControlServer({
         return {
           success: true,
           pid: session.pid,
-          sessionId: session.happySessionId || 'pending'
+          sessionId: session.happySessionId || 'pending',
+          message: session.message
         };
       } else {
         reply.code(500);
-        return { error: 'Failed to spawn session' };
+        return { 
+          success: false,
+          error: 'Failed to spawn session. Check the directory path and permissions.' 
+        };
       }
     });
 
@@ -109,6 +113,27 @@ export function startDaemonControlServer({
       }, 50);
 
       return { status: 'stopping' };
+    });
+
+    // Dev endpoint to simulate errors (hidden from help)
+    typed.post('/dev-simulate-error', {
+      schema: {
+        body: z.object({
+          error: z.string()
+        })
+      }
+    }, async (request, reply) => {
+      const { error } = request.body;
+      
+      logger.debug(`[CONTROL SERVER] Dev: Simulating error: ${error}`);
+      
+      // Throw the error after a small delay to allow response
+      setTimeout(() => {
+        logger.debug(`[CONTROL SERVER] Dev: Throwing simulated error now`);
+        throw new Error(error);
+      }, 100);
+      
+      return { status: 'error will be thrown' };
     });
 
     app.listen({ port: 0, host: '127.0.0.1' }, (err, address) => {

@@ -1,10 +1,10 @@
 import chalk from 'chalk';
-import { readCredentials, clearCredentials, clearMachineId, readSettings } from '@/persistence/persistence';
+import { readCredentials, clearCredentials, clearMachineId, readSettings } from '@/persistence';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
 import { existsSync, rmSync } from 'node:fs';
 import { createInterface } from 'node:readline';
-import { stopDaemon } from '@/daemon/utils';
+import { stopDaemon, checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient';
 import { logger } from '@/ui/logger';
 import { formatSecretKeyForBackup } from '@/utils/backupKey';
 import os from 'node:os';
@@ -264,8 +264,7 @@ async function handleAuthStatus(): Promise<void> {
 
   // Daemon status
   try {
-    const { isDaemonRunning } = await import('@/daemon/utils');
-    const running = await isDaemonRunning();
+    const running = await checkIfDaemonRunningAndCleanupStaleState();
     if (running) {
       console.log(chalk.green('✓ Daemon running'));
     } else {

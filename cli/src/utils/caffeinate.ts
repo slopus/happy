@@ -125,11 +125,9 @@ function setupCleanupHandlers(): void {
     process.on('uncaughtException', (error) => {
         logger.debug('[caffeinate] Uncaught exception, cleaning up:', error)
         cleanup()
-        process.exit(1)
     })
     process.on('unhandledRejection', (reason, promise) => {
         logger.debug('[caffeinate] Unhandled rejection, cleaning up:', reason)
         cleanup()
-        process.exit(1)
     })
 }

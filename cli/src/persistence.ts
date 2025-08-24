@@ -9,9 +9,8 @@ import { existsSync } from 'node:fs'
 import { constants } from 'node:fs'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
-import { encodeBase64 } from '../api/encryption';
-import { hostname } from 'node:os';
-import { randomUUID } from 'node:crypto';
+import { encodeBase64 } from '@/api/encryption';
+import { logger } from '@/lib';
 
 interface Settings {
   onboardingCompleted: boolean
@@ -35,6 +34,8 @@ export interface DaemonLocallyPersistedState {
   httpPort: number;
   startTime: string;
   startedWithCliVersion: string;
+  lastHeartbeat?: string;
+  daemonLogPath?: string;
 }
 
 export async function readSettings(): Promise<Settings | null> {
@@ -209,4 +210,12 @@ export async function clearDaemonState(): Promise<void> {
   if (existsSync(configuration.daemonStateFile)) {
     await unlink(configuration.daemonStateFile);
   }
+}export async function getDaemonState(): Promise<DaemonLocallyPersistedState | null> {
+  try {
+    return await readDaemonState();
+  } catch (error) {
+    logger.debug('[DAEMON RUN] Error reading daemon metadata', error);
+    return null;
+  }
 }
+

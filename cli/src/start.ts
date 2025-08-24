@@ -1,13 +1,14 @@
+import os from 'node:os';
+import { randomUUID } from 'node:crypto';
+
 import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
-import { randomUUID } from 'node:crypto';
 import { loop } from '@/claude/loop';
-import os from 'node:os';
 import { AgentState, Metadata } from '@/api/types';
 // @ts-ignore
 import packageJson from '../package.json';
 import { registerHandlers } from '@/api/handlers';
-import { readSettings } from '@/persistence/persistence';
+import { readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './claude/loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
@@ -17,9 +18,8 @@ import { parseSpecialCommand } from '@/parsers/specialCommands';
 import { Session } from '@/claude/session';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
-import { getDaemonState } from '@/daemon/utils';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
-import { initialMachineMetadata } from './daemon/run';
+import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 
 export interface StartOptions {
@@ -86,10 +86,11 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Always report to daemon if it exists
     try {
-        const daemonState = await getDaemonState();
-
-        if (daemonState?.httpPort) {
-            await notifyDaemonSessionStarted(response.id, metadata);
+        logger.debug(`[START] Reporting session ${response.id} to daemon`);
+        const result = await notifyDaemonSessionStarted(response.id, metadata);
+        if (result.error) {
+            logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
+        } else {
             logger.debug(`[START] Reported session ${response.id} to daemon`);
         }
     } catch (error) {

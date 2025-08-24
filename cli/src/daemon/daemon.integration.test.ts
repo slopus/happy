@@ -26,6 +26,7 @@ import {
   stopDaemonHttp, 
   notifyDaemonSessionStarted 
 } from '@/daemon/controlClient';
+import { getDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
 
 // Utility to wait for condition
@@ -48,9 +49,30 @@ let daemonChild: any = null;
 
 async function startDaemon(): Promise<{ pid: number }> {
   return new Promise((resolve, reject) => {
+    // Clean environment without Vitest's process.exit interception
+    const cleanEnv: Record<string, string | undefined> = {
+      ...process.env,
+      NODE_ENV: undefined,  // Remove NODE_ENV=test
+      VITEST: undefined,    // Remove VITEST env var
+      // Keep necessary env vars
+      HAPPY_HOME_DIR: process.env.HAPPY_HOME_DIR,
+      HAPPY_SERVER_URL: process.env.HAPPY_SERVER_URL,
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      USER: process.env.USER,
+      SHELL: process.env.SHELL
+    };
+    
+    // Remove undefined values
+    Object.keys(cleanEnv).forEach(key => {
+      if (cleanEnv[key] === undefined) {
+        delete cleanEnv[key];
+      }
+    });
+    
     const child = spawn('yarn', ['tsx', 'src/index.ts', 'daemon', 'start-sync'], {
       cwd: process.cwd(),
-      env: process.env,  // Child inherits all env vars including HAPPY_HOME_DIR
+      env: cleanEnv,  // Use clean environment
       stdio: ['ignore', 'pipe', 'pipe'],
       detached: false  // Keep it attached for testing
     });
@@ -388,5 +410,116 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
       expect(session.happySessionId).toBeDefined();
       await stopDaemonSession(session.happySessionId);
     }
+  });
+
+  it('should die with logs when SIGKILL is sent', async () => {
+    // SIGKILL test - daemon should die immediately
+    const logsDir = configuration.logsDir;
+    const { readdirSync } = await import('fs');
+    
+    // Get initial log files
+    const initialLogs = readdirSync(logsDir).filter(f => f.endsWith('-daemon.log'));
+    
+    // Send SIGKILL to daemon (force kill)
+    daemonChild.kill('SIGKILL');
+    
+    // Wait for process to die
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    // Check if process is dead
+    let isDead = false;
+    try {
+      process.kill(daemonPid, 0);
+    } catch {
+      isDead = true;
+    }
+    expect(isDead).toBe(true);
+    
+    // Check that log file exists (it was created when daemon started)
+    const finalLogs = readdirSync(logsDir).filter(f => f.endsWith('-daemon.log'));
+    expect(finalLogs.length).toBeGreaterThanOrEqual(initialLogs.length);
+    
+    // The daemon won't have time to write cleanup logs with SIGKILL
+    console.log('[TEST] Daemon killed with SIGKILL - no cleanup logs expected');
+  });
+
+  it('should die with cleanup logs when SIGTERM is sent', async () => {
+    // SIGTERM test - daemon should cleanup gracefully
+    const logsDir = configuration.logsDir;
+    const { readFileSync, readdirSync } = await import('fs');
+    
+    // Get current log files
+    const logFiles = readdirSync(logsDir).filter(f => f.endsWith('-daemon.log')).sort();
+    const currentLogFile = logFiles[logFiles.length - 1];
+    const logPath = `${logsDir}/${currentLogFile}`;
+    
+    // Send SIGTERM to daemon (graceful shutdown)
+    daemonChild.kill('SIGTERM');
+    
+    // Wait for graceful shutdown
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Check if process is dead
+    let isDead = false;
+    try {
+      process.kill(daemonPid, 0);
+    } catch {
+      isDead = true;
+    }
+    expect(isDead).toBe(true);
+    
+    // Read the log file to check for cleanup messages
+    const logContent = readFileSync(logPath, 'utf8');
+    
+    // Should contain cleanup messages
+    expect(logContent).toContain('SIGTERM');
+    expect(logContent).toContain('cleanup');
+    
+    console.log('[TEST] Daemon terminated gracefully with SIGTERM - cleanup logs written');
+  });
+
+  it('should die with error logs when simulated error occurs', async () => {
+    const logsDir = configuration.logsDir;
+    const { readFileSync, readdirSync } = await import('fs');
+    
+    // Get current log files
+    const logFiles = readdirSync(logsDir).filter(f => f.endsWith('-daemon.log')).sort();
+    const currentLogFile = logFiles[logFiles.length - 1];
+    const logPath = `${logsDir}/${currentLogFile}`;
+    
+    // Trigger simulated error
+    const state = await getDaemonState();
+    expect(state).toBeDefined();
+    
+    const response = await fetch(`http://127.0.0.1:${state!.httpPort}/dev-simulate-error`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ error: 'Test error for integration test' }),
+      signal: AbortSignal.timeout(5000)
+    });
+    
+    expect(response.ok).toBe(true);
+    
+    // Wait for error to be thrown and daemon to handle it
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // Check if process died (uncaught exception should trigger cleanup)
+    let isDead = false;
+    try {
+      process.kill(daemonPid, 0);
+    } catch {
+      isDead = true;
+    }
+    expect(isDead).toBe(true);
+    
+    // Read the log file to check for error messages
+    const logContent = readFileSync(logPath, 'utf8');
+    
+    // Should contain error messages
+    expect(logContent).toContain('Test error for integration test');
+    expect(logContent).toContain('Uncaught exception');
+    expect(logContent).toContain('cleanup');
+    
+    console.log('[TEST] Daemon died with error logs after simulated error');
   });
 });

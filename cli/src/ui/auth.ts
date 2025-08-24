@@ -5,7 +5,7 @@ import tweetnacl from 'tweetnacl';
 import axios from 'axios';
 import { displayQRCode } from "./qrcode";
 import { delay } from "@/utils/time";
-import { writeCredentials, readCredentials, updateSettings, readSettings } from "@/persistence/persistence";
+import { writeCredentials, readCredentials, updateSettings, readSettings } from "@/persistence";
 import { generateWebAuthUrl } from "@/api/webAuth";
 import { openBrowser } from "@/utils/browser";
 import { AuthSelector, AuthMethod } from "./ink/AuthSelector";
