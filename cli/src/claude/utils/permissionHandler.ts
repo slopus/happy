@@ -39,6 +39,8 @@ export class PermissionHandler {
     private pendingRequests = new Map<string, PendingRequest>();
     private session: Session;
     private allowedTools = new Set<string>();
+    private allowedBashLiterals = new Set<string>();
+    private allowedBashPrefixes = new Set<string>();
     private permissionMode: PermissionMode = 'default';
 
     constructor(session: Session) {
@@ -60,7 +62,13 @@ export class PermissionHandler {
 
         // Update allowed tools
         if (response.allowTools && response.allowTools.length > 0) {
-            response.allowTools.forEach(tool => this.allowedTools.add(tool));
+            response.allowTools.forEach(tool => {
+                if (tool.startsWith('Bash(') || tool === 'Bash') {
+                    this.parseBashPermission(tool);
+                } else {
+                    this.allowedTools.add(tool);
+                }
+            });
         }
 
         // Update permission mode
@@ -99,8 +107,22 @@ export class PermissionHandler {
      */
     handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }): Promise<PermissionResult> => {
 
-        // Check if tool is explicitlyallowed
-        if (this.allowedTools.has(toolName)) {
+        // Check if tool is explicitly allowed
+        if (toolName === 'Bash') {
+            const inputObj = input as { command?: string };
+            if (inputObj?.command) {
+                // Check literal matches
+                if (this.allowedBashLiterals.has(inputObj.command)) {
+                    return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
+                }
+                // Check prefix matches
+                for (const prefix of this.allowedBashPrefixes) {
+                    if (inputObj.command.startsWith(prefix)) {
+                        return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
+                    }
+                }
+            }
+        } else if (this.allowedTools.has(toolName)) {
             return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
@@ -196,6 +218,35 @@ export class PermissionHandler {
 
 
     /**
+     * Parses Bash permission strings into literal and prefix sets
+     */
+    private parseBashPermission(permission: string): void {
+        // Ignore plain "Bash"
+        if (permission === 'Bash') {
+            return;
+        }
+
+        // Match Bash(command) or Bash(command:*)
+        const bashPattern = /^Bash\((.+?)\)$/;
+        const match = permission.match(bashPattern);
+        
+        if (!match) {
+            return;
+        }
+
+        const command = match[1];
+        
+        // Check if it's a prefix pattern (ends with :*)
+        if (command.endsWith(':*')) {
+            const prefix = command.slice(0, -2); // Remove :*
+            this.allowedBashPrefixes.add(prefix);
+        } else {
+            // Literal match
+            this.allowedBashLiterals.add(command);
+        }
+    }
+
+    /**
      * Resolves tool call ID based on tool name and input
      */
     private resolveToolCallId(name: string, args: any): string | null {
@@ -275,6 +326,9 @@ export class PermissionHandler {
     reset(): void {
         this.toolCalls = [];
         this.responses.clear();
+        this.allowedTools.clear();
+        this.allowedBashLiterals.clear();
+        this.allowedBashPrefixes.clear();
 
         // Cancel all pending requests
         for (const [, pending] of this.pendingRequests.entries()) {
