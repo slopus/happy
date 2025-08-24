@@ -84,6 +84,7 @@
     "@eslint/compat": "^1",
     "@types/node": ">=20",
     "cross-env": "^10.0.0",
+    "dotenv": "^17.2.1",
     "eslint": "^9",
     "eslint-config-prettier": "^10",
     "pkgroll": "^2.14.2",

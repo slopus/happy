@@ -5,6 +5,7 @@
  * Environment files should be loaded using Node's --env-file flag
  */
 
+import { existsSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -15,7 +16,6 @@ class Configuration {
   // Directories and paths (from persistence)
   public readonly happyHomeDir: string
   public readonly logsDir: string
-  public readonly daemonLogsDir: string
   public readonly settingsFile: string
   public readonly privateKeyFile: string
   public readonly daemonStateFile: string
@@ -40,12 +40,19 @@ class Configuration {
     }
 
     this.logsDir = join(this.happyHomeDir, 'logs')
-    this.daemonLogsDir = join(this.happyHomeDir, 'logs-daemon')
     this.settingsFile = join(this.happyHomeDir, 'settings.json')
     this.privateKeyFile = join(this.happyHomeDir, 'access.key')
     this.daemonStateFile = join(this.happyHomeDir, 'daemon.state.json')
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
+
+    if (!existsSync(this.happyHomeDir)) {
+      mkdirSync(this.happyHomeDir, { recursive: true })
+    }
+    // Ensure directories exist
+    if (!existsSync(this.logsDir)) {
+      mkdirSync(this.logsDir, { recursive: true })
+    }
   }
 }
 

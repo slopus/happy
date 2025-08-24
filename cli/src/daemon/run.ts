@@ -12,10 +12,11 @@ import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { Metadata } from '@/api/types';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonStateExclusiveWriteHandle } from '@/persistence';
 
-import { cleanupDaemonState, checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningSameVersion, stopDaemon } from './controlClient';
+import { cleanupDaemonState, isDaemonRunningSameVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
+import { existsSync, mkdir, mkdirSync } from 'fs';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -27,6 +28,68 @@ export const initialMachineMetadata: MachineMetadata = {
 };
 
 export async function startDaemon(): Promise<void> {
+  // We don't have cleanup function at the time of server construction
+  // Control flow is:
+  // 1. Create promise that will resolve when shutdown is requested
+  // 2. Setup signal handlers to resolve this promise with the source of the shutdown
+  // 3. Once our setup is complete - if all goes well - we await this promise
+  // 4. When it resolves we can cleanup and exit
+  //
+  // In case the setup malfunctions - our signal handlers will not properly
+  // shut down. We will force exit the process with code 1.
+  let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => void;
+  let resolvesWhenShutdownRequested = new Promise<({source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string})>((resolve) => {
+    requestShutdown = (source, errorMessage) => {
+      logger.debug(`[DAEMON RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
+      
+      // Fallback - in case startup malfunctions - we will force exit the process with code 1
+      setTimeout(async () => {
+        logger.debug('[DAEMON RUN] Startup malfunctioned, forcing exit with code 1');
+
+        // Give time for logs to be flushed
+        await new Promise(resolve => setTimeout(resolve, 100))
+
+        process.exit(1);
+      }, 1_000);
+
+      // Start graceful shutdown
+      resolve({source, errorMessage});
+    };
+  });
+
+  // Setup signal handlers
+  process.on('SIGINT', () => {
+    logger.debug('[DAEMON RUN] Received SIGINT');
+    requestShutdown('os-signal');
+  });
+
+  process.on('SIGTERM', () => {
+    logger.debug('[DAEMON RUN] Received SIGTERM');
+    requestShutdown('os-signal');
+  });
+
+  process.on('uncaughtException', (error) => {
+    logger.debug('[DAEMON RUN] FATAL: Uncaught exception', error);
+    logger.debug(`[DAEMON RUN] Stack trace: ${error.stack}`);
+    requestShutdown('exception', error.message);
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    logger.debug('[DAEMON RUN] FATAL: Unhandled promise rejection', reason);
+    logger.debug(`[DAEMON RUN] Rejected promise:`, promise);
+    const error = reason instanceof Error ? reason : new Error(`Unhandled promise rejection: ${reason}`);
+    logger.debug(`[DAEMON RUN] Stack trace: ${error.stack}`);
+    requestShutdown('exception', error.message);
+  });
+
+  process.on('exit', (code) => {
+    logger.debug(`[DAEMON RUN] Process exiting with code: ${code}`);
+  });
+
+  process.on('beforeExit', (code) => {
+    logger.debug(`[DAEMON RUN] Process about to exit with code: ${code}`);
+  });
+  
   logger.debug('[DAEMON RUN] Starting daemon process...');
   logger.debugLargeJson('[DAEMON RUN] Environment', getEnvironmentInfo());
 
@@ -42,17 +105,23 @@ export async function startDaemon(): Promise<void> {
     process.exit(0);
   }
 
+  const daemonStateExclusiveWriteHandle = await acquireDaemonStateExclusiveWriteHandle(5, 200);
+  if (!daemonStateExclusiveWriteHandle) {
+    logger.debug('[DAEMON RUN] Daemon state file already locked, exiting');
+    process.exit(0);
+  }
+
   // At this point we should be safe to startup the daemon:
   // 1. Not have a stale daemon state
   // 2. Should not have another daemon process running
 
-  // Start caffeinate
-  const caffeinateStarted = startCaffeinate();
-  if (caffeinateStarted) {
-    logger.debug('[DAEMON RUN] Sleep prevention enabled');
-  }
-
   try {
+    // Start caffeinate
+    const caffeinateStarted = startCaffeinate();
+    if (caffeinateStarted) {
+      logger.debug('[DAEMON RUN] Sleep prevention enabled');
+    }
+
     // Ensure auth and machine registration BEFORE anything else
     const { credentials, machineId } = await authAndSetupMachineIfNeeded();
     logger.debug('[DAEMON RUN] Auth and machine setup complete');
@@ -262,12 +331,6 @@ export async function startDaemon(): Promise<void> {
       pidToTrackedSession.delete(pid);
     };
 
-    // We don't have cleanup function at the time of server construction
-    let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown') => void;
-    let resolvesWhenShutdownRequested = new Promise<('happy-app' | 'happy-cli' | 'os-signal' | 'unknown')>((resolve) => {
-      requestShutdown = resolve;
-    });
-
     // Start control server
     const { port: controlPort, stop: stopControlServer } = await startDaemonControlServer({
       getChildren: getCurrentChildren,
@@ -283,9 +346,9 @@ export async function startDaemon(): Promise<void> {
       httpPort: controlPort,
       startTime: new Date().toLocaleString(),
       startedWithCliVersion: packageJson.version,
-      daemonLogPath: await logger.logFilePathPromise
+      daemonLogPath: logger.logFilePath
     };
-    await writeDaemonState(fileState);
+    await writeDaemonState(daemonStateExclusiveWriteHandle, fileState);
     logger.debug('[DAEMON RUN] Daemon state written');
 
     // Prepare initial daemon state
@@ -320,96 +383,11 @@ export async function startDaemon(): Promise<void> {
     // Connect to server
     apiMachine.connect();
 
-    // Setup signal handlers
-    const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'unknown', restart: boolean = false) => {
-      logger.debug(`[DAEMON RUN] Starting cleanup (source: ${source})...`);
-
-      // Update daemon state before shutting down
-      if (apiMachine) {
-        await apiMachine.updateDaemonState((state: DaemonState | null) => ({
-          ...state,
-          status: 'shutting-down',
-          shutdownRequestedAt: Date.now(),
-          shutdownSource: source === 'happy-app' ? 'mobile-app' : source === 'happy-cli' ? 'cli' : source
-        }));
-
-        // Give time for metadata update to send
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-
-      // Shutdown machine session
-      if (apiMachine) {
-        apiMachine.shutdown();
-      }
-      logger.debug('[DAEMON RUN] Machine session shutdown');
-
-      // Clear health check interval
-      if (restartOnStaleVersionAndHeartbeat) {
-        clearInterval(restartOnStaleVersionAndHeartbeat);
-        logger.debug('[DAEMON RUN] Health check interval cleared');
-      }
-
-      // Stop control server
-      await stopControlServer();
-      logger.debug('[DAEMON RUN] Control server stopped');
-
-      // Clean up state
-      await cleanupDaemonState();
-      logger.debug('[DAEMON RUN] State cleaned up');
-
-      // Stop caffeinate
-      await stopCaffeinate();
-      logger.debug('[DAEMON RUN] Caffeinate stopped');
-
-      logger.debug('[DAEMON RUN] Cleanup completed, exiting process');
-      
-      // If restart requested, spawn new daemon before exiting
-      if (restart) {
-        logger.debug('[DAEMON RUN] Restarting daemon with latest version');
-        spawnHappyCLI(['daemon', 'start-sync'], {
-          detached: true,
-          stdio: 'ignore'
-        });
-      }
-      
-      process.exit(0);
-    };
-
-    process.on('SIGINT', () => {
-      logger.debug('[DAEMON RUN] Received SIGINT');
-      cleanupAndShutdown('os-signal');
-    });
-
-    process.on('SIGTERM', () => {
-      logger.debug('[DAEMON RUN] Received SIGTERM');
-      cleanupAndShutdown('os-signal');
-    });
-
-    process.on('uncaughtException', (error) => {
-      logger.debug('[DAEMON RUN] FATAL: Uncaught exception', error);
-      logger.debug(`[DAEMON RUN] Stack trace: ${error.stack}`);
-      cleanupAndShutdown('unknown');
-    });
-
-    process.on('unhandledRejection', (reason, promise) => {
-      logger.debug('[DAEMON RUN] FATAL: Unhandled promise rejection', reason);
-      logger.debug(`[DAEMON RUN] Rejected promise:`, promise);
-      if (reason instanceof Error) {
-        logger.debug(`[DAEMON RUN] Stack trace: ${reason.stack}`);
-      }
-      cleanupAndShutdown('unknown');
-    });
-
-    process.on('exit', (code) => {
-      logger.debug(`[DAEMON RUN] Process exiting with code: ${code}`);
-    });
-
-    process.on('beforeExit', (code) => {
-      logger.debug(`[DAEMON RUN] Process about to exit with code: ${code}`);
-    });
-
-    logger.debug('[DAEMON RUN] Daemon started successfully');
-
+    // Every 60 seconds:
+    // 1. Prune stale sessions
+    // 2. Check if daemon needs update
+    // 3. If outdated, restart with latest version
+    // 4. Write heartbeat
     const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
       logger.debug('[DAEMON RUN] Starting healing process - prune stale sessions and check for CLI version update & restart if needed');
       
@@ -446,8 +424,16 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Hanging forever - waiting for CLI to kill us because we are running outdated version of the code');
         await new Promise(() => {});
       }
+
+      // Before wrecklessly overriting the daemon state file, we should check if we are the ones who own it
+      // Race condition is possible, but thats okay for the time being :D
+      const daemonState = await readDaemonState();
+      if (daemonState && daemonState.pid !== process.pid) {
+        logger.debug('[DAEMON RUN] Somehow a different daemon was started without killing us. We should kill ourselves.')
+        requestShutdown('exception', 'A different daemon was started without killing us. We should kill ourselves.')
+      }
       
-      // Then write heartbeat
+      // Heartbeat
       try {
         const updatedState: DaemonLocallyPersistedState = {
           pid: process.pid,
@@ -457,21 +443,51 @@ export async function startDaemon(): Promise<void> {
           lastHeartbeat: new Date().toLocaleString(),
           daemonLogPath: fileState.daemonLogPath
         };
-        await writeDaemonState(updatedState);
+        await writeDaemonState(daemonStateExclusiveWriteHandle, updatedState);
         logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
       } catch (error) {
         logger.debug('[DAEMON RUN] Failed to write heartbeat', error);
       }
     }, 60000); // Every 60 seconds
 
+    // Setup signal handlers
+    const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
+      logger.debug(`[DAEMON RUN] Starting proper cleanup (source: ${source}, errorMessage: ${errorMessage})...`);
+
+      // Clear health check interval
+      if (restartOnStaleVersionAndHeartbeat) {
+        clearInterval(restartOnStaleVersionAndHeartbeat);
+        logger.debug('[DAEMON RUN] Health check interval cleared');
+      }
+
+      // Update daemon state before shutting down
+      await apiMachine.updateDaemonState((state: DaemonState | null) => ({
+        ...state,
+        status: 'shutting-down',
+        shutdownRequestedAt: Date.now(),
+        shutdownSource: source
+      }));
+
+      // Give time for metadata update to send
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      apiMachine.shutdown();
+      await stopControlServer();
+      await daemonStateExclusiveWriteHandle.close();
+      await cleanupDaemonState();
+      await stopCaffeinate();
+
+      logger.debug('[DAEMON RUN] Cleanup completed, exiting process');
+      process.exit(0);
+    };
+
+    logger.debug('[DAEMON RUN] Daemon started successfully, waiting for shutdown request');
+
     // Wait for shutdown request
-    const shutdownSource = await resolvesWhenShutdownRequested;
-    logger.debug(`[DAEMON RUN] Shutdown requested (source: ${shutdownSource})`);
-    await cleanupAndShutdown(shutdownSource);
+    const shutdownRequest = await resolvesWhenShutdownRequested;
+    await cleanupAndShutdown(shutdownRequest.source, shutdownRequest.errorMessage);
   } catch (error) {
-    logger.debug('[DAEMON RUN] Failed to start daemon', error);
-    await cleanupDaemonState();
-    stopCaffeinate();
+    logger.debug('[DAEMON RUN][FATAL] Failed somewhere unexpectedly - exiting with code 1', error);
     process.exit(1);
   }
 }

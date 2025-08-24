@@ -54,7 +54,13 @@ export function startDaemonControlServer({
     typed.post('/list', async (request, reply) => {
       const children = getChildren();
       logger.debug(`[CONTROL SERVER] Listing ${children.length} sessions`);
-      return { children };
+      return { children: 
+        children.map(child => {
+          // Remove not cleanly serializable properties
+          delete child.childProcess;
+          return child; 
+        })
+      }
     });
 
     // Stop specific session

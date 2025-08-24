@@ -58,10 +58,16 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     const settings = await readSettings();
     let machineId = settings?.machineId
     if (!machineId) {
-        console.error(`[START] No machine ID found in settings, which is unexepcted since authAndSetupMachineIfNeeded should have created it, using 'unknown' id instead`);
-        machineId = 'unknown';
+        console.error(`[START] No machine ID found in settings, which is unexepcted since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
+        process.exit(1);
     }
     logger.debug(`Using machineId: ${machineId}`);
+
+    // Create machine if it doesn't exist
+    await api.createMachineOrGetExistingAsIs({
+        machineId,
+        metadata: initialMachineMetadata
+    });
 
     let metadata: Metadata = {
         path: workingDirectory,
@@ -77,12 +83,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);
-
-    // Create machine if it doesn't exist
-    await api.createMachineOrGetExistingAsIs({
-        machineId,
-        metadata: initialMachineMetadata
-    });
 
     // Always report to daemon if it exists
     try {
@@ -121,7 +121,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
 
     // Print log file path
-    const logPath = await logger.logFilePathPromise;
+    const logPath = logger.logFilePath;
     logger.infoDeveloper(`Session: ${response.id}`);
     logger.infoDeveloper(`Logs: ${logPath}`);
 

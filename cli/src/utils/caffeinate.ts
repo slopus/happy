@@ -64,9 +64,10 @@ let isStopping = false
 /**
  * Stop the caffeinate process
  */
-export function stopCaffeinate(): void {
+export async function stopCaffeinate(): Promise<void> {
     // Prevent re-entrant calls during cleanup
     if (isStopping) {
+        logger.debug('[caffeinate] Already stopping, skipping')
         return
     }
     
@@ -78,14 +79,14 @@ export function stopCaffeinate(): void {
             caffeinateProcess.kill('SIGTERM')
             
             // Give it a moment to terminate gracefully
-            setTimeout(() => {
-                if (caffeinateProcess && !caffeinateProcess.killed) {
-                    logger.debug('[caffeinate] Force killing caffeinate process')
-                    caffeinateProcess.kill('SIGKILL')
-                }
-                caffeinateProcess = null
-                isStopping = false
-            }, 1000)
+            await new Promise(resolve => setTimeout(resolve, 1000))
+
+            if (caffeinateProcess && !caffeinateProcess.killed) {
+                logger.debug('[caffeinate] Force killing caffeinate process')
+                caffeinateProcess.kill('SIGKILL')
+            }
+            caffeinateProcess = null
+            isStopping = false
         } catch (error) {
             logger.debug('[caffeinate] Error stopping caffeinate:', error)
             isStopping = false

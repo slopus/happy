@@ -6,6 +6,8 @@ import { ApiMachineClient } from './apiMachine';
 import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { PushNotificationClient } from './pushNotifications';
 import { configuration } from '@/configuration';
+import chalk from 'chalk';
+import { clearMachineId } from '@/persistence';
 
 export class ApiClient {
   private readonly token: string;
@@ -117,6 +119,12 @@ export class ApiClient {
         timeout: 5000
       }
     );
+
+    if (response.status !== 200) {
+      console.error(chalk.red(`[API] Failed to create machine: ${response.statusText}`));
+      console.log(chalk.yellow(`[API] Failed to create machine: ${response.statusText}, most likely you have re-authenticated, but you still have a machine associated with the old account. Now we are trying to re-associate the machine with the new account. That is not allowed. Please run 'happy doctor clean' to clean up your happy state, and try your original command again. Please create an issue on github if this is causing you problems. We apologize for the inconvenience.`));
+      process.exit(1);
+    }
 
     const raw = response.data.machine;
     logger.debug(`[API] Machine ${opts.machineId} registered/updated with server`);

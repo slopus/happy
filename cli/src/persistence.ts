@@ -4,13 +4,13 @@
  * Handles settings and private key storage in ~/.happy/ or local .happy/
  */
 
+import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { constants } from 'node:fs'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64 } from '@/api/encryption';
-import { logger } from '@/lib';
 
 interface Settings {
   onboardingCompleted: boolean
@@ -189,6 +189,8 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
     const content = await readFile(configuration.daemonStateFile, 'utf-8');
     return JSON.parse(content) as DaemonLocallyPersistedState;
   } catch (error) {
+    // State corrupted somehow :(
+    console.error(`[PERSISTENCE] Daemon state file corrupted: ${configuration.daemonStateFile}`, error);
     return null;
   }
 }
@@ -196,11 +198,9 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
 /**
  * Write daemon state to local file
  */
-export async function writeDaemonState(state: DaemonLocallyPersistedState): Promise<void> {
-  if (!existsSync(configuration.happyHomeDir)) {
-    await mkdir(configuration.happyHomeDir, { recursive: true });
-  }
-  await writeFile(configuration.daemonStateFile, JSON.stringify(state, null, 2));
+export async function writeDaemonState(lock: FileHandle, state: DaemonLocallyPersistedState): Promise<void> {
+  await lock.truncate();
+  await lock.writeFile(JSON.stringify(state, null, 2), 'utf-8');
 }
 
 /**
@@ -210,12 +210,33 @@ export async function clearDaemonState(): Promise<void> {
   if (existsSync(configuration.daemonStateFile)) {
     await unlink(configuration.daemonStateFile);
   }
-}export async function getDaemonState(): Promise<DaemonLocallyPersistedState | null> {
-  try {
-    return await readDaemonState();
-  } catch (error) {
-    logger.debug('[DAEMON RUN] Error reading daemon metadata', error);
-    return null;
+}
+
+/**
+ * Acquire an exclusive write handle for the daemon state file with retries.
+ * Attempts up to maxAttempts times, waiting attempt*delayIncrementMs between tries.
+ * Returns null if the handle cannot be acquired within the attempts.
+ */
+export async function acquireDaemonStateExclusiveWriteHandle(
+  maxAttempts: number = 5,
+  delayIncrementMs: number = 200
+): Promise<FileHandle | null> {
+  let fileHandle: FileHandle | null = null;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      fileHandle = await open(
+        configuration.daemonStateFile,
+        constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY
+      );
+      return fileHandle;
+    } catch (error: any) {
+      if (attempt === maxAttempts) {
+        return null;
+      }
+      const delayMs = attempt * delayIncrementMs;
+      await new Promise(resolve => setTimeout(resolve, delayMs));
+    }
   }
+  return null;
 }
 

@@ -168,12 +168,13 @@ export function findRunawayHappyProcesses(): Array<{ pid: number, command: strin
 export async function killRunawayHappyProcesses(): Promise<{ killed: number, errors: Array<{ pid: number, error: string }> }> {
   const runawayProcesses = findRunawayHappyProcesses();
   const errors: Array<{ pid: number, error: string }> = [];
-  let killed = 0;
-
-  for (const { pid, command } of runawayProcesses) {
+  
+  // Kill all processes in parallel
+  const killPromises = runawayProcesses.map(async ({ pid, command }) => {
     try {
       // Try SIGTERM first
       process.kill(pid, 'SIGTERM');
+      console.log(`Sent SIGTERM to runaway process PID ${pid}: ${command}`);
 
       // Wait a moment to see if it responds
       await new Promise(resolve => setTimeout(resolve, 1000));
@@ -188,12 +189,21 @@ export async function killRunawayHappyProcesses(): Promise<{ killed: number, err
         // Process is dead from SIGTERM
       }
 
-      killed++;
-      console.log(`Killed runaway process PID ${pid}: ${command}`);
+      console.log(`Successfully killed runaway process PID ${pid}`);
+      return { success: true, pid, command };
     } catch (error) {
-      errors.push({ pid, error: (error as Error).message });
+      const errorMessage = (error as Error).message;
+      errors.push({ pid, error: errorMessage });
+      console.log(`Failed to kill process PID ${pid}: ${errorMessage}`);
+      return { success: false, pid, command };
     }
-  }
+  });
+
+  // Wait for all kill operations to complete
+  const results = await Promise.all(killPromises);
+  
+  // Count successful kills
+  const killed = results.filter(r => r.success).length;
 
   return { killed, errors };
 }

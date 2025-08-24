@@ -4,14 +4,20 @@
  */
 
 import { logger } from '@/ui/logger';
-import { getDaemonState, clearDaemonState } from '@/persistence';
+import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 
 async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
-  const state = await getDaemonState();
+  const state = await readDaemonState();
   if (!state?.httpPort) {
     throw new Error('No daemon running');
+  }
+
+  try {
+    process.kill(state.pid, 0);
+  } catch (error) {
+    throw new Error('Daemon is not running, file is stale');
   }
 
   try {
@@ -19,7 +25,8 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
-      signal: AbortSignal.timeout(5000)
+      // Mostly increased for stress test
+      signal: AbortSignal.timeout(10_000)
     });
     
     if (!response.ok) {
@@ -28,8 +35,8 @@ async function daemonPost(path: string, body?: any): Promise<{ error?: string } 
     
     return await response.json();
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    logger.debug(`[CONTROL CLIENT] Request failed: ${path}`, errorMessage);
+    const errorMessage = `[CONTROL CLIENT] Request failed: ${path}, ${error instanceof Error ? error.message : 'Unknown error'}`;
+    logger.debug(errorMessage);
     return {
       error: errorMessage
     }
@@ -93,7 +100,7 @@ export async function stopDaemonHttp(): Promise<void> {
  * For instance when running `happy daemon status` we can show more information.
  */
 export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolean> {
-  const state = await getDaemonState();
+  const state = await readDaemonState();
   if (!state) {
     return false;
   }
@@ -117,13 +124,16 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
  * @returns true if versions match, false if versions differ or no daemon running
  */
 export async function isDaemonRunningSameVersion(): Promise<boolean> {
+  logger.debug('[DAEMON CONTROL] Checking if daemon is running same version');
   const runningDaemon = await checkIfDaemonRunningAndCleanupStaleState();
   if (!runningDaemon) {
+    logger.debug('[DAEMON CONTROL] No daemon running, returning false');
     return false;
   }
 
-  const state = await getDaemonState();
+  const state = await readDaemonState();
   if (!state) {
+    logger.debug('[DAEMON CONTROL] No daemon state found, returning false');
     return false;
   }
   
@@ -134,12 +144,13 @@ export async function isDaemonRunningSameVersion(): Promise<boolean> {
     // most recent version of the CLI. Just to be safe lets spawn new CLI to check.
     // Should handle when we upgraded the CLI, and have not yet ran `happy`
     // we should still auto detect and restart the daemon.
-    const { stdout } = spawnHappyCLI(['--version'], { stdio: 'pipe' });
-    let version = null;
-    stdout?.on('data', (data) => {
+    const happyProcess = spawnHappyCLI(['--version'], { stdio: 'pipe' });
+    let version: string | null = null;
+    happyProcess.stdout?.on('data', (data) => {
       version = data.toString().trim();
     });
-    await new Promise(resolve => stdout?.on('close', resolve));
+    await new Promise(resolve => happyProcess.stdout?.on('close', resolve));
+    logger.debug(`[DAEMON CONTROL] Current CLI version: ${version}, Daemon started with version: ${state.startedWithCliVersion}`);
     return version === state.startedWithCliVersion;
   } catch (error) {
     logger.debug('[DAEMON RUN] Error checking daemon version', error);
@@ -158,7 +169,7 @@ export async function cleanupDaemonState(): Promise<void> {
 
 export async function stopDaemon() {
   try {
-    const state = await getDaemonState();
+    const state = await readDaemonState();
     if (!state) {
       logger.debug('No daemon state found');
       return;

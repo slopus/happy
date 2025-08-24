@@ -20,7 +20,7 @@ import { startDaemon } from './daemon/run'
 import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningSameVersion, stopDaemon } from './daemon/controlClient'
 import { getLatestDaemonLog } from './ui/logger'
 import { killRunawayHappyProcesses } from './daemon/doctor'
-import { getDaemonState } from './persistence'
+import { readDaemonState } from './persistence'
 import { install } from './daemon/install'
 import { uninstall } from './daemon/uninstall'
 import { ApiClient } from './api/api'
@@ -43,10 +43,10 @@ import { DaemonPrompt } from './ui/ink/DaemonPrompt'
   const subcommand = args[0]
 
   if (subcommand === 'doctor') {
-    // Check for kill-all subcommand
-    if (args[1] === 'kill-all' || args[1] === 'kill-runaway') {
+    // Check for clean subcommand
+    if (args[1] === 'clean') {
       const result = await killRunawayHappyProcesses()
-      console.log(`Killed ${result.killed} runaway processes`)
+      console.log(`Cleaned up ${result.killed} runaway processes`)
       if (result.errors.length > 0) {
         console.log('Errors:', result.errors)
       }
@@ -158,36 +158,13 @@ import { DaemonPrompt } from './ui/ink/DaemonPrompt'
       await stopDaemon()
       process.exit(0)
     } else if (daemonSubcommand === 'status') {
-      // Show daemon status
-      const state = await getDaemonState()
-      if (!state) {
-        console.log('Daemon is not running')
-      } else {
-        const isRunning = await checkIfDaemonRunningAndCleanupStaleState()
-        if (isRunning) {
-          console.log('Daemon is running')
-          console.log(`  PID: ${state.pid}`)
-          console.log(`  Port: ${state.httpPort}`)
-          console.log(`  Started: ${new Date(state.startTime).toLocaleString()}`)
-          console.log(`  CLI Version: ${state.startedWithCliVersion}`)
-        } else {
-          console.log('Daemon state file exists but daemon is not running (stale)')
-        }
-      }
-      process.exit(0)
-    } else if (daemonSubcommand === 'kill-runaway') {
-      // Redirect to new location
-      console.log(chalk.yellow('Note: "happy daemon kill-runaway" has moved to "happy doctor kill-all"'));
-      console.log(chalk.gray('Running the command for you...\n'));
-      const result = await killRunawayHappyProcesses()
-      console.log(`Killed ${result.killed} runaway processes`)
-      if (result.errors.length > 0) {
-        console.log('Errors:', result.errors)
-      }
+      // Dump daemon state JSON
+      const state = await readDaemonState()
+      console.log(JSON.stringify(state, null, 2))
       process.exit(0)
     } else if (daemonSubcommand === 'logs') {
       // Simply print the path to the latest daemon log file
-      const latest = getLatestDaemonLog()
+      const latest = await getLatestDaemonLog()
       if (!latest) {
         console.log('No daemon logs found')
       } else {
@@ -223,7 +200,7 @@ ${chalk.bold('Usage:')}
 ${chalk.bold('Note:')} The daemon runs in the background and manages Claude sessions.
 Sessions spawned by the daemon will continue running after daemon stops unless --kill-managed is used.
 
-${chalk.bold('To kill runaway processes:')} Use ${chalk.cyan('happy doctor kill-all')}
+${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor clean')}
 `)
     }
     return;
@@ -321,46 +298,10 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       process.exit(0)
     }
 
-    // Ensure authentication and machine setup
-    let credentials;
-
-    if (forceAuthNew) {
-      // New --force-auth flag: clear everything first as requested
-      console.log(chalk.yellow('Force authentication requested...'));
-
-      // Stop daemon if running
-      try {
-        await stopDaemon();
-      } catch { }
-
-      // Clear credentials and machine ID
-      await clearCredentials();
-      await clearMachineId();
-
-      // Now do normal auth flow which will re-auth and setup machine
-      const result = await authAndSetupMachineIfNeeded();
-      credentials = result.credentials;
-
-    } else if (forceAuth) {
-      // Old --auth flag - fix the bug where it skipped machine setup
-      console.log(chalk.yellow('Note: --auth is deprecated. Use "happy auth login" or --force-auth instead.\n'));
-
-      // The bug was that doAuth() only returned credentials without setting up machine
-      // Fix: Always ensure machine setup even with old --auth flag
-      const res = await doAuth();
-      if (!res) {
-        process.exit(1);
-      }
-      // Save credentials then run full setup to ensure machine ID is created
-      await writeCredentials(res);
-      const result = await authAndSetupMachineIfNeeded();
-      credentials = result.credentials;
-
-    } else {
-      // Normal flow - auth and machine setup
-      const result = await authAndSetupMachineIfNeeded();
-      credentials = result.credentials;
-    }
+    // Normal flow - auth and machine setup
+    const {
+      credentials
+    } = await authAndSetupMachineIfNeeded();
 
     // Daemon auto-start preference (machine already set up)
     let settings = await readSettings();

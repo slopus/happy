@@ -9,9 +9,9 @@ import chalk from 'chalk'
 import { appendFileSync } from 'fs'
 import { configuration } from '@/configuration'
 import { mkdir } from 'node:fs/promises'
-import { existsSync, readdirSync, statSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, statSync, readFileSync, mkdirSync } from 'node:fs'
 import { join, basename } from 'node:path'
-import type { DaemonLocallyPersistedState } from '@/persistence'
+import { readDaemonState, type DaemonLocallyPersistedState } from '@/persistence'
 
 /**
  * Consistent date/time formatting functions
@@ -24,7 +24,7 @@ function createTimestampForFilename(date: Date = new Date()): string {
     day: '2-digit',
     hour: '2-digit',
     minute: '2-digit',
-    second: '2-digit'
+    second: '2-digit',
   }).replace(/[: ]/g, '-').replace(/,/g, '')
 }
 
@@ -39,11 +39,7 @@ function createTimestampForLogEntry(date: Date = new Date()): string {
   })
 }
 
-async function getSessionLogPath(): Promise<string> {
-  if (!existsSync(configuration.logsDir)) {
-    await mkdir(configuration.logsDir, { recursive: true })
-  }
-  
+function getSessionLogPath(): string {
   const timestamp = createTimestampForFilename()
   const filename = configuration.isDaemonProcess ? `${timestamp}-daemon.log` : `${timestamp}.log`
   return join(configuration.logsDir, filename)
@@ -53,7 +49,7 @@ class Logger {
   private dangerouslyUnencryptedServerLoggingUrl: string | undefined
 
   constructor(
-    public readonly logFilePathPromise: Promise<string> = getSessionLogPath()
+    public readonly logFilePath = getSessionLogPath()
   ) {
     // Remote logging enabled only when explicitly set with server URL
     if (process.env.DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING 
@@ -214,27 +210,15 @@ class Logger {
     }
     
     // Handle async file path
-    this.logFilePathPromise
-      .then(logFilePath => {
-        try {
-          appendFileSync(logFilePath, logLine)
-        } catch (appendError) {
-          if (process.env.DEBUG) {
-            console.error('Failed to append to log file:', appendError)
-            throw appendError
-          }
-          // In production, fail silently to avoid disturbing Claude session
-        }
-      })
-      .catch(error => {
-        // NOTE: We should not fall back in production because we might disturb the claude session
-        // Only ever write to our stdout when in remote mode
-        if (process.env.DEBUG) {
-          console.log('This message only visible in DEBUG mode, not in production')
-          console.error('Failed to resolve log file path:', error)
-          console.log(prefix, message, ...args)
-        }
-      })
+    try {
+      appendFileSync(this.logFilePath, logLine)
+    } catch (appendError) {
+      if (process.env.DEBUG) {
+        console.error('Failed to append to log file:', appendError)
+        throw appendError
+      }
+      // In production, fail silently to avoid disturbing Claude session
+    }
   }
 }
 
@@ -254,7 +238,7 @@ export type LogFileInfo = {
  * List daemon log files in descending modification time order.
  * Returns up to `limit` entries; empty array if none.
  */
-export function listDaemonLogFiles(limit: number = 50): LogFileInfo[] {
+export async function listDaemonLogFiles(limit: number = 50): Promise<LogFileInfo[]> {
   try {
     const logsDir = configuration.logsDir;
     if (!existsSync(logsDir)) {
@@ -270,25 +254,27 @@ export function listDaemonLogFiles(limit: number = 50): LogFileInfo[] {
       })
       .sort((a, b) => b.modified.getTime() - a.modified.getTime());
 
-    // Prefer the path persisted by the daemon if present
+    // Prefer the path persisted by the daemon if present (return 0th element if present)
     try {
-      if (existsSync(configuration.daemonStateFile)) {
-        const content = readFileSync(configuration.daemonStateFile, 'utf8');
-        const state = JSON.parse(content) as DaemonLocallyPersistedState;
-        if (state.daemonLogPath && existsSync(state.daemonLogPath)) {
-          const stats = statSync(state.daemonLogPath);
-          const persisted: LogFileInfo = {
-            file: basename(state.daemonLogPath),
-            path: state.daemonLogPath,
-            modified: stats.mtime
-          };
-          const idx = logs.findIndex(l => l.path === persisted.path);
-          if (idx >= 0) {
-            const [found] = logs.splice(idx, 1);
-            logs.unshift(found);
-          } else {
-            logs.unshift(persisted);
-          }
+      const state = await readDaemonState();
+
+      if (!state) {
+        return logs;
+      }
+
+      if (state.daemonLogPath && existsSync(state.daemonLogPath)) {
+        const stats = statSync(state.daemonLogPath);
+        const persisted: LogFileInfo = {
+          file: basename(state.daemonLogPath),
+          path: state.daemonLogPath,
+          modified: stats.mtime
+        };
+        const idx = logs.findIndex(l => l.path === persisted.path);
+        if (idx >= 0) {
+          const [found] = logs.splice(idx, 1);
+          logs.unshift(found);
+        } else {
+          logs.unshift(persisted);
         }
       }
     } catch {
@@ -304,7 +290,7 @@ export function listDaemonLogFiles(limit: number = 50): LogFileInfo[] {
 /**
  * Get the most recent daemon log file, or null if none exist.
  */
-export function getLatestDaemonLog(): LogFileInfo | null {
-  const [latest] = listDaemonLogFiles(1);
+export async function getLatestDaemonLog(): Promise<LogFileInfo | null> {
+  const [latest] = await listDaemonLogFiles(1);
   return latest || null;
 }

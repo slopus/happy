@@ -37,7 +37,7 @@ interface LoopOptions {
 export async function loop(opts: LoopOptions) {
 
     // Get log path for debug display
-    const logPath = await logger.logFilePathPromise;
+    const logPath = logger.logFilePath;
     let session = new Session({
         api: opts.api,
         client: opts.session,
