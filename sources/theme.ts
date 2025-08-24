@@ -44,7 +44,7 @@ export const lightTheme = {
         switch: {
             track: {
                 active: Platform.select({ ios: '#34C759', default: '#1976D2' }),
-                inactive: '#767577',
+                inactive: '#dddddd',
             },
             thumb: {
                 active: '#FFFFFF',
