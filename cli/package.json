@@ -99,7 +99,7 @@
     "@types/parse-path": "7.0.3"
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org"
   },
   "packageManager": "yarn@1.22.22"
 }
