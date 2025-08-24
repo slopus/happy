@@ -104,32 +104,40 @@ export class OutgoingMessageQueue {
     
     /**
      * Process queue - send messages in ID order that are released
+     * (Internal implementation without lock)
+     */
+    private processQueueInternal(): void {
+        // Sort by ID to ensure order
+        this.queue.sort((a, b) => a.id - b.id);
+        
+        // Process from front of queue
+        while (this.queue.length > 0) {
+            const item = this.queue[0];
+            
+            // If not released yet, stop processing (maintain order)
+            if (!item.released) {
+                break;
+            }
+            
+            // Send if not already sent
+            if (!item.sent) {
+                if (item.logMessage.type !== 'system') {
+                    this.sendFunction(item.logMessage);
+                }
+                item.sent = true;
+            }
+            
+            // Remove from queue
+            this.queue.shift();
+        }
+    }
+    
+    /**
+     * Process queue - send messages in ID order that are released
      */
     private async processQueue(): Promise<void> {
         await this.lock.inLock(async () => {
-            // Sort by ID to ensure order
-            this.queue.sort((a, b) => a.id - b.id);
-            
-            // Process from front of queue
-            while (this.queue.length > 0) {
-                const item = this.queue[0];
-                
-                // If not released yet, stop processing (maintain order)
-                if (!item.released) {
-                    break;
-                }
-                
-                // Send if not already sent
-                if (!item.sent) {
-                    if (item.logMessage.type !== 'system') {
-                        this.sendFunction(item.logMessage);
-                    }
-                    item.sent = true;
-                }
-                
-                // Remove from queue
-                this.queue.shift();
-            }
+            this.processQueueInternal();
         });
     }
     
@@ -149,8 +157,8 @@ export class OutgoingMessageQueue {
                 item.released = true;
             }
             
-            // Process everything
-            await this.processQueue();
+            // Process everything - use internal method since we already have the lock
+            this.processQueueInternal();
         });
     }
     
