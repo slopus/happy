@@ -1,7 +1,7 @@
 <div align="center"><img src="/logo.png" width="200" title="Happy Coder" alt="Happy Coder"/></div>
 
 <h1 align="center">
-  Mobile Client for Claude Code
+  Mobile and Web Client for Claude Code
 </h1>
 
 <h4 align="center">
@@ -13,8 +13,8 @@ Use Claude Code from anywhere with end-to-end encryption.
 [📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [⭐ **Star on GitHub**](https://github.com/slopus/happy)
 
 </div>
+<img width="5178" height="2364" alt="github" src="https://github.com/user-attachments/assets/5d1ee30e-5f84-4483-8110-2151b7ad55d5" />
 
-<img width="1600" height="867" alt="screeenshots" src="https://github.com/user-attachments/assets/2c334d5d-9812-405a-9ac4-2a4b0d632550" />
 
 <h3 align="center">
 Step 1: Download App
