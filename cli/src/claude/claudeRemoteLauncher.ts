@@ -386,8 +386,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 ongoingToolCalls.clear();
 
                 // Flush any remaining messages in the queue
+                logger.debug('[remote]: flushing message queue');
                 await messageQueue.flush();
                 messageQueue.destroy();
+                logger.debug('[remote]: message queue flushed');
                 
                 // Reset abort controller and future
                 abortController = null;
