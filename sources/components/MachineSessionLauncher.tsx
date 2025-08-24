@@ -142,7 +142,6 @@ export const MachineSessionLauncher: React.FC<MachineSessionLauncherProps> = ({
             {hasMorePaths && (
                 <Item
                     title={showAllPaths ? "Show less" : `Show all (${recentPaths.length} paths)`}
-                    titleStyle={{ color: theme.colors.primary }}
                     onPress={() => setShowAllPaths(!showAllPaths)}
                     showChevron={false}
                 />

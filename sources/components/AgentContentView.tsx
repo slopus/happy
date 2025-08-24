@@ -15,7 +15,6 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ i
     const safeArea = useSafeAreaInsets();
     const headerHeight = useHeaderHeight();
     const state = useKeyboardState();
-    console.log('state', state);
     return (
         <View style={{ flexBasis:0, flexGrow:1, paddingBottom: state.isVisible ? state.height - safeArea.bottom : 0 }}>
             <View style={{ flexBasis:0, flexGrow:1 }}>
