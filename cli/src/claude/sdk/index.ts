@@ -16,5 +16,7 @@ export type {
     SDKControlResponse,
     ControlRequest,
     InterruptRequest,
-    SDKControlRequest
+    SDKControlRequest,
+    CanCallToolCallback,
+    PermissionResult
 } from './types'

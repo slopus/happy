@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { UsageSchema } from '@/claude/types'
+import { PermissionMode } from '@/claude/loop'
 
 /**
  * Usage data type from Claude
@@ -71,8 +72,8 @@ export const UpdateSchema = z.object({
   id: z.string(),
   seq: z.number(),
   body: z.union([
-    UpdateBodySchema, 
-    UpdateSessionBodySchema, 
+    UpdateBodySchema,
+    UpdateSessionBodySchema,
     UpdateMachineBodySchema,
   ]),
   createdAt: z.number()
@@ -192,7 +193,7 @@ export const DaemonStateSchema = z.object({
   httpPort: z.number().optional(),
   startedAt: z.number().optional(),
   shutdownRequestedAt: z.number().optional(),
-  shutdownSource: 
+  shutdownSource:
     z.union([
       z.enum(['mobile-app', 'cli', 'os-signal', 'unknown']),
       z.string() // Forward compatibility
@@ -332,7 +333,9 @@ export type AgentState = {
       createdAt: number,
       completedAt: number,
       status: 'canceled' | 'denied' | 'approved',
-      reason?: string
+      reason?: string,
+      mode?: PermissionMode,
+      allowTools?: string[]
     }
   }
 }

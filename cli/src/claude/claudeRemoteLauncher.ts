@@ -3,8 +3,8 @@ import { Session } from "./session";
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { RemoteModeDisplay } from "@/ui/ink/RemoteModeDisplay";
 import React from "react";
-import { claudeRemote2 } from "./claudeRemote2";
-import { startPermissionResolver } from "./utils/startPermissionResolver";
+import { claudeRemote } from "./claudeRemote";
+import { PermissionHandler } from "./utils/permissionHandler";
 import { Future } from "@/utils/future";
 import { SDKAssistantMessage, SDKMessage, SDKUserMessage } from "./sdk";
 import { formatClaudeMessageForInk } from "@/ui/messageFormatterInk";
@@ -86,15 +86,15 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     session.client.setHandler('switch', doSwitch); // When switch clicked
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
-    // Create permission server
-    const permissions = await startPermissionResolver(session);
+    // Create permission handler
+    const permissionHandler = new PermissionHandler(session);
 
     // Create SDK to Log converter (pass responses from permissions)
     const sdkToLogConverter = new SDKToLogConverter({
         sessionId: session.sessionId || 'unknown',
         cwd: session.path,
         version: process.env.npm_package_version
-    }, permissions.responses);
+    }, permissionHandler.getResponses());
 
 
     // Handle messages
@@ -105,8 +105,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         // Write to message log
         formatClaudeMessageForInk(message, messageBuffer);
 
-        // Write to permission server for tool id resolving
-        permissions.onMessage(message);
+        // Write to permission handler for tool id resolving
+        permissionHandler.onMessage(message);
 
         // Detect plan mode tool call
         if (message.type === 'assistant') {
@@ -213,29 +213,25 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             const controller = new AbortController();
             abortController = controller;
             abortFuture = new Future<void>();
-            permissions.reset(); // Reset permissions before starting new session
+            permissionHandler.reset(); // Reset permissions before starting new session
             sdkToLogConverter.resetParentChain(); // Reset parent chain for new conversation
             let modeHash: string | null = null;
+            let mode: EnhancedMode | null = null;
             try {
-                await claudeRemote2({
+                await claudeRemote({
                     sessionId: session.sessionId,
                     path: session.path,
                     allowedTools: session.allowedTools ?? [],
-                    mcpServers: {
-                        ...session.mcpServers,
-                        permission: {
-                            type: 'http' as const,
-                            url: permissions.server.url,
-                        }
-                    },
-                    permissionPromptToolName: 'mcp__permission__' + permissions.server.toolName,
-                    isRejected: (toolCallId: string) => {
-                        return permissions.responses.get(toolCallId)?.approved === false;
+                    mcpServers: session.mcpServers,
+                    canCallTool: permissionHandler.handleToolCall,
+                    isAborted: (toolCallId: string) => {
+                        return permissionHandler.isAborted(toolCallId);
                     },
                     nextMessage: async () => {
                         if (pending) {
                             let p = pending;
                             pending = null;
+                            permissionHandler.handleModeChange(p.mode.permissionMode);
                             return p;
                         }
 
@@ -249,6 +245,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                                 return null;
                             }
                             modeHash = msg.hash;
+                            mode = msg.mode;
+                            permissionHandler.handleModeChange(mode.permissionMode);
                             return {
                                 message: msg.message,
                                 mode: msg.mode
@@ -305,14 +303,15 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 abortFuture?.resolve(undefined);
                 abortFuture = null;
                 logger.debug('[remote]: launch done');
-                permissions.reset();
+                permissionHandler.reset();
                 modeHash = null;
+                mode = null;
             }
         }
     } finally {
 
-        // Stop permission server
-        permissions.server.stop();
+        // Clean up permission handler
+        permissionHandler.reset();
 
         // Reset Terminal
         process.stdin.off('data', abort);

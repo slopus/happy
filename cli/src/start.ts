@@ -114,7 +114,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
     // Create realtime session
     const session = api.sessionSyncClient(response);
-    
+
     // Start Happy MCP server
     const happyServer = await startHappyServer(session);
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
@@ -137,7 +137,15 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     }
 
     // Import MessageQueue2 and create message queue
-    const messageQueue = new MessageQueue2<EnhancedMode>(mode => hashObject(mode));
+    const messageQueue = new MessageQueue2<EnhancedMode>(mode => hashObject({
+        isPlan: mode.permissionMode === 'plan',
+        model: mode.model,
+        fallbackModel: mode.fallbackModel,
+        customSystemPrompt: mode.customSystemPrompt,
+        appendSystemPrompt: mode.appendSystemPrompt,
+        allowedTools: mode.allowedTools,
+        disallowedTools: mode.disallowedTools
+    }));
 
     // Register all RPC handlers
     registerHandlers(session);
@@ -294,7 +302,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
 
             // Stop caffeinate
             stopCaffeinate();
-            
+
             // Stop Happy MCP server
             happyServer.stop();
 
@@ -365,7 +373,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     // Stop caffeinate before exiting
     stopCaffeinate();
     logger.debug('Stopped sleep prevention');
-    
+
     // Stop Happy MCP server
     happyServer.stop();
     logger.debug('Stopped Happy MCP server');

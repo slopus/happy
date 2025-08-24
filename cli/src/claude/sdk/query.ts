@@ -15,6 +15,11 @@ import {
     type SDKControlRequest,
     type ControlRequest,
     type SDKControlResponse,
+    type CanCallToolCallback,
+    type CanUseToolControlRequest,
+    type CanUseToolControlResponse,
+    type ControlCancelRequest,
+    type PermissionResult,
     AbortError
 } from './types'
 import { getDefaultClaudeCodePath, logDebug, streamToStdin } from './utils'
@@ -26,14 +31,18 @@ import { logger } from '@/ui/logger'
  */
 export class Query implements AsyncIterableIterator<SDKMessage> {
     private pendingControlResponses = new Map<string, ControlResponseHandler>()
+    private cancelControllers = new Map<string, AbortController>()
     private sdkMessages: AsyncIterableIterator<SDKMessage>
     private inputStream = new Stream<SDKMessage>()
+    private canCallTool?: CanCallToolCallback
 
     constructor(
         private childStdin: Writable | null,
         private childStdout: NodeJS.ReadableStream,
-        private processExitPromise: Promise<void>
+        private processExitPromise: Promise<void>,
+        canCallTool?: CanCallToolCallback
     ) {
+        this.canCallTool = canCallTool
         this.readMessages()
         this.sdkMessages = this.readSdkMessages()
     }
@@ -89,6 +98,12 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
                                 handler(controlResponse.response)
                             }
                             continue
+                        } else if (message.type === 'control_request') {
+                            await this.handleControlRequest(message as unknown as CanUseToolControlRequest)
+                            continue
+                        } else if (message.type === 'control_cancel_request') {
+                            this.handleControlCancelRequest(message as unknown as ControlCancelRequest)
+                            continue
                         }
 
                         this.inputStream.enqueue(message)
@@ -102,6 +117,7 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
             this.inputStream.error(error as Error)
         } finally {
             this.inputStream.done()
+            this.cleanupControllers()
             rl.close()
         }
     }
@@ -151,6 +167,84 @@ export class Query implements AsyncIterableIterator<SDKMessage> {
             childStdin.write(JSON.stringify(sdkRequest) + '\n')
         })
     }
+
+    /**
+     * Handle incoming control requests for tool permissions
+     * Replicates the exact logic from the SDK's handleControlRequest method
+     */
+    private async handleControlRequest(request: CanUseToolControlRequest): Promise<void> {
+        if (!this.childStdin) {
+            logDebug('Cannot handle control request - no stdin available')
+            return
+        }
+
+        const controller = new AbortController()
+        this.cancelControllers.set(request.request_id, controller)
+
+        try {
+            const response = await this.processControlRequest(request, controller.signal)
+            const controlResponse: CanUseToolControlResponse = {
+                type: 'control_response',
+                response: {
+                    subtype: 'success',
+                    request_id: request.request_id,
+                    response
+                }
+            }
+            this.childStdin.write(JSON.stringify(controlResponse) + '\n')
+        } catch (error) {
+            const controlErrorResponse: CanUseToolControlResponse = {
+                type: 'control_response',
+                response: {
+                    subtype: 'error',
+                    request_id: request.request_id,
+                    error: error instanceof Error ? error.message : String(error)
+                }
+            }
+            this.childStdin.write(JSON.stringify(controlErrorResponse) + '\n')
+        } finally {
+            this.cancelControllers.delete(request.request_id)
+        }
+    }
+
+    /**
+     * Handle control cancel requests
+     * Replicates the exact logic from the SDK's handleControlCancelRequest method
+     */
+    private handleControlCancelRequest(request: ControlCancelRequest): void {
+        const controller = this.cancelControllers.get(request.request_id)
+        if (controller) {
+            controller.abort()
+            this.cancelControllers.delete(request.request_id)
+        }
+    }
+
+    /**
+     * Process control requests based on subtype
+     * Replicates the exact logic from the SDK's processControlRequest method
+     */
+    private async processControlRequest(request: CanUseToolControlRequest, signal: AbortSignal): Promise<PermissionResult> {
+        if (request.request.subtype === 'can_use_tool') {
+            if (!this.canCallTool) {
+                throw new Error('canCallTool callback is not provided.')
+            }
+            return this.canCallTool(request.request.tool_name, request.request.input, {
+                signal
+            })
+        }
+        
+        throw new Error('Unsupported control request subtype: ' + request.request.subtype)
+    }
+
+    /**
+     * Cleanup method to abort all pending control requests
+     */
+    private cleanupControllers(): void {
+        for (const [requestId, controller] of this.cancelControllers.entries()) {
+            controller.abort()
+            this.cancelControllers.delete(requestId)
+        }
+    }
 }
 
 /**
@@ -174,12 +268,12 @@ export function query(config: {
             mcpServers,
             pathToClaudeCodeExecutable = getDefaultClaudeCodePath(),
             permissionMode = 'default',
-            permissionPromptToolName,
             continue: continueConversation,
             resume,
             model,
             fallbackModel,
-            strictMcpConfig
+            strictMcpConfig,
+            canCallTool
         } = {}
     } = config
 
@@ -195,7 +289,12 @@ export function query(config: {
     if (appendSystemPrompt) args.push('--append-system-prompt', appendSystemPrompt)
     if (maxTurns) args.push('--max-turns', maxTurns.toString())
     if (model) args.push('--model', model)
-    if (permissionPromptToolName) args.push('--permission-prompt-tool', permissionPromptToolName)
+    if (canCallTool) {
+        if (typeof prompt === 'string') {
+            throw new Error('canCallTool callback requires --input-format stream-json. Please set prompt as an AsyncIterable.')
+        }
+        args.push('--permission-prompt-tool', 'stdio')
+    }
     if (continueConversation) args.push('--continue')
     if (resume) args.push('--resume', resume)
     if (allowedTools.length > 0) args.push('--allowedTools', allowedTools.join(','))
@@ -278,7 +377,7 @@ export function query(config: {
     })
 
     // Create query instance
-    const query = new Query(childStdin, child.stdout, processExitPromise)
+    const query = new Query(childStdin, child.stdout, processExitPromise, canCallTool)
 
     // Handle process errors
     child.on('error', (error) => {

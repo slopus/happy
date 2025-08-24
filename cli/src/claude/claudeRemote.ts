@@ -1,36 +1,40 @@
+import { EnhancedMode, PermissionMode } from "./loop";
 import { query, type QueryOptions as Options, type SDKMessage, type SDKSystemMessage, AbortError, SDKUserMessage } from '@/claude/sdk'
-import { claudeCheckSession } from './utils/claudeCheckSession';
-import { logger } from '@/ui/logger';
-import { join, resolve, dirname } from 'node:path';
-import { awaitFileExist } from '@/modules/watcher/awaitFileExist';
-import { getProjectPath } from './utils/path';
-import { PushableAsyncIterable } from '@/utils/PushableAsyncIterable';
-import { projectPath } from '@/projectPath';
-import { parseSpecialCommand } from '@/parsers/specialCommands';
+import { claudeCheckSession } from "./utils/claudeCheckSession";
+import { join, resolve } from 'node:path';
+import { projectPath } from "@/projectPath";
+import { parseSpecialCommand } from "@/parsers/specialCommands";
+import { logger } from "@/lib";
+import { PushableAsyncIterable } from "@/utils/PushableAsyncIterable";
+import { getProjectPath } from "./utils/path";
+import { awaitFileExist } from "@/modules/watcher/awaitFileExist";
+import { systemPrompt } from "./utils/systemPrompt";
+import { PermissionResult } from "./sdk/types";
 
 export async function claudeRemote(opts: {
+
+    // Fixed parameters
     sessionId: string | null,
     path: string,
     mcpServers?: Record<string, any>,
-    permissionPromptToolName?: string,
-    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
-    onSessionFound: (id: string) => void,
-    onThinkingChange?: (thinking: boolean) => void,
-    responses: Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>,
-    message: string,
-    model?: string,
-    fallbackModel?: string,
-    customSystemPrompt?: string,
-    appendSystemPrompt?: string,
-    allowedTools?: string[],
-    disallowedTools?: string[],
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
+    allowedTools: string[],
     signal?: AbortSignal,
+    canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }) => Promise<PermissionResult>,
+
+    // Dynamic parameters
+    nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
+    isAborted: (toolCallId: string) => boolean,
+
+    // Callbacks
+    onSessionFound: (id: string) => void,
+    onThinkingChange?: (thinking: boolean) => void,
     onMessage: (message: SDKMessage) => void,
     onCompletionEvent?: (message: string) => void,
     onSessionReset?: () => void
 }) {
+
     // Check if session is valid
     let startFrom = opts.sessionId;
     if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
@@ -44,43 +48,17 @@ export async function claudeRemote(opts: {
         });
     }
 
-    // let exitReason: 'tool_rejected' | null = null;
-
-    // Bridge external abort signal to SDK's abort controller
-    let response: AsyncIterableIterator<SDKMessage> & { interrupt?: () => Promise<void> };
-
-    // Prepare SDK options
-    const sdkOptions: Options = {
-        cwd: opts.path,
-        resume: startFrom ?? undefined,
-        mcpServers: opts.mcpServers,
-        permissionPromptToolName: opts.permissionPromptToolName,
-        permissionMode: opts.permissionMode,
-        model: opts.model,
-        fallbackModel: opts.fallbackModel,
-        customSystemPrompt: opts.customSystemPrompt,
-        appendSystemPrompt: opts.appendSystemPrompt,
-        allowedTools: opts.allowedTools,
-        disallowedTools: opts.disallowedTools,
-        executable: 'node',
-        abort: opts.signal,
-        pathToClaudeCodeExecutable: (() => {
-            return resolve(join(projectPath(), 'scripts', 'claude_remote_launcher.cjs'));
-        })(),
+    // Get initial message
+    const initial = await opts.nextMessage();
+    if (!initial) { // No initial message - exit
+        return;
     }
 
-    // Add Claude CLI arguments to executableArgs
-    if (opts.claudeArgs && opts.claudeArgs.length > 0) {
-        sdkOptions.executableArgs = [...(sdkOptions.executableArgs || []), ...opts.claudeArgs];
-    }
+    // Handle special commands
+    const specialCommand = parseSpecialCommand(initial.message);
 
-    logger.debug(`[claudeRemote] Starting query with permission mode: ${opts.permissionMode}, model: ${opts.model || 'default'}, fallbackModel: ${opts.fallbackModel || 'none'}, customSystemPrompt: ${opts.customSystemPrompt ? 'set' : 'none'}, appendSystemPrompt: ${opts.appendSystemPrompt ? 'set' : 'none'}, allowedTools: ${opts.allowedTools ? opts.allowedTools.join(',') : 'none'}, disallowedTools: ${opts.disallowedTools ? opts.disallowedTools.join(',') : 'none'}`);
-
-    // Parse special commands and handle them
-    const specialCommand = parseSpecialCommand(opts.message);
-
+    // Handle /clear command
     if (specialCommand.type === 'clear') {
-        logger.debug('[claudeRemote] /clear command detected - should not reach here, handled in start.ts');
         if (opts.onCompletionEvent) {
             opts.onCompletionEvent('Context was reset');
         }
@@ -90,35 +68,36 @@ export async function claudeRemote(opts: {
         return;
     }
 
+    // Handle /compact command
+    let isCompactCommand = false;
     if (specialCommand.type === 'compact') {
         logger.debug('[claudeRemote] /compact command detected - will process as normal but with compaction behavior');
-    }
-
-    // Track if this is a compact command for completion message
-    const isCompactCommand = specialCommand.type === 'compact';
-
-    // Send compaction started message immediately for compact commands
-    if (isCompactCommand) {
-        logger.debug('[claudeRemote] Compaction started');
+        isCompactCommand = true;
         if (opts.onCompletionEvent) {
             opts.onCompletionEvent('Compaction started');
         }
     }
 
-    let message = new PushableAsyncIterable<SDKUserMessage>();
-    message.push({
-        type: 'user',
-        message: {
-            role: 'user',
-            content: opts.message,
-        },
-    });
-    message.end();
-
-    response = query({
-        prompt: message,
-        options: sdkOptions,
-    });
+    // Prepare SDK options
+    let mode = initial.mode;
+    const sdkOptions: Options = {
+        cwd: opts.path,
+        resume: startFrom ?? undefined,
+        mcpServers: opts.mcpServers,
+        permissionMode: initial.mode.permissionMode === 'plan' ? 'plan' : 'default',
+        model: initial.mode.model,
+        fallbackModel: initial.mode.fallbackModel,
+        customSystemPrompt: initial.mode.customSystemPrompt ? initial.mode.customSystemPrompt + '\n\n' + systemPrompt : undefined,
+        appendSystemPrompt: initial.mode.appendSystemPrompt ? initial.mode.appendSystemPrompt + '\n\n' + systemPrompt : systemPrompt,
+        allowedTools: initial.mode.allowedTools ? initial.mode.allowedTools.concat(opts.allowedTools) : opts.allowedTools,
+        disallowedTools: initial.mode.disallowedTools,
+        canCallTool: (toolName: string, input: unknown, options: { signal: AbortSignal }) => opts.canCallTool(toolName, input, mode, options),
+        executable: 'node',
+        abort: opts.signal,
+        pathToClaudeCodeExecutable: (() => {
+            return resolve(join(projectPath(), 'scripts', 'claude_remote_launcher.cjs'));
+        })(),
+    }
 
     // Track thinking state
     let thinking = false;
@@ -132,9 +111,23 @@ export async function claudeRemote(opts: {
         }
     };
 
-    // Start thinking early
-    updateThinking(true);
+    // Push initial message
+    let messages = new PushableAsyncIterable<SDKUserMessage>();
+    messages.push({
+        type: 'user',
+        message: {
+            role: 'user',
+            content: initial.message,
+        },
+    });
 
+    // Start the loop
+    const response = query({
+        prompt: messages,
+        options: sdkOptions,
+    });
+
+    updateThinking(true);
     try {
         logger.debug(`[claudeRemote] Starting to iterate over response`);
 
@@ -160,10 +153,9 @@ export async function claudeRemote(opts: {
                     logger.debug(`[claudeRemote] Session file found: ${systemInit.session_id} ${found}`);
                     opts.onSessionFound(systemInit.session_id);
                 }
-
             }
 
-            // Stop thinking when result is received and exit
+            // Handle result messages
             if (message.type === 'result') {
                 updateThinking(false);
                 logger.debug('[claudeRemote] Result received, exiting claudeRemote');
@@ -174,29 +166,32 @@ export async function claudeRemote(opts: {
                     if (opts.onCompletionEvent) {
                         opts.onCompletionEvent('Compaction completed');
                     }
+                    isCompactCommand = false;
                 }
 
-                return; // Exit the loop when result is received
+                // Push next message
+                const next = await opts.nextMessage();
+                if (!next) {
+                    messages.end();
+                    return;
+                }
+                mode = next.mode;
+                messages.push({ type: 'user', message: { role: 'user', content: next.message } });
             }
 
-            // Handle plan result
+            // Handle tool result
             if (message.type === 'user') {
                 const msg = message as SDKUserMessage;
                 if (msg.message.role === 'user' && Array.isArray(msg.message.content)) {
                     for (let c of msg.message.content) {
-                        if (c.type === 'tool_result' && (c.name === 'exit_plan_mode' || c.name === 'ExitPlanMode')) { // Exit on any result of plan mode tool call
-                            logger.debug('[claudeRemote] Plan result received, exiting claudeRemote');
-                            return;
-                        }
-                        if (c.type === 'tool_result' && c.tool_use_id && opts.responses.has(c.tool_use_id) && !opts.responses.get(c.tool_use_id)!!.approved) { // Exit on any tool permission rejection
-                            logger.debug('[claudeRemote] Tool rejected, exiting claudeRemote');
+                        if (c.type === 'tool_result' && c.tool_use_id && opts.isAborted(c.tool_use_id)) {
+                            logger.debug('[claudeRemote] Tool aborted, exiting claudeRemote');
                             return;
                         }
                     }
                 }
             }
         }
-        logger.debug(`[claudeRemote] Finished iterating over response`);
     } catch (e) {
         if (e instanceof AbortError) {
             logger.debug(`[claudeRemote] Aborted`);
@@ -205,9 +200,6 @@ export async function claudeRemote(opts: {
             throw e;
         }
     } finally {
-        // Stop thinking when exiting
         updateThinking(false);
     }
-
-    logger.debug(`[claudeRemote] Function completed`);
 }

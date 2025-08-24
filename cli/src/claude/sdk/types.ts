@@ -100,10 +100,55 @@ export interface InterruptRequest extends ControlRequest {
     subtype: 'interrupt'
 }
 
+export interface CanUseToolRequest extends ControlRequest {
+    subtype: 'can_use_tool'
+    tool_name: string
+    input: unknown
+}
+
+export interface CanUseToolControlRequest {
+    type: 'control_request'
+    request_id: string
+    request: CanUseToolRequest
+}
+
+export interface CanUseToolControlResponse {
+    type: 'control_response'
+    response: {
+        subtype: 'success' | 'error'
+        request_id: string
+        response?: PermissionResult
+        error?: string
+    }
+}
+
+export interface ControlCancelRequest {
+    type: 'control_cancel_request'
+    request_id: string
+}
+
 export interface SDKControlRequest {
     request_id: string
     type: 'control_request'
     request: ControlRequest
+}
+
+/**
+ * Permission result type for tool calls
+ */
+export type PermissionResult = {
+    behavior: 'allow'
+    updatedInput: Record<string, unknown>
+} | {
+    behavior: 'deny'
+    message: string
+}
+
+/**
+ * Callback function for tool permission checks
+ */
+export interface CanCallToolCallback {
+    (toolName: string, input: unknown, options: { signal: AbortSignal }): Promise<PermissionResult>
 }
 
 /**
@@ -122,12 +167,12 @@ export interface QueryOptions {
     mcpServers?: Record<string, unknown>
     pathToClaudeCodeExecutable?: string
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
-    permissionPromptToolName?: string
     continue?: boolean
     resume?: string
     model?: string
     fallbackModel?: string
     strictMcpConfig?: boolean
+    canCallTool?: CanCallToolCallback
 }
 
 /**
