@@ -35,7 +35,7 @@ export default function RootLayout() {
                     color: theme.colors.header.tint,
                     ...Typography.default('semiBold'),
                 },
-                
+
             }}
         >
             <Stack.Screen
@@ -111,6 +111,12 @@ export default function RootLayout() {
             />
             <Stack.Screen
                 name="terminal/connect"
+                options={{
+                    headerTitle: 'Connect Terminal',
+                }}
+            />
+            <Stack.Screen
+                name="terminal/index"
                 options={{
                     headerTitle: 'Connect Terminal',
                 }}
