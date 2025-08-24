@@ -13,7 +13,9 @@ import type { MachineMetadata } from './storageTypes';
 interface SessionPermissionRequest {
     id: string;
     approved: boolean;
+    reason?: string;
     mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+    allowTools?: string[]
 }
 
 // Mode change operation types
@@ -159,18 +161,18 @@ export async function machineStopDaemon(machineId: string): Promise<{ message: s
  * Update machine metadata with optimistic concurrency control and automatic retry
  */
 export async function machineUpdateMetadata(
-    machineId: string, 
-    metadata: MachineMetadata, 
+    machineId: string,
+    metadata: MachineMetadata,
     expectedVersion: number,
     maxRetries: number = 3
 ): Promise<{ version: number; metadata: string }> {
     let currentVersion = expectedVersion;
     let currentMetadata = { ...metadata };
     let retryCount = 0;
-    
+
     while (retryCount < maxRetries) {
         const encryptedMetadata = sync.encryption.encryptRaw(currentMetadata);
-        
+
         const result = await apiSocket.emitWithAck<{
             result: 'success' | 'version-mismatch' | 'error';
             version?: number;
@@ -191,27 +193,27 @@ export async function machineUpdateMetadata(
             // Get the latest version and metadata from the response
             currentVersion = result.version!;
             const latestMetadata = sync.encryption.decryptRaw(result.metadata!) as MachineMetadata;
-            
+
             // Merge our changes with the latest metadata
             // Preserve the displayName we're trying to set, but use latest values for other fields
             currentMetadata = {
                 ...latestMetadata,
                 displayName: metadata.displayName // Keep our intended displayName change
             };
-            
+
             retryCount++;
-            
+
             // If we've exhausted retries, throw error
             if (retryCount >= maxRetries) {
                 throw new Error(`Failed to update after ${maxRetries} retries due to version conflicts`);
             }
-            
+
             // Otherwise, loop will retry with updated version and merged metadata
         } else {
             throw new Error(result.message || 'Failed to update machine metadata');
         }
     }
-    
+
     throw new Error('Unexpected error in machineUpdateMetadata');
 }
 
@@ -227,16 +229,16 @@ export async function sessionAbort(sessionId: string): Promise<void> {
 /**
  * Allow a permission request
  */
-export async function sessionAllow(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'): Promise<void> {
-    const request: SessionPermissionRequest = { id, approved: true, mode };
+export async function sessionAllow(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[]): Promise<void> {
+    const request: SessionPermissionRequest = { id, approved: true, mode, allowTools: allowedTools };
     await apiSocket.rpc(sessionId, 'permission', request);
 }
 
 /**
  * Deny a permission request
  */
-export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'): Promise<void> {
-    const request: SessionPermissionRequest = { id, approved: false, mode };
+export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[]): Promise<void> {
+    const request: SessionPermissionRequest = { id, approved: false, mode, allowTools: allowedTools };
     await apiSocket.rpc(sessionId, 'permission', request);
 }
 

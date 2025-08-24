@@ -3,11 +3,15 @@ import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
+import { storage } from '@/sync/storage';
 
 interface PermissionFooterProps {
     permission: {
         id: string;
-        status: 'pending' | 'approved' | 'denied' | 'canceled';
+        status: "pending" | "approved" | "denied" | "canceled";
+        reason?: string;
+        mode?: string;
+        allowedTools?: string[];
     };
     sessionId: string;
     toolName?: string;
@@ -15,28 +19,30 @@ interface PermissionFooterProps {
 
 export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, sessionId, toolName }) => {
     const { theme } = useUnistyles();
-    const [loading, setLoading] = useState(false);
+    const [loadingButton, setLoadingButton] = useState<'allow' | 'deny' | null>(null);
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
 
     const handleApprove = async () => {
-        if (permission.status !== 'pending' || loading || loadingAllEdits) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits) return;
 
-        setLoading(true);
+        setLoadingButton('allow');
         try {
             await sessionAllow(sessionId, permission.id);
         } catch (error) {
             console.error('Failed to approve permission:', error);
         } finally {
-            setLoading(false);
+            setLoadingButton(null);
         }
     };
 
     const handleApproveAllEdits = async () => {
-        if (permission.status !== 'pending' || loading || loadingAllEdits) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits) return;
 
         setLoadingAllEdits(true);
         try {
             await sessionAllow(sessionId, permission.id, 'acceptEdits');
+            // Update the session permission mode to 'acceptEdits' for future permissions
+            storage.getState().updateSessionPermissionMode(sessionId, 'acceptEdits');
         } catch (error) {
             console.error('Failed to approve all edits:', error);
         } finally {
@@ -45,21 +51,25 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
 
     const handleDeny = async () => {
-        if (permission.status !== 'pending' || loading || loadingAllEdits) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits) return;
 
-        setLoading(true);
+        setLoadingButton('deny');
         try {
             await sessionDeny(sessionId, permission.id);
         } catch (error) {
             console.error('Failed to deny permission:', error);
         } finally {
-            setLoading(false);
+            setLoadingButton(null);
         }
     };
 
     const isApproved = permission.status === 'approved';
     const isDenied = permission.status === 'denied';
     const isPending = permission.status === 'pending';
+
+    // Detect which button was used based on mode
+    const isApprovedViaAllow = isApproved && permission.mode !== 'acceptEdits';
+    const isApprovedViaAllEdits = isApproved && permission.mode === 'acceptEdits';
 
     const styles = StyleSheet.create({
         container: {
@@ -153,24 +163,24 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     style={[
                         styles.button,
                         isPending && styles.buttonAllow,
-                        isApproved && styles.buttonSelected,
-                        (isDenied) && styles.buttonInactive
+                        isApprovedViaAllow && styles.buttonSelected,
+                        (isDenied || isApprovedViaAllEdits) && styles.buttonInactive
                     ]}
                     onPress={handleApprove}
-                    disabled={!isPending || loading || loadingAllEdits}
+                    disabled={!isPending || loadingButton !== null || loadingAllEdits}
                     activeOpacity={isPending ? 0.7 : 1}
                 >
-                    {loading && isPending ? (
+                    {loadingButton === 'allow' && isPending ? (
                         <ActivityIndicator size="small" color={styles.loadingIndicatorAllow.color} />
                     ) : (
                         <View style={styles.buttonContent}>
-                            {isApproved && (
+                            {isApprovedViaAllow && (
                                 <Ionicons name="checkmark" size={16} color={styles.iconApproved.color} style={styles.icon} />
                             )}
                             <Text style={[
                                 styles.buttonText,
                                 isPending && styles.buttonTextAllow,
-                                isApproved && styles.buttonTextSelected
+                                isApprovedViaAllow && styles.buttonTextSelected
                             ]}>
                                 Allow
                             </Text>
@@ -179,25 +189,29 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                 </TouchableOpacity>
 
                 {/* Allow All Edits button - only show for Edit and MultiEdit tools */}
-                {(toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode') && (
+                {(toolName === 'Edit' || toolName === 'MultiEdit' || toolName === 'Write' || toolName === 'NotebookEdit' || toolName === 'exit_plan_mode' || toolName === 'ExitPlanMode') && (
                     <TouchableOpacity
                         style={[
                             styles.button,
                             isPending && styles.buttonAllowAll,
-                            isApproved && styles.buttonInactive,
-                            isDenied && styles.buttonInactive
+                            isApprovedViaAllEdits && styles.buttonSelected,
+                            (isDenied || isApprovedViaAllow) && styles.buttonInactive
                         ]}
                         onPress={handleApproveAllEdits}
-                        disabled={!isPending || loading || loadingAllEdits}
+                        disabled={!isPending || loadingButton !== null || loadingAllEdits}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingAllEdits && isPending ? (
                             <ActivityIndicator size="small" color={styles.loadingIndicatorAllowAll.color} />
                         ) : (
                             <View style={styles.buttonContent}>
+                                {isApprovedViaAllEdits && (
+                                    <Ionicons name="checkmark" size={16} color={styles.iconApproved.color} style={styles.icon} />
+                                )}
                                 <Text style={[
                                     styles.buttonText,
-                                    isPending && styles.buttonTextAllowAll
+                                    isPending && styles.buttonTextAllowAll,
+                                    isApprovedViaAllEdits && styles.buttonTextSelected
                                 ]}>
                                     All edits
                                 </Text>
@@ -214,10 +228,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         (isApproved) && styles.buttonInactive
                     ]}
                     onPress={handleDeny}
-                    disabled={!isPending || loading || loadingAllEdits}
+                    disabled={!isPending || loadingButton !== null || loadingAllEdits}
                     activeOpacity={isPending ? 0.7 : 1}
                 >
-                    {loading && isPending ? (
+                    {loadingButton === 'deny' && isPending ? (
                         <ActivityIndicator size="small" color={styles.loadingIndicatorDeny.color} />
                     ) : (
                         <View style={styles.buttonContent}>

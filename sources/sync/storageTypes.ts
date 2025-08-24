@@ -41,7 +41,9 @@ export const AgentStateSchema = z.object({
         createdAt: z.number().nullish(),
         completedAt: z.number().nullish(),
         status: z.enum(['canceled', 'denied', 'approved']),
-        reason: z.string().nullish()
+        reason: z.string().nullish(),
+        mode: z.string().nullish(),
+        allowedTools: z.array(z.string()).nullish()
     })).nullish()
 });
 
