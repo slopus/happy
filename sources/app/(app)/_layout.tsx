@@ -122,10 +122,18 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="restore"
+                name="restore/index"
                 options={{
                     headerShown: true,
-                    headerTitle: 'Restore Account',
+                    headerTitle: 'Link New Device',
+                    headerBackTitle: 'Back',
+                }}
+            />
+            <Stack.Screen
+                name="restore/manual"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Restore with Secret Key',
                     headerBackTitle: 'Back',
                 }}
             />

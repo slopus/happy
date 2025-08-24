@@ -1,6 +1,6 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { ActivityIndicator, Text, View, Image } from "react-native";
+import { ActivityIndicator, Text, View, Image, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
 import { encodeBase64 } from "@/auth/base64";
@@ -34,7 +34,6 @@ export default function Home() {
 function Authenticated() {
     const { theme } = useUnistyles();
     let sessionListViewData = useSessionListViewData();
-    const { updateAvailable, reloadApp } = useUpdates();
     const isTablet = useIsTablet();
     const isExperimental = useSetting('experiments');
     const realtimeStatus = useRealtimeStatus();
@@ -141,23 +140,47 @@ function NotAuthenticated() {
             <Text style={styles.subtitle}>
                 End-to-end encrypted and your account is stored only on your device.
             </Text>
-            <View style={styles.buttonContainer}>
-                <RoundButton
-                    title="Create account"
-                    action={createAccount}
-                />
-            </View>
-            <View style={styles.buttonContainerSecondary}>
-                <RoundButton
-                    size="normal"
-                    title="Restore account"
-                    onPress={() => {
-                        trackAccountRestored();
-                        router.push('/restore');
-                    }}
-                    display="inverted"
-                />
-            </View>
+            {Platform.OS !== 'android' && Platform.OS !== 'ios' ? (
+                <>
+                    <View style={styles.buttonContainer}>
+                        <RoundButton
+                            title="Login with mobile app"
+                            onPress={() => {
+                                trackAccountRestored();
+                                router.push('/restore');
+                            }}
+                        />
+                    </View>
+                    <View style={styles.buttonContainerSecondary}>
+                        <RoundButton
+                            size="normal"
+                            title="Create account"
+                            action={createAccount}
+                            display="inverted"
+                        />
+                    </View>
+                </>
+            ) : (
+                <>
+                    <View style={styles.buttonContainer}>
+                        <RoundButton
+                            title="Create account"
+                            action={createAccount}
+                        />
+                    </View>
+                    <View style={styles.buttonContainerSecondary}>
+                        <RoundButton
+                            size="normal"
+                            title="Link or restore account"
+                            onPress={() => {
+                                trackAccountRestored();
+                                router.push('/restore');
+                            }}
+                            display="inverted"
+                        />
+                    </View>
+                </>
+            )}
         </View>
     );
 
@@ -178,23 +201,46 @@ function NotAuthenticated() {
                     <Text style={styles.landscapeSubtitle}>
                         End-to-end encrypted and your account is stored only on your device.
                     </Text>
-                    <View style={styles.landscapeButtonContainer}>
-                        <RoundButton
-                            title="Create account"
-                            action={createAccount}
-                        />
-                    </View>
-                    <View style={styles.landscapeButtonContainerSecondary}>
-                        <RoundButton
-                            size="normal"
-                            title="Restore account"
-                            onPress={() => {
-                                trackAccountRestored();
-                                router.push('/restore');
-                            }}
-                            display="inverted"
-                        />
-                    </View>
+                    {Platform.OS !== 'android' && Platform.OS !== 'ios'
+                        ? (<>
+                            <View style={styles.landscapeButtonContainer}>
+                                <RoundButton
+                                    title="Login with mobile app"
+                                    onPress={() => {
+                                        trackAccountRestored();
+                                        router.push('/restore');
+                                    }}
+                                />
+                            </View>
+                            <View style={styles.landscapeButtonContainerSecondary}>
+                                <RoundButton
+                                    size="normal"
+                                    title="Create account"
+                                    action={createAccount}
+                                    display="inverted"
+                                />
+                            </View>
+                        </>)
+                        : (<>
+                            <View style={styles.landscapeButtonContainer}>
+                                <RoundButton
+                                    title="Create account"
+                                    action={createAccount}
+                                />
+                            </View>
+                            <View style={styles.landscapeButtonContainerSecondary}>
+                                <RoundButton
+                                    size="normal"
+                                    title="Link or restore account"
+                                    onPress={() => {
+                                        trackAccountRestored();
+                                        router.push('/restore');
+                                    }}
+                                    display="inverted"
+                                />
+                            </View>
+                        </>)
+                    }
                 </View>
             </View>
         </View>
@@ -251,13 +297,11 @@ const styles = StyleSheet.create((theme) => ({
         marginBottom: 64,
     },
     buttonContainer: {
-        maxWidth: 200,
+        maxWidth: 280,
         width: '100%',
         marginBottom: 16,
     },
     buttonContainerSecondary: {
-        maxWidth: 200,
-        width: '100%',
     },
     // Landscape styles
     landscapeContainer: {
@@ -304,10 +348,10 @@ const styles = StyleSheet.create((theme) => ({
         paddingHorizontal: 16,
     },
     landscapeButtonContainer: {
-        width: 240,
+        width: 280,
         marginBottom: 16,
     },
     landscapeButtonContainerSecondary: {
-        width: 240,
+        width: 280,
     },
 }));

@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
-import { View, Text, TextInput, ScrollView } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
 import { normalizeSecretKey } from '@/auth/secretKeyBackup';
 import { authGetToken } from '@/auth/authGetToken';
-import { decodeBase64 } from '@/auth/base64';
+import { decodeBase64, encodeBase64 } from '@/auth/base64';
+import { generateAuthKeyPair, authQRStart, QRAuthKeyPair } from '@/auth/authQRStart';
+import { authQRWait } from '@/auth/authQRWait';
 import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { QRCode } from '@/components/qr/QRCode';
 
 const stylesheet = StyleSheet.create((theme) => ({
     scrollView: {
@@ -30,6 +33,21 @@ const stylesheet = StyleSheet.create((theme) => ({
         fontSize: 16,
         color: theme.colors.textSecondary,
         marginBottom: 20,
+        ...Typography.default(),
+    },
+    secondInstructionText: {
+        fontSize: 16,
+        color: theme.colors.textSecondary,
+        marginBottom: 20,
+        marginTop: 30,
+        ...Typography.default(),
+    },
+    qrInstructions: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        marginBottom: 16,
+        lineHeight: 22,
+        textAlign: 'center',
         ...Typography.default(),
     },
     textInput: {
@@ -80,7 +98,7 @@ export default function Restore() {
             await auth.login(token, normalizedKey);
 
             // Dismiss
-            router.dismissAll();
+            router.back();
 
         } catch (error) {
             console.error('Restore error:', error);

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, Pressable } from 'react-native';
+import { View, Text, Pressable, Platform } from 'react-native';
 import { Stack, useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
@@ -17,6 +17,7 @@ import { sync } from '@/sync/sync';
 import { getServerInfo, isUsingCustomServer } from '@/sync/serverConfig';
 import { useUnistyles } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
+import { useConnectAccount } from '@/hooks/useConnectAccount';
 
 export default React.memo(() => {
     const { theme } = useUnistyles();
@@ -25,6 +26,7 @@ export default React.memo(() => {
     const [showSecret, setShowSecret] = useState(false);
     const [copiedRecently, setCopiedRecently] = useState(false);
     const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
+    const { connectAccount, isLoading: isConnecting } = useConnectAccount();
 
     // Get the current secret key
     const currentSecret = auth.credentials?.secret || '';
@@ -81,6 +83,16 @@ export default React.memo(() => {
                         showChevron={false}
                         copy={!!sync.serverID}
                     />
+                    {Platform.OS !== 'web' && (
+                        <Item
+                            title="Link New Device"
+                            subtitle={isConnecting ? "Scanning..." : "Scan QR code to link device"}
+                            icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
+                            onPress={connectAccount}
+                            disabled={isConnecting}
+                            showChevron={false}
+                        />
+                    )}
                 </ItemGroup>
 
                 {/* Server Info */}
