@@ -27,7 +27,7 @@
     "@elevenlabs/react-native": "^0.2.1",
     "@expo/ui": "~0.1.1-alpha.10",
     "@expo/vector-icons": "^14.1.0",
-    "@legendapp/list": "^1.1.4",
+    "@legendapp/list": "2.0.0-beta.3",
     "@livekit/react-native": "^2.9.0",
     "@livekit/react-native-expo-plugin": "^1.0.1",
     "@livekit/react-native-webrtc": "^137.0.0",

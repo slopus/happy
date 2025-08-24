@@ -58,9 +58,6 @@ const OPTIONAL_HARDWARE_FEATURES = [
   'android.hardware.vulkan.version',
   'android.hardware.opengles.aep',
   'android.hardware.gamepad',
-  'android.hardware.type.watch',
-  'android.hardware.type.television',
-  'android.hardware.type.automotive',
   'android.hardware.ram.low',
   'android.hardware.ram.normal',
 ];

@@ -34,6 +34,7 @@ import { gitStatusSync } from '@/sync/gitStatusSync';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
+import { ChatList } from '@/components/ChatList';
 
 
 export default React.memo(() => {
@@ -62,7 +63,6 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const deviceType = useDeviceType();
     const isTablet = useIsTablet();
     const headerHeight = useHeaderHeight();
-    const { messages: messagesRecentFirst, isLoaded } = useSessionMessages(sessionId);
     const [message, setMessage] = useState('');
     const realtimeStatus = useRealtimeStatus();
     const [isReviving, setIsReviving] = useState(false);
@@ -162,33 +162,16 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     }), [screenWidth]);
 
     const maintainVisibleContentPosition = useMemo(() => ({
-        minIndexForVisible: 1,
+        minIndexForVisible: 0,
         autoscrollToBottomThreshold: 50,
     }), []);
 
-    const ListFooter = useCallback(() => (
-        <ChatFooter
-            status={{
-                state: sessionStatus.state,
-                text: sessionStatus.state === 'disconnected' ? 'disconnected' :
-                    sessionStatus.state === 'thinking' ? 'thinking...' :
-                        sessionStatus.state === 'permission_required' ? 'permission required' :
-                            sessionStatus.state === 'waiting' ? 'connected' : '',
-                color: sessionStatus.statusColor,
-                dotColor: sessionStatus.statusDotColor,
-                isPulsing: sessionStatus.isPulsing,
-            }}
-            permissionMode={permissionMode}
-            onPermissionModeChange={updatePermissionMode}
-            onSwitch={() => sessionSwitch(sessionId, 'remote')}
-            controlledByUser={session.agentState?.controlledByUser || false}
-        />
-    ), [sessionStatus, permissionMode, sessionId, session.agentState?.controlledByUser]);
+    let content: any = null;
 
-    const content = (
+    content = (
         <>
             <Deferred>
-                {messagesRecentFirst.length > 0 && (
+                {/* {messagesRecentFirst.length > 0 && (
                     <FlatList
                         removeClippedSubviews={true}
                         data={messagesRecentFirst}
@@ -203,20 +186,22 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         ListHeaderComponent={ListFooter}
                         ListFooterComponent={ListHeader}
                     />
-                )}
+                )} */}
+
+                <ChatList session={session} />
             </Deferred>
         </>
     );
 
-    const placeholder = messagesRecentFirst.length === 0 ? (
-        <>
-            {isLoaded ? (
-                <EmptyMessages session={session} />
-            ) : (
-                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-            )}
-        </>
-    ) : null;
+    // const placeholder = messagesRecentFirst.length === 0 ? (
+    //     <>
+    //         {isLoaded ? (
+    //             <EmptyMessages session={session} />
+    //         ) : (
+    //             <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+    //         )}
+    //     </>
+    // ) : null;
 
     const input = (
         <AgentInput
@@ -325,7 +310,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 <AgentContentView
                     content={content}
                     input={input}
-                    placeholder={placeholder}
+                    // placeholder={placeholder}
                 />
             </View >
 
