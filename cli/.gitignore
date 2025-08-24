@@ -22,3 +22,4 @@ pnpm-lock.yaml
 .happy/
 
 **/*.log
+.release-notes-temp.md
