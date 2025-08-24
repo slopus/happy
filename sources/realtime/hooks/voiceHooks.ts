@@ -10,6 +10,7 @@ import {
 } from './contextFormatters';
 import { storage } from '@/sync/storage';
 import { Message } from '@/sync/typesMessage';
+import { VOICE_CONFIG } from '../voiceConfig';
 
 /**
  * Centralized voice assistant hooks for multi-session context updates.
@@ -26,10 +27,14 @@ interface SessionMetadata {
 let shownSessions = new Set<string>();
 
 function reportContextualUpdate(update: string | null | undefined) {
-    console.log('🎤 Voice: Reporting contextual update:', update);
+    if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
+        console.log('🎤 Voice: Reporting contextual update:', update);
+    }
     if (!update) return;
     const voice = getVoiceSession();
-    console.log('🎤 Voice: Voice session:', voice);
+    if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
+        console.log('🎤 Voice: Voice session:', voice);
+    }
     if (!voice || !isVoiceSessionStarted()) return;
     voice.sendContextualUpdate(update);
 }
@@ -50,22 +55,22 @@ export const voiceHooks = {
      * Called when a session comes online/connects
      */
     onSessionOnline(sessionId: string, metadata?: SessionMetadata) {
-        // const voice = getVoiceSession();
-        // if (!voice || !getCurrentRealtimeSessionId()) return;
-        // reportSession(sessionId);
-        // const contextUpdate = formatSessionOnline(sessionId, metadata);
-        // voice.sendContextualUpdate(contextUpdate);
+        if (VOICE_CONFIG.DISABLE_SESSION_STATUS) return;
+        
+        reportSession(sessionId);
+        const contextUpdate = formatSessionOnline(sessionId, metadata);
+        reportContextualUpdate(contextUpdate);
     },
 
     /**
      * Called when a session goes offline/disconnects
      */
     onSessionOffline(sessionId: string, metadata?: SessionMetadata) {
-        // const voice = getVoiceSession();
-        // if (!voice || !getCurrentRealtimeSessionId()) return;
-        // reportSession(sessionId);
-        // const contextUpdate = formatSessionOffline(sessionId, metadata);
-        // voice.sendContextualUpdate(contextUpdate);
+        if (VOICE_CONFIG.DISABLE_SESSION_STATUS) return;
+        
+        reportSession(sessionId);
+        const contextUpdate = formatSessionOffline(sessionId, metadata);
+        reportContextualUpdate(contextUpdate);
     },
 
 
@@ -73,6 +78,8 @@ export const voiceHooks = {
      * Called when user navigates to/views a session
      */
     onSessionFocus(sessionId: string, metadata?: SessionMetadata) {
+        if (VOICE_CONFIG.DISABLE_SESSION_FOCUS) return;
+        
         reportSession(sessionId);
         reportContextualUpdate(formatSessionFocus(sessionId, metadata));
     },
@@ -81,6 +88,8 @@ export const voiceHooks = {
      * Called when Claude requests permission for a tool use
      */
     onPermissionRequested(sessionId: string, requestId: string, toolName: string, toolArgs: any) {
+        if (VOICE_CONFIG.DISABLE_PERMISSION_REQUESTS) return;
+        
         reportSession(sessionId);
         reportContextualUpdate(formatPermissionRequest(sessionId, requestId, toolName, toolArgs));
     },
@@ -89,6 +98,8 @@ export const voiceHooks = {
      * Called when agent sends a message/response
      */
     onMessages(sessionId: string, messages: Message[]) {
+        if (VOICE_CONFIG.DISABLE_MESSAGES) return;
+        
         reportSession(sessionId);
         reportContextualUpdate(formatNewMessages(sessionId, messages));
     },
@@ -97,7 +108,9 @@ export const voiceHooks = {
      * Called when voice session starts
      */
     onVoiceStarted(sessionId: string): string {
-        console.log('🎤 Voice session started for:', sessionId);
+        if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
+            console.log('🎤 Voice session started for:', sessionId);
+        }
         shownSessions.clear();
         let prompt = '';
         prompt += 'THIS IS AN ACTIVE SESSION: \n\n' + formatSessionFull(storage.getState().sessions[sessionId], storage.getState().sessionMessages[sessionId]?.messages ?? []);
@@ -114,7 +127,9 @@ export const voiceHooks = {
      * Called when voice session stops
      */
     onVoiceStopped() {
-        console.log('🎤 Voice session stopped');
+        if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
+            console.log('🎤 Voice session stopped');
+        }
         shownSessions.clear();
     }
 };
