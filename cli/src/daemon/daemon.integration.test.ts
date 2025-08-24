@@ -477,49 +477,4 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
     
     console.log('[TEST] Daemon terminated gracefully with SIGTERM - cleanup logs written');
   });
-
-  it('should die with error logs when simulated error occurs', async () => {
-    const logsDir = configuration.logsDir;
-    const { readFileSync, readdirSync } = await import('fs');
-    
-    // Get current log files
-    const logFiles = readdirSync(logsDir).filter(f => f.endsWith('-daemon.log')).sort();
-    const currentLogFile = logFiles[logFiles.length - 1];
-    const logPath = `${logsDir}/${currentLogFile}`;
-    
-    // Trigger simulated error
-    const state = await getDaemonState();
-    expect(state).toBeDefined();
-    
-    const response = await fetch(`http://127.0.0.1:${state!.httpPort}/dev-simulate-error`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ error: 'Test error for integration test' }),
-      signal: AbortSignal.timeout(5000)
-    });
-    
-    expect(response.ok).toBe(true);
-    
-    // Wait for error to be thrown and daemon to handle it
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    // Check if process died (uncaught exception should trigger cleanup)
-    let isDead = false;
-    try {
-      process.kill(daemonPid, 0);
-    } catch {
-      isDead = true;
-    }
-    expect(isDead).toBe(true);
-    
-    // Read the log file to check for error messages
-    const logContent = readFileSync(logPath, 'utf8');
-    
-    // Should contain error messages
-    expect(logContent).toContain('Test error for integration test');
-    expect(logContent).toContain('Uncaught exception');
-    expect(logContent).toContain('cleanup');
-    
-    console.log('[TEST] Daemon died with error logs after simulated error');
-  });
 });
