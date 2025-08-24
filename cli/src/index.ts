@@ -17,7 +17,7 @@ import packageJson from '../package.json'
 import { z } from 'zod'
 import { spawn } from 'child_process'
 import { startDaemon } from './daemon/run'
-import { checkIfDaemonRunningAndCleanupStaleState, stopDaemon } from './daemon/controlClient'
+import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningSameVersion, stopDaemon } from './daemon/controlClient'
 import { getLatestDaemonLog } from './ui/logger'
 import { killRunawayHappyProcesses } from './daemon/doctor'
 import { getDaemonState } from './persistence'
@@ -397,9 +397,11 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
     // Auto-start daemon if enabled and experimental features are enabled
     if (settings && settings.daemonAutoStartWhenRunningHappy) {
-      logger.debug('Starting Happy background service...');
+      logger.debug('Ensuring Happy background service is running & matches our version...');
 
-      if (!(await checkIfDaemonRunningAndCleanupStaleState())) {
+      if (!(await isDaemonRunningSameVersion())) {
+        logger.debug('Starting Happy background service...');
+
         // Use the built binary to spawn daemon
         const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
           detached: true,
@@ -410,6 +412,8 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
         // Give daemon a moment to write PID file
         await new Promise(resolve => setTimeout(resolve, 100));
+      } else {
+        logger.debug('Happy background service is running & matches our version');
       }
     }
 

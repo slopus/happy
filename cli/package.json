@@ -1,6 +1,6 @@
 {
   "name": "happy-coder",
-  "version": "0.8.2-beta.0",
+  "version": "0.8.2-beta.2",
   "description": "Claude Code session sharing CLI",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
@@ -47,9 +47,7 @@
     "why do we need to build before running tests / dev?": "We need the binary to be built so we run daemon commands which directly run the binary - we don't want them to go out of sync or have custom spawn logic depending how we started happy",
     "typecheck": "tsc --noEmit",
     "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
-    "test": "yarn build && vitest run",
-    "test:watch": "vitest",
-    "test:integration-test-env": "yarn build && tsx --env-file .env.integration-test node_modules/.bin/vitest run",
+    "test": "yarn build && tsx --env-file .env.integration-test node_modules/.bin/vitest run",
     "dev": "yarn build && DEBUG=1 npx tsx src/index.ts",
     "dev:local-server": "yarn build && tsx --env-file .env.dev-local-server src/index.ts",
     "dev:integration-test-env": "yarn build && tsx --env-file .env.integration-test src/index.ts",

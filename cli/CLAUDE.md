@@ -23,6 +23,7 @@ Happy CLI (`handy-cli`) is a command-line tool that wraps Claude Code to enable 
 
 - Create stupid small functions / getters / setters
 - Excessive use of `if` statements - especially if you can avoid control flow changes with a better design
+- **NEVER import modules mid-code** - ALL imports must be at the top of the file
 
 ### Error Handling
 - Graceful error handling with proper error messages
