@@ -252,6 +252,12 @@ export default function DevScreen() {
                     icon={<Ionicons name="brush-outline" size={28} color="#FF6B6B" />}
                     onPress={() => router.push('/dev/unistyles-demo')}
                 />
+                <Item
+                    title="QR Code Test"
+                    subtitle="Test QR code generation with different parameters"
+                    icon={<Ionicons name="qr-code-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/dev/qr-test')}
+                />
             </ItemGroup>
 
             {/* Test Features */}
