@@ -65,6 +65,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
     if (tool.name.startsWith('mcp__')) {
         toolTitle = formatMCPTitle(tool.name);
         icon = <Ionicons name="extension-puzzle-outline" size={18} color={theme.colors.textSecondary} />;
+        minimal = true;
     } else if (knownTool?.title) {
         if (typeof knownTool.title === 'function') {
             toolTitle = knownTool.title({ tool, metadata: props.metadata });
