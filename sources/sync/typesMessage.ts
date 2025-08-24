@@ -14,6 +14,8 @@ export type ToolCall = {
         id: string;
         status: 'pending' | 'approved' | 'denied' | 'canceled';
         reason?: string;
+        mode?: string;
+        allowedTools?: string[];
     };
 }
 

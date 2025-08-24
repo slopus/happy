@@ -135,6 +135,8 @@ type StoredPermission = {
     completedAt?: number;
     status: 'pending' | 'approved' | 'denied' | 'canceled';
     reason?: string;
+    mode?: string;
+    allowedTools?: string[];
 };
 
 export type ReducerState = {
@@ -391,11 +393,15 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         if (!message.tool.permission) {
                             message.tool.permission = {
                                 id: permId,
-                                status: completed.status
+                                status: completed.status,
+                                mode: completed.mode || undefined,
+                                allowedTools: completed.allowedTools || undefined
                             };
                             hasChanged = true;
                         } else if (message.tool.permission.status !== completed.status) {
                             message.tool.permission.status = completed.status;
+                            message.tool.permission.mode = completed.mode || undefined;
+                            message.tool.permission.allowedTools = completed.allowedTools || undefined;
                             hasChanged = true;
                         }
 
@@ -429,7 +435,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             createdAt: completed.createdAt || Date.now(),
                             completedAt: completed.completedAt || undefined,
                             status: completed.status,
-                            reason: completed.reason || undefined
+                            reason: completed.reason || undefined,
+                            mode: completed.mode || undefined,
+                            allowedTools: completed.allowedTools || undefined
                         });
 
                         if (hasChanged) {
@@ -607,7 +615,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                                 message.tool.result = undefined;
                             }
                             changed.add(existingMessageId);
-                            
+
                             // Track TodoWrite tool inputs when updating existing messages
                             if (message.tool.name === 'TodoWrite' && message.tool.state === 'running' && message.tool.input?.todos) {
                                 // Only update if this is newer than existing todos
@@ -672,7 +680,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
                         state.toolIdToMessageId.set(c.id, mid);
                         changed.add(mid);
-                        
+
                         // Track TodoWrite tool inputs
                         if (toolCall.name === 'TodoWrite' && toolCall.state === 'running' && toolCall.input?.todos) {
                             // Only update if this is newer than existing todos
