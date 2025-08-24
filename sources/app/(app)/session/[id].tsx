@@ -65,6 +65,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const headerHeight = useHeaderHeight();
     const [message, setMessage] = useState('');
     const realtimeStatus = useRealtimeStatus();
+    const { messages, isLoaded } = useSessionMessages(sessionId);
     const [isReviving, setIsReviving] = useState(false);
     // Get permission mode from session object, default to 'default'
     const permissionMode = session.permissionMode || 'default';
@@ -166,42 +167,24 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         autoscrollToBottomThreshold: 50,
     }), []);
 
-    let content: any = null;
-
-    content = (
+    let content = (
         <>
             <Deferred>
-                {/* {messagesRecentFirst.length > 0 && (
-                    <FlatList
-                        removeClippedSubviews={true}
-                        data={messagesRecentFirst}
-                        inverted={true}
-                        keyExtractor={keyExtractor}
-                        style={[headerDependentStyles.flatListStyle]}
-                        maintainVisibleContentPosition={maintainVisibleContentPosition}
-                        keyboardShouldPersistTaps="handled"
-                        keyboardDismissMode="none" // Interactive mode is still buggy
-                        renderItem={renderItem}
-                        contentContainerStyle={contentContainerStyle}
-                        ListHeaderComponent={ListFooter}
-                        ListFooterComponent={ListHeader}
-                    />
-                )} */}
-
-                <ChatList session={session} />
+                {messages.length > 0 && (
+                    <ChatList session={session} />
+                )}
             </Deferred>
         </>
     );
-
-    // const placeholder = messagesRecentFirst.length === 0 ? (
-    //     <>
-    //         {isLoaded ? (
-    //             <EmptyMessages session={session} />
-    //         ) : (
-    //             <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-    //         )}
-    //     </>
-    // ) : null;
+    const placeholder = messages.length === 0 ? (
+        <>
+            {isLoaded ? (
+                <EmptyMessages session={session} />
+            ) : (
+                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+            )}
+        </>
+    ) : null;
 
     const input = (
         <AgentInput
@@ -310,7 +293,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 <AgentContentView
                     content={content}
                     input={input}
-                    // placeholder={placeholder}
+                    placeholder={placeholder}
                 />
             </View >
 
