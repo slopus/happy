@@ -1,8 +1,6 @@
 #!/usr/bin/env node
 
 import { execSync } from 'child_process';
-import { writeFileSync } from 'fs';
-import { join } from 'path';
 
 /**
  * Generate release notes using Claude Code by analyzing git commits
@@ -30,7 +28,7 @@ async function generateReleaseNotes() {
             );
         } catch (error) {
             // Fallback to recent commits if tag doesn't exist
-            console.log(`Tag ${fromTag} not found, using recent commits instead`);
+            console.error(`Tag ${fromTag} not found, using recent commits instead`);
             gitLog = execSync(
                 `git log -10 --pretty=format:"%h - %s (%an, %ar)" --no-merges`,
                 { encoding: 'utf8' }
@@ -38,8 +36,8 @@ async function generateReleaseNotes() {
         }
 
         if (!gitLog.trim()) {
-            console.log('No commits found for release notes generation');
-            return;
+            console.error('No commits found for release notes generation');
+            process.exit(1);
         }
 
         // Create a prompt for Claude to analyze commits and generate release notes
@@ -62,7 +60,7 @@ Please format the output as markdown with:
 Do not include any preamble or explanations, just return the markdown release notes.`;
 
         // Call Claude Code to generate release notes
-        console.log('Generating release notes with Claude Code...');
+        console.error('Generating release notes with Claude Code...');
         const releaseNotes = execSync(
             `claude --print "${prompt}"`,
             { 
@@ -72,41 +70,12 @@ Do not include any preamble or explanations, just return the markdown release no
             }
         );
 
-        // Save release notes to a temporary file for release-it to use
-        const releaseNotesPath = join(process.cwd(), '.release-notes-temp.md');
-        writeFileSync(releaseNotesPath, releaseNotes.trim());
-        
-        console.log('Release notes generated successfully!');
-        console.log('Preview:');
-        console.log('='.repeat(50));
+        // Output release notes to stdout for release-it to use
         console.log(releaseNotes.trim());
-        console.log('='.repeat(50));
 
     } catch (error) {
         console.error('Error generating release notes:', error.message);
-        
-        // Fallback: create basic release notes from recent commit messages
-        let fallbackCommits;
-        try {
-            fallbackCommits = execSync(
-                `git log -10 --pretty=format:"%h - %s (%an, %ar)" --no-merges`,
-                { encoding: 'utf8' }
-            );
-        } catch (gitError) {
-            fallbackCommits = 'No commits found';
-        }
-        
-        const fallbackNotes = `# Release ${toVersion}
-
-## Changes
-${fallbackCommits.split('\n').map(line => line.trim() ? `- ${line}` : '').filter(Boolean).join('\n')}
-`;
-        
-        const releaseNotesPath = join(process.cwd(), '.release-notes-temp.md');
-        writeFileSync(releaseNotesPath, fallbackNotes);
-        
-        console.log('Generated fallback release notes');
-        process.exit(0); // Don't fail the release process
+        process.exit(1);
     }
 }
 

@@ -10,13 +10,10 @@
     "github": {
         "release": true,
         "releaseName": "v${version}",
-        "releaseNotes": ".release-notes-temp.md"
+        "releaseNotes": "node scripts/generate-release-notes.js ${latestTag} ${version}"
     },
     "npm": {
         "publish": true
     },
-    "hooks": {
-        "before:release": "node scripts/generate-release-notes.js ${latestTag} ${version}",
-        "after:release": "rm -f .release-notes-temp.md"
-    }
+    "hooks": {}
 }
