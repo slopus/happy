@@ -13,7 +13,8 @@ Use Claude Code from anywhere with end-to-end encryption.
 [📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [⭐ **Star on GitHub**](https://github.com/slopus/happy)
 
 </div>
-<img width="5178" height="2364" alt="github" src="https://github.com/user-attachments/assets/5d1ee30e-5f84-4483-8110-2151b7ad55d5" />
+
+<img width="5178" height="2364" alt="github" src="https://github.com/user-attachments/assets/14d517e9-71a8-4fcb-98ae-9ebf9f7c149f" />
 
 
 <h3 align="center">
