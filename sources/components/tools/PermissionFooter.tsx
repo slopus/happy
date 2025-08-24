@@ -15,9 +15,10 @@ interface PermissionFooterProps {
     };
     sessionId: string;
     toolName: string;
+    toolInput?: any;
 }
 
-export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, sessionId, toolName }) => {
+export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, sessionId, toolName, toolInput }) => {
     const { theme } = useUnistyles();
     const [loadingButton, setLoadingButton] = useState<'allow' | 'deny' | null>(null);
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
@@ -56,7 +57,14 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
         setLoadingForSession(true);
         try {
-            await sessionAllow(sessionId, permission.id, undefined, [toolName]);
+            // Special handling for Bash tool - include exact command
+            let toolIdentifier = toolName;
+            if (toolName === 'Bash' && toolInput?.command) {
+                const command = toolInput.command;
+                toolIdentifier = `Bash(${command})`;
+            }
+            
+            await sessionAllow(sessionId, permission.id, undefined, [toolIdentifier]);
         } catch (error) {
             console.error('Failed to approve for session:', error);
         } finally {
@@ -81,10 +89,26 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const isDenied = permission.status === 'denied';
     const isPending = permission.status === 'pending';
 
+    // Helper function to check if tool matches allowed pattern
+    const isToolAllowed = (toolName: string, toolInput: any, allowedTools: string[] | undefined): boolean => {
+        if (!allowedTools) return false;
+        
+        // Direct match for non-Bash tools
+        if (allowedTools.includes(toolName)) return true;
+        
+        // For Bash, check exact command match
+        if (toolName === 'Bash' && toolInput?.command) {
+            const command = toolInput.command;
+            return allowedTools.includes(`Bash(${command})`);
+        }
+        
+        return false;
+    };
+
     // Detect which button was used based on mode
-    const isApprovedViaAllow = isApproved && permission.mode !== 'acceptEdits' && !permission.allowedTools?.includes(toolName || '');
+    const isApprovedViaAllow = isApproved && permission.mode !== 'acceptEdits' && !isToolAllowed(toolName, toolInput, permission.allowedTools);
     const isApprovedViaAllEdits = isApproved && permission.mode === 'acceptEdits';
-    const isApprovedForSession = isApproved && permission.allowedTools?.includes(toolName || '');
+    const isApprovedForSession = isApproved && isToolAllowed(toolName, toolInput, permission.allowedTools);
 
     const styles = StyleSheet.create({
         container: {
@@ -245,8 +269,8 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     </TouchableOpacity>
                 )}
 
-                {/* Allow for session button - only show for non-edit, non-bash, non-exit-plan tools */}
-                {toolName && toolName !== 'Edit' && toolName !== 'MultiEdit' && toolName !== 'Write' && toolName !== 'NotebookEdit' && toolName !== 'exit_plan_mode' && toolName !== 'ExitPlanMode' && toolName !== 'Bash' && (
+                {/* Allow for session button - only show for non-edit, non-exit-plan tools */}
+                {toolName && toolName !== 'Edit' && toolName !== 'MultiEdit' && toolName !== 'Write' && toolName !== 'NotebookEdit' && toolName !== 'exit_plan_mode' && toolName !== 'ExitPlanMode' && (
                     <TouchableOpacity
                         style={[
                             styles.button,
