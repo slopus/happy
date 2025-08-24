@@ -92,7 +92,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sessionTitle: {
         fontSize: 15,
         fontWeight: '500',
-        flex: 1,
         ...Typography.default('semiBold'),
     },
     sessionTitleConnected: {
@@ -104,8 +103,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     statusRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'space-between',
-        flex: 1,
+        justifyContent: 'space-between'
     },
     statusDotContainer: {
         alignItems: 'center',
@@ -193,7 +191,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
     const router = useRouter();
     const machines = useAllMachines();
     const [startingSessionFor, setStartingSessionFor] = React.useState<string | null>(null);
-    
+
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
         machines.forEach(machine => {
@@ -268,12 +266,12 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
         sessions.forEach(session => {
             const projectPath = session.metadata?.path || '';
             const machineId = session.metadata?.machineId || 'unknown';
-            
+
             // Get machine info
             const machine = machineId !== 'unknown' ? machinesMap[machineId] : null;
-            const machineName = machine?.metadata?.displayName || 
-                              machine?.metadata?.host || 
-                              (machineId !== 'unknown' ? machineId : '<unknown>');
+            const machineName = machine?.metadata?.displayName ||
+                machine?.metadata?.host ||
+                (machineId !== 'unknown' ? machineId : '<unknown>');
 
             // Get or create project group
             let projectGroup = groups.get(projectPath);
@@ -324,10 +322,10 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
             {sortedProjectGroups.map(([projectPath, projectGroup]) => {
                 // Get the first machine name from this project's machines
                 const firstMachine = Array.from(projectGroup.machines.values())[0];
-                const machineName = projectGroup.machines.size === 1 
-                    ? firstMachine?.machineName 
+                const machineName = projectGroup.machines.size === 1
+                    ? firstMachine?.machineName
                     : `${projectGroup.machines.size} machines`;
-                
+
                 return (
                     <View key={projectPath}>
                         {/* Section header on grouped background */}
@@ -341,7 +339,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                 {machineName}
                             </Text>
                         </View>
-                        
+
                         {/* Card with just the sessions */}
                         <View style={styles.projectCard}>
                             {/* Sessions grouped by machine within the card */}
@@ -350,17 +348,17 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                 .map(([machineId, machineGroup]) => (
                                     <View key={`${projectPath}-${machineId}`}>
                                         {machineGroup.sessions.map((session, index) => (
-                                            <CompactSessionRow 
-                                                key={session.id} 
-                                                session={session} 
+                                            <CompactSessionRow
+                                                key={session.id}
+                                                session={session}
                                                 selected={selectedSessionId === session.id}
-                                                showBorder={index < machineGroup.sessions.length - 1 || 
-                                                           Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
+                                                showBorder={index < machineGroup.sessions.length - 1 ||
+                                                    Array.from(projectGroup.machines.keys()).indexOf(machineId) < projectGroup.machines.size - 1}
                                             />
                                         ))}
                                     </View>
                                 ))}
-                            
+
                             {/* New Session Button - only show if at least one machine is online */}
                             {(() => {
                                 const machineIds = Array.from(projectGroup.machines.keys());
@@ -368,11 +366,11 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                     const machine = machinesMap[machineId];
                                     return machine && isMachineOnline(machine);
                                 });
-                                
+
                                 // Use the first machine for the session creation
                                 const firstMachineId = machineIds[0];
                                 const isLoading = startingSessionFor === `${firstMachineId}-${projectGroup.path}`;
-                                
+
                                 return (
                                     <Pressable
                                         style={[
@@ -384,9 +382,9 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                     >
                                         <View style={styles.newSessionButtonContent}>
                                             {isLoading ? (
-                                                <ActivityIndicator 
-                                                    size="small" 
-                                                    color={hasOnlineMachine ? "#007AFF" : "#999"} 
+                                                <ActivityIndicator
+                                                    size="small"
+                                                    color={hasOnlineMachine ? "#007AFF" : "#999"}
                                                     style={styles.newSessionButtonIcon}
                                                 />
                                             ) : (
@@ -452,10 +450,13 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
             <View style={styles.sessionContent}>
                 {/* Title line */}
                 <View style={styles.sessionTitleRow}>
-                    <Text style={[
-                        styles.sessionTitle,
-                        sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
-                    ]} numberOfLines={2}>
+                    <Text
+                        style={[
+                            styles.sessionTitle,
+                            sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected
+                        ]}
+                        numberOfLines={2}
+                    >
                         {sessionName}
                     </Text>
                 </View>
@@ -473,22 +474,22 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             {sessionStatus.statusText}
                         </Text>
                     </View>
-                    
+
                     {/* Status indicators on the right side */}
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
                         {/* Git status indicator */}
                         <CompactGitStatus sessionId={session.id} />
-                        
+
                         {/* Task status indicator */}
                         {session.todos && session.todos.length > 0 && (() => {
                             const totalTasks = session.todos.length;
                             const completedTasks = session.todos.filter(t => t.status === 'completed').length;
-                            
+
                             // Don't show if all tasks are completed
                             if (completedTasks === totalTasks) {
                                 return null;
                             }
-                            
+
                             return (
                                 <View style={styles.taskStatusContainer}>
                                     <Ionicons
