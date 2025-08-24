@@ -9,6 +9,7 @@ export const Switch = (props: SwitchProps) => {
             <RNSwitch
                 {...props}
                 trackColor={{ false: theme.colors.switch.track.inactive, true: theme.colors.switch.track.active }}
+                ios_backgroundColor={theme.colors.switch.track.inactive}
                 thumbColor={theme.colors.switch.thumb.active}
                 {...{
                     activeThumbColor: theme.colors.switch.thumb.active,

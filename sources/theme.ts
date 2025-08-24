@@ -223,6 +223,7 @@ export const darkTheme = {
         surfacePressed: '#2C2C2E',
         surfaceSelected: '#2C2C2E',
         surfacePressedOverlay: Platform.select({ ios: '#2C2C2E', default: 'transparent' }),
+        // iOS dark theme is #1c1c1e for items, and #000 for the background
         surfaceHigh: Platform.select({ ios: '#2C2C2E', default: '#171717' }),
         surfaceHighest: Platform.select({ ios: '#38383A', default: '#292929' }),
         divider: Platform.select({ ios: '#38383A', default: '#292929' }),
@@ -241,8 +242,8 @@ export const darkTheme = {
         },
         switch: {
             track: {
-                active: Platform.select({ ios: 'white', default: '#1976D2' }),
-                inactive: 'white',
+                active: Platform.select({ ios: '#34C759', default: '#1976D2' }),
+                inactive: '#3a393f',
             },
             thumb: {
                 active: '#FFFFFF',
