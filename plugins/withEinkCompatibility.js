@@ -69,11 +69,11 @@ const OPTIONAL_HARDWARE_FEATURES = [
  * Input configuration attributes for flexible input methods
  */
 const INPUT_CONFIGURATION_ATTRIBUTES = [
-  'android:reqFiveWayNav',
-  'android:reqHardKeyboard',
-  'android:reqKeyboardType',
-  'android:reqNavigation',
-  'android:reqTouchScreen',
+  { name: 'android:reqFiveWayNav', value: 'false' },
+  { name: 'android:reqHardKeyboard', value: 'false' },
+  { name: 'android:reqKeyboardType', value: 'undefined' },
+  { name: 'android:reqNavigation', value: 'undefined' },
+  { name: 'android:reqTouchScreen', value: 'undefined' },
 ];
 
 
@@ -151,15 +151,15 @@ const withEinkCompatibility = (
     
     // Support for devices without touch screens (navigation keys, trackball, etc.)
     let configCount = 0;
-    INPUT_CONFIGURATION_ATTRIBUTES.forEach((configAttr) => {
+    INPUT_CONFIGURATION_ATTRIBUTES.forEach(({ name, value }) => {
       const exists = manifest['uses-configuration']?.find(
-        (c) => c.$?.[configAttr] !== undefined
+        (c) => c.$?.[name] !== undefined
       );
       
       if (!exists) {
         const newConfig = {
           $: {
-            [configAttr]: 'undefined',
+            [name]: value,
           },
         };
         manifest['uses-configuration'].push(newConfig);
