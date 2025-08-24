@@ -42,10 +42,18 @@ export class PermissionHandler {
     private allowedBashLiterals = new Set<string>();
     private allowedBashPrefixes = new Set<string>();
     private permissionMode: PermissionMode = 'default';
+    private onPermissionRequestCallback?: (toolCallId: string) => void;
 
     constructor(session: Session) {
         this.session = session;
         this.setupClientHandler();
+    }
+    
+    /**
+     * Set callback to trigger when permission request is made
+     */
+    setOnPermissionRequest(callback: (toolCallId: string) => void) {
+        this.onPermissionRequestCallback = callback;
     }
 
     handleModeChange(mode: PermissionMode) {
@@ -187,6 +195,11 @@ export class PermissionHandler {
                 input
             });
 
+            // Trigger callback to send delayed messages immediately
+            if (this.onPermissionRequestCallback) {
+                this.onPermissionRequestCallback(id);
+            }
+            
             // Send push notification
             this.session.api.push().sendToAllDevices(
                 'Permission Request',

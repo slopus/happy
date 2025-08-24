@@ -13,6 +13,7 @@ import { SDKToLogConverter } from "./utils/sdkToLogConverter";
 import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
+import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
 
 interface PermissionsField {
     date: number;
@@ -96,6 +97,16 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
+    
+    // Create outgoing message queue
+    const messageQueue = new OutgoingMessageQueue(
+        (logMessage) => session.client.sendClaudeSessionMessage(logMessage)
+    );
+    
+    // Set up callback to release delayed messages when permission is requested
+    permissionHandler.setOnPermissionRequest((toolCallId: string) => {
+        messageQueue.releaseToolCall(toolCallId);
+    });
 
     // Create SDK to Log converter (pass responses from permissions)
     const sdkToLogConverter = new SDKToLogConverter({
@@ -108,6 +119,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     // Handle messages
     let planModeToolCalls = new Set<string>();
     let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
+    
     function onMessage(message: SDKMessage) {
 
         // Write to message log
@@ -147,6 +159,9 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 for (let c of umessage.message.content) {
                     if (c.type === 'tool_result' && c.tool_use_id) {
                         ongoingToolCalls.delete(c.tool_use_id);
+                        
+                        // When tool result received, release any delayed messages for this tool call
+                        messageQueue.releaseToolCall(c.tool_use_id);
                     }
                 }
             }
@@ -225,10 +240,36 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 }
             }
             
-            // Filter out system messages - they're usually not sent to logs
-            if (logMessage.type !== 'system') {
-                session.client.sendClaudeSessionMessage(logMessage);
+            // Queue message with optional delay for tool calls
+            if (logMessage.type === 'assistant' && message.type === 'assistant') {
+                const assistantMsg = message as SDKAssistantMessage;
+                const toolCallIds: string[] = [];
+                
+                if (assistantMsg.message.content && Array.isArray(assistantMsg.message.content)) {
+                    for (const block of assistantMsg.message.content) {
+                        if (block.type === 'tool_use' && block.id) {
+                            toolCallIds.push(block.id);
+                        }
+                    }
+                }
+                
+                if (toolCallIds.length > 0) {
+                    // Check if this is a sidechain tool call (has parent_tool_use_id)
+                    const isSidechain = assistantMsg.parent_tool_use_id !== undefined;
+                    
+                    if (!isSidechain) {
+                        // Top-level tool call - queue with delay
+                        messageQueue.enqueue(logMessage, {
+                            delay: 250,
+                            toolCallIds
+                        });
+                        return; // Don't queue again below
+                    }
+                }
             }
+            
+            // Queue all other messages immediately (no delay)
+            messageQueue.enqueue(logMessage);
         }
 
         // Insert a fake message to start the sidechain
@@ -239,7 +280,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     if (c.type === 'tool_use' && c.name === 'Task' && c.input && typeof (c.input as any).prompt === 'string') {
                         const logMessage2 = sdkToLogConverter.convertSidechainUserMessage(c.id!, (c.input as any).prompt);
                         if (logMessage2) {
-                            session.client.sendClaudeSessionMessage(logMessage2);
+                            messageQueue.enqueue(logMessage2);
                         }
                     }
                 }
@@ -344,6 +385,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 }
                 ongoingToolCalls.clear();
 
+                // Flush any remaining messages in the queue
+                await messageQueue.flush();
+                messageQueue.destroy();
+                
                 // Reset abort controller and future
                 abortController = null;
                 abortFuture?.resolve(undefined);
