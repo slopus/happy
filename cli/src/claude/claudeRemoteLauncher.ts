@@ -14,6 +14,7 @@ import { PLAN_FAKE_REJECT } from "./sdk/prompts";
 import { EnhancedMode } from "./loop";
 import { RawJSONLines } from "@/claude/types";
 import { OutgoingMessageQueue } from "./utils/OutgoingMessageQueue";
+import { getToolName } from "./utils/getToolName";
 
 interface PermissionsField {
     date: number;
@@ -363,6 +364,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     onReady: () => {
                         if (!pending && session.queue.size() === 0) {
                             session.client.sendSessionEvent({ type: 'ready' });
+                            session.api.push().sendToAllDevices(
+                                'It\'s ready!',
+                                `Claude is ready`,
+                                { sessionId: session.client.sessionId }
+                            );
                         }
                     },
                     signal: abortController.signal,
