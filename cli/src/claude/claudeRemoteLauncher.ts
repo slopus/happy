@@ -366,7 +366,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             session.client.sendSessionEvent({ type: 'ready' });
                             session.api.push().sendToAllDevices(
                                 'It\'s ready!',
-                                `Claude is ready`,
+                                `Claude is waiting for your command`,
                                 { sessionId: session.client.sessionId }
                             );
                         }
