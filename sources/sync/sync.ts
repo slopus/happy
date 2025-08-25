@@ -49,6 +49,10 @@ class Sync {
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
+    
+    // Generic locking mechanism
+    private recalculationLockCount = 0;
+    private lastRecalculationTime = 0;
 
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
@@ -70,6 +74,10 @@ class Sync {
         AppState.addEventListener('change', (nextAppState) => {
             if (nextAppState === 'active') {
                 this.purchasesSync.invalidate();
+                
+                // Lock recalculation for 5 seconds after activation to prevent immediate session expiration
+                const unlock = this.acquireRecalculationLock();
+                setTimeout(unlock, 5000);
             }
         });
     }
@@ -377,89 +385,112 @@ class Sync {
         }
     }
 
+    // Lock management method - returns unlock function
+    private acquireRecalculationLock(): () => void {
+        this.recalculationLockCount++;
+        let unlocked = false;
+        
+        return () => {
+            if (!unlocked) {
+                unlocked = true;
+                this.recalculationLockCount--;
+            }
+        };
+    }
+
+    private isRecalculationLocked(): boolean {
+        return this.recalculationLockCount > 0;
+    }
+
     //
     // Private
     //
 
     private fetchSessions = async () => {
         if (!this.credentials) return;
-
-        const API_ENDPOINT = getServerUrl();
-        const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
-            headers: {
-                'Authorization': `Bearer ${this.credentials.token}`,
-                'Content-Type': 'application/json'
-            }
-        });
-
-        if (!response.ok) {
-            throw new Error(`Failed to fetch sessions: ${response.status}`);
-        }
-
-        const data = await response.json();
-        const sessions = data.sessions as Array<{
-            id: string;
-            tag: string;
-            seq: number;
-            metadata: string;
-            metadataVersion: number;
-            agentState: string | null;
-            agentStateVersion: number;
-            active: boolean;
-            activeAt: number;
-            createdAt: number;
-            updatedAt: number;
-            lastMessage: ApiMessage | null;
-        }>;
-
-        // Decrypt sessions
-        let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
-        for (const session of sessions) {
-
-            //
-            // Load decrypted metadata
-            //
-
-            let metadata = this.encryption.decryptMetadata(session.id, session.metadataVersion, session.metadata);
-
-            //
-            // Create encryption
-            //
-
-            let encryption: SessionEncryption;
-            if (!this.sessionEncryption.has(session.id)) {
-                if (metadata?.encryption) {
-                    encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'aes-gcm-256', key: decodeBase64(metadata.encryption.key) }, this.encryptionCache);
-                } else {
-                    encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'libsodium' }, this.encryptionCache);
+        
+        const unlock = this.acquireRecalculationLock();
+        
+        try {
+            const API_ENDPOINT = getServerUrl();
+            const response = await fetch(`${API_ENDPOINT}/v1/sessions`, {
+                headers: {
+                    'Authorization': `Bearer ${this.credentials.token}`,
+                    'Content-Type': 'application/json'
                 }
-                this.sessionEncryption.set(session.id, encryption);
-            } else {
-                encryption = this.sessionEncryption.get(session.id)!;
+            });
+
+            if (!response.ok) {
+                throw new Error(`Failed to fetch sessions: ${response.status}`);
             }
 
-            //
-            // Decrypt agent state
-            //
+            const data = await response.json();
+            const sessions = data.sessions as Array<{
+                id: string;
+                tag: string;
+                seq: number;
+                metadata: string;
+                metadataVersion: number;
+                agentState: string | null;
+                agentStateVersion: number;
+                active: boolean;
+                activeAt: number;
+                createdAt: number;
+                updatedAt: number;
+                lastMessage: ApiMessage | null;
+            }>;
 
-            let agentState = this.encryption.decryptAgentState(session.id, session.agentStateVersion, session.agentState);
+            // Decrypt sessions
+            let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
+            for (const session of sessions) {
 
-            //
-            // Put it all together
-            //
+                //
+                // Load decrypted metadata
+                //
 
-            const processedSession = {
-                ...session,
-                thinking: false,
-                thinkingAt: 0,
-                metadata,
-                agentState
-            };
-            decryptedSessions.push(processedSession);
+                let metadata = this.encryption.decryptMetadata(session.id, session.metadataVersion, session.metadata);
+
+                //
+                // Create encryption
+                //
+
+                let encryption: SessionEncryption;
+                if (!this.sessionEncryption.has(session.id)) {
+                    if (metadata?.encryption) {
+                        encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'aes-gcm-256', key: decodeBase64(metadata.encryption.key) }, this.encryptionCache);
+                    } else {
+                        encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'libsodium' }, this.encryptionCache);
+                    }
+                    this.sessionEncryption.set(session.id, encryption);
+                } else {
+                    encryption = this.sessionEncryption.get(session.id)!;
+                }
+
+                //
+                // Decrypt agent state
+                //
+
+                let agentState = this.encryption.decryptAgentState(session.id, session.agentStateVersion, session.agentState);
+
+                //
+                // Put it all together
+                //
+
+                const processedSession = {
+                    ...session,
+                    thinking: false,
+                    thinkingAt: 0,
+                    metadata,
+                    agentState
+                };
+                decryptedSessions.push(processedSession);
+            }
+
+            // Apply to storage
+            this.applySessions(decryptedSessions);
+        } finally {
+            unlock();
         }
-
-        // Apply to storage
-        this.applySessions(decryptedSessions);
     }
 
     public refreshMachines = async () => {
@@ -468,8 +499,11 @@ class Sync {
 
     private fetchMachines = async () => {
         if (!this.credentials) return;
-
-        console.log('📊 Sync: Fetching machines...');
+        
+        const unlock = this.acquireRecalculationLock();
+        
+        try {
+            console.log('📊 Sync: Fetching machines...');
         const API_ENDPOINT = getServerUrl();
         const response = await fetch(`${API_ENDPOINT}/v1/machines`, {
             headers: {
@@ -543,8 +577,11 @@ class Sync {
             }
         }
 
-        // Replace entire machine state with fetched machines
-        storage.getState().applyMachines(decryptedMachines, true);
+            // Replace entire machine state with fetched machines
+            storage.getState().applyMachines(decryptedMachines, true);
+        } finally {
+            unlock();
+        }
     }
 
     private syncSettings = async () => {
@@ -709,13 +746,15 @@ class Sync {
     }
 
     private fetchMessages = async (sessionId: string) => {
-
-        // Get encryption
-        const encryption = this.sessionEncryption.get(sessionId);
-        if (!encryption) { // Should never happen
-            console.error(`Session ${sessionId} not found`);
-            return;
-        }
+        const unlock = this.acquireRecalculationLock();
+        
+        try {
+            // Get encryption
+            const encryption = this.sessionEncryption.get(sessionId);
+            if (!encryption) { // Should never happen
+                console.error(`Session ${sessionId} not found`);
+                return;
+            }
 
         // Request
         const response = await apiSocket.request(`/v1/sessions/${sessionId}/messages`);
@@ -749,8 +788,11 @@ class Sync {
         console.log('Cache stats:', this.encryption.getCacheStats());
         // console.log('messages', JSON.stringify(normalizedMessages));
 
-        // Apply to storage
-        this.applyMessages(sessionId, normalizedMessages);
+            // Apply to storage
+            this.applyMessages(sessionId, normalizedMessages);
+        } finally {
+            unlock();
+        }
     }
 
     private registerPushToken = async () => {
@@ -798,6 +840,8 @@ class Sync {
 
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
+            const unlock = this.acquireRecalculationLock();
+            
             this.sessionsSync.invalidate();
             const sessionsData = storage.getState().sessionsData;
             if (sessionsData) {
@@ -809,14 +853,37 @@ class Sync {
                     }
                 }
             }
+            
+            // Release lock after stabilization
+            setTimeout(unlock, 3000);
         });
 
         // Recalculate online sessions every 10 seconds (for 2-minute disconnect timeout)
         setInterval(() => {
+            // Check if ANY locks are active
+            if (this.isRecalculationLocked()) {
+                return;
+            }
+            
+            // Check socket status
+            const socketStatus = storage.getState().socketStatus;
+            if (socketStatus !== 'connected') {
+                return;
+            }
+            
+            // Optional: Add debouncing
+            const now = Date.now();
+            if (this.lastRecalculationTime && now - this.lastRecalculationTime < 5000) {
+                return; // Skip if less than 5 seconds since last recalculation
+            }
+            
+            // Perform recalculation
             const active = storage.getState().getActiveSessions();
             storage.getState().recalculateOnline();
             const newActive = storage.getState().getActiveSessions();
             this.applySessionDiff(active, newActive);
+            
+            this.lastRecalculationTime = now;
         }, 10000);
     }
 
@@ -880,8 +947,12 @@ class Sync {
             this.onSessionVisible(updateData.body.sid);
 
         } else if (updateData.body.t === 'new-session') {
+            const unlock = this.acquireRecalculationLock();
+            
             console.log('🔄 Sync: New session update received, fetching sessions...');
-            this.fetchSessions(); // Just fetch sessions again
+            this.fetchSessions().finally(() => {
+                unlock();
+            });
         } else if (updateData.body.t === 'update-session') {
             const session = storage.getState().sessions[updateData.body.id];
             if (session) {
@@ -968,25 +1039,30 @@ class Sync {
     }
 
     private flushActivityUpdates = (updates: Map<string, ApiEphemeralActivityUpdate>) => {
+        const unlock = this.acquireRecalculationLock();
+        
+        try {
+            const sessions: Session[] = [];
 
-        const sessions: Session[] = [];
-
-        for (const [sessionId, update] of updates) {
-            const session = storage.getState().sessions[sessionId];
-            if (session) {
-                sessions.push({
-                    ...session,
-                    active: update.active,
-                    activeAt: update.activeAt,
-                    thinking: update.thinking ?? false,
-                    thinkingAt: update.activeAt // Always use activeAt for consistency
-                });
+            for (const [sessionId, update] of updates) {
+                const session = storage.getState().sessions[sessionId];
+                if (session) {
+                    sessions.push({
+                        ...session,
+                        active: update.active,
+                        activeAt: update.activeAt,
+                        thinking: update.thinking ?? false,
+                        thinkingAt: update.activeAt // Always use activeAt for consistency
+                    });
+                }
             }
-        }
 
-        if (sessions.length > 0) {
-            // console.log('flushing activity updates ' + sessions.length);
-            this.applySessions(sessions);
+            if (sessions.length > 0) {
+                // console.log('flushing activity updates ' + sessions.length);
+                this.applySessions(sessions);
+            }
+        } finally {
+            unlock();
         }
     }
 
