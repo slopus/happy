@@ -119,3 +119,7 @@ export function formatSessionOnline(sessionId: string, metadata?: SessionMetadat
 export function formatSessionFocus(sessionId: string, metadata?: SessionMetadata): string {
     return `Session became focused: ${sessionId}`;
 }
+
+export function formatReadyEvent(sessionId: string): string {
+    return `IMPORTANT! Claude Code has finished processing and is ready for the next task in session: ${sessionId}. Report this to the human immediately.`;
+}

@@ -20,6 +20,9 @@ export const VOICE_CONFIG = {
     /** Disable session focus notifications */
     DISABLE_SESSION_FOCUS: false,
     
+    /** Disable ready event notifications */
+    DISABLE_READY_EVENTS: false,
+    
     /** Maximum number of messages to include in session history */
     MAX_HISTORY_MESSAGES: 50,
     

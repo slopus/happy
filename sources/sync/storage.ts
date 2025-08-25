@@ -83,7 +83,7 @@ interface StorageState {
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyLoaded: () => void;
     applyReady: () => void;
-    applyMessages: (sessionId: string, messages: NormalizedMessage[]) => string[];
+    applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
     applyMessagesLoaded: (sessionId: string) => void;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
@@ -344,6 +344,7 @@ export const storage = create<StorageState>()((set, get) => {
         })),
         applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
             let changed = new Set<string>();
+            let hasReadyEvent = false;
             set((state) => {
 
                 // Resolve session messages state
@@ -366,6 +367,9 @@ export const storage = create<StorageState>()((set, get) => {
                 const processedMessages = reducerResult.messages;
                 for(let message of processedMessages) {
                     changed.add(message.id);
+                }
+                if (reducerResult.hasReadyEvent) {
+                    hasReadyEvent = true;
                 }
 
                 // Merge messages
@@ -405,7 +409,7 @@ export const storage = create<StorageState>()((set, get) => {
                 };
             });
 
-            return Array.from(changed);
+            return { changed: Array.from(changed), hasReadyEvent };
         },
         applyMessagesLoaded: (sessionId: string) => set((state) => {
             const existingSession = state.sessionMessages[sessionId];
