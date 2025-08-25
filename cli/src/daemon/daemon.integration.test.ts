@@ -153,7 +153,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
     await stopDaemonSession(spawnedSession.happySessionId);
   });
 
-  it('spawn / stop stress test many sessions spawn / stop', { timeout: 60_000 }, async () => {
+  it('stress test: spawn / stop', { timeout: 60_000 }, async () => {
     const promises = [];
     const sessionCount = 20;
     for (let i = 0; i < sessionCount; i++) {
@@ -162,7 +162,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
 
     // Wait for all sessions to be spawned
     const results = await Promise.all(promises);
-    const sessionIds = results.map(r => r.happySessionId);
+    const sessionIds = results.map(r => r.sessionId);
 
     const sessions = await listDaemonSessions();
     expect(sessions).toHaveLength(sessionCount);
@@ -176,25 +176,11 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
     expect(emptySessions).toHaveLength(0);
   });
 
-  it('should handle daemon stop request gracefully', async () => {
-    // This test verifies the stop endpoint works
-    
+  it('should handle daemon stop request gracefully', async () => {    
     await stopDaemonHttp();
-
-    // Wait for daemon to actually stop
-    await waitFor(async () => {
-      try {
-        await listDaemonSessions();
-        return false; // Still responding
-      } catch {
-        return true; // Not responding
-      }
-    }, 1000);
 
     // Verify metadata file is cleaned up
     await waitFor(async () => !existsSync(configuration.daemonStateFile), 1000);
-    
-    // The afterEach will clean up and beforeEach will start fresh for next test
   });
 
   it('should track both daemon-spawned and terminal sessions', async () => {
@@ -209,6 +195,9 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
 
     // Spawn a daemon session
     const spawnResponse = await spawnDaemonSession('/tmp', 'daemon-session-bbb');
+
+    // On the daemon side res
+    await new Promise(resolve => setTimeout(resolve, 100));
 
     // List all sessions
     const sessions = await listDaemonSessions();
@@ -388,26 +377,27 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
   });
 
   // Extremely long timeout - we need to wait for the daemon to detect the version mismatch (takes 1 minute) & do 2 CLI rebuilds
-  it('[slow 1+ minutes] should detect version mismatch and kill old daemon', { timeout: 180_000 }, async () => {
+  it('[this test is tricky, easier to test by hand] should detect version mismatch and kill old daemon', { timeout: 60_000 }, async () => {
     // Read current package.json to get version
     const packagePath = path.join(process.cwd(), 'package.json');
     const originalPackage = JSON.parse(readFileSync(packagePath, 'utf8'));
     const originalVersion = originalPackage.version;
+    const testVersion = `0.0.0-integration-test-should-be-auto-cleaned-up-${Math.random().toString(36).substring(0, 3)}`;
 
-    // Modify package.json version
-    const newVersion = '0.0.99-test';
-
-    expect(originalVersion).not.toBe(newVersion);
+    expect(originalVersion, 'Your current cli version was not cleaned up from previous test it seems').not.toBe(testVersion);
     
-    originalPackage.version = newVersion;
-    writeFileSync(packagePath, JSON.stringify(originalPackage, null, 2));
-
-    // Now we must rebuild our CLI so the new version is returned
-    // by spawnHappyCLI
-    // Assume it will succeed - we just built this in the test setup
-    execSync('yarn build', { stdio: 'ignore' });
+    // Modify package.json version
+    const modifiedPackage = { ...originalPackage, version: testVersion };
+    writeFileSync(packagePath, JSON.stringify(modifiedPackage, null, 2));
 
     try {
+      // Re-build the CLI - so it will import the new package.json in its configuartion.ts
+      // and think it is a new version
+      // We are not using yarn build here because it cleans out dist/
+      // and we want to avoid that, 
+      // otherwise daemon will spawn a non existing happy js script.
+      execSync('yarn pkgroll', { stdio: 'ignore' });
+
       // Get initial daemon state
       const initialState = await readDaemonState();
       expect(initialState).toBeDefined();
@@ -416,16 +406,16 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
       
       console.log(`[TEST] Current daemon running with version ${originalVersion}, PID: ${initialPid}`);
       
-      console.log(`[TEST] Changed package.json version to ${newVersion}`);
+      console.log(`[TEST] Changed package.json version to ${testVersion}`);
 
       // The daemon should automatically detect the version mismatch and restart itself
       // We check once per minute, wait for a little longer than that
-      await new Promise(resolve => setTimeout(resolve, 70_000));
+      await new Promise(resolve => setTimeout(resolve, parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000') + 5_000));
 
       // Check that the daemon is running with the new version
       const finalState = await readDaemonState();
       expect(finalState).toBeDefined();
-      expect(finalState!.startedWithCliVersion).toBe(newVersion);
+      expect(finalState!.startedWithCliVersion).toBe(testVersion);
       expect(finalState!.pid).not.toBe(initialPid);
       console.log('[TEST] Daemon version mismatch detection successful');
     } finally {
@@ -434,8 +424,10 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
       writeFileSync(packagePath, JSON.stringify(originalPackage, null, 2));
       console.log(`[TEST] Restored package.json version to ${originalPackage.version}`);
 
-      // We must now rebuild the CLI again to restore the original version
-      execSync('yarn build', { stdio: 'ignore' });
+      // Lets rebuild it so we keep it as we found it
+      execSync('yarn pkgroll', { stdio: 'ignore' });
     }
   });
+
+  // TODO: Add a test to see if a corrupted file will work
 });

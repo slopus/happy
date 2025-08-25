@@ -230,7 +230,7 @@ export class ApiMachineClient {
             throw new Error(session.error);
           }
 
-          logger.debug(`[API MACHINE] Spawned session ${session.happySessionId || 'pending'} with PID ${session.pid}`);
+          logger.debug(`[API MACHINE] Spawned session ${session.happySessionId || 'WARNING - not session Id recieved in webhook'} with PID ${session.pid}`);
 
           if (!session.happySessionId) {
             throw new Error(`Session spawned (PID ${session.pid}) but no sessionId received from webhook. The session process may still be initializing.`);

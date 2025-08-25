@@ -12,11 +12,13 @@ import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { Metadata } from '@/api/types';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonStateExclusiveWriteHandle } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningSameVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
-import { existsSync, mkdir, mkdirSync } from 'fs';
+import { existsSync, mkdir, mkdirSync, readFileSync } from 'fs';
+import { join, resolve } from 'path';
+import { projectPath } from '@/projectPath';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -105,9 +107,10 @@ export async function startDaemon(): Promise<void> {
     process.exit(0);
   }
 
-  const daemonStateExclusiveWriteHandle = await acquireDaemonStateExclusiveWriteHandle(5, 200);
-  if (!daemonStateExclusiveWriteHandle) {
-    logger.debug('[DAEMON RUN] Daemon state file already locked, exiting');
+  // Acquire exclusive lock (proves daemon is running)
+  const daemonLockHandle = await acquireDaemonLock(5, 200);
+  if (!daemonLockHandle) {
+    logger.debug('[DAEMON RUN] Daemon lock file already held, another daemon is running');
     process.exit(0);
   }
 
@@ -179,7 +182,12 @@ export async function startDaemon(): Promise<void> {
     // Spawn a new session (sessionId reserved for future --resume functionality)
     const spawnSession = async (directory: string, sessionId?: string): Promise<TrackedSession | null> => {
       let directoryCreated = false;
-        
+
+      // Directory might be relative - lets make it absolute
+      if (directory.startsWith('~')) {
+        directory = resolve(os.homedir(), directory.replace('~', ''));
+      }
+
       try {
         await fs.access(directory);
         logger.debug(`[DAEMON RUN] Directory exists: ${directory}`);
@@ -227,12 +235,14 @@ export async function startDaemon(): Promise<void> {
         });
 
         // Log output for debugging
-        happyProcess.stdout?.on('data', (data) => {
-          logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
-        });
-        happyProcess.stderr?.on('data', (data) => {
-          logger.debug(`[DAEMON RUN] Child stderr: ${data.toString()}`);
-        });
+        if (process.env.DEBUG) {
+          happyProcess.stdout?.on('data', (data) => {
+            logger.debug(`[DAEMON RUN] Child stdout: ${data.toString()}`);
+          });
+          happyProcess.stderr?.on('data', (data) => {
+            logger.debug(`[DAEMON RUN] Child stderr: ${data.toString()}`);
+          });
+        }
 
         if (!happyProcess.pid) {
           logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
@@ -340,7 +350,7 @@ export async function startDaemon(): Promise<void> {
       onHappySessionWebhook
     });
 
-    // Write daemon state using persistence module
+    // Write initial daemon state (no lock needed for state file)
     const fileState: DaemonLocallyPersistedState = {
       pid: process.pid,
       httpPort: controlPort,
@@ -348,7 +358,7 @@ export async function startDaemon(): Promise<void> {
       startedWithCliVersion: packageJson.version,
       daemonLogPath: logger.logFilePath
     };
-    await writeDaemonState(daemonStateExclusiveWriteHandle, fileState);
+    writeDaemonState(fileState);
     logger.debug('[DAEMON RUN] Daemon state written');
 
     // Prepare initial daemon state
@@ -388,9 +398,18 @@ export async function startDaemon(): Promise<void> {
     // 2. Check if daemon needs update
     // 3. If outdated, restart with latest version
     // 4. Write heartbeat
+    const heartbeatIntervalMs = parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000');
+    let heartbeatRunning = false
     const restartOnStaleVersionAndHeartbeat = setInterval(async () => {
-      logger.debug('[DAEMON RUN] Starting healing process - prune stale sessions and check for CLI version update & restart if needed');
-      
+      if (heartbeatRunning) {
+        return;
+      }
+      heartbeatRunning = true;
+
+      if (process.env.DEBUG) {
+        logger.debug(`[DAEMON RUN] Health check started at ${new Date().toLocaleString()}`);
+      }
+
       // Prune stale sessions
       for (const [pid, _] of pidToTrackedSession.entries()) {
         try {
@@ -404,25 +423,30 @@ export async function startDaemon(): Promise<void> {
       }
       
       // Check if daemon needs update
-      const isLatestVersion = await isDaemonRunningSameVersion();
-      if (!isLatestVersion) {
-        logger.debug('[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version');
+      // If version on disk is different from the one in package.json - we need to restart
+      // BIG if - does this get updated from underneath us on npm upgrade?
+      const projectVersion = JSON.parse(readFileSync(join(projectPath(), 'package.json'), 'utf-8')).version;
+      if (projectVersion !== configuration.currentCliVersion) {
+        logger.debug('[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version, clearing heartbeat interval');
+
+        clearInterval(restartOnStaleVersionAndHeartbeat);
         
         // Spawn new daemon through the CLI
+        // We do not need to clean ourselves up - we will be killed by
+        // the CLI start command.
+        // 1. It will first check if daemon is running (yes in this case)
+        // 2. If the version is stale (it will read daemon.state.json file and check startedWithCliVersion) & compare it to its own version
+        // 3. Next it will start a new daemon with the latest version with daemon-sync :D
+        // Done!
         spawnHappyCLI(['daemon', 'start'], {
           detached: true,
           stdio: 'ignore'
         });
 
-        // We do not need to clean ourselves up - we will be killed by
-        // the CLI start command. It will first check if daemon is running (yes in this case)
-        // if the version is stale - kill it - that is our destiny
-        // Next it will start a new daemon with the latest version with daemon-sync :D
-        // Done!
-
         // So we can just hang forever
-        logger.debug('[DAEMON RUN] Hanging forever - waiting for CLI to kill us because we are running outdated version of the code');
-        await new Promise(() => {});
+        logger.debug('[DAEMON RUN] Hanging for a bit - waiting for CLI to kill us because we are running outdated version of the code');
+        await new Promise(resolve => setTimeout(resolve, 10_000));
+        process.exit(0);
       }
 
       // Before wrecklessly overriting the daemon state file, we should check if we are the ones who own it
@@ -443,12 +467,16 @@ export async function startDaemon(): Promise<void> {
           lastHeartbeat: new Date().toLocaleString(),
           daemonLogPath: fileState.daemonLogPath
         };
-        await writeDaemonState(daemonStateExclusiveWriteHandle, updatedState);
-        logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
+        writeDaemonState(updatedState);
+        if (process.env.DEBUG) {
+          logger.debug(`[DAEMON RUN] Health check completed at ${updatedState.lastHeartbeat}`);
+        }
       } catch (error) {
         logger.debug('[DAEMON RUN] Failed to write heartbeat', error);
       }
-    }, 60000); // Every 60 seconds
+
+      heartbeatRunning = false;
+    }, heartbeatIntervalMs); // Every 60 seconds in production
 
     // Setup signal handlers
     const cleanupAndShutdown = async (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => {
@@ -473,9 +501,9 @@ export async function startDaemon(): Promise<void> {
 
       apiMachine.shutdown();
       await stopControlServer();
-      await daemonStateExclusiveWriteHandle.close();
       await cleanupDaemonState();
       await stopCaffeinate();
+      await releaseDaemonLock(daemonLockHandle);
 
       logger.debug('[DAEMON RUN] Cleanup completed, exiting process');
       process.exit(0);

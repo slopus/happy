@@ -30,6 +30,8 @@ export function findAllHappyProcesses(): Array<{ pid: number, command: string, t
         let type = 'unknown';
         if (pid === process.pid) {
           type = 'current';
+        } else if (command.includes('--version')) {
+          type = 'daemon-version-check';
         } else if (command.includes('daemon start-sync') || command.includes('daemon start')) {
           type = 'daemon';
         } else if (command.includes('--started-by daemon')) {
@@ -67,6 +69,8 @@ export function findAllHappyProcesses(): Array<{ pid: number, command: string, t
         let type = 'unknown';
         if (pid === process.pid) {
           type = 'current';
+        } else if (command.includes('--version')) {
+          type = 'dev-daemon-version-check';
         } else if (command.includes('daemon start-sync') || command.includes('daemon start')) {
           type = 'dev-daemon';
         } else if (command.includes('--started-by daemon')) {
@@ -114,10 +118,11 @@ export function findRunawayHappyProcesses(): Array<{ pid: number, command: strin
         // Skip current process
         if (pid === process.pid) continue;
 
-        // Include daemon-spawned sessions and hung daemons
+        // Include daemon-spawned sessions, hung daemons, and stuck version checks
         if (command.includes('--started-by daemon') ||
           command.includes('daemon start-sync') ||
-          command.includes('daemon start')) {
+          command.includes('daemon start') ||
+          command.includes('--version')) {
           processes.push({ pid, command });
         }
       }
@@ -145,10 +150,11 @@ export function findRunawayHappyProcesses(): Array<{ pid: number, command: strin
           continue;
         }
 
-        // Include daemon and daemon-spawned sessions
+        // Include daemon, daemon-spawned sessions, and stuck version checks
         if (command.includes('--started-by daemon') ||
           command.includes('daemon start-sync') ||
-          command.includes('daemon start')) {
+          command.includes('daemon start') ||
+          command.includes('--version')) {
           processes.push({ pid, command });
         }
       }

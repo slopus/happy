@@ -6,37 +6,53 @@
 import { logger } from '@/ui/logger';
 import { clearDaemonState, readDaemonState } from '@/persistence';
 import { Metadata } from '@/api/types';
-import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
+import { projectPath } from '@/projectPath';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { configuration } from '@/configuration';
 
 async function daemonPost(path: string, body?: any): Promise<{ error?: string } | any> {
   const state = await readDaemonState();
   if (!state?.httpPort) {
-    throw new Error('No daemon running');
+    const errorMessage = 'No daemon running, no state file found';
+    logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
+    return {
+      error: errorMessage
+    };
   }
 
   try {
     process.kill(state.pid, 0);
   } catch (error) {
-    throw new Error('Daemon is not running, file is stale');
+    const errorMessage = 'Daemon is not running, file is stale';
+    logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
+    return {
+      error: errorMessage
+    };
   }
 
   try {
+    const timeout = process.env.HAPPY_DAEMON_HTTP_TIMEOUT ? parseInt(process.env.HAPPY_DAEMON_HTTP_TIMEOUT) : 10_000;
     const response = await fetch(`http://127.0.0.1:${state.httpPort}${path}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body || {}),
       // Mostly increased for stress test
-      signal: AbortSignal.timeout(10_000)
+      signal: AbortSignal.timeout(timeout)
     });
     
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      const errorMessage = `Request failed: ${path}, HTTP ${response.status}`;
+      logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
+      return {
+        error: errorMessage
+      };
     }
     
     return await response.json();
   } catch (error) {
-    const errorMessage = `[CONTROL CLIENT] Request failed: ${path}, ${error instanceof Error ? error.message : 'Unknown error'}`;
-    logger.debug(errorMessage);
+    const errorMessage = `Request failed: ${path}, ${error instanceof Error ? error.message : 'Unknown error'}`;
+    logger.debug(`[CONTROL CLIENT] ${errorMessage}`);
     return {
       error: errorMessage
     }
@@ -138,12 +154,16 @@ export async function isDaemonRunningSameVersion(): Promise<boolean> {
   }
   
   try {
-    // Spawn new happy process to get the version of the latest package
-    // NOTE: I am not sure if we use import package.json here if it will
-    // always show the version of the CLI that is running the daemon or the
-    // most recent version of the CLI. Just to be safe lets spawn new CLI to check.
-    // Should handle when we upgraded the CLI, and have not yet ran `happy`
-    // we should still auto detect and restart the daemon.
+    logger.debug(`[DAEMON CONTROL] Current CLI version: ${configuration.currentCliVersion}, Daemon started with version: ${state.startedWithCliVersion}`);
+    return configuration.currentCliVersion === state.startedWithCliVersion;
+    
+    // PREVIOUS IMPLEMENTATION - Keeping this commented in case we need it
+    // Kirill does not understand how the upgrade of npm packages happen and whether 
+    // we will get a new path or not when happy-coder is upgraded globally.
+    // If reading package.json doesn't work correctly after npm upgrades, 
+    // we can revert to spawning a process (but should add timeout and cleanup!)
+    /*
+    const { spawnHappyCLI } = await import('@/utils/spawnHappyCLI');
     const happyProcess = spawnHappyCLI(['--version'], { stdio: 'pipe' });
     let version: string | null = null;
     happyProcess.stdout?.on('data', (data) => {
@@ -152,8 +172,9 @@ export async function isDaemonRunningSameVersion(): Promise<boolean> {
     await new Promise(resolve => happyProcess.stdout?.on('close', resolve));
     logger.debug(`[DAEMON CONTROL] Current CLI version: ${version}, Daemon started with version: ${state.startedWithCliVersion}`);
     return version === state.startedWithCliVersion;
+    */
   } catch (error) {
-    logger.debug('[DAEMON RUN] Error checking daemon version', error);
+    logger.debug('[DAEMON CONTROL] Error checking daemon version', error);
     return false;
   }
 }

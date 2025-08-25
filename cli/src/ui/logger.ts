@@ -8,10 +8,9 @@
 import chalk from 'chalk'
 import { appendFileSync } from 'fs'
 import { configuration } from '@/configuration'
-import { mkdir } from 'node:fs/promises'
-import { existsSync, readdirSync, statSync, readFileSync, mkdirSync } from 'node:fs'
+import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
-import { readDaemonState, type DaemonLocallyPersistedState } from '@/persistence'
+import { readDaemonState } from '@/persistence'
 
 /**
  * Consistent date/time formatting functions
@@ -25,7 +24,7 @@ function createTimestampForFilename(date: Date = new Date()): string {
     hour: '2-digit',
     minute: '2-digit',
     second: '2-digit',
-  }).replace(/[: ]/g, '-').replace(/,/g, '')
+  }).replace(/[: ]/g, '-').replace(/,/g, '') + '-pid-' + process.pid
 }
 
 function createTimestampForLogEntry(date: Date = new Date()): string {

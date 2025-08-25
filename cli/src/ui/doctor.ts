@@ -184,9 +184,11 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
                 const typeLabels: Record<string, string> = {
                     'current': '📍 Current Process',
                     'daemon': '🤖 Daemon',
+                    'daemon-version-check': '🔍 Daemon Version Check (stuck)',
                     'daemon-spawned-session': '🔗 Daemon-Spawned Sessions',
                     'user-session': '👤 User Sessions',
                     'dev-daemon': '🛠️  Dev Daemon',
+                    'dev-daemon-version-check': '🛠️  Dev Daemon Version Check (stuck)',
                     'dev-session': '🛠️  Dev Sessions',
                     'dev-doctor': '🛠️  Dev Doctor',
                     'dev-related': '🛠️  Dev Related',

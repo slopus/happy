@@ -20,7 +20,6 @@ import { startDaemon } from './daemon/run'
 import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningSameVersion, stopDaemon } from './daemon/controlClient'
 import { getLatestDaemonLog } from './ui/logger'
 import { killRunawayHappyProcesses } from './daemon/doctor'
-import { readDaemonState } from './persistence'
 import { install } from './daemon/install'
 import { uninstall } from './daemon/uninstall'
 import { ApiClient } from './api/api'
@@ -37,7 +36,10 @@ import { DaemonPrompt } from './ui/ink/DaemonPrompt'
 (async () => {
   const args = process.argv.slice(2)
 
-  logger.debug('Starting happy CLI with args: ', process.argv)
+  // If --version is passed - do not log, its likely daemon inquiring about our version
+  if (!args.includes('--version')) {
+    logger.debug('Starting happy CLI with args: ', process.argv)
+  }
 
   // Check if first argument is a subcommand
   const subcommand = args[0]
@@ -158,9 +160,8 @@ import { DaemonPrompt } from './ui/ink/DaemonPrompt'
       await stopDaemon()
       process.exit(0)
     } else if (daemonSubcommand === 'status') {
-      // Dump daemon state JSON
-      const state = await readDaemonState()
-      console.log(JSON.stringify(state, null, 2))
+      // Show daemon-specific doctor output
+      await runDoctorCommand('daemon')
       process.exit(0)
     } else if (daemonSubcommand === 'logs') {
       // Simply print the path to the latest daemon log file

@@ -6,7 +6,7 @@
 
 import { FileHandle } from 'node:fs/promises'
 import { readFile, writeFile, mkdir, open, unlink, rename, stat } from 'node:fs/promises'
-import { existsSync } from 'node:fs'
+import { existsSync, writeFileSync, readFileSync, unlinkSync } from 'node:fs'
 import { constants } from 'node:fs'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
@@ -196,40 +196,67 @@ export async function readDaemonState(): Promise<DaemonLocallyPersistedState | n
 }
 
 /**
- * Write daemon state to local file
+ * Write daemon state to local file (synchronously for atomic operation)
  */
-export async function writeDaemonState(lock: FileHandle, state: DaemonLocallyPersistedState): Promise<void> {
-  await lock.truncate();
-  await lock.writeFile(JSON.stringify(state, null, 2), 'utf-8');
+export function writeDaemonState(state: DaemonLocallyPersistedState): void {
+  writeFileSync(configuration.daemonStateFile, JSON.stringify(state, null, 2), 'utf-8');
 }
 
 /**
- * Clean up daemon state file
+ * Clean up daemon state file and lock file
  */
 export async function clearDaemonState(): Promise<void> {
   if (existsSync(configuration.daemonStateFile)) {
     await unlink(configuration.daemonStateFile);
   }
+  // Also clean up lock file if it exists (for stale cleanup)
+  if (existsSync(configuration.daemonLockFile)) {
+    try {
+      await unlink(configuration.daemonLockFile);
+    } catch {
+      // Lock file might be held by running daemon, ignore error
+    }
+  }
 }
 
 /**
- * Acquire an exclusive write handle for the daemon state file with retries.
- * Attempts up to maxAttempts times, waiting attempt*delayIncrementMs between tries.
- * Returns null if the handle cannot be acquired within the attempts.
+ * Acquire an exclusive lock file for the daemon.
+ * The lock file proves the daemon is running and prevents multiple instances.
+ * Returns the file handle to hold for the daemon's lifetime, or null if locked.
  */
-export async function acquireDaemonStateExclusiveWriteHandle(
+export async function acquireDaemonLock(
   maxAttempts: number = 5,
   delayIncrementMs: number = 200
 ): Promise<FileHandle | null> {
-  let fileHandle: FileHandle | null = null;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     try {
-      fileHandle = await open(
-        configuration.daemonStateFile,
+      // O_EXCL ensures we only create if it doesn't exist (atomic lock acquisition)
+      const fileHandle = await open(
+        configuration.daemonLockFile,
         constants.O_CREAT | constants.O_EXCL | constants.O_WRONLY
       );
+      // Write PID to lock file for debugging
+      await fileHandle.writeFile(String(process.pid));
       return fileHandle;
     } catch (error: any) {
+      if (error.code === 'EEXIST') {
+        // Lock file exists, check if process is still running
+        try {
+          const lockPid = readFileSync(configuration.daemonLockFile, 'utf-8').trim();
+          if (lockPid && !isNaN(Number(lockPid))) {
+            try {
+              process.kill(Number(lockPid), 0); // Check if process exists
+            } catch {
+              // Process doesn't exist, remove stale lock
+              unlinkSync(configuration.daemonLockFile);
+              continue; // Retry acquisition
+            }
+          }
+        } catch {
+          // Can't read lock file, might be corrupted
+        }
+      }
+      
       if (attempt === maxAttempts) {
         return null;
       }
@@ -238,5 +265,20 @@ export async function acquireDaemonStateExclusiveWriteHandle(
     }
   }
   return null;
+}
+
+/**
+ * Release daemon lock by closing handle and deleting lock file
+ */
+export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
+  try {
+    await lockHandle.close();
+  } catch {}
+  
+  try {
+    if (existsSync(configuration.daemonLockFile)) {
+      unlinkSync(configuration.daemonLockFile);
+    }
+  } catch {}
 }
 
