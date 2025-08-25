@@ -26,6 +26,7 @@ interface SessionMetadata {
 }
 
 let shownSessions = new Set<string>();
+let lastFocusSession: string | null = null;
 
 function reportContextualUpdate(update: string | null | undefined) {
     if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
@@ -38,6 +39,19 @@ function reportContextualUpdate(update: string | null | undefined) {
     }
     if (!voice || !isVoiceSessionStarted()) return;
     voice.sendContextualUpdate(update);
+}
+
+function reportTextUpdate(update: string | null | undefined) {
+    if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
+        console.log('🎤 Voice: Reporting text update:', update);
+    }
+    if (!update) return;
+    const voice = getVoiceSession();
+    if (VOICE_CONFIG.ENABLE_DEBUG_LOGGING) {
+        console.log('🎤 Voice: Voice session:', voice);
+    }
+    if (!voice || !isVoiceSessionStarted()) return;
+    voice.sendTextMessage(update);
 }
 
 function reportSession(sessionId: string) {
@@ -80,7 +94,8 @@ export const voiceHooks = {
      */
     onSessionFocus(sessionId: string, metadata?: SessionMetadata) {
         if (VOICE_CONFIG.DISABLE_SESSION_FOCUS) return;
-        
+        if (lastFocusSession === sessionId) return;
+        lastFocusSession = sessionId;
         reportSession(sessionId);
         reportContextualUpdate(formatSessionFocus(sessionId, metadata));
     },
@@ -92,7 +107,7 @@ export const voiceHooks = {
         if (VOICE_CONFIG.DISABLE_PERMISSION_REQUESTS) return;
         
         reportSession(sessionId);
-        reportContextualUpdate(formatPermissionRequest(sessionId, requestId, toolName, toolArgs));
+        reportTextUpdate(formatPermissionRequest(sessionId, requestId, toolName, toolArgs));
     },
 
     /**
@@ -131,7 +146,7 @@ export const voiceHooks = {
         if (VOICE_CONFIG.DISABLE_READY_EVENTS) return;
         
         reportSession(sessionId);
-        reportContextualUpdate(formatReadyEvent(sessionId));
+        reportTextUpdate(formatReadyEvent(sessionId));
     },
 
     /**
