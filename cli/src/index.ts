@@ -193,13 +193,13 @@ ${chalk.bold('happy daemon')} - Daemon management
 ${chalk.bold('Usage:')}
   happy daemon start              Start the daemon (detached)
   happy daemon stop               Stop the daemon (sessions stay alive)
-  happy daemon stop --kill-managed  Stop daemon and kill managed sessions
   happy daemon status             Show daemon status
   happy daemon list               List active sessions
-  happy daemon stop-session <id> Stop a specific session
+
+  If you want to kill all happy related processes run 
+  ${chalk.cyan('happy doctor clean')}
 
 ${chalk.bold('Note:')} The daemon runs in the background and manages Claude sessions.
-Sessions spawned by the daemon will continue running after daemon stops unless --kill-managed is used.
 
 ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor clean')}
 `)

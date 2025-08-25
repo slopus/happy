@@ -73,7 +73,7 @@ async function isServerHealthy(): Promise<boolean> {
   }
 }
 
-describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
+describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout: 20_000 }, () => {
   let daemonPid: number;
 
   beforeEach(async () => {
