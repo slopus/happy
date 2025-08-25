@@ -1,0 +1,8 @@
+{
+    "permissions": {
+      "allow": [
+        "Bash(npx tsx sources/scripts/parseChangelog.ts)"
+      ],
+      "deny": []
+    }
+  }

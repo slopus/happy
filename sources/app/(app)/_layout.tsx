@@ -138,6 +138,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="changelog"
+                options={{
+                    headerShown: true,
+                    headerTitle: "What's New",
+                    headerBackTitle: 'Back',
+                }}
+            />
+            <Stack.Screen
                 name="dev/index"
                 options={{
                     headerTitle: 'Developer Tools',
