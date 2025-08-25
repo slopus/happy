@@ -3,6 +3,7 @@ import {
     formatNewMessages,
     formatNewSingleMessage,
     formatPermissionRequest,
+    formatReadyEvent,
     formatSessionFocus,
     formatSessionFull,
     formatSessionOffline,
@@ -121,6 +122,16 @@ export const voiceHooks = {
         //     prompt += formatSessionFull(s, storage.getState().sessionMessages[s.id]?.messages ?? []);
         // }
         return prompt;
+    },
+
+    /**
+     * Called when Claude Code finishes processing (ready event)
+     */
+    onReady(sessionId: string) {
+        if (VOICE_CONFIG.DISABLE_READY_EVENTS) return;
+        
+        reportSession(sessionId);
+        reportContextualUpdate(formatReadyEvent(sessionId));
     },
 
     /**

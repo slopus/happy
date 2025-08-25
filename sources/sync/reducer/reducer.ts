@@ -197,6 +197,7 @@ export type ReducerResult = {
         cacheRead: number;
         contextSize: number;
     };
+    hasReadyEvent?: boolean;
 };
 
 export function reducer(state: ReducerState, messages: NormalizedMessage[], agentState?: AgentState | null): ReducerResult {
@@ -212,6 +213,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
     let newMessages: Message[] = [];
     let changed: Set<string> = new Set();
+    let hasReadyEvent = false;
 
     // First, trace all messages to identify sidechains
     const tracedMessages = traceMessages(state.tracerState, messages);
@@ -245,6 +247,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         if (msg.role === 'event' && msg.content.type === 'ready') {
             // Mark as processed to prevent duplication but don't add to messages
             state.messageIds.set(msg.id, msg.id);
+            hasReadyEvent = true;
             continue;
         }
 
@@ -972,7 +975,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             cacheCreation: state.latestUsage.cacheCreation,
             cacheRead: state.latestUsage.cacheRead,
             contextSize: state.latestUsage.contextSize
-        } : undefined
+        } : undefined,
+        hasReadyEvent: hasReadyEvent || undefined
     };
 }
 

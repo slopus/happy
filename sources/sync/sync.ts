@@ -1029,9 +1029,9 @@ class Sync {
     //
 
     private applyMessages = (sessionId: string, messages: NormalizedMessage[]) => {
-        const changed = storage.getState().applyMessages(sessionId, messages);
+        const result = storage.getState().applyMessages(sessionId, messages);
         let m: Message[] = [];
-        for(let messageId of changed) {
+        for(let messageId of result.changed) {
             const message = storage.getState().sessionMessages[sessionId].messagesMap[messageId];
             if (message) {
                 m.push(message);
@@ -1039,6 +1039,9 @@ class Sync {
         }
         if (m.length > 0) {
             voiceHooks.onMessages(sessionId, m);
+        }
+        if (result.hasReadyEvent) {
+            voiceHooks.onReady(sessionId);
         }
     }
 
