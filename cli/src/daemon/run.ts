@@ -144,11 +144,12 @@ export async function startDaemon(): Promise<void> {
 
       const pid = sessionMetadata.hostPid;
       if (!pid) {
-        logger.debug(`[DAEMON RUN] Session webhook missing hostPid for `);
+        logger.debug(`[DAEMON RUN] Session webhook missing hostPid for sessionId: ${sessionId}`);
         return;
       }
 
       logger.debug(`[DAEMON RUN] Session webhook: ${sessionId}, PID: ${pid}, started by: ${sessionMetadata.startedBy || 'unknown'}`);
+      logger.debug(`[DAEMON RUN] Current tracked sessions before webhook: ${Array.from(pidToTrackedSession.keys()).join(', ')}`);
 
       // Check if we already have this PID (daemon-spawned)
       const existingSession = pidToTrackedSession.get(pid);
@@ -438,10 +439,14 @@ export async function startDaemon(): Promise<void> {
         // 2. If the version is stale (it will read daemon.state.json file and check startedWithCliVersion) & compare it to its own version
         // 3. Next it will start a new daemon with the latest version with daemon-sync :D
         // Done!
-        spawnHappyCLI(['daemon', 'start'], {
-          detached: true,
-          stdio: 'ignore'
-        });
+        try {
+          spawnHappyCLI(['daemon', 'start'], {
+            detached: true,
+            stdio: 'ignore'
+          });
+        } catch (error) {
+          logger.debug('[DAEMON RUN] Failed to spawn new daemon, this is quite likely to happen during integration tests as we are cleaning out dist/ directory', error);
+        }
 
         // So we can just hang forever
         logger.debug('[DAEMON RUN] Hanging for a bit - waiting for CLI to kill us because we are running outdated version of the code');

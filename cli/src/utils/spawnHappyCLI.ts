@@ -53,6 +53,7 @@ import { spawn, SpawnOptions, type ChildProcess } from 'child_process';
 import { join } from 'node:path';
 import { projectPath } from '@/projectPath';
 import { logger } from '@/ui/logger';
+import { existsSync } from 'node:fs';
 
 /**
  * Spawn the Happy CLI with the given arguments in a cross-platform way.
@@ -81,7 +82,7 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
   // for when "happy" was started and don't care about the underlying node process
   // details and flags we use to achieve the same result.
   const fullCommand = `happy ${args.join(' ')}`;
-  logger.debug(`[DAEMON RUN] Spawning: ${fullCommand} in ${directory}`);
+  logger.debug(`[SPAWN HAPPY CLI] Spawning: ${fullCommand} in ${directory}`);
   
   // Use the same Node.js flags that the wrapper script uses
   const nodeArgs = [
@@ -90,6 +91,13 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
     entrypoint,
     ...args
   ];
+
+  // Sanity check of the entrypoint path exists
+  if (!existsSync(entrypoint)) {
+    const errorMessage = `Entrypoint ${entrypoint} does not exist`;
+    logger.debug(`[SPAWN HAPPY CLI] ${errorMessage}`);
+    throw new Error(errorMessage);
+  }
   
   return spawn('node', nodeArgs, options);
 }

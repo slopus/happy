@@ -115,3 +115,24 @@ The `doctor` command provides tools to inspect and clean up the system, which is
     -   Called by `happy doctor kill-all`.
     -   It gets the list from `findRunawayHappyProcesses`.
     -   It iterates through the PIDs, first sending a graceful `SIGTERM`, waiting a moment, and then sending `SIGKILL` if the process is still alive. This ensures even hung processes are terminated.
+
+
+# Improvements
+
+I do not like how
+
+- daemon.state.json file is getting hard removed when daemon exits or is stopped. We should keep it around and have 'state' field and 'stateReason' field that will explain why the daemon is in that state
+- If the file is not found - we assume the daemon was never started or was cleaned out by the user or doctor
+- If the file is found and corrupted - we should try to upgrade it to the latest version? or simply remove it if we have write access
+
+- posts helpers for daemon do not return typed results
+- I don't like that daemonPost returns either response from daemon or { error: ... }. We should have consistent envelope type
+
+
+- we loose track of children processes when daemon exits / restarts - we should write them to the same state file? At least the pids should be there for doctor & cleanup
+
+- caffeinate process is not tracked in state at all & might become runaway
+- caffeinate is also started by individual sesions - we should not do that for simpler cleanup 
+
+- the port is not protected - lets encrypt something with a public portion of the secret key & send it as a signature along the rest of the unencrypted payload to the daemon - will make testing harder :/
+

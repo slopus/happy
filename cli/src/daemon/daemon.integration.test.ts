@@ -184,20 +184,23 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
   });
 
   it('should track both daemon-spawned and terminal sessions', async () => {
-    // Add a terminal session
-    await notifyDaemonSessionStarted('terminal-session-aaa', {
-      path: '/test/path',
-      host: 'test-host',
-      hostPid: 88888,
-      startedBy: 'terminal',
-      machineId: 'test-machine'
+    // Spawn a real happy process that looks like it was started from terminal
+    const terminalHappyProcess = spawnHappyCLI([
+      '--happy-starting-mode', 'remote',
+      '--started-by', 'terminal'
+    ], {
+      cwd: '/tmp',
+      detached: true,
+      stdio: 'ignore'
     });
+    if (!terminalHappyProcess || !terminalHappyProcess.pid) {
+      throw new Error('Failed to spawn terminal happy process');
+    }
+    // Give time to start & report itself
+    await new Promise(resolve => setTimeout(resolve, 5_000));
 
     // Spawn a daemon session
     const spawnResponse = await spawnDaemonSession('/tmp', 'daemon-session-bbb');
-
-    // On the daemon side res
-    await new Promise(resolve => setTimeout(resolve, 100));
 
     // List all sessions
     const sessions = await listDaemonSessions();
@@ -205,7 +208,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
 
     // Verify we have one of each type
     const terminalSession = sessions.find(
-      (s: any) => s.happySessionId === 'terminal-session-aaa'
+      (s: any) => s.pid === terminalHappyProcess.pid
     );
     const daemonSession = sessions.find(
       (s: any) => s.pid === spawnResponse.pid
@@ -217,8 +220,16 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
     expect(daemonSession).toBeDefined();
     expect(daemonSession.startedBy).toBe('daemon');
 
-    // Clean up spawned session
-    await stopDaemonSession('daemon-session-bbb');
+    // Clean up both sessions
+    await stopDaemonSession('terminal-session-aaa');
+    await stopDaemonSession(daemonSession.happySessionId);
+    
+    // Also kill the terminal process directly to be sure
+    try {
+      terminalHappyProcess.kill('SIGTERM');
+    } catch (e) {
+      // Process might already be dead
+    }
   });
 
   it('should update session metadata when webhook is called', async () => {
@@ -376,13 +387,43 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
     await clearDaemonState();
   });
 
-  // Extremely long timeout - we need to wait for the daemon to detect the version mismatch (takes 1 minute) & do 2 CLI rebuilds
-  it('[this test is tricky, easier to test by hand] should detect version mismatch and kill old daemon', { timeout: 60_000 }, async () => {
+  /**
+   * Version mismatch detection test - control flow:
+   * 
+   * 1. Test starts daemon with original version (e.g., 0.9.0-6) compiled into dist/
+   * 2. Test modifies package.json to new version (e.g., 0.0.0-integration-test-*)
+   * 3. Test runs `yarn build` to recompile with new version
+   * 4. Daemon's heartbeat (every 30s) reads package.json and compares to its compiled version
+   * 5. Daemon detects mismatch: package.json != configuration.currentCliVersion
+   * 6. Daemon spawns new daemon via spawnHappyCLI(['daemon', 'start'])
+   * 7. New daemon starts, reads daemon.state.json, sees old version != its compiled version
+   * 8. New daemon calls stopDaemon() to kill old daemon, then takes over
+   * 
+   * This simulates what happens during `npm upgrade happy-coder`:
+   * - Running daemon has OLD version loaded in memory (configuration.currentCliVersion)
+   * - npm replaces node_modules/happy-coder/ with NEW version files
+   * - package.json on disk now has NEW version
+   * - Daemon reads package.json, detects mismatch, triggers self-update
+   * - Key difference: npm atomically replaces the entire module directory, while
+   *   our test must carefully rebuild to avoid missing entrypoint errors
+   * 
+   * Critical timing constraints:
+   * - Heartbeat must be long enough (30s) for yarn build to complete before daemon tries to spawn
+   * - If heartbeat fires during rebuild, spawn fails (dist/index.mjs missing) and test fails
+   * - pkgroll doesn't reliably update compiled version, must use full yarn build
+   * - Test modifies package.json BEFORE rebuild to ensure new version is compiled in
+   * 
+   * Common failure modes:
+   * - Heartbeat too short: daemon tries to spawn while dist/ is being rebuilt
+   * - Using pkgroll alone: doesn't update compiled configuration.currentCliVersion
+   * - Modifying package.json after daemon starts: triggers immediate version check on startup
+   */
+  it('[this test is tricky, easier to test by hand] should detect version mismatch and kill old daemon', { timeout: 100_000 }, async () => {
     // Read current package.json to get version
     const packagePath = path.join(process.cwd(), 'package.json');
     const originalPackage = JSON.parse(readFileSync(packagePath, 'utf8'));
     const originalVersion = originalPackage.version;
-    const testVersion = `0.0.0-integration-test-should-be-auto-cleaned-up-${Math.random().toString(36).substring(0, 3)}`;
+    const testVersion = `0.0.0-integration-test-should-be-auto-cleaned-up-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`;
 
     expect(originalVersion, 'Your current cli version was not cleaned up from previous test it seems').not.toBe(testVersion);
     
@@ -391,18 +432,19 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
     writeFileSync(packagePath, JSON.stringify(modifiedPackage, null, 2));
 
     try {
-      // Re-build the CLI - so it will import the new package.json in its configuartion.ts
-      // and think it is a new version
-      // We are not using yarn build here because it cleans out dist/
-      // and we want to avoid that, 
-      // otherwise daemon will spawn a non existing happy js script.
-      execSync('yarn pkgroll', { stdio: 'ignore' });
-
       // Get initial daemon state
       const initialState = await readDaemonState();
       expect(initialState).toBeDefined();
       expect(initialState!.startedWithCliVersion).toBe(originalVersion);
       const initialPid = initialState!.pid;
+
+      // Re-build the CLI - so it will import the new package.json in its configuartion.ts
+      // and think it is a new version
+      // We are not using yarn build here because it cleans out dist/
+      // and we want to avoid that, 
+      // otherwise daemon will spawn a non existing happy js script.
+      // We need to remove index, but not the other files, otherwise some of our code might fail when called from within the daemon.
+      execSync('yarn build', { stdio: 'ignore' });
       
       console.log(`[TEST] Current daemon running with version ${originalVersion}, PID: ${initialPid}`);
       
@@ -410,7 +452,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
 
       // The daemon should automatically detect the version mismatch and restart itself
       // We check once per minute, wait for a little longer than that
-      await new Promise(resolve => setTimeout(resolve, parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '60000') + 5_000));
+      await new Promise(resolve => setTimeout(resolve, parseInt(process.env.HAPPY_DAEMON_HEARTBEAT_INTERVAL || '30000') + 10_000));
 
       // Check that the daemon is running with the new version
       const finalState = await readDaemonState();
@@ -425,9 +467,13 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', () => {
       console.log(`[TEST] Restored package.json version to ${originalPackage.version}`);
 
       // Lets rebuild it so we keep it as we found it
-      execSync('yarn pkgroll', { stdio: 'ignore' });
+      execSync('yarn build', { stdio: 'ignore' });
     }
   });
 
   // TODO: Add a test to see if a corrupted file will work
+  
+  // TODO: Test npm uninstall scenario - daemon should gracefully handle when happy-coder is uninstalled
+  // Current behavior: daemon tries to spawn new daemon on version mismatch but dist/index.mjs is gone
+  // Expected: daemon should detect missing entrypoint and either exit cleanly or at minimum not respawn infinitely
 });
