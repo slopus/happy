@@ -97,12 +97,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
 
     // Create permission handler
     const permissionHandler = new PermissionHandler(session);
-    
+
     // Create outgoing message queue
     const messageQueue = new OutgoingMessageQueue(
         (logMessage) => session.client.sendClaudeSessionMessage(logMessage)
     );
-    
+
     // Set up callback to release delayed messages when permission is requested
     permissionHandler.setOnPermissionRequest((toolCallId: string) => {
         messageQueue.releaseToolCall(toolCallId);
@@ -119,7 +119,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     // Handle messages
     let planModeToolCalls = new Set<string>();
     let ongoingToolCalls = new Map<string, { parentToolCallId: string | null }>();
-    
+
     function onMessage(message: SDKMessage) {
 
         // Write to message log
@@ -159,7 +159,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 for (let c of umessage.message.content) {
                     if (c.type === 'tool_result' && c.tool_use_id) {
                         ongoingToolCalls.delete(c.tool_use_id);
-                        
+
                         // When tool result received, release any delayed messages for this tool call
                         messageQueue.releaseToolCall(c.tool_use_id);
                     }
@@ -204,32 +204,32 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
         if (logMessage) {
             // Add permissions field to tool result content
             if (logMessage.type === 'user' && logMessage.message?.content) {
-                const content = Array.isArray(logMessage.message.content) 
-                    ? logMessage.message.content 
+                const content = Array.isArray(logMessage.message.content)
+                    ? logMessage.message.content
                     : [];
-                
+
                 // Modify the content array to add permissions to each tool_result
                 for (let i = 0; i < content.length; i++) {
                     const c = content[i];
                     if (c.type === 'tool_result' && c.tool_use_id) {
                         const responses = permissionHandler.getResponses();
                         const response = responses.get(c.tool_use_id);
-                        
+
                         if (response) {
                             const permissions: PermissionsField = {
                                 date: response.receivedAt || Date.now(),
                                 result: response.approved ? 'approved' : 'denied'
                             };
-                            
+
                             // Add optional fields if they exist
                             if (response.mode) {
                                 permissions.mode = response.mode;
                             }
-                            
+
                             if (response.allowTools && response.allowTools.length > 0) {
                                 permissions.allowedTools = response.allowTools;
                             }
-                            
+
                             // Add permissions directly to the tool_result content object
                             content[i] = {
                                 ...c,
@@ -239,12 +239,12 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     }
                 }
             }
-            
+
             // Queue message with optional delay for tool calls
             if (logMessage.type === 'assistant' && message.type === 'assistant') {
                 const assistantMsg = message as SDKAssistantMessage;
                 const toolCallIds: string[] = [];
-                
+
                 if (assistantMsg.message.content && Array.isArray(assistantMsg.message.content)) {
                     for (const block of assistantMsg.message.content) {
                         if (block.type === 'tool_use' && block.id) {
@@ -252,11 +252,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         }
                     }
                 }
-                
+
                 if (toolCallIds.length > 0) {
                     // Check if this is a sidechain tool call (has parent_tool_use_id)
                     const isSidechain = assistantMsg.parent_tool_use_id !== undefined;
-                    
+
                     if (!isSidechain) {
                         // Top-level tool call - queue with delay
                         messageQueue.enqueue(logMessage, {
@@ -267,7 +267,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     }
                 }
             }
-            
+
             // Queue all other messages immediately (no delay)
             messageQueue.enqueue(logMessage);
         }
@@ -360,6 +360,11 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                         logger.debug('[remote]: Session reset');
                         session.clearSessionId();
                     },
+                    onReady: () => {
+                        if (!pending && session.queue.size() === 0) {
+                            session.client.sendSessionEvent({ type: 'ready' });
+                        }
+                    },
                     signal: abortController.signal,
                 });
                 if (!exitReason && abortController.signal.aborted) {
@@ -390,7 +395,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                 await messageQueue.flush();
                 messageQueue.destroy();
                 logger.debug('[remote]: message queue flushed');
-                
+
                 // Reset abort controller and future
                 abortController = null;
                 abortFuture?.resolve(undefined);
