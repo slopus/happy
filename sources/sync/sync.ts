@@ -73,11 +73,17 @@ class Sync {
         // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
             if (nextAppState === 'active') {
+                log.log('📱 App became active - refreshing purchases and locking recalculation for 5s');
                 this.purchasesSync.invalidate();
                 
                 // Lock recalculation for 5 seconds after activation to prevent immediate session expiration
                 const unlock = this.acquireRecalculationLock();
-                setTimeout(unlock, 5000);
+                setTimeout(() => {
+                    log.log('📱 App activation grace period ended - releasing lock');
+                    unlock();
+                }, 5000);
+            } else {
+                log.log(`📱 App state changed to: ${nextAppState}`);
             }
         });
     }
@@ -388,12 +394,16 @@ class Sync {
     // Lock management method - returns unlock function
     private acquireRecalculationLock(): () => void {
         this.recalculationLockCount++;
+        const lockId = `lock-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+        log.log(`🔒 Recalculation lock acquired (${lockId}). Active locks: ${this.recalculationLockCount}`);
+        
         let unlocked = false;
         
         return () => {
             if (!unlocked) {
                 unlocked = true;
                 this.recalculationLockCount--;
+                log.log(`🔓 Recalculation lock released (${lockId}). Active locks: ${this.recalculationLockCount}`);
             }
         };
     }
@@ -409,6 +419,7 @@ class Sync {
     private fetchSessions = async () => {
         if (!this.credentials) return;
         
+        log.log('📥 fetchSessions starting - acquiring lock');
         const unlock = this.acquireRecalculationLock();
         
         try {
@@ -488,6 +499,7 @@ class Sync {
 
             // Apply to storage
             this.applySessions(decryptedSessions);
+            log.log(`📥 fetchSessions completed - processed ${decryptedSessions.length} sessions`);
         } finally {
             unlock();
         }
@@ -500,6 +512,7 @@ class Sync {
     private fetchMachines = async () => {
         if (!this.credentials) return;
         
+        log.log('🖥️ fetchMachines starting - acquiring lock');
         const unlock = this.acquireRecalculationLock();
         
         try {
@@ -579,6 +592,7 @@ class Sync {
 
             // Replace entire machine state with fetched machines
             storage.getState().applyMachines(decryptedMachines, true);
+            log.log(`🖥️ fetchMachines completed - processed ${decryptedMachines.length} machines`);
         } finally {
             unlock();
         }
@@ -746,6 +760,7 @@ class Sync {
     }
 
     private fetchMessages = async (sessionId: string) => {
+        log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
         const unlock = this.acquireRecalculationLock();
         
         try {
@@ -790,6 +805,7 @@ class Sync {
 
             // Apply to storage
             this.applyMessages(sessionId, normalizedMessages);
+            log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${normalizedMessages.length} messages`);
         } finally {
             unlock();
         }
@@ -840,6 +856,7 @@ class Sync {
 
         // Subscribe to connection state changes
         apiSocket.onReconnected(() => {
+            log.log('🔌 Socket reconnected - acquiring lock for 3s stabilization period');
             const unlock = this.acquireRecalculationLock();
             
             this.sessionsSync.invalidate();
@@ -855,35 +872,45 @@ class Sync {
             }
             
             // Release lock after stabilization
-            setTimeout(unlock, 3000);
+            setTimeout(() => {
+                log.log('🔌 Socket reconnection stabilization period ended - releasing lock');
+                unlock();
+            }, 3000);
         });
 
         // Recalculate online sessions every 10 seconds (for 2-minute disconnect timeout)
         setInterval(() => {
+            const now = Date.now();
+            
             // Check if ANY locks are active
             if (this.isRecalculationLocked()) {
+                log.log(`⏰ Recalculation blocked - ${this.recalculationLockCount} active locks`);
                 return;
             }
             
             // Check socket status
             const socketStatus = storage.getState().socketStatus;
             if (socketStatus !== 'connected') {
+                log.log(`⏰ Recalculation blocked - socket status: ${socketStatus}`);
                 return;
             }
             
-            // Optional: Add debouncing
-            const now = Date.now();
+            // Check debouncing
             if (this.lastRecalculationTime && now - this.lastRecalculationTime < 5000) {
-                return; // Skip if less than 5 seconds since last recalculation
+                const timeSinceLastMS = now - this.lastRecalculationTime;
+                log.log(`⏰ Recalculation blocked - debouncing (${timeSinceLastMS}ms since last, need 5000ms)`);
+                return;
             }
             
             // Perform recalculation
+            log.log('⏰ Recalculation executing - checking session online status');
             const active = storage.getState().getActiveSessions();
             storage.getState().recalculateOnline();
             const newActive = storage.getState().getActiveSessions();
             this.applySessionDiff(active, newActive);
             
             this.lastRecalculationTime = now;
+            log.log(`⏰ Recalculation completed - active sessions: ${active.length} -> ${newActive.length}`);
         }, 10000);
     }
 
@@ -947,10 +974,12 @@ class Sync {
             this.onSessionVisible(updateData.body.sid);
 
         } else if (updateData.body.t === 'new-session') {
+            log.log('🆕 New session update received - acquiring lock during fetch');
             const unlock = this.acquireRecalculationLock();
             
             console.log('🔄 Sync: New session update received, fetching sessions...');
             this.fetchSessions().finally(() => {
+                log.log('🆕 New session fetch completed - releasing lock');
                 unlock();
             });
         } else if (updateData.body.t === 'update-session') {
@@ -1039,6 +1068,7 @@ class Sync {
     }
 
     private flushActivityUpdates = (updates: Map<string, ApiEphemeralActivityUpdate>) => {
+        log.log(`🔄 Flushing activity updates for ${updates.size} sessions - acquiring lock`);
         const unlock = this.acquireRecalculationLock();
         
         try {
@@ -1060,6 +1090,7 @@ class Sync {
             if (sessions.length > 0) {
                 // console.log('flushing activity updates ' + sessions.length);
                 this.applySessions(sessions);
+                log.log(`🔄 Activity updates flushed - updated ${sessions.length} sessions`);
             }
         } finally {
             unlock();
