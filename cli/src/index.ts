@@ -210,8 +210,6 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
     const options: StartOptions = {}
     let showHelp = false
     let showVersion = false
-    let forceAuth = false
-    let forceAuthNew = false // New --force-auth flag
     const unknownArgs: string[] = [] // Collect unknown args to pass through to claude
 
     for (let i = 0; i < args.length; i++) {
@@ -225,12 +223,6 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
         showVersion = true
         // Also pass through to claude (will show after our version)
         unknownArgs.push(arg)
-      } else if (arg === '--auth' || arg === '--login') {
-        // Keep for backward compatibility
-        forceAuth = true
-      } else if (arg === '--force-auth') {
-        // New flag that properly clears everything
-        forceAuthNew = true
       } else if (arg === '--happy-starting-mode') {
         options.startingMode = z.enum(['local', 'remote']).parse(args[++i])
       } else if (arg === '--yolo') {
@@ -267,15 +259,15 @@ ${chalk.bold('Usage:')}
 
 ${chalk.bold('Examples:')}
   happy                    Start session
-  happy --yolo             Bypass permissions
-  happy --verbose          Enable verbose mode
+  happy --yolo             Start with bypassing permissions 
+                            happy sugar for --dangerously-skip-permissions
   happy auth login --force Authenticate
   happy doctor             Run diagnostics
 
-${chalk.bold('Happy is a wrapper around Claude Code that enables remote control via mobile app.')}
-
 ${chalk.bold('Happy supports ALL Claude options!')}
-  Use any claude flag exactly as you normally would.
+  Use any claude flag with happy as you would with claude. Our favorite:
+
+  happy --resume
 
 ${chalk.gray('─'.repeat(60))}
 ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
@@ -295,8 +287,8 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
     // Show version
     if (showVersion) {
-      console.log(packageJson.version)
-      process.exit(0)
+      console.log(`happy version: ${packageJson.version}`)
+      // Don't exit - continue to pass --version to Claude Code
     }
 
     // Normal flow - auth and machine setup

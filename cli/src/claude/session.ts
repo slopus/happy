@@ -10,7 +10,7 @@ export class Session {
     readonly client: ApiSessionClient;
     readonly queue: MessageQueue2<EnhancedMode>;
     readonly claudeEnvVars?: Record<string, string>;
-    readonly claudeArgs?: string[];
+    claudeArgs?: string[];  // Made mutable to allow filtering
     readonly mcpServers: Record<string, any>;
     readonly allowedTools?: string[];
     readonly _onModeChange: (mode: 'local' | 'remote') => void;
@@ -72,5 +72,40 @@ export class Session {
     clearSessionId = (): void => {
         this.sessionId = null;
         logger.debug('[Session] Session ID cleared');
+    }
+
+    /**
+     * Consume one-time Claude flags from claudeArgs after Claude spawn
+     * Currently handles: --resume (with or without session ID)
+     */
+    consumeOneTimeFlags = (): void => {
+        if (!this.claudeArgs) return;
+        
+        const filteredArgs: string[] = [];
+        for (let i = 0; i < this.claudeArgs.length; i++) {
+            if (this.claudeArgs[i] === '--resume') {
+                // Check if next arg looks like a UUID (contains dashes and alphanumeric)
+                if (i + 1 < this.claudeArgs.length) {
+                    const nextArg = this.claudeArgs[i + 1];
+                    // Simple UUID pattern check - contains dashes and is not another flag
+                    if (!nextArg.startsWith('-') && nextArg.includes('-')) {
+                        // Skip both --resume and the UUID
+                        i++; // Skip the UUID
+                        logger.debug(`[Session] Consumed --resume flag with session ID: ${nextArg}`);
+                    } else {
+                        // Just --resume without UUID
+                        logger.debug('[Session] Consumed --resume flag (no session ID)');
+                    }
+                } else {
+                    // --resume at the end of args
+                    logger.debug('[Session] Consumed --resume flag (no session ID)');
+                }
+            } else {
+                filteredArgs.push(this.claudeArgs[i]);
+            }
+        }
+        
+        this.claudeArgs = filteredArgs.length > 0 ? filteredArgs : undefined;
+        logger.debug(`[Session] Consumed one-time flags, remaining args:`, this.claudeArgs);
     }
 }

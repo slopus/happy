@@ -103,6 +103,10 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
                     allowedTools: session.allowedTools,
                 });
 
+                // Consume one-time Claude flags after spawn
+                // For example we don't want to pass --resume flag after first spawn
+                session.consumeOneTimeFlags();
+
                 // Normal exit
                 if (!exitReason) {
                     exitReason = 'exit';

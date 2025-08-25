@@ -306,7 +306,7 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             let modeHash: string | null = null;
             let mode: EnhancedMode | null = null;
             try {
-                await claudeRemote({
+                const remoteResult = await claudeRemote({
                     sessionId: session.sessionId,
                     path: session.path,
                     allowedTools: session.allowedTools ?? [],
@@ -373,6 +373,10 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                     },
                     signal: abortController.signal,
                 });
+                
+                // Consume one-time Claude flags after spawn
+                session.consumeOneTimeFlags();
+                
                 if (!exitReason && abortController.signal.aborted) {
                     session.client.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 }
