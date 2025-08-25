@@ -1,6 +1,6 @@
 {
   "name": "happy-coder",
-  "version": "0.9.0-6",
+  "version": "0.9.0",
   "description": "Claude Code session sharing CLI",
   "author": "Kirill Dubovitskiy",
   "license": "MIT",
