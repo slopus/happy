@@ -8,7 +8,7 @@ import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativ
 import { Avatar } from './Avatar';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { useAllMachines } from '@/sync/storage';
+import { useAllMachines, useSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession } from '@/sync/ops';
@@ -179,6 +179,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
     const router = useRouter();
     const machines = useAllMachines();
     const [startingSessionFor, setStartingSessionFor] = React.useState<string | null>(null);
+    const isExperimental = useSetting('experiments');
 
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
@@ -349,6 +350,11 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
 
                             {/* New Session Button - only show if at least one machine is online */}
                             {(() => {
+
+                                if (!isExperimental) {
+                                    return null;
+                                }
+
                                 const machineIds = Array.from(projectGroup.machines.keys());
                                 const hasOnlineMachine = machineIds.some(machineId => {
                                     const machine = machinesMap[machineId];
