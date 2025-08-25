@@ -52,10 +52,7 @@
     "dev:local-server": "yarn build && tsx --env-file .env.dev-local-server src/index.ts",
     "dev:integration-test-env": "yarn build && tsx --env-file .env.integration-test src/index.ts",
     "prepublishOnly": "yarn build && yarn test",
-    "run commands below with npm - npm behaves poorly when running under yarn": "",
-    "minor:publish": "yarn build && npm version minor && npm publish",
-    "patch:publish": "yarn build && npm version patch && npm publish",
-    "beta:publish": "yarn build && npm version prerelease --preid=beta && npm publish --tag beta"
+    "release": "release-it"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "^1.0.89",
@@ -84,10 +81,11 @@
     "@eslint/compat": "^1",
     "@types/node": ">=20",
     "cross-env": "^10.0.0",
-    "dotenv": "^17.2.1",
+    "dotenv": "^16.6.1",
     "eslint": "^9",
     "eslint-config-prettier": "^10",
     "pkgroll": "^2.14.2",
+    "release-it": "^19.0.4",
     "shx": "^0.3.3",
     "ts-node": "^10",
     "tsx": "^4.20.3",
@@ -95,7 +93,12 @@
     "vitest": "^3.2.4"
   },
   "resolutions": {
-    "whatwg-url": "14.2.0"
+    "whatwg-url": "14.2.0",
+    "parse-path": "7.0.3",
+    "@types/parse-path": "7.0.3"
+  },
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
   },
   "packageManager": "yarn@1.22.22"
 }

@@ -25,6 +25,7 @@ export async function claudeRemote(opts: {
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,
+    onReady: () => void,
     isAborted: (toolCallId: string) => boolean,
 
     // Callbacks
@@ -168,6 +169,9 @@ export async function claudeRemote(opts: {
                     }
                     isCompactCommand = false;
                 }
+
+                // Send ready event
+                opts.onReady();
 
                 // Push next message
                 const next = await opts.nextMessage();

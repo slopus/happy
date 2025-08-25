@@ -14,6 +14,7 @@ import { deepEqual } from "@/utils/deepEqual";
 import { getToolName } from "./getToolName";
 import { EnhancedMode, PermissionMode } from "../loop";
 import { getToolDescriptor } from "./getToolDescriptor";
+import { delay } from "@/utils/time";
 
 interface PermissionResponse {
     id: string;
@@ -21,6 +22,7 @@ interface PermissionResponse {
     reason?: string;
     mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
     allowTools?: string[];
+    receivedAt?: number;
 }
 
 
@@ -33,15 +35,25 @@ interface PendingRequest {
 
 export class PermissionHandler {
     private toolCalls: { id: string, name: string, input: any, used: boolean }[] = [];
-    private responses = new Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }>();
+    private responses = new Map<string, PermissionResponse>();
     private pendingRequests = new Map<string, PendingRequest>();
     private session: Session;
-    private allowedTools: string[] = [];
+    private allowedTools = new Set<string>();
+    private allowedBashLiterals = new Set<string>();
+    private allowedBashPrefixes = new Set<string>();
     private permissionMode: PermissionMode = 'default';
+    private onPermissionRequestCallback?: (toolCallId: string) => void;
 
     constructor(session: Session) {
         this.session = session;
         this.setupClientHandler();
+    }
+    
+    /**
+     * Set callback to trigger when permission request is made
+     */
+    setOnPermissionRequest(callback: (toolCallId: string) => void) {
+        this.onPermissionRequestCallback = callback;
     }
 
     handleModeChange(mode: PermissionMode) {
@@ -58,7 +70,13 @@ export class PermissionHandler {
 
         // Update allowed tools
         if (response.allowTools && response.allowTools.length > 0) {
-            this.allowedTools.push(...response.allowTools);
+            response.allowTools.forEach(tool => {
+                if (tool.startsWith('Bash(') || tool === 'Bash') {
+                    this.parseBashPermission(tool);
+                } else {
+                    this.allowedTools.add(tool);
+                }
+            });
         }
 
         // Update permission mode
@@ -95,11 +113,25 @@ export class PermissionHandler {
     /**
      * Creates the canCallTool callback for the SDK
      */
-    handleToolCall = (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }): Promise<PermissionResult> => {
-        
-        // Check if tool is explicitlyallowed
-        if (this.allowedTools.includes(toolName)) {
-            return Promise.resolve({ behavior: 'allow', updatedInput: input as Record<string, unknown> });
+    handleToolCall = async (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }): Promise<PermissionResult> => {
+
+        // Check if tool is explicitly allowed
+        if (toolName === 'Bash') {
+            const inputObj = input as { command?: string };
+            if (inputObj?.command) {
+                // Check literal matches
+                if (this.allowedBashLiterals.has(inputObj.command)) {
+                    return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
+                }
+                // Check prefix matches
+                for (const prefix of this.allowedBashPrefixes) {
+                    if (inputObj.command.startsWith(prefix)) {
+                        return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
+                    }
+                }
+            }
+        } else if (this.allowedTools.has(toolName)) {
+            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
         // Calculate descriptor
@@ -110,20 +142,24 @@ export class PermissionHandler {
         //
 
         if (this.permissionMode === 'bypassPermissions') {
-            return Promise.resolve({ behavior: 'allow', updatedInput: input as Record<string, unknown> });
+            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
         if (this.permissionMode === 'acceptEdits' && descriptor.edit) {
-            return Promise.resolve({ behavior: 'allow', updatedInput: input as Record<string, unknown> });
+            return { behavior: 'allow', updatedInput: input as Record<string, unknown> };
         }
 
         //
         // Approval flow
         //
 
-        const toolCallId = this.resolveToolCallId(toolName, input);
-        if (!toolCallId) { // Now it is guaranteed order
-            throw new Error(`Could not resolve tool call ID for ${toolName}`);
+        let toolCallId = this.resolveToolCallId(toolName, input);
+        if (!toolCallId) { // What if we got permission before tool call
+            await delay(1000);
+            toolCallId = this.resolveToolCallId(toolName, input);
+            if (!toolCallId) {
+                throw new Error(`Could not resolve tool call ID for ${toolName}`);
+            }
         }
         return this.handlePermissionRequest(toolCallId, toolName, input, options.signal);
     }
@@ -159,6 +195,11 @@ export class PermissionHandler {
                 input
             });
 
+            // Trigger callback to send delayed messages immediately
+            if (this.onPermissionRequestCallback) {
+                this.onPermissionRequestCallback(id);
+            }
+            
             // Send push notification
             this.session.api.push().sendToAllDevices(
                 'Permission Request',
@@ -188,6 +229,35 @@ export class PermissionHandler {
         });
     }
 
+
+    /**
+     * Parses Bash permission strings into literal and prefix sets
+     */
+    private parseBashPermission(permission: string): void {
+        // Ignore plain "Bash"
+        if (permission === 'Bash') {
+            return;
+        }
+
+        // Match Bash(command) or Bash(command:*)
+        const bashPattern = /^Bash\((.+?)\)$/;
+        const match = permission.match(bashPattern);
+        
+        if (!match) {
+            return;
+        }
+
+        const command = match[1];
+        
+        // Check if it's a prefix pattern (ends with :*)
+        if (command.endsWith(':*')) {
+            const prefix = command.slice(0, -2); // Remove :*
+            this.allowedBashPrefixes.add(prefix);
+        } else {
+            // Literal match
+            this.allowedBashLiterals.add(command);
+        }
+    }
 
     /**
      * Resolves tool call ID based on tool name and input
@@ -269,6 +339,9 @@ export class PermissionHandler {
     reset(): void {
         this.toolCalls = [];
         this.responses.clear();
+        this.allowedTools.clear();
+        this.allowedBashLiterals.clear();
+        this.allowedBashPrefixes.clear();
 
         // Cancel all pending requests
         for (const [, pending] of this.pendingRequests.entries()) {
@@ -314,8 +387,8 @@ export class PermissionHandler {
                 return;
             }
 
-            // Store the response
-            this.responses.set(id, message);
+            // Store the response with timestamp
+            this.responses.set(id, { ...message, receivedAt: Date.now() });
             this.pendingRequests.delete(id);
 
             // Handle the permission response based on tool type
@@ -349,7 +422,7 @@ export class PermissionHandler {
     /**
      * Gets the responses map (for compatibility with existing code)
      */
-    getResponses(): Map<string, { approved: boolean, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', reason?: string }> {
+    getResponses(): Map<string, PermissionResponse> {
         return this.responses;
     }
 }

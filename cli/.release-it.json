@@ -1,0 +1,19 @@
+{
+    "git": {
+        "commitMessage": "Release version ${version}",
+        "tagName": "v${version}",
+        "push": true,
+        "requireCleanWorkingDir": true,
+        "requireBranch": "main",
+        "addUntrackedFiles": false
+    },
+    "github": {
+        "release": true,
+        "releaseName": "v${version}",
+        "releaseNotes": "node .release-it.notes.js ${latestTag} ${version}"
+    },
+    "npm": {
+        "publish": true
+    },
+    "hooks": {}
+}
