@@ -268,6 +268,12 @@ export default React.memo(function SettingsScreen() {
                     onPress={() => router.push('/settings/appearance')}
                 />
                 <Item
+                    title="Voice Assistant"
+                    subtitle="Configure voice interaction preferences"
+                    icon={<Ionicons name="mic-outline" size={29} color="#34C759" />}
+                    onPress={() => router.push('/settings/voice')}
+                />
+                <Item
                     title="Features"
                     subtitle="Enable or disable app features"
                     icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
