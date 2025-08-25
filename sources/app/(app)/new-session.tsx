@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router';
 import { Modal } from '@/modal';
@@ -197,8 +198,15 @@ export default function NewSessionScreen() {
 
     const handleStartSession = async (machineId: string, path: string) => {
         try {
-            console.log(`🚀 Starting session on machine ${machineId} at path: ${path}`);
-            const result = await machineSpawnNewSession(machineId, path);
+            // Get the machine metadata to access home directory
+            const machine = machines.find(m => m.id === machineId);
+            const homeDir = machine?.metadata?.homeDir;
+            
+            // Resolve ~ paths to absolute paths before sending to daemon
+            const absolutePath = resolveAbsolutePath(path, homeDir);
+            
+            console.log(`🚀 Starting session on machine ${machineId} at path: ${path} (resolved to: ${absolutePath})`);
+            const result = await machineSpawnNewSession(machineId, absolutePath);
             console.log('🎉 daemon result', result);
 
             if (result.sessionId) {
