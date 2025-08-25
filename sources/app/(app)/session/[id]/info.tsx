@@ -159,6 +159,26 @@ export default React.memo(() => {
                     </View>
                 </View>
 
+                {/* Quick Actions */}
+                <ItemGroup title="Quick Actions">
+                    {sessionStatus.isConnected && (
+                        <Item
+                            title="Kill Session"
+                            subtitle="Immediately terminate the session"
+                            icon={<Ionicons name="skull-outline" size={29} color="#FF3B30" />}
+                            onPress={handleKillSession}
+                        />
+                    )}
+                    {session.metadata?.machineId && (
+                        <Item
+                            title="View Machine"
+                            subtitle="View machine details and sessions"
+                            icon={<Ionicons name="server-outline" size={29} color="#007AFF" />}
+                            onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
+                        />
+                    )}
+                </ItemGroup>
+
                 {/* Session Details */}
                 <ItemGroup>
                     <Item
@@ -224,15 +244,6 @@ export default React.memo(() => {
                                 showChevron={false}
                             />
                         )}
-                        {session.metadata.machineId && (
-                            <Item
-                                title="Machine ID"
-                                subtitle={`${session.metadata.machineId.substring(0, 8)}...${session.metadata.machineId.substring(session.metadata.machineId.length - 8)}`}
-                                icon={<Ionicons name="server-outline" size={29} color="#5856D6" />}
-                                onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
-                                rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
-                            />
-                        )}
                         {session.metadata.hostPid && (
                             <Item
                                 title="Process ID"
@@ -294,18 +305,6 @@ export default React.memo(() => {
                         />
                     )}
                 </ItemGroup>
-
-                {/* Actions */}
-                {sessionStatus.isConnected && (
-                    <ItemGroup title="Actions">
-                        <Item
-                            title="Kill Session"
-                            subtitle="Immediately terminate the session process"
-                            icon={<Ionicons name="skull-outline" size={29} color="#FF3B30" />}
-                            onPress={handleKillSession}
-                        />
-                    </ItemGroup>
-                )}
             </ItemList>
         </>
     );
