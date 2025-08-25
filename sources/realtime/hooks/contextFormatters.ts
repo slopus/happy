@@ -44,7 +44,9 @@ export function formatMessage(message: Message): string | null {
     } else if (message.kind === 'tool-call' && !VOICE_CONFIG.DISABLE_TOOL_CALLS) {
         const toolDescription = message.tool.description ? ` - ${message.tool.description}` : '';
         if (VOICE_CONFIG.LIMITED_TOOL_CALLS) {
-            lines.push(`Claude Code is using ${message.tool.name}${toolDescription}`);
+            if (message.tool.description) {
+                lines.push(`Claude Code is using ${message.tool.name}${toolDescription}`);
+            }
         } else {
             lines.push(`Claude Code is using ${message.tool.name}${toolDescription} (tool_use_id: ${message.id}) with arguments: <arguments>${JSON.stringify(message.tool.input)}</arguments>`);
         }
@@ -64,7 +66,7 @@ export function formatNewSingleMessage(sessionId: string, message: Message): str
 }
 
 export function formatNewMessages(sessionId: string, messages: Message[]): string | null {
-    let formatted = messages.map(formatMessage).filter(Boolean);
+    let formatted = [...messages].sort((a, b) => a.createdAt - b.createdAt).map(formatMessage).filter(Boolean);
     if (formatted.length === 0) {
         return null;
     }
@@ -72,8 +74,8 @@ export function formatNewMessages(sessionId: string, messages: Message[]): strin
 }
 
 export function formatHistory(sessionId: string, messages: Message[]): string {
-    let messagesToFormat = VOICE_CONFIG.MAX_HISTORY_MESSAGES > 0 
-        ? messages.slice(-VOICE_CONFIG.MAX_HISTORY_MESSAGES) 
+    let messagesToFormat = VOICE_CONFIG.MAX_HISTORY_MESSAGES > 0
+        ? messages.slice(0, VOICE_CONFIG.MAX_HISTORY_MESSAGES)
         : messages;
     let formatted = messagesToFormat.map(formatMessage).filter(Boolean);
     return 'History of messages in session: ' + sessionId + '\n\n' + formatted.join('\n\n');
