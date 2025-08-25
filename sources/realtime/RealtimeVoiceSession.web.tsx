@@ -77,9 +77,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             return;
         }
 
-        // Web version doesn't have sendTextMessage, but we can use sendUserText if available
-        // Otherwise, this would need to be implemented differently for web
-        console.warn('sendTextMessage not fully implemented for web');
+        conversationInstance.sendUserMessage(message);
     }
 
     sendContextualUpdate(update: string): void {
@@ -88,8 +86,7 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             return;
         }
 
-        // Web version doesn't have sendContextualUpdate
-        console.warn('sendContextualUpdate not fully implemented for web');
+        conversationInstance.sendContextualUpdate(update);
     }
 }
 
