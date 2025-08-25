@@ -3,6 +3,7 @@ import { useConversation } from '@elevenlabs/react';
 import { registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
+import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 
 // Static reference to the conversation hook instance
@@ -30,6 +31,10 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             }
 
 
+            // Get user's preferred language for voice assistant
+            const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
+            const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
+            
             // Use hardcoded agent ID for Eleven Labs
             const conversationId = await conversationInstance.startSession({
                 agentId: __DEV__ ? 'agent_7801k2c0r5hjfraa1kdbytpvs6yt' : 'agent_6701k211syvvegba4kt7m68nxjmw',
@@ -38,6 +43,11 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                 dynamicVariables: {
                     sessionId: config.sessionId,
                     initialConversationContext: config.initialContext || ''
+                },
+                overrides: {
+                    agent: {
+                        language: elevenLabsLanguage
+                    }
                 }
             });
 

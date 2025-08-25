@@ -104,6 +104,7 @@ describe('settings', () => {
                 avatarStyle: 'gradient',
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
+                voiceAssistantLanguage: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: true
@@ -134,6 +135,7 @@ describe('settings', () => {
                 avatarStyle: 'gradient',
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
+                voiceAssistantLanguage: null,
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual({
@@ -155,6 +157,7 @@ describe('settings', () => {
                 avatarStyle: 'gradient',
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
+                voiceAssistantLanguage: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: false
@@ -184,6 +187,7 @@ describe('settings', () => {
                 avatarStyle: 'gradient',
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
+                voiceAssistantLanguage: null,
             };
             expect(applySettings(currentSettings, {})).toEqual({
                 ...settingsDefaults,
@@ -219,6 +223,7 @@ describe('settings', () => {
                 avatarStyle: 'gradient',
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
+                voiceAssistantLanguage: null,
             };
             const delta: any = {
                 viewInline: false,

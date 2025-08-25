@@ -16,6 +16,7 @@ export const SettingsSchema = z.object({
     avatarStyle: z.string().describe('Avatar display style'),
     reviewPromptAnswered: z.boolean().describe('Whether the review prompt has been answered'),
     reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
+    voiceAssistantLanguage: z.string().nullable().describe('Preferred language for voice assistant (null for auto-detect)'),
 });
 
 //
@@ -49,6 +50,7 @@ export const settingsDefaults: Settings = {
     avatarStyle: 'gradient',
     reviewPromptAnswered: false,
     reviewPromptLikedApp: null,
+    voiceAssistantLanguage: null,
 };
 Object.freeze(settingsDefaults);
 
