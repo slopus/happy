@@ -12,8 +12,8 @@
     "web": "expo start --web",
     "test": "vitest",
     "prebuild": "rm -rf android ios && expo prebuild",
-    "ota": "APP_ENV=preview NODE_ENV=preview yarn typecheck && eas update --branch preview",
-    "ota:production": "NODE_ENV=production APP_ENV=production yarn typecheck && eas update --branch production",
+    "ota": "APP_ENV=preview NODE_ENV=preview tsx sources/scripts/parseChangelog.ts && yarn typecheck && eas update --branch preview",
+    "ota:production": "NODE_ENV=production APP_ENV=production tsx sources/scripts/parseChangelog.ts && yarn typecheck && eas update --branch production",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package",
     "generate-theme": "tsx sources/theme.gen.ts"

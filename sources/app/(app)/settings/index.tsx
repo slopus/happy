@@ -295,6 +295,12 @@ export default React.memo(function SettingsScreen() {
             {/* About */}
             <ItemGroup title="About" footer="Happy Coder is a Claude Code mobile client. It's fully end-to-end encrypted and your account is stored only on your device. Not affiliated with Anthropic.">
                 <Item
+                    title="What's New"
+                    subtitle="See the latest updates and improvements"
+                    icon={<Ionicons name="sparkles-outline" size={29} color="#FF9500" />}
+                    onPress={() => router.push('/changelog')}
+                />
+                <Item
                     title="GitHub"
                     icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
                     detail="slopus/happy"
