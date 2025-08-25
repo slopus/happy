@@ -22,7 +22,7 @@ export function formatPermissionRequest(
     toolArgs: any
 ): string {
     return trimIdent(`
-        Agent is requesting permission to use ${toolName} (session ${sessionId}):
+        Claude Code is requesting permission to use ${toolName} (session ${sessionId}):
         <request_id>${requestId}</request_id>
         <tool_name>${toolName}</tool_name>
         <tool_args>${JSON.stringify(toolArgs)}</tool_args>
@@ -123,5 +123,5 @@ export function formatSessionFocus(sessionId: string, metadata?: SessionMetadata
 }
 
 export function formatReadyEvent(sessionId: string): string {
-    return `IMPORTANT! Claude Code has finished processing and is ready for the next task in session: ${sessionId}. Report this to the human immediately.`;
+    return `Claude Code done working in session: ${sessionId}. The previous message(s) are the summary of the work done. Report this to the human immediately.`;
 }
