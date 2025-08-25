@@ -90,7 +90,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     await waitFor(async () => {
       const state = await readDaemonState();
       return state !== null;
-    }, 10000, 250); // Wait up to 10 seconds, checking every 250ms
+    }, 10_000, 250); // Wait up to 10 seconds, checking every 250ms
     
     const daemonState = await readDaemonState();
     if (!daemonState) {
@@ -421,7 +421,8 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
   it('[this test is tricky, easier to test by hand] should detect version mismatch and kill old daemon', { timeout: 100_000 }, async () => {
     // Read current package.json to get version
     const packagePath = path.join(process.cwd(), 'package.json');
-    const originalPackage = JSON.parse(readFileSync(packagePath, 'utf8'));
+    const packageJsonOriginalRawText = readFileSync(packagePath, 'utf8');
+    const originalPackage = JSON.parse(packageJsonOriginalRawText);
     const originalVersion = originalPackage.version;
     const testVersion = `0.0.0-integration-test-should-be-auto-cleaned-up-${Math.floor(Math.random() * 100000).toString().padStart(5, '0')}`;
 
@@ -462,9 +463,8 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       console.log('[TEST] Daemon version mismatch detection successful');
     } finally {
       // CRITICAL: Restore original package.json version
-      originalPackage.version = originalVersion;
-      writeFileSync(packagePath, JSON.stringify(originalPackage, null, 2));
-      console.log(`[TEST] Restored package.json version to ${originalPackage.version}`);
+      writeFileSync(packagePath, packageJsonOriginalRawText);
+      console.log(`[TEST] Restored package.json version to ${originalVersion}`);
 
       // Lets rebuild it so we keep it as we found it
       execSync('yarn build', { stdio: 'ignore' });

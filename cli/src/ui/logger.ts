@@ -213,7 +213,7 @@ class Logger {
       appendFileSync(this.logFilePath, logLine)
     } catch (appendError) {
       if (process.env.DEBUG) {
-        console.error('Failed to append to log file:', appendError)
+        console.error('[DEV MODE ONLY THROWING] Failed to append to log file:', appendError)
         throw appendError
       }
       // In production, fail silently to avoid disturbing Claude session

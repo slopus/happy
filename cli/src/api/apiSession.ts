@@ -264,7 +264,9 @@ export class ApiSessionClient extends EventEmitter {
      * Send a ping message to keep the connection alive
      */
     keepAlive(thinking: boolean, mode: 'local' | 'remote') {
-        logger.debug(`[API] Sending keep alive message: ${thinking}`);
+        if (process.env.DEBUG) { // too verbose for production
+            logger.debug(`[API] Sending keep alive message: ${thinking}`);
+        }
         this.socket.volatile.emit('session-alive', {
             sid: this.sessionId,
             time: Date.now(),

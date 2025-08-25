@@ -346,7 +346,9 @@ export class ApiMachineClient {
         machineId: this.machine.id,
         time: Date.now()
       };
-      logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
+      if (process.env.DEBUG) { // too verbose for production
+        logger.debugLargeJson(`[API MACHINE] Emitting machine-alive`, payload);
+      }
       this.socket.emit('machine-alive', payload);
     }, 20000);
     logger.debug('[API MACHINE] Keep-alive started (20s interval)');

@@ -60,18 +60,11 @@ ${chalk.bold('Usage:')}
   happy auth login [--force]    Authenticate with Happy
   happy auth logout             Remove authentication and machine data  
   happy auth status             Show authentication status
-  happy auth show-backup        Display backup key for mobile/web clients
+  happy auth backup             Display backup key for mobile/web clients
   happy auth help               Show this help message
 
 ${chalk.bold('Options:')}
   --force    Clear credentials, machine ID, and stop daemon before re-auth
-
-${chalk.bold('Examples:')}
-  happy auth login              Authenticate if not already logged in
-  happy auth login --force      Force re-authentication (complete reset)
-  happy auth status             Check authentication and machine status
-  happy auth show-backup        Get backup key to link other devices
-  happy auth logout             Remove all authentication data
 
 ${chalk.bold('Notes:')} 
   • Use 'auth login --force' when you need to re-register your machine
