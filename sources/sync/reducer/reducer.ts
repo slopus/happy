@@ -241,6 +241,13 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             continue;
         }
 
+        // Filter out ready events completely - they should not create any message
+        if (msg.role === 'event' && msg.content.type === 'ready') {
+            // Mark as processed to prevent duplication but don't add to messages
+            state.messageIds.set(msg.id, msg.id);
+            continue;
+        }
+
         // Try to parse message as event
         const event = parseMessageAsEvent(msg);
         if (event) {
