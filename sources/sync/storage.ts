@@ -19,32 +19,16 @@ import { isMutableTool } from "@/components/tools/knownTools";
 // Timeout for considering a session disconnected (2 minutes)
 const DISCONNECTED_TIMEOUT_MS = 120000;
 
-// Track app background time for more accurate timeout calculations
-let appBackgroundStartTime: number | null = null;
-let totalBackgroundTime = 0;
-
 /**
  * Centralized session online state resolver
  * Returns either "online" (string) or a timestamp (number) for last seen
  */
-function resolveSessionOnlineState(
-    session: { active: boolean; activeAt: number }, 
-    socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error'
-): "online" | number {
+function resolveSessionOnlineState(session: { active: boolean; activeAt: number }): "online" | number {
     const now = Date.now();
+    const threshold = now - DISCONNECTED_TIMEOUT_MS;
     
-    // Adjust the threshold by removing background time from timeout calculation
-    let adjustedTimeout = DISCONNECTED_TIMEOUT_MS;
-    if (totalBackgroundTime > 0) {
-        // Don't count background time against session timeout
-        adjustedTimeout = Math.max(adjustedTimeout - totalBackgroundTime, 30000); // Minimum 30s timeout
-    }
-    
-    const threshold = now - adjustedTimeout;
-    
-    // Session is online if it's active, was seen recently, and we have a good connection
-    const hasGoodConnection = socketStatus === 'connected' || socketStatus === 'connecting';
-    const isOnline = session.active && session.activeAt > threshold && hasGoodConnection;
+    // Session is online if it's active and was seen recently
+    const isOnline = session.active && session.activeAt > threshold;
     
     return isOnline ? "online" : session.activeAt;
 }
@@ -55,30 +39,6 @@ function resolveSessionOnlineState(
 function isSessionActive(session: { active: boolean; activeAt: number }): boolean {
     const now = Date.now();
     return session.active && !!session.activeAt && (session.activeAt >= now - DISCONNECTED_TIMEOUT_MS);
-}
-
-/**
- * Track when app goes to background for timeout adjustment
- */
-export function trackAppBackground() {
-    appBackgroundStartTime = Date.now();
-}
-
-/**
- * Track when app comes to foreground and update total background time
- */
-export function trackAppForeground() {
-    if (appBackgroundStartTime) {
-        const backgroundDuration = Date.now() - appBackgroundStartTime;
-        // Add to total but cap the total background time to avoid indefinite accumulation
-        totalBackgroundTime = Math.min(totalBackgroundTime + backgroundDuration, DISCONNECTED_TIMEOUT_MS);
-        appBackgroundStartTime = null;
-        
-        // Reset background time after 5 minutes to prevent it from accumulating indefinitely
-        setTimeout(() => {
-            totalBackgroundTime = Math.max(0, totalBackgroundTime - backgroundDuration);
-        }, 300000);
-    }
 }
 
 // Known entitlement IDs
@@ -235,7 +195,7 @@ export const storage = create<StorageState>()((set, get) => {
             // Update sessions with calculated presence using centralized resolver
             sessions.forEach(session => {
                 // Use centralized resolver for consistent state management
-                const presence = resolveSessionOnlineState(session, state.socketStatus);
+                const presence = resolveSessionOnlineState(session);
 
                 // Preserve existing draft and permission mode if they exist, or load from saved data
                 const existingDraft = state.sessions[session.id]?.draft;
@@ -519,7 +479,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // Update session with presence and clear thinking/active if disconnected
                 updatedSessions[id] = {
                     ...session,
-                    presence: resolveSessionOnlineState(session, state.socketStatus),
+                    presence: resolveSessionOnlineState(session),
                     // Clear thinking and active states when disconnected
                     thinking: isDisconnected ? false : session.thinking,
                     active: isDisconnected ? false : session.active

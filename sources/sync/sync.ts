@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { apiSocket } from '@/sync/apiSocket';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { ApiEncryption } from '@/sync/apiEncryption';
-import { storage, trackAppBackground, trackAppForeground } from './storage';
+import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema, ApiEphemeralActivityUpdateSchema } from './apiTypes';
 import type { ApiEphemeralUpdate, ApiEphemeralActivityUpdate } from './apiTypes';
 import { DecryptedMessage, Session, Machine } from './storageTypes';
@@ -49,8 +49,6 @@ class Sync {
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
-    private recalculateInterval: ReturnType<typeof setInterval> | null = null;
-    private lastBackgroundTime: number | null = null;
 
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
@@ -68,13 +66,10 @@ class Sync {
         this.pushTokenSync = new InvalidateSync(registerPushToken);
         this.activityAccumulator = new ActivityUpdateAccumulator(this.flushActivityUpdates.bind(this), 2000);
 
-        // Listen for app state changes to refresh purchases and manage session refresh timer
+        // Listen for app state changes to refresh purchases
         AppState.addEventListener('change', (nextAppState) => {
             if (nextAppState === 'active') {
                 this.purchasesSync.invalidate();
-                this.onAppForeground();
-            } else if (nextAppState === 'background') {
-                this.onAppBackground();
             }
         });
     }
@@ -379,71 +374,6 @@ class Sync {
             const errorMessage = error.message || 'Failed to present paywall';
             trackPaywallError(errorMessage);
             return { success: false, error: errorMessage };
-        }
-    }
-
-    private startRecalculateTimer() {
-        // Clear existing interval if it exists
-        if (this.recalculateInterval) {
-            clearInterval(this.recalculateInterval);
-        }
-        
-        // Only start timer if app is currently active
-        const currentAppState = AppState.currentState;
-        if (currentAppState === 'active') {
-            this.recalculateInterval = setInterval(() => {
-                this.recalculateSessionsOnline();
-            }, 10000);
-        }
-    }
-
-    private stopRecalculateTimer() {
-        if (this.recalculateInterval) {
-            clearInterval(this.recalculateInterval);
-            this.recalculateInterval = null;
-        }
-    }
-
-    private recalculateSessionsOnline() {
-        // Only recalculate if we're connected and app is active
-        const socketStatus = storage.getState().socketStatus;
-        const appState = AppState.currentState;
-        
-        if (socketStatus === 'connected' && appState === 'active') {
-            const active = storage.getState().getActiveSessions();
-            storage.getState().recalculateOnline();
-            const newActive = storage.getState().getActiveSessions();
-            this.applySessionDiff(active, newActive);
-        }
-    }
-
-    private onAppBackground() {
-        this.lastBackgroundTime = Date.now();
-        this.stopRecalculateTimer();
-        trackAppBackground();
-    }
-
-    private onAppForeground() {
-        // Calculate how long we were in background
-        const backgroundDuration = this.lastBackgroundTime ? Date.now() - this.lastBackgroundTime : 0;
-        this.lastBackgroundTime = null;
-
-        // Track foreground transition in storage
-        trackAppForeground();
-
-        // Restart the timer
-        this.startRecalculateTimer();
-
-        // If we were in background for less than the disconnect timeout (2 minutes),
-        // don't immediately mark sessions as offline
-        if (backgroundDuration < 120000) {
-            // Give some time for reconnection before recalculating
-            setTimeout(() => {
-                this.recalculateSessionsOnline();
-            }, 5000);
-        } else {
-            // We were background for a long time, recalculate immediately
-            this.recalculateSessionsOnline();
         }
     }
 
@@ -879,13 +809,15 @@ class Sync {
                     }
                 }
             }
-            
-            // Restart the recalculate timer when reconnected
-            this.startRecalculateTimer();
         });
 
-        // Start the session recalculation timer
-        this.startRecalculateTimer();
+        // Recalculate online sessions every 10 seconds (for 2-minute disconnect timeout)
+        setInterval(() => {
+            const active = storage.getState().getActiveSessions();
+            storage.getState().recalculateOnline();
+            const newActive = storage.getState().getActiveSessions();
+            this.applySessionDiff(active, newActive);
+        }, 10000);
     }
 
     private handleUpdate = (update: unknown) => {
