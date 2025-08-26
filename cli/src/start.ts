@@ -79,7 +79,10 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         happyHomeDir: configuration.happyHomeDir,
         startedFromDaemon: options.startedBy === 'daemon',
         hostPid: process.pid,
-        startedBy: options.startedBy || 'terminal'
+        startedBy: options.startedBy || 'terminal',
+        // Initialize lifecycle state
+        lifecycleState: 'running',
+        lifecycleStateSince: Date.now()
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);
@@ -294,8 +297,17 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         logger.debug('[START] Received termination signal, cleaning up...');
 
         try {
-            // Send session death message if session exists
+            // Update lifecycle state to archived before closing
             if (session) {
+                session.updateMetadata((currentMetadata) => ({
+                    ...currentMetadata,
+                    lifecycleState: 'archived',
+                    lifecycleStateSince: Date.now(),
+                    archivedBy: 'cli',
+                    archiveReason: 'User terminated'
+                }));
+                
+                // Send session death message
                 session.sendSessionDeath();
                 await session.flush();
                 await session.close();

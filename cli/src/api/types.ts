@@ -163,7 +163,21 @@ export const SessionSchema = z.object({
   metadata: z.any(),
   metadataVersion: z.number(),
   agentState: z.any().nullable(),
-  agentStateVersion: z.number()
+  agentStateVersion: z.number(),
+  // Connectivity tracking (from server)
+  connectivityStatus: z.union([
+    z.enum(['neverConnected', 'online', 'offline']),
+    z.string() // Forward compatibility
+  ]).optional(),
+  connectivityStatusSince: z.number().optional(),
+  connectivityStatusReason: z.string().optional(),
+  // State tracking (from server)
+  state: z.union([
+    z.enum(['running', 'archiveRequested', 'archived']),
+    z.string() // Forward compatibility
+  ]).optional(),
+  stateSince: z.number().optional(),
+  stateReason: z.string().optional()
 })
 
 export type Session = z.infer<typeof SessionSchema>
@@ -217,7 +231,22 @@ export const MachineSchema = z.object({
   active: z.boolean(),
   activeAt: z.number(),
   createdAt: z.number(),
-  updatedAt: z.number()
+  updatedAt: z.number(),
+  
+  // Connectivity tracking (from server)
+  connectivityStatus: z.union([
+    z.enum(['neverConnected', 'online', 'offline']),
+    z.string() // Forward compatibility
+  ]).optional(),
+  connectivityStatusSince: z.number().optional(),
+  connectivityStatusReason: z.string().optional(),
+  // State tracking (from server)
+  state: z.union([
+    z.enum(['running', 'archiveRequested', 'archived']),
+    z.string() // Forward compatibility
+  ]).optional(),
+  stateSince: z.number().optional(),
+  stateReason: z.string().optional()
 })
 
 export type Machine = z.infer<typeof MachineSchema>
@@ -308,6 +337,7 @@ export type Metadata = {
     updatedAt: number
   },
   machineId?: string,
+  claudeSessionId?: string,
   tools?: string[],
   slashCommands?: string[],
   homeDir?: string,
@@ -315,6 +345,11 @@ export type Metadata = {
   startedFromDaemon?: boolean,
   hostPid?: number,
   startedBy?: 'daemon' | 'terminal',
+  // Lifecycle state management
+  lifecycleState?: 'running' | 'archiveRequested' | 'archived' | string,
+  lifecycleStateSince?: number,
+  archivedBy?: string,
+  archiveReason?: string,
 };
 
 export type AgentState = {
