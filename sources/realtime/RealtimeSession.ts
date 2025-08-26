@@ -55,3 +55,8 @@ export function getVoiceSession(): VoiceSession | null {
 export function getCurrentRealtimeSessionId(): string | null {
     return currentSessionId;
 }
+
+export function updateCurrentSessionId(sessionId: string | null) {
+    console.log(`🔄 Realtime session ID updated: ${sessionId}`);
+    currentSessionId = sessionId;
+}

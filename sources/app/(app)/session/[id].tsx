@@ -1,21 +1,19 @@
 import * as React from 'react';
 import { useRoute } from "@react-navigation/native";
 import { useState, useMemo, useCallback } from "react";
-import { View, FlatList, ActivityIndicator, Platform, useWindowDimensions } from "react-native";
+import { View, ActivityIndicator, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { MessageView } from "@/components/MessageView";
 import { useRouter } from "expo-router";
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from "@/utils/sessionUtils";
-import { useSession, useSessionMessages, useSessionUsage, useSettings, useSetting, useMachine, useRealtimeStatus, storage } from '@/sync/storage';
+import { useSession, useSessionMessages, useSessionUsage, useSetting, useRealtimeStatus, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { sessionAbort, sessionSwitch } from '@/sync/ops';
+import { sessionAbort } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
-import { Pressable, Text } from 'react-native';
+import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
-import { RoundButton } from '@/components/RoundButton';
 import { Deferred } from '@/components/Deferred';
 import { Session } from '@/sync/storageTypes';
-import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { startRealtimeSession, stopRealtimeSession, updateCurrentSessionId } from '@/realtime/RealtimeSession';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsLandscape, useDeviceType, useHeaderHeight } from '@/utils/responsive';
 import { AgentContentView } from '@/components/AgentContentView';
@@ -24,15 +22,12 @@ import { Modal } from '@/modal';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { trackMessageSent } from '@/track';
 import { tracking } from '@/track';
-import { useAutocompleteSession } from '@/hooks/useAutocompleteSession';
-import { ChatFooter } from '@/components/ChatFooter';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { useDraft } from '@/hooks/useDraft';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useIsTablet } from '@/utils/responsive';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
-import { machineSpawnNewSession } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { ChatList } from '@/components/ChatList';
 
@@ -66,15 +61,11 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     const [message, setMessage] = useState('');
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
-    const [isReviving, setIsReviving] = useState(false);
     // Get permission mode from session object, default to 'default'
     const permissionMode = session.permissionMode || 'default';
     // Get model mode from session object, default to 'default'
     const modelMode = session.modelMode || 'default';
-    const screenWidth = useWindowDimensions().width;
     const sessionStatus = useSessionStatus(session);
-    const machineId = session.metadata?.machineId;
-    const machine = machineId ? useMachine(machineId) : null;
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
     const experiments = useSetting('experiments');
@@ -139,33 +130,14 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         // Trigger session sync
         sync.onSessionVisible(sessionId);
 
+        // Update realtime session ID if voice is active to ensure messages go to current session
+        if (realtimeStatus === 'connected') {
+            updateCurrentSessionId(sessionId);
+        }
+
         // Initialize git status sync for this session
         gitStatusSync.getSync(sessionId);
-    }, [sessionId]);
-
-    const ListHeader = React.useMemo(() => {
-        return <View style={{ flexDirection: 'row', alignItems: 'center', height: (Platform.OS === 'web' ? 0 : (headerHeight + safeArea.top)) + 32 }} />;
-    }, [headerHeight, safeArea.top]);
-
-    // Memoize FlatList props
-    const keyExtractor = useCallback((item: any) => item.id, []);
-
-    const renderItem = useCallback(({ item }: { item: any }) => (
-        <MessageView
-            message={item}
-            metadata={session.metadata}
-            sessionId={sessionId}
-        />
-    ), [session.metadata, sessionId]);
-
-    const contentContainerStyle = useMemo(() => ({
-        paddingHorizontal: screenWidth > 700 ? 16 : 0
-    }), [screenWidth]);
-
-    const maintainVisibleContentPosition = useMemo(() => ({
-        minIndexForVisible: 0,
-        autoscrollToBottomThreshold: 50,
-    }), []);
+    }, [sessionId, realtimeStatus]);
 
     let content = (
         <>

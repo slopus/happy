@@ -1,0 +1,12 @@
+[
+    {
+      "relation": ["delegate_permission/common.handle_all_urls"],
+      "target": {
+        "namespace": "android_app",
+        "package_name": "com.ex3ndr.happy",
+        "sha256_cert_fingerprints": [
+          "0F:44:FB:74:85:39:DE:93:A9:F3:82:18:F7:26:19:8E:9A:64:D4:75:AF:46:CB:99:6B:22:5C:61:EA:6A:C2:74"
+        ]
+      }
+    }
+  ]

@@ -35,7 +35,8 @@ export default {
                 NSMicrophoneUsageDescription: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations with AI.",
                 NSLocalNetworkUsageDescription: "Allow $(PRODUCT_NAME) to find and connect to local devices on your network.",
                 NSBonjourServices: ["_http._tcp", "_https._tcp"]
-            }
+            },
+            associatedDomains: ["applinks:app.happy.engineering"]
         },
         android: {
             adaptiveIcon: {
@@ -54,6 +55,20 @@ export default {
             edgeToEdgeEnabled: true,
             package: bundleId,
             googleServicesFile: "./google-services.json",
+            intentFilters: [
+                {
+                    "action": "VIEW",
+                    "autoVerify": true,
+                    "data": [
+                        {
+                            "scheme": "https",
+                            "host": "app.happy.engineering",
+                            "pathPrefix": "/"
+                        }
+                    ],
+                    "category": ["BROWSABLE", "DEFAULT"]
+                }
+            ]
         },
         web: {
             bundler: "metro",
