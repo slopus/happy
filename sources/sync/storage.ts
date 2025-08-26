@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
 import { Session, Machine, GitStatus } from "./storageTypes";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
-import { Message } from "./typesMessage";
+import { Message, AgentTextMessage } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
 import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from "./settings";
@@ -370,6 +370,26 @@ export const storage = create<StorageState>()((set, get) => {
                 }
                 if (reducerResult.hasReadyEvent) {
                     hasReadyEvent = true;
+                }
+
+                // Check for NEW messages from Claude to notify voice assistant
+                const currentRealtimeSessionId = getCurrentRealtimeSessionId();
+                const voiceSession = getVoiceSession();
+                
+                if (currentRealtimeSessionId === sessionId && voiceSession) {
+                    // Find new messages that are from the agent (Claude)
+                    const newAssistantMessages = processedMessages.filter((message): message is AgentTextMessage =>
+                        message.kind === 'agent-text' &&
+                        !existingSession.messagesMap[message.id] && // Only new messages
+                        message.text &&
+                        message.text.trim().length > 0
+                    );
+
+                    // Notify voice assistant about new messages from Claude
+                    for (const message of newAssistantMessages) {
+                        console.log('🔍 Notifying voice assistant of new Claude message:', message.text);
+                        voiceSession.sendTextMessage(message.text);
+                    }
                 }
 
                 // Merge messages
