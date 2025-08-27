@@ -1,5 +1,6 @@
 import { Socket } from "socket.io";
 import { log } from "@/utils/log";
+import { GitHubProfile } from "@/app/types";
 
 // === CONNECTION TYPES ===
 
@@ -75,6 +76,7 @@ export type UpdateEvent = {
         value: string | null;
         version: number;
     } | null | undefined;
+    github?: GitHubProfile | null | undefined;
 } | {
     type: 'update-machine';
     machineId: string;
@@ -336,6 +338,19 @@ export function buildUpdateAccountUpdate(userId: string, settings: { value: stri
             t: 'update-account',
             id: userId,
             settings
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildUpdateAccountGithubUpdate(userId: string, github: GitHubProfile | null, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'update-account',
+            id: userId,
+            github
         },
         createdAt: Date.now()
     };

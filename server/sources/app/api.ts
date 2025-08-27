@@ -27,7 +27,8 @@ import {
     buildSessionActivityEphemeral,
     buildMachineActivityEphemeral,
     buildUsageEphemeral,
-    buildMachineStatusEphemeral
+    buildMachineStatusEphemeral,
+    buildUpdateAccountGithubUpdate
 } from "@/modules/eventRouter";
 import {
     incrementWebSocketConnection,
@@ -78,21 +79,39 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         try {
             // Test database connectivity
             await db.$queryRaw`SELECT 1`;
-            reply.send({ 
-                status: 'ok', 
+            reply.send({
+                status: 'ok',
                 timestamp: new Date().toISOString(),
                 service: 'happy-server'
             });
         } catch (error) {
             log({ module: 'health', level: 'error' }, `Health check failed: ${error}`);
-            reply.code(503).send({ 
-                status: 'error', 
+            reply.code(503).send({
+                status: 'error',
                 timestamp: new Date().toISOString(),
                 service: 'happy-server',
                 error: 'Database connectivity failed'
             });
         }
     });
+    
+    // Add content type parser for webhook endpoints to preserve raw body
+    app.addContentTypeParser(
+        'application/json',
+        { parseAs: 'string' },
+        function (req, body, done) {
+            try {
+                const json = JSON.parse(body as string);
+                // Store raw body for webhook signature verification
+                (req as any).rawBody = body;
+                done(null, json);
+            } catch (err: any) {
+                err.statusCode = 400;
+                done(err, undefined);
+            }
+        }
+    );
+    
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
     const typed = app.withTypeProvider<ZodTypeProvider>();
@@ -312,21 +331,21 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         }
     }, async (request, reply) => {
         const { code, state } = request.query;
-        
+
         // Verify the state token to get userId
         const tokenData = await auth.verifyGithubToken(state);
         if (!tokenData) {
             return reply.redirect('https://app.happy.engineering?error=invalid_state');
         }
-        
+
         const userId = tokenData.userId;
         const clientId = process.env.GITHUB_CLIENT_ID;
         const clientSecret = process.env.GITHUB_CLIENT_SECRET;
-        
+
         if (!clientId || !clientSecret) {
             return reply.redirect('https://app.happy.engineering?error=server_config');
         }
-        
+
         try {
             // Exchange code for access token
             const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
@@ -341,19 +360,19 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     code: code
                 })
             });
-            
+
             const tokenResponseData = await tokenResponse.json() as {
                 access_token?: string;
                 error?: string;
                 error_description?: string;
             };
-            
+
             if (tokenResponseData.error) {
                 return reply.redirect(`https://app.happy.engineering?error=${encodeURIComponent(tokenResponseData.error)}`);
             }
-            
+
             const accessToken = tokenResponseData.access_token;
-            
+
             // Get user info from GitHub
             const userResponse = await fetch('https://api.github.com/user', {
                 headers: {
@@ -361,13 +380,13 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     'Accept': 'application/vnd.github.v3+json',
                 }
             });
-            
+
             const userData = await userResponse.json() as GitHubProfile;
-            
+
             if (!userResponse.ok) {
                 return reply.redirect('https://app.happy.engineering?error=github_user_fetch_failed');
             }
-            
+
             // Store GitHub user and connect to account
             const githubUser = await db.githubUser.upsert({
                 where: { id: userData.id.toString() },
@@ -381,21 +400,106 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     token: encryptString(['user', userId, 'github', 'token'], accessToken!)
                 }
             });
-            
+
             // Link GitHub user to account
             await db.account.update({
                 where: { id: userId },
                 data: { githubUserId: githubUser.id }
             });
-            
+
+            // Send account update to all user connections
+            const updSeq = await allocateUserSeq(userId);
+            const updatePayload = buildUpdateAccountGithubUpdate(userId, userData, updSeq, randomKeyNaked(12));
+            eventRouter.emitUpdate({
+                userId,
+                payload: updatePayload,
+                recipientFilter: { type: 'all-user-authenticated-connections' }
+            });
+
             log({ module: 'github-oauth' }, `GitHub account connected successfully for user ${userId}: ${userData.login}`);
-            
+
             // Redirect to app with success
             return reply.redirect(`https://app.happy.engineering?github=connected&user=${encodeURIComponent(userData.login)}`);
-            
+
         } catch (error) {
             log({ module: 'github-oauth' }, `Error in GitHub GET callback: ${error}`);
             return reply.redirect('https://app.happy.engineering?error=server_error');
+        }
+    });
+
+    // GitHub webhook handler with type safety
+    typed.post('/v1/connect/github/webhook', {
+        schema: {
+            headers: z.object({
+                'x-hub-signature-256': z.string(),
+                'x-github-event': z.string(),
+                'x-github-delivery': z.string().optional()
+            }).passthrough(),
+            body: z.any(),
+            response: {
+                200: z.object({ received: z.boolean() }),
+                401: z.object({ error: z.string() }),
+                500: z.object({ error: z.string() })
+            }
+        }
+    }, async (request, reply) => {
+        const signature = request.headers['x-hub-signature-256'];
+        const eventName = request.headers['x-github-event'];
+        const deliveryId = request.headers['x-github-delivery'];
+        const rawBody = (request as any).rawBody;
+        
+        if (!rawBody) {
+            log({ module: 'github-webhook', level: 'error' }, 
+                'Raw body not available for webhook signature verification');
+            return reply.code(500).send({ error: 'Server configuration error' });
+        }
+        
+        // Get the webhooks handler
+        const { getWebhooks } = await import("@/modules/github");
+        const webhooks = getWebhooks();
+        if (!webhooks) {
+            log({ module: 'github-webhook', level: 'error' }, 
+                'GitHub webhooks not initialized');
+            return reply.code(500).send({ error: 'Webhooks not configured' });
+        }
+        
+        try {
+            // Verify and handle the webhook with type safety
+            await webhooks.verifyAndReceive({
+                id: deliveryId || 'unknown',
+                name: eventName,
+                payload: typeof rawBody === 'string' ? rawBody : JSON.stringify(request.body),
+                signature: signature
+            });
+            
+            // Log successful processing
+            log({ 
+                module: 'github-webhook',
+                event: eventName,
+                delivery: deliveryId 
+            }, `Successfully processed ${eventName} webhook`);
+            
+            return reply.send({ received: true });
+            
+        } catch (error: any) {
+            if (error.message?.includes('signature does not match')) {
+                log({ 
+                    module: 'github-webhook', 
+                    level: 'warn',
+                    event: eventName,
+                    delivery: deliveryId
+                }, 'Invalid webhook signature');
+                return reply.code(401).send({ error: 'Invalid signature' });
+            }
+            
+            log({ 
+                module: 'github-webhook', 
+                level: 'error',
+                event: eventName,
+                delivery: deliveryId
+            }, `Error processing webhook: ${error.message}`);
+            
+            return reply.code(500).send({ error: 'Internal server error' });
         }
     });
 
@@ -780,6 +884,23 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         } catch (error) {
             return reply.code(500).send({ error: 'Failed to get push tokens' });
         }
+    });
+
+    typed.get('/v1/account/profile', {
+        preHandler: app.authenticate,
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const user = await db.account.findUniqueOrThrow({
+            where: { id: userId },
+            select: {
+                githubUser: true
+            }
+        });
+        return reply.send({
+            id: userId,
+            timestamp: Date.now(),
+            github: user.githubUser ?? null,
+        });
     });
 
     // Get Account Settings API

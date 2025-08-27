@@ -1,3 +1,4 @@
+import { GitHubProfile as GitHubProfileType, GitHubOrg as GitHubOrgType } from "../app/types";
 declare global {
     namespace PrismaJson {
         // Session message content types
@@ -60,6 +61,7 @@ declare global {
                 value: string | null;
                 version: number;
             } | null | undefined;
+            github?: GitHubProfileType | null | undefined;
         } | {
             t: 'update-machine';
             machineId: string;
@@ -73,6 +75,9 @@ declare global {
             };
             activeAt?: number;
         };
+
+        type GitHubProfile = GitHubProfileType;
+        type GitHubOrg = GitHubOrgType;
     }
 }
 
