@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { thumbhash } from "@/modules/media/thumbhash";
+import { thumbhash } from "./thumbhash";
 
 export async function processImage(src: Buffer) {
 
