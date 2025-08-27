@@ -159,26 +159,6 @@ export default React.memo(() => {
                     </View>
                 </View>
 
-                {/* Quick Actions */}
-                <ItemGroup title="Quick Actions">
-                    {sessionStatus.isConnected && (
-                        <Item
-                            title="Kill Session"
-                            subtitle="Immediately terminate the session"
-                            icon={<Ionicons name="skull-outline" size={29} color="#FF3B30" />}
-                            onPress={handleKillSession}
-                        />
-                    )}
-                    {session.metadata?.machineId && (
-                        <Item
-                            title="View Machine"
-                            subtitle="View machine details and sessions"
-                            icon={<Ionicons name="server-outline" size={29} color="#007AFF" />}
-                            onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
-                        />
-                    )}
-                </ItemGroup>
-
                 {/* Session Details */}
                 <ItemGroup>
                     <Item
@@ -193,7 +173,7 @@ export default React.memo(() => {
                             subtitle={`${session.metadata.claudeSessionId.substring(0, 8)}...${session.metadata.claudeSessionId.substring(session.metadata.claudeSessionId.length - 8)}`}
                             icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
                             onPress={async () => {
-                                try {g
+                                try {
                                     await Clipboard.setStringAsync(session.metadata!.claudeSessionId!);
                                     Modal.alert('Success', 'Claude Code Session ID copied to clipboard');
                                 } catch (error) {
@@ -226,6 +206,26 @@ export default React.memo(() => {
                         icon={<Ionicons name="git-commit-outline" size={29} color="#007AFF" />}
                         showChevron={false}
                     />
+                </ItemGroup>
+
+                {/* Quick Actions */}
+                <ItemGroup title="Quick Actions">
+                    {session.metadata?.machineId && (
+                        <Item
+                            title="View Machine"
+                            subtitle="View machine details and sessions"
+                            icon={<Ionicons name="server-outline" size={29} color="#007AFF" />}
+                            onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
+                        />
+                    )}
+                    {sessionStatus.isConnected && (
+                        <Item
+                            title="Kill Session"
+                            subtitle="Immediately terminate the session"
+                            icon={<Ionicons name="skull-outline" size={29} color="#FF3B30" />}
+                            onPress={handleKillSession}
+                        />
+                    )}
                 </ItemGroup>
 
                 {/* Metadata */}

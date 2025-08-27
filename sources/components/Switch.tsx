@@ -5,7 +5,7 @@ import { Deferred } from './Deferred';
 export const Switch = (props: SwitchProps) => {
     const { theme } = useUnistyles();
     return (
-        <Deferred enabled={Platform.OS === 'android'}> {/* It is not animated on first mount on Android */}
+        <Deferred enabled={Platform.OS === 'android'}>
             <RNSwitch
                 {...props}
                 trackColor={{ false: theme.colors.switch.track.inactive, true: theme.colors.switch.track.active }}
