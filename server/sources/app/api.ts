@@ -895,7 +895,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             where: {
                 accountId: userId,
                 active: true,
-                lastActiveAt: { gt: new Date(Date.now() - 1000 * 60 * 5) /* 5 minutes */ }
+                lastActiveAt: { gt: new Date(Date.now() - 1000 * 60 * 15) /* 15 minutes */ }
             },
             orderBy: { lastActiveAt: 'desc' },
             take: limit,
