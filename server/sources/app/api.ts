@@ -63,6 +63,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
     // Start API
     const app = fastify({
         logger: true,
+        loggerInstance: logger,
         bodyLimit: 1024 * 1024 * 100, // 100MB
     });
     app.register(import('@fastify/cors'), {
@@ -2501,5 +2502,5 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         await io.close();
     });
 
-    return { app, io };
+    return { app: app as unknown as FastifyInstance, io };
 }
