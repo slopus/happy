@@ -432,6 +432,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         // Verify the state token to get userId
         const tokenData = await auth.verifyGithubToken(state);
         if (!tokenData) {
+            log({ module: 'github-oauth' }, `Invalid state token: ${state}`);
             return reply.redirect('https://app.happy.engineering?error=invalid_state');
         }
 
