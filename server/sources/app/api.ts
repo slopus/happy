@@ -389,7 +389,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         const params = new URLSearchParams({
             client_id: clientId,
             redirect_uri: redirectUri,
-            scope: 'user',
+            scope: 'read:user,user:email,read:org,codespace',
             state: state
         });
 
