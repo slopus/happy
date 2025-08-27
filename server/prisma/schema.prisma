@@ -20,13 +20,16 @@ datasource db {
 //
 
 model Account {
-    id                  String                @id @default(cuid())
-    publicKey           String                @unique
-    seq                 Int                   @default(0)
-    createdAt           DateTime              @default(now())
-    updatedAt           DateTime              @updatedAt
-    settings            String?
-    settingsVersion     Int                   @default(0)
+    id              String      @id @default(cuid())
+    publicKey       String      @unique
+    seq             Int         @default(0)
+    createdAt       DateTime    @default(now())
+    updatedAt       DateTime    @updatedAt
+    settings        String?
+    settingsVersion Int         @default(0)
+    githubUserId    String?
+    githubUser      GithubUser? @relation(fields: [githubUserId], references: [id])
+
     Session             Session[]
     AccountPushToken    AccountPushToken[]
     TerminalAuthRequest TerminalAuthRequest[]
@@ -104,6 +107,28 @@ model SessionMessage {
 
     @@unique([sessionId, localId])
     @@index([sessionId, seq])
+}
+
+//
+// Github
+//
+
+model GithubUser {
+    id        String    @id
+    /// [GitHubProfile]
+    profile   Json
+    token     Bytes?
+    createdAt DateTime  @default(now())
+    updatedAt DateTime  @updatedAt
+    Account   Account[]
+}
+
+model GithubOrganization {
+    id        String   @id
+    /// [GitHubOrg]
+    profile   Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
 }
 
 //

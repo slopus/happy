@@ -62,6 +62,8 @@ spec:
         key: /handy-db
     - extract:
         key: /handy-master
+    - extract:
+        key: /handy-github
 ---
 apiVersion: v1
 kind: Service

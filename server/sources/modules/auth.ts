@@ -10,6 +10,8 @@ interface TokenCacheEntry {
 interface AuthTokens {
     generator: Awaited<ReturnType<typeof privacyKit.createPersistentTokenGenerator>>;
     verifier: Awaited<ReturnType<typeof privacyKit.createPersistentTokenVerifier>>;
+    githubVerifier: Awaited<ReturnType<typeof privacyKit.createEphemeralTokenVerifier>>;
+    githubGenerator: Awaited<ReturnType<typeof privacyKit.createEphemeralTokenGenerator>>;
 }
 
 class AuthModule {
@@ -27,13 +29,25 @@ class AuthModule {
             service: 'handy',
             seed: process.env.HANDY_MASTER_SECRET!
         });
+
         
         const verifier = await privacyKit.createPersistentTokenVerifier({
             service: 'handy',
             publicKey: generator.publicKey
         });
-        
-        this.tokens = { generator, verifier };
+
+        const githubVerifier = await privacyKit.createEphemeralTokenVerifier({
+            service: 'github-happy',
+            publicKey: generator.publicKey,
+        });
+
+        const githubGenerator = await privacyKit.createEphemeralTokenGenerator({
+            service: 'github-happy',
+            seed: process.env.HANDY_MASTER_SECRET!,
+            ttl: 5 * 60 * 1000 // 5 minutes
+        });
+
+        this.tokens = { generator, verifier, githubVerifier, githubGenerator };
         
         log({ module: 'auth' }, 'Auth module initialized');
     }
@@ -133,6 +147,35 @@ class AuthModule {
         };
     }
     
+    async createGithubToken(userId: string): Promise<string> {
+        if (!this.tokens) {
+            throw new Error('Auth module not initialized');
+        }
+        
+        const payload = { user: userId, purpose: 'github-oauth' };
+        const token = await this.tokens.githubGenerator.new(payload);
+        
+        return token;
+    }
+
+    async verifyGithubToken(token: string): Promise<{ userId: string } | null> {
+        if (!this.tokens) {
+            throw new Error('Auth module not initialized');
+        }
+        
+        try {
+            const verified = await this.tokens.githubVerifier.verify(token);
+            if (!verified) {
+                return null;
+            }
+            
+            return { userId: verified.user as string };
+        } catch (error) {
+            log({ module: 'auth', level: 'error' }, `GitHub token verification failed: ${error}`);
+            return null;
+        }
+    }
+
     // Cleanup old entries (optional - can be called periodically)
     cleanup(): void {
         // Note: Since tokens are cached "forever" as requested,

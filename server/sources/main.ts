@@ -8,6 +8,8 @@ import { startMetricsServer } from "@/app/metrics";
 import { activityCache } from "@/modules/sessionCache";
 import { auth } from "./modules/auth";
 import { startDatabaseMetricsUpdater } from "@/modules/metrics";
+import { initEncrypt } from "./modules/encrypt";
+import { initGithub } from "./modules/github";
 
 async function main() {
 
@@ -22,6 +24,8 @@ async function main() {
     await redis.ping();
 
     // Initialize auth module
+    await initEncrypt();
+    await initGithub();
     await auth.init();
 
     //
