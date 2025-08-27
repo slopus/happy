@@ -35,17 +35,18 @@ class AuthModule {
             service: 'handy',
             publicKey: generator.publicKey
         });
-
-        const githubVerifier = await privacyKit.createEphemeralTokenVerifier({
-            service: 'github-happy',
-            publicKey: generator.publicKey,
-        });
-
+        
         const githubGenerator = await privacyKit.createEphemeralTokenGenerator({
             service: 'github-happy',
             seed: process.env.HANDY_MASTER_SECRET!,
             ttl: 5 * 60 * 1000 // 5 minutes
         });
+
+        const githubVerifier = await privacyKit.createEphemeralTokenVerifier({
+            service: 'github-happy',
+            publicKey: githubGenerator.publicKey,
+        });
+
 
         this.tokens = { generator, verifier, githubVerifier, githubGenerator };
         
