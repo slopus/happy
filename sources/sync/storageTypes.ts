@@ -139,4 +139,9 @@ export interface GitStatus {
     linesAdded: number;      // stagedLinesAdded + unstagedLinesAdded
     linesRemoved: number;    // stagedLinesRemoved + unstagedLinesRemoved
     linesChanged: number;    // Total lines that were modified (added + removed)
+    // Branch tracking information (from porcelain v2)
+    upstreamBranch?: string | null; // Name of upstream branch
+    aheadCount?: number; // Commits ahead of upstream
+    behindCount?: number; // Commits behind upstream
+    stashCount?: number; // Number of stash entries
 }
