@@ -6,7 +6,7 @@ Happy CLI (`handy-cli`) is a command-line tool that wraps Claude Code to enable 
 
 1. **handy-cli** (this project) - CLI wrapper for Claude Code
 2. **handy** - React Native mobile client
-3. **handy-server** - Node.js server with Prisma (hosted at https://handy-api.korshakov.org)
+3. **handy-server** - Node.js server with Prisma (hosted at https://api.happy-servers.com/)
 
 ## Code Style Preferences
 
