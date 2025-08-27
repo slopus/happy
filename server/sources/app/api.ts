@@ -479,12 +479,16 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             });
 
             // Avatar
+            log({ module: 'github-oauth' }, `Uploading avatar for user ${userId}: ${userData.avatar_url}`);
             const image = await fetch(userData.avatar_url);
             const imageBuffer = await image.arrayBuffer();
+            log({ module: 'github-oauth' }, `Uploading avatar for user ${userId}: ${userData.avatar_url}`);
             const avatar = await uploadImage(userId, 'avatars', 'github', userData.avatar_url, Buffer.from(imageBuffer));
+            log({ module: 'github-oauth' }, `Uploaded avatar for user ${userId}: ${userData.avatar_url}`);
 
             // Name
             const name = separateName(userData.name);
+            log({ module: 'github-oauth' }, `Separated name for user ${userId}: ${userData.name} -> ${name.firstName} ${name.lastName}`);
 
             // Link GitHub user to account
             await db.account.update({
