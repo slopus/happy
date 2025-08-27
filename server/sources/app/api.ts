@@ -62,7 +62,6 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
     // Start API
     const app = fastify({
-        logger: true,
         loggerInstance: logger,
         bodyLimit: 1024 * 1024 * 100, // 100MB
     });
