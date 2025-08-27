@@ -64,13 +64,34 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         logger: true,
         bodyLimit: 1024 * 1024 * 100, // 100MB
     });
-    app.register(require('@fastify/cors'), {
+    app.register(import('@fastify/cors'), {
         origin: '*',
         allowedHeaders: '*',
         methods: ['GET', 'POST']
     });
     app.get('/', function (request, reply) {
         reply.send('Welcome to Happy Server!');
+    });
+
+    // Health check endpoint
+    app.get('/health', async (request, reply) => {
+        try {
+            // Test database connectivity
+            await db.$queryRaw`SELECT 1`;
+            reply.send({ 
+                status: 'ok', 
+                timestamp: new Date().toISOString(),
+                service: 'happy-server'
+            });
+        } catch (error) {
+            log({ module: 'health', level: 'error' }, `Health check failed: ${error}`);
+            reply.code(503).send({ 
+                status: 'error', 
+                timestamp: new Date().toISOString(),
+                service: 'happy-server',
+                error: 'Database connectivity failed'
+            });
+        }
     });
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);

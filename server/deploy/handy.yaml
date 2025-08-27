@@ -25,15 +25,33 @@ spec:
       - name: handy
         image: docker.korshakov.com/handy-server:{version}
         ports:
-        - containerPort: 3001
+        - containerPort: 3005
         env:
         - name: NODE_ENV
           value: production
+        - name: PORT
+          value: "3005"
         - name: REDIS_URL
           value: redis://happy-redis:6379
         envFrom:
         - secretRef:
             name: handy-secrets
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 3005
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 3005
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
 ---
 apiVersion: policy/v1
 kind: PodDisruptionBudget
