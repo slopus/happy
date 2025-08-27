@@ -35,7 +35,7 @@ export const UpdateBanner = React.memo(() => {
                 <Item
                     title="What's new"
                     subtitle="See the latest updates and improvements"
-                    icon={<Ionicons name="sparkles-outline" size={28} color={theme.colors.button.primary.background} />}
+                    icon={<Ionicons name="sparkles-outline" size={28} color={theme.colors.text} />}
                     showChevron={true}
                     onPress={() => router.push('/changelog')}
                 />
