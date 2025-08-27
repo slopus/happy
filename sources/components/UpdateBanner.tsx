@@ -10,7 +10,7 @@ import { useRouter } from 'expo-router';
 export const UpdateBanner = React.memo(() => {
     const { theme } = useUnistyles();
     const { updateAvailable, reloadApp } = useUpdates();
-    const { hasUnread, isInitialized } = useChangelog();
+    const { hasUnread, isInitialized, markAsRead } = useChangelog();
     const router = useRouter();
 
     // Show update banner if app update is available
@@ -37,7 +37,12 @@ export const UpdateBanner = React.memo(() => {
                     subtitle="See the latest updates and improvements"
                     icon={<Ionicons name="sparkles-outline" size={28} color={theme.colors.text} />}
                     showChevron={true}
-                    onPress={() => router.push('/changelog')}
+                    onPress={() => {
+                        router.push('/changelog');
+                        setTimeout(() => {
+                            markAsRead();
+                        }, 1000);
+                    }}
                 />
             </ItemGroup>
         );
