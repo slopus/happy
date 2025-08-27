@@ -213,24 +213,6 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         };
     });
 
-    // Not found handler
-    app.setNotFoundHandler(async (request, reply) => {
-        log({
-            module: 'fastify-not-found',
-            level: 'warn',
-            method: request.method,
-            url: request.url,
-            userAgent: request.headers['user-agent'] || 'unknown',
-            ip: request.ip || 'unknown'
-        }, `404 Not Found: ${request.method} ${request.url}`);
-        
-        return reply.code(404).send({
-            error: 'Not Found',
-            message: `Route ${request.method} ${request.url} not found`,
-            statusCode: 404
-        });
-    });
-
     // Authentication decorator
     app.decorate('authenticate', async function (request: any, reply: any) {
         try {
