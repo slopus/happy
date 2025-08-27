@@ -68,9 +68,9 @@ export default React.memo(() => {
         if (!session) return;
         try {
             await Clipboard.setStringAsync(session.id);
-            Modal.alert('Success', 'Session ID copied to clipboard');
+            Modal.alert('Success', 'Happy Session ID copied to clipboard');
         } catch (error) {
-            Modal.alert('Error', 'Failed to copy session ID');
+            Modal.alert('Error', 'Failed to copy Happy Session ID');
         }
     }, [session]);
 
@@ -182,11 +182,26 @@ export default React.memo(() => {
                 {/* Session Details */}
                 <ItemGroup>
                     <Item
-                        title="Session ID"
+                        title="Happy Session ID"
                         subtitle={`${session.id.substring(0, 8)}...${session.id.substring(session.id.length - 8)}`}
                         icon={<Ionicons name="finger-print-outline" size={29} color="#007AFF" />}
                         onPress={handleCopySessionId}
                     />
+                    {session.metadata?.claudeSessionId && (
+                        <Item
+                            title="Claude Code Session ID"
+                            subtitle={`${session.metadata.claudeSessionId.substring(0, 8)}...${session.metadata.claudeSessionId.substring(session.metadata.claudeSessionId.length - 8)}`}
+                            icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
+                            onPress={async () => {
+                                try {g
+                                    await Clipboard.setStringAsync(session.metadata!.claudeSessionId!);
+                                    Modal.alert('Success', 'Claude Code Session ID copied to clipboard');
+                                } catch (error) {
+                                    Modal.alert('Error', 'Failed to copy Claude Code Session ID');
+                                }
+                            }}
+                        />
+                    )}
                     <Item
                         title="Connection Status"
                         detail={sessionStatus.isConnected ? "Connected" : "Disconnected"}
