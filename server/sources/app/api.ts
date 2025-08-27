@@ -97,11 +97,21 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         { parseAs: 'string' },
         function (req, body, done) {
             try {
-                const json = JSON.parse(body as string);
+                const bodyStr = body as string;
+                
+                // Handle empty body case
+                if (!bodyStr || bodyStr.trim() === '') {
+                    (req as any).rawBody = bodyStr;
+                    done(null, {});
+                    return;
+                }
+                
+                const json = JSON.parse(bodyStr);
                 // Store raw body for webhook signature verification
-                (req as any).rawBody = body;
+                (req as any).rawBody = bodyStr;
                 done(null, json);
             } catch (err: any) {
+                log({ module: 'content-parser', level: 'error' }, `JSON parse error: ${err.message}, body: "${body}"`);
                 err.statusCode = 400;
                 done(err, undefined);
             }
