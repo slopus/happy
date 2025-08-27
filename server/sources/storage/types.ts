@@ -1,4 +1,5 @@
 import { GitHubProfile as GitHubProfileType, GitHubOrg as GitHubOrgType } from "../app/types";
+import { ImageRef as ImageRefType } from "./files";
 declare global {
     namespace PrismaJson {
         // Session message content types
@@ -78,6 +79,7 @@ declare global {
 
         type GitHubProfile = GitHubProfileType;
         type GitHubOrg = GitHubOrgType;
+        type ImageRef = ImageRefType;
     }
 }
 

@@ -1,0 +1,27 @@
+import { randomKey } from "@/utils/randomKey";
+import { processImage } from "./processImage";
+import { s3bucket, s3client, s3host } from "./files";
+import { db } from "./db";
+
+export async function uploadImage(userId: string, directory: string, prefix: string, src: Buffer) {
+    const processed = await processImage(src);
+    const key = randomKey(prefix);
+    let filename = `${key}.${processed.format === 'png' ? 'png' : 'jpg'}`;
+    await s3client.putObject(s3bucket, directory + '/' + filename, src);
+    await db.uploadedFile.create({
+        data: {
+            accountId: userId,
+            path: `user/${userId}/${directory}/${filename}`
+        }
+    });
+    return {
+        path: `user/${userId}/${directory}/${filename}`,
+        thumbhash: processed.thumbhash,
+        width: processed.width,
+        height: processed.height
+    }
+}
+
+export function resolveImageUrl(path: string) {
+    return `https://${s3host}/${s3bucket}/${path}`;
+}

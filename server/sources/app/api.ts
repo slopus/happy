@@ -4,7 +4,6 @@ import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-
 import { Server, Socket } from "socket.io";
 import { z } from "zod";
 import * as privacyKit from "privacy-kit";
-import * as tweetnacl from "tweetnacl";
 import { db } from "@/storage/db";
 import { Account } from "@prisma/client";
 import { onShutdown } from "@/utils/shutdown";
@@ -250,6 +249,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             })
         }
     }, async (request, reply) => {
+        const tweetnacl = await import("tweetnacl");
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const challenge = privacyKit.decodeBase64(request.body.challenge);
         const signature = privacyKit.decodeBase64(request.body.signature);
@@ -291,6 +291,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             }
         }
     }, async (request, reply) => {
+        const tweetnacl = await import("tweetnacl");
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
         if (!isValid) {
@@ -329,6 +330,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         }
     }, async (request, reply) => {
         log({ module: 'auth-response' }, `Auth response endpoint hit - user: ${request.userId}, publicKey: ${request.body.publicKey.substring(0, 20)}...`);
+        const tweetnacl = await import("tweetnacl");
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
         if (!isValid) {
@@ -602,6 +604,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             }
         }
     }, async (request, reply) => {
+        const tweetnacl = await import("tweetnacl");
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
         if (!isValid) {
@@ -636,6 +639,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             })
         }
     }, async (request, reply) => {
+        const tweetnacl = await import("tweetnacl");
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
         if (!isValid) {
@@ -972,12 +976,18 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         const user = await db.account.findUniqueOrThrow({
             where: { id: userId },
             select: {
+                firstName: true,
+                lastName: true,
+                avatar: true,
                 githubUser: true
             }
         });
         return reply.send({
             id: userId,
             timestamp: Date.now(),
+            firstName: user.firstName,
+            lastName: user.lastName,
+            avatar: user.avatar,
             github: user.githubUser ? user.githubUser.profile : null
         });
     });

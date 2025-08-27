@@ -30,12 +30,19 @@ model Account {
     githubUserId    String?
     githubUser      GithubUser? @relation(fields: [githubUserId], references: [id])
 
+    // Profile
+    firstName String?
+    lastName  String?
+    /// [ImageRef]
+    avatar    Json?
+
     Session             Session[]
     AccountPushToken    AccountPushToken[]
     TerminalAuthRequest TerminalAuthRequest[]
     AccountAuthRequest  AccountAuthRequest[]
     UsageReport         UsageReport[]
     Machine             Machine[]
+    UploadedFile        UploadedFile[]
 }
 
 model TerminalAuthRequest {
@@ -197,5 +204,17 @@ model Machine {
     updatedAt          DateTime @updatedAt
 
     @@unique([accountId, id])
+    @@index([accountId])
+}
+
+model UploadedFile {
+    id        String   @id @default(cuid())
+    accountId String
+    account   Account  @relation(fields: [accountId], references: [id])
+    path      String
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([accountId, path])
     @@index([accountId])
 }

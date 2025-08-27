@@ -82,6 +82,8 @@ spec:
         key: /handy-master
     - extract:
         key: /handy-github
+    - extract:
+        key: /handy-files
 ---
 apiVersion: v1
 kind: Service

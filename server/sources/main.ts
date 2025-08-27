@@ -10,6 +10,7 @@ import { auth } from "./modules/auth";
 import { startDatabaseMetricsUpdater } from "@/modules/metrics";
 import { initEncrypt } from "./modules/encrypt";
 import { initGithub } from "./modules/github";
+import { loadFiles } from "./storage/files";
 
 async function main() {
 
@@ -26,6 +27,7 @@ async function main() {
     // Initialize auth module
     await initEncrypt();
     await initGithub();
+    await loadFiles();
     await auth.init();
 
     //

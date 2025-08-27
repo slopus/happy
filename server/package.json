@@ -45,6 +45,7 @@
     "fastify-type-provider-zod": "^4.0.2",
     "ioredis": "^5.6.1",
     "jsonwebtoken": "^9.0.2",
+    "minio": "^8.0.5",
     "octokit": "^5.0.3",
     "pino-pretty": "^13.0.0",
     "prisma": "^6.11.1",
