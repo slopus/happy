@@ -1137,9 +1137,10 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     metadata,
                     metadataVersion: 1,
                     daemonState: daemonState || null,
-                    daemonStateVersion: daemonState ? 1 : 0
-                    // active defaults to true in schema
-                    // lastActiveAt defaults to now() in schema
+                    daemonStateVersion: daemonState ? 1 : 0,
+                    // Default to offline - in case the user does not start daemon
+                    active: false,
+                    // lastActiveAt and activeAt defaults to now() in schema
                 }
             });
 
