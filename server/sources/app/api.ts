@@ -249,7 +249,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             })
         }
     }, async (request, reply) => {
-        const tweetnacl = await import("tweetnacl");
+        const tweetnacl = (await import("tweetnacl")).default;
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const challenge = privacyKit.decodeBase64(request.body.challenge);
         const signature = privacyKit.decodeBase64(request.body.signature);
@@ -291,7 +291,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             }
         }
     }, async (request, reply) => {
-        const tweetnacl = await import("tweetnacl");
+        const tweetnacl = (await import("tweetnacl")).default;
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
         if (!isValid) {
@@ -330,7 +330,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         }
     }, async (request, reply) => {
         log({ module: 'auth-response' }, `Auth response endpoint hit - user: ${request.userId}, publicKey: ${request.body.publicKey.substring(0, 20)}...`);
-        const tweetnacl = await import("tweetnacl");
+        const tweetnacl = (await import("tweetnacl")).default;
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
         if (!isValid) {
@@ -604,7 +604,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             }
         }
     }, async (request, reply) => {
-        const tweetnacl = await import("tweetnacl");
+        const tweetnacl = (await import("tweetnacl")).default;
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
         if (!isValid) {
@@ -639,7 +639,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             })
         }
     }, async (request, reply) => {
-        const tweetnacl = await import("tweetnacl");
+        const tweetnacl = (await import("tweetnacl")).default;
         const publicKey = privacyKit.decodeBase64(request.body.publicKey);
         const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
         if (!isValid) {
