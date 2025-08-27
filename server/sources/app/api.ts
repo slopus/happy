@@ -598,6 +598,74 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         }
     });
 
+    // GitHub disconnect endpoint
+    typed.delete('/v1/connect/github', {
+        preHandler: app.authenticate,
+        schema: {
+            response: {
+                200: z.object({
+                    success: z.literal(true)
+                }),
+                404: z.object({
+                    error: z.string()
+                }),
+                500: z.object({
+                    error: z.string()
+                })
+            }
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+
+        try {
+            // Get current user's GitHub connection
+            const user = await db.account.findUnique({
+                where: { id: userId },
+                select: { githubUserId: true }
+            });
+
+            if (!user || !user.githubUserId) {
+                return reply.code(404).send({ error: 'GitHub account not connected' });
+            }
+
+            const githubUserId = user.githubUserId;
+            log({ module: 'github-disconnect' }, `Disconnecting GitHub account for user ${userId}: ${githubUserId}`);
+
+            // Remove GitHub connection from account and delete GitHub user record
+            await db.$transaction(async (tx) => {
+                // Remove link from account
+                await tx.account.update({
+                    where: { id: userId },
+                    data: { githubUserId: null }
+                });
+
+                // Delete GitHub user record (this also deletes the token)
+                await tx.githubUser.delete({
+                    where: { id: githubUserId }
+                });
+            });
+
+            // Send account update to all user connections
+            const updSeq = await allocateUserSeq(userId);
+            const updatePayload = buildUpdateAccountUpdate(userId, {
+                github: null
+            }, updSeq, randomKeyNaked(12));
+            eventRouter.emitUpdate({
+                userId,
+                payload: updatePayload,
+                recipientFilter: { type: 'all-user-authenticated-connections' }
+            });
+
+            log({ module: 'github-disconnect' }, `GitHub account disconnected successfully for user ${userId}`);
+
+            return reply.send({ success: true });
+
+        } catch (error) {
+            log({ module: 'github-disconnect', level: 'error' }, `Error disconnecting GitHub account: ${error}`);
+            return reply.code(500).send({ error: 'Failed to disconnect GitHub account' });
+        }
+    });
+
     // Account auth request
     typed.post('/v1/auth/account/request', {
         schema: {
