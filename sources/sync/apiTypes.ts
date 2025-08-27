@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { GitHubProfileSchema, ImageRefSchema } from './profile';
 
 //
 // Encrypted message
@@ -54,6 +55,10 @@ export const ApiUpdateAccountSchema = z.object({
         value: z.string().nullish(),
         version: z.number()
     }).nullish(),
+    firstName: z.string().nullish(),
+    lastName: z.string().nullish(),
+    avatar: ImageRefSchema.nullish(),
+    github: GitHubProfileSchema.nullish(),
 });
 
 export const ApiUpdateMachineStateSchema = z.object({

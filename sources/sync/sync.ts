@@ -17,6 +17,7 @@ import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 import { decodeBase64 } from '@/auth/base64';
 import { SessionEncryption } from './apiSessionEncryption';
 import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
+import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
 import { initializeTracking, tracking } from '@/track';
 import { parseToken } from '@/utils/parseToken';
@@ -43,6 +44,7 @@ class Sync {
     private sessionEncryption = new Map<string, SessionEncryption>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
     private settingsSync: InvalidateSync;
+    private profileSync: InvalidateSync;
     private purchasesSync: InvalidateSync;
     private machinesSync: InvalidateSync;
     private pushTokenSync: InvalidateSync;
@@ -57,6 +59,7 @@ class Sync {
     constructor() {
         this.sessionsSync = new InvalidateSync(this.fetchSessions);
         this.settingsSync = new InvalidateSync(this.syncSettings);
+        this.profileSync = new InvalidateSync(this.fetchProfile);
         this.purchasesSync = new InvalidateSync(this.syncPurchases);
         this.machinesSync = new InvalidateSync(this.fetchMachines);
 
@@ -98,6 +101,9 @@ class Sync {
         // Await settings sync to have fresh settings
         await this.settingsSync.awaitQueue();
 
+        // Await profile sync to have fresh profile
+        await this.profileSync.awaitQueue();
+
         // Await purchases sync to have fresh purchases
         await this.purchasesSync.awaitQueue();
     }
@@ -129,6 +135,7 @@ class Sync {
         // Invalidate sync
         this.sessionsSync.invalidate();
         this.settingsSync.invalidate();
+        this.profileSync.invalidate();
         this.purchasesSync.invalidate();
         this.machinesSync.invalidate();
         this.pushTokenSync.invalidate();
@@ -708,6 +715,38 @@ class Sync {
         }
     }
 
+    private fetchProfile = async () => {
+        if (!this.credentials) return;
+
+        const API_ENDPOINT = getServerUrl();
+        const response = await fetch(`${API_ENDPOINT}/v1/account/profile`, {
+            headers: {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch profile: ${response.status}`);
+        }
+
+        const data = await response.json();
+        const parsedProfile = profileParse(data);
+
+        // Log profile data for debugging
+        console.log('profile', JSON.stringify({
+            id: parsedProfile.id,
+            timestamp: parsedProfile.timestamp,
+            firstName: parsedProfile.firstName,
+            lastName: parsedProfile.lastName,
+            hasAvatar: !!parsedProfile.avatar,
+            hasGitHub: !!parsedProfile.github
+        }));
+
+        // Apply profile to storage
+        storage.getState().applyProfile(parsedProfile);
+    }
+
     private syncPurchases = async () => {
         try {
             // Initialize RevenueCat if not already done
@@ -1017,6 +1056,22 @@ class Sync {
                     }
                 }
             }
+        } else if (updateData.body.t === 'update-account') {
+            const accountUpdate = updateData.body;
+            const currentProfile = storage.getState().profile;
+            
+            // Build updated profile with new data
+            const updatedProfile: Profile = {
+                ...currentProfile,
+                firstName: accountUpdate.firstName !== undefined ? accountUpdate.firstName : currentProfile.firstName,
+                lastName: accountUpdate.lastName !== undefined ? accountUpdate.lastName : currentProfile.lastName,
+                avatar: accountUpdate.avatar !== undefined ? accountUpdate.avatar : currentProfile.avatar,
+                github: accountUpdate.github !== undefined ? accountUpdate.github : currentProfile.github,
+                timestamp: updateData.createdAt // Update timestamp to latest
+            };
+            
+            // Apply the updated profile to storage
+            storage.getState().applyProfile(updatedProfile);
         } else if (updateData.body.t === 'update-machine') {
             const machineUpdate = updateData.body;
             const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
