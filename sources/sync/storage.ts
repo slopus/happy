@@ -8,7 +8,8 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
+import { Profile } from "./profile";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
 import React from "react";
@@ -68,6 +69,7 @@ interface StorageState {
     settingsVersion: number | null;
     localSettings: LocalSettings;
     purchases: Purchases;
+    profile: Profile;
     sessions: Record<string, Session>;
     sessionsData: SessionListItem[] | null;  // Legacy - to be removed
     sessionListViewData: SessionListViewItem[] | null;
@@ -89,6 +91,7 @@ interface StorageState {
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
     applyPurchases: (customerInfo: CustomerInfo) => void;
+    applyProfile: (profile: Profile) => void;
     applyGitStatus: (sessionId: string, status: GitStatus | null) => void;
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
     recalculateOnline: () => void;
@@ -147,6 +150,7 @@ export const storage = create<StorageState>()((set, get) => {
     let { settings, version } = loadSettings();
     let localSettings = loadLocalSettings();
     let purchases = loadPurchases();
+    let profile = loadProfile();
     let sessionDrafts = loadSessionDrafts();
     let sessionPermissionModes = loadSessionPermissionModes();
     return {
@@ -154,6 +158,7 @@ export const storage = create<StorageState>()((set, get) => {
         settingsVersion: version,
         localSettings,
         purchases,
+        profile,
         sessions: {},
         machines: {},
         sessionsData: null,  // Legacy - to be removed
@@ -610,6 +615,14 @@ export const storage = create<StorageState>()((set, get) => {
                 purchases
             };
         }),
+        applyProfile: (profile: Profile) => set((state) => {
+            // Always save and update profile
+            saveProfile(profile);
+            return {
+                ...state,
+                profile
+            };
+        }),
         applyGitStatus: (sessionId: string, status: GitStatus | null) => set((state) => ({
             ...state,
             sessionGitStatus: {
@@ -862,4 +875,8 @@ export function useSessionGitStatus(sessionId: string): GitStatus | null {
 
 export function useIsDataReady(): boolean {
     return storage(useShallow((state) => state.isDataReady));
+}
+
+export function useProfile() {
+    return storage(useShallow((state) => state.profile));
 }

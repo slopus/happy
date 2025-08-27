@@ -14,14 +14,19 @@ export function resolvePath(path: string, metadata: Metadata | null): string {
         return path;
     }
     if (path.toLowerCase().startsWith(metadata.path.toLowerCase())) {
-        let out = path.slice(metadata.path.length);
-        if (out.startsWith('/')) {
-            out = out.slice(1);
+        // Check that the path is actually within the metadata path by ensuring
+        // there's either an exact match or a path separator after the metadata path
+        const remainder = path.slice(metadata.path.length);
+        if (remainder === '' || remainder.startsWith('/')) {
+            let out = remainder;
+            if (out.startsWith('/')) {
+                out = out.slice(1);
+            }
+            if (out === '') {
+                return '<root>';
+            }
+            return out;
         }
-        if (out === '') {
-            return '<root>';
-        }
-        return out;
     }
     return path;
 }

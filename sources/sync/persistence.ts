@@ -2,6 +2,7 @@ import { MMKV } from 'react-native-mmkv';
 import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
 import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
+import { Profile, profileDefaults, profileParse } from './profile';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();
@@ -125,6 +126,24 @@ export function loadSessionPermissionModes(): Record<string, PermissionMode> {
 
 export function saveSessionPermissionModes(modes: Record<string, PermissionMode>) {
     mmkv.set('session-permission-modes', JSON.stringify(modes));
+}
+
+export function loadProfile(): Profile {
+    const profile = mmkv.getString('profile');
+    if (profile) {
+        try {
+            const parsed = JSON.parse(profile);
+            return profileParse(parsed);
+        } catch (e) {
+            console.error('Failed to parse profile', e);
+            return { ...profileDefaults };
+        }
+    }
+    return { ...profileDefaults };
+}
+
+export function saveProfile(profile: Profile) {
+    mmkv.set('profile', JSON.stringify(profile));
 }
 
 export function clearPersistence() {

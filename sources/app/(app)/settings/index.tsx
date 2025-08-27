@@ -21,6 +21,11 @@ import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
+import { useHappyAction } from '@/hooks/useHappyAction';
+import { getGitHubOAuthParams, disconnectGitHub } from '@/sync/apiGithub';
+import { useProfile } from '@/sync/storage';
+import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
+import { Avatar } from '@/components/Avatar';
 
 // Manual Auth Modal Component for Android
 function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (url: string) => void }) {
@@ -88,6 +93,10 @@ export default React.memo(function SettingsScreen() {
     const isPro = __DEV__ || useEntitlement('pro');
     const isCustomServer = isUsingCustomServer();
     const allMachines = useAllMachines();
+    const profile = useProfile();
+    const displayName = getDisplayName(profile);
+    const avatarUrl = getAvatarUrl(profile);
+    const bio = getBio(profile);
 
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
 
@@ -131,6 +140,27 @@ export default React.memo(function SettingsScreen() {
         resetTimeout: 2000
     });
 
+    // GitHub connection status
+    const isGitHubConnected = !!profile.github;
+
+    // GitHub connection
+    const [connecting, connectGitHub] = useHappyAction(async () => {
+        const params = await getGitHubOAuthParams(auth.credentials!);
+        await Linking.openURL(params.url);
+    });
+
+    // GitHub disconnection
+    const [disconnecting, handleDisconnectGitHub] = useHappyAction(async () => {
+        const confirmed = await Modal.confirm(
+            'Disconnect GitHub',
+            'Are you sure you want to disconnect your GitHub account?',
+            { confirmText: 'Disconnect', destructive: true }
+        );
+        if (confirmed) {
+            await disconnectGitHub(auth.credentials!);
+        }
+    });
+
 
     return (
 
@@ -138,16 +168,42 @@ export default React.memo(function SettingsScreen() {
             {/* App Info Header */}
             <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
                 <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.surface, marginTop: 16, borderRadius: 12, marginHorizontal: 16 }}>
-                    <Image
-                        source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
-                        contentFit="contain"
-                        style={{ width: 300, height: 90, marginBottom: 12 }}
-                    />
-                    <Pressable onPress={handleVersionClick} hitSlop={20}>
-                        <Text style={{ ...Typography.mono(), fontSize: 14, color: theme.colors.textSecondary }}>
-                            Version {appVersion}
-                        </Text>
-                    </Pressable>
+                    {profile.firstName ? (
+                        // Profile view: Avatar + name + version
+                        <>
+                            <View style={{ marginBottom: 12 }}>
+                                {avatarUrl ? (
+                                    <Image
+                                        source={{ uri: avatarUrl, thumbhash: profile.avatar?.thumbhash }}
+                                        contentFit="cover"
+                                        style={{ width: 90, height: 90, borderRadius: 45 }}
+                                    />
+                                ) : (
+                                    <Avatar
+                                        id={profile.id}
+                                        size={90}
+                                    />
+                                )}
+                            </View>
+                            <Text style={{ fontSize: 20, fontWeight: '600', color: theme.colors.text, marginBottom: bio ? 4 : 8 }}>
+                                {displayName}
+                            </Text>
+                            {bio && (
+                                <Text style={{ fontSize: 14, color: theme.colors.textSecondary, textAlign: 'center', marginBottom: 8, paddingHorizontal: 16 }}>
+                                    {bio}
+                                </Text>
+                            )}
+                        </>
+                    ) : (
+                        // Logo view: Original logo + version
+                        <>
+                            <Image
+                                source={theme.dark ? require('@/assets/images/logotype-light.png') : require('@/assets/images/logotype-dark.png')}
+                                contentFit="contain"
+                                style={{ width: 300, height: 90, marginBottom: 12 }}
+                            />
+                        </>
+                    )}
                 </View>
             </View>
 
@@ -209,6 +265,26 @@ export default React.memo(function SettingsScreen() {
                     icon={<Ionicons name="heart" size={29} color="#FF3B30" />}
                     showChevron={false}
                     onPress={isPro ? undefined : handleSubscribe}
+                />
+            </ItemGroup>
+
+            <ItemGroup title="Connected Accounts">
+                <Item
+                    title="GitHub"
+                    subtitle={isGitHubConnected 
+                        ? `Connected as @${profile.github?.login}` 
+                        : "Connect your GitHub account"
+                    }
+                    icon={
+                        <Ionicons
+                            name="logo-github"
+                            size={29}
+                            color={isGitHubConnected ? theme.colors.status.connected : theme.colors.textSecondary}
+                        />
+                    }
+                    onPress={isGitHubConnected ? handleDisconnectGitHub : connectGitHub}
+                    loading={connecting || disconnecting}
+                    showChevron={false}
                 />
             </ItemGroup>
 
@@ -346,6 +422,16 @@ export default React.memo(function SettingsScreen() {
                         }}
                     />
                 )}
+            </ItemGroup>
+
+            {/* Version */}
+            <ItemGroup>
+                <Item
+                    title="Version"
+                    detail={appVersion}
+                    onPress={handleVersionClick}
+                    showChevron={false}
+                />
             </ItemGroup>
 
         </ItemList>

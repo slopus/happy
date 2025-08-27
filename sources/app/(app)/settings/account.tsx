@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useAuth } from '@/auth/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
@@ -11,12 +11,16 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
-import { useSettingMutable } from '@/sync/storage';
+import { useSettingMutable, useProfile } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { getServerInfo } from '@/sync/serverConfig';
 import { useUnistyles } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
 import { useConnectAccount } from '@/hooks/useConnectAccount';
+import { getDisplayName, getAvatarUrl } from '@/sync/profile';
+import { Image } from 'expo-image';
+import { useHappyAction } from '@/hooks/useHappyAction';
+import { disconnectGitHub } from '@/sync/apiGithub';
 
 export default React.memo(() => {
     const { theme } = useUnistyles();
@@ -26,6 +30,7 @@ export default React.memo(() => {
     const [copiedRecently, setCopiedRecently] = useState(false);
     const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
     const { connectAccount, isLoading: isConnecting } = useConnectAccount();
+    const profile = useProfile();
 
     // Get the current secret key
     const currentSecret = auth.credentials?.secret || '';
@@ -33,6 +38,22 @@ export default React.memo(() => {
 
     // Get server info
     const serverInfo = getServerInfo();
+
+    // Profile display values
+    const displayName = getDisplayName(profile);
+    const githubUsername = profile.github?.login;
+
+    // GitHub disconnection
+    const [disconnecting, handleDisconnectGitHub] = useHappyAction(async () => {
+        const confirmed = await Modal.confirm(
+            'Disconnect GitHub',
+            'Are you sure you want to disconnect your GitHub account? This will remove your profile information.',
+            { confirmText: 'Disconnect', destructive: true }
+        );
+        if (confirmed) {
+            await disconnectGitHub(auth.credentials!);
+        }
+    });
 
     const handleShowSecret = () => {
         setShowSecret(!showSecret);
@@ -93,6 +114,41 @@ export default React.memo(() => {
                         />
                     )}
                 </ItemGroup>
+
+                {/* Profile Section */}
+                {(displayName || githubUsername || profile.avatar) && (
+                    <ItemGroup title="Profile">
+                        {displayName && (
+                            <Item
+                                title="Name"
+                                detail={displayName}
+                                showChevron={false}
+                            />
+                        )}
+                        {githubUsername && (
+                            <Item
+                                title="GitHub"
+                                detail={`@${githubUsername}`}
+                                subtitle="Tap to disconnect"
+                                onPress={handleDisconnectGitHub}
+                                loading={disconnecting}
+                                showChevron={false}
+                                icon={profile.avatar?.url ? (
+                                    <Image
+                                        source={{ uri: profile.avatar.url }}
+                                        style={{ width: 29, height: 29, borderRadius: 14.5 }}
+                                        placeholder={{ thumbhash: profile.avatar.thumbhash }}
+                                        contentFit="cover"
+                                        transition={200}
+                                        cachePolicy="memory-disk"
+                                    />
+                                ) : (
+                                    <Ionicons name="logo-github" size={29} color={theme.colors.textSecondary} />
+                                )}
+                            />
+                        )}
+                    </ItemGroup>
+                )}
 
                 {/* Server Info */}
                 {serverInfo.isCustom && (
