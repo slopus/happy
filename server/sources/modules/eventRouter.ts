@@ -1,6 +1,7 @@
 import { Socket } from "socket.io";
 import { log } from "@/utils/log";
 import { GitHubProfile } from "@/app/types";
+import { AccountProfile } from "@/types";
 
 // === CONNECTION TYPES ===
 
@@ -330,27 +331,14 @@ export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, u
     };
 }
 
-export function buildUpdateAccountUpdate(userId: string, settings: { value: string | null; version: number }, updateSeq: number, updateId: string): UpdatePayload {
+export function buildUpdateAccountUpdate(userId: string, profile: Partial<AccountProfile>, updateSeq: number, updateId: string): UpdatePayload {
     return {
         id: updateId,
         seq: updateSeq,
         body: {
             t: 'update-account',
             id: userId,
-            settings
-        },
-        createdAt: Date.now()
-    };
-}
-
-export function buildUpdateAccountGithubUpdate(userId: string, github: GitHubProfile | null, updateSeq: number, updateId: string): UpdatePayload {
-    return {
-        id: updateId,
-        seq: updateSeq,
-        body: {
-            t: 'update-account',
-            id: userId,
-            github
+            ...profile
         },
         createdAt: Date.now()
     };

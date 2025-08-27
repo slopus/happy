@@ -14,10 +14,6 @@ import { auth } from "@/modules/auth";
 import {
     EventRouter,
     ClientConnection,
-    SessionScopedConnection,
-    UserScopedConnection,
-    MachineScopedConnection,
-    RecipientFilter,
     buildNewSessionUpdate,
     buildNewMessageUpdate,
     buildUpdateSessionUpdate,
@@ -26,8 +22,6 @@ import {
     buildSessionActivityEphemeral,
     buildMachineActivityEphemeral,
     buildUsageEphemeral,
-    buildMachineStatusEphemeral,
-    buildUpdateAccountGithubUpdate
 } from "@/modules/eventRouter";
 import {
     incrementWebSocketConnection,
@@ -41,6 +35,8 @@ import {
 import { activityCache } from "@/modules/sessionCache";
 import { encryptBytes, encryptString } from "@/modules/encrypt";
 import { GitHubProfile } from "./types";
+import { uploadImage } from "@/storage/uploadImage";
+import { separateName } from "@/utils/separateName";
 
 
 declare module 'fastify' {
@@ -93,7 +89,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             });
         }
     });
-    
+
     // Add content type parser for webhook endpoints to preserve raw body
     app.addContentTypeParser(
         'application/json',
@@ -110,7 +106,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             }
         }
     );
-    
+
     app.setValidatorCompiler(validatorCompiler);
     app.setSerializerCompiler(serializerCompiler);
     const typed = app.withTypeProvider<ZodTypeProvider>();
@@ -140,9 +136,9 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         const url = request.url;
         const userAgent = request.headers['user-agent'] || 'unknown';
         const ip = request.ip || 'unknown';
-        
+
         // Log the error with comprehensive context
-        log({ 
+        log({
             module: 'fastify-error',
             level: 'error',
             method,
@@ -153,10 +149,10 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             errorCode: error.code,
             stack: error.stack
         }, `Unhandled error: ${error.message}`);
-        
+
         // Return appropriate error response
         const statusCode = error.statusCode || 500;
-        
+
         if (statusCode >= 500) {
             // Internal server errors - don't expose details
             return reply.code(statusCode).send({
@@ -179,7 +175,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         const method = request.method;
         const url = request.url;
         const duration = (Date.now() - (request.startTime || Date.now())) / 1000;
-        
+
         log({
             module: 'fastify-hook-error',
             level: 'error',
@@ -196,7 +192,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
     app.addHook('preHandler', async (request, reply) => {
         // Store original reply.send to catch errors in response serialization
         const originalSend = reply.send.bind(reply);
-        reply.send = function(payload: any) {
+        reply.send = function (payload: any) {
             try {
                 return originalSend(payload);
             } catch (error: any) {
@@ -482,15 +478,28 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 }
             });
 
+            // Avatar
+            const image = await fetch(userData.avatar_url);
+            const imageBuffer = await image.arrayBuffer();
+            const avatar = await uploadImage(userId, 'avatars', 'github', userData.avatar_url, Buffer.from(imageBuffer));
+
+            // Name
+            const name = separateName(userData.name);
+
             // Link GitHub user to account
             await db.account.update({
                 where: { id: userId },
-                data: { githubUserId: githubUser.id }
+                data: { githubUserId: githubUser.id, avatar, firstName: name.firstName, lastName: name.lastName }
             });
 
             // Send account update to all user connections
             const updSeq = await allocateUserSeq(userId);
-            const updatePayload = buildUpdateAccountGithubUpdate(userId, userData, updSeq, randomKeyNaked(12));
+            const updatePayload = buildUpdateAccountUpdate(userId, {
+                github: userData,
+                firstName: name.firstName,
+                lastName: name.lastName,
+                avatar: avatar
+            }, updSeq, randomKeyNaked(12));
             eventRouter.emitUpdate({
                 userId,
                 payload: updatePayload,
@@ -528,22 +537,22 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         const eventName = request.headers['x-github-event'];
         const deliveryId = request.headers['x-github-delivery'];
         const rawBody = (request as any).rawBody;
-        
+
         if (!rawBody) {
-            log({ module: 'github-webhook', level: 'error' }, 
+            log({ module: 'github-webhook', level: 'error' },
                 'Raw body not available for webhook signature verification');
             return reply.code(500).send({ error: 'Server configuration error' });
         }
-        
+
         // Get the webhooks handler
         const { getWebhooks } = await import("@/modules/github");
         const webhooks = getWebhooks();
         if (!webhooks) {
-            log({ module: 'github-webhook', level: 'error' }, 
+            log({ module: 'github-webhook', level: 'error' },
                 'GitHub webhooks not initialized');
             return reply.code(500).send({ error: 'Webhooks not configured' });
         }
-        
+
         try {
             // Verify and handle the webhook with type safety
             await webhooks.verifyAndReceive({
@@ -552,34 +561,34 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 payload: typeof rawBody === 'string' ? rawBody : JSON.stringify(request.body),
                 signature: signature
             });
-            
+
             // Log successful processing
-            log({ 
+            log({
                 module: 'github-webhook',
                 event: eventName,
-                delivery: deliveryId 
+                delivery: deliveryId
             }, `Successfully processed ${eventName} webhook`);
-            
+
             return reply.send({ received: true });
-            
+
         } catch (error: any) {
             if (error.message?.includes('signature does not match')) {
-                log({ 
-                    module: 'github-webhook', 
+                log({
+                    module: 'github-webhook',
                     level: 'warn',
                     event: eventName,
                     delivery: deliveryId
                 }, 'Invalid webhook signature');
                 return reply.code(401).send({ error: 'Invalid signature' });
             }
-            
-            log({ 
-                module: 'github-webhook', 
+
+            log({
+                module: 'github-webhook',
                 level: 'error',
                 event: eventName,
                 delivery: deliveryId
             }, `Error processing webhook: ${error.message}`);
-            
+
             return reply.code(500).send({ error: 'Internal server error' });
         }
     });
@@ -1112,7 +1121,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             };
 
             // Send account update to all user connections
-            const updatePayload = buildUpdateAccountUpdate(userId, settingsUpdate, updSeq, randomKeyNaked(12));
+            const updatePayload = buildUpdateAccountUpdate(userId, { settings: settingsUpdate }, updSeq, randomKeyNaked(12));
             eventRouter.emitUpdate({
                 userId,
                 payload: updatePayload,
