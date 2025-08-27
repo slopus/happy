@@ -65,12 +65,12 @@ export class Session {
     onSessionFound = (sessionId: string) => {
         this.sessionId = sessionId;
         
-        // Update metadata with Claude session ID
+        // Update metadata with Claude Code session ID
         this.client.updateMetadata((metadata) => ({
             ...metadata,
             claudeSessionId: sessionId
         }));
-        logger.debug(`[Session] Claude session ID ${sessionId} added to metadata`);
+        logger.debug(`[Session] Claude Code session ID ${sessionId} added to metadata`);
     }
 
     /**
