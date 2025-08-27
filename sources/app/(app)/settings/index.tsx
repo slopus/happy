@@ -422,13 +422,10 @@ export default React.memo(function SettingsScreen() {
                         }}
                     />
                 )}
-            </ItemGroup>
-
-            {/* Version */}
-            <ItemGroup>
                 <Item
                     title="Version"
                     detail={appVersion}
+                    icon={<Ionicons name="information-circle-outline" size={29} color={theme.colors.textSecondary} />}
                     onPress={handleVersionClick}
                     showChevron={false}
                 />
