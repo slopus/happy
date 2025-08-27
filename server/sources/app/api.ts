@@ -978,7 +978,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         return reply.send({
             id: userId,
             timestamp: Date.now(),
-            github: user.githubUser ?? null,
+            github: user.githubUser ? user.githubUser.profile : null
         });
     });
 
