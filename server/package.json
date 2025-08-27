@@ -5,6 +5,7 @@
   "author": "Steve Korshakov <steve@korshakov.com>",
   "license": "MIT",
   "private": true,
+  "type": "module",
   "scripts": {
     "build": "tsc --noEmit",
     "start": "tsx ./sources/main.ts",
