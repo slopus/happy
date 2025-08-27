@@ -2,6 +2,7 @@ import { Socket } from "socket.io";
 import { log } from "@/utils/log";
 import { GitHubProfile } from "@/app/types";
 import { AccountProfile } from "@/types";
+import { getPublicUrl } from "@/storage/files";
 
 // === CONNECTION TYPES ===
 
@@ -338,7 +339,8 @@ export function buildUpdateAccountUpdate(userId: string, profile: Partial<Accoun
         body: {
             t: 'update-account',
             id: userId,
-            ...profile
+            ...profile,
+            avatar: profile.avatar ? { ...profile.avatar, url: getPublicUrl(profile.avatar.path) } : undefined
         },
         createdAt: Date.now()
     };

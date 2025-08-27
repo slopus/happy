@@ -37,6 +37,7 @@ import { encryptBytes, encryptString } from "@/modules/encrypt";
 import { GitHubProfile } from "./types";
 import { uploadImage } from "@/storage/uploadImage";
 import { separateName } from "@/utils/separateName";
+import { getPublicUrl } from "@/storage/files";
 
 
 declare module 'fastify' {
@@ -1000,7 +1001,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             timestamp: Date.now(),
             firstName: user.firstName,
             lastName: user.lastName,
-            avatar: user.avatar,
+            avatar: user.avatar ? { ...user.avatar, url: getPublicUrl(user.avatar.path) } : null,
             github: user.githubUser ? user.githubUser.profile : null
         });
     });
