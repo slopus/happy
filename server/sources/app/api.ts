@@ -99,9 +99,15 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             try {
                 const bodyStr = body as string;
                 
-                // Handle empty body case
+                // Handle empty body case - common for DELETE, GET requests
                 if (!bodyStr || bodyStr.trim() === '') {
                     (req as any).rawBody = bodyStr;
+                    // For DELETE and GET methods, empty body is expected
+                    if (req.method === 'DELETE' || req.method === 'GET') {
+                        done(null, undefined);
+                        return;
+                    }
+                    // For other methods, return empty object
                     done(null, {});
                     return;
                 }
@@ -111,7 +117,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 (req as any).rawBody = bodyStr;
                 done(null, json);
             } catch (err: any) {
-                log({ module: 'content-parser', level: 'error' }, `JSON parse error: ${err.message}, body: "${body}"`);
+                log({ module: 'content-parser', level: 'error' }, `JSON parse error on ${req.method} ${req.url}: ${err.message}, body: "${body}"`);
                 err.statusCode = 400;
                 done(err, undefined);
             }
