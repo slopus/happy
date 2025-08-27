@@ -25,11 +25,11 @@ export async function uploadImage(userId: string, directory: string, prefix: str
     const processed = await processImage(src);
     const key = randomKey(prefix);
     let filename = `${key}.${processed.format === 'png' ? 'png' : 'jpg'}`;
-    await s3client.putObject(s3bucket, directory + '/' + filename, src);
+    await s3client.putObject(s3bucket, 'public/users/' + userId + '/' + directory + '/' + filename, src);
     await db.uploadedFile.create({
         data: {
             accountId: userId,
-            path: `user/${userId}/${directory}/${filename}`,
+            path: `public/users/${userId}/${directory}/${filename}`,
             reuseKey: 'image-url:' + url,
             width: processed.width,
             height: processed.height,
@@ -37,7 +37,7 @@ export async function uploadImage(userId: string, directory: string, prefix: str
         }
     });
     return {
-        path: `user/${userId}/${directory}/${filename}`,
+        path: `public/users/${userId}/${directory}/${filename}`,
         thumbhash: processed.thumbhash,
         width: processed.width,
         height: processed.height
