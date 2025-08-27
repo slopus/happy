@@ -98,7 +98,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
         function (req, body, done) {
             try {
                 const bodyStr = body as string;
-                
+
                 // Handle empty body case - common for DELETE, GET requests
                 if (!bodyStr || bodyStr.trim() === '') {
                     (req as any).rawBody = bodyStr;
@@ -111,7 +111,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     done(null, {});
                     return;
                 }
-                
+
                 const json = JSON.parse(bodyStr);
                 // Store raw body for webhook signature verification
                 (req as any).rawBody = bodyStr;
@@ -652,7 +652,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 // Remove link from account and clear avatar
                 await tx.account.update({
                     where: { id: userId },
-                    data: { 
+                    data: {
                         githubUserId: null,
                         avatar: Prisma.JsonNull
                     }
@@ -876,6 +876,147 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                     lastMessage: null
                 };
             })
+        });
+    });
+
+    // V2 Sessions API - Active sessions only
+    typed.get('/v2/sessions/active', {
+        preHandler: app.authenticate,
+        schema: {
+            querystring: z.object({
+                limit: z.coerce.number().int().min(1).max(500).default(150)
+            }).optional()
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const limit = request.query?.limit || 150;
+
+        const sessions = await db.session.findMany({
+            where: {
+                accountId: userId,
+                active: true,
+                lastActiveAt: { gt: new Date(Date.now() - 1000 * 60 * 5) /* 5 minutes */ }
+            },
+            orderBy: { lastActiveAt: 'desc' },
+            take: limit,
+            select: {
+                id: true,
+                seq: true,
+                createdAt: true,
+                updatedAt: true,
+                metadata: true,
+                metadataVersion: true,
+                agentState: true,
+                agentStateVersion: true,
+                active: true,
+                lastActiveAt: true,
+            }
+        });
+
+        return reply.send({
+            sessions: sessions.map((v) => ({
+                id: v.id,
+                seq: v.seq,
+                createdAt: v.createdAt.getTime(),
+                updatedAt: v.updatedAt.getTime(),
+                active: v.active,
+                activeAt: v.lastActiveAt.getTime(),
+                metadata: v.metadata,
+                metadataVersion: v.metadataVersion,
+                agentState: v.agentState,
+                agentStateVersion: v.agentStateVersion,
+            }))
+        });
+    });
+
+    // V2 Sessions API - Cursor-based pagination with change tracking
+    typed.get('/v2/sessions', {
+        preHandler: app.authenticate,
+        schema: {
+            querystring: z.object({
+                cursor: z.string().optional(),
+                limit: z.coerce.number().int().min(1).max(200).default(50),
+                changedSince: z.coerce.number().int().positive().optional()
+            }).optional()
+        }
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { cursor, limit = 50, changedSince } = request.query || {};
+
+        // Decode cursor - simple ID-based cursor
+        let cursorSessionId: string | undefined;
+        if (cursor) {
+            if (cursor.startsWith('cursor_v1_')) {
+                cursorSessionId = cursor.substring(10);
+            } else {
+                return reply.code(400).send({ error: 'Invalid cursor format' });
+            }
+        }
+
+        // Build where clause
+        const where: Prisma.SessionWhereInput = { accountId: userId };
+
+        // Add changedSince filter (just a filter, doesn't affect pagination)
+        if (changedSince) {
+            where.updatedAt = {
+                gt: new Date(changedSince)
+            };
+        }
+
+        // Add cursor pagination - always by ID descending (most recent first)
+        if (cursorSessionId) {
+            where.id = {
+                lt: cursorSessionId  // Get sessions with ID less than cursor (for desc order)
+            };
+        }
+
+        // Always sort by ID descending for consistent pagination
+        const orderBy = { id: 'desc' as const };
+
+        const sessions = await db.session.findMany({
+            where,
+            orderBy,
+            take: limit + 1, // Fetch one extra to determine if there are more
+            select: {
+                id: true,
+                seq: true,
+                createdAt: true,
+                updatedAt: true,
+                metadata: true,
+                metadataVersion: true,
+                agentState: true,
+                agentStateVersion: true,
+                active: true,
+                lastActiveAt: true,
+            }
+        });
+
+        // Check if there are more results
+        const hasNext = sessions.length > limit;
+        const resultSessions = hasNext ? sessions.slice(0, limit) : sessions;
+
+        // Generate next cursor - simple ID-based cursor
+        let nextCursor: string | null = null;
+        if (hasNext && resultSessions.length > 0) {
+            const lastSession = resultSessions[resultSessions.length - 1];
+            nextCursor = `cursor_v1_${lastSession.id}`;
+        }
+
+        return reply.send({
+            sessions: resultSessions.map((v) => ({
+                id: v.id,
+                seq: v.seq,
+                createdAt: v.createdAt.getTime(),
+                updatedAt: v.updatedAt.getTime(),
+                active: v.active,
+                activeAt: v.lastActiveAt.getTime(),
+                metadata: v.metadata,
+                metadataVersion: v.metadataVersion,
+                agentState: v.agentState,
+                agentStateVersion: v.agentStateVersion,
+            })),
+            nextCursor,
+            hasNext
         });
     });
 
