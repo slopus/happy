@@ -5,7 +5,7 @@ import { Server, Socket } from "socket.io";
 import { z } from "zod";
 import * as privacyKit from "privacy-kit";
 import { db } from "@/storage/db";
-import { Account } from "@prisma/client";
+import { Account, Prisma } from "@prisma/client";
 import { onShutdown } from "@/utils/shutdown";
 import { allocateSessionSeq, allocateUserSeq } from "@/services/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
@@ -633,10 +633,13 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
 
             // Remove GitHub connection from account and delete GitHub user record
             await db.$transaction(async (tx) => {
-                // Remove link from account
+                // Remove link from account and clear avatar
                 await tx.account.update({
                     where: { id: userId },
-                    data: { githubUserId: null }
+                    data: { 
+                        githubUserId: null,
+                        avatar: Prisma.JsonNull
+                    }
                 });
 
                 // Delete GitHub user record (this also deletes the token)
@@ -648,7 +651,8 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             // Send account update to all user connections
             const updSeq = await allocateUserSeq(userId);
             const updatePayload = buildUpdateAccountUpdate(userId, {
-                github: null
+                github: null,
+                avatar: null
             }, updSeq, randomKeyNaked(12));
             eventRouter.emitUpdate({
                 userId,
@@ -656,7 +660,7 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
                 recipientFilter: { type: 'all-user-authenticated-connections' }
             });
 
-            log({ module: 'github-disconnect' }, `GitHub account disconnected successfully for user ${userId}`);
+            log({ module: 'github-disconnect' }, `GitHub account and avatar disconnected successfully for user ${userId}`);
 
             return reply.send({ success: true });
 
