@@ -17,8 +17,8 @@ export class EncryptionCache {
     private messageCache = new Map<string, CacheEntry<DecryptedMessage>>();
     
     // Configuration
-    private readonly maxAgentStates = 100;
-    private readonly maxMetadata = 100;
+    private readonly maxAgentStates = 1000;
+    private readonly maxMetadata = 1000;
     private readonly maxMessages = 1000;
 
     /**
