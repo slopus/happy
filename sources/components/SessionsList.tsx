@@ -379,6 +379,7 @@ const SessionItem = React.memo(({ session, selected }: { session: Session; selec
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
     const navigateToSession = useNavigateToSession();
+    const isTablet = useIsTablet();
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
@@ -390,8 +391,15 @@ const SessionItem = React.memo(({ session, selected }: { session: Session; selec
                 styles.sessionItem,
                 selected && styles.sessionItemSelected
             ]}
+            onPressIn={() => {
+                if (isTablet) {
+                    navigateToSession(session.id);
+                }
+            }}
             onPress={() => {
-                navigateToSession(session.id);
+                if (!isTablet) {
+                    navigateToSession(session.id);
+                }
             }}
         >
             <View style={styles.avatarContainer}>
