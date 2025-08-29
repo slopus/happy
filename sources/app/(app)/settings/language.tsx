@@ -5,12 +5,12 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useSettingMutable } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
-import { t } from '@/text';
+import { t, getLanguageNativeName, SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, type SupportedLanguage } from '@/text';
 import { Modal } from '@/modal';
 import { useUpdates } from '@/hooks/useUpdates';
 import * as Localization from 'expo-localization';
 
-type LanguageOption = 'auto' | 'en' | 'ru' | 'pl';
+type LanguageOption = 'auto' | SupportedLanguage;
 
 interface LanguageItem {
     key: LanguageOption;
@@ -26,35 +26,26 @@ export default function LanguageSettingsScreen() {
     // Get device locale for automatic detection
     const deviceLocale = Localization.getLocales()?.[0]?.languageTag ?? 'en-US';
     const deviceLanguage = deviceLocale.split('-')[0].toLowerCase();
-    const detectedLanguageName = deviceLanguage === 'ru' ? t('settingsLanguage.languages.ru') : 
-                                 deviceLanguage === 'pl' ? t('settingsLanguage.languages.pl') : 
-                                 t('settingsLanguage.languages.en');
+    const detectedLanguageName = deviceLanguage in SUPPORTED_LANGUAGES ? 
+                                 getLanguageNativeName(deviceLanguage as keyof typeof SUPPORTED_LANGUAGES) : 
+                                 getLanguageNativeName('en');
 
     // Current selection
     const currentSelection: LanguageOption = preferredLanguage === null ? 'auto' : 
-                                           preferredLanguage === 'en' ? 'en' :
-                                           preferredLanguage === 'ru' ? 'ru' :
-                                           preferredLanguage === 'pl' ? 'pl' : 'auto';
+                                           SUPPORTED_LANGUAGE_CODES.includes(preferredLanguage as SupportedLanguage) ? 
+                                           preferredLanguage as SupportedLanguage : 'auto';
 
-    // Language options
+    // Language options - dynamically generated from supported languages
     const languageOptions: LanguageItem[] = [
         {
             key: 'auto',
             title: t('settingsLanguage.automatic'),
             subtitle: `${t('settingsLanguage.automaticSubtitle')} (${detectedLanguageName})`
         },
-        {
-            key: 'en',
-            title: t('settingsLanguage.languages.en')
-        },
-        {
-            key: 'ru',
-            title: t('settingsLanguage.languages.ru')
-        },
-        {
-            key: 'pl',
-            title: t('settingsLanguage.languages.pl')
-        }
+        ...SUPPORTED_LANGUAGE_CODES.map(code => ({
+            key: code,
+            title: getLanguageNativeName(code)
+        }))
     ];
 
     const handleLanguageChange = async (newLanguage: LanguageOption) => {

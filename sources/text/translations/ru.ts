@@ -571,11 +571,6 @@ export const ru: TranslationStructure = {
         needsRestart: 'Язык изменён',
         needsRestartMessage: 'Приложение нужно перезапустить для применения новых языковых настроек.',
         restartNow: 'Перезапустить',
-        languages: {
-            en: 'English',
-            ru: 'Русский',
-            pl: 'Polski',
-        }
     },
 } as const;
 
