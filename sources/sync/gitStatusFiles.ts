@@ -5,9 +5,7 @@
 
 import { sessionBash } from './ops';
 import { storage } from './storage';
-import { parseStatusSummary } from './git-parsers/parseStatus';
 import { parseStatusSummaryV2, getCurrentBranchV2 } from './git-parsers/parseStatusV2';
-import { parseCurrentBranch } from './git-parsers/parseBranch';
 import { parseNumStat, createDiffStatsMap } from './git-parsers/parseDiff';
 
 export interface GitFileStatus {
@@ -40,49 +38,30 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
             return null;
         }
 
-        // First check if we're in a git repository
-        const gitCheckResult = await sessionBash(sessionId, {
-            command: 'git rev-parse --is-inside-work-tree',
-            cwd: session.metadata.path,
-            timeout: 5000
-        });
-
-        if (!gitCheckResult.success || gitCheckResult.exitCode !== 0) {
-            return null;
-        }
-
-        // Get git status in porcelain v2 format (includes branch info)
+        // Get git status in porcelain v2 format (includes branch info and repo check)
         const statusResult = await sessionBash(sessionId, {
             command: 'git status --porcelain=v2 --branch',
             cwd: session.metadata.path,
             timeout: 10000
         });
 
-        if (!statusResult.success) {
-            console.error('Failed to get git status:', statusResult.error);
+        if (!statusResult.success || statusResult.exitCode !== 0) {
+            // Not a git repo or git command failed
             return null;
         }
 
-        // Get git diff statistics for unstaged changes
+        // Get combined diff statistics for both staged and unstaged changes
         const diffStatResult = await sessionBash(sessionId, {
-            command: 'git diff --numstat',
-            cwd: session.metadata.path,
-            timeout: 10000
-        });
-
-        // Get git diff statistics for staged changes
-        const stagedDiffStatResult = await sessionBash(sessionId, {
-            command: 'git diff --cached --numstat',
+            command: 'git diff --numstat HEAD && echo "---STAGED---" && git diff --cached --numstat',
             cwd: session.metadata.path,
             timeout: 10000
         });
 
         // Parse the results using v2 parser
         const statusOutput = statusResult.stdout;
-        const diffStatOutput = diffStatResult.success ? diffStatResult.stdout : '';
-        const stagedDiffStatOutput = stagedDiffStatResult.success ? stagedDiffStatResult.stdout : '';
+        const diffOutput = diffStatResult.success ? diffStatResult.stdout : '';
 
-        return parseGitStatusFilesV2(statusOutput, diffStatOutput, stagedDiffStatOutput);
+        return parseGitStatusFilesV2(statusOutput, diffOutput);
 
     } catch (error) {
         console.error('Error fetching git status files for session', sessionId, ':', error);
@@ -95,16 +74,16 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
  */
 function parseGitStatusFilesV2(
     statusOutput: string,
-    diffStatOutput: string,
-    stagedDiffStatOutput: string
+    combinedDiffOutput: string
 ): GitStatusFiles {
     // Parse status using v2 parser
     const statusSummary = parseStatusSummaryV2(statusOutput);
     const branchName = getCurrentBranchV2(statusSummary);
     
-    // Parse diff statistics
-    const unstagedDiff = parseNumStat(diffStatOutput);
-    const stagedDiff = parseNumStat(stagedDiffStatOutput);
+    // Parse combined diff statistics
+    const [unstagedOutput = '', stagedOutput = ''] = combinedDiffOutput.split('---STAGED---');
+    const unstagedDiff = parseNumStat(unstagedOutput.trim());
+    const stagedDiff = parseNumStat(stagedOutput.trim());
     const unstagedStats = createDiffStatsMap(unstagedDiff);
     const stagedStats = createDiffStatsMap(stagedDiff);
 
@@ -178,78 +157,6 @@ function parseGitStatusFilesV2(
 }
 
 /**
- * Parse git status and diff outputs into structured file data using simple-git parsers
- * (Legacy v1 fallback method - kept for compatibility)
- */
-function parseGitStatusFiles(
-    branchName: string | null,
-    statusOutput: string,
-    diffStatOutput: string,
-    stagedDiffStatOutput: string
-): GitStatusFiles {
-    // Parse status using simple-git parser
-    const statusSummary = parseStatusSummary(statusOutput);
-    
-    // Parse diff statistics
-    const unstagedDiff = parseNumStat(diffStatOutput);
-    const stagedDiff = parseNumStat(stagedDiffStatOutput);
-    const unstagedStats = createDiffStatsMap(unstagedDiff);
-    const stagedStats = createDiffStatsMap(stagedDiff);
-
-    const stagedFiles: GitFileStatus[] = [];
-    const unstagedFiles: GitFileStatus[] = [];
-
-    for (const file of statusSummary.files) {
-        const parts = file.path.split('/');
-        const fileNameOnly = parts[parts.length - 1] || file.path;
-        const filePathOnly = parts.slice(0, -1).join('/');
-
-        // Create file status for staged changes
-        if (file.index !== ' ' && file.index !== '?') {
-            const status = getFileStatus(file.index);
-            const stats = stagedStats[file.path] || { added: 0, removed: 0, binary: false };
-            
-            stagedFiles.push({
-                fileName: fileNameOnly,
-                filePath: filePathOnly,
-                fullPath: file.path,
-                status,
-                isStaged: true,
-                linesAdded: stats.added,
-                linesRemoved: stats.removed,
-                oldPath: file.from
-            });
-        }
-
-        // Create file status for unstaged changes
-        if (file.working_dir !== ' ') {
-            const status = getFileStatus(file.working_dir);
-            const stats = unstagedStats[file.path] || { added: 0, removed: 0, binary: false };
-            
-            unstagedFiles.push({
-                fileName: fileNameOnly,
-                filePath: filePathOnly,
-                fullPath: file.path,
-                status,
-                isStaged: false,
-                linesAdded: stats.added,
-                linesRemoved: stats.removed,
-                oldPath: file.from
-            });
-        }
-    }
-
-    return {
-        stagedFiles,
-        unstagedFiles,
-        branch: branchName,
-        totalStaged: stagedFiles.length,
-        totalUnstaged: unstagedFiles.length
-    };
-}
-
-
-/**
  * Convert git status character to readable status (v2 format)
  */
 function getFileStatusV2(statusChar: string): GitFileStatus['status'] {
@@ -259,20 +166,6 @@ function getFileStatusV2(statusChar: string): GitFileStatus['status'] {
         case 'D': return 'deleted';
         case 'R': 
         case 'C': return 'renamed';
-        case '?': return 'untracked';
-        default: return 'modified';
-    }
-}
-
-/**
- * Convert git status character to readable status (v1 format - legacy)
- */
-function getFileStatus(statusChar: string): GitFileStatus['status'] {
-    switch (statusChar) {
-        case 'M': return 'modified';
-        case 'A': return 'added';
-        case 'D': return 'deleted';
-        case 'R': return 'renamed';
         case '?': return 'untracked';
         default: return 'modified';
     }

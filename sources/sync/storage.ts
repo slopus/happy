@@ -16,6 +16,7 @@ import React from "react";
 import { sync } from "./sync";
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
 import { isMutableTool } from "@/components/tools/knownTools";
+import { projectManager } from "./projectManager";
 
 // Timeout for considering a session disconnected (2 minutes)
 const DISCONNECTED_TIMEOUT_MS = 120000;
@@ -101,29 +102,32 @@ interface StorageState {
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') => void;
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus') => void;
+    // Project management methods
+    getProjects: () => import('./projectManager').Project[];
+    getProject: (projectId: string) => import('./projectManager').Project | null;
+    getProjectForSession: (sessionId: string) => import('./projectManager').Project | null;
+    getProjectSessions: (projectId: string) => string[];
+    // Project git status methods
+    getProjectGitStatus: (projectId: string) => import('./storageTypes').GitStatus | null;
+    getSessionProjectGitStatus: (sessionId: string) => import('./storageTypes').GitStatus | null;
+    updateSessionProjectGitStatus: (sessionId: string, status: import('./storageTypes').GitStatus | null) => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
 function buildSessionListViewData(
     sessions: Record<string, Session>
 ): SessionListViewItem[] {
-    // Separate all sessions into active and inactive
+    // Only include active sessions
     const activeSessions: Session[] = [];
-    const inactiveSessions: Session[] = [];
 
     Object.values(sessions).forEach(session => {
         if (isSessionActive(session)) {
             activeSessions.push(session);
-        } else {
-            inactiveSessions.push(session);
         }
     });
 
     // Sort active sessions by creation date (newest first)
     activeSessions.sort((a, b) => b.createdAt - a.createdAt);
-    
-    // Sort inactive sessions by creation date (newest first)
-    inactiveSessions.sort((a, b) => b.createdAt - a.createdAt);
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
@@ -131,16 +135,6 @@ function buildSessionListViewData(
     // Add active sessions as a single item at the top (if any)
     if (activeSessions.length > 0) {
         listData.push({ type: 'active-sessions', sessions: activeSessions });
-    }
-
-    // Add previous sessions header if we have any inactive sessions
-    if (inactiveSessions.length > 0) {
-        listData.push({ type: 'header', title: 'Previous Sessions' });
-        
-        // Add all inactive sessions individually (no grouping)
-        inactiveSessions.forEach(session =>
-            listData.push({ type: 'session', session })
-        );
     }
 
     return listData;
@@ -327,6 +321,15 @@ export const storage = create<StorageState>()((set, get) => {
             const sessionListViewData = buildSessionListViewData(
                 mergedSessions
             );
+
+            // Update project manager with current sessions and machines
+            const machineMetadataMap = new Map<string, any>();
+            Object.values(state.machines).forEach(machine => {
+                if (machine.metadata) {
+                    machineMetadataMap.set(machine.id, machine.metadata);
+                }
+            });
+            projectManager.updateSessions(Object.values(mergedSessions), machineMetadataMap);
 
             return {
                 ...state,
@@ -623,13 +626,18 @@ export const storage = create<StorageState>()((set, get) => {
                 profile
             };
         }),
-        applyGitStatus: (sessionId: string, status: GitStatus | null) => set((state) => ({
-            ...state,
-            sessionGitStatus: {
-                ...state.sessionGitStatus,
-                [sessionId]: status
-            }
-        })),
+        applyGitStatus: (sessionId: string, status: GitStatus | null) => set((state) => {
+            // Update project git status as well
+            projectManager.updateSessionProjectGitStatus(sessionId, status);
+            
+            return {
+                ...state,
+                sessionGitStatus: {
+                    ...state.sessionGitStatus,
+                    [sessionId]: status
+                }
+            };
+        }),
         setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => ({
             ...state,
             realtimeStatus: status
@@ -742,6 +750,19 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: updatedSessions
             };
         }),
+        // Project management methods
+        getProjects: () => projectManager.getProjects(),
+        getProject: (projectId: string) => projectManager.getProject(projectId),
+        getProjectForSession: (sessionId: string) => projectManager.getProjectForSession(sessionId),
+        getProjectSessions: (projectId: string) => projectManager.getProjectSessions(projectId),
+        // Project git status methods
+        getProjectGitStatus: (projectId: string) => projectManager.getProjectGitStatus(projectId),
+        getSessionProjectGitStatus: (sessionId: string) => projectManager.getSessionProjectGitStatus(sessionId),
+        updateSessionProjectGitStatus: (sessionId: string, status: GitStatus | null) => {
+            projectManager.updateSessionProjectGitStatus(sessionId, status);
+            // Trigger a state update to notify hooks
+            set((state) => ({ ...state }));
+        },
         applyMachines: (machines: Machine[], replace: boolean = false) => set((state) => {
             // Either replace all machines or merge updates
             let mergedMachines: Record<string, Machine>;
@@ -841,12 +862,44 @@ export function useSessionListViewData(): SessionListViewItem[] | null {
     return storage((state) => state.isDataReady ? state.sessionListViewData : null);
 }
 
+export function useAllSessions(): Session[] {
+    return storage(useShallow((state) => {
+        if (!state.isDataReady) return [];
+        return Object.values(state.sessions).sort((a, b) => b.updatedAt - a.updatedAt);
+    }));
+}
+
 export function useLocalSettingMutable<K extends keyof LocalSettings>(name: K): [LocalSettings[K], (value: LocalSettings[K]) => void] {
     const setValue = React.useCallback((value: LocalSettings[K]) => {
         storage.getState().applyLocalSettings({ [name]: value });
     }, [name]);
     const value = useLocalSetting(name);
     return [value, setValue];
+}
+
+// Project management hooks
+export function useProjects() {
+    return storage(useShallow((state) => state.getProjects()));
+}
+
+export function useProject(projectId: string | null) {
+    return storage(useShallow((state) => projectId ? state.getProject(projectId) : null));
+}
+
+export function useProjectForSession(sessionId: string | null) {
+    return storage(useShallow((state) => sessionId ? state.getProjectForSession(sessionId) : null));
+}
+
+export function useProjectSessions(projectId: string | null) {
+    return storage(useShallow((state) => projectId ? state.getProjectSessions(projectId) : []));
+}
+
+export function useProjectGitStatus(projectId: string | null) {
+    return storage(useShallow((state) => projectId ? state.getProjectGitStatus(projectId) : null));
+}
+
+export function useSessionProjectGitStatus(sessionId: string | null) {
+    return storage(useShallow((state) => sessionId ? state.getSessionProjectGitStatus(sessionId) : null));
 }
 
 export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSettings[K] {

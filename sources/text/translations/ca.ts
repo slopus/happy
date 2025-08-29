@@ -188,6 +188,16 @@ export const ca: TranslationStructure = {
         notConnectedToServer: 'No connectat al servidor. Comprova la teva connexió a internet.'
     },
 
+    sessionHistory: {
+        // Used by session history screen
+        title: 'Historial de sessions',
+        empty: 'No s\'han trobat sessions',
+        today: 'Avui',
+        yesterday: 'Ahir',
+        daysAgo: ({ count }: { count: number }) => `fa ${count} ${count === 1 ? 'dia' : 'dies'}`,
+        viewAll: 'Veure totes les sessions',
+    },
+
     session: {
         inputPlaceholder: 'Escriu un missatge...',
     },

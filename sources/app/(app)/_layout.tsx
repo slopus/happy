@@ -195,6 +195,14 @@ export default function RootLayout() {
                     headerTitle: 'Multi Text Input',
                 }}
             />
+            <Stack.Screen
+                name="session/recent"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('sessionHistory.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
         </Stack>
     );
 }

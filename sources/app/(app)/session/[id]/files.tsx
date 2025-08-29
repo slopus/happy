@@ -11,8 +11,9 @@ import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
 import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { useSessionGitStatus } from '@/sync/storage';
-import { useUnistyles } from 'react-native-unistyles';
+import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
+import { useUnistyles, StyleSheet } from 'react-native-unistyles';
+import { layout } from '@/components/layout';
 
 export default function FilesScreen() {
     const route = useRoute();
@@ -24,7 +25,10 @@ export default function FilesScreen() {
     const [searchQuery, setSearchQuery] = React.useState('');
     const [searchResults, setSearchResults] = React.useState<FileItem[]>([]);
     const [isSearching, setIsSearching] = React.useState(false);
-    const gitStatus = useSessionGitStatus(sessionId);
+    // Use project git status first, fallback to session git status for backward compatibility
+    const projectGitStatus = useSessionProjectGitStatus(sessionId);
+    const sessionGitStatus = useSessionGitStatus(sessionId);
+    const gitStatus = projectGitStatus || sessionGitStatus;
     const { theme } = useUnistyles();
     
     // Load git status files
@@ -101,7 +105,7 @@ export default function FilesScreen() {
             case 'untracked':
                 return <Octicons name="file" size={29} color="#8E8E93" />;
             default:
-                return <Octicons name="file" size={29} color="#666" />;
+                return <Octicons name="file" size={29} color={theme.colors.textSecondary} />;
         }
     };
 
@@ -158,28 +162,28 @@ export default function FilesScreen() {
             case 'gz':
                 return <Octicons name="file-zip" size={29} color="#666" />;
             default:
-                return <Octicons name="file" size={29} color="#666" />;
+                return <Octicons name="file" size={29} color={theme.colors.textSecondary} />;
         }
     };
 
     return (
-        <View style={{ flex: 1, backgroundColor: 'white' }}>
+        <View style={[styles.container, { backgroundColor: theme.colors.surface }]}>
             
             {/* Search Input - Always Visible */}
             <View style={{
                 padding: 16,
                 borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
-                borderBottomColor: Platform.select({ ios: '#C6C6C8', default: '#E0E0E0' })
+                borderBottomColor: theme.colors.divider
             }}>
                 <View style={{
                     flexDirection: 'row',
                     alignItems: 'center',
-                    backgroundColor: Platform.select({ ios: '#F2F2F7', default: '#F5F5F5' }),
+                    backgroundColor: theme.colors.input.background,
                     borderRadius: 10,
                     paddingHorizontal: 12,
                     paddingVertical: 8
                 }}>
-                    <Octicons name="search" size={16} color="#666" style={{ marginRight: 8 }} />
+                    <Octicons name="search" size={16} color={theme.colors.textSecondary} style={{ marginRight: 8 }} />
                     <TextInput
                         value={searchQuery}
                         onChangeText={setSearchQuery}
@@ -189,7 +193,7 @@ export default function FilesScreen() {
                             fontSize: 16,
                             ...Typography.default()
                         }}
-                        placeholderTextColor="#666"
+                        placeholderTextColor={theme.colors.input.placeholder}
                         autoCapitalize="none"
                         autoCorrect={false}
                     />
@@ -201,18 +205,18 @@ export default function FilesScreen() {
                 <View style={{
                     padding: 16,
                     borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
-                    borderBottomColor: Platform.select({ ios: '#C6C6C8', default: '#E0E0E0' })
+                    borderBottomColor: theme.colors.divider
                 }}>
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
                         marginBottom: 8
                     }}>
-                        <Octicons name="git-branch" size={16} color="#666" style={{ marginRight: 6 }} />
+                        <Octicons name="git-branch" size={16} color={theme.colors.textSecondary} style={{ marginRight: 6 }} />
                         <Text style={{
                             fontSize: 16,
                             fontWeight: '600',
-                            color: '#000',
+                            color: theme.colors.text,
                             ...Typography.default()
                         }}>
                             {gitStatusFiles.branch || t('files.detachedHead')}
@@ -220,7 +224,7 @@ export default function FilesScreen() {
                     </View>
                     <Text style={{
                         fontSize: 12,
-                        color: '#666',
+                        color: theme.colors.textSecondary,
                         ...Typography.default()
                     }}>
                         {t('files.summary', { staged: gitStatusFiles.totalStaged, unstaged: gitStatusFiles.totalUnstaged })}
@@ -247,10 +251,10 @@ export default function FilesScreen() {
                         paddingTop: 40,
                         paddingHorizontal: 20
                     }}>
-                        <Octicons name="git-branch" size={48} color="#C7C7CC" />
+                        <Octicons name="git-branch" size={48} color={theme.colors.textSecondary} />
                         <Text style={{
                             fontSize: 16,
-                            color: '#666',
+                            color: theme.colors.textSecondary,
                             textAlign: 'center',
                             marginTop: 16,
                             ...Typography.default()
@@ -259,7 +263,7 @@ export default function FilesScreen() {
                         </Text>
                         <Text style={{
                             fontSize: 14,
-                            color: '#999',
+                            color: theme.colors.textSecondary,
                             textAlign: 'center',
                             marginTop: 8,
                             ...Typography.default()
@@ -279,7 +283,7 @@ export default function FilesScreen() {
                             <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                             <Text style={{
                                 fontSize: 16,
-                                color: '#666',
+                                color: theme.colors.textSecondary,
                                 textAlign: 'center',
                                 marginTop: 16,
                                 ...Typography.default()
@@ -295,10 +299,10 @@ export default function FilesScreen() {
                             paddingTop: 40,
                             paddingHorizontal: 20
                         }}>
-                            <Octicons name={searchQuery ? "search" : "file-directory"} size={48} color="#C7C7CC" />
+                            <Octicons name={searchQuery ? "search" : "file-directory"} size={48} color={theme.colors.textSecondary} />
                             <Text style={{
                                 fontSize: 16,
-                                color: '#666',
+                                color: theme.colors.textSecondary,
                                 textAlign: 'center',
                                 marginTop: 16,
                                 ...Typography.default()
@@ -308,7 +312,7 @@ export default function FilesScreen() {
                             {searchQuery && (
                                 <Text style={{
                                     fontSize: 14,
-                                    color: '#999',
+                                    color: theme.colors.textSecondary,
                                     textAlign: 'center',
                                     marginTop: 8,
                                     ...Typography.default()
@@ -322,16 +326,16 @@ export default function FilesScreen() {
                         <>
                             {searchQuery && (
                                 <View style={{
-                                    backgroundColor: '#F8F9FA',
+                                    backgroundColor: theme.colors.surfaceHigh,
                                     paddingHorizontal: 16,
                                     paddingVertical: 12,
                                     borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
-                                    borderBottomColor: Platform.select({ ios: '#C6C6C8', default: '#E0E0E0' })
+                                    borderBottomColor: theme.colors.divider
                                 }}>
                                     <Text style={{
                                         fontSize: 14,
                                         fontWeight: '600',
-                                        color: '#007AFF',
+                                        color: theme.colors.textLink,
                                         ...Typography.default()
                                     }}>
                                         {t('files.searchResults', { count: searchResults.length })}
@@ -356,16 +360,16 @@ export default function FilesScreen() {
                         {gitStatusFiles.stagedFiles.length > 0 && (
                             <>
                                 <View style={{
-                                    backgroundColor: '#F8F9FA',
+                                    backgroundColor: theme.colors.surfaceHigh,
                                     paddingHorizontal: 16,
                                     paddingVertical: 12,
                                     borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
-                                    borderBottomColor: Platform.select({ ios: '#C6C6C8', default: '#E0E0E0' })
+                                    borderBottomColor: theme.colors.divider
                                 }}>
                                     <Text style={{
                                         fontSize: 14,
                                         fontWeight: '600',
-                                        color: '#34C759',
+                                        color: theme.colors.success,
                                         ...Typography.default()
                                     }}>
                                         {t('files.stagedChanges', { count: gitStatusFiles.stagedFiles.length })}
@@ -388,16 +392,16 @@ export default function FilesScreen() {
                         {gitStatusFiles.unstagedFiles.length > 0 && (
                             <>
                                 <View style={{
-                                    backgroundColor: '#F8F9FA',
+                                    backgroundColor: theme.colors.surfaceHigh,
                                     paddingHorizontal: 16,
                                     paddingVertical: 12,
                                     borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
-                                    borderBottomColor: Platform.select({ ios: '#C6C6C8', default: '#E0E0E0' })
+                                    borderBottomColor: theme.colors.divider
                                 }}>
                                     <Text style={{
                                         fontSize: 14,
                                         fontWeight: '600',
-                                        color: '#FF9500',
+                                        color: theme.colors.warning,
                                         ...Typography.default()
                                     }}>
                                         {t('files.unstagedChanges', { count: gitStatusFiles.unstagedFiles.length })}
@@ -421,3 +425,12 @@ export default function FilesScreen() {
         </View>
     );
 }
+
+const styles = StyleSheet.create((theme) => ({
+    container: {
+        flex: 1,
+        maxWidth: layout.maxWidth,
+        alignSelf: 'center',
+        width: '100%',
+    }
+}));

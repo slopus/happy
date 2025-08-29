@@ -14,10 +14,10 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
-import { CompactGitStatus } from './CompactGitStatus';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useIsTablet } from '@/utils/responsive';
+import { ProjectGitStatus } from './ProjectGitStatus';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -57,16 +57,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         lineHeight: Platform.select({ ios: 18, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
-    },
-    sectionHeaderMachine: {
-        ...Typography.default('regular'),
-        color: theme.colors.groupped.sectionTitle,
-        fontSize: Platform.select({ ios: 13, default: 14 }),
-        lineHeight: Platform.select({ ios: 18, default: 20 }),
-        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
-        fontWeight: Platform.select({ ios: 'normal', default: '500' }),
-        maxWidth: 150,
-        textAlign: 'right',
     },
     sessionRow: {
         height: 88,
@@ -312,11 +302,6 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
     return (
         <View style={styles.container}>
             {sortedProjectGroups.map(([projectPath, projectGroup]) => {
-                // Get the first machine name from this project's machines
-                const firstMachine = Array.from(projectGroup.machines.values())[0];
-                const machineName = projectGroup.machines.size === 1
-                    ? firstMachine?.machineName
-                    : `${projectGroup.machines.size} machines`;
 
                 return (
                     <View key={projectPath}>
@@ -327,9 +312,14 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                     {projectGroup.displayPath}
                                 </Text>
                             </View>
-                            <Text style={styles.sectionHeaderMachine} numberOfLines={1}>
-                                {machineName}
-                            </Text>
+                            {/* Show git status instead of machine name */}
+                            {(() => {
+                                // Get the first session from any machine in this project
+                                const firstSession = Array.from(projectGroup.machines.values())[0]?.sessions[0];
+                                return firstSession ? (
+                                    <ProjectGitStatus sessionId={firstSession.id} />
+                                ) : null;
+                            })()}
                         </View>
 
                         {/* Card with just the sessions */}
@@ -484,8 +474,6 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             </View>
                         )}
 
-                        {/* Git status indicator */}
-                        <CompactGitStatus sessionId={session.id} />
 
                         {/* Task status indicator */}
                         {session.todos && session.todos.length > 0 && (() => {

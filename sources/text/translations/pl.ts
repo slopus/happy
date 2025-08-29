@@ -199,6 +199,16 @@ export const pl: TranslationStructure = {
         notConnectedToServer: 'Brak połączenia z serwerem. Sprawdź połączenie internetowe.'
     },
 
+    sessionHistory: {
+        // Used by session history screen
+        title: 'Historia sesji',
+        empty: 'Nie znaleziono sesji',
+        today: 'Dzisiaj',
+        yesterday: 'Wczoraj',
+        daysAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'dzień', few: 'dni', many: 'dni' })} temu`,
+        viewAll: 'Zobacz wszystkie sesje',
+    },
+
     session: {
         inputPlaceholder: 'Wpisz wiadomość...',
     },

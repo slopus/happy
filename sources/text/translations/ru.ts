@@ -190,6 +190,16 @@ export const ru: TranslationStructure = {
         notConnectedToServer: 'Нет подключения к серверу. Проверьте интернет-соединение.'
     },
 
+    sessionHistory: {
+        // Used by session history screen
+        title: 'История сессий',
+        empty: 'Сессии не найдены',
+        today: 'Сегодня',
+        yesterday: 'Вчера',
+        daysAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'день', few: 'дня', many: 'дней' })} назад`,
+        viewAll: 'Посмотреть все сессии',
+    },
+
     server: {
         // Used by Server Configuration screen (app/(app)/server.tsx)
         serverConfiguration: 'Настройка сервера',
