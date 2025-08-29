@@ -3,6 +3,8 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
+import { useRouter } from 'expo-router';
+import * as Localization from 'expo-localization';
 import { useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
 import { Appearance } from 'react-native';
@@ -19,6 +21,7 @@ const isKnownAvatarStyle = (style: string): style is KnownAvatarStyle => {
 
 export default function AppearanceSettingsScreen() {
     const { theme } = useUnistyles();
+    const router = useRouter();
     const [viewInline, setViewInline] = useSettingMutable('viewInline');
     const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
     const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
@@ -26,9 +29,29 @@ export default function AppearanceSettingsScreen() {
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [themePreference, setThemePreference] = useLocalSettingMutable('themePreference');
+    const [preferredLanguage] = useSettingMutable('preferredLanguage');
     
     // Ensure we have a valid style for display, defaulting to gradient for unknown values
     const displayStyle: KnownAvatarStyle = isKnownAvatarStyle(avatarStyle) ? avatarStyle : 'gradient';
+    
+    // Language display
+    const getLanguageDisplayText = () => {
+        if (preferredLanguage === null) {
+            const deviceLocale = Localization.getLocales()?.[0]?.languageTag ?? 'en-US';
+            const deviceLanguage = deviceLocale.split('-')[0].toLowerCase();
+            const detectedLanguageName = deviceLanguage === 'ru' ? t('settingsLanguage.languages.ru') :
+                                        deviceLanguage === 'pl' ? t('settingsLanguage.languages.pl') :
+                                        t('settingsLanguage.languages.en');
+            return `${t('settingsLanguage.automatic')} (${detectedLanguageName})`;
+        } else if (preferredLanguage === 'en') {
+            return t('settingsLanguage.languages.en');
+        } else if (preferredLanguage === 'ru') {
+            return t('settingsLanguage.languages.ru');
+        } else if (preferredLanguage === 'pl') {
+            return t('settingsLanguage.languages.pl');
+        }
+        return t('settingsLanguage.automatic');
+    };
     return (
         <ItemList style={{ paddingTop: 0 }}>
 
@@ -64,6 +87,16 @@ export default function AppearanceSettingsScreen() {
                             SystemUI.setBackgroundColorAsync(color);
                         }
                     }}
+                />
+            </ItemGroup>
+
+            {/* Language Settings */}
+            <ItemGroup title={t('settingsLanguage.title')} footer={t('settingsLanguage.description')}>
+                <Item
+                    title={t('settingsLanguage.currentLanguage')}
+                    icon={<Ionicons name="language-outline" size={29} color="#007AFF" />}
+                    detail={getLanguageDisplayText()}
+                    onPress={() => router.push('/settings/language')}
                 />
             </ItemGroup>
 

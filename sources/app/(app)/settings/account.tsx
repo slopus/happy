@@ -13,7 +13,6 @@ import { Modal } from '@/modal';
 import { t } from '@/text';
 import { layout } from '@/components/layout';
 import { useSettingMutable, useProfile } from '@/sync/storage';
-import * as Localization from 'expo-localization';
 import { sync } from '@/sync/sync';
 import { getServerInfo } from '@/sync/serverConfig';
 import { useUnistyles } from 'react-native-unistyles';
@@ -31,7 +30,6 @@ export default React.memo(() => {
     const [showSecret, setShowSecret] = useState(false);
     const [copiedRecently, setCopiedRecently] = useState(false);
     const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
-    const [preferredLanguage] = useSettingMutable('preferredLanguage');
     const { connectAccount, isLoading: isConnecting } = useConnectAccount();
     const profile = useProfile();
 
@@ -45,25 +43,6 @@ export default React.memo(() => {
     // Profile display values
     const displayName = getDisplayName(profile);
     const githubUsername = profile.github?.login;
-
-    // Language display
-    const getLanguageDisplayText = () => {
-        if (preferredLanguage === null) {
-            const deviceLocale = Localization.getLocales()?.[0]?.languageTag ?? 'en-US';
-            const deviceLanguage = deviceLocale.split('-')[0].toLowerCase();
-            const detectedLanguageName = deviceLanguage === 'ru' ? t('settingsLanguage.languages.ru') :
-                                        deviceLanguage === 'pl' ? t('settingsLanguage.languages.pl') :
-                                        t('settingsLanguage.languages.en');
-            return `${t('settingsLanguage.automatic')} (${detectedLanguageName})`;
-        } else if (preferredLanguage === 'en') {
-            return t('settingsLanguage.languages.en');
-        } else if (preferredLanguage === 'ru') {
-            return t('settingsLanguage.languages.ru');
-        } else if (preferredLanguage === 'pl') {
-            return t('settingsLanguage.languages.pl');
-        }
-        return t('settingsLanguage.automatic');
-    };
 
     // GitHub disconnection
     const [disconnecting, handleDisconnectGitHub] = useHappyAction(async () => {
@@ -259,16 +238,6 @@ export default React.memo(() => {
                             />
                         }
                         showChevron={false}
-                    />
-                </ItemGroup>
-
-                {/* Language Section */}
-                <ItemGroup title={t('settingsLanguage.title')}>
-                    <Item
-                        title={t('settingsLanguage.title')}
-                        detail={getLanguageDisplayText()}
-                        icon={<Ionicons name="language-outline" size={29} color="#007AFF" />}
-                        onPress={() => router.push('/settings/language')}
                     />
                 </ItemGroup>
 
