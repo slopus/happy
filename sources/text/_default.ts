@@ -188,6 +188,16 @@ export const en = {
         notConnectedToServer: 'Not connected to server. Check your internet connection.'
     },
 
+    sessionHistory: {
+        // Used by session history screen
+        title: 'Session History',
+        empty: 'No sessions found',
+        today: 'Today',
+        yesterday: 'Yesterday',
+        daysAgo: ({ count }: { count: number }) => `${count} ${count === 1 ? 'day' : 'days'} ago`,
+        viewAll: 'View all sessions',
+    },
+
     session: {
         inputPlaceholder: 'Type a message ...',
     },

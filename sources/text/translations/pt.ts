@@ -188,6 +188,16 @@ export const pt: TranslationStructure = {
         notConnectedToServer: 'Não conectado ao servidor. Verifique sua conexão com a internet.'
     },
 
+    sessionHistory: {
+        // Used by session history screen
+        title: 'Histórico de sessões',
+        empty: 'Nenhuma sessão encontrada',
+        today: 'Hoje',
+        yesterday: 'Ontem',
+        daysAgo: ({ count }: { count: number }) => `há ${count} ${count === 1 ? 'dia' : 'dias'}`,
+        viewAll: 'Ver todas as sessões',
+    },
+
     session: {
         inputPlaceholder: 'Digite uma mensagem ...',
     },

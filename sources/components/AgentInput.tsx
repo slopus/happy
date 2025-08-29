@@ -277,7 +277,6 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
-    const experimental = useSetting('experiments');
 
     const hasText = props.value.trim().length > 0;
 
@@ -757,9 +756,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                             )}
 
                             {/* Git Status Badge */}
-                            {experimental && (
-                                <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
-                            )}
+                            <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                         </View>
 
                         {/* Send/Voice button */}
@@ -861,9 +858,9 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
             {hasMeaningfulGitStatus ? (
                 <GitStatusBadge sessionId={sessionId} />
             ) : (
-                <Octicons
-                    name="file-directory"
-                    size={16}
+                <Ionicons
+                    name="git-branch-outline"
+                    size={20}
                     color={theme.colors.button.secondary.tint}
                 />
             )}

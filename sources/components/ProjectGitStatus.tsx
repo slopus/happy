@@ -1,23 +1,45 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
+import { Octicons } from '@expo/vector-icons';
+import { useSessionProjectGitStatus } from '@/sync/storage';
 import { GitStatus } from '@/sync/storageTypes';
 import { StyleSheet } from 'react-native-unistyles';
-import { Ionicons } from '@expo/vector-icons';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: theme.colors.surfaceHighest,
-        paddingHorizontal: 6,
-        height: 16,
-        borderRadius: 4,
+        justifyContent: 'flex-end',
+        maxWidth: 150,
     },
-    fileCountText: {
-        fontSize: 10,
+    branchContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        flexShrink: 1,
+        minWidth: 0,
+    },
+    branchIcon: {
+        marginRight: 4,
+        flexShrink: 0,
+    },
+    branchText: {
+        fontSize: 13,
+        fontWeight: '500',
+        color: theme.colors.groupped.sectionTitle,
+        flexShrink: 1,
+        minWidth: 0,
+    },
+    changesContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginLeft: 6,
+        flexShrink: 0,
+    },
+    filesText: {
+        fontSize: 11,
         fontWeight: '500',
         color: theme.colors.textSecondary,
+        marginRight: 4,
     },
     lineChanges: {
         flexDirection: 'row',
@@ -25,45 +47,38 @@ const stylesheet = StyleSheet.create((theme) => ({
         gap: 2,
     },
     addedText: {
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: '600',
         color: theme.colors.gitAddedText,
     },
     removedText: {
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: '600',
         color: theme.colors.gitRemovedText,
     },
 }));
 
-interface CompactGitStatusProps {
+interface ProjectGitStatusProps {
+    /** Any session ID from the project (used to find the project git status) */
     sessionId: string;
 }
 
-export function CompactGitStatus({ sessionId }: CompactGitStatusProps) {
+export function ProjectGitStatus({ sessionId }: ProjectGitStatusProps) {
     const styles = stylesheet;
-    // Use project git status first, fallback to session git status for backward compatibility
-    const projectGitStatus = useSessionProjectGitStatus(sessionId);
-    const sessionGitStatus = useSessionGitStatus(sessionId);
-    const gitStatus = projectGitStatus || sessionGitStatus;
+    const gitStatus = useSessionProjectGitStatus(sessionId);
 
-    // Don't render if no git status or no meaningful changes
-    if (!gitStatus || !hasMeaningfulChanges(gitStatus)) {
+    // Don't render if no git status (not a git repository)
+    if (!gitStatus || gitStatus.lastUpdatedAt === 0) {
         return null;
     }
 
+    const fileCount = getTotalChangedFiles(gitStatus);
+    const hasChanges = fileCount > 0 || gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0;
     const hasLineChanges = gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0;
 
     return (
         <View style={styles.container}>
-            <Ionicons
-                name="git-branch-outline"
-                size={10}
-                color={styles.fileCountText.color}
-                style={{ marginRight: 2 }}
-            />
-            
-            {/* Show line changes in compact format */}
+            {/* Show line changes only */}
             {hasLineChanges && (
                 <View style={styles.lineChanges}>
                     {gitStatus.unstagedLinesAdded > 0 && (
@@ -82,10 +97,6 @@ export function CompactGitStatus({ sessionId }: CompactGitStatusProps) {
     );
 }
 
-function hasMeaningfulChanges(status: GitStatus): boolean {
-    // Only show when there are actual line changes
-    return status.lastUpdatedAt > 0 && status.isDirty && (
-        status.unstagedLinesAdded > 0 ||
-        status.unstagedLinesRemoved > 0
-    );
+function getTotalChangedFiles(status: GitStatus): number {
+    return status.modifiedCount + status.untrackedCount + status.stagedCount;
 }
