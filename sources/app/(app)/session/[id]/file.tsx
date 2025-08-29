@@ -189,7 +189,10 @@ export default function FileScreen() {
                 if (sessionPath && sessionId) {
                     try {
                         const diffResponse = await sessionBash(sessionId, {
-                            command: `git diff "${filePath}"`,
+                            // If someone is using a custom diff tool like
+                            // difftastic, the parser would break. So instead
+                            // force git to use the built in diff tool.
+                            command: `git diff --no-ext-diff "${filePath}"`,
                             cwd: sessionPath,
                             timeout: 5000
                         });
