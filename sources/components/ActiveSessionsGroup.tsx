@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { useRouter } from 'expo-router';
+import { router, useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
@@ -16,6 +16,7 @@ import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { CompactGitStatus } from './CompactGitStatus';
 import { t } from '@/text';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -206,7 +207,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                     const newSession = Object.values(state.sessions).find((s: Session) => s.id === result.sessionId);
 
                     if (newSession) {
-                        router.push(`/session/${result.sessionId}`);
+                        router.replace(`/session/${result.sessionId}`);
                         setStartingSessionFor(null);
                         return;
                     }
@@ -413,7 +414,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
-    const router = useRouter();
+    const navigateToSession = useNavigateToSession();
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
@@ -427,7 +428,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 selected && styles.sessionRowSelected
             ]}
             onPress={() => {
-                router.push(`/session/${session.id}`);
+                navigateToSession(session.id);
             }}
         >
             <View style={styles.avatarContainer}>

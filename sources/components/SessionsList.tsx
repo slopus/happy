@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Pressable, FlatList, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { usePathname, useRouter } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
@@ -16,6 +16,7 @@ import { useIsTablet } from '@/utils/responsive';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -172,6 +173,7 @@ export function SessionsList() {
     const data = useSessionListViewData();
     const pathname = usePathname();
     const isTablet = useIsTablet();
+    const navigateToSession = useNavigateToSession();
     const selectable = isTablet;
     const dataWithSelected = selectable ? React.useMemo(() => {
         return data?.map(item => ({
@@ -376,7 +378,7 @@ const SessionItem = React.memo(({ session, selected }: { session: Session; selec
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
     const sessionSubtitle = getSessionSubtitle(session);
-    const router = useRouter();
+    const navigateToSession = useNavigateToSession();
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
@@ -389,7 +391,7 @@ const SessionItem = React.memo(({ session, selected }: { session: Session; selec
                 selected && styles.sessionItemSelected
             ]}
             onPress={() => {
-                router.push(`/session/${session.id}`);
+                navigateToSession(session.id);
             }}
         >
             <View style={styles.avatarContainer}>

@@ -8,12 +8,14 @@ import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard.web';
 import { useAuth } from '@/auth/AuthContext';
 import { storage } from '@/sync/storage';
 import { useShallow } from 'zustand/react/shallow';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
     const { logout } = useAuth();
     const sessions = storage(useShallow((state) => state.sessions));
     const commandPaletteEnabled = storage(useShallow((state) => state.localSettings.commandPaletteEnabled));
+    const navigateToSession = useNavigateToSession();
 
     // Define available commands
     const commands = useMemo((): Command[] => {
@@ -87,7 +89,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 icon: 'time-outline',
                 category: 'Recent Sessions',
                 action: () => {
-                    router.push(`/session/${session.id}`);
+                    navigateToSession(session.id);
                 }
             });
         });
