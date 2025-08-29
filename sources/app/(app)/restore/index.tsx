@@ -9,6 +9,7 @@ import { generateAuthKeyPair, authQRStart } from '@/auth/authQRStart';
 import { authQRWait } from '@/auth/authQRWait';
 import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
+import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { QRCode } from '@/components/qr/QRCode';
 
@@ -84,7 +85,7 @@ export default function Restore() {
                 // Send authentication request
                 const success = await authQRStart(keypair);
                 if (!success) {
-                    Modal.alert('Error', 'Failed to start authentication. Please try again.');
+                    Modal.alert(t('common.error'), t('errors.authenticationFailed'));
                     setIsWaitingForAuth(false);
                     return;
                 }
@@ -106,13 +107,13 @@ export default function Restore() {
                         router.back();
                     }
                 } else if (!isCancelledRef.current) {
-                    Modal.alert('Error', 'Authentication failed. Please try again.');
+                    Modal.alert(t('common.error'), t('errors.authenticationFailed'));
                 }
 
             } catch (error) {
                 if (!isCancelledRef.current) {
                     console.error('QR Auth error:', error);
-                    Modal.alert('Error', 'Authentication failed. Please try again.');
+                    Modal.alert(t('common.error'), t('errors.authenticationFailed'));
                 }
             } finally {
                 if (!isCancelledRef.current) {

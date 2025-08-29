@@ -8,6 +8,7 @@ import { ItemList } from '@/components/ItemList';
 import { RoundButton } from '@/components/RoundButton';
 import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
+import { t } from '@/text';
 import { getServerUrl, setServerUrl, validateServerUrl, getServerInfo } from '@/sync/serverConfig';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
@@ -96,19 +97,19 @@ export default function ServerConfigScreen() {
             });
             
             if (!response.ok) {
-                setError('Server returned an error');
+                setError(t('server.serverReturnedError'));
                 return false;
             }
             
             const text = await response.text();
             if (!text.includes('Welcome to Happy Server!')) {
-                setError('Not a valid Happy Server');
+                setError(t('server.notValidHappyServer'));
                 return false;
             }
             
             return true;
         } catch (err) {
-            setError('Failed to connect to server');
+            setError(t('server.failedToConnectToServer'));
             return false;
         } finally {
             setIsValidating(false);
@@ -117,13 +118,13 @@ export default function ServerConfigScreen() {
 
     const handleSave = async () => {
         if (!inputUrl.trim()) {
-            Modal.alert('Error', 'Please enter a server URL');
+            Modal.alert(t('common.error'), t('server.enterServerUrl'));
             return;
         }
 
         const validation = validateServerUrl(inputUrl);
         if (!validation.valid) {
-            setError(validation.error || 'Invalid URL');
+            setError(validation.error || t('errors.invalidFormat'));
             return;
         }
 
@@ -134,9 +135,9 @@ export default function ServerConfigScreen() {
         }
 
         const confirmed = await Modal.confirm(
-            'Change Server',
-            'Continue with this server?',
-            { confirmText: 'Continue', destructive: true }
+            t('server.changeServer'),
+            t('server.continueWithServer'),
+            { confirmText: t('common.continue'), destructive: true }
         );
 
         if (confirmed) {
@@ -146,9 +147,9 @@ export default function ServerConfigScreen() {
 
     const handleReset = async () => {
         const confirmed = await Modal.confirm(
-            'Reset to Default',
-            'Reset server to default?',
-            { confirmText: 'Reset', destructive: true }
+            t('server.resetToDefault'),
+            t('server.resetServerDefault'),
+            { confirmText: t('common.reset'), destructive: true }
         );
 
         if (confirmed) {
@@ -162,8 +163,8 @@ export default function ServerConfigScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: 'Server Configuration',
-                    headerBackTitle: 'Back',
+                    headerTitle: t('server.serverConfiguration'),
+                    headerBackTitle: t('common.back'),
                 }}
             />
 
@@ -172,11 +173,9 @@ export default function ServerConfigScreen() {
                 behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
             >
                 <ItemList style={styles.itemListContainer}>
-                    <ItemGroup footer="This is an advanced feature. Only change the server if you know what you're doing. You will need to log out and log in again after changing servers.">
+                    <ItemGroup footer={t('server.advancedFeatureFooter')}>
                         <View style={styles.contentContainer}>
-                            <Text style={styles.labelText}>
-                                CUSTOM SERVER URL
-                            </Text>
+                            <Text style={styles.labelText}>{t('server.customServerUrlLabel').toUpperCase()}</Text>
                             <TextInput
                                 style={[
                                     styles.textInput,
@@ -187,7 +186,7 @@ export default function ServerConfigScreen() {
                                     setInputUrl(text);
                                     setError(null);
                                 }}
-                                placeholder="https://example.com"
+                                placeholder={t('common.urlPlaceholder')}
                                 placeholderTextColor={theme.colors.input.placeholder}
                                 autoCapitalize="none"
                                 autoCorrect={false}
@@ -201,13 +200,13 @@ export default function ServerConfigScreen() {
                             )}
                             {isValidating && (
                                 <Text style={styles.validatingText}>
-                                    Validating server...
+                                    {t('server.validatingServer')}
                                 </Text>
                             )}
                             <View style={styles.buttonRow}>
                                 <View style={styles.buttonWrapper}>
                                     <RoundButton
-                                        title="Reset to Default"
+                                        title={t('server.resetToDefault')}
                                         size="normal"
                                         display="inverted"
                                         onPress={handleReset}
@@ -215,7 +214,7 @@ export default function ServerConfigScreen() {
                                 </View>
                                 <View style={styles.buttonWrapper}>
                                     <RoundButton
-                                        title={isValidating ? "Validating..." : "Save"}
+                                        title={isValidating ? t('server.validating') : t('common.save')}
                                         size="normal"
                                         action={handleSave}
                                         disabled={isValidating}
@@ -224,7 +223,7 @@ export default function ServerConfigScreen() {
                             </View>
                             {serverInfo.isCustom && (
                                 <Text style={styles.statusText}>
-                                    Currently using custom server
+                                    {t('server.currentlyUsingCustomServer')}
                                 </Text>
                             )}
                         </View>

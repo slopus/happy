@@ -6,6 +6,7 @@ import { knownTools } from '@/components/tools/knownTools';
 import { toolFullViewStyles } from '../ToolFullView';
 import { DiffView } from '@/components/diff/DiffView';
 import { trimIdent } from '@/utils/trimIdent';
+import { t } from '@/text';
 
 interface MultiEditViewFullProps {
     tool: ToolCall;
@@ -45,11 +46,11 @@ export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, met
                             <View key={index}>
                                 <View style={styles.editHeader}>
                                     <Text style={styles.editNumber}>
-                                        Edit {index + 1} of {edits.length}
+                                        {t('tools.multiEdit.editNumber', { index: index + 1, total: edits.length })}
                                     </Text>
                                     {edit.replace_all && (
                                         <View style={styles.replaceAllBadge}>
-                                            <Text style={styles.replaceAllText}>Replace All</Text>
+                                            <Text style={styles.replaceAllText}>{t('tools.multiEdit.replaceAll')}</Text>
                                         </View>
                                     )}
                                 </View>

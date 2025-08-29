@@ -110,6 +110,57 @@ sources/
 - **Always apply layout width constraints** from `@/components/layout` to full-screen ScrollViews and content containers for responsive design across device sizes
 - Always run `yarn typecheck` after all changes to ensure type safety
 
+### Internationalization (i18n) Guidelines
+
+**CRITICAL: Always use the `t(...)` function for ALL user-visible strings**
+
+#### Basic Usage
+```typescript
+import { t } from '@/text';
+
+// ✅ Simple constants
+t('common.cancel')              // "Cancel"
+t('settings.title')             // "Settings"
+
+// ✅ Functions with parameters
+t('common.welcome', { name: 'Steve' })           // "Welcome, Steve!"
+t('time.minutesAgo', { count: 5 })               // "5 minutes ago"
+t('errors.fieldError', { field: 'Email', reason: 'Invalid format' })
+```
+
+#### Adding New Translations
+
+1. **Check existing keys first** - Always check if the string already exists in the `common` object or other sections before adding new keys
+2. **Think about context** - Consider the screen/component context when choosing the appropriate section (e.g., `settings.*`, `session.*`, `errors.*`)
+3. **Add to ALL languages** - When adding new strings, you MUST add them to all language files in `sources/text/translations/`
+4. **Use descriptive key names** - Use clear, hierarchical keys like `newSession.machineOffline` rather than generic names
+
+#### Translation Structure
+```typescript
+// String constants for static text
+cancel: 'Cancel',
+
+// Functions for dynamic text with typed parameters  
+welcome: ({ name }: { name: string }) => `Welcome, ${name}!`,
+itemCount: ({ count }: { count: number }) => 
+    count === 1 ? '1 item' : `${count} items`,
+```
+
+#### Key Sections
+- `common.*` - Universal strings used across the app (buttons, actions, status)
+- `settings.*` - Settings screen specific strings
+- `session.*` - Session management and display
+- `errors.*` - Error messages and validation
+- `modals.*` - Modal dialogs and popups
+- `components.*` - Component-specific strings organized by component name
+
+#### Important Rules
+- **Never hardcode strings** in JSX - always use `t('key')`
+- **Dev pages exception** - Development/debug pages can skip i18n
+- **Check common first** - Before adding new keys, check if a suitable translation exists in `common`
+- **Context matters** - Consider where the string appears to choose the right section
+- **Update all languages** - New strings must be added to every language file
+
 ### Important Files
 
 - `sources/sync/types.ts` - Core type definitions for the sync protocol
@@ -349,3 +400,4 @@ const MyComponent = () => {
 - This project targets Android, iOS, and web platforms
 - Web is considered a secondary platform
 - Avoid web-specific implementations unless explicitly requested
+- Keep dev pages without i18n, always use t(...) function to translate all strings, when adding new string add it to all languages, think about context before translating.

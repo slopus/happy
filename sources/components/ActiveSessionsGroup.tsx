@@ -15,6 +15,7 @@ import { machineSpawnNewSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { CompactGitStatus } from './CompactGitStatus';
+import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -214,7 +215,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                     if (attempts < maxAttempts) {
                         setTimeout(pollForSession, pollInterval);
                     } else {
-                        Modal.alert('Session started', 'The session was started but may take a moment to appear.');
+                        Modal.alert(t('newSession.sessionStarted'), t('newSession.sessionStartedMessage'));
                         setStartingSessionFor(null);
                     }
                 };
@@ -235,7 +236,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                 }
             }
 
-            Modal.alert('Error', errorMessage);
+            Modal.alert(t('common.error'), errorMessage);
             setStartingSessionFor(null);
         }
     };

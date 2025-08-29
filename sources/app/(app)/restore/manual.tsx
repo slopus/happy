@@ -11,6 +11,7 @@ import { generateAuthKeyPair, authQRStart, QRAuthKeyPair } from '@/auth/authQRSt
 import { authQRWait } from '@/auth/authQRWait';
 import { layout } from '@/components/layout';
 import { Modal } from '@/modal';
+import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { QRCode } from '@/components/qr/QRCode';
 
@@ -74,7 +75,7 @@ export default function Restore() {
         const trimmedKey = restoreKey.trim();
 
         if (!trimmedKey) {
-            Modal.alert('Error', 'Please enter a secret key');
+            Modal.alert(t('common.error'), t('connect.enterSecretKey'));
             return;
         }
 
@@ -102,7 +103,7 @@ export default function Restore() {
 
         } catch (error) {
             console.error('Restore error:', error);
-            Modal.alert('Error', 'Invalid secret key. Please check and try again.');
+            Modal.alert(t('common.error'), t('connect.invalidSecretKey'));
         }
     };
 
@@ -127,7 +128,7 @@ export default function Restore() {
                     />
 
                     <RoundButton
-                        title="Restore Account"
+                        title={t('connect.restoreAccount')}
                         action={handleRestore}
                     />
                 </View>

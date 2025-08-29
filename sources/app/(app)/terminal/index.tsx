@@ -10,6 +10,7 @@ import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
 
 export default function TerminalScreen() {
     const router = useRouter();
@@ -69,7 +70,7 @@ export default function TerminalScreen() {
                                 textAlign: 'center',
                                 marginBottom: 8
                             }}>
-                                Invalid Connection Link
+                                {t('terminal.invalidConnectionLink')}
                             </Text>
                             <Text style={{
                                 ...Typography.default(),
@@ -78,7 +79,7 @@ export default function TerminalScreen() {
                                 textAlign: 'center',
                                 lineHeight: 20
                             }}>
-                                The connection link is missing or invalid. Please check the URL and try again.
+                                {t('terminal.invalidConnectionLinkDescription')}
                             </Text>
                         </View>
                     </ItemGroup>
@@ -111,7 +112,7 @@ export default function TerminalScreen() {
                             marginBottom: 12,
                             color: theme.colors.text
                         }}>
-                            Connect Terminal
+                            {t('terminal.connectTerminal')}
                         </Text>
                         <Text style={{
                             ...Typography.default(),
@@ -120,22 +121,22 @@ export default function TerminalScreen() {
                             textAlign: 'center',
                             lineHeight: 20
                         }}>
-                            A terminal is requesting to connect to your Happy Coder account. This will allow the terminal to send and receive messages securely.
+                            {t('terminal.terminalRequestDescription')}
                         </Text>
                     </View>
                 </ItemGroup>
 
                 {/* Connection Details */}
-                <ItemGroup title="Connection Details">
+                <ItemGroup title={t('terminal.connectionDetails')}>
                     <Item
-                        title="Public Key"
+                        title={t('terminal.publicKey')}
                         detail={`${publicKey.substring(0, 12)}...`}
                         icon={<Ionicons name="key-outline" size={29} color={theme.colors.radio.active} />}
                         showChevron={false}
                     />
                     <Item
-                        title="Encryption"
-                        detail="End-to-end encrypted"
+                        title={t('terminal.encryption')}
+                        detail={t('terminal.endToEndEncrypted')}
                         icon={<Ionicons name="lock-closed-outline" size={29} color={theme.colors.success} />}
                         showChevron={false}
                     />
@@ -149,14 +150,14 @@ export default function TerminalScreen() {
                         gap: 12
                     }}>
                         <RoundButton
-                            title={isLoading ? "Connecting..." : "Accept Connection"}
+                            title={isLoading ? t('terminal.connecting') : t('terminal.acceptConnection')}
                             onPress={handleConnect}
                             size="large"
                             disabled={isLoading}
                             loading={isLoading}
                         />
                         <RoundButton
-                            title="Reject"
+                            title={t('terminal.reject')}
                             onPress={handleReject}
                             size="large"
                             display="inverted"
@@ -167,12 +168,12 @@ export default function TerminalScreen() {
 
                 {/* Security Notice */}
                 <ItemGroup
-                    title="Security"
-                    footer="This connection was processed securely on your device and was never sent to any server. Your private data will remain secure and only you can decrypt the messages."
+                    title={t('terminal.security')}
+                    footer={t('terminal.securityFooterDevice')}
                 >
                     <Item
-                        title="Client-Side Processing"
-                        subtitle="Link processed locally on device"
+                        title={t('terminal.clientSideProcessing')}
+                        subtitle={t('terminal.linkProcessedOnDevice')}
                         icon={<Ionicons name="shield-checkmark-outline" size={29} color={theme.colors.success} />}
                         showChevron={false}
                     />

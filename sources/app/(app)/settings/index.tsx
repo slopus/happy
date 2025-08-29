@@ -26,6 +26,7 @@ import { getGitHubOAuthParams, disconnectGitHub } from '@/sync/apiGithub';
 import { useProfile } from '@/sync/storage';
 import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
 import { Avatar } from '@/components/Avatar';
+import { t } from '@/text';
 
 // Manual Auth Modal Component for Android
 function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (url: string) => void }) {
@@ -35,10 +36,10 @@ function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
     return (
         <View style={{ padding: 20, backgroundColor: theme.colors.surface, borderRadius: 12, minWidth: 300 }}>
             <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>
-                Authenticate Terminal
+                {t('modals.authenticateTerminal')}
             </Text>
             <Text style={{ fontSize: 14, color: theme.colors.textSecondary, marginBottom: 16 }}>
-                Paste the authentication URL from your terminal
+                {t('modals.pasteUrlFromTerminal')}
             </Text>
             <TextInput
                 style={{
@@ -53,7 +54,7 @@ function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
                 }}
                 value={url}
                 onChangeText={setUrl}
-                placeholder="happy://terminal?..."
+                placeholder={'happy://terminal?...'}
                 placeholderTextColor={theme.colors.input.placeholder}
                 autoCapitalize="none"
                 autoCorrect={false}
@@ -64,7 +65,7 @@ function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
                     onPress={onClose}
                     style={{ paddingVertical: 8, paddingHorizontal: 16, marginRight: 8 }}
                 >
-                    <Text style={{ color: '#007AFF', fontSize: 16 }}>Cancel</Text>
+                    <Text style={{ color: '#007AFF', fontSize: 16 }}>{t('common.cancel')}</Text>
                 </Pressable>
                 <Pressable
                     onPress={() => {
@@ -76,7 +77,7 @@ function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit:
                     style={{ paddingVertical: 8, paddingHorizontal: 16 }}
                 >
                     <Text style={{ color: '#007AFF', fontSize: 16, fontWeight: '600' }}>
-                        Authenticate
+                        {t('common.authenticate')}
                     </Text>
                 </Pressable>
             </View>
@@ -132,8 +133,8 @@ export default React.memo(function SettingsScreen() {
         const newDevMode = !devModeEnabled;
         setDevModeEnabled(newDevMode);
         Modal.alert(
-            'Developer Mode',
-            newDevMode ? 'Developer mode enabled' : 'Developer mode disabled'
+            t('modals.developerMode'),
+            newDevMode ? t('modals.developerModeEnabled') : t('modals.developerModeDisabled')
         );
     }, {
         requiredClicks: 10,
@@ -152,9 +153,9 @@ export default React.memo(function SettingsScreen() {
     // GitHub disconnection
     const [disconnecting, handleDisconnectGitHub] = useHappyAction(async () => {
         const confirmed = await Modal.confirm(
-            'Disconnect GitHub',
-            'Are you sure you want to disconnect your GitHub account?',
-            { confirmText: 'Disconnect', destructive: true }
+            t('modals.disconnectGithub'),
+            t('modals.disconnectGithubConfirm'),
+            { confirmText: t('modals.disconnect'), destructive: true }
         );
         if (confirmed) {
             await disconnectGitHub(auth.credentials!);
@@ -211,20 +212,20 @@ export default React.memo(function SettingsScreen() {
             {Platform.OS !== 'web' && (
                 <ItemGroup>
                     <Item
-                        title="Scan QR code to authenticate"
+                        title={t('settings.scanQrCodeToAuthenticate')}
                         icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
                         onPress={connectTerminal}
                         loading={isLoading}
                         showChevron={false}
                     />
                     <Item
-                        title="Enter URL manually"
+                        title={t('connect.enterUrlManually')}
                         icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
                         onPress={() => {
                             if (Platform.OS === 'ios') {
                                 Alert.prompt(
-                                    'Authenticate Terminal',
-                                    'Paste the authentication URL from your terminal',
+                                    t('modals.authenticateTerminal'),
+                                    t('modals.pasteUrlFromTerminal'),
                                     [
                                         { text: 'Cancel', style: 'cancel' },
                                         {
@@ -260,20 +261,20 @@ export default React.memo(function SettingsScreen() {
             {/* Support Us */}
             <ItemGroup>
                 <Item
-                    title="Support us"
-                    subtitle={isPro ? 'Thank you for your support!' : 'Support project development'}
+                    title={t('settings.supportUs')}
+                    subtitle={isPro ? t('settings.supportUsSubtitlePro') : t('settings.supportUsSubtitle')}
                     icon={<Ionicons name="heart" size={29} color="#FF3B30" />}
                     showChevron={false}
                     onPress={isPro ? undefined : handleSubscribe}
                 />
             </ItemGroup>
 
-            <ItemGroup title="Connected Accounts">
+            <ItemGroup title={t('settings.connectedAccounts')}>
                 <Item
-                    title="GitHub"
+                    title={t('settings.github')}
                     subtitle={isGitHubConnected 
-                        ? `Connected as @${profile.github?.login}` 
-                        : "Connect your GitHub account"
+                        ? t('settings.githubConnected', { login: profile.github?.login! }) 
+                        : t('settings.connectGithubAccount')
                     }
                     icon={
                         <Ionicons
@@ -290,7 +291,7 @@ export default React.memo(function SettingsScreen() {
 
             {/* Machines */}
             {allMachines.length > 0 && (
-                <ItemGroup title="Machines">
+                <ItemGroup title={t('settings.machines')}>
                     {allMachines.map((machine) => {
                         const isOnline = isMachineOnline(machine);
                         const host = machine.metadata?.host || 'Unknown';
@@ -308,7 +309,7 @@ export default React.memo(function SettingsScreen() {
                         if (platform) {
                             subtitle = subtitle ? `${subtitle} • ${platform}` : platform;
                         }
-                        subtitle = subtitle ? `${subtitle} • ${isOnline ? 'Online' : 'Offline'}` : (isOnline ? 'Online' : 'Offline');
+                        subtitle = subtitle ? `${subtitle} • ${isOnline ? t('status.online') : t('status.offline')}` : (isOnline ? t('status.online') : t('status.offline'));
 
                         return (
                             <Item
@@ -330,28 +331,28 @@ export default React.memo(function SettingsScreen() {
             )}
 
             {/* Features */}
-            <ItemGroup title="Features">
+            <ItemGroup title={t('settings.features')}>
                 <Item
-                    title="Account"
-                    subtitle="Manage your account details"
+                    title={t('settings.account')}
+                    subtitle={t('settings.accountSubtitle')}
                     icon={<Ionicons name="person-circle-outline" size={29} color="#007AFF" />}
                     onPress={() => router.push('/settings/account')}
                 />
                 <Item
-                    title="Appearance"
-                    subtitle="Customize how the app looks"
+                    title={t('settings.appearance')}
+                    subtitle={t('settings.appearanceSubtitle')}
                     icon={<Ionicons name="color-palette-outline" size={29} color="#5856D6" />}
                     onPress={() => router.push('/settings/appearance')}
                 />
                 <Item
-                    title="Voice Assistant"
-                    subtitle="Configure voice interaction preferences"
+                    title={t('settings.voiceAssistant')}
+                    subtitle={t('settings.voiceAssistantSubtitle')}
                     icon={<Ionicons name="mic-outline" size={29} color="#34C759" />}
                     onPress={() => router.push('/settings/voice')}
                 />
                 <Item
-                    title="Features"
-                    subtitle="Enable or disable app features"
+                    title={t('settings.featuresTitle')}
+                    subtitle={t('settings.featuresSubtitle')}
                     icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
                     onPress={() => router.push('/settings/features')}
                 />
@@ -359,9 +360,9 @@ export default React.memo(function SettingsScreen() {
 
             {/* Developer */}
             {(__DEV__ || devModeEnabled) && (
-                <ItemGroup title="Developer">
+                <ItemGroup title={t('settings.developer')}>
                     <Item
-                        title="Developer Tools"
+                        title={t('settings.developerTools')}
                         icon={<Ionicons name="construct-outline" size={29} color="#5856D6" />}
                         onPress={() => router.push('/dev')}
                     />
@@ -369,26 +370,26 @@ export default React.memo(function SettingsScreen() {
             )}
 
             {/* About */}
-            <ItemGroup title="About" footer="Happy Coder is a Claude Code mobile client. It's fully end-to-end encrypted and your account is stored only on your device. Not affiliated with Anthropic.">
+            <ItemGroup title={t('settings.about')} footer={t('settings.aboutFooter')}>
                 <Item
-                    title="What's New"
-                    subtitle="See the latest updates and improvements"
+                    title={t('settings.whatsNew')}
+                    subtitle={t('settings.whatsNewSubtitle')}
                     icon={<Ionicons name="sparkles-outline" size={29} color="#FF9500" />}
                     onPress={() => router.push('/changelog')}
                 />
                 <Item
-                    title="GitHub"
+                    title={t('settings.github')}
                     icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
                     detail="slopus/happy"
                     onPress={handleGitHub}
                 />
                 <Item
-                    title="Report an Issue"
+                    title={t('settings.reportIssue')}
                     icon={<Ionicons name="bug-outline" size={29} color="#FF3B30" />}
                     onPress={handleReportIssue}
                 />
                 <Item
-                    title="Privacy Policy"
+                    title={t('settings.privacyPolicy')}
                     icon={<Ionicons name="shield-checkmark-outline" size={29} color="#007AFF" />}
                     onPress={async () => {
                         const url = 'https://happy.engineering/privacy/';
@@ -399,7 +400,7 @@ export default React.memo(function SettingsScreen() {
                     }}
                 />
                 <Item
-                    title="Terms of Service"
+                    title={t('settings.termsOfService')}
                     icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
                     onPress={async () => {
                         const url = 'https://github.com/slopus/happy/blob/main/TERMS.md';
@@ -411,7 +412,7 @@ export default React.memo(function SettingsScreen() {
                 />
                 {Platform.OS === 'ios' && (
                     <Item
-                        title="EULA"
+                        title={t('settings.eula')}
                         icon={<Ionicons name="document-text-outline" size={29} color="#007AFF" />}
                         onPress={async () => {
                             const url = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
@@ -423,7 +424,7 @@ export default React.memo(function SettingsScreen() {
                     />
                 )}
                 <Item
-                    title="Version"
+                    title={t('common.version')}
                     detail={appVersion}
                     icon={<Ionicons name="information-circle-outline" size={29} color={theme.colors.textSecondary} />}
                     onPress={handleVersionClick}

@@ -6,6 +6,7 @@ import { ItemList } from '@/components/ItemList';
 import { useSettingMutable } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { findLanguageByCode, getLanguageDisplayName, LANGUAGES } from '@/constants/Languages';
+import { t } from '@/text';
 
 export default function VoiceSettingsScreen() {
     const { theme } = useUnistyles();
@@ -19,12 +20,12 @@ export default function VoiceSettingsScreen() {
         <ItemList style={{ paddingTop: 0 }}>
             {/* Language Settings */}
             <ItemGroup 
-                title="Language" 
-                footer="Choose your preferred language for voice assistant interactions. This setting syncs across all your devices."
+                title={t('settingsVoice.languageTitle')}
+                footer={t('settingsVoice.languageDescription')}
             >
                 <Item
-                    title="Preferred Language"
-                    subtitle="Language used for voice assistant responses"
+                    title={t('settingsVoice.preferredLanguage')}
+                    subtitle={t('settingsVoice.preferredLanguageSubtitle')}
                     icon={<Ionicons name="language-outline" size={29} color="#007AFF" />}
                     detail={getLanguageDisplayName(currentLanguage)}
                     onPress={() => router.push('/settings/voice/language')}

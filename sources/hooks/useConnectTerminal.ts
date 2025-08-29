@@ -7,6 +7,7 @@ import { encryptBox } from '@/encryption/libsodium';
 import { authApprove } from '@/auth/authApprove';
 import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 import { Modal } from '@/modal';
+import { t } from '@/text';
 
 interface UseConnectTerminalOptions {
     onSuccess?: () => void;
@@ -20,7 +21,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
 
     const processAuthUrl = React.useCallback(async (url: string) => {
         if (!url.startsWith('happy://terminal?')) {
-            Modal.alert('Error', 'Invalid authentication URL', [{ text: 'OK' }]);
+            Modal.alert(t('common.error'), t('modals.invalidAuthUrl'), [{ text: t('common.ok') }]);
             return false;
         }
         
@@ -31,16 +32,16 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
             const response = encryptBox(decodeBase64(auth.credentials!.secret, 'base64url'), publicKey);
             await authApprove(auth.credentials!.token, publicKey, response);
             
-            Modal.alert('Success', 'Terminal connected successfully', [
+            Modal.alert(t('common.success'), t('modals.terminalConnectedSuccessfully'), [
                 { 
-                    text: 'OK', 
+                    text: t('common.ok'), 
                     onPress: () => options?.onSuccess?.()
                 }
             ]);
             return true;
         } catch (e) {
             console.error(e);
-            Modal.alert('Error', 'Failed to connect terminal', [{ text: 'OK' }]);
+            Modal.alert(t('common.error'), t('modals.failedToConnectTerminal'), [{ text: t('common.ok') }]);
             options?.onError?.(e);
             return false;
         } finally {
@@ -55,7 +56,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
                 barcodeTypes: ['qr']
             });
         } else {
-            Modal.alert('Error', 'Camera permissions are required to connect terminal', [{ text: 'OK' }]);
+            Modal.alert(t('common.error'), t('modals.cameraPermissionsRequiredToConnectTerminal'), [{ text: t('common.ok') }]);
         }
     }, [checkScannerPermissions]);
 

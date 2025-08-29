@@ -30,6 +30,7 @@ import { gitStatusSync } from '@/sync/gitStatusSync';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { useUnistyles } from 'react-native-unistyles';
 import { ChatList } from '@/components/ChatList';
+import { t } from '@/text';
 
 
 export default React.memo(() => {
@@ -106,7 +107,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 tracking?.capture('voice_session_started', { sessionId });
             } catch (error) {
                 console.error('Failed to start realtime session:', error);
-                Modal.alert('Error', 'Failed to start voice session');
+                Modal.alert(t('common.error'), t('errors.voiceSessionFailed'));
                 tracking?.capture('voice_session_error', { error: error instanceof Error ? error.message : 'Unknown error' });
             }
         } else if (realtimeStatus === 'connected') {
@@ -160,7 +161,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
 
     const input = (
         <AgentInput
-            placeholder="Type a message ..."
+            placeholder={t('session.inputPlaceholder')}
             value={message}
             onChangeText={setMessage}
             sessionId={sessionId}

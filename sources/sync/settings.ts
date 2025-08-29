@@ -17,6 +17,7 @@ export const SettingsSchema = z.object({
     reviewPromptAnswered: z.boolean().describe('Whether the review prompt has been answered'),
     reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
     voiceAssistantLanguage: z.string().nullable().describe('Preferred language for voice assistant (null for auto-detect)'),
+    preferredLanguage: z.string().nullable().describe('Preferred UI language (null for auto-detect from device locale)'),
 });
 
 //
@@ -47,10 +48,11 @@ export const settingsDefaults: Settings = {
     analyticsOptOut: false,
     experiments: false,
     alwaysShowContextSize: false,
-    avatarStyle: 'gradient',
+    avatarStyle: 'brutalist',
     reviewPromptAnswered: false,
     reviewPromptLikedApp: null,
     voiceAssistantLanguage: null,
+    preferredLanguage: null,
 };
 Object.freeze(settingsDefaults);
 
