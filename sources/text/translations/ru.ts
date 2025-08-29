@@ -574,6 +574,7 @@ export const ru: TranslationStructure = {
         languages: {
             en: 'English',
             ru: 'Русский',
+            pl: 'Polski',
         }
     },
 } as const;

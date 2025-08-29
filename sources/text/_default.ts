@@ -440,6 +440,7 @@ export const en = {
         languages: {
             en: 'English',
             ru: 'Русский',
+            pl: 'Polski',
         }
     },
 
