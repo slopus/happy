@@ -109,6 +109,23 @@ interface KillSessionResponse {
     message: string;
 }
 
+/*
+ * Spawn Session Options and Result
+ * This rpc type is used by the daemon, all other RPCs here are for sessions.
+*/
+
+export interface SpawnSessionOptions {
+    machineId?: string;
+    directory: string;
+    sessionId?: string;
+    approvedNewDirectoryCreation?: boolean;
+}
+
+export type SpawnSessionResult = 
+    | { type: 'success'; sessionId: string }
+    | { type: 'requestToApproveDirectoryCreation'; directory: string }
+    | { type: 'error'; errorMessage: string };
+
 /**
  * Register all RPC handlers with the session
  */
@@ -391,31 +408,23 @@ export function registerHandlers(session: ApiSessionClient) {
             };
         }
     });
+}
 
-    // Kill session handler - terminates the current session gracefully
+export function registerKillSessionHandler(
+    session: ApiSessionClient, 
+    killThisHappy: () => Promise<void>
+) {
     session.setHandler<KillSessionRequest, KillSessionResponse>('killSession', async () => {
         logger.debug('Kill session request received');
         
-        try {
-            // Immediately acknowledge the request
-            const response = {
-                success: true,
-                message: 'Session termination acknowledged, exiting in 100ms'
-            };
+        // This will start the cleanup process
+        void killThisHappy();
             
-            // Wait a moment for the response to reach the client
-            setTimeout(() => {
-                logger.debug('[KILL SESSION] Exiting process as requested');
-                process.exit(0);
-            }, 100);
-            
-            return response;
-        } catch (error) {
-            logger.debug('Failed to kill session:', error);
-            return {
-                success: false,
-                message: error instanceof Error ? error.message : 'Failed to kill session'
-            };
-        }
+        // We should still be able to respond the the client, though they
+        // should optimistically assume the session is dead.
+        return {
+            success: true,
+            message: 'Killing happy-cli process'
+        };
     });
 }

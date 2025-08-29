@@ -7,10 +7,9 @@ import { io, Socket } from 'socket.io-client';
 import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
-import { TrackedSession } from '@/daemon/api/types';
+import { SpawnSessionOptions, SpawnSessionResult } from './handlers';
 import { encrypt, decrypt, encodeBase64, decodeBase64 } from './encryption';
 import { backoff } from '@/utils/time';
-
 
 interface ServerToDaemonEvents {
   update: (data: Update) => void;
@@ -70,7 +69,7 @@ interface DaemonToServerEvents {
 }
 
 type MachineRpcHandlers = {
-  spawnSession: (directory: string, sessionId?: string) => Promise<TrackedSession | null>;
+  spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   stopSession: (sessionId: string) => boolean;
   requestShutdown: () => void;
 }
@@ -80,7 +79,7 @@ export class ApiMachineClient {
   private keepAliveInterval: NodeJS.Timeout | null = null;
 
   // RPC handlers
-  private spawnSession?: (directory: string, sessionId?: string) => Promise<TrackedSession | null>;
+  private spawnSession?: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   private stopSession?: (sessionId: string) => boolean;
   private requestShutdown?: () => void;
 
@@ -206,43 +205,45 @@ export class ApiMachineClient {
     this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
       logger.debugLargeJson(`[API MACHINE] Received RPC request:`, data);
       try {
-        const spawnMethod = `${this.machine.id}:spawn-happy-session`;
-        const stopMethod = `${this.machine.id}:stop-session`;
-        const stopDaemonMethod = `${this.machine.id}:stop-daemon`;
 
         if (data.method === spawnMethod) {
           if (!this.spawnSession) {
             throw new Error('Spawn session handler not set');
           }
 
-          const { directory, sessionId } = decrypt(decodeBase64(data.params), this.secret) || {};
+          const { directory, sessionId, machineId, approvedNewDirectoryCreation } = decrypt(decodeBase64(data.params), this.secret) || {};
 
           if (!directory) {
             throw new Error('Directory is required');
           }
-          const session = await this.spawnSession(directory, sessionId);
-          if (!session) {
-            throw new Error('Failed to spawn session');
+          
+          const result = await this.spawnSession({ directory, sessionId, machineId, approvedNewDirectoryCreation });
+
+          switch (result.type) {
+            case 'success': {
+              logger.debug(`[API MACHINE] Spawned session ${result.sessionId}`);
+              
+              const response = { 
+                type: 'success',
+                sessionId: result.sessionId 
+              };
+              logger.debug(`[API MACHINE] Sending RPC response:`, response);
+              callback(encodeBase64(encrypt(response, this.secret)));
+              return;
+            }
+            
+            case 'requestToApproveDirectoryCreation':
+              const promptResponse = {
+                type: 'requestToApproveDirectoryCreation',
+                directory: result.directory
+              };
+              logger.debug(`[API MACHINE] Requesting directory creation approval for: ${result.directory}`);
+              callback(encodeBase64(encrypt(promptResponse, this.secret)));
+              return;
+            
+            case 'error':
+              throw new Error(result.errorMessage);
           }
-
-          // Check if session has an error (e.g., directory creation failed)
-          if (session.error) {
-            throw new Error(session.error);
-          }
-
-          logger.debug(`[API MACHINE] Spawned session ${session.happySessionId || 'WARNING - not session Id recieved in webhook'} with PID ${session.pid}`);
-
-          if (!session.happySessionId) {
-            throw new Error(`Session spawned (PID ${session.pid}) but no sessionId received from webhook. The session process may still be initializing.`);
-          }
-
-          const response = { 
-            sessionId: session.happySessionId,
-            message: session.message 
-          };
-          logger.debug(`[API MACHINE] Sending RPC response:`, response);
-          callback(encodeBase64(encrypt(response, this.secret)));
-          return;
         }
 
         if (data.method === stopMethod) {

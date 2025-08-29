@@ -8,7 +8,8 @@ import { z } from 'zod';
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from 'fastify-type-provider-zod';
 import { logger } from '@/ui/logger';
 import { Metadata } from '@/api/types';
-import { TrackedSession } from './api/types';
+import { TrackedSession } from './types';
+import { SpawnSessionOptions, SpawnSessionResult } from '@/api/handlers';
 
 export function startDaemonControlServer({
   getChildren,
@@ -19,7 +20,7 @@ export function startDaemonControlServer({
 }: {
   getChildren: () => TrackedSession[];
   stopSession: (sessionId: string) => boolean;
-  spawnSession: (directory: string, sessionId?: string) => Promise<TrackedSession | null>;
+  spawnSession: (options: SpawnSessionOptions) => Promise<SpawnSessionResult>;
   requestShutdown: () => void;
   onHappySessionWebhook: (sessionId: string, metadata: Metadata) => void;
 }): Promise<{ port: number; stop: () => Promise<void> }> {
@@ -90,21 +91,31 @@ export function startDaemonControlServer({
       const { directory, sessionId } = request.body;
 
       logger.debug(`[CONTROL SERVER] Spawn session request: dir=${directory}, sessionId=${sessionId || 'new'}`);
-      const session = await spawnSession(directory, sessionId);
+      const result = await spawnSession({ directory, sessionId });
 
-      if (session) {
-        return {
-          success: true,
-          pid: session.pid,
-          sessionId: session.happySessionId || 'pending',
-          message: session.message
-        };
-      } else {
-        reply.code(500);
-        return { 
-          success: false,
-          error: 'Failed to spawn session. Check the directory path and permissions.' 
-        };
+      switch (result.type) {
+        case 'success':
+          return {
+            success: true,
+            sessionId: result.sessionId,
+            approvedNewDirectoryCreation: true
+          };
+        
+        case 'requestToApproveDirectoryCreation':
+          reply.code(409); // Conflict - user input needed
+          return { 
+            success: false,
+            requiresUserApproval: true,
+            actionRequired: 'CREATE_DIRECTORY',
+            directory: result.directory
+          };
+        
+        case 'error':
+          reply.code(500);
+          return { 
+            success: false,
+            error: result.errorMessage
+          };
       }
     });
 

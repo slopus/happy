@@ -2,15 +2,15 @@ import fs from 'fs/promises';
 import os from 'os';
 
 import { ApiClient } from '@/api/api';
-import { TrackedSession } from './api/types';
-import { MachineMetadata, DaemonState } from '@/api/types';
+import { TrackedSession } from './types';
+import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
+import { SpawnSessionOptions, SpawnSessionResult } from '@/api/handlers';
 import { logger } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
-import { Metadata } from '@/api/types';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock } from '@/persistence';
 
@@ -181,19 +181,27 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Spawn a new session (sessionId reserved for future --resume functionality)
-    const spawnSession = async (directory: string, sessionId?: string): Promise<TrackedSession | null> => {
-      let directoryCreated = false;
+    const spawnSession = async (options: SpawnSessionOptions): Promise<SpawnSessionResult> => {
+      logger.debugLargeJson('[DAEMON RUN] Spawning session', options);
 
-      // Directory might be relative - lets make it absolute
-      if (directory.startsWith('~')) {
-        directory = resolve(os.homedir(), directory.replace('~', ''));
-      }
+      const { directory, sessionId, machineId, approvedNewDirectoryCreation = true } = options;
+      let directoryCreated = false;
 
       try {
         await fs.access(directory);
         logger.debug(`[DAEMON RUN] Directory exists: ${directory}`);
       } catch (error) {
         logger.debug(`[DAEMON RUN] Directory doesn't exist, creating: ${directory}`);
+        
+        // Check if directory creation is approved
+        if (!approvedNewDirectoryCreation) {
+          logger.debug(`[DAEMON RUN] Directory creation not approved for: ${directory}`);
+          return {
+            type: 'requestToApproveDirectoryCreation',
+            directory
+          };
+        }
+        
         try {
           await fs.mkdir(directory, { recursive: true });
           logger.debug(`[DAEMON RUN] Successfully created directory: ${directory}`);
@@ -215,8 +223,10 @@ export async function startDaemon(): Promise<void> {
           }
           
           logger.debug(`[DAEMON RUN] Directory creation failed: ${errorMessage}`);
-          // Return null on error for cleaner API
-          return null;
+          return {
+            type: 'error',
+            errorMessage
+          };
         }
       }
 
@@ -247,7 +257,10 @@ export async function startDaemon(): Promise<void> {
 
         if (!happyProcess.pid) {
           logger.debug('[DAEMON RUN] Failed to spawn process - no PID returned');
-          return null;
+          return {
+            type: 'error',
+            errorMessage: 'Failed to spawn Happy process - no PID returned'
+          };
         }
 
         logger.debug(`[DAEMON RUN] Spawned process with PID ${happyProcess.pid}`);
@@ -284,19 +297,29 @@ export async function startDaemon(): Promise<void> {
           const timeout = setTimeout(() => {
             pidToAwaiter.delete(happyProcess.pid!);
             logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${happyProcess.pid}`);
-            resolve(trackedSession); // Return incomplete session on timeout
+            resolve({
+              type: 'error',
+              errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
+            }); // Return incomplete session on timeout
           }, 10000); // 10 second timeout
 
           // Register awaiter
           pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
             clearTimeout(timeout);
             logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook`);
-            resolve(completedSession);
+            resolve({
+              type: 'success',
+              sessionId: completedSession.happySessionId!
+            });
           });
         });
       } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
         logger.debug('[DAEMON RUN] Failed to spawn session:', error);
-        return null;
+        return {
+          type: 'error',
+          errorMessage: `Failed to spawn session: ${errorMessage}`
+        };
       }
     };
 

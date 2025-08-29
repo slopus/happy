@@ -7,7 +7,7 @@ import { loop } from '@/claude/loop';
 import { AgentState, Metadata } from '@/api/types';
 // @ts-ignore
 import packageJson from '../package.json';
-import { registerHandlers } from '@/api/handlers';
+import { registerHandlers, registerKillSessionHandler as registerKillSessionRpcHandler } from '@/api/handlers';
 import { readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './claude/loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
@@ -289,9 +289,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         logger.debugLargeJson('User message pushed to queue:', message)
     });
 
-    // Store reference to the Session instance for special commands
-    let claudeSession: Session | null = null;
-
     // Setup signal handlers for graceful shutdown
     const cleanup = async () => {
         logger.debug('[START] Received termination signal, cleaning up...');
@@ -342,6 +339,8 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         cleanup();
     });
 
+    registerKillSessionRpcHandler(session, cleanup);
+
     // Create claude loop
     await loop({
         path: workingDirectory,
@@ -358,8 +357,8 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
                 controlledByUser: newMode === 'local'
             }));
         },
-        onSessionReady: (sessionInstance) => {
-            claudeSession = sessionInstance;
+        onSessionReady: (_sessionInstance) => {
+            // Intentionally unused
         },
         mcpServers: {
             'happy': {
