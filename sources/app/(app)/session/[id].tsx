@@ -3,7 +3,7 @@ import { useRoute } from "@react-navigation/native";
 import { useState, useMemo, useCallback } from "react";
 import { View, ActivityIndicator, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useNavigation, useRouter } from "expo-router";
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from "@/utils/sessionUtils";
 import { useSession, useSessionMessages, useSessionUsage, useSetting, useRealtimeStatus, storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
@@ -38,6 +38,7 @@ export default React.memo(() => {
     const sessionId = (route.params! as any).id as string;
     const session = useSession(sessionId);
     const { theme } = useUnistyles();
+
     if (!session) {
         return (
             <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>

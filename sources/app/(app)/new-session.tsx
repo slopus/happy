@@ -15,6 +15,7 @@ import { MachineSessionLauncher } from '@/components/MachineSessionLauncher';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -147,6 +148,7 @@ export default function NewSessionScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
+    const navigateToSession = useNavigateToSession();
     const sessions = useSessions();
     const machines = useAllMachines();
 
@@ -224,7 +226,7 @@ export default function NewSessionScreen() {
 
                     if (newSession) {
                         console.log('📱 Navigating to session:', result.sessionId);
-                        router.replace(`/session/${result.sessionId}`);
+                        navigateToSession(result.sessionId);
                         return;
                     }
 

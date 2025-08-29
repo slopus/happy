@@ -17,12 +17,14 @@ import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 
 export default function MachineDetailScreen() {
     const { theme } = useUnistyles();
     const { id: machineId } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
     const sessions = useSessions();
+    const navigateToSession = useNavigateToSession();
     const machines = useAllMachines();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
@@ -377,7 +379,7 @@ export default function MachineDetailScreen() {
                                     key={session.id}
                                     title={pastUsedRelativePath(session)}
                                     subtitle={session.metadata?.name || t('machine.untitledSession')}
-                                    onPress={() => router.push(`/session/${session.id}`)}
+                                    onPress={() => navigateToSession(session.id)}
                                     rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
                                 />
                             ))}
