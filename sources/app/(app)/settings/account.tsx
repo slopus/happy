@@ -51,12 +51,16 @@ export default React.memo(() => {
         if (preferredLanguage === null) {
             const deviceLocale = Localization.getLocales()?.[0]?.languageTag ?? 'en-US';
             const deviceLanguage = deviceLocale.split('-')[0].toLowerCase();
-            const detectedLanguageName = deviceLanguage === 'ru' ? t('settingsLanguage.languages.ru') : t('settingsLanguage.languages.en');
+            const detectedLanguageName = deviceLanguage === 'ru' ? t('settingsLanguage.languages.ru') :
+                                        deviceLanguage === 'pl' ? t('settingsLanguage.languages.pl') :
+                                        t('settingsLanguage.languages.en');
             return `${t('settingsLanguage.automatic')} (${detectedLanguageName})`;
         } else if (preferredLanguage === 'en') {
             return t('settingsLanguage.languages.en');
         } else if (preferredLanguage === 'ru') {
             return t('settingsLanguage.languages.ru');
+        } else if (preferredLanguage === 'pl') {
+            return t('settingsLanguage.languages.pl');
         }
         return t('settingsLanguage.automatic');
     };
