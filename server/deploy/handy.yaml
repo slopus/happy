@@ -34,7 +34,7 @@ spec:
         - name: REDIS_URL
           value: redis://happy-redis:6379
         - name: S3_PUBLIC_URL
-          value: https://files.happy-servers.com/happy
+          value: https://files.cluster-fluster.com/happy
         envFrom:
         - secretRef:
             name: handy-secrets
