@@ -47,7 +47,7 @@ export default React.memo(() => {
         )
     }
     return (
-        <SessionView sessionId={sessionId} session={session} />
+        <SessionView key={sessionId} sessionId={sessionId} session={session} />
     );
 });
 
