@@ -132,8 +132,9 @@ t('errors.fieldError', { field: 'Email', reason: 'Invalid format' })
 
 1. **Check existing keys first** - Always check if the string already exists in the `common` object or other sections before adding new keys
 2. **Think about context** - Consider the screen/component context when choosing the appropriate section (e.g., `settings.*`, `session.*`, `errors.*`)
-3. **Add to ALL languages** - When adding new strings, you MUST add them to all language files in `sources/text/translations/`
+3. **Add to ALL languages** - When adding new strings, you MUST add them to all language files in `sources/text/translations/` (currently: `en`, `ru`, `pl`, `es`)
 4. **Use descriptive key names** - Use clear, hierarchical keys like `newSession.machineOffline` rather than generic names
+5. **Language metadata** - All supported languages and their metadata are centralized in `sources/text/_all.ts`
 
 #### Translation Structure
 ```typescript
@@ -154,19 +155,48 @@ itemCount: ({ count }: { count: number }) =>
 - `modals.*` - Modal dialogs and popups
 - `components.*` - Component-specific strings organized by component name
 
+#### Language Configuration
+
+The app uses a centralized language configuration system:
+
+- **`sources/text/_all.ts`** - Centralized language metadata including:
+  - `SupportedLanguage` type definition
+  - `SUPPORTED_LANGUAGES` with native names and metadata
+  - Helper functions: `getLanguageNativeName()`, `getLanguageEnglishName()`
+  - Language constants: `SUPPORTED_LANGUAGE_CODES`, `DEFAULT_LANGUAGE`
+
+- **Adding new languages:**
+  1. Add the language code to the `SupportedLanguage` type in `_all.ts`
+  2. Add language metadata to `SUPPORTED_LANGUAGES` object
+  3. Create new translation file in `sources/text/translations/[code].ts`
+  4. Add import and export in `sources/text/index.ts`
+
 #### Important Rules
 - **Never hardcode strings** in JSX - always use `t('key')`
 - **Dev pages exception** - Development/debug pages can skip i18n
 - **Check common first** - Before adding new keys, check if a suitable translation exists in `common`
 - **Context matters** - Consider where the string appears to choose the right section
 - **Update all languages** - New strings must be added to every language file
+- **Use centralized language names** - Import language names from `_all.ts` instead of translation keys
 - **Always re-read translations** - When new strings are added, always re-read the translation files to understand the existing structure and patterns before adding new keys
 - **Use translations for common strings** - Always use the translation function `t()` for any user-visible string that is translatable, especially common UI elements like buttons, labels, and messages
+- **Use the i18n-translator agent** - When adding new translatable strings or verifying existing translations, use the i18n-translator agent to ensure consistency across all language files
 - **Beware of technical terms** - When translating technical terms, consider:
   - Keep universally understood terms like "CLI", "API", "URL", "JSON" in their original form
   - Translate terms that have well-established equivalents in the target language
   - Use descriptive translations for complex technical concepts when direct translations don't exist
   - Maintain consistency across all technical terminology within the same language
+
+#### i18n-Translator Agent
+
+When working with translations, use the **i18n-translator** agent for:
+- Adding new translatable strings to the application
+- Verifying existing translations across all language files
+- Ensuring translations are consistent and contextually appropriate
+- Checking that all required languages have new strings
+- Validating that translations fit the UI context (headers, buttons, multiline text)
+
+The agent should be called whenever new user-facing text is introduced to the codebase or when translation verification is needed.
 
 ### Important Files
 

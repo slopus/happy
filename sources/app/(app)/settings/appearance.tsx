@@ -10,7 +10,7 @@ import { Switch } from '@/components/Switch';
 import { Appearance } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
 import { darkTheme, lightTheme } from '@/theme';
-import { t } from '@/text';
+import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';
@@ -39,16 +39,12 @@ export default function AppearanceSettingsScreen() {
         if (preferredLanguage === null) {
             const deviceLocale = Localization.getLocales()?.[0]?.languageTag ?? 'en-US';
             const deviceLanguage = deviceLocale.split('-')[0].toLowerCase();
-            const detectedLanguageName = deviceLanguage === 'ru' ? t('settingsLanguage.languages.ru') :
-                                        deviceLanguage === 'pl' ? t('settingsLanguage.languages.pl') :
-                                        t('settingsLanguage.languages.en');
+            const detectedLanguageName = deviceLanguage in SUPPORTED_LANGUAGES ? 
+                                        getLanguageNativeName(deviceLanguage as keyof typeof SUPPORTED_LANGUAGES) : 
+                                        getLanguageNativeName('en');
             return `${t('settingsLanguage.automatic')} (${detectedLanguageName})`;
-        } else if (preferredLanguage === 'en') {
-            return t('settingsLanguage.languages.en');
-        } else if (preferredLanguage === 'ru') {
-            return t('settingsLanguage.languages.ru');
-        } else if (preferredLanguage === 'pl') {
-            return t('settingsLanguage.languages.pl');
+        } else if (preferredLanguage && preferredLanguage in SUPPORTED_LANGUAGES) {
+            return getLanguageNativeName(preferredLanguage as keyof typeof SUPPORTED_LANGUAGES);
         }
         return t('settingsLanguage.automatic');
     };

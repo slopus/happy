@@ -1,8 +1,12 @@
 import { en, type Translations, type TranslationStructure } from './_default';
 import { ru } from './translations/ru';
 import { pl } from './translations/pl';
+import { es } from './translations/es';
+import { pt } from './translations/pt';
+import { ca } from './translations/ca';
 import * as Localization from 'expo-localization';
 import { loadSettings } from '@/sync/persistence';
+import { type SupportedLanguage, SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE } from './_all';
 
 /**
  * Extract all possible dot-notation keys from the nested translation object
@@ -54,25 +58,33 @@ export type TranslationKey = NestedKeys<Translations>;
 export type TranslationParams<K extends TranslationKey> = GetParams<GetValue<Translations, K>>;
 
 /**
- * Available languages
+ * Re-export language types and configuration
  */
-export type SupportedLanguage = 'en' | 'ru' | 'pl';
+export type { SupportedLanguage } from './_all';
+export { SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE, getLanguageNativeName, getLanguageEnglishName } from './_all';
 
 /**
  * Translation objects for all supported languages
  * Each language must match the exact structure of the English translations
+ * All languages defined in SUPPORTED_LANGUAGES must be imported and included here
  */
 const translations: Record<SupportedLanguage, TranslationStructure> = {
     en,
     ru, // TypeScript will enforce that ru matches the TranslationStructure type exactly
     pl, // TypeScript will enforce that pl matches the TranslationStructure type exactly
+    es, // TypeScript will enforce that es matches the TranslationStructure type exactly
+    pt, // TypeScript will enforce that pt matches the TranslationStructure type exactly
+    ca, // TypeScript will enforce that ca matches the TranslationStructure type exactly
 };
+
+// Compile-time check: ensure all supported languages have translations
+const _typeCheck: Record<SupportedLanguage, TranslationStructure> = translations;
 
 //
 // Resolve languae
 //
 
-let currentLanguage: SupportedLanguage = 'en';
+let currentLanguage: SupportedLanguage = DEFAULT_LANGUAGE;
 
 // Read from settings
 let settings = loadSettings();

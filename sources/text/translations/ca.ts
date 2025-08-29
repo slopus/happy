@@ -1,0 +1,567 @@
+import type { TranslationStructure } from '../_default';
+
+/**
+ * Catalan plural helper function
+ * Catalan has 2 plural forms: singular, plural
+ * @param options - Object containing count, singular, and plural forms
+ * @returns The appropriate form based on Catalan plural rules
+ */
+function plural({ count, singular, plural }: { count: number; singular: string; plural: string }): string {
+    return count === 1 ? singular : plural;
+}
+
+/**
+ * Catalan translations for the Happy app
+ * Must match the exact structure of the English translations
+ */
+export const ca: TranslationStructure = {
+    common: {
+        // Simple string constants
+        cancel: 'Cancel·la',
+        authenticate: 'Autentica',
+        save: 'Desa',
+        error: 'Error',
+        success: 'Èxit',
+        ok: 'D\'acord',
+        continue: 'Continua',
+        back: 'Enrere',
+        rename: 'Reanomena',
+        reset: 'Reinicia',
+        logout: 'Tanca la sessió',
+        yes: 'Sí',
+        no: 'No',
+        version: 'Versió',
+        copied: 'Copiat',
+        scanning: 'Escanejant...',
+        urlPlaceholder: 'https://exemple.com',
+        home: 'Inici',
+        message: 'Missatge',
+        files: 'Fitxers',
+        fileViewer: 'Visualitzador de fitxers',
+    },
+
+    status: {
+        connected: 'connectat',
+        connecting: 'connectant',
+        disconnected: 'desconnectat',
+        error: 'error',
+        online: 'en línia',
+        offline: 'fora de línia',
+    },
+
+    connect: {
+        restoreAccount: 'Restaura el compte',
+        enterSecretKey: 'Si us plau, introduïu una clau secreta',
+        invalidSecretKey: 'Clau secreta no vàlida. Si us plau, comproveu-ho i torneu-ho a provar.',
+        enterUrlManually: 'Introdueix l\'URL manualment',
+    },
+
+    settings: {
+        title: 'Configuració',
+        connectedAccounts: 'Comptes connectats',
+        github: 'GitHub',
+        machines: 'Màquines',
+        features: 'Funcions',
+        account: 'Compte',
+        accountSubtitle: 'Gestiona els detalls del teu compte',
+        appearance: 'Aparença',
+        appearanceSubtitle: 'Personalitza l\'aspecte de l\'aplicació',
+        voiceAssistant: 'Assistent de veu',
+        voiceAssistantSubtitle: 'Configura les preferències d\'interacció per veu',
+        featuresTitle: 'Funcions',
+        featuresSubtitle: 'Activa o desactiva les funcions de l\'aplicació',
+        developer: 'Desenvolupador',
+        developerTools: 'Eines de desenvolupador',
+        about: 'Quant a',
+        aboutFooter: 'Happy Coder és un client mòbil de Claude Code. Està completament xifrat punt a punt i el teu compte s\'emmagatzema només al teu dispositiu. No està afiliat amb Anthropic.',
+        whatsNew: 'Novetats',
+        whatsNewSubtitle: 'Consulta les últimes actualitzacions i millores',
+        reportIssue: 'Informa d\'un problema',
+        privacyPolicy: 'Política de privadesa',
+        termsOfService: 'Condicions del servei',
+        eula: 'EULA',
+        supportUs: 'Dona\'ns suport',
+        supportUsSubtitlePro: 'Gràcies pel teu suport!',
+        supportUsSubtitle: 'Dona suport al desenvolupament del projecte',
+        scanQrCodeToAuthenticate: 'Escaneja el codi QR per autenticar',
+        githubConnected: ({ login }: { login: string }) => `Connectat com a @${login}`,
+        connectGithubAccount: 'Connecta el teu compte de GitHub',
+
+        // Dynamic settings messages
+        accountConnected: ({ service }: { service: string }) => `Compte de ${service} connectat`,
+        machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
+            `${name} està ${status === 'online' ? 'en línia' : 'fora de línia'}`,
+        featureToggled: ({ feature, enabled }: { feature: string; enabled: boolean }) =>
+            `${feature} ${enabled ? 'activada' : 'desactivada'}`,
+    },
+
+    settingsAppearance: {
+        // Appearance settings screen
+        theme: 'Tema',
+        themeDescription: 'Tria l\'esquema de colors preferit',
+        themeOptions: {
+            adaptive: 'Adaptatiu',
+            light: 'Clar', 
+            dark: 'Fosc',
+        },
+        themeDescriptions: {
+            adaptive: 'Segueix la configuració del sistema',
+            light: 'Utilitza sempre el tema clar',
+            dark: 'Utilitza sempre el tema fosc',
+        },
+        display: 'Pantalla',
+        displayDescription: 'Controla la disposició i l\'espaiat',
+        inlineToolCalls: 'Crides d\'eines en línia',
+        inlineToolCallsDescription: 'Mostra les crides d\'eines directament als missatges de xat',
+        expandTodoLists: 'Expandeix les llistes de tasques',
+        expandTodoListsDescription: 'Mostra totes les tasques en lloc de només els canvis',
+        showLineNumbersInDiffs: 'Mostra els números de línia a les diferències',
+        showLineNumbersInDiffsDescription: 'Mostra els números de línia a les diferències de codi',
+        showLineNumbersInToolViews: 'Mostra els números de línia a les vistes d\'eines',
+        showLineNumbersInToolViewsDescription: 'Mostra els números de línia a les diferències de vistes d\'eines',
+        alwaysShowContextSize: 'Mostra sempre la mida del context',
+        alwaysShowContextSizeDescription: 'Mostra l\'ús del context fins i tot quan no estigui prop del límit',
+        avatarStyle: 'Estil d\'avatar',
+        avatarStyleDescription: 'Tria l\'aparença de l\'avatar de la sessió',
+        avatarOptions: {
+            pixelated: 'Pixelat',
+            gradient: 'Gradient',
+            brutalist: 'Brutalista',
+        },
+    },
+
+    settingsFeatures: {
+        // Features settings screen
+        experiments: 'Experiments',
+        experimentsDescription: 'Activa funcions experimentals que encara estan en desenvolupament. Aquestes funcions poden ser inestables o canviar sense avís.',
+        experimentalFeatures: 'Funcions experimentals',
+        experimentalFeaturesEnabled: 'Funcions experimentals activades',
+        experimentalFeaturesDisabled: 'Utilitzant només funcions estables',
+        webFeatures: 'Funcions web',
+        webFeaturesDescription: 'Funcions disponibles només a la versió web de l\'aplicació.',
+        commandPalette: 'Paleta de comandes',
+        commandPaletteEnabled: 'Prem ⌘K per obrir',
+        commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
+    },
+
+    errors: {
+        networkError: 'S\'ha produït un error de xarxa',
+        serverError: 'S\'ha produït un error del servidor',
+        unknownError: 'S\'ha produït un error desconegut',
+        connectionTimeout: 'S\'ha esgotat el temps d\'espera de la connexió',
+        authenticationFailed: 'L\'autenticació ha fallat',
+        permissionDenied: 'Permís denegat',
+        fileNotFound: 'Fitxer no trobat',
+        invalidFormat: 'Format no vàlid',
+        operationFailed: 'L\'operació ha fallat',
+        tryAgain: 'Si us plau, torneu-ho a provar',
+        contactSupport: 'Contacteu amb el suport si el problema persisteix',
+        sessionNotFound: 'Sessió no trobada',
+        voiceSessionFailed: 'Ha fallat l\'inici de la sessió de veu',
+
+        // Error functions with context
+        fieldError: ({ field, reason }: { field: string; reason: string }) =>
+            `${field}: ${reason}`,
+        validationError: ({ field, min, max }: { field: string; min: number; max: number }) =>
+            `${field} ha d'estar entre ${min} i ${max}`,
+        retryIn: ({ seconds }: { seconds: number }) =>
+            `Torna-ho a provar d'aquí ${seconds} ${seconds === 1 ? 'segon' : 'segons'}`,
+        errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
+            `${message} (Error ${code})`,
+    },
+
+    newSession: {
+        // Used by new-session screen and launch flows
+        title: 'Inicia una nova sessió',
+        noMachinesFound: 'No s\'han trobat màquines. Inicia una sessió de Happy al teu ordinador primer.',
+        allMachinesOffline: 'Totes les màquines estan fora de línia',
+        machineOfflineHelp: {
+            computerOnline: '• Està el teu ordinador en línia?',
+            daemonRunning: '• S\'està executant el dimoni de Happy? Comprova-ho amb `happy daemon status`'
+        },
+        machineDetails: 'Veure detalls de la màquina →',
+        sessionStarted: 'Sessió iniciada',
+        sessionStartedMessage: 'La sessió s\'ha iniciat però pot tardar un moment a aparèixer.',
+        sessionSpawningFailed: 'Ha fallat la creació de la sessió - no s\'ha retornat cap ID de sessió.',
+        failedToStart: 'Ha fallat l\'inici de la sessió. Assegura\'t que el dimoni s\'estigui executant a la màquina de destinació.',
+        sessionTimeout: 'L\'inici de la sessió ha esgotat el temps d\'espera. La màquina pot ser lenta o el dimoni pot no estar responent.',
+        notConnectedToServer: 'No connectat al servidor. Comprova la teva connexió a internet.'
+    },
+
+    session: {
+        inputPlaceholder: 'Escriu un missatge...',
+    },
+
+    commandPalette: {
+        placeholder: 'Escriu una comanda o cerca...',
+    },
+
+    server: {
+        // Used by Server Configuration screen (app/(app)/server.tsx)
+        serverConfiguration: 'Configuració del servidor',
+        enterServerUrl: 'Si us plau, introduïu una URL del servidor',
+        notValidHappyServer: 'No és un servidor Happy vàlid',
+        changeServer: 'Canvia el servidor',
+        continueWithServer: 'Continuar amb aquest servidor?',
+        resetToDefault: 'Reinicia per defecte',
+        resetServerDefault: 'Reiniciar el servidor per defecte?',
+        validating: 'Validant...',
+        validatingServer: 'Validant el servidor...',
+        serverReturnedError: 'El servidor ha retornat un error',
+        failedToConnectToServer: 'Ha fallat la connexió amb el servidor',
+        currentlyUsingCustomServer: 'Actualment utilitzant un servidor personalitzat',
+        customServerUrlLabel: 'URL del servidor personalitzat',
+        advancedFeatureFooter: 'Aquesta és una funció avançada. Només canvia el servidor si saps el que estàs fent. Hauràs de tancar la sessió i tornar-la a iniciar després de canviar els servidors.'
+    },
+
+    sessionInfo: {
+        // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
+        killSession: 'Finalitza la sessió',
+        killSessionConfirm: 'Estàs segur que vols finalitzar aquesta sessió?',
+        happySessionIdCopied: 'ID de la sessió de Happy copiat al porta-retalls',
+        failedToCopySessionId: 'Ha fallat copiar l\'ID de la sessió de Happy',
+        happySessionId: 'ID de la sessió de Happy',
+        claudeCodeSessionId: 'ID de la sessió de Claude Code',
+        claudeCodeSessionIdCopied: 'ID de la sessió de Claude Code copiat al porta-retalls',
+        failedToCopyClaudeCodeSessionId: 'Ha fallat copiar l\'ID de la sessió de Claude Code',
+        metadataCopied: 'Metadades copiades al porta-retalls',
+        failedToCopyMetadata: 'Ha fallat copiar les metadades',
+        failedToKillSession: 'Ha fallat finalitzar la sessió',
+        connectionStatus: 'Estat de la connexió',
+        created: 'Creat',
+        lastUpdated: 'Última actualització',
+        sequence: 'Seqüència',
+        quickActions: 'Accions ràpides',
+        viewMachine: 'Veure la màquina',
+        viewMachineSubtitle: 'Veure detalls de la màquina i sessions',
+        killSessionSubtitle: 'Finalitzar immediatament la sessió',
+        metadata: 'Metadades',
+        host: 'Host',
+        path: 'Camí',
+        operatingSystem: 'Sistema operatiu',
+        processId: 'ID del procés',
+        happyHome: 'Directori de Happy',
+        copyMetadata: 'Copia les metadades',
+        agentState: 'Estat de l\'agent',
+        controlledByUser: 'Controlat per l\'usuari',
+        pendingRequests: 'Sol·licituds pendents',
+        activity: 'Activitat',
+        thinking: 'Pensant',
+        thinkingSince: 'Pensant des de',
+        
+    },
+
+    components: {
+        emptyMainScreen: {
+            // Used by EmptyMainScreen component
+            readyToCode: 'Llest per programar?',
+            installCli: 'Instal·la el Happy CLI',
+            runIt: 'Executa\'l',
+            scanQrCode: 'Escaneja el codi QR',
+            openCamera: 'Obre la càmera',
+        },
+    },
+
+    agentInput: {
+        permissionMode: {
+            title: 'MODE DE PERMISOS',
+            default: 'Per defecte',
+            acceptEdits: 'Accepta edicions',
+            plan: 'Mode de planificació',
+            bypassPermissions: 'Mode Yolo',
+            badgeAcceptAllEdits: 'Accepta totes les edicions',
+            badgeBypassAllPermissions: 'Omet tots els permisos',
+            badgePlanMode: 'Mode de planificació',
+        },
+        model: {
+            title: 'MODEL',
+            default: 'Utilitza la configuració del CLI',
+            adaptiveUsage: 'Opus fins al 50% d\'ús, després Sonnet',
+            sonnet: 'Sonnet',
+            opus: 'Opus',
+        },
+        context: {
+            remaining: ({ percent }: { percent: number }) => `${percent}% restant`,
+        },
+        suggestion: {
+            fileLabel: 'FITXER',
+            folderLabel: 'CARPETA',
+        }
+    },
+
+    machineLauncher: {
+        showLess: 'Mostra menys',
+        showAll: ({ count }: { count: number }) => `Mostra tots (${count} camins)`,
+        enterCustomPath: 'Introdueix un camí personalitzat',
+        offlineUnableToSpawn: 'No es pot crear una nova sessió, fora de línia',
+    },
+
+    sidebar: {
+        sessionsTitle: 'Sessions',
+    },
+
+    toolView: {
+        input: 'Entrada',
+        output: 'Sortida',
+    },
+
+    tools: {
+        fullView: {
+            description: 'Descripció',
+            inputParams: 'Paràmetres d\'entrada',
+            output: 'Sortida',
+            error: 'Error',
+            completed: 'Eina completada amb èxit',
+            noOutput: 'No s\'ha produït cap sortida',
+            running: 'L\'eina s\'està executant...',
+            rawJsonDevMode: 'JSON en brut (mode desenvolupador)',
+        },
+        taskView: {
+            initializing: 'Inicialitzant l\'agent...',
+            moreTools: ({ count }: { count: number }) => `+${count} més ${plural({ count, singular: 'eina', plural: 'eines' })}`,
+        },
+        multiEdit: {
+            editNumber: ({ index, total }: { index: number; total: number }) => `Edició ${index} de ${total}`,
+            replaceAll: 'Reemplaça tot',
+        },
+        names: {
+            task: 'Tasca',
+            terminal: 'Terminal',
+            searchFiles: 'Cerca fitxers',
+            search: 'Cerca',
+            searchContent: 'Cerca contingut',
+            listFiles: 'Llista fitxers',
+            planProposal: 'Proposta de pla',
+            readFile: 'Llegeix fitxer',
+            editFile: 'Edita fitxer',
+            writeFile: 'Escriu fitxer',
+            fetchUrl: 'Obté URL',
+            readNotebook: 'Llegeix quadern',
+            editNotebook: 'Edita quadern',
+            todoList: 'Llista de tasques',
+            webSearch: 'Cerca web',
+        },
+        desc: {
+            terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
+            searchPattern: ({ pattern }: { pattern: string }) => `Cerca(patró: ${pattern})`,
+            searchPath: ({ basename }: { basename: string }) => `Cerca(camí: ${basename})`,
+            fetchUrlHost: ({ host }: { host: string }) => `Obté URL(url: ${host})`,
+            editNotebookMode: ({ path, mode }: { path: string; mode: string }) => `Edita quadern(fitxer: ${path}, mode: ${mode})`,
+            todoListCount: ({ count }: { count: number }) => `Llista de tasques(quantitat: ${count})`,
+            webSearchQuery: ({ query }: { query: string }) => `Cerca web(consulta: ${query})`,
+            grepPattern: ({ pattern }: { pattern: string }) => `grep(patró: ${pattern})`,
+            multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count} edicions)`,
+        }
+    },
+
+    files: {
+        searchPlaceholder: 'Cerca fitxers...',
+        detachedHead: 'HEAD separat',
+        summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} preparats • ${unstaged} sense preparar`,
+        notRepo: 'No és un repositori git',
+        notUnderGit: 'Aquest directori no està sota control de versions git',
+        searching: 'Cercant fitxers...',
+        noFilesFound: 'No s\'han trobat fitxers',
+        noFilesInProject: 'No hi ha fitxers al projecte',
+        tryDifferentTerm: 'Prova un terme de cerca diferent',
+        searchResults: ({ count }: { count: number }) => `Resultats de la cerca (${count})`,
+        projectRoot: 'Arrel del projecte',
+        stagedChanges: ({ count }: { count: number }) => `Canvis preparats (${count})`,
+        unstagedChanges: ({ count }: { count: number }) => `Canvis sense preparar (${count})`,
+        // File viewer strings
+        loadingFile: ({ fileName }: { fileName: string }) => `Carregant ${fileName}...`,
+        binaryFile: 'Fitxer binari',
+        cannotDisplayBinary: 'No es pot mostrar el contingut del fitxer binari',
+        diff: 'Diferències',
+        file: 'Fitxer',
+        fileEmpty: 'El fitxer està buit',
+        noChanges: 'No hi ha canvis a mostrar',
+    },
+
+    settingsVoice: {
+        // Voice settings screen
+        languageTitle: 'Idioma',
+        languageDescription: 'Tria l\'idioma preferit per a les interaccions amb l\'assistent de veu. Aquesta configuració es sincronitza a tots els teus dispositius.',
+        preferredLanguage: 'Idioma preferit',
+        preferredLanguageSubtitle: 'Idioma utilitzat per a les respostes de l\'assistent de veu',
+        language: {
+            searchPlaceholder: 'Cerca idiomes...',
+            title: 'Idiomes',
+            footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomes' })} disponibles`,
+            autoDetect: 'Detecta automàticament',
+        }
+    },
+
+    settingsAccount: {
+        // Account settings screen
+        accountInformation: 'Informació del compte',
+        status: 'Estat',
+        statusActive: 'Actiu',
+        statusNotAuthenticated: 'No autenticat',
+        anonymousId: 'ID anònim',
+        publicId: 'ID públic',
+        notAvailable: 'No disponible',
+        linkNewDevice: 'Enllaça un nou dispositiu',
+        linkNewDeviceSubtitle: 'Escaneja el codi QR per enllaçar el dispositiu',
+        profile: 'Perfil',
+        name: 'Nom',
+        github: 'GitHub',
+        tapToDisconnect: 'Toca per desconnectar',
+        server: 'Servidor',
+        backup: 'Còpia de seguretat',
+        backupDescription: 'La teva clau secreta és l\'única manera de recuperar el teu compte. Desa-la en un lloc segur com un gestor de contrasenyes.',
+        secretKey: 'Clau secreta',
+        tapToReveal: 'Toca per revelar',
+        tapToHide: 'Toca per ocultar',
+        secretKeyLabel: 'CLAU SECRETA (TOCA PER COPIAR)',
+        secretKeyCopied: 'Clau secreta copiada al porta-retalls. Desa-la en un lloc segur!',
+        secretKeyCopyFailed: 'Ha fallat copiar la clau secreta',
+        privacy: 'Privadesa',
+        privacyDescription: 'Ajuda a millorar l\'aplicació compartint dades d\'ús anònimes. No es recopila informació personal.',
+        analytics: 'Analítiques',
+        analyticsDisabled: 'No es comparteixen dades',
+        analyticsEnabled: 'Es comparteixen dades d\'ús anònimes',
+        dangerZone: 'Zona de perill',
+        logout: 'Tanca la sessió',
+        logoutSubtitle: 'Tanca la sessió i esborra les dades locals',
+        logoutConfirm: 'Estàs segur que vols tancar la sessió? Assegura\'t d\'haver fet una còpia de seguretat de la teva clau secreta!',
+    },
+
+    settingsLanguage: {
+        // Language settings screen
+        title: 'Idioma',
+        description: 'Tria l\'idioma preferit per a la interfície de l\'aplicació. Això se sincronitzarà a tots els teus dispositius.',
+        currentLanguage: 'Idioma actual',
+        automatic: 'Automàtic',
+        automaticSubtitle: 'Detecta des de la configuració del dispositiu',
+        needsRestart: 'Idioma canviat',
+        needsRestartMessage: 'L\'aplicació necessita reiniciar-se per aplicar la nova configuració d\'idioma.',
+        restartNow: 'Reinicia ara',
+    },
+
+    connectButton: {
+        authenticate: 'Autentica el terminal',
+        authenticateWithUrlPaste: 'Autentica el terminal amb enganxat d\'URL',
+        pasteAuthUrl: 'Enganxa l\'URL d\'autenticació del teu terminal',
+    },
+
+    updateBanner: {
+        updateAvailable: 'Actualització disponible',
+        pressToApply: 'Prem per aplicar l\'actualització',
+        whatsNew: 'Novetats',
+        seeLatest: 'Consulta les últimes actualitzacions i millores',
+    },
+
+    changelog: {
+        // Used by the changelog screen
+        version: ({ version }: { version: number }) => `Versió ${version}`,
+        noEntriesAvailable: 'No hi ha entrades de registre de canvis disponibles.',
+    },
+
+    terminal: {
+        // Used by terminal connection screens
+        webBrowserRequired: 'Es requereix un navegador web',
+        webBrowserRequiredDescription: 'Els enllaços de connexió de terminal només es poden obrir en un navegador web per raons de seguretat. Si us plau, utilitza l\'escàner de codi QR o obre aquest enllaç en un ordinador.',
+        processingConnection: 'Processant la connexió...',
+        invalidConnectionLink: 'Enllaç de connexió no vàlid',
+        invalidConnectionLinkDescription: 'L\'enllaç de connexió falta o no és vàlid. Si us plau, comprova l\'URL i torna-ho a provar.',
+        connectTerminal: 'Connecta el terminal',
+        terminalRequestDescription: 'Un terminal està sol·licitant connectar-se al teu compte de Happy Coder. Això permetrà al terminal enviar i rebre missatges de forma segura.',
+        connectionDetails: 'Detalls de la connexió',
+        publicKey: 'Clau pública',
+        encryption: 'Xifratge',
+        endToEndEncrypted: 'Xifrat punt a punt',
+        acceptConnection: 'Accepta la connexió',
+        connecting: 'Connectant...',
+        reject: 'Rebutja',
+        security: 'Seguretat',
+        securityFooter: 'Aquest enllaç de connexió s\'ha processat de forma segura al teu navegador i mai s\'ha enviat a cap servidor. Les teves dades privades es mantindran segures i només tu pots desxifrar els missatges.',
+        securityFooterDevice: 'Aquesta connexió s\'ha processat de forma segura al teu dispositiu i mai s\'ha enviat a cap servidor. Les teves dades privades es mantindran segures i només tu pots desxifrar els missatges.',
+        clientSideProcessing: 'Processament del costat del client',
+        linkProcessedLocally: 'Enllaç processat localment al navegador',
+        linkProcessedOnDevice: 'Enllaç processat localment al dispositiu',
+    },
+
+    modals: {
+        // Used across connect flows and settings
+        authenticateTerminal: 'Autentica el terminal',
+        pasteUrlFromTerminal: 'Enganxa l\'URL d\'autenticació del teu terminal',
+        deviceLinkedSuccessfully: 'Dispositiu enllaçat amb èxit',
+        terminalConnectedSuccessfully: 'Terminal connectat amb èxit',
+        invalidAuthUrl: 'URL d\'autenticació no vàlida',
+        developerMode: 'Mode desenvolupador',
+        developerModeEnabled: 'Mode desenvolupador activat',
+        developerModeDisabled: 'Mode desenvolupador desactivat',
+        disconnectGithub: 'Desconnecta GitHub',
+        disconnectGithubConfirm: 'Estàs segur que vols desconnectar el teu compte de GitHub?',
+        disconnect: 'Desconnecta',
+        failedToConnectTerminal: 'Ha fallat connectar el terminal',
+        cameraPermissionsRequiredToConnectTerminal: 'Es requereixen permisos de càmera per connectar el terminal',
+        failedToLinkDevice: 'Ha fallat enllaçar el dispositiu',
+        cameraPermissionsRequiredToScanQr: 'Es requereixen permisos de càmera per escanejar codis QR'
+    },
+
+    navigation: {
+        // Navigation titles and screen headers
+        connectTerminal: 'Connecta el terminal',
+        linkNewDevice: 'Enllaça un nou dispositiu', 
+        restoreWithSecretKey: 'Restaura amb clau secreta',
+        whatsNew: 'Novetats',
+    },
+
+    welcome: {
+        // Main welcome screen for unauthenticated users
+        title: 'Client mòbil de Claude Code',
+        subtitle: 'Xifrat punt a punt i el teu compte s\'emmagatzema només al teu dispositiu.',
+        createAccount: 'Crea un compte',
+        linkOrRestoreAccount: 'Enllaça o restaura un compte',
+        loginWithMobileApp: 'Inicia sessió amb l\'aplicació mòbil',
+    },
+
+    review: {
+        // Used by utils/requestReview.ts
+        enjoyingApp: 'T\'està agradant l\'aplicació?',
+        feedbackPrompt: 'Ens encantaria conèixer la teva opinió!',
+        yesILoveIt: 'Sí, m\'encanta!',
+        notReally: 'No gaire'
+    },
+
+    items: {
+        // Used by Item component for copy toast
+        copiedToClipboard: ({ label }: { label: string }) => `${label} copiat al porta-retalls`
+    },
+
+    machine: {
+        launchNewSessionInDirectory: 'Inicia una nova sessió al directori',
+        daemon: 'Dimoni',
+        status: 'Estat',
+        stopDaemon: 'Atura el dimoni',
+        lastKnownPid: 'Últim PID conegut',
+        lastKnownHttpPort: 'Últim port HTTP conegut',
+        startedAt: 'Iniciat a',
+        cliVersion: 'Versió del CLI',
+        daemonStateVersion: 'Versió de l\'estat del dimoni',
+        activeSessions: ({ count }: { count: number }) => `Sessions actives (${count})`,
+        machineGroup: 'Màquina',
+        host: 'Host',
+        machineId: 'ID de la màquina',
+        username: 'Nom d\'usuari',
+        homeDirectory: 'Directori principal',
+        platform: 'Plataforma',
+        architecture: 'Arquitectura',
+        lastSeen: 'Vist per última vegada',
+        never: 'Mai',
+        metadataVersion: 'Versió de les metadades',
+        untitledSession: 'Sessió sense títol',
+        back: 'Enrere',
+    },
+
+    message: {
+        switchedToMode: ({ mode }: { mode: string }) => `S'ha canviat al mode ${mode}`,
+        unknownEvent: 'Esdeveniment desconegut',
+        usageLimitUntil: ({ time }: { time: string }) => `Límit d'ús assolit fins a ${time}`,
+        unknownTime: 'temps desconegut',
+    }
+} as const;
+
+export type TranslationsCa = typeof ca;
