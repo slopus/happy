@@ -17,6 +17,7 @@ import { Modal } from '@/modal';
 import { CompactGitStatus } from './CompactGitStatus';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { useIsTablet } from '@/utils/responsive';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -415,6 +416,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
     const navigateToSession = useNavigateToSession();
+    const isTablet = useIsTablet();
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
@@ -427,8 +429,15 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 showBorder && styles.sessionRowWithBorder,
                 selected && styles.sessionRowSelected
             ]}
+            onPressIn={() => {
+                if (isTablet) {
+                    navigateToSession(session.id);
+                }
+            }}
             onPress={() => {
-                navigateToSession(session.id);
+                if (!isTablet) {
+                    navigateToSession(session.id);
+                }
             }}
         >
             <View style={styles.avatarContainer}>
