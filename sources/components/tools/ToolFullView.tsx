@@ -8,6 +8,7 @@ import { getToolFullViewComponent } from './views/_all';
 import { layout } from '../layout';
 import { useLocalSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
+import { t } from '@/text';
 
 interface ToolFullViewProps {
     tool: ToolCall;
@@ -35,7 +36,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                         <View style={styles.section}>
                             <View style={styles.sectionHeader}>
                                 <Ionicons name="information-circle" size={20} color="#5856D6" />
-                                <Text style={styles.sectionTitle}>Description</Text>
+                                <Text style={styles.sectionTitle}>{t('tools.fullView.description')}</Text>
                             </View>
                             <Text style={styles.description}>{tool.description}</Text>
                         </View>
@@ -45,7 +46,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                         <View style={styles.section}>
                             <View style={styles.sectionHeader}>
                                 <Ionicons name="log-in" size={20} color="#5856D6" />
-                                <Text style={styles.sectionTitle}>Input Parameters</Text>
+                                <Text style={styles.sectionTitle}>{t('tools.fullView.inputParams')}</Text>
                             </View>
                             <CodeView code={JSON.stringify(tool.input, null, 2)} />
                         </View>
@@ -56,7 +57,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                         <View style={styles.section}>
                             <View style={styles.sectionHeader}>
                                 <Ionicons name="log-out" size={20} color="#34C759" />
-                                <Text style={styles.sectionTitle}>Output</Text>
+                                <Text style={styles.sectionTitle}>{t('tools.fullView.output')}</Text>
                             </View>
                             <CodeView
                                 code={typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
@@ -69,7 +70,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                         <View style={styles.section}>
                             <View style={styles.sectionHeader}>
                                 <Ionicons name="close-circle" size={20} color="#FF3B30" />
-                                <Text style={styles.sectionTitle}>Error</Text>
+                                <Text style={styles.sectionTitle}>{t('tools.fullView.error')}</Text>
                             </View>
                             <View style={styles.errorContainer}>
                                 <Text style={styles.errorText}>{String(tool.result)}</Text>
@@ -82,8 +83,8 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                         <View style={styles.section}>
                             <View style={styles.emptyOutputContainer}>
                                 <Ionicons name="checkmark-circle-outline" size={48} color="#34C759" />
-                                <Text style={styles.emptyOutputText}>Tool completed successfully</Text>
-                                <Text style={styles.emptyOutputSubtext}>No output was produced</Text>
+                                <Text style={styles.emptyOutputText}>{t('tools.fullView.completed')}</Text>
+                                <Text style={styles.emptyOutputSubtext}>{t('tools.fullView.noOutput')}</Text>
                             </View>
                         </View>
                     )}
@@ -93,7 +94,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                         <View style={styles.section}>
                             <View style={styles.runningContainer}>
                                 <ActivityIndicator size="large" color="#007AFF" />
-                                <Text style={styles.runningText}>Tool is running...</Text>
+                                <Text style={styles.runningText}>{t('tools.fullView.running')}</Text>
                             </View>
                         </View>
                     )}
@@ -105,7 +106,7 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                     <View style={styles.section}>
                         <View style={styles.sectionHeader}>
                             <Ionicons name="code-slash" size={20} color="#FF9500" />
-                            <Text style={styles.sectionTitle}>Raw JSON (Dev Mode)</Text>
+                            <Text style={styles.sectionTitle}>{t('tools.fullView.rawJsonDevMode')}</Text>
                         </View>
                         <CodeView 
                             code={JSON.stringify({

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { View, TextInput, ActivityIndicator, Pressable, Text } from 'react-native';
+import { t } from '@/text';
 import { Item } from '@/components/Item';
 import { Ionicons } from '@expo/vector-icons';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
@@ -141,7 +142,7 @@ export const MachineSessionLauncher: React.FC<MachineSessionLauncherProps> = ({
             {/* Show all/less button */}
             {hasMorePaths && (
                 <Item
-                    title={showAllPaths ? "Show less" : `Show all (${recentPaths.length} paths)`}
+                    title={showAllPaths ? t('machineLauncher.showLess') : t('machineLauncher.showAll', { count: recentPaths.length })}
                     onPress={() => setShowAllPaths(!showAllPaths)}
                     showChevron={false}
                 />
@@ -152,7 +153,7 @@ export const MachineSessionLauncher: React.FC<MachineSessionLauncherProps> = ({
                 <View style={[styles.container, styles.inputContainer]}>
                     <TextInput
                         style={styles.pathInput}
-                        placeholder="Enter custom path"
+                        placeholder={t('machineLauncher.enterCustomPath')}
                         placeholderTextColor={theme.colors.textSecondary}
                         value={customPath}
                         onChangeText={setCustomPath}
@@ -188,7 +189,7 @@ export const MachineSessionLauncher: React.FC<MachineSessionLauncherProps> = ({
             ) : (
                 <View style={[styles.container, styles.offlineContainer]}>
                     <Text style={styles.offlineText}>
-                        Unable to spawn new session, offline
+                        {t('machineLauncher.offlineUnableToSpawn')}
                     </Text>
                 </View>
             )}

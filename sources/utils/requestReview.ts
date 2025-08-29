@@ -1,6 +1,7 @@
 import * as StoreReview from 'expo-store-review';
 import { MMKV } from 'react-native-mmkv';
 import { Modal } from '@/modal';
+import { t } from '@/text';
 import { AsyncLock } from './lock';
 import {
     trackReviewPromptShown,
@@ -84,11 +85,11 @@ export function requestReview() {
             // Pre-ask if they like the app (only shown once, ever)
             trackReviewPromptShown();
             const likesApp = await Modal.confirm(
-                'Enjoying the app?',
-                'We\'d love to hear your feedback!',
+                t('review.enjoyingApp'),
+                t('review.feedbackPrompt'),
                 {
-                    confirmText: 'Yes, I love it!',
-                    cancelText: 'Not really',
+                    confirmText: t('review.yesILoveIt'),
+                    cancelText: t('review.notReally'),
                 }
             );
             trackReviewPromptResponse(likesApp);

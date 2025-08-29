@@ -16,6 +16,7 @@ import { MachineSessionLauncher } from '@/components/MachineSessionLauncher';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
 
 export default function MachineDetailScreen() {
     const { theme } = useUnistyles();
@@ -96,7 +97,7 @@ export default function MachineDetailScreen() {
                         setTimeout(pollForSession, pollInterval);
                     } else {
                         console.log('⏰ Polling timeout - session should appear soon');
-                        Modal.alert('Session started', 'The session was started but may take a moment to appear.');
+                        Modal.alert(t('newSession.sessionStarted'), t('newSession.sessionStartedMessage'));
                     }
                 };
 
@@ -117,7 +118,7 @@ export default function MachineDetailScreen() {
                 }
             }
 
-            Modal.alert('Error', errorMessage);
+            Modal.alert(t('common.error'), errorMessage);
             throw error;
         }
     };
@@ -143,7 +144,7 @@ export default function MachineDetailScreen() {
                             // Refresh to get updated metadata
                             await sync.refreshMachines();
                         } catch (error) {
-                            Modal.alert('Error', 'Failed to stop daemon. It may not be running.');
+                            Modal.alert(t('common.error'), 'Failed to stop daemon. It may not be running.');
                         } finally {
                             setIsStoppingDaemon(false);
                         }
@@ -168,8 +169,8 @@ export default function MachineDetailScreen() {
             {
                 defaultValue: machine.metadata?.displayName || '',
                 placeholder: machine.metadata?.host || 'Enter machine name',
-                cancelText: 'Cancel',
-                confirmText: 'Rename'
+                cancelText: t('common.cancel'),
+                confirmText: t('common.rename')
             }
         );
 
@@ -187,10 +188,10 @@ export default function MachineDetailScreen() {
                     machine.metadataVersion
                 );
                 
-                Modal.alert('Success', 'Machine renamed successfully');
+                Modal.alert(t('common.success'), 'Machine renamed successfully');
             } catch (error) {
                 Modal.alert(
-                    'Error',
+                    t('common.error'),
                     error instanceof Error ? error.message : 'Failed to rename machine'
                 );
                 // Refresh to get latest state
@@ -257,8 +258,9 @@ export default function MachineDetailScreen() {
                                 <Text style={[Typography.default(), {
                                     fontSize: 12,
                                     color: isMachineOnline(machine) ? '#34C759' : '#999'
-                                }]}>
-                                    {isMachineOnline(machine) ? 'online' : 'offline'}
+                                }]}
+                                >
+                                    {isMachineOnline(machine) ? t('status.online') : t('status.offline')}
                                 </Text>
                             </View>
                         </View>
@@ -279,7 +281,7 @@ export default function MachineDetailScreen() {
                             />
                         </Pressable>
                     ),
-                    headerBackTitle: 'Back'
+                    headerBackTitle: t('machine.back')
                 }}
             />
             <ItemList
@@ -291,7 +293,7 @@ export default function MachineDetailScreen() {
                 }
             >
                 {/* Launch New Session section with launcher */}
-                <ItemGroup title="Launch New Session in Directory">
+                <ItemGroup title={t('machine.launchNewSessionInDirectory')}>
                         <MachineSessionLauncher
                             machineId={machineId!}
                             recentPaths={recentPaths}
@@ -302,9 +304,9 @@ export default function MachineDetailScreen() {
                 </ItemGroup>
 
                 {/* Daemon */}
-                <ItemGroup title="Daemon">
+                <ItemGroup title={t('machine.daemon')}>
                         <Item
-                            title="Status"
+                            title={t('machine.status')}
                             detail={daemonStatus}
                             detailStyle={{
                                 color: daemonStatus === 'likely alive' ? '#34C759' : '#FF9500'
@@ -312,7 +314,7 @@ export default function MachineDetailScreen() {
                             showChevron={false}
                         />
                         <Item
-                            title="Stop Daemon"
+                            title={t('machine.stopDaemon')}
                             titleStyle={{ 
                                 color: daemonStatus === 'stopped' ? '#999' : '#FF9500' 
                             }}
@@ -334,27 +336,27 @@ export default function MachineDetailScreen() {
                             <>
                                 {machine.daemonState.pid && (
                                     <Item
-                                        title="Last Known PID"
+                                        title={t('machine.lastKnownPid')}
                                         subtitle={String(machine.daemonState.pid)}
                                         subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
                                     />
                                 )}
                                 {machine.daemonState.httpPort && (
                                     <Item
-                                        title="Last Known HTTP Port"
+                                        title={t('machine.lastKnownHttpPort')}
                                         subtitle={String(machine.daemonState.httpPort)}
                                         subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
                                     />
                                 )}
                                 {machine.daemonState.startTime && (
                                     <Item
-                                        title="Started At"
+                                        title={t('machine.startedAt')}
                                         subtitle={new Date(machine.daemonState.startTime).toLocaleString()}
                                     />
                                 )}
                                 {machine.daemonState.startedWithCliVersion && (
                                     <Item
-                                        title="CLI Version"
+                                        title={t('machine.cliVersion')}
                                         subtitle={machine.daemonState.startedWithCliVersion}
                                         subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
                                     />
@@ -362,19 +364,19 @@ export default function MachineDetailScreen() {
                             </>
                         )}
                         <Item
-                            title="Daemon State Version"
+                            title={t('machine.daemonStateVersion')}
                             subtitle={String(machine.daemonStateVersion)}
                         />
                 </ItemGroup>
 
                 {/* Active Sessions */}
                 {machineSessions.length > 0 && (
-                    <ItemGroup title={`Active Sessions (${machineSessions.length})`}>
+                    <ItemGroup title={t('machine.activeSessions', { count: machineSessions.length })}>
                         {machineSessions.slice(0, 5).map(session => (
                                 <Item
                                     key={session.id}
                                     title={pastUsedRelativePath(session)}
-                                    subtitle={session.metadata?.name || 'Untitled Session'}
+                                    subtitle={session.metadata?.name || t('machine.untitledSession')}
                                     onPress={() => router.push(`/session/${session.id}`)}
                                     rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
                                 />
@@ -383,47 +385,47 @@ export default function MachineDetailScreen() {
                 )}
 
                 {/* Machine */}
-                <ItemGroup title="Machine">
+                <ItemGroup title={t('machine.machineGroup')}>
                         <Item
-                            title="Host"
+                            title={t('machine.host')}
                             subtitle={metadata?.host || machineId}
                         />
                         <Item
-                            title="Machine ID"
+                            title={t('machine.machineId')}
                             subtitle={machineId}
                             subtitleStyle={{ fontFamily: 'Menlo', fontSize: 12 }}
                         />
                         {metadata?.username && (
                             <Item
-                                title="Username"
+                                title={t('machine.username')}
                                 subtitle={metadata.username}
                             />
                         )}
                         {metadata?.homeDir && (
                             <Item
-                                title="Home Directory"
+                                title={t('machine.homeDirectory')}
                                 subtitle={metadata.homeDir}
                                 subtitleStyle={{ fontFamily: 'Menlo', fontSize: 13 }}
                             />
                         )}
                         {metadata?.platform && (
                             <Item
-                                title="Platform"
+                                title={t('machine.platform')}
                                 subtitle={metadata.platform}
                             />
                         )}
                         {metadata?.arch && (
                             <Item
-                                title="Architecture"
+                                title={t('machine.architecture')}
                                 subtitle={metadata.arch}
                             />
                         )}
                         <Item
-                            title="Last Seen"
-                            subtitle={machine.activeAt ? new Date(machine.activeAt).toLocaleString() : 'Never'}
+                            title={t('machine.lastSeen')}
+                            subtitle={machine.activeAt ? new Date(machine.activeAt).toLocaleString() : t('machine.never')}
                         />
                         <Item
-                            title="Metadata Version"
+                            title={t('machine.metadataVersion')}
                             subtitle={String(machine.metadataVersion)}
                         />
                 </ItemGroup>

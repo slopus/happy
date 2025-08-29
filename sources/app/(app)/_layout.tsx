@@ -7,6 +7,7 @@ import { createHeader } from '@/components/navigation/Header';
 import { Platform } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
 
 export const unstable_settings = {
     initialRouteName: 'index',
@@ -22,7 +23,7 @@ export default function RootLayout() {
             initialRouteName='index'
             screenOptions={{
                 header: shouldUseCustomHeader ? createHeader : undefined,
-                headerBackTitle: 'Back',
+                headerBackTitle: t('common.back'),
                 headerShadowVisible: false,
                 contentStyle: {
                     backgroundColor: theme.colors.surface,
@@ -49,8 +50,8 @@ export default function RootLayout() {
                 name="settings/index"
                 options={{
                     headerShown: true,
-                    headerTitle: 'Settings',
-                    headerBackTitle: 'Home'
+                    headerTitle: t('settings.title'),
+                    headerBackTitle: t('common.home')
                 }}
             />
             <Stack.Screen
@@ -63,8 +64,8 @@ export default function RootLayout() {
                 name="session/[id]/message/[messageId]"
                 options={{
                     headerShown: true,
-                    headerBackTitle: 'Back',
-                    headerTitle: 'Message'
+                    headerBackTitle: t('common.back'),
+                    headerTitle: t('common.message')
                 }}
             />
             <Stack.Screen
@@ -72,77 +73,77 @@ export default function RootLayout() {
                 options={{
                     headerShown: true,
                     headerTitle: '',
-                    headerBackTitle: 'Back',
+                    headerBackTitle: t('common.back'),
                 }}
             />
             <Stack.Screen
                 name="session/[id]/files"
                 options={{
                     headerShown: true,
-                    headerTitle: 'Files',
-                    headerBackTitle: 'Back',
+                    headerTitle: t('common.files'),
+                    headerBackTitle: t('common.back'),
                 }}
             />
             <Stack.Screen
                 name="session/[id]/file"
                 options={{
                     headerShown: true,
-                    headerTitle: 'File Viewer',
-                    headerBackTitle: 'Files',
+                    headerTitle: t('common.fileViewer'),
+                    headerBackTitle: t('common.files'),
                 }}
             />
             <Stack.Screen
                 name="settings/account"
                 options={{
-                    headerTitle: 'Account',
+                    headerTitle: t('settings.account'),
                 }}
             />
             <Stack.Screen
                 name="settings/appearance"
                 options={{
-                    headerTitle: 'Appearance',
+                    headerTitle: t('settings.appearance'),
                 }}
             />
             <Stack.Screen
                 name="settings/features"
                 options={{
-                    headerTitle: 'Features',
+                    headerTitle: t('settings.features'),
                 }}
             />
             <Stack.Screen
                 name="terminal/connect"
                 options={{
-                    headerTitle: 'Connect Terminal',
+                    headerTitle: t('navigation.connectTerminal'),
                 }}
             />
             <Stack.Screen
                 name="terminal/index"
                 options={{
-                    headerTitle: 'Connect Terminal',
+                    headerTitle: t('navigation.connectTerminal'),
                 }}
             />
             <Stack.Screen
                 name="restore/index"
                 options={{
                     headerShown: true,
-                    headerTitle: 'Link New Device',
-                    headerBackTitle: 'Back',
+                    headerTitle: t('navigation.linkNewDevice'),
+                    headerBackTitle: t('common.back'),
                 }}
             />
             <Stack.Screen
                 name="restore/manual"
                 options={{
                     headerShown: true,
-                    headerTitle: 'Restore with Secret Key',
-                    headerBackTitle: 'Back',
+                    headerTitle: t('navigation.restoreWithSecretKey'),
+                    headerBackTitle: t('common.back'),
                 }}
             />
             <Stack.Screen
                 name="changelog"
                 options={{
                     headerShown: true,
-                    headerTitle: "What's New",
-                    headerBackTitle: 'Back',
+                    headerTitle: t('navigation.whatsNew'),
+                    headerBackTitle: t('common.back'),
                 }}
             />
             <Stack.Screen

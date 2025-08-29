@@ -5,6 +5,7 @@ import { knownTools } from '../../tools/knownTools';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
 import { useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
 
 interface FilteredTool {
     tool: ToolCall;
@@ -99,7 +100,7 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
             <View style={styles.container}>
                 <View style={styles.loadingItem}>
                     <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                    <Text style={styles.loadingText}>Initializing agent...</Text>
+                    <Text style={styles.loadingText}>{t('tools.taskView.initializing')}</Text>
                 </View>
             </View>
         );
@@ -129,7 +130,7 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
             {remainingCount > 0 && (
                 <View style={styles.moreToolsItem}>
                     <Text style={styles.moreToolsText}>
-                        +{remainingCount} more tool{remainingCount > 1 ? 's' : ''}
+                        {t('tools.taskView.moreTools', { count: remainingCount })}
                     </Text>
                 </View>
             )}

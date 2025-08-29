@@ -4,6 +4,7 @@ import { Typography } from '@/constants/Typography';
 import { RoundButton } from '@/components/RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { Modal } from '@/modal';
+import { t } from '@/text';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -92,7 +93,7 @@ export function EmptyMainScreen() {
     return (
         <View style={styles.container}>
             {/* Terminal-style code block */}
-            <Text style={styles.title}>Ready to code?</Text>
+            <Text style={styles.title}>{t('components.emptyMainScreen.readyToCode')}</Text>
             <View style={styles.terminalBlock}>
                 <Text style={[styles.terminalText, styles.terminalTextFirst]}>
                     $ npm i -g happy-coder
@@ -111,7 +112,7 @@ export function EmptyMainScreen() {
                                 <Text style={styles.stepNumberText}>1</Text>
                             </View>
                             <Text style={styles.stepText}>
-                                Install the Happy CLI
+                                {t('components.emptyMainScreen.installCli')}
                             </Text>
                         </View>
                         <View style={styles.stepRow}>
@@ -119,7 +120,7 @@ export function EmptyMainScreen() {
                                 <Text style={styles.stepNumberText}>2</Text>
                             </View>
                             <Text style={styles.stepText}>
-                                Run it
+                                {t('components.emptyMainScreen.runIt')}
                             </Text>
                         </View>
                         <View style={styles.stepRowLast}>
@@ -127,14 +128,14 @@ export function EmptyMainScreen() {
                                 <Text style={styles.stepNumberText}>3</Text>
                             </View>
                             <Text style={styles.stepText}>
-                                Scan the QR code
+                                {t('components.emptyMainScreen.scanQrCode')}
                             </Text>
                         </View>
                     </View>
                     <View style={styles.buttonsContainer}>
                         <View style={styles.buttonWrapper}>
                             <RoundButton
-                                title="Open Camera"
+                                title={t('components.emptyMainScreen.openCamera')}
                                 size="large"
                                 loading={isLoading}
                                 onPress={connectTerminal}
@@ -142,20 +143,20 @@ export function EmptyMainScreen() {
                         </View>
                         <View style={styles.buttonWrapperSecondary}>
                             <RoundButton
-                                title="Enter URL manually"
+                                title={t('connect.enterUrlManually')}
                                 size="normal"
                                 display="inverted"
                                 onPress={async () => {
                                     const url = await Modal.prompt(
-                                        'Authenticate Terminal',
-                                        'Paste the authentication URL from your terminal',
+                                        t('modals.authenticateTerminal'),
+                                        t('modals.pasteUrlFromTerminal'),
                                         {
                                             placeholder: 'happy://terminal?...',
-                                            cancelText: 'Cancel',
-                                            confirmText: 'Authenticate'
+                                            cancelText: t('common.cancel'),
+                                            confirmText: t('common.authenticate')
                                         }
                                     );
-                                    
+
                                     if (url?.trim()) {
                                         connectWithUrl(url.trim());
                                     }

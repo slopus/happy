@@ -8,6 +8,7 @@ import { ItemList } from '@/components/ItemList';
 import { useSettingMutable } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
 import { LANGUAGES, getLanguageDisplayName, type Language } from '@/constants/Languages';
+import { t } from '@/text';
 
 export default function LanguageSelectionScreen() {
     const { theme } = useUnistyles();
@@ -64,7 +65,7 @@ export default function LanguageSelectionScreen() {
                             fontSize: 16,
                             color: theme.colors.input.text,
                         }}
-                        placeholder="Search languages..."
+                        placeholder={t('settingsVoice.language.searchPlaceholder')}
                         placeholderTextColor={theme.colors.input.placeholder}
                         value={searchQuery}
                         onChangeText={setSearchQuery}
@@ -85,8 +86,8 @@ export default function LanguageSelectionScreen() {
 
             {/* Language List */}
             <ItemGroup 
-                title="Languages" 
-                footer={`${filteredLanguages.length} language${filteredLanguages.length !== 1 ? 's' : ''} available`}
+                title={t('settingsVoice.language.title')} 
+                footer={t('settingsVoice.language.footer', { count: filteredLanguages.length })}
             >
                 <FlatList
                     data={filteredLanguages}
@@ -94,7 +95,7 @@ export default function LanguageSelectionScreen() {
                     renderItem={({ item }) => (
                         <Item
                             title={getLanguageDisplayName(item)}
-                            subtitle={item.code || 'Auto-detect'}
+                            subtitle={item.code || t('settingsVoice.language.autoDetect')}
                             icon={<Ionicons name="language-outline" size={29} color="#007AFF" />}
                             rightElement={
                                 voiceAssistantLanguage === item.code ? (

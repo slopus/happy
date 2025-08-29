@@ -3,6 +3,7 @@ import { View, Text } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
+import { t } from '@/text';
 
 interface CommandSuggestionProps {
     command: string;
@@ -52,7 +53,7 @@ export const FileMentionSuggestion = React.memo(({ fileName, filePath, fileType 
                 {filePath}{fileName}
             </Text>
             <Text style={styles.labelText}>
-                {fileType === 'folder' ? 'FOLDER' : 'FILE'}
+                {fileType === 'folder' ? t('agentInput.suggestion.folderLabel') : t('agentInput.suggestion.fileLabel')}
             </Text>
         </View>
     );

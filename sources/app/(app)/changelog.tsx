@@ -6,6 +6,7 @@ import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { getChangelogEntries, getLatestVersion, setLastViewedVersion } from '@/changelog';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
+import { t } from '@/text';
 
 const styles = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -93,7 +94,7 @@ export default function ChangelogScreen() {
             <View style={styles.container}>
                 <View style={styles.emptyState}>
                     <Text style={styles.emptyText}>
-                        No changelog entries available.
+                        {t('changelog.noEntriesAvailable')}
                     </Text>
                 </View>
             </View>
@@ -118,7 +119,7 @@ export default function ChangelogScreen() {
                 {entries.map((entry) => (
                     <View key={entry.version} style={styles.entryContainer}>
                         <Text style={styles.versionHeader}>
-                            Version {entry.version}
+                            {t('changelog.version', { version: entry.version })}
                         </Text>
                         <Text style={styles.dateText}>
                             {entry.date}

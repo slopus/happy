@@ -2,6 +2,7 @@ import * as React from "react";
 import { View, Text } from "react-native";
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
+import { t } from '@/text';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
 import { Metadata } from "@/sync/storageTypes";
 import { layout } from "./layout";
@@ -93,7 +94,7 @@ function AgentEventBlock(props: {
   if (props.event.type === 'switch') {
     return (
       <View style={styles.agentEventContainer}>
-        <Text style={styles.agentEventText}>Switched to {props.event.mode} mode</Text>
+        <Text style={styles.agentEventText}>{t('message.switchedToMode', { mode: props.event.mode })}</Text>
       </View>
     );
   }
@@ -110,21 +111,21 @@ function AgentEventBlock(props: {
         const date = new Date(timestamp * 1000); // Convert from Unix timestamp
         return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
       } catch {
-        return 'unknown time';
+        return t('message.unknownTime');
       }
     };
 
     return (
       <View style={styles.agentEventContainer}>
         <Text style={styles.agentEventText}>
-          Usage limit reached until {formatTime(props.event.endsAt)}
+          {t('message.usageLimitUntil', { time: formatTime(props.event.endsAt) })}
         </Text>
       </View>
     );
   }
   return (
     <View style={styles.agentEventContainer}>
-      <Text style={styles.agentEventText}>Unknown event</Text>
+      <Text style={styles.agentEventText}>{t('message.unknownEvent')}</Text>
     </View>
   );
 }
@@ -200,4 +201,3 @@ const styles = StyleSheet.create((theme) => ({
     fontSize: 12,
   },
 }));
-

@@ -5,6 +5,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { Switch } from '@/components/Switch';
+import { t } from '@/text';
 
 export default function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
@@ -14,12 +15,12 @@ export default function FeaturesSettingsScreen() {
         <ItemList style={{ paddingTop: 0 }}>
             {/* Experimental Features */}
             <ItemGroup 
-                title="Experiments" 
-                footer="Enable experimental features that are still in development. These features may be unstable or change without notice."
+                title={t('settingsFeatures.experiments')}
+                footer={t('settingsFeatures.experimentsDescription')}
             >
                 <Item
-                    title="Experimental Features"
-                    subtitle={experiments ? "Experimental features enabled" : "Using stable features only"}
+                    title={t('settingsFeatures.experimentalFeatures')}
+                    subtitle={experiments ? t('settingsFeatures.experimentalFeaturesEnabled') : t('settingsFeatures.experimentalFeaturesDisabled')}
                     icon={<Ionicons name="flask-outline" size={29} color="#5856D6" />}
                     rightElement={
                         <Switch
@@ -34,12 +35,12 @@ export default function FeaturesSettingsScreen() {
             {/* Web-only Features */}
             {Platform.OS === 'web' && (
                 <ItemGroup 
-                    title="Web Features" 
-                    footer="Features available only in the web version of the app."
+                    title={t('settingsFeatures.webFeatures')}
+                    footer={t('settingsFeatures.webFeaturesDescription')}
                 >
                     <Item
-                        title="Command Palette"
-                        subtitle={commandPaletteEnabled ? "Press ⌘K to open" : "Quick command access disabled"}
+                        title={t('settingsFeatures.commandPalette')}
+                        subtitle={commandPaletteEnabled ? t('settingsFeatures.commandPaletteEnabled') : t('settingsFeatures.commandPaletteDisabled')}
                         icon={<Ionicons name="keypad-outline" size={29} color="#007AFF" />}
                         rightElement={
                             <Switch

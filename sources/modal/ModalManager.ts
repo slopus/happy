@@ -1,4 +1,5 @@
 import { Platform, Alert } from 'react-native';
+import { t } from '@/text';
 import { AlertButton, ModalConfig, CustomModalConfig } from './types';
 
 class ModalManagerClass {
@@ -34,7 +35,7 @@ class ModalManagerClass {
                 type: 'alert',
                 title,
                 message,
-                buttons: buttons || [{ text: 'OK' }]
+                buttons: buttons || [{ text: t('common.ok') }]
             } as Omit<ModalConfig, 'id'>);
         } else {
             // Use native alert
@@ -78,12 +79,12 @@ class ModalManagerClass {
                     message,
                     [
                         {
-                            text: options?.cancelText || 'Cancel',
+                            text: options?.cancelText || t('common.cancel'),
                             style: 'cancel',
                             onPress: () => resolve(false)
                         },
                         {
-                            text: options?.confirmText || 'OK',
+                            text: options?.confirmText || t('common.ok'),
                             style: options?.destructive ? 'destructive' : 'default',
                             onPress: () => resolve(true)
                         }
@@ -160,12 +161,12 @@ class ModalManagerClass {
                     message,
                     [
                         {
-                            text: options?.cancelText || 'Cancel',
+                            text: options?.cancelText || t('common.cancel'),
                             style: 'cancel',
                             onPress: () => resolve(null)
                         },
                         {
-                            text: options?.confirmText || 'OK',
+                            text: options?.confirmText || t('common.ok'),
                             onPress: (text?: string) => resolve(text || null)
                         }
                     ],

@@ -10,8 +10,10 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Modal } from '@/modal';
+import { t } from '@/text';
 import { layout } from '@/components/layout';
 import { useSettingMutable, useProfile } from '@/sync/storage';
+import * as Localization from 'expo-localization';
 import { sync } from '@/sync/sync';
 import { getServerInfo } from '@/sync/serverConfig';
 import { useUnistyles } from 'react-native-unistyles';
@@ -29,6 +31,7 @@ export default React.memo(() => {
     const [showSecret, setShowSecret] = useState(false);
     const [copiedRecently, setCopiedRecently] = useState(false);
     const [analyticsOptOut, setAnalyticsOptOut] = useSettingMutable('analyticsOptOut');
+    const [preferredLanguage] = useSettingMutable('preferredLanguage');
     const { connectAccount, isLoading: isConnecting } = useConnectAccount();
     const profile = useProfile();
 
@@ -43,12 +46,27 @@ export default React.memo(() => {
     const displayName = getDisplayName(profile);
     const githubUsername = profile.github?.login;
 
+    // Language display
+    const getLanguageDisplayText = () => {
+        if (preferredLanguage === null) {
+            const deviceLocale = Localization.getLocales()?.[0]?.languageTag ?? 'en-US';
+            const deviceLanguage = deviceLocale.split('-')[0].toLowerCase();
+            const detectedLanguageName = deviceLanguage === 'ru' ? t('settingsLanguage.languages.ru') : t('settingsLanguage.languages.en');
+            return `${t('settingsLanguage.automatic')} (${detectedLanguageName})`;
+        } else if (preferredLanguage === 'en') {
+            return t('settingsLanguage.languages.en');
+        } else if (preferredLanguage === 'ru') {
+            return t('settingsLanguage.languages.ru');
+        }
+        return t('settingsLanguage.automatic');
+    };
+
     // GitHub disconnection
     const [disconnecting, handleDisconnectGitHub] = useHappyAction(async () => {
         const confirmed = await Modal.confirm(
-            'Disconnect GitHub',
-            'Are you sure you want to disconnect your GitHub account? This will remove your profile information.',
-            { confirmText: 'Disconnect', destructive: true }
+            t('modals.disconnectGithub'),
+            t('modals.disconnectGithubConfirm'),
+            { confirmText: t('modals.disconnect'), destructive: true }
         );
         if (confirmed) {
             await disconnectGitHub(auth.credentials!);
@@ -64,17 +82,17 @@ export default React.memo(() => {
             await Clipboard.setStringAsync(formattedSecret);
             setCopiedRecently(true);
             setTimeout(() => setCopiedRecently(false), 2000);
-            Modal.alert('Success', 'Secret key copied to clipboard. Store it in a safe place!');
+            Modal.alert(t('common.success'), t('settingsAccount.secretKeyCopied'));
         } catch (error) {
-            Modal.alert('Error', 'Failed to copy secret key');
+            Modal.alert(t('common.error'), t('settingsAccount.secretKeyCopyFailed'));
         }
     };
 
     const handleLogout = async () => {
         const confirmed = await Modal.confirm(
-            'Logout',
-            'Are you sure you want to logout? Make sure you have backed up your secret key!',
-            { confirmText: 'Logout', destructive: true }
+            t('common.logout'),
+            t('settingsAccount.logoutConfirm'),
+            { confirmText: t('common.logout'), destructive: true }
         );
         if (confirmed) {
             auth.logout();
@@ -85,28 +103,28 @@ export default React.memo(() => {
         <>
             <ItemList>
                 {/* Account Info */}
-                <ItemGroup title="Account Information">
+                <ItemGroup title={t('settingsAccount.accountInformation')}>
                     <Item
-                        title="Status"
-                        detail={auth.isAuthenticated ? "Active" : "Not Authenticated"}
+                        title={t('settingsAccount.status')}
+                        detail={auth.isAuthenticated ? t('settingsAccount.statusActive') : t('settingsAccount.statusNotAuthenticated')}
                         showChevron={false}
                     />
                     <Item
-                        title="Anonymous ID"
-                        detail={sync.anonID || "Not available"}
+                        title={t('settingsAccount.anonymousId')}
+                        detail={sync.anonID || t('settingsAccount.notAvailable')}
                         showChevron={false}
                         copy={!!sync.anonID}
                     />
                     <Item
-                        title="Public ID"
-                        detail={sync.serverID || "Not available"}
+                        title={t('settingsAccount.publicId')}
+                        detail={sync.serverID || t('settingsAccount.notAvailable')}
                         showChevron={false}
                         copy={!!sync.serverID}
                     />
                     {Platform.OS !== 'web' && (
                         <Item
-                            title="Link New Device"
-                            subtitle={isConnecting ? "Scanning..." : "Scan QR code to link device"}
+                            title={t('settingsAccount.linkNewDevice')}
+                            subtitle={isConnecting ? t('common.scanning') : t('settingsAccount.linkNewDeviceSubtitle')}
                             icon={<Ionicons name="qr-code-outline" size={29} color="#007AFF" />}
                             onPress={connectAccount}
                             disabled={isConnecting}
@@ -117,19 +135,19 @@ export default React.memo(() => {
 
                 {/* Profile Section */}
                 {(displayName || githubUsername || profile.avatar) && (
-                    <ItemGroup title="Profile">
+                    <ItemGroup title={t('settingsAccount.profile')}>
                         {displayName && (
                             <Item
-                                title="Name"
+                                title={t('settingsAccount.name')}
                                 detail={displayName}
                                 showChevron={false}
                             />
                         )}
                         {githubUsername && (
                             <Item
-                                title="GitHub"
+                                title={t('settingsAccount.github')}
                                 detail={`@${githubUsername}`}
-                                subtitle="Tap to disconnect"
+                                subtitle={t('settingsAccount.tapToDisconnect')}
                                 onPress={handleDisconnectGitHub}
                                 loading={disconnecting}
                                 showChevron={false}
@@ -152,9 +170,9 @@ export default React.memo(() => {
 
                 {/* Server Info */}
                 {serverInfo.isCustom && (
-                    <ItemGroup title="Server">
+                    <ItemGroup title={t('settingsAccount.server')}>
                         <Item
-                            title="Server"
+                            title={t('settingsAccount.server')}
                             detail={serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '')}
                             showChevron={false}
                         />
@@ -163,12 +181,12 @@ export default React.memo(() => {
 
                 {/* Backup Section */}
                 <ItemGroup
-                    title="Backup"
-                    footer="Your secret key is the only way to recover your account. Save it in a secure place like a password manager."
+                    title={t('settingsAccount.backup')}
+                    footer={t('settingsAccount.backupDescription')}
                 >
                     <Item
-                        title="Secret Key"
-                        subtitle={showSecret ? "Tap to hide" : "Tap to reveal"}
+                        title={t('settingsAccount.secretKey')}
+                        subtitle={showSecret ? t('settingsAccount.tapToHide') : t('settingsAccount.tapToReveal')}
                         icon={<Ionicons name={showSecret ? "eye-off-outline" : "eye-outline"} size={29} color="#FF9500" />}
                         onPress={handleShowSecret}
                         showChevron={false}
@@ -195,7 +213,7 @@ export default React.memo(() => {
                                         textTransform: 'uppercase',
                                         ...Typography.default('semiBold')
                                     }}>
-                                        SECRET KEY (TAP TO COPY)
+                                        {t('settingsAccount.secretKeyLabel')}
                                     </Text>
                                     <Ionicons
                                         name={copiedRecently ? "checkmark-circle" : "copy-outline"}
@@ -219,12 +237,12 @@ export default React.memo(() => {
 
                 {/* Analytics Section */}
                 <ItemGroup
-                    title="Privacy"
-                    footer="Help improve the app by sharing anonymous usage data. No personal information is collected."
+                    title={t('settingsAccount.privacy')}
+                    footer={t('settingsAccount.privacyDescription')}
                 >
                     <Item
-                        title="Analytics"
-                        subtitle={analyticsOptOut ? "No data is shared" : "Anonymous usage data is shared"}
+                        title={t('settingsAccount.analytics')}
+                        subtitle={analyticsOptOut ? t('settingsAccount.analyticsDisabled') : t('settingsAccount.analyticsEnabled')}
                         rightElement={
                             <Switch
                                 value={!analyticsOptOut}
@@ -240,11 +258,21 @@ export default React.memo(() => {
                     />
                 </ItemGroup>
 
-                {/* Danger Zone */}
-                <ItemGroup title="Danger Zone">
+                {/* Language Section */}
+                <ItemGroup title={t('settingsLanguage.title')}>
                     <Item
-                        title="Logout"
-                        subtitle="Sign out and clear local data"
+                        title={t('settingsLanguage.title')}
+                        detail={getLanguageDisplayText()}
+                        icon={<Ionicons name="language-outline" size={29} color="#007AFF" />}
+                        onPress={() => router.push('/settings/language')}
+                    />
+                </ItemGroup>
+
+                {/* Danger Zone */}
+                <ItemGroup title={t('settingsAccount.dangerZone')}>
+                    <Item
+                        title={t('settingsAccount.logout')}
+                        subtitle={t('settingsAccount.logoutSubtitle')}
                         icon={<Ionicons name="log-out-outline" size={29} color="#FF3B30" />}
                         destructive
                         onPress={handleLogout}

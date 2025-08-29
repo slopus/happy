@@ -151,6 +151,7 @@ export default function RootLayout() {
                 if (credentials) {
                     await syncRestore(credentials);
                 }
+
                 setInitState({ credentials });
             } catch (error) {
                 console.error('Error initializing:', error);

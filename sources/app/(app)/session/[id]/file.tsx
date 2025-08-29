@@ -9,6 +9,7 @@ import { sessionReadFile, sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
 
 interface FileContent {
     content: string;
@@ -260,7 +261,7 @@ export default function FileScreen() {
     // Show error modal if there's an error
     React.useEffect(() => {
         if (error) {
-            Modal.alert('Error', error);
+            Modal.alert(t('common.error'), error);
         }
     }, [error]);
 
@@ -291,7 +292,7 @@ export default function FileScreen() {
                     color: '#666',
                     ...Typography.default() 
                 }}>
-                    Loading {fileName}...
+                    {t('files.loadingFile', { fileName })}
                 </Text>
             </View>
         );
@@ -313,7 +314,7 @@ export default function FileScreen() {
                     marginBottom: 8,
                     ...Typography.default('semiBold')
                 }}>
-                    Error
+                    {t('common.error')}
                 </Text>
                 <Text style={{ 
                     fontSize: 16, 
@@ -343,7 +344,7 @@ export default function FileScreen() {
                     marginBottom: 8,
                     ...Typography.default('semiBold')
                 }}>
-                    Binary File
+                    {t('files.binaryFile')}
                 </Text>
                 <Text style={{ 
                     fontSize: 16, 
@@ -351,7 +352,7 @@ export default function FileScreen() {
                     textAlign: 'center',
                     ...Typography.default() 
                 }}>
-                    Cannot display binary file content
+                    {t('files.cannotDisplayBinary')}
                 </Text>
                 <Text style={{ 
                     fontSize: 14, 
@@ -411,7 +412,7 @@ export default function FileScreen() {
                             color: displayMode === 'diff' ? 'white' : '#666',
                             ...Typography.default()
                         }}>
-                            Diff
+                            {t('files.diff')}
                         </Text>
                     </Pressable>
                     
@@ -430,7 +431,7 @@ export default function FileScreen() {
                             color: displayMode === 'file' ? 'white' : '#666',
                             ...Typography.default()
                         }}>
-                            File
+                            {t('files.file')}
                         </Text>
                     </Pressable>
                 </View>
@@ -456,7 +457,7 @@ export default function FileScreen() {
                         fontStyle: 'italic',
                         ...Typography.default()
                     }}>
-                        File is empty
+                        {t('files.fileEmpty')}
                     </Text>
                 ) : !diffContent && !fileContent?.content ? (
                     <Text style={{
@@ -465,7 +466,7 @@ export default function FileScreen() {
                         fontStyle: 'italic',
                         ...Typography.default()
                     }}>
-                        No changes to display
+                        {t('files.noChanges')}
                     </Text>
                 ) : null}
             </ScrollView>

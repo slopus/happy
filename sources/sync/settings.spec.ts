@@ -105,6 +105,7 @@ describe('settings', () => {
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
+                preferredLanguage: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: true
@@ -118,7 +119,11 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'gradient'
+                avatarStyle: 'brutalist',
+                reviewPromptAnswered: false,
+                reviewPromptLikedApp: null,
+                voiceAssistantLanguage: null,
+                preferredLanguage: null,
             });
         });
 
@@ -136,6 +141,7 @@ describe('settings', () => {
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
+                preferredLanguage: null,
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual({
@@ -158,6 +164,7 @@ describe('settings', () => {
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
+                preferredLanguage: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: false
@@ -170,7 +177,12 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
-                alwaysShowContextSize: false
+                alwaysShowContextSize: false,
+                avatarStyle: 'brutalist',
+                reviewPromptAnswered: false,
+                reviewPromptLikedApp: null,
+                voiceAssistantLanguage: null,
+                preferredLanguage: null,
             });
         });
 
@@ -188,6 +200,7 @@ describe('settings', () => {
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
+                preferredLanguage: null,
             };
             expect(applySettings(currentSettings, {})).toEqual({
                 ...settingsDefaults,
@@ -224,6 +237,7 @@ describe('settings', () => {
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
+                preferredLanguage: null,
             };
             const delta: any = {
                 viewInline: false,

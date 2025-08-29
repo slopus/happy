@@ -4,6 +4,7 @@ import { RoundButton } from './RoundButton';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { trackConnectAttempt } from '@/track';
 import { Ionicons } from '@expo/vector-icons';
+import { t } from '@/text';
 
 export const ConnectButton = React.memo(() => {
     const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();
@@ -26,7 +27,7 @@ export const ConnectButton = React.memo(() => {
     return (
         <View style={{ width: 210 }}>
             <RoundButton
-                title="Authenticate Terminal"
+                title={t('connectButton.authenticate')}
                 size="large"
                 onPress={handleConnect}
                 loading={isLoading}
@@ -52,7 +53,7 @@ export const ConnectButton = React.memo(() => {
                     color: '#666',
                     textDecorationLine: 'underline',
                 }}>
-                    Authenticate Terminal with URL paste
+                    {t('connectButton.authenticateWithUrlPaste')}
                 </Text>
             </TouchableOpacity>
 
@@ -69,7 +70,7 @@ export const ConnectButton = React.memo(() => {
                         color: '#666',
                         marginBottom: 8,
                     }}>
-                        Paste the auth URL from your terminal
+                        {t('connectButton.pasteAuthUrl')}
                     </Text>
                     <View style={{
                         flexDirection: 'row',

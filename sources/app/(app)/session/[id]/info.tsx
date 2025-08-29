@@ -14,6 +14,7 @@ import { Modal } from '@/modal';
 import { sessionKill } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
+import { t } from '@/text';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -68,9 +69,9 @@ export default React.memo(() => {
         if (!session) return;
         try {
             await Clipboard.setStringAsync(session.id);
-            Modal.alert('Success', 'Happy Session ID copied to clipboard');
+            Modal.alert(t('common.success'), t('sessionInfo.happySessionIdCopied'));
         } catch (error) {
-            Modal.alert('Error', 'Failed to copy Happy Session ID');
+            Modal.alert(t('common.error'), t('sessionInfo.failedToCopySessionId'));
         }
     }, [session]);
 
@@ -78,9 +79,9 @@ export default React.memo(() => {
         if (!session?.metadata) return;
         try {
             await Clipboard.setStringAsync(JSON.stringify(session.metadata, null, 2));
-            Modal.alert('Success', 'Metadata copied to clipboard');
+            Modal.alert(t('common.success'), t('sessionInfo.metadataCopied'));
         } catch (error) {
-            Modal.alert('Error', 'Failed to copy metadata');
+            Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
         }
     }, [session]);
 
@@ -88,24 +89,24 @@ export default React.memo(() => {
         if (!session) return;
 
         Modal.alert(
-            'Kill Session',
-            'Are you sure you want to terminate this session? This will immediately stop the session process.',
+            t('sessionInfo.killSession'),
+            t('sessionInfo.killSessionConfirm'),
             [
-                { text: 'Cancel', style: 'cancel' },
+                { text: t('common.cancel'), style: 'cancel' },
                 {
-                    text: 'Kill Session',
+                    text: t('sessionInfo.killSession'),
                     style: 'destructive',
                     onPress: async () => {
                         try {
                             const result = await sessionKill(session.id);
                             if (result.success) {
-                                Modal.alert('Success', result.message);
+                                Modal.alert(t('common.success'), result.message);
                                 router.back(); // Go back after killing session
                             } else {
-                                Modal.alert('Error', result.message || 'Failed to kill session');
+                                Modal.alert(t('common.error'), result.message || t('sessionInfo.failedToKillSession'));
                             }
                         } catch (error) {
-                            Modal.alert('Error', error instanceof Error ? error.message : 'Failed to kill session');
+                            Modal.alert(t('common.error'), error instanceof Error ? error.message : t('sessionInfo.failedToKillSession'));
                         }
                     }
                 }
@@ -120,7 +121,7 @@ export default React.memo(() => {
     if (!session) {
         return (
             <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: theme.colors.textSecondary, fontSize: 17, ...Typography.default('semiBold') }}>Session not found</Text>
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 17, ...Typography.default('semiBold') }}>{t('errors.sessionNotFound')}</Text>
             </View>
         );
     }
@@ -162,46 +163,46 @@ export default React.memo(() => {
                 {/* Session Details */}
                 <ItemGroup>
                     <Item
-                        title="Happy Session ID"
+                        title={t('sessionInfo.happySessionId')}
                         subtitle={`${session.id.substring(0, 8)}...${session.id.substring(session.id.length - 8)}`}
                         icon={<Ionicons name="finger-print-outline" size={29} color="#007AFF" />}
                         onPress={handleCopySessionId}
                     />
                     {session.metadata?.claudeSessionId && (
                         <Item
-                            title="Claude Code Session ID"
+                            title={t('sessionInfo.claudeCodeSessionId')}
                             subtitle={`${session.metadata.claudeSessionId.substring(0, 8)}...${session.metadata.claudeSessionId.substring(session.metadata.claudeSessionId.length - 8)}`}
                             icon={<Ionicons name="code-outline" size={29} color="#9C27B0" />}
                             onPress={async () => {
                                 try {
                                     await Clipboard.setStringAsync(session.metadata!.claudeSessionId!);
-                                    Modal.alert('Success', 'Claude Code Session ID copied to clipboard');
+                                    Modal.alert(t('common.success'), t('sessionInfo.claudeCodeSessionIdCopied'));
                                 } catch (error) {
-                                    Modal.alert('Error', 'Failed to copy Claude Code Session ID');
+                                    Modal.alert(t('common.error'), t('sessionInfo.failedToCopyClaudeCodeSessionId'));
                                 }
                             }}
                         />
                     )}
                     <Item
-                        title="Connection Status"
-                        detail={sessionStatus.isConnected ? "Connected" : "Disconnected"}
+                        title={t('sessionInfo.connectionStatus')}
+                        detail={sessionStatus.isConnected ? t('status.online') : t('status.offline')}
                         icon={<Ionicons name="pulse-outline" size={29} color={sessionStatus.isConnected ? "#34C759" : "#8E8E93"} />}
                         showChevron={false}
                     />
                     <Item
-                        title="Created"
+                        title={t('sessionInfo.created')}
                         subtitle={formatDate(session.createdAt)}
                         icon={<Ionicons name="calendar-outline" size={29} color="#007AFF" />}
                         showChevron={false}
                     />
                     <Item
-                        title="Last Updated"
+                        title={t('sessionInfo.lastUpdated')}
                         subtitle={formatDate(session.updatedAt)}
                         icon={<Ionicons name="time-outline" size={29} color="#007AFF" />}
                         showChevron={false}
                     />
                     <Item
-                        title="Sequence"
+                        title={t('sessionInfo.sequence')}
                         detail={session.seq.toString()}
                         icon={<Ionicons name="git-commit-outline" size={29} color="#007AFF" />}
                         showChevron={false}
@@ -209,19 +210,19 @@ export default React.memo(() => {
                 </ItemGroup>
 
                 {/* Quick Actions */}
-                <ItemGroup title="Quick Actions">
+                <ItemGroup title={t('sessionInfo.quickActions')}>
                     {session.metadata?.machineId && (
                         <Item
-                            title="View Machine"
-                            subtitle="View machine details and sessions"
+                            title={t('sessionInfo.viewMachine')}
+                            subtitle={t('sessionInfo.viewMachineSubtitle')}
                             icon={<Ionicons name="server-outline" size={29} color="#007AFF" />}
                             onPress={() => router.push(`/machine/${session.metadata?.machineId}`)}
                         />
                     )}
                     {sessionStatus.isConnected && (
                         <Item
-                            title="Kill Session"
-                            subtitle="Immediately terminate the session"
+                            title={t('sessionInfo.killSession')}
+                            subtitle={t('sessionInfo.killSessionSubtitle')}
                             icon={<Ionicons name="skull-outline" size={29} color="#FF3B30" />}
                             onPress={handleKillSession}
                         />
@@ -230,22 +231,22 @@ export default React.memo(() => {
 
                 {/* Metadata */}
                 {session.metadata && (
-                    <ItemGroup title="Metadata">
+                    <ItemGroup title={t('sessionInfo.metadata')}>
                         <Item
-                            title="Host"
+                            title={t('sessionInfo.host')}
                             subtitle={session.metadata.host}
                             icon={<Ionicons name="desktop-outline" size={29} color="#5856D6" />}
                             showChevron={false}
                         />
                         <Item
-                            title="Path"
+                            title={t('sessionInfo.path')}
                             subtitle={formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir)}
                             icon={<Ionicons name="folder-outline" size={29} color="#5856D6" />}
                             showChevron={false}
                         />
                         {session.metadata.version && (
                             <Item
-                                title="Version"
+                                title={t('common.version')}
                                 subtitle={session.metadata.version}
                                 icon={<Ionicons name="git-branch-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
@@ -253,7 +254,7 @@ export default React.memo(() => {
                         )}
                         {session.metadata.os && (
                             <Item
-                                title="Operating System"
+                                title={t('sessionInfo.operatingSystem')}
                                 subtitle={formatOSPlatform(session.metadata.os)}
                                 icon={<Ionicons name="hardware-chip-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
@@ -261,7 +262,7 @@ export default React.memo(() => {
                         )}
                         {session.metadata.hostPid && (
                             <Item
-                                title="Process ID"
+                                title={t('sessionInfo.processId')}
                                 subtitle={session.metadata.hostPid.toString()}
                                 icon={<Ionicons name="terminal-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
@@ -269,14 +270,14 @@ export default React.memo(() => {
                         )}
                         {session.metadata.happyHomeDir && (
                             <Item
-                                title="Happy Home"
+                                title={t('sessionInfo.happyHome')}
                                 subtitle={formatPathRelativeToHome(session.metadata.happyHomeDir, session.metadata.homeDir)}
                                 icon={<Ionicons name="home-outline" size={29} color="#5856D6" />}
                                 showChevron={false}
                             />
                         )}
                         <Item
-                            title="Copy Metadata"
+                            title={t('sessionInfo.copyMetadata')}
                             icon={<Ionicons name="copy-outline" size={29} color="#007AFF" />}
                             onPress={handleCopyMetadata}
                         />
@@ -285,16 +286,16 @@ export default React.memo(() => {
 
                 {/* Agent State */}
                 {session.agentState && (
-                    <ItemGroup title="Agent State">
+                    <ItemGroup title={t('sessionInfo.agentState')}>
                         <Item
-                            title="Controlled by User"
-                            detail={session.agentState.controlledByUser ? "Yes" : "No"}
+                            title={t('sessionInfo.controlledByUser')}
+                        detail={session.agentState.controlledByUser ? t('common.yes') : t('common.no')}
                             icon={<Ionicons name="person-outline" size={29} color="#FF9500" />}
                             showChevron={false}
                         />
                         {session.agentState.requests && Object.keys(session.agentState.requests).length > 0 && (
                             <Item
-                                title="Pending Requests"
+                                title={t('sessionInfo.pendingRequests')}
                                 detail={Object.keys(session.agentState.requests).length.toString()}
                                 icon={<Ionicons name="hourglass-outline" size={29} color="#FF9500" />}
                                 showChevron={false}
@@ -304,16 +305,16 @@ export default React.memo(() => {
                 )}
 
                 {/* Activity */}
-                <ItemGroup title="Activity">
+                <ItemGroup title={t('sessionInfo.activity')}>
                     <Item
-                        title="Thinking"
-                        detail={session.thinking ? "Yes" : "No"}
+                        title={t('sessionInfo.thinking')}
+                        detail={session.thinking ? t('common.yes') : t('common.no')}
                         icon={<Ionicons name="bulb-outline" size={29} color={session.thinking ? "#FFCC00" : "#8E8E93"} />}
                         showChevron={false}
                     />
                     {session.thinking && (
                         <Item
-                            title="Thinking Since"
+                            title={t('sessionInfo.thinkingSince')}
                             subtitle={formatDate(session.thinkingAt)}
                             icon={<Ionicons name="timer-outline" size={29} color="#FFCC00" />}
                             showChevron={false}

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { View, ActivityIndicator, Platform, TextInput } from 'react-native';
+import { t } from '@/text';
 import { useRoute } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -117,7 +118,7 @@ export default function FilesScreen() {
 
     const renderFileSubtitle = (file: GitFileStatus) => {
         const lineChanges = renderLineChanges(file);
-        const pathPart = file.filePath || 'Project root';
+        const pathPart = file.filePath || t('files.projectRoot');
         return lineChanges ? `${pathPart} • ${lineChanges}` : pathPart;
     };
 
@@ -182,7 +183,7 @@ export default function FilesScreen() {
                     <TextInput
                         value={searchQuery}
                         onChangeText={setSearchQuery}
-                        placeholder="Search files..."
+                        placeholder={t('files.searchPlaceholder')}
                         style={{
                             flex: 1,
                             fontSize: 16,
@@ -214,7 +215,7 @@ export default function FilesScreen() {
                             color: '#000',
                             ...Typography.default()
                         }}>
-                            {gitStatusFiles.branch || 'detached HEAD'}
+                            {gitStatusFiles.branch || t('files.detachedHead')}
                         </Text>
                     </View>
                     <Text style={{
@@ -222,7 +223,7 @@ export default function FilesScreen() {
                         color: '#666',
                         ...Typography.default()
                     }}>
-                        {gitStatusFiles.totalStaged} staged • {gitStatusFiles.totalUnstaged} unstaged
+                        {t('files.summary', { staged: gitStatusFiles.totalStaged, unstaged: gitStatusFiles.totalUnstaged })}
                     </Text>
                 </View>
             )}
@@ -254,7 +255,7 @@ export default function FilesScreen() {
                             marginTop: 16,
                             ...Typography.default()
                         }}>
-                            Not a git repository
+                            {t('files.notRepo')}
                         </Text>
                         <Text style={{
                             fontSize: 14,
@@ -263,7 +264,7 @@ export default function FilesScreen() {
                             marginTop: 8,
                             ...Typography.default()
                         }}>
-                            This directory is not under git version control
+                            {t('files.notUnderGit')}
                         </Text>
                     </View>
                 ) : searchQuery || (gitStatusFiles.totalStaged === 0 && gitStatusFiles.totalUnstaged === 0) ? (
@@ -283,7 +284,7 @@ export default function FilesScreen() {
                                 marginTop: 16,
                                 ...Typography.default()
                             }}>
-                                Searching files...
+                                {t('files.searching')}
                             </Text>
                         </View>
                     ) : searchResults.length === 0 ? (
@@ -302,7 +303,7 @@ export default function FilesScreen() {
                                 marginTop: 16,
                                 ...Typography.default()
                             }}>
-                                {searchQuery ? 'No files found' : 'No files in project'}
+                                {searchQuery ? t('files.noFilesFound') : t('files.noFilesInProject')}
                             </Text>
                             {searchQuery && (
                                 <Text style={{
@@ -312,7 +313,7 @@ export default function FilesScreen() {
                                     marginTop: 8,
                                     ...Typography.default()
                                 }}>
-                                    Try a different search term
+                                    {t('files.tryDifferentTerm')}
                                 </Text>
                             )}
                         </View>
@@ -333,7 +334,7 @@ export default function FilesScreen() {
                                         color: '#007AFF',
                                         ...Typography.default()
                                     }}>
-                                        Search Results ({searchResults.length})
+                                        {t('files.searchResults', { count: searchResults.length })}
                                     </Text>
                                 </View>
                             )}
@@ -341,7 +342,7 @@ export default function FilesScreen() {
                                 <Item
                                     key={`file-${file.fullPath}-${index}`}
                                     title={file.fileName}
-                                    subtitle={file.filePath || 'Project root'}
+                                    subtitle={file.filePath || t('files.projectRoot')}
                                     icon={renderFileIcon(file)}
                                     onPress={() => handleFilePress(file)}
                                     showDivider={index < searchResults.length - 1}
@@ -367,7 +368,7 @@ export default function FilesScreen() {
                                         color: '#34C759',
                                         ...Typography.default()
                                     }}>
-                                        Staged Changes ({gitStatusFiles.stagedFiles.length})
+                                        {t('files.stagedChanges', { count: gitStatusFiles.stagedFiles.length })}
                                     </Text>
                                 </View>
                                 {gitStatusFiles.stagedFiles.map((file, index) => (
@@ -399,7 +400,7 @@ export default function FilesScreen() {
                                         color: '#FF9500',
                                         ...Typography.default()
                                     }}>
-                                        Unstaged Changes ({gitStatusFiles.unstagedFiles.length})
+                                        {t('files.unstagedChanges', { count: gitStatusFiles.unstagedFiles.length })}
                                     </Text>
                                 </View>
                                 {gitStatusFiles.unstagedFiles.map((file, index) => (

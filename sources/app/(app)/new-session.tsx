@@ -14,6 +14,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { MachineSessionLauncher } from '@/components/MachineSessionLauncher';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
+import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -232,7 +233,7 @@ export default function NewSessionScreen() {
                         setTimeout(pollForSession, pollInterval);
                     } else {
                         console.log('⏰ Polling timeout - session should appear soon');
-                        Modal.alert('Session started', 'The session was started but may take a moment to appear.');
+                        Modal.alert(t('newSession.sessionStarted'), t('newSession.sessionStartedMessage'));
                         router.back();
                     }
                 };
@@ -240,22 +241,22 @@ export default function NewSessionScreen() {
                 pollForSession();
             } else {
                 console.error('❌ No sessionId in response:', result);
-                Modal.alert('Error', 'Session spawning failed - no session ID returned.');
-                throw new Error('Session spawning failed - no session ID returned.');
+                Modal.alert(t('common.error'), t('newSession.sessionSpawningFailed'));
+                throw new Error(t('newSession.sessionSpawningFailed'));
             }
         } catch (error) {
             console.error('💥 Failed to start session', error);
 
-            let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
+            let errorMessage = t('newSession.failedToStart');
             if (error instanceof Error) {
                 if (error.message.includes('timeout')) {
-                    errorMessage = 'Session startup timed out. The machine may be slow or the daemon may not be responding.';
+                    errorMessage = t('newSession.sessionTimeout');
                 } else if (error.message.includes('Socket not connected')) {
-                    errorMessage = 'Not connected to server. Check your internet connection.';
+                    errorMessage = t('newSession.notConnectedToServer');
                 }
             }
 
-            Modal.alert('Error', errorMessage);
+            Modal.alert(t('common.error'), errorMessage);
             throw error; // Re-throw so the component knows it failed
         }
     };
@@ -281,15 +282,15 @@ export default function NewSessionScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: 'Start New Session',
-                    headerBackTitle: 'Back'
+                    headerTitle: t('newSession.title'),
+                    headerBackTitle: t('common.back')
                 }}
             />
             <View style={styles.container}>
                 {sortedMachines.length === 0 ? (
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyText}>
-                            No machines found. Start a Happy session on your computer first.
+                            {t('newSession.noMachinesFound')}
                         </Text>
                     </View>
                 ) : (
@@ -302,14 +303,14 @@ export default function NewSessionScreen() {
                             {sortedMachines.every(([, data]) => !data.isOnline) && (
                                 <View style={styles.offlineWarning}>
                                     <Text style={styles.offlineWarningTitle}>
-                                        All machines appear offline
+                                        {t('newSession.allMachinesOffline')}
                                     </Text>
                                     <View style={{ marginTop: 4 }}>
                                         <Text style={styles.offlineWarningText}>
-                                            • Is your computer online?
+                                            {t('newSession.machineOfflineHelp.computerOnline')}
                                         </Text>
                                         <Text style={styles.offlineWarningText}>
-                                            • Is the Happy daemon running? Check with `happy daemon status`
+                                            {t('newSession.machineOfflineHelp.daemonRunning')}
                                         </Text>
                                     </View>
                                 </View>
@@ -355,7 +356,7 @@ export default function NewSessionScreen() {
                                                         styles.statusText,
                                                         { color: data.isOnline ? theme.colors.status.connected : theme.colors.status.disconnected }
                                                     ]}>
-                                                        {data.isOnline ? 'online' : 'offline'}
+                                                        {data.isOnline ? t('status.online') : t('status.offline')}
                                                     </Text>
                                                 </View>
                                             </View>
@@ -365,7 +366,7 @@ export default function NewSessionScreen() {
                                                 style={styles.detailsButton}
                                             >
                                                 <Text style={styles.detailsButtonText}>
-                                                    View machine details →
+                                                    {t('newSession.machineDetails')}
                                                 </Text>
                                             </Pressable>
                                         </View>

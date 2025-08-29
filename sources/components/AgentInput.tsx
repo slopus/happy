@@ -20,6 +20,7 @@ import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
+import { t } from '@/text';
 
 interface AgentInputProps {
     value: string;
@@ -262,12 +263,12 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
     const percentageRemaining = Math.max(0, Math.min(100, 100 - percentageUsed));
 
     if (percentageRemaining <= 5) {
-        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.warningCritical };
+        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warningCritical };
     } else if (percentageRemaining <= 10) {
-        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.warning };
+        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
     } else if (alwaysShow) {
         // Show context remaining in neutral color when not near limit
-        return { text: `${Math.round(percentageRemaining)}% left`, color: theme.colors.warning };
+        return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
     }
     return null; // No display needed
 };
@@ -490,15 +491,15 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
-                                        PERMISSION MODE
+                                        {t('agentInput.permissionMode.title')}
                                     </Text>
                                     {(['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const).map((mode) => {
                                         const modeConfig = {
-                                            default: { label: 'Default' },
-                                            acceptEdits: { label: 'Accept Edits' },
-                                            plan: { label: 'Plan Mode' },
-                                            bypassPermissions: { label: 'Yolo Mode' },
-                                        };
+                                            default: { label: t('agentInput.permissionMode.default') },
+                                            acceptEdits: { label: t('agentInput.permissionMode.acceptEdits') },
+                                            plan: { label: t('agentInput.permissionMode.plan') },
+                                            bypassPermissions: { label: t('agentInput.permissionMode.bypassPermissions') },
+                                        } as const;
                                         const config = modeConfig[mode];
                                         const isSelected = props.permissionMode === mode;
 
@@ -562,15 +563,15 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                         paddingBottom: 4,
                                         ...Typography.default('semiBold')
                                     }}>
-                                        MODEL
+                                        {t('agentInput.model.title')}
                                     </Text>
                                     {(['default', 'adaptiveUsage', 'sonnet', 'opus'] as const).map((model) => {
                                         const modelConfig = {
-                                            default: { label: 'Use CLI settings' },
-                                            adaptiveUsage: { label: 'Opus up to 50% usage, then Sonnet' },
-                                            sonnet: { label: 'Sonnet' },
-                                            opus: { label: 'Opus' },
-                                        };
+                                            default: { label: t('agentInput.model.default') },
+                                            adaptiveUsage: { label: t('agentInput.model.adaptiveUsage') },
+                                            sonnet: { label: t('agentInput.model.sonnet') },
+                                            opus: { label: t('agentInput.model.opus') },
+                                        } as const;
                                         const config = modelConfig[model];
                                         const isSelected = props.modelMode === model || (model === 'default' && !props.modelMode);
 
@@ -666,9 +667,9 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                             props.permissionMode === 'plan' ? theme.colors.permission.plan : theme.colors.permission.default,
                                     ...Typography.default()
                                 }}>
-                                    {props.permissionMode === 'acceptEdits' ? 'Accept All Edits' :
-                                        props.permissionMode === 'bypassPermissions' ? 'Bypass All Permissions' :
-                                            props.permissionMode === 'plan' ? 'Plan Mode' : ''}
+                                    {props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
+                                        props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
+                                            props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''}
                                 </Text>
                             )}
                         </View>

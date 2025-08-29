@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, TextInput, StyleSheet, Platform } from 'react-native';
 import { Typography } from '@/constants/Typography';
+import { t } from '@/text';
 
 interface CommandPaletteInputProps {
     value: string;
@@ -30,7 +31,7 @@ export function CommandPaletteInput({ value, onChangeText, onKeyPress, inputRef 
                 style={[styles.input, Typography.default()]}
                 value={value}
                 onChangeText={onChangeText}
-                placeholder="Type a command or search..."
+                placeholder={t('commandPalette.placeholder')}
                 placeholderTextColor="#999"
                 autoFocus
                 autoCorrect={false}

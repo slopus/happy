@@ -14,6 +14,7 @@ import { useRouter } from 'expo-router';
 import { PermissionFooter } from './PermissionFooter';
 import { parseToolUseError } from '@/utils/toolErrorParser';
 import { formatMCPTitle } from './views/MCPToolView';
+import { t } from '@/text';
 
 interface ToolViewProps {
     metadata: Metadata | null;
@@ -212,13 +213,13 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
                     <View style={styles.content}>
                         {/* Default content when no custom view available */}
                         {tool.input && (
-                            <ToolSectionView title="Input">
+                            <ToolSectionView title={t('toolView.input')}>
                                 <CodeView code={JSON.stringify(tool.input, null, 2)} />
                             </ToolSectionView>
                         )}
 
                         {tool.state === 'completed' && tool.result && (
-                            <ToolSectionView title="Output">
+                            <ToolSectionView title={t('toolView.output')}>
                                 <CodeView
                                     code={typeof tool.result === 'string' ? tool.result : JSON.stringify(tool.result, null, 2)}
                                 />

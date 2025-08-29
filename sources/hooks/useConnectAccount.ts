@@ -7,6 +7,7 @@ import { encryptBox } from '@/encryption/libsodium';
 import { authAccountApprove } from '@/auth/authAccountApprove';
 import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 import { Modal } from '@/modal';
+import { t } from '@/text';
 
 interface UseConnectAccountOptions {
     onSuccess?: () => void;
@@ -20,7 +21,7 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
 
     const processAuthUrl = React.useCallback(async (url: string) => {
         if (!url.startsWith('happy:///account?')) {
-            Modal.alert('Error', 'Invalid authentication URL', [{ text: 'OK' }]);
+            Modal.alert(t('common.error'), t('modals.invalidAuthUrl'), [{ text: t('common.ok') }]);
             return false;
         }
         
@@ -31,16 +32,16 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
             const response = encryptBox(decodeBase64(auth.credentials!.secret, 'base64url'), publicKey);
             await authAccountApprove(auth.credentials!.token, publicKey, response);
             
-            Modal.alert('Success', 'Device linked successfully', [
+            Modal.alert(t('common.success'), t('modals.deviceLinkedSuccessfully'), [
                 { 
-                    text: 'OK', 
+                    text: t('common.ok'), 
                     onPress: () => options?.onSuccess?.()
                 }
             ]);
             return true;
         } catch (e) {
             console.error(e);
-            Modal.alert('Error', 'Failed to link device', [{ text: 'OK' }]);
+            Modal.alert(t('common.error'), t('modals.failedToLinkDevice'), [{ text: t('common.ok') }]);
             options?.onError?.(e);
             return false;
         } finally {
@@ -55,7 +56,7 @@ export function useConnectAccount(options?: UseConnectAccountOptions) {
                 barcodeTypes: ['qr']
             });
         } else {
-            Modal.alert('Error', 'Camera permissions are required to scan QR codes', [{ text: 'OK' }]);
+            Modal.alert(t('common.error'), t('modals.cameraPermissionsRequiredToScanQr'), [{ text: t('common.ok') }]);
         }
     }, [checkScannerPermissions]);
 
