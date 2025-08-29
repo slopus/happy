@@ -160,6 +160,13 @@ itemCount: ({ count }: { count: number }) =>
 - **Check common first** - Before adding new keys, check if a suitable translation exists in `common`
 - **Context matters** - Consider where the string appears to choose the right section
 - **Update all languages** - New strings must be added to every language file
+- **Always re-read translations** - When new strings are added, always re-read the translation files to understand the existing structure and patterns before adding new keys
+- **Use translations for common strings** - Always use the translation function `t()` for any user-visible string that is translatable, especially common UI elements like buttons, labels, and messages
+- **Beware of technical terms** - When translating technical terms, consider:
+  - Keep universally understood terms like "CLI", "API", "URL", "JSON" in their original form
+  - Translate terms that have well-established equivalents in the target language
+  - Use descriptive translations for complex technical concepts when direct translations don't exist
+  - Maintain consistency across all technical terminology within the same language
 
 ### Important Files
 
