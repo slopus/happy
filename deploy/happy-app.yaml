@@ -3,7 +3,7 @@ kind: Deployment
 metadata:
   name: happy-app
 spec:
-  replicas: 1
+  replicas: 3
   selector:
     matchLabels:
       app: happy-app
@@ -17,6 +17,26 @@ spec:
         image: docker.korshakov.com/happy-app:{version}
         ports:
         - containerPort: 80
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 10
+          periodSeconds: 30
+          timeoutSeconds: 5
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 80
+          initialDelaySeconds: 5
+          periodSeconds: 10
+          timeoutSeconds: 3
+        startupProbe:
+          httpGet:
+            path: /
+            port: 80
+          periodSeconds: 10
+          failureThreshold: 3
 ---
 apiVersion: v1
 kind: Service
