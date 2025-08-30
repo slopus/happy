@@ -51,8 +51,8 @@ export const es: TranslationStructure = {
 
     connect: {
         restoreAccount: 'Restaurar cuenta',
-        enterSecretKey: 'Por favor ingrese una clave secreta',
-        invalidSecretKey: 'Clave secreta inválida. Verifique e intente nuevamente.',
+        enterSecretKey: 'Ingresa tu clave secreta',
+        invalidSecretKey: 'Clave secreta inválida. Verifica e intenta de nuevo.',
         enterUrlManually: 'Ingresar URL manualmente',
     },
 
@@ -63,29 +63,29 @@ export const es: TranslationStructure = {
         machines: 'Máquinas',
         features: 'Características',
         account: 'Cuenta',
-        accountSubtitle: 'Gestionar detalles de su cuenta',
+        accountSubtitle: 'Gestiona los detalles de tu cuenta',
         appearance: 'Apariencia',
-        appearanceSubtitle: 'Personalizar la apariencia de la aplicación',
+        appearanceSubtitle: 'Personaliza como se ve la app',
         voiceAssistant: 'Asistente de voz',
-        voiceAssistantSubtitle: 'Configurar preferencias de interacción por voz',
+        voiceAssistantSubtitle: 'Configura las preferencias de voz',
         featuresTitle: 'Características',
         featuresSubtitle: 'Habilitar o deshabilitar funciones de la aplicación',
         developer: 'Desarrollador',
         developerTools: 'Herramientas de desarrollador',
         about: 'Acerca de',
-        aboutFooter: 'Happy Coder es un cliente móvil para Claude Code. Está completamente cifrado de extremo a extremo y su cuenta se almacena únicamente en su dispositivo. No está afiliado con Anthropic.',
+        aboutFooter: 'Happy Coder es un cliente móvil para Claude Code. Todo está cifrado de extremo a extremo y tu cuenta se guarda solo en tu dispositivo. No está afiliado con Anthropic.',
         whatsNew: 'Novedades',
-        whatsNewSubtitle: 'Ver las últimas actualizaciones y mejoras',
+        whatsNewSubtitle: 'Ve las últimas actualizaciones y mejoras',
         reportIssue: 'Reportar un problema',
         privacyPolicy: 'Política de privacidad',
         termsOfService: 'Términos de servicio',
         eula: 'EULA',
         supportUs: 'Apóyanos',
         supportUsSubtitlePro: '¡Gracias por su apoyo!',
-        supportUsSubtitle: 'Apoyar el desarrollo del proyecto',
-        scanQrCodeToAuthenticate: 'Escanee el código QR para autenticarse',
+        supportUsSubtitle: 'Apoya el desarrollo del proyecto',
+        scanQrCodeToAuthenticate: 'Escanea el código QR para autenticarte',
         githubConnected: ({ login }: { login: string }) => `Conectado como @${login}`,
-        connectGithubAccount: 'Conectar su cuenta de GitHub',
+        connectGithubAccount: 'Conecta tu cuenta de GitHub',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Cuenta de ${service} conectada`,
@@ -98,19 +98,19 @@ export const es: TranslationStructure = {
     settingsAppearance: {
         // Appearance settings screen
         theme: 'Tema',
-        themeDescription: 'Elija su esquema de colores preferido',
+        themeDescription: 'Elige tu esquema de colores preferido',
         themeOptions: {
             adaptive: 'Adaptativo',
             light: 'Claro', 
             dark: 'Oscuro',
         },
         themeDescriptions: {
-            adaptive: 'Coincidir con configuración del sistema',
+            adaptive: 'Seguir configuración del sistema',
             light: 'Usar siempre tema claro',
             dark: 'Usar siempre tema oscuro',
         },
         display: 'Pantalla',
-        displayDescription: 'Controlar diseño y espaciado',
+        displayDescription: 'Controla diseño y espaciado',
         inlineToolCalls: 'Llamadas a herramientas en línea',
         inlineToolCallsDescription: 'Mostrar llamadas a herramientas directamente en mensajes de chat',
         expandTodoLists: 'Expandir listas de tareas',
@@ -122,7 +122,7 @@ export const es: TranslationStructure = {
         alwaysShowContextSize: 'Mostrar siempre tamaño del contexto',
         alwaysShowContextSizeDescription: 'Mostrar uso del contexto incluso cuando no esté cerca del límite',
         avatarStyle: 'Estilo de avatar',
-        avatarStyleDescription: 'Elegir apariencia del avatar de sesión',
+        avatarStyleDescription: 'Elige la apariencia del avatar de sesión',
         avatarOptions: {
             pixelated: 'Pixelado',
             gradient: 'Gradiente',
@@ -145,17 +145,17 @@ export const es: TranslationStructure = {
     },
 
     errors: {
-        networkError: 'Ocurrió un error de red',
-        serverError: 'Ocurrió un error del servidor',
-        unknownError: 'Ocurrió un error desconocido',
-        connectionTimeout: 'La conexión expiró',
+        networkError: 'Error de conexión',
+        serverError: 'Error del servidor',
+        unknownError: 'Error desconocido',
+        connectionTimeout: 'Se agotó el tiempo de conexión',
         authenticationFailed: 'Falló la autenticación',
         permissionDenied: 'Permiso denegado',
         fileNotFound: 'Archivo no encontrado',
         invalidFormat: 'Formato inválido',
         operationFailed: 'Operación falló',
-        tryAgain: 'Por favor intente nuevamente',
-        contactSupport: 'Contacte al soporte si el problema persiste',
+        tryAgain: 'Intenta de nuevo',
+        contactSupport: 'Contacta soporte si el problema persiste',
         sessionNotFound: 'Sesión no encontrada',
         voiceSessionFailed: 'Falló al iniciar sesión de voz',
 
@@ -165,7 +165,7 @@ export const es: TranslationStructure = {
         validationError: ({ field, min, max }: { field: string; min: number; max: number }) =>
             `${field} debe estar entre ${min} y ${max}`,
         retryIn: ({ seconds }: { seconds: number }) =>
-            `Reintentar en ${seconds} ${seconds === 1 ? 'segundo' : 'segundos'}`,
+            `Intenta en ${seconds} ${seconds === 1 ? 'segundo' : 'segundos'}`,
         errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
             `${message} (Error ${code})`,
     },
@@ -173,19 +173,19 @@ export const es: TranslationStructure = {
     newSession: {
         // Used by new-session screen and launch flows
         title: 'Iniciar nueva sesión',
-        noMachinesFound: 'No se encontraron máquinas. Inicie una sesión de Happy en su computadora primero.',
+        noMachinesFound: 'No se encontraron máquinas. Inicia una sesión de Happy en tu computadora primero.',
         allMachinesOffline: 'Todas las máquinas están desconectadas',
         machineOfflineHelp: {
-            computerOnline: '• ¿Está su computadora en línea?',
-            daemonRunning: '• ¿Está ejecutándose el daemon de Happy? Verifique con `happy daemon status`'
+            computerOnline: '• ¿Está tu computadora en línea?',
+            daemonRunning: '• ¿Está ejecutándose el daemon de Happy? Verifica con `happy daemon status`'
         },
         machineDetails: 'Ver detalles de la máquina →',
         sessionStarted: 'Sesión iniciada',
         sessionStartedMessage: 'La sesión fue iniciada pero puede tardar un momento en aparecer.',
         sessionSpawningFailed: 'Falló la creación de sesión - no se devolvió ID de sesión.',
-        failedToStart: 'Falló al iniciar sesión. Asegúrese de que el daemon esté ejecutándose en la máquina objetivo.',
+        failedToStart: 'Falló al iniciar sesión. Asegúrate de que el daemon esté ejecutándose en la máquina objetivo.',
         sessionTimeout: 'El inicio de sesión expiró. La máquina puede ser lenta o el daemon puede no estar respondiendo.',
-        notConnectedToServer: 'No conectado al servidor. Verifique su conexión a internet.'
+        notConnectedToServer: 'No conectado al servidor. Verifica tu conexión a internet.'
     },
 
     sessionHistory: {
@@ -209,7 +209,7 @@ export const es: TranslationStructure = {
     server: {
         // Used by Server Configuration screen (app/(app)/server.tsx)
         serverConfiguration: 'Configuración del servidor',
-        enterServerUrl: 'Por favor ingrese una URL de servidor',
+        enterServerUrl: 'Ingresa una URL de servidor',
         notValidHappyServer: 'No es un servidor Happy válido',
         changeServer: 'Cambiar servidor',
         continueWithServer: '¿Continuar con este servidor?',
@@ -221,13 +221,13 @@ export const es: TranslationStructure = {
         failedToConnectToServer: 'Falló al conectar con el servidor',
         currentlyUsingCustomServer: 'Actualmente usando servidor personalizado',
         customServerUrlLabel: 'URL del servidor personalizado',
-        advancedFeatureFooter: 'Esta es una característica avanzada. Solo cambie el servidor si sabe lo que está haciendo. Necesitará cerrar sesión e iniciarla nuevamente después de cambiar servidores.'
+        advancedFeatureFooter: 'Esta es una característica avanzada. Solo cambia el servidor si sabes lo que haces. Necesitarás cerrar sesión e iniciarla nuevamente después de cambiar servidores.'
     },
 
     sessionInfo: {
         // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
         killSession: 'Terminar sesión',
-        killSessionConfirm: '¿Está seguro de que quiere terminar esta sesión?',
+        killSessionConfirm: '¿Seguro que quieres terminar esta sesión?',
         happySessionIdCopied: 'ID de sesión de Happy copiado al portapapeles',
         failedToCopySessionId: 'Falló al copiar ID de sesión de Happy',
         happySessionId: 'ID de sesión de Happy',
@@ -391,7 +391,7 @@ export const es: TranslationStructure = {
     settingsVoice: {
         // Voice settings screen
         languageTitle: 'Idioma',
-        languageDescription: 'Elija su idioma preferido para las interacciones con el asistente de voz. Esta configuración se sincroniza en todos sus dispositivos.',
+        languageDescription: 'Elige tu idioma preferido para las interacciones con el asistente de voz. Esta configuración se sincroniza en todos tus dispositivos.',
         preferredLanguage: 'Idioma preferido',
         preferredLanguageSubtitle: 'Idioma usado para respuestas del asistente de voz',
         language: {
@@ -419,12 +419,12 @@ export const es: TranslationStructure = {
         tapToDisconnect: 'Toque para desconectar',
         server: 'Servidor',
         backup: 'Copia de seguridad',
-        backupDescription: 'Su clave secreta es la única forma de recuperar su cuenta. Guárdela en un lugar seguro como un administrador de contraseñas.',
+        backupDescription: 'Tu clave secreta es la única forma de recuperar tu cuenta. Guárdala en un lugar seguro como un administrador de contraseñas.',
         secretKey: 'Clave secreta',
-        tapToReveal: 'Toque para revelar',
-        tapToHide: 'Toque para ocultar',
-        secretKeyLabel: 'CLAVE SECRETA (TOQUE PARA COPIAR)',
-        secretKeyCopied: 'Clave secreta copiada al portapapeles. ¡Guárdela en un lugar seguro!',
+        tapToReveal: 'Toca para revelar',
+        tapToHide: 'Toca para ocultar',
+        secretKeyLabel: 'CLAVE SECRETA (TOCA PARA COPIAR)',
+        secretKeyCopied: 'Clave secreta copiada al portapapeles. ¡Guárdala en un lugar seguro!',
         secretKeyCopyFailed: 'Falló al copiar la clave secreta',
         privacy: 'Privacidad',
         privacyDescription: 'Ayude a mejorar la aplicación compartiendo datos de uso anónimos. No se recopila información personal.',
@@ -434,13 +434,13 @@ export const es: TranslationStructure = {
         dangerZone: 'Zona peligrosa',
         logout: 'Cerrar sesión',
         logoutSubtitle: 'Cerrar sesión y limpiar datos locales',
-        logoutConfirm: '¿Está seguro de que quiere cerrar sesión? ¡Asegúrese de haber respaldado su clave secreta!',
+        logoutConfirm: '¿Seguro que quieres cerrar sesión? ¡Asegúrate de haber guardado tu clave secreta!',
     },
 
     settingsLanguage: {
         // Language settings screen
         title: 'Idioma',
-        description: 'Elija su idioma preferido para la interfaz de la aplicación. Esto se sincronizará en todos sus dispositivos.',
+        description: 'Elige tu idioma preferido para la interfaz de la aplicación. Esto se sincronizará en todos tus dispositivos.',
         currentLanguage: 'Idioma actual',
         automatic: 'Automático',
         automaticSubtitle: 'Detectar desde configuración del dispositivo',
@@ -452,7 +452,7 @@ export const es: TranslationStructure = {
     connectButton: {
         authenticate: 'Autenticar terminal',
         authenticateWithUrlPaste: 'Autenticar terminal con pegado de URL',
-        pasteAuthUrl: 'Pegue la URL de autenticación de su terminal',
+        pasteAuthUrl: 'Pega la URL de autenticación de tu terminal',
     },
 
     updateBanner: {
@@ -471,12 +471,12 @@ export const es: TranslationStructure = {
     terminal: {
         // Used by terminal connection screens
         webBrowserRequired: 'Se requiere navegador web',
-        webBrowserRequiredDescription: 'Los enlaces de conexión de terminal solo pueden abrirse en un navegador web por razones de seguridad. Use el escáner de código QR o abra este enlace en una computadora.',
+        webBrowserRequiredDescription: 'Los enlaces de conexión de terminal solo pueden abrirse en un navegador web por razones de seguridad. Usa el escáner de código QR o abre este enlace en una computadora.',
         processingConnection: 'Procesando conexión...',
         invalidConnectionLink: 'Enlace de conexión inválido',
-        invalidConnectionLinkDescription: 'El enlace de conexión falta o es inválido. Verifique la URL e intente nuevamente.',
+        invalidConnectionLinkDescription: 'El enlace de conexión falta o es inválido. Verifica la URL e intenta nuevamente.',
         connectTerminal: 'Conectar terminal',
-        terminalRequestDescription: 'Un terminal está solicitando conectarse a su cuenta de Happy Coder. Esto permitirá al terminal enviar y recibir mensajes de forma segura.',
+        terminalRequestDescription: 'Un terminal está solicitando conectarse a tu cuenta de Happy Coder. Esto permitirá al terminal enviar y recibir mensajes de forma segura.',
         connectionDetails: 'Detalles de conexión',
         publicKey: 'Clave pública',
         encryption: 'Cifrado',
@@ -485,8 +485,8 @@ export const es: TranslationStructure = {
         connecting: 'Conectando...',
         reject: 'Rechazar',
         security: 'Seguridad',
-        securityFooter: 'Este enlace de conexión fue procesado de forma segura en su navegador y nunca fue enviado a ningún servidor. Sus datos privados permanecerán seguros y solo usted puede descifrar los mensajes.',
-        securityFooterDevice: 'Esta conexión fue procesada de forma segura en su dispositivo y nunca fue enviada a ningún servidor. Sus datos privados permanecerán seguros y solo usted puede descifrar los mensajes.',
+        securityFooter: 'Este enlace de conexión fue procesado de forma segura en tu navegador y nunca fue enviado a ningún servidor. Tus datos privados permanecerán seguros y solo tú puedes descifrar los mensajes.',
+        securityFooterDevice: 'Esta conexión fue procesada de forma segura en tu dispositivo y nunca fue enviada a ningún servidor. Tus datos privados permanecerán seguros y solo tú puedes descifrar los mensajes.',
         clientSideProcessing: 'Procesamiento del lado del cliente',
         linkProcessedLocally: 'Enlace procesado localmente en el navegador',
         linkProcessedOnDevice: 'Enlace procesado localmente en el dispositivo',
@@ -495,7 +495,7 @@ export const es: TranslationStructure = {
     modals: {
         // Used across connect flows and settings
         authenticateTerminal: 'Autenticar terminal',
-        pasteUrlFromTerminal: 'Pegue la URL de autenticación de su terminal',
+        pasteUrlFromTerminal: 'Pega la URL de autenticación de tu terminal',
         deviceLinkedSuccessfully: 'Dispositivo vinculado exitosamente',
         terminalConnectedSuccessfully: 'Terminal conectado exitosamente',
         invalidAuthUrl: 'URL de autenticación inválida',
@@ -503,7 +503,7 @@ export const es: TranslationStructure = {
         developerModeEnabled: 'Modo desarrollador habilitado',
         developerModeDisabled: 'Modo desarrollador deshabilitado',
         disconnectGithub: 'Desconectar GitHub',
-        disconnectGithubConfirm: '¿Está seguro de que quiere desconectar su cuenta de GitHub?',
+        disconnectGithubConfirm: '¿Seguro que quieres desconectar tu cuenta de GitHub?',
         disconnect: 'Desconectar',
         failedToConnectTerminal: 'Falló al conectar terminal',
         cameraPermissionsRequiredToConnectTerminal: 'Se requieren permisos de cámara para conectar terminal',
@@ -522,7 +522,7 @@ export const es: TranslationStructure = {
     welcome: {
         // Main welcome screen for unauthenticated users
         title: 'Cliente móvil de Claude Code',
-        subtitle: 'Cifrado de extremo a extremo y su cuenta se almacena únicamente en su dispositivo.',
+        subtitle: 'Cifrado de extremo a extremo y tu cuenta se guarda solo en tu dispositivo.',
         createAccount: 'Crear cuenta',
         linkOrRestoreAccount: 'Vincular o restaurar cuenta',
         loginWithMobileApp: 'Iniciar sesión con aplicación móvil',
@@ -531,7 +531,7 @@ export const es: TranslationStructure = {
     review: {
         // Used by utils/requestReview.ts
         enjoyingApp: '¿Disfrutando la aplicación?',
-        feedbackPrompt: '¡Nos encantaría escuchar sus comentarios!',
+        feedbackPrompt: '¡Nos encantaría escuchar tus comentarios!',
         yesILoveIt: '¡Sí, me encanta!',
         notReally: 'No realmente'
     },

@@ -303,7 +303,7 @@ export const pt: TranslationStructure = {
         showLess: 'Mostrar menos',
         showAll: ({ count }: { count: number }) => `Mostrar todos (${count} caminhos)`,
         enterCustomPath: 'Inserir caminho personalizado',
-        offlineUnableToSpawn: 'Não é possível criar nova sessão, offline',
+        offlineUnableToSpawn: 'Não é possível criar nova sessão, você está offline',
     },
 
     sidebar: {
@@ -434,13 +434,13 @@ export const pt: TranslationStructure = {
         dangerZone: 'Zona perigosa',
         logout: 'Sair',
         logoutSubtitle: 'Sair e limpar dados locais',
-        logoutConfirm: 'Tem certeza de que deseja sair? Certifique-se de ter feito backup da sua chave secreta!',
+        logoutConfirm: 'Tem certeza de que quer sair? Certifique-se de ter feito backup da sua chave secreta!',
     },
 
     settingsLanguage: {
         // Language settings screen
         title: 'Idioma',
-        description: 'Escolha seu idioma preferido para a interface do aplicativo. Isso será sincronizado em todos os seus dispositivos.',
+        description: 'Escolher o idioma preferido para a interface do aplicativo. Isso vai ser sincronizado em todos os seus dispositivos.',
         currentLanguage: 'Idioma atual',
         automatic: 'Automático',
         automaticSubtitle: 'Detectar das configurações do dispositivo',
@@ -471,7 +471,7 @@ export const pt: TranslationStructure = {
     terminal: {
         // Used by terminal connection screens
         webBrowserRequired: 'Navegador web necessário',
-        webBrowserRequiredDescription: 'Links de conexão de terminal só podem ser abertos em um navegador web por razões de segurança. Use o scanner de código QR ou abra este link em um computador.',
+        webBrowserRequiredDescription: 'Links de conexão de terminal só podem ser abertos em um navegador web por questões de segurança. Use o leitor de código QR ou abra este link num computador.',
         processingConnection: 'Processando conexão...',
         invalidConnectionLink: 'Link de conexão inválido',
         invalidConnectionLinkDescription: 'O link de conexão está ausente ou inválido. Verifique a URL e tente novamente.',
