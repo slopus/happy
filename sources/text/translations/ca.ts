@@ -61,8 +61,8 @@ export const ca: TranslationStructure = {
 
     connect: {
         restoreAccount: 'Restaura el compte',
-        enterSecretKey: 'Si us plau, introduïu una clau secreta',
-        invalidSecretKey: 'Clau secreta no vàlida. Si us plau, comproveu-ho i torneu-ho a provar.',
+        enterSecretKey: 'Introdueix la teva clau secreta',
+        invalidSecretKey: 'Clau secreta no vàlida. Comprova-ho i torna-ho a provar.',
         enterUrlManually: 'Introdueix l\'URL manualment',
     },
 
@@ -83,9 +83,9 @@ export const ca: TranslationStructure = {
         developer: 'Desenvolupador',
         developerTools: 'Eines de desenvolupador',
         about: 'Quant a',
-        aboutFooter: 'Happy Coder és un client mòbil de Claude Code. Està completament xifrat punt a punt i el teu compte s\'emmagatzema només al teu dispositiu. No està afiliat amb Anthropic.',
+        aboutFooter: 'Happy Coder és un client mòbil de Claude Code. Tot està xifrat punt a punt i el teu compte es guarda només al teu dispositiu. No està afiliat amb Anthropic.',
         whatsNew: 'Novetats',
-        whatsNewSubtitle: 'Consulta les últimes actualitzacions i millores',
+        whatsNewSubtitle: 'Mira les últimes actualitzacions i millores',
         reportIssue: 'Informa d\'un problema',
         privacyPolicy: 'Política de privadesa',
         termsOfService: 'Condicions del servei',
@@ -93,7 +93,7 @@ export const ca: TranslationStructure = {
         supportUs: 'Dona\'ns suport',
         supportUsSubtitlePro: 'Gràcies pel teu suport!',
         supportUsSubtitle: 'Dona suport al desenvolupament del projecte',
-        scanQrCodeToAuthenticate: 'Escaneja el codi QR per autenticar',
+        scanQrCodeToAuthenticate: 'Escaneja el codi QR per autenticar-te',
         githubConnected: ({ login }: { login: string }) => `Connectat com a @${login}`,
         connectGithubAccount: 'Connecta el teu compte de GitHub',
 
@@ -108,7 +108,7 @@ export const ca: TranslationStructure = {
     settingsAppearance: {
         // Appearance settings screen
         theme: 'Tema',
-        themeDescription: 'Tria l\'esquema de colors preferit',
+        themeDescription: 'Tria el teu esquema de colors preferit',
         themeOptions: {
             adaptive: 'Adaptatiu',
             light: 'Clar', 
@@ -116,8 +116,8 @@ export const ca: TranslationStructure = {
         },
         themeDescriptions: {
             adaptive: 'Segueix la configuració del sistema',
-            light: 'Utilitza sempre el tema clar',
-            dark: 'Utilitza sempre el tema fosc',
+            light: 'Usa sempre el tema clar',
+            dark: 'Usa sempre el tema fosc',
         },
         display: 'Pantalla',
         displayDescription: 'Controla la disposició i l\'espaiat',
@@ -148,24 +148,24 @@ export const ca: TranslationStructure = {
         experimentalFeaturesEnabled: 'Funcions experimentals activades',
         experimentalFeaturesDisabled: 'Utilitzant només funcions estables',
         webFeatures: 'Funcions web',
-        webFeaturesDescription: 'Funcions disponibles només a la versió web de l\'aplicació.',
+        webFeaturesDescription: 'Funcions disponibles només a la versió web de l\'app.',
         commandPalette: 'Paleta de comandes',
         commandPaletteEnabled: 'Prem ⌘K per obrir',
         commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
     },
 
     errors: {
-        networkError: 'S\'ha produït un error de xarxa',
-        serverError: 'S\'ha produït un error del servidor',
-        unknownError: 'S\'ha produït un error desconegut',
-        connectionTimeout: 'S\'ha esgotat el temps d\'espera de la connexió',
+        networkError: 'Error de connexió',
+        serverError: 'Error del servidor',
+        unknownError: 'Error desconegut',
+        connectionTimeout: 'S\'ha esgotat el temps de connexió',
         authenticationFailed: 'L\'autenticació ha fallat',
         permissionDenied: 'Permís denegat',
         fileNotFound: 'Fitxer no trobat',
         invalidFormat: 'Format no vàlid',
         operationFailed: 'L\'operació ha fallat',
-        tryAgain: 'Si us plau, torneu-ho a provar',
-        contactSupport: 'Contacteu amb el suport si el problema persisteix',
+        tryAgain: 'Torna-ho a provar',
+        contactSupport: 'Contacta amb el suport si el problema persisteix',
         sessionNotFound: 'Sessió no trobada',
         voiceSessionFailed: 'Ha fallat l\'inici de la sessió de veu',
 
@@ -175,7 +175,7 @@ export const ca: TranslationStructure = {
         validationError: ({ field, min, max }: { field: string; min: number; max: number }) =>
             `${field} ha d'estar entre ${min} i ${max}`,
         retryIn: ({ seconds }: { seconds: number }) =>
-            `Torna-ho a provar d'aquí ${seconds} ${seconds === 1 ? 'segon' : 'segons'}`,
+            `Torna-ho a provar en ${seconds} ${seconds === 1 ? 'segon' : 'segons'}`,
         errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
             `${message} (Error ${code})`,
     },
@@ -221,7 +221,7 @@ export const ca: TranslationStructure = {
     server: {
         // Used by Server Configuration screen (app/(app)/server.tsx)
         serverConfiguration: 'Configuració del servidor',
-        enterServerUrl: 'Si us plau, introduïu una URL del servidor',
+        enterServerUrl: 'Introdueix una URL del servidor',
         notValidHappyServer: 'No és un servidor Happy vàlid',
         changeServer: 'Canvia el servidor',
         continueWithServer: 'Continuar amb aquest servidor?',
@@ -233,13 +233,13 @@ export const ca: TranslationStructure = {
         failedToConnectToServer: 'Ha fallat la connexió amb el servidor',
         currentlyUsingCustomServer: 'Actualment utilitzant un servidor personalitzat',
         customServerUrlLabel: 'URL del servidor personalitzat',
-        advancedFeatureFooter: 'Aquesta és una funció avançada. Només canvia el servidor si saps el que estàs fent. Hauràs de tancar la sessió i tornar-la a iniciar després de canviar els servidors.'
+        advancedFeatureFooter: 'Aquesta és una funció avançada. Només canvia el servidor si saps el que fas. Hauràs de tancar la sessió i tornar-la a iniciar després de canviar els servidors.'
     },
 
     sessionInfo: {
         // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
         killSession: 'Finalitza la sessió',
-        killSessionConfirm: 'Estàs segur que vols finalitzar aquesta sessió?',
+        killSessionConfirm: 'Segur que vols finalitzar aquesta sessió?',
         happySessionIdCopied: 'ID de la sessió de Happy copiat al porta-retalls',
         failedToCopySessionId: 'Ha fallat copiar l\'ID de la sessió de Happy',
         happySessionId: 'ID de la sessió de Happy',
@@ -403,7 +403,7 @@ export const ca: TranslationStructure = {
     settingsVoice: {
         // Voice settings screen
         languageTitle: 'Idioma',
-        languageDescription: 'Tria l\'idioma preferit per a les interaccions amb l\'assistent de veu. Aquesta configuració es sincronitza a tots els teus dispositius.',
+        languageDescription: 'Tria el teu idioma preferit per a les interaccions amb l\'assistent de veu. Aquesta configuració es sincronitza a tots els teus dispositius.',
         preferredLanguage: 'Idioma preferit',
         preferredLanguageSubtitle: 'Idioma utilitzat per a les respostes de l\'assistent de veu',
         language: {
@@ -452,7 +452,7 @@ export const ca: TranslationStructure = {
     settingsLanguage: {
         // Language settings screen
         title: 'Idioma',
-        description: 'Tria l\'idioma preferit per a la interfície de l\'aplicació. Això se sincronitzarà a tots els teus dispositius.',
+        description: 'Tria el teu idioma preferit per a la interfície de l\'app. Això se sincronitzarà a tots els teus dispositius.',
         currentLanguage: 'Idioma actual',
         automatic: 'Automàtic',
         automaticSubtitle: 'Detecta des de la configuració del dispositiu',
@@ -471,7 +471,7 @@ export const ca: TranslationStructure = {
         updateAvailable: 'Actualització disponible',
         pressToApply: 'Prem per aplicar l\'actualització',
         whatsNew: 'Novetats',
-        seeLatest: 'Consulta les últimes actualitzacions i millores',
+        seeLatest: 'Mira les últimes actualitzacions i millores',
     },
 
     changelog: {
@@ -483,10 +483,10 @@ export const ca: TranslationStructure = {
     terminal: {
         // Used by terminal connection screens
         webBrowserRequired: 'Es requereix un navegador web',
-        webBrowserRequiredDescription: 'Els enllaços de connexió de terminal només es poden obrir en un navegador web per raons de seguretat. Si us plau, utilitza l\'escàner de codi QR o obre aquest enllaç en un ordinador.',
+        webBrowserRequiredDescription: 'Els enllaços de connexió de terminal només es poden obrir en un navegador web per raons de seguretat. Utilitza l\'escàner de codi QR o obre aquest enllaç en un ordinador.',
         processingConnection: 'Processant la connexió...',
         invalidConnectionLink: 'Enllaç de connexió no vàlid',
-        invalidConnectionLinkDescription: 'L\'enllaç de connexió falta o no és vàlid. Si us plau, comprova l\'URL i torna-ho a provar.',
+        invalidConnectionLinkDescription: 'L\'enllaç de connexió falta o no és vàlid. Comprova l\'URL i torna-ho a provar.',
         connectTerminal: 'Connecta el terminal',
         terminalRequestDescription: 'Un terminal està sol·licitant connectar-se al teu compte de Happy Coder. Això permetrà al terminal enviar i rebre missatges de forma segura.',
         connectionDetails: 'Detalls de la connexió',
@@ -515,7 +515,7 @@ export const ca: TranslationStructure = {
         developerModeEnabled: 'Mode desenvolupador activat',
         developerModeDisabled: 'Mode desenvolupador desactivat',
         disconnectGithub: 'Desconnecta GitHub',
-        disconnectGithubConfirm: 'Estàs segur que vols desconnectar el teu compte de GitHub?',
+        disconnectGithubConfirm: 'Segur que vols desconnectar el teu compte de GitHub?',
         disconnect: 'Desconnecta',
         failedToConnectTerminal: 'Ha fallat connectar el terminal',
         cameraPermissionsRequiredToConnectTerminal: 'Es requereixen permisos de càmera per connectar el terminal',
