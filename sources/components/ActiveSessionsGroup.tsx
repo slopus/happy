@@ -247,13 +247,14 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
 
         sessions.forEach(session => {
             const projectPath = session.metadata?.path || '';
-            const machineId = session.metadata?.machineId || 'unknown';
+            const unknownText = t('status.unknown');
+            const machineId = session.metadata?.machineId || unknownText;
 
             // Get machine info
-            const machine = machineId !== 'unknown' ? machinesMap[machineId] : null;
+            const machine = machineId !== unknownText ? machinesMap[machineId] : null;
             const machineName = machine?.metadata?.displayName ||
                 machine?.metadata?.host ||
-                (machineId !== 'unknown' ? machineId : '<unknown>');
+                (machineId !== unknownText ? machineId : `<${unknownText}>`);
 
             // Get or create project group
             let projectGroup = groups.get(projectPath);
@@ -386,7 +387,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                                 styles.newSessionButtonText,
                                                 (!hasOnlineMachine || isLoading) && styles.newSessionButtonTextDisabled
                                             ]}>
-                                                {isLoading ? 'Starting session...' : 'Start new session in this folder'}
+                                                {isLoading ? t('newSession.startingSession') : t('newSession.startNewSessionInFolder')}
                                             </Text>
                                         </View>
                                     </Pressable>

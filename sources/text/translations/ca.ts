@@ -47,6 +47,16 @@ export const ca: TranslationStructure = {
         error: 'error',
         online: 'en línia',
         offline: 'fora de línia',
+        lastSeen: ({ time }: { time: string }) => `vist per última vegada ${time}`,
+        permissionRequired: 'permís requerit',
+        activeNow: 'Actiu ara',
+        unknown: 'desconegut',
+    },
+
+    time: {
+        justNow: 'ara mateix',
+        minutesAgo: ({ count }: { count: number }) => `fa ${count} minut${count !== 1 ? 's' : ''}`,
+        hoursAgo: ({ count }: { count: number }) => `fa ${count} hora${count !== 1 ? 'es' : ''}`,
     },
 
     connect: {
@@ -185,7 +195,9 @@ export const ca: TranslationStructure = {
         sessionSpawningFailed: 'Ha fallat la creació de la sessió - no s\'ha retornat cap ID de sessió.',
         failedToStart: 'Ha fallat l\'inici de la sessió. Assegura\'t que el dimoni s\'estigui executant a la màquina de destinació.',
         sessionTimeout: 'L\'inici de la sessió ha esgotat el temps d\'espera. La màquina pot ser lenta o el dimoni pot no estar responent.',
-        notConnectedToServer: 'No connectat al servidor. Comprova la teva connexió a internet.'
+        notConnectedToServer: 'No connectat al servidor. Comprova la teva connexió a internet.',
+        startingSession: 'Iniciant la sessió...',
+        startNewSessionInFolder: 'Inicia una nova sessió en aquesta carpeta'
     },
 
     sessionHistory: {

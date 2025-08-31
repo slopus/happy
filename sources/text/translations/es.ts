@@ -47,6 +47,16 @@ export const es: TranslationStructure = {
         error: 'error',
         online: 'en línea',
         offline: 'desconectado',
+        lastSeen: ({ time }: { time: string }) => `visto por última vez ${time}`,
+        permissionRequired: 'permiso requerido',
+        activeNow: 'Activo ahora',
+        unknown: 'desconocido',
+    },
+
+    time: {
+        justNow: 'ahora mismo',
+        minutesAgo: ({ count }: { count: number }) => `hace ${count} minuto${count !== 1 ? 's' : ''}`,
+        hoursAgo: ({ count }: { count: number }) => `hace ${count} hora${count !== 1 ? 's' : ''}`,
     },
 
     connect: {
@@ -185,7 +195,9 @@ export const es: TranslationStructure = {
         sessionSpawningFailed: 'Falló la creación de sesión - no se devolvió ID de sesión.',
         failedToStart: 'Falló al iniciar sesión. Asegúrese de que el daemon esté ejecutándose en la máquina objetivo.',
         sessionTimeout: 'El inicio de sesión expiró. La máquina puede ser lenta o el daemon puede no estar respondiendo.',
-        notConnectedToServer: 'No conectado al servidor. Verifique su conexión a internet.'
+        notConnectedToServer: 'No conectado al servidor. Verifique su conexión a internet.',
+        startingSession: 'Iniciando sesión...',
+        startNewSessionInFolder: 'Iniciar nueva sesión en esta carpeta'
     },
 
     sessionHistory: {

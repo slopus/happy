@@ -187,7 +187,9 @@ export const ru: TranslationStructure = {
         sessionSpawningFailed: 'Ошибка создания сессии - ID сессии не получен.',
         failedToStart: 'Не удалось запустить сессию. Убедитесь, что daemon запущен на целевой машине.',
         sessionTimeout: 'Время запуска сессии истекло. Машина может работать медленно или daemon не отвечает.',
-        notConnectedToServer: 'Нет подключения к серверу. Проверьте интернет-соединение.'
+        notConnectedToServer: 'Нет подключения к серверу. Проверьте интернет-соединение.',
+        startingSession: 'Запуск сессии...',
+        startNewSessionInFolder: 'Запустить новую сессию в этой папке'
     },
 
     sessionHistory: {
@@ -272,6 +274,16 @@ export const ru: TranslationStructure = {
         error: 'ошибка',
         online: 'online',
         offline: 'offline',
+        lastSeen: ({ time }: { time: string }) => `в сети ${time}`,
+        permissionRequired: 'требуется разрешение',
+        activeNow: 'Активен сейчас',
+        unknown: 'неизвестно',
+    },
+
+    time: {
+        justNow: 'только что',
+        minutesAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'минуту', few: 'минуты', many: 'минут' })} назад`,
+        hoursAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'час', few: 'часа', many: 'часов' })} назад`,
     },
 
     session: {
