@@ -5,6 +5,7 @@ import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { useSessionStatus, formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -72,13 +73,13 @@ function formatRelativeTime(timestamp: number): string {
     const diffDays = Math.floor(diffHours / 24);
     
     if (diffMinutes < 1) {
-        return 'just now';
+        return t('time.justNow');
     } else if (diffMinutes < 60) {
-        return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
+        return t('time.minutesAgo', { count: diffMinutes });
     } else if (diffHours < 24) {
-        return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+        return t('time.hoursAgo', { count: diffHours });
     } else {
-        return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+        return t('sessionHistory.daysAgo', { count: diffDays });
     }
 }
 

@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
+import { t } from '@/text';
 
 // Re-export timeout constant for backward compatibility
 export const DISCONNECTED_TIMEOUT_MS = 120000;
@@ -35,7 +36,7 @@ export function useSessionStatus(session: Session): SessionStatus {
         return {
             state: 'disconnected',
             isConnected: false,
-            statusText: `last seen ${formatLastSeen(session.presence)}`,
+            statusText: t('status.lastSeen', { time: formatLastSeen(session.presence) }),
             shouldShowStatus: true,
             statusColor: '#999',
             statusDotColor: '#999'
@@ -47,7 +48,7 @@ export function useSessionStatus(session: Session): SessionStatus {
         return {
             state: 'permission_required',
             isConnected: true,
-            statusText: 'permission required',
+            statusText: t('status.permissionRequired'),
             shouldShowStatus: true,
             statusColor: '#FF9500',
             statusDotColor: '#FF9500',
@@ -70,7 +71,7 @@ export function useSessionStatus(session: Session): SessionStatus {
     return {
         state: 'waiting',
         isConnected: true,
-        statusText: 'online',
+        statusText: t('status.online'),
         shouldShowStatus: false,
         statusColor: '#34C759',
         statusDotColor: '#34C759'
@@ -89,7 +90,7 @@ export function getSessionName(session: Session): string {
         const lastSegment = segments.pop()!;
         return lastSegment;
     }
-    return 'unknown';
+    return t('status.unknown');
 }
 
 /**
@@ -141,7 +142,7 @@ export function getSessionSubtitle(session: Session): string {
     if (session.metadata) {
         return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
     }
-    return 'unknown';
+    return t('status.unknown');
 }
 
 /**
@@ -190,7 +191,7 @@ export function formatOSPlatform(platform?: string): string {
  */
 export function formatLastSeen(presence: "online" | number): string {
     if (presence === "online") {
-        return 'Active now';
+        return t('status.activeNow');
     }
 
     const now = Date.now();
@@ -201,13 +202,13 @@ export function formatLastSeen(presence: "online" | number): string {
     const diffDays = Math.floor(diffHours / 24);
 
     if (diffSeconds < 60) {
-        return 'just now';
+        return t('time.justNow');
     } else if (diffMinutes < 60) {
-        return `${diffMinutes} minute${diffMinutes !== 1 ? 's' : ''} ago`;
+        return t('time.minutesAgo', { count: diffMinutes });
     } else if (diffHours < 24) {
-        return `${diffHours} hour${diffHours !== 1 ? 's' : ''} ago`;
+        return t('time.hoursAgo', { count: diffHours });
     } else if (diffDays < 7) {
-        return `${diffDays} day${diffDays !== 1 ? 's' : ''} ago`;
+        return t('sessionHistory.daysAgo', { count: diffDays });
     } else {
         // Format as date
         const date = new Date(presence);

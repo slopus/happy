@@ -58,6 +58,16 @@ export const pl: TranslationStructure = {
         error: 'błąd',
         online: 'online',
         offline: 'offline',
+        lastSeen: ({ time }: { time: string }) => `ostatnio widziano ${time}`,
+        permissionRequired: 'wymagane uprawnienie',
+        activeNow: 'Aktywny teraz',
+        unknown: 'nieznane',
+    },
+
+    time: {
+        justNow: 'teraz',
+        minutesAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'minuta', few: 'minuty', many: 'minut' })} temu`,
+        hoursAgo: ({ count }: { count: number }) => `${count} ${plural({ count, one: 'godzina', few: 'godziny', many: 'godzin' })} temu`,
     },
 
     connect: {
@@ -196,7 +206,9 @@ export const pl: TranslationStructure = {
         sessionSpawningFailed: 'Tworzenie sesji nie powiodło się - nie zwrócono ID sesji.',
         failedToStart: 'Nie udało się uruchomić sesji. Upewnij się, że daemon działa na docelowej maszynie.',
         sessionTimeout: 'Przekroczono czas uruchamiania sesji. Maszyna może działać wolno lub daemon może nie odpowiadać.',
-        notConnectedToServer: 'Brak połączenia z serwerem. Sprawdź połączenie internetowe.'
+        notConnectedToServer: 'Brak połączenia z serwerem. Sprawdź połączenie internetowe.',
+        startingSession: 'Rozpoczynanie sesji...',
+        startNewSessionInFolder: 'Rozpocznij nową sesję w tym folderze'
     },
 
     sessionHistory: {

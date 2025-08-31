@@ -81,7 +81,7 @@ const translations: Record<SupportedLanguage, TranslationStructure> = {
 const _typeCheck: Record<SupportedLanguage, TranslationStructure> = translations;
 
 //
-// Resolve languae
+// Resolve language
 //
 
 let currentLanguage: SupportedLanguage = DEFAULT_LANGUAGE;
@@ -92,18 +92,23 @@ let found = false;
 if (settings.settings.preferredLanguage && settings.settings.preferredLanguage in translations) {
     currentLanguage = settings.settings.preferredLanguage as SupportedLanguage;
     found = true;
+    console.log(`[i18n] Using preferred language: ${currentLanguage}`);
 }
 
 // Read from device
 if (!found) {
     let locales = Localization.getLocales();
+    console.log(`[i18n] Device locales:`, locales.map(l => l.languageCode));
     for (let l of locales) {
         if (l.languageCode && l.languageCode in translations) {
             currentLanguage = l.languageCode as SupportedLanguage;
+            console.log(`[i18n] Using device locale: ${currentLanguage}`);
             break;
         }
     }
 }
+
+console.log(`[i18n] Final language: ${currentLanguage}`);
 
 /**
  * Main translation function with strict typing
@@ -164,4 +169,12 @@ export function t<K extends TranslationKey>(
         console.error(`Translation error for key: ${key}`, error);
         return key;
     }
+}
+
+/**
+ * Get the currently active language
+ * Useful for debugging and language-aware components
+ */
+export function getCurrentLanguage(): SupportedLanguage {
+    return currentLanguage;
 }

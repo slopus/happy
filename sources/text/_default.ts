@@ -47,6 +47,16 @@ export const en = {
         error: 'error',
         online: 'online',
         offline: 'offline',
+        lastSeen: ({ time }: { time: string }) => `last seen ${time}`,
+        permissionRequired: 'permission required',
+        activeNow: 'Active now',
+        unknown: 'unknown',
+    },
+
+    time: {
+        justNow: 'just now',
+        minutesAgo: ({ count }: { count: number }) => `${count} minute${count !== 1 ? 's' : ''} ago`,
+        hoursAgo: ({ count }: { count: number }) => `${count} hour${count !== 1 ? 's' : ''} ago`,
     },
 
     connect: {
@@ -183,6 +193,8 @@ export const en = {
         sessionStarted: 'Session started',
         sessionStartedMessage: 'The session was started but may take a moment to appear.',
         sessionSpawningFailed: 'Session spawning failed - no session ID returned.',
+        startingSession: 'Starting session...',
+        startNewSessionInFolder: 'Start new session in this folder',
         failedToStart: 'Failed to start session. Make sure the daemon is running on the target machine.',
         sessionTimeout: 'Session startup timed out. The machine may be slow or the daemon may not be responding.',
         notConnectedToServer: 'Not connected to server. Check your internet connection.'

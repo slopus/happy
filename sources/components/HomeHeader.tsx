@@ -9,6 +9,7 @@ import { useRouter, useSegments } from 'expo-router';
 import { getServerInfo } from '@/sync/serverConfig';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     headerButton: {
@@ -172,28 +173,28 @@ function HeaderTitleWithSubtitle({ subtitle }: { subtitle?: string }) {
                 return {
                     color: styles.statusConnected.color,
                     isPulsing: false,
-                    text: 'connected',
+                    text: t('status.connected'),
                     textColor: styles.statusConnected.color
                 };
             case 'connecting':
                 return {
                     color: styles.statusConnecting.color,
                     isPulsing: true,
-                    text: 'connecting',
+                    text: t('status.connecting'),
                     textColor: styles.statusConnecting.color
                 };
             case 'disconnected':
                 return {
                     color: styles.statusDisconnected.color,
                     isPulsing: false,
-                    text: 'disconnected',
+                    text: t('status.disconnected'),
                     textColor: styles.statusDisconnected.color
                 };
             case 'error':
                 return {
                     color: styles.statusError.color,
                     isPulsing: false,
-                    text: 'connection error',
+                    text: t('status.error'),
                     textColor: styles.statusError.color
                 };
             default:
@@ -213,7 +214,7 @@ function HeaderTitleWithSubtitle({ subtitle }: { subtitle?: string }) {
     return (
         <View style={styles.titleContainer}>
             <Text style={styles.titleText}>
-                Sessions
+                {t('sidebar.sessionsTitle')}
             </Text>
             {hasCustomSubtitle && (
                 <Text style={styles.subtitleText}>
