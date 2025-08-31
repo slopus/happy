@@ -117,8 +117,9 @@ export class GitStatusSync {
             }
 
             // Get git status in porcelain v2 format (includes branch info)
+            // --untracked-files=all ensures we get individual files, not directories
             const statusResult = await sessionBash(sessionId, {
-                command: 'git status --porcelain=v2 --branch --show-stash',
+                command: 'git status --porcelain=v2 --branch --show-stash --untracked-files=all',
                 cwd: session.metadata.path,
                 timeout: 10000
             });

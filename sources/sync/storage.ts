@@ -117,17 +117,21 @@ interface StorageState {
 function buildSessionListViewData(
     sessions: Record<string, Session>
 ): SessionListViewItem[] {
-    // Only include active sessions
+    // Separate active and inactive sessions
     const activeSessions: Session[] = [];
+    const inactiveSessions: Session[] = [];
 
     Object.values(sessions).forEach(session => {
         if (isSessionActive(session)) {
             activeSessions.push(session);
+        } else {
+            inactiveSessions.push(session);
         }
     });
 
-    // Sort active sessions by creation date (newest first)
-    activeSessions.sort((a, b) => b.createdAt - a.createdAt);
+    // Sort sessions by updated date (newest first)
+    activeSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    inactiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
@@ -135,6 +139,71 @@ function buildSessionListViewData(
     // Add active sessions as a single item at the top (if any)
     if (activeSessions.length > 0) {
         listData.push({ type: 'active-sessions', sessions: activeSessions });
+    }
+
+    // Group inactive sessions by date
+    const now = new Date();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
+
+    let currentDateGroup: Session[] = [];
+    let currentDateString: string | null = null;
+
+    for (const session of inactiveSessions) {
+        const sessionDate = new Date(session.updatedAt);
+        const dateString = sessionDate.toDateString();
+
+        if (currentDateString !== dateString) {
+            // Process previous group
+            if (currentDateGroup.length > 0 && currentDateString) {
+                const groupDate = new Date(currentDateString);
+                const sessionDateOnly = new Date(groupDate.getFullYear(), groupDate.getMonth(), groupDate.getDate());
+
+                let headerTitle: string;
+                if (sessionDateOnly.getTime() === today.getTime()) {
+                    headerTitle = 'Today';
+                } else if (sessionDateOnly.getTime() === yesterday.getTime()) {
+                    headerTitle = 'Yesterday';
+                } else {
+                    const diffTime = today.getTime() - sessionDateOnly.getTime();
+                    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                    headerTitle = `${diffDays} days ago`;
+                }
+
+                listData.push({ type: 'header', title: headerTitle });
+                currentDateGroup.forEach(sess => {
+                    listData.push({ type: 'session', session: sess });
+                });
+            }
+
+            // Start new group
+            currentDateString = dateString;
+            currentDateGroup = [session];
+        } else {
+            currentDateGroup.push(session);
+        }
+    }
+
+    // Process final group
+    if (currentDateGroup.length > 0 && currentDateString) {
+        const groupDate = new Date(currentDateString);
+        const sessionDateOnly = new Date(groupDate.getFullYear(), groupDate.getMonth(), groupDate.getDate());
+
+        let headerTitle: string;
+        if (sessionDateOnly.getTime() === today.getTime()) {
+            headerTitle = 'Today';
+        } else if (sessionDateOnly.getTime() === yesterday.getTime()) {
+            headerTitle = 'Yesterday';
+        } else {
+            const diffTime = today.getTime() - sessionDateOnly.getTime();
+            const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+            headerTitle = `${diffDays} days ago`;
+        }
+
+        listData.push({ type: 'header', title: headerTitle });
+        currentDateGroup.forEach(sess => {
+            listData.push({ type: 'session', session: sess });
+        });
     }
 
     return listData;
