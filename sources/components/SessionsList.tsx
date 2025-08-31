@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Pressable, FlatList, Platform } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { usePathname, router } from 'expo-router';
+import { usePathname } from 'expo-router';
 import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
@@ -17,7 +17,6 @@ import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { RoundButton } from './RoundButton';
 import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
@@ -33,16 +32,16 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         maxWidth: layout.maxWidth,
     },
     headerSection: {
-        backgroundColor: theme.colors.surface,
-        paddingHorizontal: 16,
-        paddingTop: 12,
+        backgroundColor: theme.colors.groupped.background,
+        paddingHorizontal: 24,
+        paddingTop: 20,
+        paddingBottom: 8,
     },
     headerText: {
-        fontSize: 13,
+        fontSize: 14,
         fontWeight: '600',
-        color: theme.colors.textSecondary,
-        letterSpacing: 0.3,
-        textTransform: 'uppercase',
+        color: theme.colors.groupped.sectionTitle,
+        letterSpacing: 0.1,
         ...Typography.default('semiBold'),
     },
     projectGroup: {
@@ -68,6 +67,21 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         paddingHorizontal: 16,
         backgroundColor: theme.colors.surface,
+        marginHorizontal: 16,
+        marginBottom: 1,
+    },
+    sessionItemFirst: {
+        borderTopLeftRadius: 12,
+        borderTopRightRadius: 12,
+    },
+    sessionItemLast: {
+        borderBottomLeftRadius: 12,
+        borderBottomRightRadius: 12,
+        marginBottom: 12,
+    },
+    sessionItemSingle: {
+        borderRadius: 12,
+        marginBottom: 12,
     },
     sessionItemSelected: {
         backgroundColor: theme.colors.surfaceSelected,
@@ -117,10 +131,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         lineHeight: 16,
         ...Typography.default(),
     },
-    separator: {
-        height: StyleSheet.hairlineWidth,
-        backgroundColor: theme.colors.divider,
-    },
     avatarContainer: {
         position: 'relative',
         width: 48,
@@ -137,12 +147,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     draftIconOverlay: {
         color: theme.colors.textSecondary,
-    },
-    footerContainer: {
-        alignItems: 'center',
-        paddingVertical: 24,
-        paddingHorizontal: 16,
-        backgroundColor: theme.colors.groupped.background,
     },
 }));
 
@@ -184,7 +188,7 @@ export function SessionsList() {
         }
     }, []);
 
-    const renderItem = React.useCallback(({ item }: { item: SessionListViewItem & { selected?: boolean } }) => {
+    const renderItem = React.useCallback(({ item, index }: { item: SessionListViewItem & { selected?: boolean }, index: number }) => {
         switch (item.type) {
             case 'header':
                 return (
@@ -222,58 +226,28 @@ export function SessionsList() {
                 );
 
             case 'session':
+                // Determine card styling based on position within date group
+                const prevItem = index > 0 && dataWithSelected ? dataWithSelected[index - 1] : null;
+                const nextItem = index < (dataWithSelected?.length || 0) - 1 && dataWithSelected ? dataWithSelected[index + 1] : null;
+                
+                const isFirst = prevItem?.type === 'header';
+                const isLast = nextItem?.type === 'header' || nextItem == null || nextItem?.type === 'active-sessions';
+                const isSingle = isFirst && isLast;
+                
                 return (
-                    <SessionItem session={item.session} selected={item.selected} />
-                );
-        }
-    }, [pathname]);
-
-    // ItemSeparatorComponent for FlashList
-    const ItemSeparatorComponent = React.useCallback(({ leadingItem, trailingItem }: any) => {
-        // Don't render separator if either item is a header
-        if (leadingItem?.type === 'header' || trailingItem?.type === 'header' || leadingItem?.type === 'active-sessions' || trailingItem?.type === 'active-sessions') {
-            return null;
-        }
-
-        // Use standard indentation for separators
-        const marginLeft = 88;
-
-        return <View style={styles.separator} />;
-    }, []);
-
-    // Render only active sessions  
-    const renderContent = React.useMemo(() => {
-        if (!dataWithSelected) return [];
-
-        const result: React.ReactElement[] = [];
-
-        dataWithSelected.forEach((item, index) => {
-            if (item.type === 'active-sessions') {
-                let selectedId: string | undefined;
-                if (isTablet && pathname.startsWith('/session/')) {
-                    const parts = pathname.split('/');
-                    selectedId = parts[2];
-                }
-                result.push(
-                    <ActiveSessionsGroup
-                        key="active-sessions"
-                        sessions={item.sessions}
-                        selectedSessionId={selectedId}
+                    <SessionItem 
+                        session={item.session} 
+                        selected={item.selected}
+                        isFirst={isFirst}
+                        isLast={isLast}
+                        isSingle={isSingle}
                     />
                 );
-            } else if (item.type === 'header') {
-                result.push(
-                    <View key={`header-${item.title}-${index}`} style={styles.headerSection}>
-                        <Text style={styles.headerText}>
-                            {item.title}
-                        </Text>
-                    </View>
-                );
-            }
-        });
+        }
+    }, [pathname, dataWithSelected]);
 
-        return result;
-    }, [dataWithSelected, isTablet, pathname]);
+
+    // Remove this section as we'll use FlatList for all items now
 
 
     const HeaderComponent = React.useCallback(() => {
@@ -284,29 +258,17 @@ export function SessionsList() {
         );
     }, []);
 
-    const FooterComponent = React.useCallback(() => {
-        return (
-            <View style={styles.footerContainer}>
-                <RoundButton
-                    title={t('sessionHistory.viewAll')}
-                    size="normal"
-                    display="inverted"
-                    onPress={() => router.push('/session/recent')}
-                />
-            </View>
-        );
-    }, []);
+    // Footer removed - all sessions now shown inline
 
     return (
         <View style={styles.container}>
             <View style={styles.contentContainer}>
                 <FlatList
-                    data={renderContent}
-                    renderItem={({ item }) => item}
-                    keyExtractor={(_, index) => `item-${index}`}
-                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 16, maxWidth: layout.maxWidth }}
+                    data={dataWithSelected}
+                    renderItem={renderItem}
+                    keyExtractor={keyExtractor}
+                    contentContainerStyle={{ paddingBottom: safeArea.bottom + 128, maxWidth: layout.maxWidth }}
                     ListHeaderComponent={HeaderComponent}
-                    ListFooterComponent={FooterComponent}
                 />
             </View>
         </View>
@@ -314,7 +276,13 @@ export function SessionsList() {
 }
 
 // Sub-component that handles session message logic
-const SessionItem = React.memo(({ session, selected }: { session: Session; selected?: boolean }) => {
+const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }: { 
+    session: Session; 
+    selected?: boolean;
+    isFirst?: boolean;
+    isLast?: boolean;
+    isSingle?: boolean;
+}) => {
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
@@ -330,7 +298,10 @@ const SessionItem = React.memo(({ session, selected }: { session: Session; selec
         <Pressable
             style={[
                 styles.sessionItem,
-                selected && styles.sessionItemSelected
+                selected && styles.sessionItemSelected,
+                isSingle ? styles.sessionItemSingle :
+                isFirst ? styles.sessionItemFirst :
+                isLast ? styles.sessionItemLast : {}
             ]}
             onPressIn={() => {
                 if (isTablet) {

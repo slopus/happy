@@ -39,8 +39,9 @@ export async function getGitStatusFiles(sessionId: string): Promise<GitStatusFil
         }
 
         // Get git status in porcelain v2 format (includes branch info and repo check)
+        // --untracked-files=all ensures we get individual files, not directories
         const statusResult = await sessionBash(sessionId, {
-            command: 'git status --porcelain=v2 --branch',
+            command: 'git status --porcelain=v2 --branch --untracked-files=all',
             cwd: session.metadata.path,
             timeout: 10000
         });
@@ -132,14 +133,24 @@ function parseGitStatusFilesV2(
 
     // Add untracked files to unstaged
     for (const untrackedPath of statusSummary.not_added) {
-        const parts = untrackedPath.split('/');
-        const fileNameOnly = parts[parts.length - 1] || untrackedPath;
+        // Handle both files and directories (directories have trailing slash)
+        const isDirectory = untrackedPath.endsWith('/');
+        const cleanPath = isDirectory ? untrackedPath.slice(0, -1) : untrackedPath;
+        const parts = cleanPath.split('/');
+        const fileNameOnly = parts[parts.length - 1] || cleanPath;
         const filePathOnly = parts.slice(0, -1).join('/');
+        
+        // Skip directory entries since we're using --untracked-files=all
+        // This is a fallback in case git still reports directories
+        if (isDirectory) {
+            console.warn(`Unexpected directory in untracked files: ${untrackedPath}`);
+            continue;
+        }
         
         unstagedFiles.push({
             fileName: fileNameOnly,
             filePath: filePathOnly,
-            fullPath: untrackedPath,
+            fullPath: cleanPath,
             status: 'untracked',
             isStaged: false,
             linesAdded: 0,
