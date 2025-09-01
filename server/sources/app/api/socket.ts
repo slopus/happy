@@ -33,6 +33,7 @@ export function startSocket(app: Fastify, eventRouter: EventRouter) {
         serveClient: false // Don't serve the client files
     });
 
+    let rpcListeners = new Map<string, Map<string, Socket>>();
     io.on("connection", async (socket) => {
         log({ module: 'websocket' }, `New connection attempt from socket: ${socket.id}`);
         const token = socket.handshake.auth.token as string;
@@ -645,7 +646,12 @@ export function startSocket(app: Fastify, eventRouter: EventRouter) {
         });
 
         // Handlers
-        rpcHandler(userId, socket, eventRouter);
+        let userRpcListeners = rpcListeners.get(userId);
+        if (!userRpcListeners) {
+            userRpcListeners = new Map<string, Socket>();
+            rpcListeners.set(userId, userRpcListeners);
+        }
+        rpcHandler(userId, socket, eventRouter, userRpcListeners);
         usageHandler(userId, socket, eventRouter);
         pingHandler(socket);
 
