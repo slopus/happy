@@ -202,36 +202,26 @@ export default function MachineDetailScreen() {
         }
     };
 
-    const handleStartSession = async (path: string): Promise<void> => {
+    const handleStartSession = async (approvedNewDirectoryCreation: boolean = false): Promise<void> => {
         if (!machine || !machineId) return;
         try {
-            const absolutePath = resolveAbsolutePath(path, machine?.metadata?.homeDir);
+            const pathToUse = (customPath.trim() || '~');
+            if (!isMachineOnline(machine)) return;
+            setIsSpawning(true);
+            const absolutePath = resolveAbsolutePath(pathToUse, machine?.metadata?.homeDir);
             const result = await machineSpawnNewSession({
                 machineId: machineId!,
                 directory: absolutePath,
-                approvedNewDirectoryCreation: false
+                approvedNewDirectoryCreation
             });
             switch (result.type) {
                 case 'success':
                     navigateToSession(result.sessionId);
                     break;
                 case 'requestToApproveDirectoryCreation': {
-                    const approved = await Modal.confirm(
-                        'Create Directory?',
-                        `The directory '${result.directory}' does not exist. Would you like to create it?`,
-                        { cancelText: t('common.cancel'), confirmText: 'Create' }
-                    );
+                    const approved = await Modal.confirm('Create Directory?', `The directory '${result.directory}' does not exist. Would you like to create it?`, { cancelText: t('common.cancel'), confirmText: 'Create' });
                     if (approved) {
-                        const retry = await machineSpawnNewSession({
-                            machineId: machineId!,
-                            directory: absolutePath,
-                            approvedNewDirectoryCreation: true
-                        });
-                        if (retry.type === 'success') {
-                            navigateToSession(retry.sessionId);
-                        } else if (retry.type === 'error') {
-                            Modal.alert(t('common.error'), retry.errorMessage);
-                        }
+                        await handleStartSession(true);
                     }
                     break;
                 }
@@ -245,6 +235,8 @@ export default function MachineDetailScreen() {
                 errorMessage = error.message;
             }
             Modal.alert(t('common.error'), errorMessage);
+        } finally {
+            setIsSpawning(false);
         }
     };
 
@@ -329,7 +321,6 @@ export default function MachineDetailScreen() {
                     headerBackTitle: 'Back'
                 }}
             />
-
             {machine && isMachineOnline(machine) && (
                 <View style={styles.customPathContainer}>
                     <Text style={styles.customPathLabel}>{t('machine.launchNewSessionInDirectory')}</Text>
