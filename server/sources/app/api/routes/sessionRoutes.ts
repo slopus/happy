@@ -1,4 +1,4 @@
-import { EventRouter, buildNewSessionUpdate } from "@/modules/eventRouter";
+import { EventRouter, buildNewSessionUpdate } from "@/app/events/eventRouter";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { z } from "zod";

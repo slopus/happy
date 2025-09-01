@@ -2,7 +2,7 @@ import fastify from "fastify";
 import { log, logger } from "@/utils/log";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { onShutdown } from "@/utils/shutdown";
-import { EventRouter } from "@/modules/eventRouter";
+import { EventRouter } from "@/app/events/eventRouter";
 import { Fastify } from "./types";
 import { authRoutes } from "./routes/authRoutes";
 import { pushRoutes } from "./routes/pushRoutes";

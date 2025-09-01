@@ -11,7 +11,7 @@ import { startDatabaseMetricsUpdater } from "@/app/monitoring/metrics2";
 import { initEncrypt } from "./modules/encrypt";
 import { initGithub } from "./modules/github";
 import { loadFiles } from "./storage/files";
-import { EventRouter } from "./modules/eventRouter";
+import { EventRouter } from "./app/events/eventRouter";
 
 async function main() {
 

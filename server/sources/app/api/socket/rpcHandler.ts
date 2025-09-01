@@ -1,4 +1,4 @@
-import { EventRouter } from "@/modules/eventRouter";
+import { EventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
 import { Socket } from "socket.io";
 

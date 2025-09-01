@@ -1,11 +1,11 @@
-import { EventRouter } from "@/modules/eventRouter";
+import { EventRouter } from "@/app/events/eventRouter";
 import { Fastify } from "../types";
 import { z } from "zod";
 import { db } from "@/storage/db";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
-import { buildUpdateMachineUpdate } from "@/modules/eventRouter";
+import { buildUpdateMachineUpdate } from "@/app/events/eventRouter";
 
 export function machinesRoutes(app: Fastify, eventRouter: EventRouter) {
     app.post('/v1/machines', {

@@ -18,7 +18,7 @@ export function encryptBytes(path: string[], bytes: Uint8Array) {
 }
 
 export function decryptString(path: string[], encrypted: Uint8Array) {
-    return keyTree!.symmetricDecryptBuffer(path, encrypted);
+    return keyTree!.symmetricDecryptString(path, encrypted);
 }
 
 export function decryptBytes(path: string[], encrypted: Uint8Array) {

@@ -2,7 +2,7 @@ import { db } from "@/storage/db";
 import { delay } from "@/utils/delay";
 import { forever } from "@/utils/forever";
 import { shutdownSignal } from "@/utils/shutdown";
-import { buildMachineActivityEphemeral, buildSessionActivityEphemeral, EventRouter } from "@/modules/eventRouter";
+import { buildMachineActivityEphemeral, buildSessionActivityEphemeral, EventRouter } from "@/app/events/eventRouter";
 
 export function startTimeout(eventRouter: EventRouter) {
     forever('session-timeout', async () => {

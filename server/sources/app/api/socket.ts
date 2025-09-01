@@ -1,6 +1,6 @@
 import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
-import { buildMachineActivityEphemeral, ClientConnection, EventRouter } from "@/modules/eventRouter";
+import { buildMachineActivityEphemeral, ClientConnection, EventRouter } from "@/app/events/eventRouter";
 import { Server, Socket } from "socket.io";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";

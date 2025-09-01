@@ -1,7 +1,7 @@
 import { Socket } from "socket.io";
 import { AsyncLock } from "@/utils/lock";
 import { db } from "@/storage/db";
-import { buildUsageEphemeral, EventRouter } from "@/modules/eventRouter";
+import { buildUsageEphemeral, EventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
 
 export function usageHandler(userId: string, socket: Socket, eventRouter: EventRouter) {

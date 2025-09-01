@@ -10,4 +10,5 @@ export type AccountProfile = {
         value: string | null;
         version: number;
     } | null;
+    connectedServices: string[];
 }

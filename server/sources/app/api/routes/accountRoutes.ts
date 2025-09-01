@@ -1,4 +1,4 @@
-import { EventRouter, buildUpdateAccountUpdate } from "@/modules/eventRouter";
+import { EventRouter, buildUpdateAccountUpdate } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
 import { Fastify } from "../types";
 import { getPublicUrl } from "@/storage/files";
@@ -6,6 +6,7 @@ import { z } from "zod";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { log } from "@/utils/log";
+import { AccountProfile } from "@/types";
 
 export function accountRoutes(app: Fastify, eventRouter: EventRouter) {
     app.get('/v1/account/profile', {
@@ -21,13 +22,15 @@ export function accountRoutes(app: Fastify, eventRouter: EventRouter) {
                 githubUser: true
             }
         });
+        const connectedVendors = new Set((await db.serviceAccountToken.findMany({ where: { accountId: userId } })).map(t => t.vendor));
         return reply.send({
             id: userId,
             timestamp: Date.now(),
             firstName: user.firstName,
             lastName: user.lastName,
             avatar: user.avatar ? { ...user.avatar, url: getPublicUrl(user.avatar.path) } : null,
-            github: user.githubUser ? user.githubUser.profile : null
+            github: user.githubUser ? user.githubUser.profile : null,
+            connectedServices: Array.from(connectedVendors)
         });
     });
 
