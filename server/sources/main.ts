@@ -11,6 +11,7 @@ import { startDatabaseMetricsUpdater } from "@/modules/metrics";
 import { initEncrypt } from "./modules/encrypt";
 import { initGithub } from "./modules/github";
 import { loadFiles } from "./storage/files";
+import { EventRouter } from "./modules/eventRouter";
 
 async function main() {
 
@@ -25,6 +26,7 @@ async function main() {
     await redis.ping();
 
     // Initialize auth module
+    const eventRouter = new EventRouter();
     await initEncrypt();
     await initGithub();
     await loadFiles();
@@ -34,10 +36,10 @@ async function main() {
     // Start
     //
 
-    await startApi();
+    await startApi(eventRouter);
     await startMetricsServer();
     startDatabaseMetricsUpdater();
-    startTimeout();
+    startTimeout(eventRouter);
 
     //
     // Ready
@@ -56,7 +58,7 @@ process.on('uncaughtException', (error) => {
         stack: error.stack,
         name: error.name
     }, `Uncaught Exception: ${error.message}`);
-    
+
     console.error('Uncaught Exception:', error);
     process.exit(1);
 });
@@ -64,14 +66,14 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
     const errorMsg = reason instanceof Error ? reason.message : String(reason);
     const errorStack = reason instanceof Error ? reason.stack : undefined;
-    
+
     log({
         module: 'process-error',
         level: 'error',
         stack: errorStack,
         reason: String(reason)
     }, `Unhandled Rejection: ${errorMsg}`);
-    
+
     console.error('Unhandled Rejection at:', promise, 'reason:', reason);
     process.exit(1);
 });

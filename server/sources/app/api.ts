@@ -51,7 +51,7 @@ declare module 'fastify' {
 }
 
 
-export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> {
+export async function startApi(eventRouter: EventRouter): Promise<{ app: FastifyInstance; io: Server }> {
 
     // Configure
     log('Starting API...');
@@ -248,9 +248,6 @@ export async function startApi(): Promise<{ app: FastifyInstance; io: Server }> 
             return reply.code(401).send({ error: 'Authentication failed' });
         }
     });
-
-    // Initialize event router
-    const eventRouter = new EventRouter();
 
     // Auth schema
     typed.post('/v1/auth', {
