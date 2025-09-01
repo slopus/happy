@@ -39,7 +39,7 @@ export interface GitHubProfile {
 }
 
 export interface GitHubOrg {
-    
+
 }
 
 export type Fastify = FastifyInstance<
@@ -49,3 +49,13 @@ export type Fastify = FastifyInstance<
     FastifyBaseLogger,
     ZodTypeProvider
 >;
+
+declare module 'fastify' {
+    interface FastifyRequest {
+        userId: string;
+        startTime?: number;
+    }
+    interface FastifyInstance {
+        authenticate: any;
+    }
+}
