@@ -8,7 +8,7 @@ import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 
 export function registerSessionRoutes(app: Fastify, eventRouter: EventRouter) {
-    
+
     // Sessions API
     app.get('/v1/sessions', {
         preHandler: app.authenticate,
@@ -292,5 +292,54 @@ export function registerSessionRoutes(app: Fastify, eventRouter: EventRouter) {
                 }
             });
         }
+    });
+
+    app.get('/v1/sessions/:sessionId/messages', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+
+        // Verify session belongs to user
+        const session = await db.session.findFirst({
+            where: {
+                id: sessionId,
+                accountId: userId
+            }
+        });
+
+        if (!session) {
+            return reply.code(404).send({ error: 'Session not found' });
+        }
+
+        const messages = await db.sessionMessage.findMany({
+            where: { sessionId },
+            orderBy: { createdAt: 'desc' },
+            take: 150,
+            select: {
+                id: true,
+                seq: true,
+                localId: true,
+                content: true,
+                createdAt: true,
+                updatedAt: true
+            }
+        });
+
+        return reply.send({
+            messages: messages.map((v) => ({
+                id: v.id,
+                seq: v.seq,
+                content: v.content,
+                localId: v.localId,
+                createdAt: v.createdAt.getTime(),
+                updatedAt: v.updatedAt.getTime()
+            }))
+        });
     });
 }
