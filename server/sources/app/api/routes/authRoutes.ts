@@ -5,7 +5,7 @@ import { db } from "@/storage/db";
 import { auth } from "@/app/auth/auth";
 import { log } from "@/utils/log";
 
-export function registerAuthRoutes(app: Fastify) {
+export function authRoutes(app: Fastify) {
     app.post('/v1/auth', {
         schema: {
             body: z.object({

@@ -7,7 +7,7 @@ import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 import { log } from "@/utils/log";
 
-export function registerAccountRoutes(app: Fastify, eventRouter: EventRouter) {
+export function accountRoutes(app: Fastify, eventRouter: EventRouter) {
     app.get('/v1/account/profile', {
         preHandler: app.authenticate,
     }, async (request, reply) => {

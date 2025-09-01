@@ -13,7 +13,40 @@ import { uploadImage } from "@/storage/uploadImage";
 import { EventRouter } from "@/modules/eventRouter";
 import { encryptString } from "@/modules/encrypt";
 
-export function registerConnectRoutes(app: Fastify, eventRouter: EventRouter) {
+export function connectRoutes(app: Fastify, eventRouter: EventRouter) {
+
+    // Add content type parser for webhook endpoints to preserve raw body
+    app.addContentTypeParser(
+        'application/json',
+        { parseAs: 'string' },
+        function (req, body, done) {
+            try {
+                const bodyStr = body as string;
+
+                // Handle empty body case - common for DELETE, GET requests
+                if (!bodyStr || bodyStr.trim() === '') {
+                    (req as any).rawBody = bodyStr;
+                    // For DELETE and GET methods, empty body is expected
+                    if (req.method === 'DELETE' || req.method === 'GET') {
+                        done(null, undefined);
+                        return;
+                    }
+                    // For other methods, return empty object
+                    done(null, {});
+                    return;
+                }
+
+                const json = JSON.parse(bodyStr);
+                // Store raw body for webhook signature verification
+                (req as any).rawBody = bodyStr;
+                done(null, json);
+            } catch (err: any) {
+                log({ module: 'content-parser', level: 'error' }, `JSON parse error on ${req.method} ${req.url}: ${err.message}, body: "${body}"`);
+                err.statusCode = 400;
+                done(err, undefined);
+            }
+        }
+    );
 
     // GitHub OAuth parameters
     app.get('/v1/connect/github/params', {

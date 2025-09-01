@@ -7,7 +7,7 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 
-export function registerSessionRoutes(app: Fastify, eventRouter: EventRouter) {
+export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
 
     // Sessions API
     app.get('/v1/sessions', {

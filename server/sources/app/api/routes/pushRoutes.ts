@@ -2,7 +2,7 @@ import { z } from "zod";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 
-export function registerPushRoutes(app: Fastify) {
+export function pushRoutes(app: Fastify) {
     
     // Push Token Registration API
     app.post('/v1/push-tokens', {
