@@ -8,6 +8,10 @@ import { Stack } from 'expo-router';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { Modal } from '@/modal';
+import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -142,6 +146,58 @@ export default function NewSessionScreen() {
     const router = useRouter();
     const sessions = useSessions();
     const machines = useAllMachines();
+    
+    const handleStartSession = async (machineId: string, path: string) => {
+        try {
+            const machine = machines.find(m => m.id === machineId);
+            const homeDir = machine?.metadata?.homeDir;
+            const absolutePath = resolveAbsolutePath(path, homeDir);
+
+            const result = await machineSpawnNewSession({
+                machineId,
+                directory: absolutePath,
+                approvedNewDirectoryCreation: false
+            });
+
+            switch (result.type) {
+                case 'success': {
+                    navigateToSession(result.sessionId);
+                    break;
+                }
+                case 'requestToApproveDirectoryCreation': {
+                    const approved = await Modal.confirm(
+                        'Create Directory?',
+                        `The directory '${result.directory}' does not exist. Would you like to create it?`,
+                        { cancelText: t('common.cancel'), confirmText: 'Create' }
+                    );
+                    if (approved) {
+                        const retry = await machineSpawnNewSession({
+                            machineId,
+                            directory: absolutePath,
+                            approvedNewDirectoryCreation: true
+                        });
+                        if (retry.type === 'success') {
+                            navigateToSession(retry.sessionId);
+                        } else if (retry.type === 'error') {
+                            Modal.alert(t('common.error'), retry.errorMessage);
+                        }
+                    }
+                    break;
+                }
+                case 'error': {
+                    Modal.alert(t('common.error'), result.errorMessage);
+                    break;
+                }
+            }
+        } catch (error) {
+            let errorMessage = t('newSession.failedToStart');
+            if (error instanceof Error && !error.message.includes('Failed to spawn session')) {
+                errorMessage = error.message;
+            }
+            Modal.alert(t('common.error'), errorMessage);
+            throw error;
+        }
+    };
 
     // Group sessions by machineId and combine with machine status
     const machineGroups = React.useMemo(() => {
@@ -311,7 +367,6 @@ export default function NewSessionScreen() {
                                                 </Text>
                                             </Pressable>
                                         </View>
-                                        {/* Do not render a launcher here. Users pick a machine to open detail. */}
                                     </View>
                                 );
                             })}
