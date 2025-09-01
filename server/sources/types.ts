@@ -1,4 +1,4 @@
-import { GitHubProfile } from "./app/types";
+import { GitHubProfile } from "./app/api/types";
 import { ImageRef } from "./storage/files";
 
 export type AccountProfile = {

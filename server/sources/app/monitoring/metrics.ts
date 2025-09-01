@@ -1,6 +1,6 @@
 import fastify from 'fastify';
 import { db } from '@/storage/db';
-import { register } from '@/modules/metrics';
+import { register } from '@/app/monitoring/metrics2';
 import { log } from '@/utils/log';
 
 export async function createMetricsServer() {

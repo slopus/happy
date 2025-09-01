@@ -1,3 +1,7 @@
+import { FastifyBaseLogger, FastifyInstance } from "fastify";
+import { ZodTypeProvider } from "fastify-type-provider-zod";
+import { IncomingMessage, Server, ServerResponse } from "http";
+
 export interface GitHubProfile {
     id: number;
     login: string;
@@ -37,3 +41,11 @@ export interface GitHubProfile {
 export interface GitHubOrg {
     
 }
+
+export type Fastify = FastifyInstance<
+    Server<typeof IncomingMessage, typeof ServerResponse>,
+    IncomingMessage,
+    ServerResponse<IncomingMessage>,
+    FastifyBaseLogger,
+    ZodTypeProvider
+>;

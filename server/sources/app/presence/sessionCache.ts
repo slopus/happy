@@ -1,6 +1,6 @@
 import { db } from "@/storage/db";
 import { log } from "@/utils/log";
-import { sessionCacheCounter, databaseUpdatesSkippedCounter } from "@/modules/metrics";
+import { sessionCacheCounter, databaseUpdatesSkippedCounter } from "@/app/monitoring/metrics2";
 
 interface SessionCacheEntry {
     validUntil: number;

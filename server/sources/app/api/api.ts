@@ -7,10 +7,10 @@ import * as privacyKit from "privacy-kit";
 import { db } from "@/storage/db";
 import { Account, Prisma } from "@prisma/client";
 import { onShutdown } from "@/utils/shutdown";
-import { allocateSessionSeq, allocateUserSeq } from "@/services/seq";
+import { allocateSessionSeq, allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { AsyncLock } from "@/utils/lock";
-import { auth } from "@/modules/auth";
+import { auth } from "@/app/auth/auth";
 import {
     EventRouter,
     ClientConnection,
@@ -31,8 +31,8 @@ import {
     websocketEventsCounter,
     httpRequestsCounter,
     httpRequestDurationHistogram
-} from "@/modules/metrics";
-import { activityCache } from "@/modules/sessionCache";
+} from "@/app/monitoring/metrics2";
+import { activityCache } from "@/app/presence/sessionCache";
 import { encryptBytes, encryptString } from "@/modules/encrypt";
 import { GitHubProfile } from "./types";
 import { uploadImage } from "@/storage/uploadImage";

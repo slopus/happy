@@ -1,4 +1,4 @@
-import { GitHubProfile as GitHubProfileType, GitHubOrg as GitHubOrgType } from "../app/types";
+import { GitHubProfile as GitHubProfileType, GitHubOrg as GitHubOrgType } from "../app/api/types";
 import { ImageRef as ImageRefType } from "./files";
 declare global {
     namespace PrismaJson {

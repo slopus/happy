@@ -43,6 +43,7 @@ model Account {
     UsageReport         UsageReport[]
     Machine             Machine[]
     UploadedFile        UploadedFile[]
+    ServiceAccountToken ServiceAccountToken[]
 }
 
 model TerminalAuthRequest {
@@ -220,5 +221,20 @@ model UploadedFile {
     updatedAt DateTime @updatedAt
 
     @@unique([accountId, path])
+    @@index([accountId])
+}
+
+model ServiceAccountToken {
+    id          String    @id @default(cuid())
+    accountId   String
+    account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    vendor      String    
+    token       Bytes     // Encrypted token
+    metadata    Json?     // Optional vendor metadata
+    lastUsedAt  DateTime?
+    createdAt   DateTime  @default(now())
+    updatedAt   DateTime  @updatedAt
+    
+    @@unique([accountId, vendor])
     @@index([accountId])
 }
