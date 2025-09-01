@@ -125,24 +125,45 @@ interface SessionKillResponse {
     message: string;
 }
 
+// Response types for spawn session
+export type SpawnSessionResult = 
+    | { type: 'success'; sessionId: string }
+    | { type: 'requestToApproveDirectoryCreation'; directory: string }
+    | { type: 'error'; errorMessage: string };
+
+// Options for spawning a session
+export interface SpawnSessionOptions {
+    machineId: string;
+    directory: string;
+    approvedNewDirectoryCreation?: boolean;
+}
+
 // Exported session operation functions
 
 /**
  * Spawn a new remote session on a specific machine
  */
-export async function machineSpawnNewSession(machineId: string, directory: string): Promise<{ sessionId: string }> {
-    const result = await apiSocket.rpc<{
-        sessionId: string
-    }, {
-        type: 'spawn-in-directory'
-        directory: string
-        // Later we should add different types of spawns - like by sessionId
-    }>(
-        machineId,
-        'spawn-happy-session',
-        { type: 'spawn-in-directory', directory }
-    );
-    return result;
+export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
+    const { machineId, directory, approvedNewDirectoryCreation = false } = options;
+    
+    try {
+        const result = await apiSocket.rpc<SpawnSessionResult, {
+            type: 'spawn-in-directory'
+            directory: string
+            approvedNewDirectoryCreation?: boolean
+        }>(
+            machineId,
+            'spawn-happy-session',
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation }
+        );
+        return result;
+    } catch (error) {
+        // Handle RPC errors
+        return {
+            type: 'error',
+            errorMessage: error instanceof Error ? error.message : 'Failed to spawn session'
+        };
+    }
 }
 
 /**
