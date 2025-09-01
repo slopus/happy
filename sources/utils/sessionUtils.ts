@@ -2,12 +2,6 @@ import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
 
-// Re-export timeout constant for backward compatibility
-export const DISCONNECTED_TIMEOUT_MS = 120000;
-
-// Timeout for considering a session idle (30 seconds)
-export const IDLE_TIMEOUT_MS = 30000;
-
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 
 export interface SessionStatus {
@@ -36,7 +30,7 @@ export function useSessionStatus(session: Session): SessionStatus {
         return {
             state: 'disconnected',
             isConnected: false,
-            statusText: t('status.lastSeen', { time: formatLastSeen(session.presence) }),
+            statusText: t('status.lastSeen', { time: formatLastSeen(session.activeAt, false) }),
             shouldShowStatus: true,
             statusColor: '#999',
             statusDotColor: '#999'
@@ -146,21 +140,19 @@ export function getSessionSubtitle(session: Session): string {
 }
 
 /**
- * Checks if a session is currently online based on the presence field.
- * A session is considered online if presence is "online".
- * Note: This uses the 10-minute timeout. For UI consistency with
- * disconnected state, consider using getSessionState().isConnected instead.
+ * Checks if a session is currently online based on the active flag.
+ * A session is considered online if the active flag is true.
  */
 export function isSessionOnline(session: Session): boolean {
-    return session.presence === "online";
+    return session.active;
 }
 
 /**
  * Checks if a session should be shown in the active sessions group.
- * Now uses centralized presence logic from storage.ts
+ * Uses the active flag directly.
  */
 export function isSessionActive(session: Session): boolean {
-    return session.presence === "online";
+    return session.active;
 }
 
 /**
@@ -186,16 +178,17 @@ export function formatOSPlatform(platform?: string): string {
 
 /**
  * Formats the last seen time of a session into a human-readable relative time.
- * @param presence - Session presence ("online" or timestamp)
+ * @param activeAt - Timestamp when the session was last active
+ * @param isActive - Whether the session is currently active
  * @returns Formatted string like "Active now", "5 minutes ago", "2 hours ago", or a date
  */
-export function formatLastSeen(presence: "online" | number): string {
-    if (presence === "online") {
+export function formatLastSeen(activeAt: number, isActive: boolean = false): string {
+    if (isActive) {
         return t('status.activeNow');
     }
 
     const now = Date.now();
-    const diffMs = now - presence;
+    const diffMs = now - activeAt;
     const diffSeconds = Math.floor(diffMs / 1000);
     const diffMinutes = Math.floor(diffSeconds / 60);
     const diffHours = Math.floor(diffMinutes / 60);
@@ -211,7 +204,7 @@ export function formatLastSeen(presence: "online" | number): string {
         return t('sessionHistory.daysAgo', { count: diffDays });
     } else {
         // Format as date
-        const date = new Date(presence);
+        const date = new Date(activeAt);
         const options: Intl.DateTimeFormatOptions = {
             month: 'short',
             day: 'numeric',

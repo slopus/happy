@@ -18,29 +18,21 @@ import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/Realtim
 import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
 
-// Timeout for considering a session disconnected (2 minutes)
-const DISCONNECTED_TIMEOUT_MS = 120000;
-
 /**
  * Centralized session online state resolver
  * Returns either "online" (string) or a timestamp (number) for last seen
  */
 function resolveSessionOnlineState(session: { active: boolean; activeAt: number }): "online" | number {
-    const now = Date.now();
-    const threshold = now - DISCONNECTED_TIMEOUT_MS;
-    
-    // Session is online if it's active and was seen recently
-    const isOnline = session.active && session.activeAt > threshold;
-    
-    return isOnline ? "online" : session.activeAt;
+    // Session is online if the active flag is true
+    return session.active ? "online" : session.activeAt;
 }
 
 /**
  * Checks if a session should be shown in the active sessions group
  */
 function isSessionActive(session: { active: boolean; activeAt: number }): boolean {
-    const now = Date.now();
-    return session.active && !!session.activeAt && (session.activeAt >= now - DISCONNECTED_TIMEOUT_MS);
+    // Use the active flag directly, no timeout checks
+    return session.active;
 }
 
 // Known entitlement IDs
@@ -95,7 +87,6 @@ interface StorageState {
     applyProfile: (profile: Profile) => void;
     applyGitStatus: (sessionId: string, status: GitStatus | null) => void;
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
-    recalculateOnline: () => void;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
@@ -442,7 +433,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // Run reducer with agentState
                 const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState);
                 const processedMessages = reducerResult.messages;
-                for(let message of processedMessages) {
+                for (let message of processedMessages) {
                     changed.add(message.id);
                 }
                 if (reducerResult.hasReadyEvent) {
@@ -544,111 +535,6 @@ export const storage = create<StorageState>()((set, get) => {
 
             return result;
         }),
-        recalculateOnline: () => set((state) => {
-            const now = Date.now();
-            const threshold = now - DISCONNECTED_TIMEOUT_MS;
-
-            // Update presence for all sessions using centralized resolver
-            const updatedSessions: Record<string, Session> = {};
-            Object.entries(state.sessions).forEach(([id, session]) => {
-                const isDisconnected = !session.activeAt || session.activeAt <= threshold;
-
-                // Update session with presence and clear thinking/active if disconnected
-                updatedSessions[id] = {
-                    ...session,
-                    presence: resolveSessionOnlineState(session),
-                    // Clear thinking and active states when disconnected
-                    thinking: isDisconnected ? false : session.thinking,
-                    active: isDisconnected ? false : session.active
-                };
-            });
-
-            // Build set of session IDs that should be active
-            const shouldBeActiveSet = new Set<string>();
-            Object.values(updatedSessions).forEach(session => {
-                if (isSessionActive(session)) {
-                    shouldBeActiveSet.add(session.id);
-                }
-            });
-
-            // Build set of currently active session IDs
-            const currentActiveSet = new Set<string>();
-            if (state.sessionsData) {
-                let inOnlineSection = false;
-                for (const item of state.sessionsData) {
-                    if (item === 'online') {
-                        inOnlineSection = true;
-                    } else if (item === 'offline') {
-                        inOnlineSection = false;
-                    } else if (typeof item !== 'string' && inOnlineSection) {
-                        currentActiveSet.add(item.id);
-                    }
-                }
-            }
-
-            // Check if active/inactive categorization has changed
-            const setsAreEqual = shouldBeActiveSet.size === currentActiveSet.size &&
-                [...shouldBeActiveSet].every(id => currentActiveSet.has(id));
-
-            // Always update sessions to ensure presence changes trigger re-renders
-            // Only skip rebuilding sessionsData if categorization hasn't changed
-            if (setsAreEqual) {
-                // Build new unified list view data with updated sessions
-                const sessionListViewData = buildSessionListViewData(
-                    updatedSessions
-                );
-
-                return {
-                    ...state,
-                    sessions: updatedSessions,
-                    sessionListViewData
-                };
-            }
-
-            // Rebuild active and inactive lists when categorization has changed
-            const newActiveSessions: Session[] = [];
-            const newInactiveSessions: Session[] = [];
-
-            Object.values(updatedSessions).forEach(session => {
-                if (shouldBeActiveSet.has(session.id)) {
-                    newActiveSessions.push(session);
-                } else {
-                    newInactiveSessions.push(session);
-                }
-            });
-
-            // Sort both arrays by updatedAt
-            newActiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-            newInactiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-
-            // Build flat list data for FlashList
-            const listData: SessionListItem[] = [];
-
-            if (newActiveSessions.length > 0) {
-                listData.push('online');
-                listData.push(...newActiveSessions);
-            }
-
-            // Legacy sessionsData - to be removed
-            // Machines are now integrated into sessionListViewData
-
-            if (newInactiveSessions.length > 0) {
-                listData.push('offline');
-                listData.push(...newInactiveSessions);
-            }
-
-            // Build new unified list view data
-            const sessionListViewData = buildSessionListViewData(
-                updatedSessions
-            );
-
-            return {
-                ...state,
-                sessions: updatedSessions,
-                sessionsData: listData,  // Legacy - to be removed
-                sessionListViewData
-            };
-        }),
         applySettingsLocal: (settings: Partial<Settings>) => set((state) => {
             saveSettings(applySettings(state.settings, settings), state.settingsVersion ?? 0);
             return {
@@ -698,7 +584,7 @@ export const storage = create<StorageState>()((set, get) => {
         applyGitStatus: (sessionId: string, status: GitStatus | null) => set((state) => {
             // Update project git status as well
             projectManager.updateSessionProjectGitStatus(sessionId, status);
-            
+
             return {
                 ...state,
                 sessionGitStatus: {
@@ -835,7 +721,7 @@ export const storage = create<StorageState>()((set, get) => {
         applyMachines: (machines: Machine[], replace: boolean = false) => set((state) => {
             // Either replace all machines or merge updates
             let mergedMachines: Record<string, Machine>;
-            
+
             if (replace) {
                 // Replace entire machine state (used by fetchMachines)
                 mergedMachines = {};
@@ -849,12 +735,12 @@ export const storage = create<StorageState>()((set, get) => {
                     mergedMachines[machine.id] = machine;
                 });
             }
-            
+
             // Rebuild sessionListViewData to reflect machine changes
             const sessionListViewData = buildSessionListViewData(
                 state.sessions
             );
-            
+
             return {
                 ...state,
                 machines: mergedMachines,
