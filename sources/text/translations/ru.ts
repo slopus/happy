@@ -130,6 +130,8 @@ export const ru: TranslationStructure = {
             gradient: 'Градиентная',
             brutalist: 'Бруталистская',
         },
+        compactSessionView: 'Компактный вид сессий',
+        compactSessionViewDescription: 'Отображать активные сессии в более компактном виде',
     },
 
     settingsFeatures: {

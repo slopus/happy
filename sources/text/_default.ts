@@ -138,6 +138,8 @@ export const en = {
             gradient: 'Gradient',
             brutalist: 'Brutalist',
         },
+        compactSessionView: 'Compact Session View',
+        compactSessionViewDescription: 'Show active sessions in a more compact layout',
     },
 
     settingsFeatures: {
