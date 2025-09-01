@@ -7,7 +7,6 @@ import { decodeBase64, decrypt, encodeBase64, encrypt } from './encryption';
 import { PushNotificationClient } from './pushNotifications';
 import { configuration } from '@/configuration';
 import chalk from 'chalk';
-import { clearMachineId } from '@/persistence';
 
 export class ApiClient {
   private readonly token: string;
@@ -154,5 +153,36 @@ export class ApiClient {
 
   push(): PushNotificationClient {
     return this.pushClient;
+  }
+
+  /**
+   * Register a vendor API token with the server
+   * The token is sent as a JSON string - server handles encryption
+   */
+  async registerVendorToken(vendor: 'openai' | 'anthropic' | 'gemini', apiKey: any): Promise<void> {
+    try {
+      const response = await axios.post(
+        `${configuration.serverUrl}/v1/connect/${vendor}/register`,
+        {
+          token: JSON.stringify(apiKey)
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${this.token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 5000
+        }
+      );
+
+      if (response.status !== 200 && response.status !== 201) {
+        throw new Error(`Server returned status ${response.status}`);
+      }
+
+      logger.debug(`[API] Vendor token for ${vendor} registered successfully`);
+    } catch (error) {
+      logger.debug(`[API] [ERROR] Failed to register vendor token:`, error);
+      throw new Error(`Failed to register vendor token: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
   }
 }

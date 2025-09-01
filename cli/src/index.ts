@@ -26,6 +26,7 @@ import { ApiClient } from './api/api'
 import { runDoctorCommand } from './ui/doctor'
 import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 import { handleAuthCommand } from './commands/auth'
+import { handleConnectCommand } from './commands/connect'
 import { clearCredentials, clearMachineId, writeCredentials } from './persistence'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
 import { render } from 'ink'
@@ -60,6 +61,18 @@ import { DaemonPrompt } from './ui/ink/DaemonPrompt'
     // Handle auth subcommands
     try {
       await handleAuthCommand(args.slice(1));
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
+  } else if (subcommand === 'connect') {
+    // Handle connect subcommands
+    try {
+      await handleConnectCommand(args.slice(1));
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {
