@@ -138,6 +138,8 @@ export const es: TranslationStructure = {
             gradient: 'Gradiente',
             brutalist: 'Brutalista',
         },
+        compactSessionView: 'Vista compacta de sesiones',
+        compactSessionViewDescription: 'Mostrar sesiones activas en un diseño más compacto',
     },
 
     settingsFeatures: {

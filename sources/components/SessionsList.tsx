@@ -7,7 +7,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroup } from './ActiveSessionsGroup';
+import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useSetting } from '@/sync/storage';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
@@ -157,6 +159,7 @@ export function SessionsList() {
     const pathname = usePathname();
     const isTablet = useIsTablet();
     const navigateToSession = useNavigateToSession();
+    const compactSessionView = useSetting('compactSessionView');
     const selectable = isTablet;
     const dataWithSelected = selectable ? React.useMemo(() => {
         return data?.map(item => ({
@@ -206,8 +209,10 @@ export function SessionsList() {
                     const parts = pathname.split('/');
                     selectedId = parts[2]; // parts[0] is empty, parts[1] is 'session', parts[2] is the ID
                 }
+
+                const ActiveComponent = compactSessionView ? ActiveSessionsGroupCompact : ActiveSessionsGroup;
                 return (
-                    <ActiveSessionsGroup
+                    <ActiveComponent
                         sessions={item.sessions}
                         selectedSessionId={selectedId}
                     />
@@ -229,14 +234,14 @@ export function SessionsList() {
                 // Determine card styling based on position within date group
                 const prevItem = index > 0 && dataWithSelected ? dataWithSelected[index - 1] : null;
                 const nextItem = index < (dataWithSelected?.length || 0) - 1 && dataWithSelected ? dataWithSelected[index + 1] : null;
-                
+
                 const isFirst = prevItem?.type === 'header';
                 const isLast = nextItem?.type === 'header' || nextItem == null || nextItem?.type === 'active-sessions';
                 const isSingle = isFirst && isLast;
-                
+
                 return (
-                    <SessionItem 
-                        session={item.session} 
+                    <SessionItem
+                        session={item.session}
                         selected={item.selected}
                         isFirst={isFirst}
                         isLast={isLast}
@@ -244,7 +249,7 @@ export function SessionsList() {
                     />
                 );
         }
-    }, [pathname, dataWithSelected]);
+    }, [pathname, dataWithSelected, compactSessionView]);
 
 
     // Remove this section as we'll use FlatList for all items now
@@ -276,8 +281,8 @@ export function SessionsList() {
 }
 
 // Sub-component that handles session message logic
-const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }: { 
-    session: Session; 
+const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }: {
+    session: Session;
     selected?: boolean;
     isFirst?: boolean;
     isLast?: boolean;
@@ -300,8 +305,8 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 styles.sessionItem,
                 selected && styles.sessionItemSelected,
                 isSingle ? styles.sessionItemSingle :
-                isFirst ? styles.sessionItemFirst :
-                isLast ? styles.sessionItemLast : {}
+                    isFirst ? styles.sessionItemFirst :
+                        isLast ? styles.sessionItemLast : {}
             ]}
             onPressIn={() => {
                 if (isTablet) {
