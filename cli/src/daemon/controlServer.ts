@@ -40,27 +40,46 @@ export function startDaemonControlServer({
         body: z.object({
           sessionId: z.string(),
           metadata: z.any() // Metadata type from API
-        })
+        }),
+        response: {
+          200: z.object({
+            status: z.literal('ok')
+          })
+        }
       }
-    }, async (request, reply) => {
+    }, async (request) => {
       const { sessionId, metadata } = request.body;
 
       logger.debug(`[CONTROL SERVER] Session started: ${sessionId}`);
       onHappySessionWebhook(sessionId, metadata);
 
-      return { status: 'ok' };
+      return { status: 'ok' as const };
     });
 
     // List all tracked sessions
-    typed.post('/list', async (request, reply) => {
+    typed.post('/list', {
+      schema: {
+        response: {
+          200: z.object({
+            children: z.array(z.object({
+              startedBy: z.string(),
+              happySessionId: z.string(),
+              pid: z.number()
+            }))
+          })
+        }
+      }
+    }, async () => {
       const children = getChildren();
       logger.debug(`[CONTROL SERVER] Listing ${children.length} sessions`);
-      return { children: 
-        children.map(child => {
-          // Remove not cleanly serializable properties
-          delete child.childProcess;
-          return child; 
-        })
+      return { 
+        children: children
+          .filter(child => child.happySessionId !== undefined)
+          .map(child => ({
+            startedBy: child.startedBy,
+            happySessionId: child.happySessionId!,
+            pid: child.pid
+          }))
       }
     });
 
@@ -69,9 +88,14 @@ export function startDaemonControlServer({
       schema: {
         body: z.object({
           sessionId: z.string()
-        })
+        }),
+        response: {
+          200: z.object({
+            success: z.boolean()
+          })
+        }
       }
-    }, async (request, reply) => {
+    }, async (request) => {
       const { sessionId } = request.body;
 
       logger.debug(`[CONTROL SERVER] Stop session request: ${sessionId}`);
@@ -85,7 +109,24 @@ export function startDaemonControlServer({
         body: z.object({
           directory: z.string(),
           sessionId: z.string().optional()
-        })
+        }),
+        response: {
+          200: z.object({
+            success: z.boolean(),
+            sessionId: z.string().optional(),
+            approvedNewDirectoryCreation: z.boolean().optional()
+          }),
+          409: z.object({
+            success: z.boolean(),
+            requiresUserApproval: z.boolean().optional(),
+            actionRequired: z.string().optional(),
+            directory: z.string().optional()
+          }),
+          500: z.object({
+            success: z.boolean(),
+            error: z.string().optional()
+          })
+        }
       }
     }, async (request, reply) => {
       const { directory, sessionId } = request.body;
@@ -95,6 +136,14 @@ export function startDaemonControlServer({
 
       switch (result.type) {
         case 'success':
+          // Check if sessionId exists, if not return error
+          if (!result.sessionId) {
+            reply.code(500);
+            return {
+              success: false,
+              error: 'Failed to spawn session: no session ID returned'
+            };
+          }
           return {
             success: true,
             sessionId: result.sessionId,
@@ -120,7 +169,15 @@ export function startDaemonControlServer({
     });
 
     // Stop daemon
-    typed.post('/stop', async (request, reply) => {
+    typed.post('/stop', {
+      schema: {
+        response: {
+          200: z.object({
+            status: z.string()
+          })
+        }
+      }
+    }, async () => {
       logger.debug('[CONTROL SERVER] Stop daemon request received');
 
       // Give time for response to arrive
@@ -130,27 +187,6 @@ export function startDaemonControlServer({
       }, 50);
 
       return { status: 'stopping' };
-    });
-
-    // Dev endpoint to simulate errors (hidden from help)
-    typed.post('/dev-simulate-error', {
-      schema: {
-        body: z.object({
-          error: z.string()
-        })
-      }
-    }, async (request, reply) => {
-      const { error } = request.body;
-      
-      logger.debug(`[CONTROL SERVER] Dev: Simulating error: ${error}`);
-      
-      // Throw the error after a small delay to allow response
-      setTimeout(() => {
-        logger.debug(`[CONTROL SERVER] Dev: Throwing simulated error now`);
-        throw new Error(error);
-      }, 100);
-      
-      return { status: 'error will be thrown' };
     });
 
     app.listen({ port: 0, host: '127.0.0.1' }, (err, address) => {

@@ -17,7 +17,7 @@ import packageJson from '../package.json'
 import { z } from 'zod'
 import { spawn } from 'child_process'
 import { startDaemon } from './daemon/run'
-import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningSameVersion, stopDaemon } from './daemon/controlClient'
+import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './daemon/controlClient'
 import { getLatestDaemonLog } from './ui/logger'
 import { killRunawayHappyProcesses } from './daemon/doctor'
 import { install } from './daemon/install'
@@ -309,59 +309,22 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
       credentials
     } = await authAndSetupMachineIfNeeded();
 
-    // Daemon auto-start preference (machine already set up)
-    let settings = await readSettings();
-    if (settings && settings.daemonAutoStartWhenRunningHappy === undefined) {
-      const shouldAutoStart = await new Promise<boolean>((resolve) => {
-        let hasResolved = false;
+    // Always auto-start daemon for simplicity
+    logger.debug('Ensuring Happy background service is running & matches our version...');
 
-        const onSelect = (autoStart: boolean) => {
-          if (!hasResolved) {
-            hasResolved = true;
-            app.unmount();
-            resolve(autoStart);
-          }
-        };
+    if (!(await isDaemonRunningCurrentlyInstalledHappyVersion())) {
+      logger.debug('Starting Happy background service...');
 
-        const app = render(React.createElement(DaemonPrompt, { onSelect }), {
-          exitOnCtrlC: false,
-          patchConsole: false
-        });
-      });
+      // Use the built binary to spawn daemon
+      const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
+        detached: true,
+        stdio: 'ignore',
+        env: process.env
+      })
+      daemonProcess.unref();
 
-      settings = await updateSettings(settings => ({
-        ...settings,
-        daemonAutoStartWhenRunningHappy: shouldAutoStart
-      }));
-
-      if (shouldAutoStart) {
-        console.log(chalk.green('\n✓ Happy will start the background service automatically'));
-        console.log(chalk.gray('  The service will run whenever you use the happy command'));
-      } else {
-        console.log(chalk.yellow('\n  You can enable this later by running: happy daemon install'));
-      }
-    }
-
-    // Auto-start daemon if enabled and experimental features are enabled
-    if (settings && settings.daemonAutoStartWhenRunningHappy) {
-      logger.debug('Ensuring Happy background service is running & matches our version...');
-
-      if (!(await isDaemonRunningSameVersion())) {
-        logger.debug('Starting Happy background service...');
-
-        // Use the built binary to spawn daemon
-        const daemonProcess = spawnHappyCLI(['daemon', 'start-sync'], {
-          detached: true,
-          stdio: 'ignore',
-          env: process.env
-        })
-        daemonProcess.unref();
-
-        // Give daemon a moment to write PID file
-        await new Promise(resolve => setTimeout(resolve, 100));
-      } else {
-        logger.debug('Happy background service is running & matches our version');
-      }
+      // Give daemon a moment to write PID & port file
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
 
     // Start the CLI

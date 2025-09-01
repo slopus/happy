@@ -14,7 +14,7 @@ import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
 import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock } from '@/persistence';
 
-import { cleanupDaemonState, isDaemonRunningSameVersion, stopDaemon } from './controlClient';
+import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
 import { existsSync, mkdir, mkdirSync, readFileSync } from 'fs';
 import { join, resolve } from 'path';
@@ -97,7 +97,7 @@ export async function startDaemon(): Promise<void> {
 
   // Check if already running
   // Check if running daemon version matches current CLI version
-  const runningDaemonVersionMatches = await isDaemonRunningSameVersion();
+  const runningDaemonVersionMatches = await isDaemonRunningCurrentlyInstalledHappyVersion();
   if (!runningDaemonVersionMatches) {
     logger.debug('[DAEMON RUN] Daemon version mismatch detected, restarting daemon with current CLI version');
     await stopDaemon();

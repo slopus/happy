@@ -38,7 +38,7 @@ export interface DaemonLocallyPersistedState {
   daemonLogPath?: string;
 }
 
-export async function readSettings(): Promise<Settings | null> {
+export async function readSettings(): Promise<Settings> {
   if (!existsSync(configuration.settingsFile)) {
     return { ...defaultSettings }
   }

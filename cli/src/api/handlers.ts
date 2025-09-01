@@ -111,7 +111,7 @@ interface KillSessionResponse {
 
 /*
  * Spawn Session Options and Result
- * This rpc type is used by the daemon, all other RPCs here are for sessions.
+ * This rpc type is used by the daemon, all other RPCs here are for sessions
 */
 
 export interface SpawnSessionOptions {

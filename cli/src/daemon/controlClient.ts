@@ -139,7 +139,7 @@ export async function checkIfDaemonRunningAndCleanupStaleState(): Promise<boolea
  * 
  * @returns true if versions match, false if versions differ or no daemon running
  */
-export async function isDaemonRunningSameVersion(): Promise<boolean> {
+export async function isDaemonRunningCurrentlyInstalledHappyVersion(): Promise<boolean> {
   logger.debug('[DAEMON CONTROL] Checking if daemon is running same version');
   const runningDaemon = await checkIfDaemonRunningAndCleanupStaleState();
   if (!runningDaemon) {
@@ -154,8 +154,13 @@ export async function isDaemonRunningSameVersion(): Promise<boolean> {
   }
   
   try {
-    logger.debug(`[DAEMON CONTROL] Current CLI version: ${configuration.currentCliVersion}, Daemon started with version: ${state.startedWithCliVersion}`);
-    return configuration.currentCliVersion === state.startedWithCliVersion;
+    // Read package.json on demand from disk - so we are guaranteed to get the latest version
+    const packageJsonPath = join(projectPath(), 'package.json');
+    const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
+    const currentCliVersion = packageJson.version;
+    
+    logger.debug(`[DAEMON CONTROL] Current CLI version: ${currentCliVersion}, Daemon started with version: ${state.startedWithCliVersion}`);
+    return currentCliVersion === state.startedWithCliVersion;
     
     // PREVIOUS IMPLEMENTATION - Keeping this commented in case we need it
     // Kirill does not understand how the upgrade of npm packages happen and whether 

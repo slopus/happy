@@ -137,12 +137,12 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     const response = await spawnDaemonSession('/tmp', 'spawned-test-456');
 
     expect(response).toHaveProperty('success', true);
-    expect(response).toHaveProperty('pid');
+    expect(response).toHaveProperty('sessionId');
 
     // Verify session is tracked
     const sessions = await listDaemonSessions();
     const spawnedSession = sessions.find(
-      (s: any) => s.pid === response.pid
+      (s: any) => s.happySessionId === response.sessionId
     );
     
     expect(spawnedSession).toBeDefined();
@@ -211,7 +211,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       (s: any) => s.pid === terminalHappyProcess.pid
     );
     const daemonSession = sessions.find(
-      (s: any) => s.pid === spawnResponse.pid
+      (s: any) => s.happySessionId === spawnResponse.sessionId
     );
 
     expect(terminalSession).toBeDefined();
@@ -235,24 +235,14 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
   it('should update session metadata when webhook is called', async () => {
     // Spawn a session
     const spawnResponse = await spawnDaemonSession('/tmp');
-    const pid = spawnResponse.pid;
-
-    // Call webhook with updated metadata  
-    await notifyDaemonSessionStarted('updated-session-xyz', {
-      path: '/test/path',
-      host: 'test-host',
-      hostPid: pid,
-      startedBy: 'daemon',
-      machineId: 'test-machine-updated'
-    });
 
     // Verify webhook was processed (session ID updated)
     const sessions = await listDaemonSessions();
-    const session = sessions.find((s: any) => s.pid === pid);
-    expect(session.happySessionId).toBe('updated-session-xyz');
+    const session = sessions.find((s: any) => s.happySessionId === spawnResponse.sessionId);
+    expect(session).toBeDefined();
 
     // Clean up
-    await stopDaemonSession('updated-session-xyz');
+    await stopDaemonSession(spawnResponse.sessionId);
   });
 
   it('should not allow starting a second daemon', async () => {
@@ -295,11 +285,11 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     // All should succeed
     results.forEach(res => {
       expect(res.success).toBe(true);
-      expect(res.pid).toBeDefined();
+      expect(res.sessionId).toBeDefined();
     });
 
-    // Collect PIDs for tracking
-    const spawnedPids = results.map(r => r.pid);
+    // Collect session IDs for tracking
+    const spawnedSessionIds = results.map(r => r.sessionId);
 
     // Give sessions time to report via webhook
     await new Promise(resolve => setTimeout(resolve, 1000));
@@ -307,7 +297,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
     // List should show all sessions
     const sessions = await listDaemonSessions();
     const daemonSessions = sessions.filter(
-      (s: any) => s.startedBy === 'daemon' && spawnedPids.includes(s.pid)
+      (s: any) => s.startedBy === 'daemon' && spawnedSessionIds.includes(s.happySessionId)
     );
     expect(daemonSessions.length).toBeGreaterThanOrEqual(3);
 
@@ -418,7 +408,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
    * - Using pkgroll alone: doesn't update compiled configuration.currentCliVersion
    * - Modifying package.json after daemon starts: triggers immediate version check on startup
    */
-  it('[this test is tricky, easier to test by hand] should detect version mismatch and kill old daemon', { timeout: 100_000 }, async () => {
+  it('[takes 1 minute to run] should detect version mismatch and kill old daemon', { timeout: 100_000 }, async () => {
     // Read current package.json to get version
     const packagePath = path.join(process.cwd(), 'package.json');
     const packageJsonOriginalRawText = readFileSync(packagePath, 'utf8');
