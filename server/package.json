@@ -16,7 +16,10 @@
     "generate": "prisma generate",
     "postinstall": "prisma generate",
     "db": "docker run -d -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=handy -v $(pwd)/.pgdata:/var/lib/postgresql/data -p 5432:5432 postgres",
-    "redis": "docker run -d -p 6379:6379 redis"
+    "redis": "docker run -d -p 6379:6379 redis",
+    "s3": "docker run -d --name minio -p 9000:9000 -p 9001:9001 -e MINIO_ROOT_USER=minioadmin -e MINIO_ROOT_PASSWORD=minioadmin -v $(pwd)/.minio/data:/data minio/minio server /data --console-address :9001",
+    "s3:down": "docker rm -f minio || true",
+    "s3:init": "dotenv -e .env.dev -- docker run --rm --network container:minio --entrypoint /bin/sh minio/mc -c \"mc alias set local http://localhost:9000 $S3_ACCESS_KEY $S3_SECRET_KEY && mc mb -p local/$S3_BUCKET || true && mc anonymous set download local/$S3_BUCKET\""
   },
   "devDependencies": {
     "@types/chalk": "^2.2.0",

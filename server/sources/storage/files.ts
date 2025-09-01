@@ -1,8 +1,13 @@
 import * as Minio from 'minio';
 
+const s3Host = process.env.S3_HOST!;
+const s3Port = process.env.S3_PORT ? parseInt(process.env.S3_PORT, 10) : undefined;
+const s3UseSSL = process.env.S3_USE_SSL ? process.env.S3_USE_SSL === 'true' : true;
+
 export const s3client = new Minio.Client({
-    endPoint: process.env.S3_HOST!,
-    useSSL: true,
+    endPoint: s3Host,
+    port: s3Port,
+    useSSL: s3UseSSL,
     accessKey: process.env.S3_ACCESS_KEY!,
     secretKey: process.env.S3_SECRET_KEY!,
 });
