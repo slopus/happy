@@ -112,42 +112,39 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
 
     const styles = StyleSheet.create({
         container: {
-            minHeight: 60,
             paddingHorizontal: 12,
-            paddingVertical: 10,
+            paddingVertical: 8,
             justifyContent: 'center',
         },
         buttonContainer: {
-            flexDirection: 'row',
-            gap: 10,
+            flexDirection: 'column',
+            gap: 4,
+            alignItems: 'flex-start',
         },
         button: {
-            flex: 1,
-            paddingHorizontal: 20,
-            paddingVertical: 12,
-            borderRadius: 8,
-            backgroundColor: theme.colors.permissionButton.inactive.background,
-            alignItems: 'center',
+            paddingHorizontal: 12,
+            paddingVertical: 8,
+            borderRadius: 1,
+            backgroundColor: 'transparent',
+            alignItems: 'flex-start',
             justifyContent: 'center',
-            height: 44,
-            borderWidth: 1,
-            borderColor: theme.colors.permissionButton.inactive.border,
+            minHeight: 32,
+            borderLeftWidth: 3,
+            borderLeftColor: 'transparent',
+            alignSelf: 'stretch',
         },
         buttonAllow: {
-            backgroundColor: theme.colors.permissionButton.allow.background,
-            borderColor: theme.colors.permissionButton.allow.background,
+            backgroundColor: 'transparent',
         },
         buttonDeny: {
-            backgroundColor: theme.colors.permissionButton.deny.background,
-            borderColor: theme.colors.permissionButton.deny.background,
+            backgroundColor: 'transparent',
         },
         buttonAllowAll: {
-            backgroundColor: theme.colors.permissionButton.allowAll.background,
-            borderColor: theme.colors.permissionButton.allowAll.background,
+            backgroundColor: 'transparent',
         },
         buttonSelected: {
-            backgroundColor: theme.colors.permissionButton.selected.background,
-            borderColor: theme.colors.permissionButton.selected.border,
+            backgroundColor: 'transparent',
+            borderLeftColor: theme.colors.text,
         },
         buttonInactive: {
             opacity: 0.3,
@@ -161,29 +158,32 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             marginRight: 2,
         },
         buttonText: {
-            fontSize: 15,
-            fontWeight: '500',
-            color: theme.colors.permissionButton.inactive.text,
+            fontSize: 14,
+            fontWeight: '400',
+            color: theme.colors.textSecondary,
         },
         buttonTextAllow: {
-            color: theme.colors.permissionButton.allow.text,
+            color: theme.colors.permissionButton.allow.background,
+            fontWeight: '500',
         },
         buttonTextDeny: {
-            color: theme.colors.permissionButton.deny.text,
+            color: theme.colors.permissionButton.deny.background,
+            fontWeight: '500',
         },
         buttonTextAllowAll: {
-            color: theme.colors.permissionButton.allowAll.text,
+            color: theme.colors.permissionButton.allowAll.background,
+            fontWeight: '500',
         },
         buttonTextSelected: {
-            color: theme.colors.permissionButton.selected.text,
-            fontWeight: '600',
+            color: theme.colors.text,
+            fontWeight: '500',
         },
         buttonForSession: {
-            backgroundColor: theme.colors.permissionButton.allowAll.background,
-            borderColor: theme.colors.permissionButton.allowAll.background,
+            backgroundColor: 'transparent',
         },
         buttonTextForSession: {
-            color: theme.colors.permissionButton.allowAll.text,
+            color: theme.colors.permissionButton.allowAll.background,
+            fontWeight: '500',
         },
         loadingIndicatorAllow: {
             color: theme.colors.permissionButton.allow.background,
@@ -223,15 +223,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         <ActivityIndicator size="small" color={styles.loadingIndicatorAllow.color} />
                     ) : (
                         <View style={styles.buttonContent}>
-                            {isApprovedViaAllow && (
-                                <Ionicons name="checkmark" size={16} color={styles.iconApproved.color} style={styles.icon} />
-                            )}
                             <Text style={[
                                 styles.buttonText,
                                 isPending && styles.buttonTextAllow,
                                 isApprovedViaAllow && styles.buttonTextSelected
-                            ]}>
-                                Allow
+                            ]} numberOfLines={1} ellipsizeMode="tail">
+                                Yes
                             </Text>
                         </View>
                     )}
@@ -254,15 +251,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             <ActivityIndicator size="small" color={styles.loadingIndicatorAllowAll.color} />
                         ) : (
                             <View style={styles.buttonContent}>
-                                {isApprovedViaAllEdits && (
-                                    <Ionicons name="checkmark" size={16} color={styles.iconApproved.color} style={styles.icon} />
-                                )}
                                 <Text style={[
                                     styles.buttonText,
                                     isPending && styles.buttonTextAllowAll,
                                     isApprovedViaAllEdits && styles.buttonTextSelected
-                                ]}>
-                                    All edits
+                                ]} numberOfLines={1} ellipsizeMode="tail">
+                                    Yes, allow all edits during this session
                                 </Text>
                             </View>
                         )}
@@ -286,15 +280,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             <ActivityIndicator size="small" color={styles.loadingIndicatorForSession.color} />
                         ) : (
                             <View style={styles.buttonContent}>
-                                {isApprovedForSession && (
-                                    <Ionicons name="checkmark" size={16} color={styles.iconApproved.color} style={styles.icon} />
-                                )}
                                 <Text style={[
                                     styles.buttonText,
                                     isPending && styles.buttonTextForSession,
                                     isApprovedForSession && styles.buttonTextSelected
-                                ]}>
-                                    For session
+                                ]} numberOfLines={1} ellipsizeMode="tail">
+                                    Yes, don't ask again for this tool
                                 </Text>
                             </View>
                         )}
@@ -316,15 +307,12 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         <ActivityIndicator size="small" color={styles.loadingIndicatorDeny.color} />
                     ) : (
                         <View style={styles.buttonContent}>
-                            {isDenied && (
-                                <Ionicons name="close" size={16} color={styles.iconDenied.color} style={styles.icon} />
-                            )}
                             <Text style={[
                                 styles.buttonText,
                                 isPending && styles.buttonTextDeny,
                                 isDenied && styles.buttonTextSelected
-                            ]}>
-                                Deny
+                            ]} numberOfLines={1} ellipsizeMode="tail">
+                                No, and tell Claude what to do differently
                             </Text>
                         </View>
                     )}
