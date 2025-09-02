@@ -168,7 +168,7 @@ export async function runDoctorCommand(filter?: 'all' | 'daemon'): Promise<void>
         }
 
         // All Happy processes
-        const allProcesses = findAllHappyProcesses();
+        const allProcesses = await findAllHappyProcesses();
         if (allProcesses.length > 0) {
             console.log(chalk.bold('\n🔍 All Happy CLI Processes'));
 

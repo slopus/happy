@@ -53,6 +53,18 @@ jobs:
           exit 1
         }
         
+        echo "Testing happy doctor..."
+        timeout 30s happy doctor || {
+          echo "Error: happy doctor failed or timed out"
+          exit 1
+        }
+        
+        echo "Testing happy daemon status..."
+        timeout 10s happy daemon status || {
+          echo "Error: happy daemon status failed or timed out"
+          exit 1
+        }
+        
         echo "✅ Smoke test passed on Linux!"
 
   smoke-test-windows:
@@ -165,6 +177,30 @@ jobs:
         )
         if errorlevel 1 (
           echo Error: happy --version failed
+          exit /b 1
+        )
+        
+        rem Test doctor
+        echo Testing happy doctor...
+        if exist "%NPM_PREFIX%\happy.cmd" (
+          "%NPM_PREFIX%\happy.cmd" doctor
+        ) else (
+          happy doctor
+        )
+        if errorlevel 1 (
+          echo Error: happy doctor failed
+          exit /b 1
+        )
+        
+        rem Test daemon status
+        echo Testing happy daemon status...
+        if exist "%NPM_PREFIX%\happy.cmd" (
+          "%NPM_PREFIX%\happy.cmd" daemon status
+        ) else (
+          happy daemon status
+        )
+        if errorlevel 1 (
+          echo Error: happy daemon status failed
           exit /b 1
         )
         
