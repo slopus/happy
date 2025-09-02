@@ -1,19 +1,17 @@
 import React from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, Platform, Pressable, KeyboardAvoidingView } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import type { Session } from '@/sync/storageTypes';
-import { machineSpawnNewSession } from '@/sync/ops';
-import { storage } from '@/sync/storage';
-import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { useRouter } from 'expo-router';
 import { Stack } from 'expo-router';
-import { Modal } from '@/modal';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { MachineSessionLauncher } from '@/components/MachineSessionLauncher';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { Modal } from '@/modal';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 
@@ -151,6 +149,58 @@ export default function NewSessionScreen() {
     const navigateToSession = useNavigateToSession();
     const sessions = useSessions();
     const machines = useAllMachines();
+    
+    const handleStartSession = async (machineId: string, path: string) => {
+        try {
+            const machine = machines.find(m => m.id === machineId);
+            const homeDir = machine?.metadata?.homeDir;
+            const absolutePath = resolveAbsolutePath(path, homeDir);
+
+            const result = await machineSpawnNewSession({
+                machineId,
+                directory: absolutePath,
+                approvedNewDirectoryCreation: false
+            });
+
+            switch (result.type) {
+                case 'success': {
+                    navigateToSession(result.sessionId);
+                    break;
+                }
+                case 'requestToApproveDirectoryCreation': {
+                    const approved = await Modal.confirm(
+                        'Create Directory?',
+                        `The directory '${result.directory}' does not exist. Would you like to create it?`,
+                        { cancelText: t('common.cancel'), confirmText: 'Create' }
+                    );
+                    if (approved) {
+                        const retry = await machineSpawnNewSession({
+                            machineId,
+                            directory: absolutePath,
+                            approvedNewDirectoryCreation: true
+                        });
+                        if (retry.type === 'success') {
+                            navigateToSession(retry.sessionId);
+                        } else if (retry.type === 'error') {
+                            Modal.alert(t('common.error'), retry.errorMessage);
+                        }
+                    }
+                    break;
+                }
+                case 'error': {
+                    Modal.alert(t('common.error'), result.errorMessage);
+                    break;
+                }
+            }
+        } catch (error) {
+            let errorMessage = t('newSession.failedToStart');
+            if (error instanceof Error && !error.message.includes('Failed to spawn session')) {
+                errorMessage = error.message;
+            }
+            Modal.alert(t('common.error'), errorMessage);
+            throw error;
+        }
+    };
 
     // Group sessions by machineId and combine with machine status
     const machineGroups = React.useMemo(() => {
@@ -180,7 +230,7 @@ export default function NewSessionScreen() {
             sessions.forEach(item => {
                 if (typeof item === 'string') return; // Skip section headers
 
-                const session = item as Session;
+                const session = item as any;
                 if (session.metadata?.machineId) {
                     const machineId = session.metadata.machineId;
 
@@ -198,70 +248,6 @@ export default function NewSessionScreen() {
 
         return groups;
     }, [sessions, machines]);
-
-    const handleStartSession = async (machineId: string, path: string) => {
-        try {
-            // Get the machine metadata to access home directory
-            const machine = machines.find(m => m.id === machineId);
-            const homeDir = machine?.metadata?.homeDir;
-            
-            // Resolve ~ paths to absolute paths before sending to daemon
-            const absolutePath = resolveAbsolutePath(path, homeDir);
-            
-            console.log(`🚀 Starting session on machine ${machineId} at path: ${path} (resolved to: ${absolutePath})`);
-            const result = await machineSpawnNewSession(machineId, absolutePath);
-            console.log('🎉 daemon result', result);
-
-            if (result.sessionId) {
-                console.log('✅ Session spawned successfully:', result.sessionId);
-
-                // Poll for the session to appear in our local state
-                const pollInterval = 100;
-                const maxAttempts = 20;
-                let attempts = 0;
-
-                const pollForSession = () => {
-                    const state = storage.getState();
-                    const newSession = Object.values(state.sessions).find((s: Session) => s.id === result.sessionId);
-
-                    if (newSession) {
-                        console.log('📱 Navigating to session:', result.sessionId);
-                        navigateToSession(result.sessionId);
-                        return;
-                    }
-
-                    attempts++;
-                    if (attempts < maxAttempts) {
-                        setTimeout(pollForSession, pollInterval);
-                    } else {
-                        console.log('⏰ Polling timeout - session should appear soon');
-                        Modal.alert(t('newSession.sessionStarted'), t('newSession.sessionStartedMessage'));
-                        router.back();
-                    }
-                };
-
-                pollForSession();
-            } else {
-                console.error('❌ No sessionId in response:', result);
-                Modal.alert(t('common.error'), t('newSession.sessionSpawningFailed'));
-                throw new Error(t('newSession.sessionSpawningFailed'));
-            }
-        } catch (error) {
-            console.error('💥 Failed to start session', error);
-
-            let errorMessage = t('newSession.failedToStart');
-            if (error instanceof Error) {
-                if (error.message.includes('timeout')) {
-                    errorMessage = t('newSession.sessionTimeout');
-                } else if (error.message.includes('Socket not connected')) {
-                    errorMessage = t('newSession.notConnectedToServer');
-                }
-            }
-
-            Modal.alert(t('common.error'), errorMessage);
-            throw error; // Re-throw so the component knows it failed
-        }
-    };
 
 
     if (!sessions) {
@@ -284,15 +270,19 @@ export default function NewSessionScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: t('newSession.title'),
-                    headerBackTitle: t('common.back')
+                    headerTitle: 'Start New Session',
+                    headerBackTitle: 'Back'
                 }}
             />
-            <View style={styles.container}>
+            <KeyboardAvoidingView 
+                style={styles.container}
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
+            >
                 {sortedMachines.length === 0 ? (
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyText}>
-                            {t('newSession.noMachinesFound')}
+                            No machines found. Start a Happy session on your computer first.
                         </Text>
                     </View>
                 ) : (
@@ -305,14 +295,14 @@ export default function NewSessionScreen() {
                             {sortedMachines.every(([, data]) => !data.isOnline) && (
                                 <View style={styles.offlineWarning}>
                                     <Text style={styles.offlineWarningTitle}>
-                                        {t('newSession.allMachinesOffline')}
+                                        All machines appear offline
                                     </Text>
                                     <View style={{ marginTop: 4 }}>
                                         <Text style={styles.offlineWarningText}>
-                                            {t('newSession.machineOfflineHelp.computerOnline')}
+                                            • Is your computer online?
                                         </Text>
                                         <Text style={styles.offlineWarningText}>
-                                            {t('newSession.machineOfflineHelp.daemonRunning')}
+                                            • Is the Happy daemon running? Check with `happy daemon status`
                                         </Text>
                                     </View>
                                 </View>
@@ -358,7 +348,7 @@ export default function NewSessionScreen() {
                                                         styles.statusText,
                                                         { color: data.isOnline ? theme.colors.status.connected : theme.colors.status.disconnected }
                                                     ]}>
-                                                        {data.isOnline ? t('status.online') : t('status.offline')}
+                                                        {data.isOnline ? 'online' : 'offline'}
                                                     </Text>
                                                 </View>
                                             </View>
@@ -368,16 +358,14 @@ export default function NewSessionScreen() {
                                                 style={styles.detailsButton}
                                             >
                                                 <Text style={styles.detailsButtonText}>
-                                                    {t('newSession.machineDetails')}
+                                                    View machine details →
                                                 </Text>
                                             </Pressable>
                                         </View>
                                         <MachineSessionLauncher
                                             machineId={machineId}
-                                            recentPaths={Array.from(data.pathsWithTimestamps.entries())
-                                                .sort((a, b) => b[1] - a[1]) // Sort by timestamp (most recent first)
-                                                .map(([path]) => path)} // Extract just the paths
-                                            homeDir={homeDir}
+                                            recentPaths={Array.from(data.pathsWithTimestamps.entries()).sort((a, b) => b[1] - a[1]).map(([p]) => p)}
+                                            homeDir={machine.metadata?.homeDir}
                                             isOnline={data.isOnline}
                                             onStartSession={(path) => handleStartSession(machineId, path)}
                                         />
@@ -387,7 +375,7 @@ export default function NewSessionScreen() {
                         </View>
                     </ScrollView>
                 )}
-            </View>
+            </KeyboardAvoidingView>
         </>
     );
 }

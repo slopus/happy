@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
 import { Text } from '@/components/StyledText';
-import { router, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
 import { Ionicons } from '@expo/vector-icons';
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
@@ -14,10 +14,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
-import { t } from '@/text';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { useIsTablet } from '@/utils/responsive';
-import { ProjectGitStatus } from './ProjectGitStatus';
+import { CompactGitStatus } from './CompactGitStatus';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -57,6 +54,16 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         lineHeight: Platform.select({ ios: 18, default: 20 }),
         letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
         fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+    },
+    sectionHeaderMachine: {
+        ...Typography.default('regular'),
+        color: theme.colors.groupped.sectionTitle,
+        fontSize: Platform.select({ ios: 13, default: 14 }),
+        lineHeight: Platform.select({ ios: 18, default: 20 }),
+        letterSpacing: Platform.select({ ios: -0.08, default: 0.1 }),
+        fontWeight: Platform.select({ ios: 'normal', default: '500' }),
+        maxWidth: 150,
+        textAlign: 'right',
     },
     sessionRow: {
         height: 88,
@@ -185,20 +192,27 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
     const handleStartSession = async (machineId: string, path: string) => {
         try {
             setStartingSessionFor(`${machineId}-${path}`);
-            const result = await machineSpawnNewSession(machineId, path);
+            const result = await machineSpawnNewSession({
+                machineId,
+                directory: path,
+                // For now we assume you already have a path to start in
+                approvedNewDirectoryCreation: true
+            });
 
-            if (result.sessionId) {
+            // Use sessionId to check for success for backwards compatibility
+            if ('sessionId' in result && result.sessionId) {
                 // Poll for the session to appear in our local state
                 const pollInterval = 100;
                 const maxAttempts = 20;
                 let attempts = 0;
 
+                // Should be pretty much instant
                 const pollForSession = () => {
                     const state = storage.getState();
                     const newSession = Object.values(state.sessions).find((s: Session) => s.id === result.sessionId);
 
                     if (newSession) {
-                        router.replace(`/session/${result.sessionId}`);
+                        router.push(`/session/${result.sessionId}`);
                         setStartingSessionFor(null);
                         return;
                     }
@@ -207,7 +221,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                     if (attempts < maxAttempts) {
                         setTimeout(pollForSession, pollInterval);
                     } else {
-                        Modal.alert(t('newSession.sessionStarted'), t('newSession.sessionStartedMessage'));
+                        Modal.alert('Session started', 'The session was started but may take a moment to appear.');
                         setStartingSessionFor(null);
                     }
                 };
@@ -228,7 +242,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                 }
             }
 
-            Modal.alert(t('common.error'), errorMessage);
+            Modal.alert('Error', errorMessage);
             setStartingSessionFor(null);
         }
     };
@@ -247,14 +261,13 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
 
         sessions.forEach(session => {
             const projectPath = session.metadata?.path || '';
-            const unknownText = t('status.unknown');
-            const machineId = session.metadata?.machineId || unknownText;
+            const machineId = session.metadata?.machineId || 'unknown';
 
             // Get machine info
-            const machine = machineId !== unknownText ? machinesMap[machineId] : null;
+            const machine = machineId !== 'unknown' ? machinesMap[machineId] : null;
             const machineName = machine?.metadata?.displayName ||
                 machine?.metadata?.host ||
-                (machineId !== unknownText ? machineId : `<${unknownText}>`);
+                (machineId !== 'unknown' ? machineId : '<unknown>');
 
             // Get or create project group
             let projectGroup = groups.get(projectPath);
@@ -303,6 +316,11 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
     return (
         <View style={styles.container}>
             {sortedProjectGroups.map(([projectPath, projectGroup]) => {
+                // Get the first machine name from this project's machines
+                const firstMachine = Array.from(projectGroup.machines.values())[0];
+                const machineName = projectGroup.machines.size === 1
+                    ? firstMachine?.machineName
+                    : `${projectGroup.machines.size} machines`;
 
                 return (
                     <View key={projectPath}>
@@ -313,14 +331,9 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                     {projectGroup.displayPath}
                                 </Text>
                             </View>
-                            {/* Show git status instead of machine name */}
-                            {(() => {
-                                // Get the first session from any machine in this project
-                                const firstSession = Array.from(projectGroup.machines.values())[0]?.sessions[0];
-                                return firstSession ? (
-                                    <ProjectGitStatus sessionId={firstSession.id} />
-                                ) : null;
-                            })()}
+                            <Text style={styles.sectionHeaderMachine} numberOfLines={1}>
+                                {machineName}
+                            </Text>
                         </View>
 
                         {/* Card with just the sessions */}
@@ -387,7 +400,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                                 styles.newSessionButtonText,
                                                 (!hasOnlineMachine || isLoading) && styles.newSessionButtonTextDisabled
                                             ]}>
-                                                {isLoading ? t('newSession.startingSession') : t('newSession.startNewSessionInFolder')}
+                                                {isLoading ? 'Starting session...' : 'Start new session in this folder'}
                                             </Text>
                                         </View>
                                     </Pressable>
@@ -406,8 +419,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
-    const navigateToSession = useNavigateToSession();
-    const isTablet = useIsTablet();
+    const router = useRouter();
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
@@ -420,15 +432,8 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 showBorder && styles.sessionRowWithBorder,
                 selected && styles.sessionRowSelected
             ]}
-            onPressIn={() => {
-                if (isTablet) {
-                    navigateToSession(session.id);
-                }
-            }}
             onPress={() => {
-                if (!isTablet) {
-                    navigateToSession(session.id);
-                }
+                router.push(`/session/${session.id}`);
             }}
         >
             <View style={styles.avatarContainer}>
@@ -475,6 +480,8 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             </View>
                         )}
 
+                        {/* Git status indicator */}
+                        <CompactGitStatus sessionId={session.id} />
 
                         {/* Task status indicator */}
                         {session.todos && session.todos.length > 0 && (() => {

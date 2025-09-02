@@ -9,7 +9,7 @@ import { useUpdates } from "@/hooks/useUpdates";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
 import { router, Stack, useRouter } from "expo-router";
-import { useSessionListViewData, useEntitlement, useSocketStatus, useSetting } from "@/sync/storage";
+import { useSessionListViewData, useEntitlement, useSocketStatus, useSetting, useAllMachines } from "@/sync/storage";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { getRandomBytesAsync } from "expo-crypto";
 import { useIsTablet, useIsLandscape } from "@/utils/responsive";
@@ -20,7 +20,7 @@ import { FAB } from "@/components/FAB";
 import { HomeHeader, HomeHeaderNotAuth } from "@/components/HomeHeader";
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
-import { t } from '@/text';
+import { isMachineOnline } from '@/utils/machineUtils';
 
 export default function Home() {
     const auth = useAuth();
@@ -38,9 +38,15 @@ function Authenticated() {
     const isTablet = useIsTablet();
     const isExperimental = useSetting('experiments');
     const realtimeStatus = useRealtimeStatus();
+    const machines = useAllMachines();
 
     const handleNewSession = () => {
-        router.push('/new-session');
+        // If there's only one online machine, go directly to it
+        if (machines.length === 1) {
+            router.push(`/machine/${machines[0].id}`);
+        } else {
+            router.push('/new-session');
+        }
     }
 
     // Empty state in tabled view
@@ -136,16 +142,16 @@ function NotAuthenticated() {
                 style={styles.logo}
             />
             <Text style={styles.title}>
-                {t('welcome.title')}
+                Claude Code mobile client
             </Text>
             <Text style={styles.subtitle}>
-                {t('welcome.subtitle')}
+                End-to-end encrypted and your account is stored only on your device.
             </Text>
             {Platform.OS !== 'android' && Platform.OS !== 'ios' ? (
                 <>
                     <View style={styles.buttonContainer}>
                         <RoundButton
-                            title={t('welcome.loginWithMobileApp')}
+                            title="Login with mobile app"
                             onPress={() => {
                                 trackAccountRestored();
                                 router.push('/restore');
@@ -155,7 +161,7 @@ function NotAuthenticated() {
                     <View style={styles.buttonContainerSecondary}>
                         <RoundButton
                             size="normal"
-                            title={t('welcome.createAccount')}
+                            title="Create account"
                             action={createAccount}
                             display="inverted"
                         />
@@ -165,14 +171,14 @@ function NotAuthenticated() {
                 <>
                     <View style={styles.buttonContainer}>
                         <RoundButton
-                            title={t('welcome.createAccount')}
+                            title="Create account"
                             action={createAccount}
                         />
                     </View>
                     <View style={styles.buttonContainerSecondary}>
                         <RoundButton
                             size="normal"
-                            title={t('welcome.linkOrRestoreAccount')}
+                            title="Link or restore account"
                             onPress={() => {
                                 trackAccountRestored();
                                 router.push('/restore');
@@ -197,16 +203,16 @@ function NotAuthenticated() {
                 </View>
                 <View style={styles.landscapeContentSection}>
                     <Text style={styles.landscapeTitle}>
-                        {t('welcome.title')}
+                        Claude Code mobile client
                     </Text>
                     <Text style={styles.landscapeSubtitle}>
-                        {t('welcome.subtitle')}
+                        End-to-end encrypted and your account is stored only on your device.
                     </Text>
                     {Platform.OS !== 'android' && Platform.OS !== 'ios'
                         ? (<>
                             <View style={styles.landscapeButtonContainer}>
                                 <RoundButton
-                                    title={t('welcome.loginWithMobileApp')}
+                                    title="Login with mobile app"
                                     onPress={() => {
                                         trackAccountRestored();
                                         router.push('/restore');
@@ -216,7 +222,7 @@ function NotAuthenticated() {
                             <View style={styles.landscapeButtonContainerSecondary}>
                                 <RoundButton
                                     size="normal"
-                                    title={t('welcome.createAccount')}
+                                    title="Create account"
                                     action={createAccount}
                                     display="inverted"
                                 />
@@ -225,14 +231,14 @@ function NotAuthenticated() {
                         : (<>
                             <View style={styles.landscapeButtonContainer}>
                                 <RoundButton
-                                    title={t('welcome.createAccount')}
+                                    title="Create account"
                                     action={createAccount}
                                 />
                             </View>
                             <View style={styles.landscapeButtonContainerSecondary}>
                                 <RoundButton
                                     size="normal"
-                                    title={t('welcome.linkOrRestoreAccount')}
+                                    title="Link or restore account"
                                     onPress={() => {
                                         trackAccountRestored();
                                         router.push('/restore');
