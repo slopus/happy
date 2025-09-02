@@ -36,6 +36,7 @@ export const pl: TranslationStructure = {
         ok: 'OK',
         continue: 'Kontynuuj',
         back: 'Wstecz',
+        create: 'Utwórz',
         rename: 'Zmień nazwę',
         reset: 'Resetuj',
         logout: 'Wyloguj',
@@ -82,6 +83,7 @@ export const pl: TranslationStructure = {
     settings: {
         title: 'Ustawienia',
         connectedAccounts: 'Połączone konta',
+        connectAccount: 'Połącz konto',
         github: 'GitHub',
         machines: 'Maszyny',
         features: 'Funkcje',
@@ -201,6 +203,10 @@ export const pl: TranslationStructure = {
             `Ponów próbę za ${seconds} ${plural({ count: seconds, one: 'sekundę', few: 'sekundy', many: 'sekund' })}`,
         errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
             `${message} (Błąd ${code})`,
+        disconnectServiceFailed: ({ service }: { service: string }) => 
+            `Nie udało się rozłączyć ${service}`,
+        connectServiceFailed: ({ service }: { service: string }) =>
+            `Nie udało się połączyć z ${service}. Spróbuj ponownie.`,
     },
 
     newSession: {
@@ -213,8 +219,10 @@ export const pl: TranslationStructure = {
             daemonRunning: '• Czy daemon Happy działa? Sprawdź poleceniem `happy daemon status`'
         },
         machineDetails: 'Zobacz szczegóły maszyny →',
+        directoryDoesNotExist: 'Katalog nie został znaleziony',
+        createDirectoryConfirm: ({ directory }: { directory: string }) => `Katalog ${directory} nie istnieje. Czy chcesz go utworzyć?`,
         sessionStarted: 'Sesja rozpoczęta',
-        sessionStartedMessage: 'Sesja została rozpoczęta, ale może potrwać chwilę, zanim się pojawi.',
+        sessionStartedMessage: 'Sesja została pomyślnie rozpoczęta.',
         sessionSpawningFailed: 'Tworzenie sesji nie powiodło się - nie zwrócono ID sesji.',
         failedToStart: 'Nie udało się uruchomić sesji. Upewnij się, że daemon działa na docelowej maszynie.',
         sessionTimeout: 'Przekroczono czas uruchamiania sesji. Maszyna może działać wolno lub daemon może nie odpowiadać.',
@@ -542,6 +550,10 @@ export const pl: TranslationStructure = {
         developerModeDisabled: 'Tryb deweloperski wyłączony',
         disconnectGithub: 'Rozłącz GitHub',
         disconnectGithubConfirm: 'Czy na pewno chcesz rozłączyć swoje konto GitHub?',
+        disconnectService: ({ service }: { service: string }) => 
+            `Rozłącz ${service}`,
+        disconnectServiceConfirm: ({ service }: { service: string }) => 
+            `Czy na pewno chcesz rozłączyć ${service} ze swojego konta?`,
         disconnect: 'Rozłącz',
         failedToConnectTerminal: 'Nie udało się połączyć terminala',
         cameraPermissionsRequiredToConnectTerminal: 'Uprawnienia do kamery są wymagane do połączenia terminala',

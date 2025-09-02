@@ -78,6 +78,10 @@ class Sync {
             if (nextAppState === 'active') {
                 log.log('📱 App became active');
                 this.purchasesSync.invalidate();
+                this.profileSync.invalidate();
+                this.machinesSync.invalidate();
+                this.pushTokenSync.invalidate();
+                this.sessionsSync.invalidate();
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
             }
@@ -288,6 +292,10 @@ class Sync {
 
     refreshPurchases = () => {
         this.purchasesSync.invalidate();
+    }
+
+    refreshProfile = async () => {
+        await this.profileSync.invalidateAndAwait();
     }
 
     purchaseProduct = async (productId: string): Promise<{ success: boolean; error?: string }> => {
