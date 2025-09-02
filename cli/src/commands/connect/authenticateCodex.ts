@@ -7,11 +7,8 @@
 
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { randomBytes, createHash } from 'crypto';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 import { CodexAuthTokens, PKCECodes } from './types';
-
-const execAsync = promisify(exec);
+import { openBrowser } from '@/utils/browser';
 
 // Configuration
 const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
@@ -26,7 +23,7 @@ function generatePKCE(): PKCECodes {
     const verifier = randomBytes(32)
         .toString('base64url')
         .replace(/[^a-zA-Z0-9\-._~]/g, '');
-    
+
     // Generate code challenge (SHA256 of verifier, base64url encoded)
     const challenge = createHash('sha256')
         .update(verifier)
@@ -34,7 +31,7 @@ function generatePKCE(): PKCECodes {
         .replace(/=/g, '')
         .replace(/\+/g, '-')
         .replace(/\//g, '_');
-    
+
     return { verifier, challenge };
 }
 
@@ -53,7 +50,7 @@ function parseJWT(token: string): any {
     if (parts.length !== 3) {
         throw new Error('Invalid JWT format');
     }
-    
+
     const payload = Buffer.from(parts[1], 'base64url').toString();
     return JSON.parse(payload);
 }
@@ -108,20 +105,20 @@ async function exchangeCodeForTokens(
             redirect_uri: `http://localhost:${port}/auth/callback`,
         }),
     });
-    
+
     if (!response.ok) {
         const error = await response.text();
         throw new Error(`Token exchange failed: ${error}`);
     }
-    
+
     const data = (await response.json() as any);
-    
+
     // Parse ID token to get account ID
     const idTokenPayload = parseJWT(data.id_token);
-    
+
     // The account ID is stored at chatgpt_account_id in the payload
     let accountId = idTokenPayload.chatgpt_account_id;
-    
+
     // Check nested location
     if (!accountId) {
         const authClaim = idTokenPayload['https://api.openai.com/auth'];
@@ -129,7 +126,7 @@ async function exchangeCodeForTokens(
             accountId = authClaim.chatgpt_account_id || authClaim.account_id;
         }
     }
-    
+
     return {
         id_token: data.id_token,
         access_token: data.access_token || data.id_token,
@@ -149,11 +146,11 @@ async function startCallbackServer(
     return new Promise((resolve, reject) => {
         const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
             const url = new URL(req.url!, `http://localhost:${port}`);
-            
+
             if (url.pathname === '/auth/callback') {
                 const code = url.searchParams.get('code');
                 const receivedState = url.searchParams.get('state');
-                
+
                 if (receivedState !== state) {
                     res.writeHead(400);
                     res.end('Invalid state parameter');
@@ -161,7 +158,7 @@ async function startCallbackServer(
                     reject(new Error('Invalid state parameter'));
                     return;
                 }
-                
+
                 if (!code) {
                     res.writeHead(400);
                     res.end('No authorization code received');
@@ -169,11 +166,11 @@ async function startCallbackServer(
                     reject(new Error('No authorization code received'));
                     return;
                 }
-                
+
                 try {
                     // Exchange code for tokens
                     const tokens = await exchangeCodeForTokens(code, verifier, port);
-                    
+
                     // Send success response to browser
                     res.writeHead(200, { 'Content-Type': 'text/html' });
                     res.end(`
@@ -185,7 +182,7 @@ async function startCallbackServer(
                         </body>
                         </html>
                     `);
-                    
+
                     server.close();
                     resolve(tokens);
                 } catch (error) {
@@ -196,11 +193,11 @@ async function startCallbackServer(
                 }
             }
         });
-        
+
         server.listen(port, '127.0.0.1', () => {
             // console.log(`🔐 OAuth callback server listening on port ${port}`);
         });
-        
+
         // Timeout after 5 minutes
         setTimeout(() => {
             server.close();
@@ -223,31 +220,31 @@ async function startCallbackServer(
  */
 export async function authenticateCodex(): Promise<CodexAuthTokens> {
     // console.log('🚀 Starting Codex authentication...');
-    
+
     // Generate PKCE codes and state
     const { verifier, challenge } = generatePKCE();
     const state = generateState();
-    
+
     // Try to use default port, or find an available one
     let port = DEFAULT_PORT;
     const portAvailable = await isPortAvailable(port);
-    
+
     if (!portAvailable) {
         // console.log(`Port ${port} is in use, finding an available port...`);
         port = await findAvailablePort();
     }
-    
+
     // console.log(`📡 Using callback port: ${port}`);
-    
+
     // Start callback server FIRST (before opening browser)
     const serverPromise = startCallbackServer(state, verifier, port);
-    
+
     // Wait a moment to ensure server is listening
     await new Promise(resolve => setTimeout(resolve, 100));
-    
+
     // Build authorization URL
     const redirect_uri = `http://localhost:${port}/auth/callback`;
-    
+
     // Build query parameters manually to ensure proper encoding
     const params = [
         ['response_type', 'code'],
@@ -260,35 +257,25 @@ export async function authenticateCodex(): Promise<CodexAuthTokens> {
         ['codex_cli_simplified_flow', 'true'],
         ['state', state],
     ];
-    
+
     const queryString = params
         .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
         .join('&');
-    
+
     // Use /oauth/authorize path
     const authUrl = `${AUTH_BASE_URL}/oauth/authorize?${queryString}`;
-    
+
     console.log('📋 Opening browser for authentication...');
     console.log(`If browser doesn't open, visit:\n${authUrl}\n`);
-    
+
     // Open browser AFTER server is running
-    const platform = process.platform;
-    const openCommand = 
-        platform === 'darwin' ? 'open' :
-        platform === 'win32' ? 'start' :
-        'xdg-open';
-    
-    try {
-        await execAsync(`${openCommand} "${authUrl}"`);
-    } catch {
-        console.log('⚠️  Could not open browser automatically');
-    }
-    
+    await openBrowser(authUrl);
+
     // Wait for authentication and return tokens
     const tokens = await serverPromise;
-    
+
     console.log('🎉 Authentication successful!');
     // console.log(`Account ID: ${tokens.account_id || 'N/A'}`);
-    
+
     return tokens;
 }

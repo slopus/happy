@@ -1,8 +1,8 @@
 import chalk from 'chalk';
 import { readCredentials } from '@/persistence';
 import { ApiClient } from '@/api/api';
-import { authenticateCodex } from './codex/authenticateCodex';
-import { authenticateClaude } from './codex/authenticateClaude';
+import { authenticateCodex } from './connect/authenticateCodex';
+import { authenticateClaude } from './connect/authenticateClaude';
 
 /**
  * Handle connect subcommand

@@ -13,3 +13,9 @@ export interface PKCECodes {
     verifier: string;
     challenge: string;
 }
+
+export interface ClaudeAuthTokens {
+    raw: any;
+    token: string;
+    expires: number;
+}

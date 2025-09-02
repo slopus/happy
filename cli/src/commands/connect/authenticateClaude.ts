@@ -8,6 +8,7 @@
 import { createServer, IncomingMessage, ServerResponse } from 'http';
 import { randomBytes, createHash } from 'crypto';
 import { openBrowser } from '@/utils/browser';
+import { ClaudeAuthTokens, PKCECodes } from './types';
 
 // Anthropic OAuth Configuration for Claude.ai
 const CLIENT_ID = '9d1c250a-e61b-44d9-88ed-5944d1962f5e';
@@ -15,17 +16,6 @@ const CLAUDE_AI_AUTHORIZE_URL = 'https://claude.ai/oauth/authorize';
 const TOKEN_URL = 'https://console.anthropic.com/v1/oauth/token';
 const DEFAULT_PORT = 54545;
 const SCOPE = 'user:inference';
-
-export interface AnthropicAuthTokens {
-    raw: any;
-    token: string;
-    expires: number;
-}
-
-interface PKCECodes {
-    verifier: string;
-    challenge: string;
-}
 
 /**
  * Generate PKCE codes for OAuth flow
@@ -92,7 +82,7 @@ async function exchangeCodeForTokens(
     verifier: string,
     port: number,
     state: string
-): Promise<AnthropicAuthTokens> {
+): Promise<ClaudeAuthTokens> {
 
     // Exchange code for tokens
     const tokenResponse = await fetch(TOKEN_URL, {
@@ -144,7 +134,7 @@ async function startCallbackServer(
     state: string,
     verifier: string,
     port: number
-): Promise<AnthropicAuthTokens> {
+): Promise<ClaudeAuthTokens> {
     return new Promise((resolve, reject) => {
         const server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
             const url = new URL(req.url!, `http://localhost:${port}`);
@@ -214,7 +204,7 @@ async function startCallbackServer(
  * 
  * @returns Promise resolving to AnthropicAuthTokens with all token information
  */
-export async function authenticateClaude(): Promise<AnthropicAuthTokens> {
+export async function authenticateClaude(): Promise<ClaudeAuthTokens> {
     console.log('🚀 Starting Anthropic Claude authentication...');
 
     // Generate PKCE codes and state
