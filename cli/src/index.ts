@@ -33,7 +33,7 @@ import { render } from 'ink'
 import React from 'react'
 import { DaemonPrompt } from './ui/ink/DaemonPrompt'
 import { claudeCliPath } from './claude/claudeLocal'
-import { execSync } from 'node:child_process'
+import { execFileSync, execSync } from 'node:child_process'
 
 
 (async () => {
@@ -289,8 +289,9 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 `)
       
       // Run claude --help and display its output
+      // Use execFileSync with the current Node executable for cross-platform compatibility
       try {
-        const claudeHelp = execSync(claudeCliPath + ' --help', { encoding: 'utf8' })
+        const claudeHelp = execFileSync(process.execPath, [claudeCliPath, '--help'], { encoding: 'utf8' })
         console.log(claudeHelp)
       } catch (e) {
         console.log(chalk.yellow('Could not retrieve claude help. Make sure claude is installed.'))
