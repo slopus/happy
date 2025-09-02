@@ -203,10 +203,6 @@ export const en = {
         title: 'Start New Session',
         noMachinesFound: 'No machines found. Start a Happy session on your computer first.',
         allMachinesOffline: 'All machines appear offline',
-        machineOfflineHelp: {
-            computerOnline: '• Is your computer online?',
-            daemonRunning: '• Is the Happy daemon running? Check with `happy daemon status`'
-        },
         machineDetails: 'View machine details →',
         directoryDoesNotExist: 'Directory Not Found',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `The directory ${directory} does not exist. Do you want to create it?`,
@@ -583,6 +579,8 @@ export const en = {
 
     machine: {
         launchNewSessionInDirectory: 'Launch New Session in Directory',
+        offlineUnableToSpawn: 'Launcher disabled while machine is offline',
+        offlineHelp: '• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy-coder@latest`',
         daemon: 'Daemon',
         status: 'Status',
         stopDaemon: 'Stop Daemon',

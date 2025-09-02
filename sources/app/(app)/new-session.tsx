@@ -1,5 +1,7 @@
 import React from 'react';
-import { View, Text, ScrollView, ActivityIndicator, Platform, Pressable, KeyboardAvoidingView } from 'react-native';
+import { View, Text, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
+import { ItemGroup } from '@/components/ItemGroup';
+import { Item } from '@/components/Item';
 import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -8,9 +10,6 @@ import { Stack } from 'expo-router';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
-import { machineSpawnNewSession } from '@/sync/ops';
-import { resolveAbsolutePath } from '@/utils/pathUtils';
-import { Modal } from '@/modal';
 import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
@@ -147,57 +146,6 @@ export default function NewSessionScreen() {
     const sessions = useSessions();
     const machines = useAllMachines();
     
-    const handleStartSession = async (machineId: string, path: string) => {
-        try {
-            const machine = machines.find(m => m.id === machineId);
-            const homeDir = machine?.metadata?.homeDir;
-            const absolutePath = resolveAbsolutePath(path, homeDir);
-
-            const result = await machineSpawnNewSession({
-                machineId,
-                directory: absolutePath,
-                approvedNewDirectoryCreation: false
-            });
-
-            switch (result.type) {
-                case 'success': {
-                    navigateToSession(result.sessionId);
-                    break;
-                }
-                case 'requestToApproveDirectoryCreation': {
-                    const approved = await Modal.confirm(
-                        'Create Directory?',
-                        `The directory '${result.directory}' does not exist. Would you like to create it?`,
-                        { cancelText: t('common.cancel'), confirmText: 'Create' }
-                    );
-                    if (approved) {
-                        const retry = await machineSpawnNewSession({
-                            machineId,
-                            directory: absolutePath,
-                            approvedNewDirectoryCreation: true
-                        });
-                        if (retry.type === 'success') {
-                            navigateToSession(retry.sessionId);
-                        } else if (retry.type === 'error') {
-                            Modal.alert(t('common.error'), retry.errorMessage);
-                        }
-                    }
-                    break;
-                }
-                case 'error': {
-                    Modal.alert(t('common.error'), result.errorMessage);
-                    break;
-                }
-            }
-        } catch (error) {
-            let errorMessage = t('newSession.failedToStart');
-            if (error instanceof Error && !error.message.includes('Failed to spawn session')) {
-                errorMessage = error.message;
-            }
-            Modal.alert(t('common.error'), errorMessage);
-            throw error;
-        }
-    };
 
     // Group sessions by machineId and combine with machine status
     const machineGroups = React.useMemo(() => {
@@ -263,10 +211,11 @@ export default function NewSessionScreen() {
     });
 
     // If there is only one machine, go directly to its detail screen
+    // To reduce cognitive load on new users with a single machine
     if (machines.length === 1) {
         const singleId = machines[0].id;
         // Navigate and render nothing (or could show a tiny spinner)
-        setTimeout(() => router.replace(`/machine/${singleId}`), 0);
+        setTimeout(() => router.push(`/machine/${singleId}`), 0);
         return null;
     }
 
@@ -275,19 +224,15 @@ export default function NewSessionScreen() {
             <Stack.Screen
                 options={{
                     headerShown: true,
-                    headerTitle: 'Start New Session',
-                    headerBackTitle: 'Back'
+                    headerTitle: t('newSession.title'),
+                    headerBackTitle: t('common.back')
                 }}
             />
-            <KeyboardAvoidingView 
-                style={styles.container}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
-            >
+            <View style={styles.container}>
                 {sortedMachines.length === 0 ? (
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyText}>
-                            No machines found. Start a Happy session on your computer first.
+                            {t('newSession.noMachinesFound')}
                         </Text>
                     </View>
                 ) : (
@@ -300,80 +245,41 @@ export default function NewSessionScreen() {
                             {sortedMachines.every(([, data]) => !data.isOnline) && (
                                 <View style={styles.offlineWarning}>
                                     <Text style={styles.offlineWarningTitle}>
-                                        All machines appear offline
+                                        {t('newSession.allMachinesOffline')}
                                     </Text>
                                     <View style={{ marginTop: 4 }}>
                                         <Text style={styles.offlineWarningText}>
-                                            • Is your computer online?
-                                        </Text>
-                                        <Text style={styles.offlineWarningText}>
-                                            • Is the Happy daemon running? Check with `happy daemon status`
+                                            {t('machine.offlineHelp')}
                                         </Text>
                                     </View>
                                 </View>
                             )}
-                            {sortedMachines.map(([machineId, data]) => {
-                                const machine = machines.find(m => m.id === machineId);
-                                if (!machine) return null;
-
-                                // Get home directory and display name from machine metadata
-                                const homeDir = machine.metadata?.homeDir || '~';
-                                const displayName = machine.metadata?.displayName || data.machineHost;
-                                const hostName = machine.metadata?.host || machineId;
-
-                                return (
-                                    <View key={machineId} style={styles.machineCard}>
-                                        <View style={styles.machineHeader}>
-                                            <View style={styles.machineHeaderTop}>
-                                                <View style={styles.machineInfo}>
-                                                    <View style={styles.machineIcon}>
-                                                        <Ionicons
-                                                            name="desktop-outline"
-                                                            size={24}
-                                                            color={data.isOnline ? theme.colors.status.connected : theme.colors.status.disconnected}
-                                                        />
-                                                    </View>
-                                                    <View style={styles.machineTextContainer}>
-                                                        <Text style={styles.machineName}>
-                                                            {displayName}
-                                                        </Text>
-                                                        {displayName !== hostName && (
-                                                            <Text style={styles.machineHost}>
-                                                                {hostName}
-                                                            </Text>
-                                                        )}
-                                                    </View>
-                                                </View>
-                                                <View style={styles.statusContainer}>
-                                                    <View style={[
-                                                        styles.statusDot,
-                                                        { backgroundColor: data.isOnline ? theme.colors.status.connected : theme.colors.status.disconnected }
-                                                    ]} />
-                                                    <Text style={[
-                                                        styles.statusText,
-                                                        { color: data.isOnline ? theme.colors.status.connected : theme.colors.status.disconnected }
-                                                    ]}>
-                                                        {data.isOnline ? 'online' : 'offline'}
-                                                    </Text>
-                                                </View>
-                                            </View>
-                                            <Pressable
-                                                onPress={() => router.push(`/machine/${machineId}`)}
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                style={styles.detailsButton}
-                                            >
-                                                <Text style={styles.detailsButtonText}>
-                                                    View machine details →
-                                                </Text>
-                                            </Pressable>
-                                        </View>
-                                    </View>
-                                );
-                            })}
+                            <ItemGroup title="Machines">
+                                {sortedMachines.map(([machineId, data], index) => {
+                                    const machine = machines.find(m => m.id === machineId);
+                                    if (!machine) return null;
+                                    const displayName = machine.metadata?.displayName || data.machineHost;
+                                    const hostName = machine.metadata?.host || machineId;
+                                    const offline = !data.isOnline;
+                                    return (
+                                        <Item
+                                            key={machineId}
+                                            title={displayName}
+                                            subtitle={displayName !== hostName ? hostName : undefined}
+                                            leftElement={<Ionicons name="desktop-outline" size={24} color={offline ? theme.colors.textSecondary : theme.colors.text} />}
+                                            detail={offline ? 'offline' : 'online'}
+                                            detailStyle={{ color: offline ? theme.colors.status.disconnected : theme.colors.status.connected }}
+                                            titleStyle={{ color: offline ? theme.colors.textSecondary : theme.colors.text }}
+                                            subtitleStyle={{ color: theme.colors.textSecondary }}
+                                            onPress={() => router.push(`/machine/${machineId}`)}
+                                        />
+                                    );
+                                })}
+                            </ItemGroup>
                         </View>
                     </ScrollView>
                 )}
-            </KeyboardAvoidingView>
+            </View>
         </>
     );
 }

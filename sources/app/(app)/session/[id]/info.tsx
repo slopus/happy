@@ -100,8 +100,8 @@ export default React.memo(() => {
                         try {
                             const result = await sessionKill(session.id);
                             if (result.success) {
-                                // Just go back without showing success modal
                                 router.back();
+                                router.back()
                             } else {
                                 Modal.alert(t('common.error'), result.message || t('sessionInfo.failedToArchiveSession'));
                             }

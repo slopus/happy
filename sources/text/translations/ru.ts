@@ -195,10 +195,6 @@ export const ru: TranslationStructure = {
         title: 'Начать новую сессию',
         noMachinesFound: 'Машины не найдены. Сначала запустите сессию Happy на вашем компьютере.',
         allMachinesOffline: 'Все машины находятся offline',
-        machineOfflineHelp: {
-            computerOnline: '• Ваш компьютер online?',
-            daemonRunning: '• Запущен ли daemon Happy? Проверьте командой `happy daemon status`'
-        },
         machineDetails: 'Посмотреть детали машины →',
         directoryDoesNotExist: 'Директория не найдена',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `Директория ${directory} не существует. Хотите создать её?`,
@@ -580,6 +576,8 @@ export const ru: TranslationStructure = {
     },
 
     machine: {
+        offlineUnableToSpawn: 'Запуск отключен: машина offline',
+        offlineHelp: '• Убедитесь, что компьютер online\n• Выполните `happy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g happy-coder@latest`',
         launchNewSessionInDirectory: 'Запустить новую сессию в папке',
         daemon: 'Daemon',
         status: 'Статус',
