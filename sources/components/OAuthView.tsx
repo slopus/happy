@@ -2,10 +2,10 @@ import { parseCallbackUrl, generatePKCE, generateState, PKCECodes, ClaudeAuthTok
 import * as React from 'react';
 import { ActivityIndicator, Platform, Text, TouchableOpacity, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import Animated, { 
-    useSharedValue, 
-    useAnimatedStyle, 
-    withTiming, 
+import Animated, {
+    useSharedValue,
+    useAnimatedStyle,
+    withTiming,
 } from 'react-native-reanimated';
 import { runOnJS } from 'react-native-worklets';
 import WebView from 'react-native-webview';
@@ -187,16 +187,16 @@ export const OAuthViewRender = React.memo((props: {
     const [webViewLoading, setWebViewLoading] = React.useState(true);
     const [error, setError] = React.useState<string | null>(null);
     const isProcessingRef = React.useRef(false);
-    
+
     // Reanimated shared values
     const tokenExchangeOpacity = useSharedValue(0);
     const webViewLoadingOpacity = useSharedValue(1);
-    
+
     // Animated styles
     const tokenExchangeAnimatedStyle = useAnimatedStyle(() => ({
         opacity: tokenExchangeOpacity.value,
     }));
-    
+
     const webViewLoadingAnimatedStyle = useAnimatedStyle(() => ({
         opacity: webViewLoadingOpacity.value,
     }));
@@ -209,6 +209,7 @@ export const OAuthViewRender = React.memo((props: {
     }, [webViewLoadingOpacity]);
 
     const handleNavigationStateChange = React.useCallback(async (navState: any) => {
+        console.log('handleNavigationStateChange', navState.url);
         // Prevent processing the same URL multiple times
         if (isProcessingRef.current) {
             return;
@@ -281,6 +282,7 @@ export const OAuthViewRender = React.memo((props: {
     }, [props.parameters, props.config]);
 
     const handleWebViewError = React.useCallback((syntheticEvent: any) => {
+        console.log('handleWebViewError', syntheticEvent);
         const { nativeEvent } = syntheticEvent;
         console.error('WebView error:', nativeEvent);
 
@@ -313,9 +315,10 @@ export const OAuthViewRender = React.memo((props: {
             <WebView
                 source={{ uri: props.parameters.url }}
                 style={[styles.webview, { backgroundColor: props.backgroundColor }]}
+                originWhitelist={['*']}
+                limitsNavigationsToAppBoundDomains={false}
                 onNavigationStateChange={handleNavigationStateChange}
                 onShouldStartLoadWithRequest={(request) => {
-                    // Intercept localhost redirects
                     const callbackData = parseCallbackUrl(request.url);
                     if (callbackData.code || callbackData.error) {
                         handleNavigationStateChange({ url: request.url });
@@ -330,6 +333,7 @@ export const OAuthViewRender = React.memo((props: {
                 thirdPartyCookiesEnabled={true}
                 javaScriptEnabled={true}
                 domStorageEnabled={true}
+                userAgent='Mozilla/5.0 (iPhone; CPU iPhone OS 10_3 like Mac OS X) AppleWebKit/602.1.50 (KHTML, like Gecko) CriOS/56.0.2924.75 Mobile/14E5239e Safari/602.1'
             />
             {webViewLoading && (
                 <Animated.View style={[styles.loadingOverlay, webViewLoadingAnimatedStyle, { backgroundColor: props.backgroundColor }]}>
