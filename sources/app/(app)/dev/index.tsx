@@ -263,6 +263,12 @@ export default function DevScreen() {
             {/* Test Features */}
             <ItemGroup title="Test Features" footer="These actions may affect app stability">
                 <Item
+                    title="Claude OAuth Test"
+                    subtitle="Test Claude authentication flow"
+                    icon={<Ionicons name="key-outline" size={28} color="#007AFF" />}
+                    onPress={() => router.push('/settings/connect/claude')}
+                />
+                <Item
                     title="Test Crash"
                     subtitle="Trigger a test crash"
                     destructive={true}
