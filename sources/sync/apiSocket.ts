@@ -215,11 +215,6 @@ class ApiSocket {
             this.updateStatus('error');
         });
 
-        // Authentication response
-        this.socket.on('auth', (data) => {
-            // console.log('🔌 SyncSocket: Auth response:', data);
-        });
-
         // Message handling
         this.socket.onAny((event, data) => {
             // console.log(`📥 SyncSocket: Received event '${event}':`, JSON.stringify(data).substring(0, 200));
