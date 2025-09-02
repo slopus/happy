@@ -52,9 +52,9 @@ export const lightTheme = {
             },
         },
         fab: {
-            background: '#FFFFFF',
-            backgroundPressed: 'rgb(240,240,240)',
-            icon: '#000000',
+            background: '#000000',
+            backgroundPressed: '#1a1a1a',
+            icon: '#FFFFFF',
         },
         radio: {
             active: '#007AFF',
@@ -256,9 +256,9 @@ export const darkTheme = {
             sectionTitle: Platform.select({ ios: '#8E8E93', default: '#CAC4D0' }),
         },
         fab: {
-            background: Platform.select({ ios: '#1C1C1E', default: '#1e1e1e' }),
-            backgroundPressed: Platform.select({ ios: '#2C2C2E', default: '#2e2e2e' }),
-            icon: '#FFFFFF',
+            background: '#FFFFFF',
+            backgroundPressed: '#f0f0f0',
+            icon: '#000000',
         },
         radio: {
             active: '#0A84FF',
