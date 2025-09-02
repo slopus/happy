@@ -3,6 +3,7 @@ import { readCredentials } from '@/persistence';
 import { ApiClient } from '@/api/api';
 import { authenticateCodex } from './connect/authenticateCodex';
 import { authenticateClaude } from './connect/authenticateClaude';
+import { authenticateGemini } from './connect/authenticateGemini';
 
 /**
  * Handle connect subcommand
@@ -91,6 +92,12 @@ async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini', displa
         const anthropicAuthTokens = await authenticateClaude();
         await api.registerVendorToken('anthropic', { oauth: anthropicAuthTokens });
         console.log('✅ Anthropic token registered with server');
+        process.exit(0);
+    } else if (vendor === 'gemini') {
+        console.log('🚀 Registering Gemini token with server');
+        const geminiAuthTokens = await authenticateGemini();
+        await api.registerVendorToken('gemini', { oauth: geminiAuthTokens });
+        console.log('✅ Gemini token registered with server');
         process.exit(0);
     } else {
         throw new Error(`Unsupported vendor: ${vendor}`);
