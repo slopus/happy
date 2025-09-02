@@ -8,24 +8,25 @@ import { Typography } from '@/constants/Typography';
 import { useSessions, useAllMachines } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
-import { machineSpawnNewSession, machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { MachineSessionLauncher } from '@/components/MachineSessionLauncher';
-import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
 
 export default function MachineDetailScreen() {
     const { theme } = useUnistyles();
     const { id: machineId } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
     const sessions = useSessions();
-    const navigateToSession = useNavigateToSession();
     const machines = useAllMachines();
+    const navigateToSession = useNavigateToSession();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
     const [isRenamingMachine, setIsRenamingMachine] = useState(false);
@@ -68,63 +69,6 @@ export default function MachineDetailScreen() {
         return isMachineOnline(machine) ? 'likely alive' : 'stopped';
     }, [machine]);
 
-    const handleStartSession = async (path: string) => {
-        if (!machineId) return;
-
-        try {
-            console.log(`🚀 Starting session on machine ${machineId} at path: ${path}`);
-            const result = await machineSpawnNewSession(machineId, path);
-            console.log('🎉 daemon result', result);
-
-            if (result.sessionId) {
-                console.log('✅ Session spawned successfully:', result.sessionId);
-
-                // Poll for the session to appear
-                const pollInterval = 100;
-                const maxAttempts = 20;
-                let attempts = 0;
-
-                const pollForSession = () => {
-                    const state = storage.getState();
-                    const newSession = Object.values(state.sessions).find((s: Session) => s.id === result.sessionId);
-
-                    if (newSession) {
-                        console.log('📱 Navigating to session:', result.sessionId);
-                        router.replace(`/session/${result.sessionId}`);
-                        return;
-                    }
-
-                    attempts++;
-                    if (attempts < maxAttempts) {
-                        setTimeout(pollForSession, pollInterval);
-                    } else {
-                        console.log('⏰ Polling timeout - session should appear soon');
-                        Modal.alert(t('newSession.sessionStarted'), t('newSession.sessionStartedMessage'));
-                    }
-                };
-
-                pollForSession();
-            } else {
-                console.error('❌ No sessionId in response:', result);
-                throw new Error('Session spawning failed - no session ID returned.');
-            }
-        } catch (error) {
-            console.error('💥 Failed to start session', error);
-
-            let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
-            if (error instanceof Error) {
-                if (error.message.includes('timeout')) {
-                    errorMessage = 'Session startup timed out. The machine may be slow or the daemon may not be responding.';
-                } else if (error.message.includes('Socket not connected')) {
-                    errorMessage = 'Not connected to server. Check your internet connection.';
-                }
-            }
-
-            Modal.alert(t('common.error'), errorMessage);
-            throw error;
-        }
-    };
-
     const handleStopDaemon = async () => {
         // Show confirmation modal using alert with buttons
         Modal.alert(
@@ -146,7 +90,7 @@ export default function MachineDetailScreen() {
                             // Refresh to get updated metadata
                             await sync.refreshMachines();
                         } catch (error) {
-                            Modal.alert(t('common.error'), 'Failed to stop daemon. It may not be running.');
+                            Modal.alert('Error', 'Failed to stop daemon. It may not be running.');
                         } finally {
                             setIsStoppingDaemon(false);
                         }
@@ -171,8 +115,8 @@ export default function MachineDetailScreen() {
             {
                 defaultValue: machine.metadata?.displayName || '',
                 placeholder: machine.metadata?.host || 'Enter machine name',
-                cancelText: t('common.cancel'),
-                confirmText: t('common.rename')
+                cancelText: 'Cancel',
+                confirmText: 'Rename'
             }
         );
 
@@ -190,10 +134,10 @@ export default function MachineDetailScreen() {
                     machine.metadataVersion
                 );
                 
-                Modal.alert(t('common.success'), 'Machine renamed successfully');
+                Modal.alert('Success', 'Machine renamed successfully');
             } catch (error) {
                 Modal.alert(
-                    t('common.error'),
+                    'Error',
                     error instanceof Error ? error.message : 'Failed to rename machine'
                 );
                 // Refresh to get latest state
@@ -201,6 +145,52 @@ export default function MachineDetailScreen() {
             } finally {
                 setIsRenamingMachine(false);
             }
+        }
+    };
+
+    const handleStartSession = async (path: string): Promise<void> => {
+        if (!machine || !machineId) return;
+        try {
+            const absolutePath = resolveAbsolutePath(path, machine?.metadata?.homeDir);
+            const result = await machineSpawnNewSession({
+                machineId: machineId!,
+                directory: absolutePath,
+                approvedNewDirectoryCreation: false
+            });
+            switch (result.type) {
+                case 'success':
+                    navigateToSession(result.sessionId);
+                    break;
+                case 'requestToApproveDirectoryCreation': {
+                    const approved = await Modal.confirm(
+                        'Create Directory?',
+                        `The directory '${result.directory}' does not exist. Would you like to create it?`,
+                        { cancelText: t('common.cancel'), confirmText: 'Create' }
+                    );
+                    if (approved) {
+                        const retry = await machineSpawnNewSession({
+                            machineId: machineId!,
+                            directory: absolutePath,
+                            approvedNewDirectoryCreation: true
+                        });
+                        if (retry.type === 'success') {
+                            navigateToSession(retry.sessionId);
+                        } else if (retry.type === 'error') {
+                            Modal.alert(t('common.error'), retry.errorMessage);
+                        }
+                    }
+                    break;
+                }
+                case 'error':
+                    Modal.alert(t('common.error'), result.errorMessage);
+                    break;
+            }
+        } catch (error) {
+            let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
+            if (error instanceof Error && !error.message.includes('Failed to spawn session')) {
+                errorMessage = error.message;
+            }
+            Modal.alert(t('common.error'), errorMessage);
         }
     };
 
@@ -260,9 +250,8 @@ export default function MachineDetailScreen() {
                                 <Text style={[Typography.default(), {
                                     fontSize: 12,
                                     color: isMachineOnline(machine) ? '#34C759' : '#999'
-                                }]}
-                                >
-                                    {isMachineOnline(machine) ? t('status.online') : t('status.offline')}
+                                }]}>
+                                    {isMachineOnline(machine) ? 'online' : 'offline'}
                                 </Text>
                             </View>
                         </View>
@@ -283,9 +272,11 @@ export default function MachineDetailScreen() {
                             />
                         </Pressable>
                     ),
-                    headerBackTitle: t('machine.back')
+                    headerBackTitle: 'Back'
                 }}
             />
+            {/* Custom path input removed in favor of MachineSessionLauncher component */}
+            
             <ItemList
                 refreshControl={
                     <RefreshControl
@@ -293,6 +284,7 @@ export default function MachineDetailScreen() {
                         onRefresh={handleRefresh}
                     />
                 }
+                keyboardShouldPersistTaps="handled"
             >
                 {/* Launch New Session section with launcher */}
                 <ItemGroup title={t('machine.launchNewSessionInDirectory')}>
