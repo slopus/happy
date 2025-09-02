@@ -25,6 +25,7 @@ export const en = {
         ok: 'OK',
         continue: 'Continue',
         back: 'Back',
+        create: 'Create',
         rename: 'Rename',
         reset: 'Reset',
         logout: 'Logout',
@@ -71,6 +72,7 @@ export const en = {
     settings: {
         title: 'Settings',
         connectedAccounts: 'Connected Accounts',
+        connectAccount: 'Connect account',
         github: 'GitHub',
         machines: 'Machines',
         features: 'Features',
@@ -190,6 +192,10 @@ export const en = {
             `Retry in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}`,
         errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
             `${message} (Error ${code})`,
+        disconnectServiceFailed: ({ service }: { service: string }) => 
+            `Failed to disconnect ${service}`,
+        connectServiceFailed: ({ service }: { service: string }) =>
+            `Failed to connect ${service}. Please try again.`,
     },
 
     newSession: {
@@ -202,8 +208,10 @@ export const en = {
             daemonRunning: '• Is the Happy daemon running? Check with `happy daemon status`'
         },
         machineDetails: 'View machine details →',
-        sessionStarted: 'Session started',
-        sessionStartedMessage: 'The session was started but may take a moment to appear.',
+        directoryDoesNotExist: 'Directory Not Found',
+        createDirectoryConfirm: ({ directory }: { directory: string }) => `The directory ${directory} does not exist. Do you want to create it?`,
+        sessionStarted: 'Session Started',
+        sessionStartedMessage: 'The session has been started successfully.',
         sessionSpawningFailed: 'Session spawning failed - no session ID returned.',
         startingSession: 'Starting session...',
         startNewSessionInFolder: 'Start new session in this folder',
@@ -528,6 +536,10 @@ export const en = {
         developerModeDisabled: 'Developer mode disabled',
         disconnectGithub: 'Disconnect GitHub',
         disconnectGithubConfirm: 'Are you sure you want to disconnect your GitHub account?',
+        disconnectService: ({ service }: { service: string }) => 
+            `Disconnect ${service}`,
+        disconnectServiceConfirm: ({ service }: { service: string }) => 
+            `Are you sure you want to disconnect ${service} from your account?`,
         disconnect: 'Disconnect',
         failedToConnectTerminal: 'Failed to connect terminal',
         cameraPermissionsRequiredToConnectTerminal: 'Camera permissions are required to connect terminal',

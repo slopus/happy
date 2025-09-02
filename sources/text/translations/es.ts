@@ -25,6 +25,7 @@ export const es: TranslationStructure = {
         ok: 'OK',
         continue: 'Continuar',
         back: 'Atrás',
+        create: 'Crear',
         rename: 'Renombrar',
         reset: 'Restablecer',
         logout: 'Cerrar sesión',
@@ -71,6 +72,7 @@ export const es: TranslationStructure = {
     settings: {
         title: 'Configuración',
         connectedAccounts: 'Cuentas conectadas',
+        connectAccount: 'Conectar cuenta',
         github: 'GitHub',
         machines: 'Máquinas',
         features: 'Características',
@@ -190,6 +192,10 @@ export const es: TranslationStructure = {
             `Intenta en ${seconds} ${seconds === 1 ? 'segundo' : 'segundos'}`,
         errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
             `${message} (Error ${code})`,
+        disconnectServiceFailed: ({ service }: { service: string }) => 
+            `Falló al desconectar ${service}`,
+        connectServiceFailed: ({ service }: { service: string }) =>
+            `No se pudo conectar ${service}. Por favor, inténtalo de nuevo.`,
     },
 
     newSession: {
@@ -202,8 +208,10 @@ export const es: TranslationStructure = {
             daemonRunning: '• ¿Está ejecutándose el daemon de Happy? Verifica con `happy daemon status`'
         },
         machineDetails: 'Ver detalles de la máquina →',
+        directoryDoesNotExist: 'Directorio no encontrado',
+        createDirectoryConfirm: ({ directory }: { directory: string }) => `El directorio ${directory} no existe. ¿Deseas crearlo?`,
         sessionStarted: 'Sesión iniciada',
-        sessionStartedMessage: 'La sesión fue iniciada pero puede tardar un momento en aparecer.',
+        sessionStartedMessage: 'La sesión se ha iniciado correctamente.',
         sessionSpawningFailed: 'Falló la creación de sesión - no se devolvió ID de sesión.',
         failedToStart: 'Falló al iniciar sesión. Asegúrate de que el daemon esté ejecutándose en la máquina objetivo.',
         sessionTimeout: 'El inicio de sesión expiró. La máquina puede ser lenta o el daemon puede no estar respondiendo.',
@@ -528,6 +536,10 @@ export const es: TranslationStructure = {
         developerModeDisabled: 'Modo desarrollador deshabilitado',
         disconnectGithub: 'Desconectar GitHub',
         disconnectGithubConfirm: '¿Seguro que quieres desconectar tu cuenta de GitHub?',
+        disconnectService: ({ service }: { service: string }) => 
+            `Desconectar ${service}`,
+        disconnectServiceConfirm: ({ service }: { service: string }) => 
+            `¿Seguro que quieres desconectar ${service} de tu cuenta?`,
         disconnect: 'Desconectar',
         failedToConnectTerminal: 'Falló al conectar terminal',
         cameraPermissionsRequiredToConnectTerminal: 'Se requieren permisos de cámara para conectar terminal',

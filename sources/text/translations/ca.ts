@@ -25,6 +25,7 @@ export const ca: TranslationStructure = {
         ok: 'D\'acord',
         continue: 'Continua',
         back: 'Enrere',
+        create: 'Crear',
         rename: 'Reanomena',
         reset: 'Reinicia',
         logout: 'Tanca la sessió',
@@ -71,6 +72,7 @@ export const ca: TranslationStructure = {
     settings: {
         title: 'Configuració',
         connectedAccounts: 'Comptes connectats',
+        connectAccount: 'Connectar compte',
         github: 'GitHub',
         machines: 'Màquines',
         features: 'Funcions',
@@ -190,6 +192,10 @@ export const ca: TranslationStructure = {
             `Torna-ho a provar en ${seconds} ${seconds === 1 ? 'segon' : 'segons'}`,
         errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
             `${message} (Error ${code})`,
+        disconnectServiceFailed: ({ service }: { service: string }) => 
+            `Ha fallat la desconnexió de ${service}`,
+        connectServiceFailed: ({ service }: { service: string }) =>
+            `No s'ha pogut connectar ${service}. Si us plau, torna-ho a provar.`,
     },
 
     newSession: {
@@ -202,8 +208,10 @@ export const ca: TranslationStructure = {
             daemonRunning: '• S\'està executant el dimoni de Happy? Comprova-ho amb `happy daemon status`'
         },
         machineDetails: 'Veure detalls de la màquina →',
+        directoryDoesNotExist: 'Directori no trobat',
+        createDirectoryConfirm: ({ directory }: { directory: string }) => `El directori ${directory} no existeix. Vols crear-lo?`,
         sessionStarted: 'Sessió iniciada',
-        sessionStartedMessage: 'La sessió s\'ha iniciat però pot tardar un moment a aparèixer.',
+        sessionStartedMessage: 'La sessió s\'ha iniciat correctament.',
         sessionSpawningFailed: 'Ha fallat la creació de la sessió - no s\'ha retornat cap ID de sessió.',
         failedToStart: 'Ha fallat l\'inici de la sessió. Assegura\'t que el dimoni s\'estigui executant a la màquina de destinació.',
         sessionTimeout: 'L\'inici de la sessió ha esgotat el temps d\'espera. La màquina pot ser lenta o el dimoni pot no estar responent.',
@@ -528,6 +536,10 @@ export const ca: TranslationStructure = {
         developerModeDisabled: 'Mode desenvolupador desactivat',
         disconnectGithub: 'Desconnecta GitHub',
         disconnectGithubConfirm: 'Segur que vols desconnectar el teu compte de GitHub?',
+        disconnectService: ({ service }: { service: string }) => 
+            `Desconnecta ${service}`,
+        disconnectServiceConfirm: ({ service }: { service: string }) => 
+            `Segur que vols desconnectar ${service} del teu compte?`,
         disconnect: 'Desconnecta',
         failedToConnectTerminal: 'Ha fallat connectar el terminal',
         cameraPermissionsRequiredToConnectTerminal: 'Es requereixen permisos de càmera per connectar el terminal',
