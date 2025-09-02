@@ -15,6 +15,10 @@ import { machineSpawnNewSession } from '@/sync/ops';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
 import { CompactGitStatus } from './CompactGitStatus';
+import { ProjectGitStatus } from './ProjectGitStatus';
+import { t } from '@/text';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { useIsTablet } from '@/utils/responsive';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -180,6 +184,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
     const machines = useAllMachines();
     const [startingSessionFor, setStartingSessionFor] = React.useState<string | null>(null);
     const isExperimental = useSetting('experiments');
+    const navigateToSession = useNavigateToSession();
 
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
@@ -201,32 +206,8 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
 
             // Use sessionId to check for success for backwards compatibility
             if ('sessionId' in result && result.sessionId) {
-                // Poll for the session to appear in our local state
-                const pollInterval = 100;
-                const maxAttempts = 20;
-                let attempts = 0;
-
-                // Should be pretty much instant
-                const pollForSession = () => {
-                    const state = storage.getState();
-                    const newSession = Object.values(state.sessions).find((s: Session) => s.id === result.sessionId);
-
-                    if (newSession) {
-                        router.push(`/session/${result.sessionId}`);
-                        setStartingSessionFor(null);
-                        return;
-                    }
-
-                    attempts++;
-                    if (attempts < maxAttempts) {
-                        setTimeout(pollForSession, pollInterval);
-                    } else {
-                        Modal.alert('Session started', 'The session was started but may take a moment to appear.');
-                        setStartingSessionFor(null);
-                    }
-                };
-
-                pollForSession();
+                navigateToSession(result.sessionId);
+                setStartingSessionFor(null);
             } else {
                 throw new Error('Session spawning failed - no session ID returned.');
             }
@@ -242,7 +223,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                 }
             }
 
-            Modal.alert('Error', errorMessage);
+            Modal.alert(t('common.error'), errorMessage);
             setStartingSessionFor(null);
         }
     };
@@ -331,9 +312,18 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                     {projectGroup.displayPath}
                                 </Text>
                             </View>
-                            <Text style={styles.sectionHeaderMachine} numberOfLines={1}>
-                                {machineName}
-                            </Text>
+                            {/* Show git status instead of machine name */}
+                            {(() => {
+                                // Get the first session from any machine in this project
+                                const firstSession = Array.from(projectGroup.machines.values())[0]?.sessions[0];
+                                return firstSession ? (
+                                    <ProjectGitStatus sessionId={firstSession.id} />
+                                ) : (
+                                    <Text style={styles.sectionHeaderMachine} numberOfLines={1}>
+                                        {machineName}
+                                    </Text>
+                                );
+                            })()}
                         </View>
 
                         {/* Card with just the sessions */}
@@ -400,7 +390,7 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                                 styles.newSessionButtonText,
                                                 (!hasOnlineMachine || isLoading) && styles.newSessionButtonTextDisabled
                                             ]}>
-                                                {isLoading ? 'Starting session...' : 'Start new session in this folder'}
+                                                {isLoading ? t('newSession.startingSession') : t('newSession.startNewSessionInFolder')}
                                             </Text>
                                         </View>
                                     </Pressable>
@@ -419,7 +409,8 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const styles = stylesheet;
     const sessionStatus = useSessionStatus(session);
     const sessionName = getSessionName(session);
-    const router = useRouter();
+    const navigateToSession = useNavigateToSession();
+    const isTablet = useIsTablet();
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
@@ -432,8 +423,15 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 showBorder && styles.sessionRowWithBorder,
                 selected && styles.sessionRowSelected
             ]}
+            onPressIn={() => {
+                if (isTablet) {
+                    navigateToSession(session.id);
+                }
+            }}
             onPress={() => {
-                router.push(`/session/${session.id}`);
+                if (!isTablet) {
+                    navigateToSession(session.id);
+                }
             }}
         >
             <View style={styles.avatarContainer}>
@@ -480,8 +478,7 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                             </View>
                         )}
 
-                        {/* Git status indicator */}
-                        <CompactGitStatus sessionId={session.id} />
+                        {/* No longer showing git status per item - it's in the header */}
 
                         {/* Task status indicator */}
                         {session.todos && session.todos.length > 0 && (() => {

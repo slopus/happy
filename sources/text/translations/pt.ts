@@ -203,10 +203,6 @@ export const pt: TranslationStructure = {
         title: 'Iniciar nova sessão',
         noMachinesFound: 'Nenhuma máquina encontrada. Inicie uma sessão Happy no seu computador primeiro.',
         allMachinesOffline: 'Todas as máquinas estão offline',
-        machineOfflineHelp: {
-            computerOnline: '• Seu computador está online?',
-            daemonRunning: '• O daemon Happy está rodando? Verifique com `happy daemon status`'
-        },
         machineDetails: 'Ver detalhes da máquina →',
         directoryDoesNotExist: 'Diretório não encontrado',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `O diretório ${directory} não existe. Deseja criá-lo?`,
@@ -582,6 +578,8 @@ export const pt: TranslationStructure = {
     },
 
     machine: {
+        offlineUnableToSpawn: 'Inicializador desativado enquanto a máquina está offline',
+        offlineHelp: '• Verifique se seu computador está online\n• Execute `happy daemon status` para diagnosticar\n• Você está usando a versão mais recente do CLI? Atualize com `npm install -g happy-coder@latest`',
         launchNewSessionInDirectory: 'Iniciar nova sessão no diretório',
         daemon: 'Daemon',
         status: 'Status',

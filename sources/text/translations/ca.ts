@@ -203,10 +203,6 @@ export const ca: TranslationStructure = {
         title: 'Inicia una nova sessió',
         noMachinesFound: 'No s\'han trobat màquines. Inicia una sessió de Happy al teu ordinador primer.',
         allMachinesOffline: 'Totes les màquines estan fora de línia',
-        machineOfflineHelp: {
-            computerOnline: '• Està el teu ordinador en línia?',
-            daemonRunning: '• S\'està executant el dimoni de Happy? Comprova-ho amb `happy daemon status`'
-        },
         machineDetails: 'Veure detalls de la màquina →',
         directoryDoesNotExist: 'Directori no trobat',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `El directori ${directory} no existeix. Vols crear-lo?`,
@@ -582,6 +578,8 @@ export const ca: TranslationStructure = {
     },
 
     machine: {
+        offlineUnableToSpawn: 'El llançador està desactivat mentre la màquina està fora de línia',
+        offlineHelp: '• Assegura\'t que l\'ordinador estigui en línia\n• Executa `happy daemon status` per diagnosticar\n• Fas servir l\'última versió del CLI? Actualitza amb `npm install -g happy-coder@latest`',
         launchNewSessionInDirectory: 'Inicia una nova sessió al directori',
         daemon: 'Dimoni',
         status: 'Estat',
