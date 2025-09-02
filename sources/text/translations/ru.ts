@@ -36,6 +36,7 @@ export const ru: TranslationStructure = {
         ok: 'ОК',
         continue: 'Продолжить',
         back: 'Назад',
+        create: 'Создать',
         rename: 'Переименовать',
         reset: 'Сбросить',
         logout: 'Выйти',
@@ -63,6 +64,7 @@ export const ru: TranslationStructure = {
     settings: {
         title: 'Настройки',
         connectedAccounts: 'Подключенные аккаунты',
+        connectAccount: 'Подключить аккаунт',
         github: 'GitHub',
         machines: 'Машины',
         features: 'Функции',
@@ -182,6 +184,10 @@ export const ru: TranslationStructure = {
             `Повторить через ${seconds} ${plural({ count: seconds, one: 'секунду', few: 'секунды', many: 'секунд' })}`,
         errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
             `${message} (Ошибка ${code})`,
+        disconnectServiceFailed: ({ service }: { service: string }) => 
+            `Не удалось отключить ${service}`,
+        connectServiceFailed: ({ service }: { service: string }) =>
+            `Не удалось подключить ${service}. Пожалуйста, попробуйте снова.`,
     },
 
     newSession: {
@@ -194,8 +200,10 @@ export const ru: TranslationStructure = {
             daemonRunning: '• Запущен ли daemon Happy? Проверьте командой `happy daemon status`'
         },
         machineDetails: 'Посмотреть детали машины →',
+        directoryDoesNotExist: 'Директория не найдена',
+        createDirectoryConfirm: ({ directory }: { directory: string }) => `Директория ${directory} не существует. Хотите создать её?`,
         sessionStarted: 'Сессия запущена',
-        sessionStartedMessage: 'Сессия была запущена, но может потребоваться время для появления.',
+        sessionStartedMessage: 'Сессия успешно запущена.',
         sessionSpawningFailed: 'Ошибка создания сессии - ID сессии не получен.',
         failedToStart: 'Не удалось запустить сессию. Убедитесь, что daemon запущен на целевой машине.',
         sessionTimeout: 'Время запуска сессии истекло. Машина может работать медленно или daemon не отвечает.',
@@ -526,6 +534,10 @@ export const ru: TranslationStructure = {
         developerModeDisabled: 'Режим разработчика отключен',
         disconnectGithub: 'Отключить GitHub',
         disconnectGithubConfirm: 'Вы уверены, что хотите отключить аккаунт GitHub?',
+        disconnectService: ({ service }: { service: string }) => 
+            `Отключить ${service}`,
+        disconnectServiceConfirm: ({ service }: { service: string }) => 
+            `Вы уверены, что хотите отключить ${service} от вашего аккаунта?`,
         disconnect: 'Отключить',
         failedToConnectTerminal: 'Не удалось подключить терминал',
         cameraPermissionsRequiredToConnectTerminal: 'Для подключения терминала требуется доступ к камере',

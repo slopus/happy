@@ -27,7 +27,8 @@ export const ProfileSchema = z.object({
     firstName: z.string().nullable(),
     lastName: z.string().nullable(),
     avatar: ImageRefSchema.nullable(),
-    github: GitHubProfileSchema.nullable()
+    github: GitHubProfileSchema.nullable(),
+    connectedServices: z.array(z.string()).default([])
 });
 
 export type GitHubProfile = z.infer<typeof GitHubProfileSchema>;
@@ -44,7 +45,8 @@ export const profileDefaults: Profile = {
     firstName: null,
     lastName: null,
     avatar: null,
-    github: null
+    github: null,
+    connectedServices: []
 };
 Object.freeze(profileDefaults);
 
