@@ -1037,7 +1037,7 @@ class Sync {
     }
 
     private flushActivityUpdates = (updates: Map<string, ApiEphemeralActivityUpdate>) => {
-        log.log(`🔄 Flushing activity updates for ${updates.size} sessions - acquiring lock`);
+        // log.log(`🔄 Flushing activity updates for ${updates.size} sessions - acquiring lock`);
 
 
         const sessions: Session[] = [];
@@ -1058,7 +1058,7 @@ class Sync {
         if (sessions.length > 0) {
             // console.log('flushing activity updates ' + sessions.length);
             this.applySessions(sessions);
-            log.log(`🔄 Activity updates flushed - updated ${sessions.length} sessions`);
+            // log.log(`🔄 Activity updates flushed - updated ${sessions.length} sessions`);
         }
     }
 
