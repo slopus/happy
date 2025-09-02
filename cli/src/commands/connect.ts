@@ -1,9 +1,8 @@
 import chalk from 'chalk';
 import { readCredentials } from '@/persistence';
 import { ApiClient } from '@/api/api';
-import { logger } from '@/ui/logger';
-import { createInterface } from 'node:readline';
 import { authenticateCodex } from './codex/authenticateCodex';
+import { authenticateClaude } from './codex/authenticateClaude';
 
 /**
  * Handle connect subcommand
@@ -26,8 +25,8 @@ export async function handleConnectCommand(args: string[]): Promise<void> {
         case 'codex':
             await handleConnectVendor('codex', 'OpenAI');
             break;
-        case 'anthropic':
-            await handleConnectVendor('anthropic', 'Anthropic');
+        case 'claude':
+            await handleConnectVendor('claude', 'Anthropic');
             break;
         case 'gemini':
             await handleConnectVendor('gemini', 'Gemini');
@@ -66,7 +65,7 @@ ${chalk.bold('Notes:')}
 `);
 }
 
-async function handleConnectVendor(vendor: 'codex' | 'anthropic' | 'gemini', displayName: string): Promise<void> {
+async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini', displayName: string): Promise<void> {
     console.log(chalk.bold(`\n🔌 Connecting ${displayName} to Happy cloud\n`));
 
     // Check if authenticated
@@ -80,12 +79,18 @@ async function handleConnectVendor(vendor: 'codex' | 'anthropic' | 'gemini', dis
     // Create API client
     const api = new ApiClient(credentials.token, credentials.secret);
 
-    // Handle Codex authentication
+    // Handle vendor authentication
     if (vendor === 'codex') {
         console.log('🚀 Registering Codex token with server');
         const codexAuthTokens = await authenticateCodex();
         await api.registerVendorToken('openai', { oauth: codexAuthTokens });
         console.log('✅ Codex token registered with server');
+        process.exit(0);
+    } else if (vendor === 'claude') {
+        console.log('🚀 Registering Anthropic token with server');
+        const anthropicAuthTokens = await authenticateClaude();
+        await api.registerVendorToken('anthropic', { oauth: anthropicAuthTokens });
+        console.log('✅ Anthropic token registered with server');
         process.exit(0);
     } else {
         throw new Error(`Unsupported vendor: ${vendor}`);
