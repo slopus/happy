@@ -209,13 +209,13 @@ export default function RootLayout() {
                     headerShown: true,
                     headerTitle: 'Connect to Claude',
                     headerBackTitle: t('common.back'),
-                    headerStyle: {
-                        backgroundColor: Platform.OS === 'web' ? theme.colors.header.background : '#1F1E1C',
-                    },
-                    headerTintColor: Platform.OS === 'web' ? theme.colors.header.tint : '#FFFFFF',
-                    headerTitleStyle: {
-                        color: Platform.OS === 'web' ? theme.colors.header.tint : '#FFFFFF',
-                    },
+                    // headerStyle: {
+                    //     backgroundColor: Platform.OS === 'web' ? theme.colors.header.background : '#1F1E1C',
+                    // },
+                    // headerTintColor: Platform.OS === 'web' ? theme.colors.header.tint : '#FFFFFF',
+                    // headerTitleStyle: {
+                    //     color: Platform.OS === 'web' ? theme.colors.header.tint : '#FFFFFF',
+                    // },
                 }}
             />
         </Stack>
