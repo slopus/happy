@@ -38,6 +38,8 @@ export const ca: TranslationStructure = {
         message: 'Missatge',
         files: 'Fitxers',
         fileViewer: 'Visualitzador de fitxers',
+        loading: 'Carregant...',
+        retry: 'Torna-ho a provar',
     },
 
     status: {
@@ -96,6 +98,8 @@ export const ca: TranslationStructure = {
         scanQrCodeToAuthenticate: 'Escaneja el codi QR per autenticar-te',
         githubConnected: ({ login }: { login: string }) => `Connectat com a @${login}`,
         connectGithubAccount: 'Connecta el teu compte de GitHub',
+        claudeAuthSuccess: 'Connexió amb Claude realitzada amb èxit',
+        exchangingTokens: 'Intercanviant tokens...',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Compte de ${service} connectat`,
@@ -170,6 +174,12 @@ export const ca: TranslationStructure = {
         contactSupport: 'Contacta amb el suport si el problema persisteix',
         sessionNotFound: 'Sessió no trobada',
         voiceSessionFailed: 'Ha fallat l\'inici de la sessió de veu',
+        oauthInitializationFailed: 'Ha fallat la inicialització del flux OAuth',
+        tokenStorageFailed: 'Ha fallat l\'emmagatzematge dels tokens d\'autenticació',
+        oauthStateMismatch: 'Ha fallat la validació de seguretat. Si us plau, torna-ho a provar',
+        tokenExchangeFailed: 'Ha fallat l\'intercanvi del codi d\'autorització',
+        oauthAuthorizationDenied: 'L\'autorització ha estat denegada',
+        webViewLoadFailed: 'Ha fallat la càrrega de la pàgina d\'autenticació',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>

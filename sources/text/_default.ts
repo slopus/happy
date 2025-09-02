@@ -38,6 +38,8 @@ export const en = {
         message: 'Message',
         files: 'Files',
         fileViewer: 'File Viewer',
+        loading: 'Loading...',
+        retry: 'Retry',
     },
 
     status: {
@@ -96,6 +98,8 @@ export const en = {
         scanQrCodeToAuthenticate: 'Scan QR code to authenticate',
         githubConnected: ({ login }: { login: string }) => `Connected as @${login}`,
         connectGithubAccount: 'Connect your GitHub account',
+        claudeAuthSuccess: 'Successfully connected to Claude',
+        exchangingTokens: 'Exchanging tokens...',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service} account connected`,
@@ -170,6 +174,12 @@ export const en = {
         contactSupport: 'Contact support if the problem persists',
         sessionNotFound: 'Session not found',
         voiceSessionFailed: 'Failed to start voice session',
+        oauthInitializationFailed: 'Failed to initialize OAuth flow',
+        tokenStorageFailed: 'Failed to store authentication tokens',
+        oauthStateMismatch: 'Security validation failed. Please try again',
+        tokenExchangeFailed: 'Failed to exchange authorization code',
+        oauthAuthorizationDenied: 'Authorization was denied',
+        webViewLoadFailed: 'Failed to load authentication page',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
