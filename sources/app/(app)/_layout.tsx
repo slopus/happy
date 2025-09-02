@@ -210,11 +210,11 @@ export default function RootLayout() {
                     headerTitle: 'Connect to Claude',
                     headerBackTitle: t('common.back'),
                     headerStyle: {
-                        backgroundColor: Platform.OS === 'web' ? undefined : '#1F1E1C',
+                        backgroundColor: Platform.OS === 'web' ? theme.colors.header.background : '#1F1E1C',
                     },
-                    headerTintColor: Platform.OS === 'web' ? undefined : '#FFFFFF',
+                    headerTintColor: Platform.OS === 'web' ? theme.colors.header.tint : '#FFFFFF',
                     headerTitleStyle: {
-                        color: Platform.OS === 'web' ? undefined : '#FFFFFF',
+                        color: Platform.OS === 'web' ? theme.colors.header.tint : '#FFFFFF',
                     },
                 }}
             />

@@ -155,9 +155,12 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
     const handleStartSession = async (machineId: string, path: string) => {
         try {
             setStartingSessionFor(`${machineId}-${path}`);
-            const result = await machineSpawnNewSession(machineId, path);
+            const result = await machineSpawnNewSession({ 
+                machineId, 
+                directory: path 
+            });
 
-            if (result.sessionId) {
+            if (result.type === 'success') {
                 // Poll for the session to appear in our local state
                 const pollInterval = 100;
                 const maxAttempts = 20;
@@ -183,8 +186,56 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
                 };
 
                 pollForSession();
-            } else {
-                throw new Error('Session spawning failed - no session ID returned.');
+            } else if (result.type === 'requestToApproveDirectoryCreation') {
+                // Handle directory creation approval request
+                const confirmed = await Modal.confirm(
+                    t('newSession.directoryDoesNotExist'),
+                    t('newSession.createDirectoryConfirm', { directory: result.directory }),
+                    { confirmText: t('common.create'), cancelText: t('common.cancel') }
+                );
+                
+                if (confirmed) {
+                    // Retry with approval
+                    const retryResult = await machineSpawnNewSession({
+                        machineId,
+                        directory: path,
+                        approvedNewDirectoryCreation: true
+                    });
+                    
+                    if (retryResult.type === 'success') {
+                        // Poll for the session to appear
+                        const pollInterval = 100;
+                        const maxAttempts = 20;
+                        let attempts = 0;
+
+                        const pollForSession = () => {
+                            const state = storage.getState();
+                            const newSession = Object.values(state.sessions).find((s: Session) => s.id === retryResult.sessionId);
+
+                            if (newSession) {
+                                router.replace(`/session/${retryResult.sessionId}`);
+                                setStartingSessionFor(null);
+                                return;
+                            }
+
+                            attempts++;
+                            if (attempts < maxAttempts) {
+                                setTimeout(pollForSession, pollInterval);
+                            } else {
+                                Modal.alert(t('newSession.sessionStarted'), t('newSession.sessionStartedMessage'));
+                                setStartingSessionFor(null);
+                            }
+                        };
+
+                        pollForSession();
+                    } else if (retryResult.type === 'error') {
+                        throw new Error(retryResult.errorMessage);
+                    }
+                } else {
+                    setStartingSessionFor(null);
+                }
+            } else if (result.type === 'error') {
+                throw new Error(result.errorMessage);
             }
         } catch (error) {
             console.error('Failed to start session', error);

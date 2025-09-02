@@ -23,6 +23,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { getGitHubOAuthParams, disconnectGitHub } from '@/sync/apiGithub';
+import { disconnectService } from '@/sync/apiServices';
 import { useProfile } from '@/sync/storage';
 import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
 import { Avatar } from '@/components/Avatar';
@@ -141,17 +142,18 @@ export default React.memo(function SettingsScreen() {
         resetTimeout: 2000
     });
 
-    // GitHub connection status
+    // Connection status
     const isGitHubConnected = !!profile.github;
+    const isAnthropicConnected = profile.connectedServices?.includes('anthropic') || false;
 
     // GitHub connection
-    const [connecting, connectGitHub] = useHappyAction(async () => {
+    const [connectingGitHub, connectGitHub] = useHappyAction(async () => {
         const params = await getGitHubOAuthParams(auth.credentials!);
         await Linking.openURL(params.url);
     });
 
     // GitHub disconnection
-    const [disconnecting, handleDisconnectGitHub] = useHappyAction(async () => {
+    const [disconnectingGitHub, handleDisconnectGitHub] = useHappyAction(async () => {
         const confirmed = await Modal.confirm(
             t('modals.disconnectGithub'),
             t('modals.disconnectGithubConfirm'),
@@ -159,6 +161,24 @@ export default React.memo(function SettingsScreen() {
         );
         if (confirmed) {
             await disconnectGitHub(auth.credentials!);
+        }
+    });
+
+    // Anthropic connection
+    const [connectingAnthropic, connectAnthropic] = useHappyAction(async () => {
+        router.push('/settings/connect/claude');
+    });
+
+    // Anthropic disconnection
+    const [disconnectingAnthropic, handleDisconnectAnthropic] = useHappyAction(async () => {
+        const confirmed = await Modal.confirm(
+            t('modals.disconnectService', { service: 'Claude' }),
+            t('modals.disconnectServiceConfirm', { service: 'Claude' }),
+            { confirmText: t('modals.disconnect'), destructive: true }
+        );
+        if (confirmed) {
+            await disconnectService(auth.credentials!, 'anthropic');
+            await sync.refreshProfile();
         }
     });
 
@@ -271,6 +291,23 @@ export default React.memo(function SettingsScreen() {
 
             <ItemGroup title={t('settings.connectedAccounts')}>
                 <Item
+                    title="Claude"
+                    subtitle={isAnthropicConnected 
+                        ? t('settingsAccount.statusActive')
+                        : t('settings.connectAccount')
+                    }
+                    icon={
+                        <Image
+                            source={require('@/assets/images/icon-claude.png')}
+                            style={{ width: 29, height: 29 }}
+                            contentFit="contain"
+                        />
+                    }
+                    onPress={isAnthropicConnected ? handleDisconnectAnthropic : connectAnthropic}
+                    loading={connectingAnthropic || disconnectingAnthropic}
+                    showChevron={false}
+                />
+                <Item
                     title={t('settings.github')}
                     subtitle={isGitHubConnected 
                         ? t('settings.githubConnected', { login: profile.github?.login! }) 
@@ -284,7 +321,7 @@ export default React.memo(function SettingsScreen() {
                         />
                     }
                     onPress={isGitHubConnected ? handleDisconnectGitHub : connectGitHub}
-                    loading={connecting || disconnecting}
+                    loading={connectingGitHub || disconnectingGitHub}
                     showChevron={false}
                 />
             </ItemGroup>
