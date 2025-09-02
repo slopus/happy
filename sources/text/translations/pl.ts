@@ -49,6 +49,8 @@ export const pl: TranslationStructure = {
         message: 'Wiadomość',
         files: 'Pliki',
         fileViewer: 'Przeglądarka plików',
+        loading: 'Ładowanie...',
+        retry: 'Ponów',
     },
 
     status: {
@@ -107,6 +109,8 @@ export const pl: TranslationStructure = {
         scanQrCodeToAuthenticate: 'Zeskanuj kod QR, aby się uwierzytelnić',
         githubConnected: ({ login }: { login: string }) => `Połączono jako @${login}`,
         connectGithubAccount: 'Połącz konto GitHub',
+        claudeAuthSuccess: 'Pomyślnie połączono z Claude',
+        exchangingTokens: 'Wymiana tokenów...',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Konto ${service} połączone`,
@@ -181,6 +185,12 @@ export const pl: TranslationStructure = {
         contactSupport: 'Skontaktuj się z pomocą techniczną, jeśli problem będzie się powtarzał',
         sessionNotFound: 'Sesja nie została znaleziona',
         voiceSessionFailed: 'Nie udało się uruchomić sesji głosowej',
+        oauthInitializationFailed: 'Nie udało się zainicjować przepływu OAuth',
+        tokenStorageFailed: 'Nie udało się zapisać tokenów uwierzytelniania',
+        oauthStateMismatch: 'Weryfikacja bezpieczeństwa nie powiodła się. Spróbuj ponownie',
+        tokenExchangeFailed: 'Nie udało się wymienić kodu autoryzacji',
+        oauthAuthorizationDenied: 'Autoryzacja została odrzucona',
+        webViewLoadFailed: 'Nie udało się załadować strony uwierzytelniania',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>

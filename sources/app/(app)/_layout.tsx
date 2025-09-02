@@ -203,6 +203,21 @@ export default function RootLayout() {
                     headerBackTitle: t('common.back'),
                 }}
             />
+            <Stack.Screen
+                name="settings/connect/claude"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Connect to Claude',
+                    headerBackTitle: t('common.back'),
+                    headerStyle: {
+                        backgroundColor: Platform.OS === 'web' ? undefined : '#1F1E1C',
+                    },
+                    headerTintColor: Platform.OS === 'web' ? undefined : '#FFFFFF',
+                    headerTitleStyle: {
+                        color: Platform.OS === 'web' ? undefined : '#FFFFFF',
+                    },
+                }}
+            />
         </Stack>
     );
 }

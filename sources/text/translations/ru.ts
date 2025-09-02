@@ -49,6 +49,8 @@ export const ru: TranslationStructure = {
         message: 'Сообщение',
         files: 'Файлы',
         fileViewer: 'Просмотр файла',
+        loading: 'Загрузка...',
+        retry: 'Повторить',
     },
 
     connect: {
@@ -88,6 +90,8 @@ export const ru: TranslationStructure = {
         scanQrCodeToAuthenticate: 'Отсканируйте QR-код для авторизации',
         githubConnected: ({ login }: { login: string }) => `Подключен как @${login}`,
         connectGithubAccount: 'Подключить аккаунт GitHub',
+        claudeAuthSuccess: 'Успешно подключено к Claude',
+        exchangingTokens: 'Обмен токенов...',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
@@ -162,6 +166,12 @@ export const ru: TranslationStructure = {
         contactSupport: 'Если проблема сохранится, обратитесь в поддержку',
         sessionNotFound: 'Сессия не найдена',
         voiceSessionFailed: 'Не удалось запустить голосовую сессию',
+        oauthInitializationFailed: 'Не удалось инициализировать процесс OAuth',
+        tokenStorageFailed: 'Не удалось сохранить токены аутентификации',
+        oauthStateMismatch: 'Ошибка проверки безопасности. Попробуйте снова',
+        tokenExchangeFailed: 'Не удалось обменять код авторизации',
+        oauthAuthorizationDenied: 'В авторизации отказано',
+        webViewLoadFailed: 'Не удалось загрузить страницу аутентификации',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>

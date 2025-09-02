@@ -38,6 +38,8 @@ export const es: TranslationStructure = {
         message: 'Mensaje',
         files: 'Archivos',
         fileViewer: 'Visor de archivos',
+        loading: 'Cargando...',
+        retry: 'Reintentar',
     },
 
     status: {
@@ -96,6 +98,8 @@ export const es: TranslationStructure = {
         scanQrCodeToAuthenticate: 'Escanea el código QR para autenticarte',
         githubConnected: ({ login }: { login: string }) => `Conectado como @${login}`,
         connectGithubAccount: 'Conecta tu cuenta de GitHub',
+        claudeAuthSuccess: 'Conectado exitosamente con Claude',
+        exchangingTokens: 'Intercambiando tokens...',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Cuenta de ${service} conectada`,
@@ -170,6 +174,12 @@ export const es: TranslationStructure = {
         contactSupport: 'Contacta soporte si el problema persiste',
         sessionNotFound: 'Sesión no encontrada',
         voiceSessionFailed: 'Falló al iniciar sesión de voz',
+        oauthInitializationFailed: 'Falló al inicializar el flujo OAuth',
+        tokenStorageFailed: 'Falló al almacenar los tokens de autenticación',
+        oauthStateMismatch: 'Falló la validación de seguridad. Inténtalo de nuevo',
+        tokenExchangeFailed: 'Falló al intercambiar el código de autorización',
+        oauthAuthorizationDenied: 'La autorización fue denegada',
+        webViewLoadFailed: 'Falló al cargar la página de autenticación',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
