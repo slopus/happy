@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
-import { resolve, join, dirname } from "node:path";
+import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
-import { fileURLToPath } from "node:url";
 import { mkdirSync, existsSync } from "node:fs";
 import { watch } from "node:fs";
 import { logger } from "@/ui/logger";
@@ -10,24 +9,9 @@ import { getProjectPath } from "./utils/path";
 import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Get project root - in dev use env var, in production check for scripts directory
-function getProjectRoot() {
-    if (process.env.HAPPY_PROJECT_ROOT) {
-        return resolve(process.env.HAPPY_PROJECT_ROOT);
-    }
-
-    // Check if we're in a bundled build (dist/ with no scripts/)
-    const distRoot = resolve(join(__dirname, '..', '..'));
-    if (existsSync(join(distRoot, 'scripts'))) {
-        // Production with scripts directory available
-        return distRoot;
-    }
-
-    // Bundled build - scripts should be embedded or not needed
-    return null;
-}
+// Get Claude CLI path from project root
+export const claudeCliPath = resolve(join(projectPath(), 'scripts', 'claude_local_launcher.cjs'))
 
 export async function claudeLocal(opts: {
     abort: AbortSignal,
@@ -112,9 +96,6 @@ export async function claudeLocal(opts: {
             if (opts.claudeArgs) {
                 args.push(...opts.claudeArgs)
             }
-
-            // Get Claude CLI path from project root
-            const claudeCliPath = resolve(join(projectPath(), 'scripts', 'claude_local_launcher.cjs'))
 
             if (!claudeCliPath || !existsSync(claudeCliPath)) {
                 throw new Error('Claude local launcher not found. Please ensure HAPPY_PROJECT_ROOT is set correctly for development.');
