@@ -21,6 +21,7 @@ import { HomeHeader, HomeHeaderNotAuth } from "@/components/HomeHeader";
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { t } from '@/text';
 
 export default function Home() {
     const auth = useAuth();
@@ -142,16 +143,16 @@ function NotAuthenticated() {
                 style={styles.logo}
             />
             <Text style={styles.title}>
-                Claude Code mobile client
+                {t('welcome.title')}
             </Text>
             <Text style={styles.subtitle}>
-                End-to-end encrypted and your account is stored only on your device.
+                {t('welcome.subtitle')}
             </Text>
             {Platform.OS !== 'android' && Platform.OS !== 'ios' ? (
                 <>
                     <View style={styles.buttonContainer}>
                         <RoundButton
-                            title="Login with mobile app"
+                            title={t('welcome.loginWithMobileApp')}
                             onPress={() => {
                                 trackAccountRestored();
                                 router.push('/restore');
@@ -161,7 +162,7 @@ function NotAuthenticated() {
                     <View style={styles.buttonContainerSecondary}>
                         <RoundButton
                             size="normal"
-                            title="Create account"
+                            title={t('welcome.createAccount')}
                             action={createAccount}
                             display="inverted"
                         />
@@ -171,14 +172,14 @@ function NotAuthenticated() {
                 <>
                     <View style={styles.buttonContainer}>
                         <RoundButton
-                            title="Create account"
+                            title={t('welcome.createAccount')}
                             action={createAccount}
                         />
                     </View>
                     <View style={styles.buttonContainerSecondary}>
                         <RoundButton
                             size="normal"
-                            title="Link or restore account"
+                            title={t('welcome.linkOrRestoreAccount')}
                             onPress={() => {
                                 trackAccountRestored();
                                 router.push('/restore');
@@ -203,16 +204,16 @@ function NotAuthenticated() {
                 </View>
                 <View style={styles.landscapeContentSection}>
                     <Text style={styles.landscapeTitle}>
-                        Claude Code mobile client
+                        {t('welcome.title')}
                     </Text>
                     <Text style={styles.landscapeSubtitle}>
-                        End-to-end encrypted and your account is stored only on your device.
+                        {t('welcome.subtitle')}
                     </Text>
                     {Platform.OS !== 'android' && Platform.OS !== 'ios'
                         ? (<>
                             <View style={styles.landscapeButtonContainer}>
                                 <RoundButton
-                                    title="Login with mobile app"
+                                    title={t('welcome.loginWithMobileApp')}
                                     onPress={() => {
                                         trackAccountRestored();
                                         router.push('/restore');
@@ -222,7 +223,7 @@ function NotAuthenticated() {
                             <View style={styles.landscapeButtonContainerSecondary}>
                                 <RoundButton
                                     size="normal"
-                                    title="Create account"
+                                    title={t('welcome.createAccount')}
                                     action={createAccount}
                                     display="inverted"
                                 />
@@ -231,14 +232,14 @@ function NotAuthenticated() {
                         : (<>
                             <View style={styles.landscapeButtonContainer}>
                                 <RoundButton
-                                    title="Create account"
+                                    title={t('welcome.createAccount')}
                                     action={createAccount}
                                 />
                             </View>
                             <View style={styles.landscapeButtonContainerSecondary}>
                                 <RoundButton
                                     size="normal"
-                                    title="Link or restore account"
+                                    title={t('welcome.linkOrRestoreAccount')}
                                     onPress={() => {
                                         trackAccountRestored();
                                         router.push('/restore');

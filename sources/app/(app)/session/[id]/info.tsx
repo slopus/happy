@@ -85,28 +85,28 @@ export default React.memo(() => {
         }
     }, [session]);
 
-    const handleKillSession = useCallback(async () => {
+    const handleArchiveSession = useCallback(async () => {
         if (!session) return;
 
         Modal.alert(
-            t('sessionInfo.killSession'),
-            t('sessionInfo.killSessionConfirm'),
+            t('sessionInfo.archiveSession'),
+            t('sessionInfo.archiveSessionConfirm'),
             [
                 { text: t('common.cancel'), style: 'cancel' },
                 {
-                    text: t('sessionInfo.killSession'),
+                    text: t('sessionInfo.archiveSession'),
                     style: 'destructive',
                     onPress: async () => {
                         try {
                             const result = await sessionKill(session.id);
                             if (result.success) {
-                                Modal.alert(t('common.success'), result.message);
-                                router.back(); // Go back after killing session
+                                router.back();
+                                router.back()
                             } else {
-                                Modal.alert(t('common.error'), result.message || t('sessionInfo.failedToKillSession'));
+                                Modal.alert(t('common.error'), result.message || t('sessionInfo.failedToArchiveSession'));
                             }
                         } catch (error) {
-                            Modal.alert(t('common.error'), error instanceof Error ? error.message : t('sessionInfo.failedToKillSession'));
+                            Modal.alert(t('common.error'), error instanceof Error ? error.message : t('sessionInfo.failedToArchiveSession'));
                         }
                     }
                 }
@@ -221,10 +221,10 @@ export default React.memo(() => {
                     )}
                     {sessionStatus.isConnected && (
                         <Item
-                            title={t('sessionInfo.killSession')}
-                            subtitle={t('sessionInfo.killSessionSubtitle')}
-                            icon={<Ionicons name="skull-outline" size={29} color="#FF3B30" />}
-                            onPress={handleKillSession}
+                            title={t('sessionInfo.archiveSession')}
+                            subtitle={t('sessionInfo.archiveSessionSubtitle')}
+                            icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
+                            onPress={handleArchiveSession}
                         />
                     )}
                 </ItemGroup>

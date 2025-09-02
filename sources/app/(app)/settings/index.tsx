@@ -326,10 +326,20 @@ export default React.memo(function SettingsScreen() {
                 />
             </ItemGroup>
 
-            {/* Machines */}
+            {/* Machines (sorted: online first, then last seen desc) */}
             {allMachines.length > 0 && (
                 <ItemGroup title={t('settings.machines')}>
-                    {allMachines.map((machine) => {
+                    {[...allMachines]
+                        .sort((a, b) => {
+                            const aOnline = isMachineOnline(a);
+                            const bOnline = isMachineOnline(b);
+                            if (aOnline && !bOnline) return -1;
+                            if (!aOnline && bOnline) return 1;
+                            const aTime = a.activeAt || 0;
+                            const bTime = b.activeAt || 0;
+                            return bTime - aTime;
+                        })
+                        .map((machine) => {
                         const isOnline = isMachineOnline(machine);
                         const host = machine.metadata?.host || 'Unknown';
                         const displayName = machine.metadata?.displayName;

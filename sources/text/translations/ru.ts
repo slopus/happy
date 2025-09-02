@@ -195,10 +195,6 @@ export const ru: TranslationStructure = {
         title: 'Начать новую сессию',
         noMachinesFound: 'Машины не найдены. Сначала запустите сессию Happy на вашем компьютере.',
         allMachinesOffline: 'Все машины находятся offline',
-        machineOfflineHelp: {
-            computerOnline: '• Ваш компьютер online?',
-            daemonRunning: '• Запущен ли daemon Happy? Проверьте командой `happy daemon status`'
-        },
         machineDetails: 'Посмотреть детали машины →',
         directoryDoesNotExist: 'Директория не найдена',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `Директория ${directory} не существует. Хотите создать её?`,
@@ -244,6 +240,8 @@ export const ru: TranslationStructure = {
         // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
         killSession: 'Завершить сессию',
         killSessionConfirm: 'Вы уверены, что хотите завершить эту сессию?',
+        archiveSession: 'Архивировать сессию',
+        archiveSessionConfirm: 'Вы уверены, что хотите архивировать эту сессию?',
         happySessionIdCopied: 'ID сессии Happy скопирован в буфер обмена',
         failedToCopySessionId: 'Не удалось скопировать ID сессии Happy',
         happySessionId: 'ID сессии Happy',
@@ -253,6 +251,7 @@ export const ru: TranslationStructure = {
         metadataCopied: 'Метаданные скопированы в буфер обмена',
         failedToCopyMetadata: 'Не удалось скопировать метаданные',
         failedToKillSession: 'Не удалось завершить сессию',
+        failedToArchiveSession: 'Не удалось архивировать сессию',
         connectionStatus: 'Статус подключения',
         created: 'Создано',
         lastUpdated: 'Последнее обновление',
@@ -261,6 +260,7 @@ export const ru: TranslationStructure = {
         viewMachine: 'Посмотреть машину',
         viewMachineSubtitle: 'Посмотреть детали машины и сессии',
         killSessionSubtitle: 'Немедленно завершить сессию',
+        archiveSessionSubtitle: 'Архивировать эту сессию и остановить её',
         metadata: 'Метаданные',
         host: 'Хост',
         path: 'Путь',
@@ -576,6 +576,8 @@ export const ru: TranslationStructure = {
     },
 
     machine: {
+        offlineUnableToSpawn: 'Запуск отключен: машина offline',
+        offlineHelp: '• Убедитесь, что компьютер online\n• Выполните `happy daemon status` для диагностики\n• Используете последнюю версию CLI? Обновите командой `npm install -g happy-coder@latest`',
         launchNewSessionInDirectory: 'Запустить новую сессию в папке',
         daemon: 'Daemon',
         status: 'Статус',
