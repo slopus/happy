@@ -1,0 +1,9 @@
+name: Branch-based Updates
+
+jobs:
+  production_ota:
+    type: update
+    params:
+      message: "Internal Production Build"
+      platform: "all"
+      channel: "production"
