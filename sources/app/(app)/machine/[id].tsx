@@ -1,5 +1,5 @@
-import React, { useState, useMemo, useCallback } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable } from 'react-native';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
+import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput } from 'react-native';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -10,15 +10,57 @@ import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { Modal } from '@/modal';
-import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { MachineSessionLauncher } from '@/components/MachineSessionLauncher';
 import { sync } from '@/sync/sync';
-import { useUnistyles } from 'react-native-unistyles';
+import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
+
+const styles = StyleSheet.create((theme) => ({
+    pathInputContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 16,
+    },
+    pathInput: {
+        flex: 1,
+        borderRadius: 8,
+        backgroundColor: theme.colors.input?.background ?? theme.colors.groupped.background,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        minHeight: 44,
+        position: 'relative',
+        paddingHorizontal: 12,
+        paddingVertical: Platform.select({ web: 10, ios: 8, default: 10 }) as any,
+    },
+    inlineSendButton: {
+        position: 'absolute',
+        right: 8,
+        bottom: 10,
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    inlineSendActive: {
+        backgroundColor: theme.colors.button.primary.background,
+    },
+    inlineSendInactive: {
+        // Use a darker neutral in light theme to avoid blending into input
+        backgroundColor: Platform.select({
+            ios: theme.colors.permissionButton?.inactive?.background ?? theme.colors.surfaceHigh,
+            android: theme.colors.permissionButton?.inactive?.background ?? theme.colors.surfaceHigh,
+            default: theme.colors.permissionButton?.inactive?.background ?? theme.colors.surfaceHigh,
+        }) as any,
+    },
+}));
 
 export default function MachineDetailScreen() {
     const { theme } = useUnistyles();
@@ -30,6 +72,11 @@ export default function MachineDetailScreen() {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
     const [isRenamingMachine, setIsRenamingMachine] = useState(false);
+    const [customPath, setCustomPath] = useState('');
+    const [isSpawning, setIsSpawning] = useState(false);
+    const inputRef = useRef<MultiTextInputHandle>(null);
+    const [showAllPaths, setShowAllPaths] = useState(false);
+    // Variant D only
 
     const machine = useMemo(() => {
         return machines.find(m => m.id === machineId);
@@ -45,6 +92,12 @@ export default function MachineDetailScreen() {
         }) as Session[];
     }, [sessions, machineId]);
 
+    const previousSessions = useMemo(() => {
+        return [...machineSessions]
+            .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))
+            .slice(0, 5);
+    }, [machineSessions]);
+
     const recentPaths = useMemo(() => {
         const paths = new Set<string>();
         machineSessions.forEach(session => {
@@ -54,6 +107,11 @@ export default function MachineDetailScreen() {
         });
         return Array.from(paths).sort();
     }, [machineSessions]);
+
+    const pathsToShow = useMemo(() => {
+        if (showAllPaths) return recentPaths;
+        return recentPaths.slice(0, 5);
+    }, [recentPaths, showAllPaths]);
 
     // Determine daemon status from metadata
     const daemonStatus = useMemo(() => {
@@ -90,7 +148,7 @@ export default function MachineDetailScreen() {
                             // Refresh to get updated metadata
                             await sync.refreshMachines();
                         } catch (error) {
-                            Modal.alert('Error', 'Failed to stop daemon. It may not be running.');
+                            Modal.alert(t('common.error'), 'Failed to stop daemon. It may not be running.');
                         } finally {
                             setIsStoppingDaemon(false);
                         }
@@ -99,6 +157,8 @@ export default function MachineDetailScreen() {
             ]
         );
     };
+
+    // inline control below
 
     const handleRefresh = async () => {
         setIsRefreshing(true);
@@ -115,8 +175,8 @@ export default function MachineDetailScreen() {
             {
                 defaultValue: machine.metadata?.displayName || '',
                 placeholder: machine.metadata?.host || 'Enter machine name',
-                cancelText: 'Cancel',
-                confirmText: 'Rename'
+                cancelText: t('common.cancel'),
+                confirmText: t('common.rename')
             }
         );
 
@@ -134,7 +194,7 @@ export default function MachineDetailScreen() {
                     machine.metadataVersion
                 );
                 
-                Modal.alert('Success', 'Machine renamed successfully');
+                Modal.alert(t('common.success'), 'Machine renamed successfully');
             } catch (error) {
                 Modal.alert(
                     'Error',
@@ -148,36 +208,29 @@ export default function MachineDetailScreen() {
         }
     };
 
-    const handleStartSession = async (path: string): Promise<void> => {
+    const handleStartSession = async (approvedNewDirectoryCreation: boolean = false): Promise<void> => {
         if (!machine || !machineId) return;
         try {
-            const absolutePath = resolveAbsolutePath(path, machine?.metadata?.homeDir);
+            const pathToUse = (customPath.trim() || '~');
+            if (!isMachineOnline(machine)) return;
+            setIsSpawning(true);
+            const absolutePath = resolveAbsolutePath(pathToUse, machine?.metadata?.homeDir);
             const result = await machineSpawnNewSession({
                 machineId: machineId!,
                 directory: absolutePath,
-                approvedNewDirectoryCreation: false
+                approvedNewDirectoryCreation
             });
             switch (result.type) {
                 case 'success':
+                    // Dismiss machine picker & machine detail screen
+                    router.back();
+                    router.back();
                     navigateToSession(result.sessionId);
                     break;
                 case 'requestToApproveDirectoryCreation': {
-                    const approved = await Modal.confirm(
-                        'Create Directory?',
-                        `The directory '${result.directory}' does not exist. Would you like to create it?`,
-                        { cancelText: t('common.cancel'), confirmText: 'Create' }
-                    );
+                    const approved = await Modal.confirm('Create Directory?', `The directory '${result.directory}' does not exist. Would you like to create it?`, { cancelText: t('common.cancel'), confirmText: t('common.create') });
                     if (approved) {
-                        const retry = await machineSpawnNewSession({
-                            machineId: machineId!,
-                            directory: absolutePath,
-                            approvedNewDirectoryCreation: true
-                        });
-                        if (retry.type === 'success') {
-                            navigateToSession(retry.sessionId);
-                        } else if (retry.type === 'error') {
-                            Modal.alert(t('common.error'), retry.errorMessage);
-                        }
+                        await handleStartSession(true);
                     }
                     break;
                 }
@@ -191,6 +244,8 @@ export default function MachineDetailScreen() {
                 errorMessage = error.message;
             }
             Modal.alert(t('common.error'), errorMessage);
+        } finally {
+            setIsSpawning(false);
         }
     };
 
@@ -206,7 +261,7 @@ export default function MachineDetailScreen() {
                     options={{
                         headerShown: true,
                         headerTitle: '',
-                        headerBackTitle: 'Back'
+                        headerBackTitle: t('machine.back')
                     }}
                 />
                 <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -220,6 +275,8 @@ export default function MachineDetailScreen() {
 
     const metadata = machine.metadata;
     const machineName = metadata?.displayName || metadata?.host || 'unknown machine';
+
+    const spawnButtonDisabled = !customPath.trim() || isSpawning || !isMachineOnline(machine!);
 
     return (
         <>
@@ -251,7 +308,7 @@ export default function MachineDetailScreen() {
                                     fontSize: 12,
                                     color: isMachineOnline(machine) ? '#34C759' : '#999'
                                 }]}>
-                                    {isMachineOnline(machine) ? 'online' : 'offline'}
+                                    {isMachineOnline(machine) ? t('status.online') : t('status.offline')}
                                 </Text>
                             </View>
                         </View>
@@ -272,11 +329,9 @@ export default function MachineDetailScreen() {
                             />
                         </Pressable>
                     ),
-                    headerBackTitle: 'Back'
+                    headerBackTitle: t('machine.back')
                 }}
             />
-            {/* Custom path input removed in favor of MachineSessionLauncher component */}
-            
             <ItemList
                 refreshControl={
                     <RefreshControl
@@ -286,16 +341,89 @@ export default function MachineDetailScreen() {
                 }
                 keyboardShouldPersistTaps="handled"
             >
-                {/* Launch New Session section with launcher */}
-                <ItemGroup title={t('machine.launchNewSessionInDirectory')}>
-                        <MachineSessionLauncher
-                            machineId={machineId!}
-                            recentPaths={recentPaths}
-                            homeDir={metadata?.homeDir}
-                            isOnline={isMachineOnline(machine)}
-                            onStartSession={handleStartSession}
-                        />
-                </ItemGroup>
+                {/* Launch section */}
+                {machine && (
+                    <>
+                        {!isMachineOnline(machine) && (
+                            <ItemGroup>
+                                <Item
+                                    title={t('machine.offlineUnableToSpawn')}
+                                    subtitle={t('machine.offlineHelp')}
+                                    subtitleLines={0}
+                                    showChevron={false}
+                                />
+                            </ItemGroup>
+                        )}
+                        <ItemGroup title={t('machine.launchNewSessionInDirectory')}>
+                        <View style={{ opacity: isMachineOnline(machine) ? 1 : 0.5 }}>
+                            <View style={styles.pathInputContainer}>
+                                <View style={[styles.pathInput, { paddingVertical: 8 }]}>
+                                    <MultiTextInput
+                                        ref={inputRef}
+                                        value={customPath}
+                                        onChangeText={setCustomPath}
+                                        placeholder={'Enter custom path'}
+                                        maxHeight={76}
+                                        paddingTop={8}
+                                        paddingBottom={8}
+                                        paddingRight={48}
+                                    />
+                                    <Pressable
+                                        onPress={() => handleStartSession()}
+                                        disabled={spawnButtonDisabled}
+                                        style={[
+                                            styles.inlineSendButton,
+                                            spawnButtonDisabled ? styles.inlineSendInactive : styles.inlineSendActive
+                                        ]}
+                                    >
+                                        <Ionicons
+                                            name="play"
+                                            size={16}
+                                            color={spawnButtonDisabled ? theme.colors.textSecondary : theme.colors.button.primary.tint}
+                                            style={{ marginLeft: 1 }}
+                                        />
+                                    </Pressable>
+                                </View>
+                            </View>
+                            <View style={{ paddingTop: 4 }} />
+                            {pathsToShow.map((path, index) => {
+                                const display = formatPathRelativeToHome(path, machine.metadata?.homeDir);
+                                const isSelected = customPath.trim() === display;
+                                const isLast = index === pathsToShow.length - 1;
+                                const hideDivider = isLast && pathsToShow.length <= 5;
+                                return (
+                                    <Item
+                                        key={path}
+                                        title={display}
+                                        leftElement={<Ionicons name="folder-outline" size={18} color={theme.colors.textSecondary} />}
+                                        onPress={isMachineOnline(machine) ? () => {
+                                            setCustomPath(display);
+                                            setTimeout(() => inputRef.current?.focus(), 50);
+                                        } : undefined}
+                                        disabled={!isMachineOnline(machine)}
+                                        selected={isSelected}
+                                        showChevron={false}
+                                        pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                        showDivider={!hideDivider}
+                                    />
+                                );
+                            })}
+                            {recentPaths.length > 5 && (
+                                <Item
+                                    title={showAllPaths ? t('machineLauncher.showLess') : t('machineLauncher.showAll', { count: recentPaths.length })}
+                                    onPress={() => setShowAllPaths(!showAllPaths)}
+                                    showChevron={false}
+                                    showDivider={false}
+                                    titleStyle={{
+                                        textAlign: 'center',
+                                        color: (theme as any).dark ? theme.colors.button.primary.tint : theme.colors.button.primary.background
+                                    }}
+                                />
+                            )}
+                        </View>
+                        </ItemGroup>
+                    </>
+                )}
 
                 {/* Daemon */}
                 <ItemGroup title={t('machine.daemon')}>
@@ -363,18 +491,18 @@ export default function MachineDetailScreen() {
                         />
                 </ItemGroup>
 
-                {/* Active Sessions */}
-                {machineSessions.length > 0 && (
-                    <ItemGroup title={t('machine.activeSessions', { count: machineSessions.length })}>
-                        {machineSessions.slice(0, 5).map(session => (
-                                <Item
-                                    key={session.id}
-                                    title={pastUsedRelativePath(session)}
-                                    subtitle={session.metadata?.name || t('machine.untitledSession')}
-                                    onPress={() => navigateToSession(session.id)}
-                                    rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
-                                />
-                            ))}
+                {/* Previous Sessions (debug view) */}
+                {previousSessions.length > 0 && (
+                    <ItemGroup title={'Previous Sessions (up to 5 most recent)'}>
+                        {previousSessions.map(session => (
+                            <Item
+                                key={session.id}
+                                title={getSessionName(session)}
+                                subtitle={getSessionSubtitle(session)}
+                                onPress={() => navigateToSession(session.id)}
+                                rightElement={<Ionicons name="chevron-forward" size={20} color="#C7C7CC" />}
+                            />
+                        ))}
                     </ItemGroup>
                 )}
 

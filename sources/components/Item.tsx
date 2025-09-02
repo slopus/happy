@@ -19,6 +19,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 export interface ItemProps {
     title: string;
     subtitle?: string;
+    subtitleLines?: number; // set 0 or undefined for auto/multiline
     detail?: string;
     icon?: React.ReactNode;
     leftElement?: React.ReactNode;
@@ -122,6 +123,7 @@ export const Item = React.memo<ItemProps>((props) => {
     const {
         title,
         subtitle,
+        subtitleLines,
         detail,
         icon,
         leftElement,
@@ -220,14 +222,20 @@ export const Item = React.memo<ItemProps>((props) => {
                     >
                         {title}
                     </Text>
-                    {subtitle && (
-                        <Text 
-                            style={[styles.subtitle, subtitleStyle]}
-                            numberOfLines={1}
-                        >
-                            {subtitle}
-                        </Text>
-                    )}
+                    {subtitle && (() => {
+                        // Allow multiline when requested or when content contains line breaks
+                        const effectiveLines = subtitleLines !== undefined
+                            ? (subtitleLines <= 0 ? undefined : subtitleLines)
+                            : (typeof subtitle === 'string' && subtitle.indexOf('\n') !== -1 ? undefined : 1);
+                        return (
+                            <Text
+                                style={[styles.subtitle, subtitleStyle]}
+                                numberOfLines={effectiveLines}
+                            >
+                                {subtitle}
+                            </Text>
+                        );
+                    })()}
                 </View>
 
                 {/* Right Section */}

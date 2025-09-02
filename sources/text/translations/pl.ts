@@ -214,10 +214,6 @@ export const pl: TranslationStructure = {
         title: 'Rozpocznij nową sesję',
         noMachinesFound: 'Nie znaleziono maszyn. Najpierw uruchom sesję Happy na swoim komputerze.',
         allMachinesOffline: 'Wszystkie maszyny są offline',
-        machineOfflineHelp: {
-            computerOnline: '• Czy Twój komputer jest online?',
-            daemonRunning: '• Czy daemon Happy działa? Sprawdź poleceniem `happy daemon status`'
-        },
         machineDetails: 'Zobacz szczegóły maszyny →',
         directoryDoesNotExist: 'Katalog nie został znaleziony',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `Katalog ${directory} nie istnieje. Czy chcesz go utworzyć?`,
@@ -271,6 +267,8 @@ export const pl: TranslationStructure = {
         // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
         killSession: 'Zakończ sesję',
         killSessionConfirm: 'Czy na pewno chcesz zakończyć tę sesję?',
+        archiveSession: 'Zarchiwizuj sesję',
+        archiveSessionConfirm: 'Czy na pewno chcesz zarchiwizować tę sesję?',
         happySessionIdCopied: 'ID sesji Happy skopiowane do schowka',
         failedToCopySessionId: 'Nie udało się skopiować ID sesji Happy',
         happySessionId: 'ID sesji Happy',
@@ -280,6 +278,7 @@ export const pl: TranslationStructure = {
         metadataCopied: 'Metadane skopiowane do schowka',
         failedToCopyMetadata: 'Nie udało się skopiować metadanych',
         failedToKillSession: 'Nie udało się zakończyć sesji',
+        failedToArchiveSession: 'Nie udało się zarchiwizować sesji',
         connectionStatus: 'Status połączenia',
         created: 'Utworzono',
         lastUpdated: 'Ostatnia aktualizacja',
@@ -288,6 +287,7 @@ export const pl: TranslationStructure = {
         viewMachine: 'Zobacz maszynę',
         viewMachineSubtitle: 'Zobacz szczegóły maszyny i sesje',
         killSessionSubtitle: 'Natychmiastowo zakończ sesję',
+        archiveSessionSubtitle: 'Zarchiwizuj tę sesję i zatrzymaj ją',
         metadata: 'Metadane',
         host: 'Host',
         path: 'Ścieżka',
@@ -588,6 +588,8 @@ export const pl: TranslationStructure = {
     },
 
     machine: {
+        offlineUnableToSpawn: 'Launcher wyłączony, gdy maszyna jest offline',
+        offlineHelp: '• Upewnij się, że komputer jest online\n• Uruchom `happy daemon status`, aby zdiagnozować\n• Czy używasz najnowszej wersji CLI? Zaktualizuj poleceniem `npm install -g happy-coder@latest`',
         launchNewSessionInDirectory: 'Uruchom nową sesję w katalogu',
         daemon: 'Daemon',
         status: 'Status',

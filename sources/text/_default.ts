@@ -203,10 +203,6 @@ export const en = {
         title: 'Start New Session',
         noMachinesFound: 'No machines found. Start a Happy session on your computer first.',
         allMachinesOffline: 'All machines appear offline',
-        machineOfflineHelp: {
-            computerOnline: '• Is your computer online?',
-            daemonRunning: '• Is the Happy daemon running? Check with `happy daemon status`'
-        },
         machineDetails: 'View machine details →',
         directoryDoesNotExist: 'Directory Not Found',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `The directory ${directory} does not exist. Do you want to create it?`,
@@ -260,6 +256,8 @@ export const en = {
         // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
         killSession: 'Kill Session',
         killSessionConfirm: 'Are you sure you want to terminate this session?',
+        archiveSession: 'Archive Session',
+        archiveSessionConfirm: 'Are you sure you want to archive this session?',
         happySessionIdCopied: 'Happy Session ID copied to clipboard',
         failedToCopySessionId: 'Failed to copy Happy Session ID',
         happySessionId: 'Happy Session ID',
@@ -269,6 +267,7 @@ export const en = {
         metadataCopied: 'Metadata copied to clipboard',
         failedToCopyMetadata: 'Failed to copy metadata',
         failedToKillSession: 'Failed to kill session',
+        failedToArchiveSession: 'Failed to archive session',
         connectionStatus: 'Connection Status',
         created: 'Created',
         lastUpdated: 'Last Updated',
@@ -277,6 +276,7 @@ export const en = {
         viewMachine: 'View Machine',
         viewMachineSubtitle: 'View machine details and sessions',
         killSessionSubtitle: 'Immediately terminate the session',
+        archiveSessionSubtitle: 'Archive this session and stop it',
         metadata: 'Metadata',
         host: 'Host',
         path: 'Path',
@@ -579,6 +579,8 @@ export const en = {
 
     machine: {
         launchNewSessionInDirectory: 'Launch New Session in Directory',
+        offlineUnableToSpawn: 'Launcher disabled while machine is offline',
+        offlineHelp: '• Make sure your computer is online\n• Run `happy daemon status` to diagnose\n• Are you running the latest CLI version? Upgrade with `npm install -g happy-coder@latest`',
         daemon: 'Daemon',
         status: 'Status',
         stopDaemon: 'Stop Daemon',
