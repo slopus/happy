@@ -11,6 +11,7 @@ import { TaskView } from './TaskView';
 import { BashViewFull } from './BashViewFull';
 import { EditViewFull } from './EditViewFull';
 import { MultiEditViewFull } from './MultiEditViewFull';
+import { CodexBashView } from './CodexBashView';
 
 export type ToolViewProps = {
     tool: ToolCall;
@@ -25,6 +26,7 @@ export type ToolViewComponent = React.ComponentType<ToolViewProps>;
 export const toolViewRegistry: Record<string, ToolViewComponent> = {
     Edit: EditView,
     Bash: BashView,
+    CodexBash: CodexBashView,
     Write: WriteView,
     TodoWrite: TodoView,
     ExitPlanMode: ExitPlanToolView,
@@ -52,6 +54,7 @@ export function getToolFullViewComponent(toolName: string): ToolViewComponent | 
 // Export individual components
 export { EditView } from './EditView';
 export { BashView } from './BashView';
+export { CodexBashView } from './CodexBashView';
 export { BashViewFull } from './BashViewFull';
 export { EditViewFull } from './EditViewFull';
 export { MultiEditViewFull } from './MultiEditViewFull';
