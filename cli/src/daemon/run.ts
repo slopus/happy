@@ -292,7 +292,7 @@ export async function startDaemon(): Promise<void> {
         // Wait for webhook to populate session with happySessionId
         logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${happyProcess.pid}`);
 
-        return new Promise((resolve, reject) => {
+        return new Promise((resolve) => {
           // Set timeout for webhook
           const timeout = setTimeout(() => {
             pidToAwaiter.delete(happyProcess.pid!);
@@ -300,8 +300,10 @@ export async function startDaemon(): Promise<void> {
             resolve({
               type: 'error',
               errorMessage: `Session webhook timeout for PID ${happyProcess.pid}`
-            }); // Return incomplete session on timeout
-          }, 10000); // 10 second timeout
+            });
+            // 15 second timeout - I have seen timeouts on 10 seconds
+            // even though session was still created successfully in ~2 more seconds
+          }, 15_000);
 
           // Register awaiter
           pidToAwaiter.set(happyProcess.pid!, (completedSession) => {
