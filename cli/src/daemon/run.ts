@@ -4,7 +4,7 @@ import os from 'os';
 import { ApiClient } from '@/api/api';
 import { TrackedSession } from './types';
 import { MachineMetadata, DaemonState, Metadata } from '@/api/types';
-import { SpawnSessionOptions, SpawnSessionResult } from '@/api/handlers';
+import { SpawnSessionOptions, SpawnSessionResult } from '@/modules/common/registerCommonHandlers';
 import { logger } from '@/ui/logger';
 import { authAndSetupMachineIfNeeded } from '@/ui/auth';
 import { configuration } from '@/configuration';
@@ -40,10 +40,10 @@ export async function startDaemon(): Promise<void> {
   // In case the setup malfunctions - our signal handlers will not properly
   // shut down. We will force exit the process with code 1.
   let requestShutdown: (source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string) => void;
-  let resolvesWhenShutdownRequested = new Promise<({source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string})>((resolve) => {
+  let resolvesWhenShutdownRequested = new Promise<({ source: 'happy-app' | 'happy-cli' | 'os-signal' | 'exception', errorMessage?: string })>((resolve) => {
     requestShutdown = (source, errorMessage) => {
       logger.debug(`[DAEMON RUN] Requesting shutdown (source: ${source}, errorMessage: ${errorMessage})`);
-      
+
       // Fallback - in case startup malfunctions - we will force exit the process with code 1
       setTimeout(async () => {
         logger.debug('[DAEMON RUN] Startup malfunctioned, forcing exit with code 1');
@@ -55,7 +55,7 @@ export async function startDaemon(): Promise<void> {
       }, 1_000);
 
       // Start graceful shutdown
-      resolve({source, errorMessage});
+      resolve({ source, errorMessage });
     };
   });
 
@@ -91,7 +91,7 @@ export async function startDaemon(): Promise<void> {
   process.on('beforeExit', (code) => {
     logger.debug(`[DAEMON RUN] Process about to exit with code: ${code}`);
   });
-  
+
   logger.debug('[DAEMON RUN] Starting daemon process...');
   logger.debugLargeJson('[DAEMON RUN] Environment', getEnvironmentInfo());
 
@@ -192,7 +192,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug(`[DAEMON RUN] Directory exists: ${directory}`);
       } catch (error) {
         logger.debug(`[DAEMON RUN] Directory doesn't exist, creating: ${directory}`);
-        
+
         // Check if directory creation is approved
         if (!approvedNewDirectoryCreation) {
           logger.debug(`[DAEMON RUN] Directory creation not approved for: ${directory}`);
@@ -201,14 +201,14 @@ export async function startDaemon(): Promise<void> {
             directory
           };
         }
-        
+
         try {
           await fs.mkdir(directory, { recursive: true });
           logger.debug(`[DAEMON RUN] Successfully created directory: ${directory}`);
           directoryCreated = true;
         } catch (mkdirError: any) {
           let errorMessage = `Unable to create directory at '${directory}'. `;
-          
+
           // Provide more helpful error messages based on the error code
           if (mkdirError.code === 'EACCES') {
             errorMessage += `Permission denied. You don't have write access to create a folder at this location. Try using a different path or check your permissions.`;
@@ -221,7 +221,7 @@ export async function startDaemon(): Promise<void> {
           } else {
             errorMessage += `System error: ${mkdirError.message || mkdirError}. Please verify the path is valid and you have the necessary permissions.`;
           }
-          
+
           logger.debug(`[DAEMON RUN] Directory creation failed: ${errorMessage}`);
           return {
             type: 'error',
@@ -397,7 +397,7 @@ export async function startDaemon(): Promise<void> {
     const api = new ApiClient(credentials.token, credentials.secret);
 
     // Get or create machine
-    const machine = await api.createMachineOrGetExistingAsIs({
+    const machine = await api.getOrCreateMachine({
       machineId,
       metadata: initialMachineMetadata,
       daemonState: initialDaemonState
@@ -445,7 +445,7 @@ export async function startDaemon(): Promise<void> {
           pidToTrackedSession.delete(pid);
         }
       }
-      
+
       // Check if daemon needs update
       // If version on disk is different from the one in package.json - we need to restart
       // BIG if - does this get updated from underneath us on npm upgrade?
@@ -454,7 +454,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Daemon is outdated, triggering self-restart with latest version, clearing heartbeat interval');
 
         clearInterval(restartOnStaleVersionAndHeartbeat);
-        
+
         // Spawn new daemon through the CLI
         // We do not need to clean ourselves up - we will be killed by
         // the CLI start command.
@@ -484,7 +484,7 @@ export async function startDaemon(): Promise<void> {
         logger.debug('[DAEMON RUN] Somehow a different daemon was started without killing us. We should kill ourselves.')
         requestShutdown('exception', 'A different daemon was started without killing us. We should kill ourselves.')
       }
-      
+
       // Heartbeat
       try {
         const updatedState: DaemonLocallyPersistedState = {

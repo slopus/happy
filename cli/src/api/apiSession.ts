@@ -8,9 +8,8 @@ import { configuration } from '@/configuration';
 import { RawJSONLines } from '@/claude/types';
 import { randomUUID } from 'node:crypto';
 import { AsyncLock } from '@/utils/lock';
-
-type RpcHandler<T = any, R = any> = (data: T) => R | Promise<R>;
-type RpcHandlerMap = Map<string, RpcHandler>;
+import { RpcHandlerManager } from './rpc/RpcHandlerManager';
+import { registerCommonHandlers } from '../modules/common/registerCommonHandlers';
 
 export class ApiSessionClient extends EventEmitter {
     private readonly token: string;
@@ -23,7 +22,7 @@ export class ApiSessionClient extends EventEmitter {
     private socket: Socket<ServerToClientEvents, ClientToServerEvents>;
     private pendingMessages: UserMessage[] = [];
     private pendingMessageCallback: ((message: UserMessage) => void) | null = null;
-    private rpcHandlers: RpcHandlerMap = new Map();
+    readonly rpcHandlerManager: RpcHandlerManager;
     private agentStateLock = new AsyncLock();
     private metadataLock = new AsyncLock();
 
@@ -36,6 +35,14 @@ export class ApiSessionClient extends EventEmitter {
         this.metadataVersion = session.metadataVersion;
         this.agentState = session.agentState;
         this.agentStateVersion = session.agentStateVersion;
+
+        // Initialize RPC handler manager
+        this.rpcHandlerManager = new RpcHandlerManager({
+            scopePrefix: this.sessionId,
+            secret: this.secret,
+            logger: (msg, data) => logger.debug(msg, data)
+        });
+        registerCommonHandlers(this.rpcHandlerManager);
 
         //
         // Create socket
@@ -63,47 +70,22 @@ export class ApiSessionClient extends EventEmitter {
 
         this.socket.on('connect', () => {
             logger.debug('Socket connected successfully');
-            // Re-register all RPC handlers on reconnection
-            this.reregisterHandlers();
+            this.rpcHandlerManager.onSocketConnect(this.socket);
         })
 
         // Set up global RPC request handler
         this.socket.on('rpc-request', async (data: { method: string, params: string }, callback: (response: string) => void) => {
-            try {
-                const method = data.method;
-                const handler = this.rpcHandlers.get(method);
-
-                if (!handler) {
-                    logger.debug('[SOCKET] [RPC] [ERROR] method not found', { method });
-                    const errorResponse = { error: 'Method not found' };
-                    const encryptedError = encodeBase64(encrypt(errorResponse, this.secret));
-                    callback(encryptedError);
-                    return;
-                }
-
-                // Decrypt the incoming params
-                const decryptedParams = decrypt(decodeBase64(data.params), this.secret);
-
-                // Call the handler
-                const result = await handler(decryptedParams);
-
-                // Encrypt and return the response
-                const encryptedResponse = encodeBase64(encrypt(result, this.secret));
-                callback(encryptedResponse);
-            } catch (error) {
-                logger.debug('[SOCKET] [RPC] [ERROR] Error handling RPC request', { error });
-                const errorResponse = { error: error instanceof Error ? error.message : 'Unknown error' };
-                const encryptedError = encodeBase64(encrypt(errorResponse, this.secret));
-                callback(encryptedError);
-            }
+            callback(await this.rpcHandlerManager.handleRequest(data));
         })
 
         this.socket.on('disconnect', (reason) => {
             logger.debug('[API] Socket disconnected:', reason);
+            this.rpcHandlerManager.onSocketDisconnect();
         })
 
         this.socket.on('connect_error', (error) => {
             logger.debug('[API] Socket connection error:', error);
+            this.rpcHandlerManager.onSocketDisconnect();
         })
 
         // Server events
@@ -158,7 +140,7 @@ export class ApiSessionClient extends EventEmitter {
         // DEATH
         this.socket.on('error', (error) => {
             logger.debug('[API] Socket error:', error);
-        })
+        });
 
         //
         // Connect (after short delay to give a time to add handlers)
@@ -363,39 +345,6 @@ export class ApiSessionClient extends EventEmitter {
                 }
             });
         });
-    }
-
-    /**
-     * Set a custom RPC handler for a specific method with encrypted arguments and responses
-     * @param method - The method name to handle
-     * @param handler - The handler function to call when the method is invoked
-     */
-    setHandler<T = any, R = any>(method: string, handler: RpcHandler<T, R>): void {
-        // Prefix method with session ID to ensure isolation between sessions
-        const prefixedMethod = `${this.sessionId}:${method}`;
-
-        // Store the handler
-        this.rpcHandlers.set(prefixedMethod, handler);
-
-        // Register the method with the server
-        this.socket.emit('rpc-register', { method: prefixedMethod });
-
-        logger.debug('Registered RPC handler', { method, prefixedMethod });
-    }
-
-    /**
-     * Re-register all RPC handlers after reconnection
-     */
-    private reregisterHandlers(): void {
-        logger.debug('Re-registering RPC handlers after reconnection', {
-            totalMethods: this.rpcHandlers.size
-        });
-
-        // Re-register all methods with the server
-        for (const [prefixedMethod] of this.rpcHandlers) {
-            this.socket.emit('rpc-register', { method: prefixedMethod });
-            logger.debug('Re-registered method', { prefixedMethod });
-        }
     }
 
     /**

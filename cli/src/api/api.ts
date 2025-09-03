@@ -98,7 +98,7 @@ export class ApiClient {
    * Register or update machine with the server
    * Returns the current machine state from the server with decrypted metadata and daemonState
    */
-  async createMachineOrGetExistingAsIs(opts: {
+  async getOrCreateMachine(opts: {
     machineId: string,
     metadata: MachineMetadata,
     daemonState?: DaemonState

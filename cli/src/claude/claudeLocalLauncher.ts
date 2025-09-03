@@ -63,8 +63,8 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
         }
 
         // When to abort
-        session.client.setHandler('abort', doAbort); // Abort current process, clean queue and switch to remote mode
-        session.client.setHandler('switch', doSwitch); // When user wants to switch to remote mode
+        session.client.rpcHandlerManager.registerHandler('abort', doAbort); // Abort current process, clean queue and switch to remote mode
+        session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When user wants to switch to remote mode
         session.queue.setOnMessage((message: string, mode) => {
             // Switch to remote mode when message received
             doSwitch();
@@ -129,8 +129,8 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
         exutFuture.resolve(undefined);
 
         // Set handlers to no-op
-        session.client.setHandler('abort', async () => { });
-        session.client.setHandler('switch', async () => { });
+        session.client.rpcHandlerManager.registerHandler('abort', async () => { });
+        session.client.rpcHandlerManager.registerHandler('switch', async () => { });
         session.queue.setOnMessage(null);
 
         // Cleanup

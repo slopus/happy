@@ -7,7 +7,6 @@ import { loop } from '@/claude/loop';
 import { AgentState, Metadata } from '@/api/types';
 // @ts-ignore
 import packageJson from '../package.json';
-import { registerHandlers, registerKillSessionHandler as registerKillSessionRpcHandler } from '@/api/handlers';
 import { readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './claude/loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
@@ -15,12 +14,12 @@ import { hashObject } from '@/utils/deterministicJson';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import { extractSDKMetadataAsync } from '@/claude/sdk/metadataExtractor';
 import { parseSpecialCommand } from '@/parsers/specialCommands';
-import { Session } from '@/claude/session';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { configuration } from '@/configuration';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
+import { registerKillSessionHandler } from './claude/registerKillSessionHandler';
 
 export interface StartOptions {
     model?: string
@@ -64,7 +63,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
     logger.debug(`Using machineId: ${machineId}`);
 
     // Create machine if it doesn't exist
-    await api.createMachineOrGetExistingAsIs({
+    await api.getOrCreateMachine({
         machineId,
         metadata: initialMachineMetadata
     });
@@ -150,9 +149,6 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         allowedTools: mode.allowedTools,
         disallowedTools: mode.disallowedTools
     }));
-
-    // Register all RPC handlers
-    registerHandlers(session);
 
     // Forward messages to the queue
     let currentPermissionMode = options.permissionMode;
@@ -339,7 +335,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         cleanup();
     });
 
-    registerKillSessionRpcHandler(session, cleanup);
+    registerKillSessionHandler(session.rpcHandlerManager, cleanup);
 
     // Create claude loop
     await loop({

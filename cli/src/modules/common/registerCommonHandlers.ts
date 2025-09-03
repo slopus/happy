@@ -1,16 +1,11 @@
-/**
- * RPC handlers for API session communication
- * Handles remote procedure calls from mobile clients
- */
-
-import { ApiSessionClient } from './apiSession';
 import { logger } from '@/ui/logger';
 import { exec, ExecOptions } from 'child_process';
 import { promisify } from 'util';
 import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { createHash } from 'crypto';
 import { join } from 'path';
-import { run as runRipgrep } from '@/ripgrep/index';
+import { run as runRipgrep } from '@/modules/ripgrep/index';
+import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 
 const execAsync = promisify(exec);
 
@@ -100,15 +95,6 @@ interface RipgrepResponse {
     error?: string;
 }
 
-interface KillSessionRequest {
-    // No parameters needed
-}
-
-interface KillSessionResponse {
-    success: boolean;
-    message: string;
-}
-
 /*
  * Spawn Session Options and Result
  * This rpc type is used by the daemon, all other RPCs here are for sessions
@@ -129,10 +115,10 @@ export type SpawnSessionResult =
 /**
  * Register all RPC handlers with the session
  */
-export function registerHandlers(session: ApiSessionClient) {
+export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager) {
 
     // Shell command handler - executes commands in the default shell
-    session.setHandler<BashRequest, BashResponse>('bash', async (data) => {
+    rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async (data) => {
         logger.debug('Shell command request:', data.command);
 
         try {
@@ -182,7 +168,7 @@ export function registerHandlers(session: ApiSessionClient) {
     });
 
     // Read file handler - returns base64 encoded content
-    session.setHandler<ReadFileRequest, ReadFileResponse>('readFile', async (data) => {
+    rpcHandlerManager.registerHandler<ReadFileRequest, ReadFileResponse>('readFile', async (data) => {
         logger.debug('Read file request:', data.path);
 
         try {
@@ -196,7 +182,7 @@ export function registerHandlers(session: ApiSessionClient) {
     });
 
     // Write file handler - with hash verification
-    session.setHandler<WriteFileRequest, WriteFileResponse>('writeFile', async (data) => {
+    rpcHandlerManager.registerHandler<WriteFileRequest, WriteFileResponse>('writeFile', async (data) => {
         logger.debug('Write file request:', data.path);
 
         try {
@@ -256,7 +242,7 @@ export function registerHandlers(session: ApiSessionClient) {
     });
 
     // List directory handler
-    session.setHandler<ListDirectoryRequest, ListDirectoryResponse>('listDirectory', async (data) => {
+    rpcHandlerManager.registerHandler<ListDirectoryRequest, ListDirectoryResponse>('listDirectory', async (data) => {
         logger.debug('List directory request:', data.path);
 
         try {
@@ -308,7 +294,7 @@ export function registerHandlers(session: ApiSessionClient) {
     });
 
     // Get directory tree handler - recursive with depth control
-    session.setHandler<GetDirectoryTreeRequest, GetDirectoryTreeResponse>('getDirectoryTree', async (data) => {
+    rpcHandlerManager.registerHandler<GetDirectoryTreeRequest, GetDirectoryTreeResponse>('getDirectoryTree', async (data) => {
         logger.debug('Get directory tree request:', data.path, 'maxDepth:', data.maxDepth);
 
         // Helper function to build tree recursively
@@ -389,7 +375,7 @@ export function registerHandlers(session: ApiSessionClient) {
     });
 
     // Ripgrep handler - raw interface to ripgrep
-    session.setHandler<RipgrepRequest, RipgrepResponse>('ripgrep', async (data) => {
+    rpcHandlerManager.registerHandler<RipgrepRequest, RipgrepResponse>('ripgrep', async (data) => {
         logger.debug('Ripgrep request with args:', data.args, 'cwd:', data.cwd);
 
         try {
@@ -407,24 +393,5 @@ export function registerHandlers(session: ApiSessionClient) {
                 error: error instanceof Error ? error.message : 'Failed to run ripgrep'
             };
         }
-    });
-}
-
-export function registerKillSessionHandler(
-    session: ApiSessionClient, 
-    killThisHappy: () => Promise<void>
-) {
-    session.setHandler<KillSessionRequest, KillSessionResponse>('killSession', async () => {
-        logger.debug('Kill session request received');
-        
-        // This will start the cleanup process
-        void killThisHappy();
-            
-        // We should still be able to respond the the client, though they
-        // should optimistically assume the session is dead.
-        return {
-            success: true,
-            message: 'Killing happy-cli process'
-        };
     });
 }

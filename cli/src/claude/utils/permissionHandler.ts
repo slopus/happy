@@ -376,7 +376,7 @@ export class PermissionHandler {
      * Sets up the client handler for permission responses
      */
     private setupClientHandler(): void {
-        this.session.client.setHandler<PermissionResponse, void>('permission', async (message) => {
+        this.session.client.rpcHandlerManager.registerHandler<PermissionResponse, void>('permission', async (message) => {
             logger.debug(`Permission response: ${JSON.stringify(message)}`);
 
             const id = message.id;

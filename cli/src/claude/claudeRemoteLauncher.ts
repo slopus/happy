@@ -92,8 +92,8 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
     }
 
     // When to abort
-    session.client.setHandler('abort', doAbort); // When abort clicked
-    session.client.setHandler('switch', doSwitch); // When switch clicked
+    session.client.rpcHandlerManager.registerHandler('abort', doAbort); // When abort clicked
+    session.client.rpcHandlerManager.registerHandler('switch', doSwitch); // When switch clicked
     // Removed catch-all stdin handler - now handled by RemoteModeDisplay keyboard handlers
 
     // Create permission handler
