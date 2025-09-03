@@ -73,6 +73,17 @@ export interface Session {
     draft?: string | null; // Local draft message, not synced to server
     permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | null; // Local permission mode, not synced to server
     modelMode?: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus' | null; // Local model mode, not synced to server
+    // IMPORTANT: latestUsage is extracted from reducerState.latestUsage after message processing.
+    // We store it directly on Session to ensure it's available immediately on load.
+    // Do NOT store reducerState itself on Session - it's mutable and should only exist in SessionMessages.
+    latestUsage?: {
+        inputTokens: number;
+        outputTokens: number;
+        cacheCreation: number;
+        cacheRead: number;
+        contextSize: number;
+        timestamp: number;
+    } | null;
 }
 
 export interface DecryptedMessage {
