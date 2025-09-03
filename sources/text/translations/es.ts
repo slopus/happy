@@ -398,6 +398,8 @@ export const es: TranslationStructure = {
             webSearchQuery: ({ query }: { query: string }) => `Búsqueda web(consulta: ${query})`,
             grepPattern: ({ pattern }: { pattern: string }) => `grep(patrón: ${pattern})`,
             multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count} ediciones)`,
+            readingFile: ({ file }: { file: string }) => `Leyendo ${file}`,
+            writingFile: ({ file }: { file: string }) => `Escribiendo ${file}`,
         }
     },
 

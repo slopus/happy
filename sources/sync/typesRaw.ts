@@ -84,6 +84,25 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
     type: z.literal('event'),
     id: z.string(),
     data: agentEventSchema
+}), z.object({
+    type: z.literal('codex'),
+    data: z.discriminatedUnion('type', [
+        z.object({ type: z.literal('reasoning'), message: z.string() }),
+        z.object({ type: z.literal('message'), message: z.string() }),
+        z.object({
+            type: z.literal('tool-call'),
+            callId: z.string(),
+            input: z.any(),
+            name: z.string(),
+            id: z.string()
+        }),
+        z.object({
+            type: z.literal('tool-call-result'),
+            callId: z.string(),
+            output: z.any(),
+            id: z.string()
+        })
+    ])
 })]);
 
 const rawRecordSchema = z.discriminatedUnion('role', [
@@ -94,8 +113,8 @@ const rawRecordSchema = z.discriminatedUnion('role', [
     }),
     z.object({
         role: z.literal('user'),
-        content: z.object({ 
-            type: z.literal('text'), 
+        content: z.object({
+            type: z.literal('text'),
             text: z.string()
         }),
         meta: MessageMetaSchema.optional()
@@ -170,6 +189,12 @@ export type NormalizedMessage = ({
 };
 
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
+    let parsed = rawRecordSchema.safeParse(raw);
+    if (!parsed.success) {
+        console.error('Invalid raw record:', parsed.error);
+        return null;
+    }
+    raw = parsed.data;
     if (raw.role === 'user') {
         return {
             id,
@@ -305,6 +330,81 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 content: raw.content.data,
                 isSidechain: false,
             };
+        }
+        if (raw.content.type === 'codex') {
+            if (raw.content.data.type === 'message') {
+                // Cast codex messages to agent text messages
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'text',
+                        text: raw.content.data.message,
+                        uuid: id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                };
+            }
+            if (raw.content.data.type === 'reasoning') {
+                // Cast codex messages to agent text messages
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'text',
+                        text: raw.content.data.message,
+                        uuid: id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            if (raw.content.data.type === 'tool-call') {
+                // Cast tool calls to agent tool-call messages
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-call',
+                        id: raw.content.data.callId,
+                        name: raw.content.data.name || 'unknown',
+                        input: raw.content.data.input,
+                        description: null,
+                        uuid: raw.content.data.id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
+            if (raw.content.data.type === 'tool-call-result') {
+                // Cast tool call results to agent tool-result messages
+                return {
+                    id,
+                    localId,
+                    createdAt,
+                    role: 'agent',
+                    isSidechain: false,
+                    content: [{
+                        type: 'tool-result',
+                        tool_use_id: raw.content.data.callId,
+                        content: raw.content.data.output,
+                        is_error: false,
+                        uuid: raw.content.data.id,
+                        parentUUID: null
+                    }],
+                    meta: raw.meta
+                } satisfies NormalizedMessage;
+            }
         }
     }
     return null;
