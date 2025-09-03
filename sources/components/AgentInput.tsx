@@ -621,8 +621,8 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                     </>
                 )}
 
-                {/* Connection status and permission mode */}
-                {(props.connectionStatus || (props.permissionMode && props.permissionMode !== 'default')) && (
+                {/* Connection status, context warning, and permission mode */}
+                {(props.connectionStatus || contextWarning || (props.permissionMode && props.permissionMode !== 'default')) && (
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
@@ -630,33 +630,35 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                         paddingHorizontal: 16,
                         paddingBottom: 4,
                     }}>
-                        {props.connectionStatus && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                <StatusDot
-                                    color={props.connectionStatus.dotColor}
-                                    isPulsing={props.connectionStatus.isPulsing}
-                                    size={6}
-                                    style={{ marginRight: 6 }}
-                                />
-                                <Text style={{
-                                    fontSize: 11,
-                                    color: props.connectionStatus.color,
-                                    ...Typography.default()
-                                }}>
-                                    {props.connectionStatus.text}
-                                </Text>
-                                {contextWarning && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                            {props.connectionStatus && (
+                                <>
+                                    <StatusDot
+                                        color={props.connectionStatus.dotColor}
+                                        isPulsing={props.connectionStatus.isPulsing}
+                                        size={6}
+                                        style={{ marginRight: 6 }}
+                                    />
                                     <Text style={{
                                         fontSize: 11,
-                                        color: contextWarning.color,
-                                        marginLeft: 8,
+                                        color: props.connectionStatus.color,
                                         ...Typography.default()
                                     }}>
-                                        • {contextWarning.text}
+                                        {props.connectionStatus.text}
                                     </Text>
-                                )}
-                            </View>
-                        )}
+                                </>
+                            )}
+                            {contextWarning && (
+                                <Text style={{
+                                    fontSize: 11,
+                                    color: contextWarning.color,
+                                    marginLeft: props.connectionStatus ? 8 : 0,
+                                    ...Typography.default()
+                                }}>
+                                    {props.connectionStatus ? '• ' : ''}{contextWarning.text}
+                                </Text>
+                            )}
+                        </View>
                         <View style={{ flexDirection: 'column', alignItems: 'flex-end' }}>
                             {props.permissionMode && props.permissionMode !== 'default' && (
                                 <Text style={{
