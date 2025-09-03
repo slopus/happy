@@ -224,7 +224,7 @@ export const pl: TranslationStructure = {
         sessionTimeout: 'Przekroczono czas uruchamiania sesji. Maszyna może działać wolno lub daemon może nie odpowiadać.',
         notConnectedToServer: 'Brak połączenia z serwerem. Sprawdź połączenie internetowe.',
         startingSession: 'Rozpoczynanie sesji...',
-        startNewSessionInFolder: 'Rozpocznij nową sesję w tym folderze'
+        startNewSessionInFolder: 'Nowa sesja tutaj'
     },
 
     sessionHistory: {
