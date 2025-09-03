@@ -143,7 +143,6 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
     const router = useRouter();
     const machines = useAllMachines();
     const [startingSessionFor, setStartingSessionFor] = React.useState<string | null>(null);
-    const isExperimental = useSetting('experiments');
 
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
@@ -334,11 +333,6 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
 
                             {/* New Session Button - only show if at least one machine is online */}
                             {(() => {
-
-                                if (!isExperimental) {
-                                    return null;
-                                }
-
                                 const machineIds = Array.from(projectGroup.machines.keys());
                                 const hasOnlineMachine = machineIds.some(machineId => {
                                     const machine = machinesMap[machineId];

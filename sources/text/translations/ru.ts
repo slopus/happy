@@ -205,7 +205,7 @@ export const ru: TranslationStructure = {
         sessionTimeout: 'Время запуска сессии истекло. Машина может работать медленно или daemon не отвечает.',
         notConnectedToServer: 'Нет подключения к серверу. Проверьте интернет-соединение.',
         startingSession: 'Запуск сессии...',
-        startNewSessionInFolder: 'Запустить новую сессию в этой папке'
+        startNewSessionInFolder: 'Новая сессия здесь'
     },
 
     sessionHistory: {
