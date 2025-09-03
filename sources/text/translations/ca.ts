@@ -398,6 +398,8 @@ export const ca: TranslationStructure = {
             webSearchQuery: ({ query }: { query: string }) => `Cerca web(consulta: ${query})`,
             grepPattern: ({ pattern }: { pattern: string }) => `grep(patró: ${pattern})`,
             multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count} edicions)`,
+            readingFile: ({ file }: { file: string }) => `Llegint ${file}`,
+            writingFile: ({ file }: { file: string }) => `Escrivint ${file}`,
         }
     },
 

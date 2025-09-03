@@ -380,6 +380,85 @@ export const knownTools = {
             }
             return t('tools.names.webSearch');
         }
+    },
+    'CodexBash': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            // Check for parsed_cmd to determine the type of operation
+            if (opts.tool.input?.parsed_cmd && Array.isArray(opts.tool.input.parsed_cmd) && opts.tool.input.parsed_cmd.length > 0) {
+                const parsedCmd = opts.tool.input.parsed_cmd[0];
+                if (parsedCmd.type === 'read' && parsedCmd.name) {
+                    // For read operations, show the filename
+                    const path = resolvePath(parsedCmd.name, opts.metadata);
+                    return path;
+                } else if (parsedCmd.type === 'write' && parsedCmd.name) {
+                    // For write operations, show the filename
+                    const path = resolvePath(parsedCmd.name, opts.metadata);
+                    return path;
+                } else if (parsedCmd.cmd) {
+                    // For other commands, show a truncated command
+                    const cmd = parsedCmd.cmd;
+                    const firstWord = cmd.split(' ')[0];
+                    if (['cd', 'ls', 'pwd', 'mkdir', 'rm', 'cp', 'mv', 'npm', 'yarn', 'git'].includes(firstWord)) {
+                        return t('tools.desc.terminalCmd', { cmd: firstWord });
+                    }
+                    const truncated = cmd.length > 20 ? cmd.substring(0, 20) + '...' : cmd;
+                    return t('tools.desc.terminalCmd', { cmd: truncated });
+                }
+            }
+            // Fallback to showing the command if available
+            if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
+                const cmdStr = opts.tool.input.command.join(' ');
+                const truncated = cmdStr.length > 20 ? cmdStr.substring(0, 20) + '...' : cmdStr;
+                return t('tools.desc.terminalCmd', { cmd: truncated });
+            }
+            return t('tools.names.terminal');
+        },
+        icon: (size: number = 24, color: string = '#000') => {
+            // Note: We can't access the tool input here, so we'll use terminal icon as default
+            // The actual icon will be determined in the component
+            return ICON_TERMINAL(size, color);
+        },
+        minimal: true,
+        hideDefaultError: true,
+        isMutable: true,
+        input: z.object({
+            command: z.array(z.string()).describe('The command array to execute'),
+            cwd: z.string().optional().describe('Current working directory'),
+            parsed_cmd: z.array(z.object({
+                type: z.string().describe('Type of parsed command (read, write, bash, etc.)'),
+                cmd: z.string().optional().describe('The command string'),
+                name: z.string().optional().describe('File name or resource name')
+            }).loose()).optional().describe('Parsed command information')
+        }).partial().loose(),
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            // Show the actual command being executed
+            if (opts.tool.input?.parsed_cmd && Array.isArray(opts.tool.input.parsed_cmd) && opts.tool.input.parsed_cmd.length > 0) {
+                const parsedCmd = opts.tool.input.parsed_cmd[0];
+                if (parsedCmd.cmd) {
+                    return parsedCmd.cmd;
+                }
+            }
+            if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
+                return opts.tool.input.command.join(' ');
+            }
+            return null;
+        },
+        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            // Provide a description based on the parsed command type
+            if (opts.tool.input?.parsed_cmd && Array.isArray(opts.tool.input.parsed_cmd) && opts.tool.input.parsed_cmd.length > 0) {
+                const parsedCmd = opts.tool.input.parsed_cmd[0];
+                if (parsedCmd.type === 'read' && parsedCmd.name) {
+                    const path = resolvePath(parsedCmd.name, opts.metadata);
+                    const basename = path.split('/').pop() || path;
+                    return t('tools.desc.readingFile', { file: basename });
+                } else if (parsedCmd.type === 'write' && parsedCmd.name) {
+                    const path = resolvePath(parsedCmd.name, opts.metadata);
+                    const basename = path.split('/').pop() || path;
+                    return t('tools.desc.writingFile', { file: basename });
+                }
+            }
+            return t('tools.names.terminal');
+        }
     }
 } satisfies Record<string, {
     title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);

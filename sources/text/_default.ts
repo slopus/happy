@@ -398,6 +398,8 @@ export const en = {
             webSearchQuery: ({ query }: { query: string }) => `Web Search(query: ${query})`,
             grepPattern: ({ pattern }: { pattern: string }) => `grep(pattern: ${pattern})`,
             multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count} edits)`,
+            readingFile: ({ file }: { file: string }) => `Reading ${file}`,
+            writingFile: ({ file }: { file: string }) => `Writing ${file}`,
         }
     },
 
