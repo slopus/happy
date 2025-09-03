@@ -13,7 +13,7 @@ describe('ripgrep low-level wrapper', () => {
     })
     
     it('should search for pattern', async () => {
-        const result = await run(['describe', 'src/ripgrep/index.test.ts'])
+        const result = await run(['describe', 'src/modules/ripgrep/index.test.ts'])
         expect(result.exitCode).toBe(0)
         expect(result.stdout).toContain('describe')
     })
@@ -25,7 +25,7 @@ describe('ripgrep low-level wrapper', () => {
     })
     
     it('should handle JSON output', async () => {
-        const result = await run(['--json', 'describe', 'src/ripgrep/index.test.ts'])
+        const result = await run(['--json', 'describe', 'src/modules/ripgrep/index.test.ts'])
         expect(result.exitCode).toBe(0)
         
         // Parse first line to check it's valid JSON
@@ -35,7 +35,7 @@ describe('ripgrep low-level wrapper', () => {
     })
     
     it('should respect custom working directory', async () => {
-        const result = await run(['describe', 'index.test.ts'], { cwd: 'src/ripgrep' })
+        const result = await run(['describe', 'index.test.ts'], { cwd: 'src/modules/ripgrep' })
         expect(result.exitCode).toBe(0)
         expect(result.stdout).toContain('describe')
     })
