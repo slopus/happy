@@ -219,6 +219,12 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                 cacheCreation: sessionUsage.cacheCreation,
                 cacheRead: sessionUsage.cacheRead,
                 contextSize: sessionUsage.contextSize
+            } : session.latestUsage ? {
+                inputTokens: session.latestUsage.inputTokens,
+                outputTokens: session.latestUsage.outputTokens,
+                cacheCreation: session.latestUsage.cacheCreation,
+                cacheRead: session.latestUsage.cacheRead,
+                contextSize: session.latestUsage.contextSize
             } : undefined}
             alwaysShowContextSize={alwaysShowContextSize}
         />

@@ -256,7 +256,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             // Reset todos to empty array and reset usage to zero
             state.latestTodos = {
                 todos: [],
-                timestamp: Date.now()
+                timestamp: msg.createdAt  // Use message timestamp, not current time
             };
             state.latestUsage = {
                 inputTokens: 0,
@@ -264,7 +264,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 cacheCreation: 0,
                 cacheRead: 0,
                 contextSize: 0,
-                timestamp: Date.now()
+                timestamp: msg.createdAt  // Use message timestamp to avoid blocking older usage data
             };
             // Don't continue - let the event be processed normally to create a message
         }
@@ -278,7 +278,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 cacheCreation: 0,
                 cacheRead: 0,
                 contextSize: 0,
-                timestamp: Date.now()
+                timestamp: msg.createdAt  // Use message timestamp to avoid blocking older usage data
             };
             // Don't continue - let the event be processed normally to create a message
         }

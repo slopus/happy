@@ -377,6 +377,14 @@ export const storage = create<StorageState>()((set, get) => {
                         reducerState: existingSessionMessages.reducerState, // The reducer modifies state in-place, so this has the updates
                         isLoaded: existingSessionMessages.isLoaded
                     };
+                    
+                    // IMPORTANT: Copy latestUsage from reducerState to Session for immediate availability
+                    if (existingSessionMessages.reducerState.latestUsage) {
+                        mergedSessions[session.id] = {
+                            ...mergedSessions[session.id],
+                            latestUsage: { ...existingSessionMessages.reducerState.latestUsage }
+                        };
+                    }
                 }
             });
 
@@ -453,14 +461,22 @@ export const storage = create<StorageState>()((set, get) => {
                 const messagesArray = Object.values(mergedMessagesMap)
                     .sort((a, b) => b.createdAt - a.createdAt);
 
-                // Update session with todos if they changed (including when reset to empty)
+                // Update session with todos and latestUsage
+                // IMPORTANT: We extract latestUsage from the mutable reducerState and copy it to the Session object
+                // This ensures latestUsage is available immediately on load, even before messages are fully loaded
                 let updatedSessions = state.sessions;
-                if (reducerResult.todos !== undefined && session) {
+                const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage) && session;
+                
+                if (needsUpdate) {
                     updatedSessions = {
                         ...state.sessions,
                         [sessionId]: {
                             ...session,
-                            todos: reducerResult.todos
+                            ...(reducerResult.todos !== undefined && { todos: reducerResult.todos }),
+                            // Copy latestUsage from reducerState to make it immediately available
+                            latestUsage: existingSession.reducerState.latestUsage ? {
+                                ...existingSession.reducerState.latestUsage
+                            } : session.latestUsage
                         }
                     };
                 }
@@ -512,8 +528,21 @@ export const storage = create<StorageState>()((set, get) => {
                         .sort((a, b) => b.createdAt - a.createdAt);
                 }
 
+                // Extract latestUsage from reducerState if available and update session
+                let updatedSessions = state.sessions;
+                if (session && reducerState.latestUsage) {
+                    updatedSessions = {
+                        ...state.sessions,
+                        [sessionId]: {
+                            ...session,
+                            latestUsage: { ...reducerState.latestUsage }
+                        }
+                    };
+                }
+
                 result = {
                     ...state,
+                    sessions: updatedSessions,
                     sessionMessages: {
                         ...state.sessionMessages,
                         [sessionId]: {
