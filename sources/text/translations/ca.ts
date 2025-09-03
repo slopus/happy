@@ -213,7 +213,7 @@ export const ca: TranslationStructure = {
         sessionTimeout: 'L\'inici de la sessió ha esgotat el temps d\'espera. La màquina pot ser lenta o el dimoni pot no estar responent.',
         notConnectedToServer: 'No connectat al servidor. Comprova la teva connexió a internet.',
         startingSession: 'Iniciant la sessió...',
-        startNewSessionInFolder: 'Inicia una nova sessió en aquesta carpeta'
+        startNewSessionInFolder: 'Nova sessió aquí'
     },
 
     sessionHistory: {

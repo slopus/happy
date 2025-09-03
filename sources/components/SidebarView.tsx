@@ -108,7 +108,6 @@ export const SidebarView = React.memo(() => {
     const router = useRouter();
     const headerHeight = useHeaderHeight();
     const socketStatus = useSocketStatus();
-    const isExperimental = useSetting('experiments');
     const realtimeStatus = useRealtimeStatus();
 
     // Get connection status styling (matching sessionUtils.ts pattern)
@@ -221,9 +220,7 @@ export const SidebarView = React.memo(() => {
                     )}
                 </View>
             </View>
-            {isExperimental && (
-                <FAB onPress={handleNewSession} />
-            )}
+            <FAB onPress={handleNewSession} />
         </>
     )
 });
