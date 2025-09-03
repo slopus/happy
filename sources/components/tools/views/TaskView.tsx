@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { ToolViewProps } from './_all';
-import { Text, View, ActivityIndicator, StyleSheet } from 'react-native';
+import { Text, View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { knownTools } from '../../tools/knownTools';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall } from '@/sync/typesMessage';
@@ -99,7 +99,7 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
         return (
             <View style={styles.container}>
                 <View style={styles.loadingItem}>
-                    <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={theme.colors.textSecondary} />
                     <Text style={styles.loadingText}>{t('tools.taskView.initializing')}</Text>
                 </View>
             </View>
@@ -116,7 +116,7 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
                     <Text style={styles.toolTitle}>{item.title}</Text>
                     <View style={styles.statusContainer}>
                         {item.state === 'running' && (
-                            <ActivityIndicator size="small" color={theme.colors.warning} />
+                            <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={theme.colors.warning} />
                         )}
                         {item.state === 'completed' && (
                             <Ionicons name="checkmark-circle" size={16} color={theme.colors.success} />

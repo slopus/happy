@@ -41,6 +41,7 @@ export function parseMessageAsEvent(msg: NormalizedMessage): AgentEvent | null {
                         } as AgentEvent;
                     }
                 }
+                
             }
             
             // Check for mcp__happy__change_title tool calls

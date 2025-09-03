@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { sessionAllow, sessionDeny } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
@@ -153,6 +153,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             flexDirection: 'row',
             alignItems: 'center',
             gap: 4,
+            minHeight: 20,
         },
         icon: {
             marginRight: 2,
@@ -220,7 +221,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loadingButton === 'allow' && isPending ? (
-                        <ActivityIndicator size="small" color={styles.loadingIndicatorAllow.color} />
+                        <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
+                            <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={styles.loadingIndicatorAllow.color} />
+                        </View>
                     ) : (
                         <View style={styles.buttonContent}>
                             <Text style={[
@@ -248,7 +251,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingAllEdits && isPending ? (
-                            <ActivityIndicator size="small" color={styles.loadingIndicatorAllowAll.color} />
+                            <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
+                                <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={styles.loadingIndicatorAllowAll.color} />
+                            </View>
                         ) : (
                             <View style={styles.buttonContent}>
                                 <Text style={[
@@ -277,7 +282,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingForSession && isPending ? (
-                            <ActivityIndicator size="small" color={styles.loadingIndicatorForSession.color} />
+                            <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
+                                <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={styles.loadingIndicatorForSession.color} />
+                            </View>
                         ) : (
                             <View style={styles.buttonContent}>
                                 <Text style={[
@@ -304,7 +311,9 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                     activeOpacity={isPending ? 0.7 : 1}
                 >
                     {loadingButton === 'deny' && isPending ? (
-                        <ActivityIndicator size="small" color={styles.loadingIndicatorDeny.color} />
+                        <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
+                            <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={styles.loadingIndicatorDeny.color} />
+                        </View>
                     ) : (
                         <View style={styles.buttonContent}>
                             <Text style={[

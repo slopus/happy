@@ -290,6 +290,11 @@ export const es: TranslationStructure = {
         activity: 'Actividad',
         thinking: 'Pensando',
         thinkingSince: 'Pensando desde',
+        cliVersion: 'Versión del CLI',
+        cliVersionOutdated: 'Actualización de CLI requerida',
+        cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
+            `Versión ${currentVersion} instalada. Actualice a ${requiredVersion} o posterior`,
+        updateCliInstructions: 'Por favor ejecute npm install -g happy-coder@latest',
         
     },
 
@@ -492,6 +497,9 @@ export const es: TranslationStructure = {
         pressToApply: 'Presione para aplicar la actualización',
         whatsNew: 'Novedades',
         seeLatest: 'Ver las últimas actualizaciones y mejoras',
+        nativeUpdateAvailable: 'Actualización de la aplicación disponible',
+        tapToUpdateAppStore: 'Toque para actualizar en App Store',
+        tapToUpdatePlayStore: 'Toque para actualizar en Play Store',
     },
 
     changelog: {

@@ -274,6 +274,11 @@ export const ru: TranslationStructure = {
         activity: 'Активность',
         thinking: 'Думает',
         thinkingSince: 'Думает с',
+        cliVersion: 'Версия CLI',
+        cliVersionOutdated: 'Требуется обновление CLI',
+        cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
+            `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
+        updateCliInstructions: 'Пожалуйста, выполните npm install -g happy-coder@latest',
     },
 
     components: {
@@ -490,6 +495,9 @@ export const ru: TranslationStructure = {
         pressToApply: 'Нажмите, чтобы применить обновление',
         whatsNew: 'Что нового',
         seeLatest: 'Посмотреть последние обновления и улучшения',
+        nativeUpdateAvailable: 'Доступно обновление приложения',
+        tapToUpdateAppStore: 'Нажмите для обновления в App Store',
+        tapToUpdatePlayStore: 'Нажмите для обновления в Play Store',
     },
 
     changelog: {

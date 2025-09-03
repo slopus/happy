@@ -10,6 +10,8 @@ export const LocalSettingsSchema = z.object({
     devModeEnabled: z.boolean().describe('Enable developer menu in settings'),
     commandPaletteEnabled: z.boolean().describe('Enable CMD+K command palette (web only)'),
     themePreference: z.enum(['light', 'dark', 'adaptive']).describe('Theme preference: light, dark, or adaptive (follows system)'),
+    // CLI version acknowledgments - keyed by machineId
+    acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
 });
 
 //
@@ -30,6 +32,7 @@ export const localSettingsDefaults: LocalSettings = {
     devModeEnabled: false,
     commandPaletteEnabled: false,
     themePreference: 'adaptive',
+    acknowledgedCliVersions: {},
 };
 Object.freeze(localSettingsDefaults);
 

@@ -31,6 +31,7 @@ import { isMutableTool } from '@/components/tools/knownTools';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryptionCache';
+import { loadAppConfig } from './appConfig';
 
 class Sync {
 
@@ -48,6 +49,7 @@ class Sync {
     private purchasesSync: InvalidateSync;
     private machinesSync: InvalidateSync;
     private pushTokenSync: InvalidateSync;
+    private nativeUpdateSync: InvalidateSync;
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
@@ -62,6 +64,7 @@ class Sync {
         this.profileSync = new InvalidateSync(this.fetchProfile);
         this.purchasesSync = new InvalidateSync(this.syncPurchases);
         this.machinesSync = new InvalidateSync(this.fetchMachines);
+        this.nativeUpdateSync = new InvalidateSync(this.fetchNativeUpdate);
 
 
         const registerPushToken = async () => {
@@ -82,6 +85,7 @@ class Sync {
                 this.machinesSync.invalidate();
                 this.pushTokenSync.invalidate();
                 this.sessionsSync.invalidate();
+                this.nativeUpdateSync.invalidate();
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
             }
@@ -136,6 +140,7 @@ class Sync {
         this.purchasesSync.invalidate();
         this.machinesSync.invalidate();
         this.pushTokenSync.invalidate();
+        this.nativeUpdateSync.invalidate();
 
         // Wait for both sessions and machines to load, then mark as ready
         Promise.all([
@@ -712,6 +717,63 @@ class Sync {
 
         // Apply profile to storage
         storage.getState().applyProfile(parsedProfile);
+    }
+
+    private fetchNativeUpdate = async () => {
+        try {
+            // Skip in development
+            if ((Platform.OS !== 'android' && Platform.OS !== 'ios') || !Constants.expoConfig?.version) {
+                return;
+            }
+            if (Platform.OS === 'ios' && !Constants.expoConfig?.ios?.bundleIdentifier) {
+                return;
+            }
+            if (Platform.OS === 'android' && !Constants.expoConfig?.android?.package) {
+                return;
+            }
+
+            const serverUrl = getServerUrl();
+
+            // Get platform and app identifiers
+            const platform = Platform.OS;
+            const version = Constants.expoConfig?.version!;
+            const appId = (Platform.OS === 'ios' ? Constants.expoConfig?.ios?.bundleIdentifier! : Constants.expoConfig?.android?.package!);
+
+            const response = await fetch(`${serverUrl}/v1/version`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    platform,
+                    version,
+                    app_id: appId,
+                }),
+            });
+
+            if (!response.ok) {
+                console.log(`[fetchNativeUpdate] Request failed: ${response.status}`);
+                return;
+            }
+
+            const data = await response.json();
+            console.log('[fetchNativeUpdate] Data:', data);
+
+            // Apply update status to storage
+            if (data.update_required && data.update_url) {
+                storage.getState().applyNativeUpdateStatus({
+                    available: true,
+                    updateUrl: data.update_url
+                });
+            } else {
+                storage.getState().applyNativeUpdateStatus({
+                    available: false
+                });
+            }
+        } catch (error) {
+            console.log('[fetchNativeUpdate] Error:', error);
+            storage.getState().applyNativeUpdateStatus(null);
+        }
     }
 
     private syncPurchases = async () => {

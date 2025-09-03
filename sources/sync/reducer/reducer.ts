@@ -251,6 +251,38 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             continue;
         }
 
+        // Handle context reset events - reset state and let the message be shown
+        if (msg.role === 'event' && msg.content.type === 'message' && msg.content.message === 'Context was reset') {
+            // Reset todos to empty array and reset usage to zero
+            state.latestTodos = {
+                todos: [],
+                timestamp: Date.now()
+            };
+            state.latestUsage = {
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheCreation: 0,
+                cacheRead: 0,
+                contextSize: 0,
+                timestamp: Date.now()
+            };
+            // Don't continue - let the event be processed normally to create a message
+        }
+
+        // Handle compaction completed events - reset context but keep todos
+        if (msg.role === 'event' && msg.content.type === 'message' && msg.content.message === 'Compaction completed') {
+            // Reset usage/context to zero but keep todos unchanged
+            state.latestUsage = {
+                inputTokens: 0,
+                outputTokens: 0,
+                cacheCreation: 0,
+                cacheRead: 0,
+                contextSize: 0,
+                timestamp: Date.now()
+            };
+            // Don't continue - let the event be processed normally to create a message
+        }
+
         // Try to parse message as event
         const event = parseMessageAsEvent(msg);
         if (event) {
