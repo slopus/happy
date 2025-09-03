@@ -290,6 +290,11 @@ export const en = {
         activity: 'Activity',
         thinking: 'Thinking',
         thinkingSince: 'Thinking Since',
+        cliVersion: 'CLI Version',
+        cliVersionOutdated: 'CLI Update Required',
+        cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
+            `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
+        updateCliInstructions: 'Please run npm install -g happy-coder@latest',
         
     },
 
@@ -492,6 +497,9 @@ export const en = {
         pressToApply: 'Press to apply the update',
         whatsNew: "What's new",
         seeLatest: 'See the latest updates and improvements',
+        nativeUpdateAvailable: 'App Update Available',
+        tapToUpdateAppStore: 'Tap to update in App Store',
+        tapToUpdatePlayStore: 'Tap to update in Play Store',
     },
 
     changelog: {

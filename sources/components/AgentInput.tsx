@@ -858,9 +858,9 @@ function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?:
             {hasMeaningfulGitStatus ? (
                 <GitStatusBadge sessionId={sessionId} />
             ) : (
-                <Ionicons
-                    name="git-branch-outline"
-                    size={20}
+                <Octicons
+                    name="git-branch"
+                    size={16}
                     color={theme.colors.button.secondary.tint}
                 />
             )}

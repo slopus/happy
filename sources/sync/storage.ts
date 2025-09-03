@@ -74,6 +74,7 @@ interface StorageState {
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
     isDataReady: boolean;
+    nativeUpdateStatus: { available: boolean; updateUrl?: string } | null;
     applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => void;
     applyMachines: (machines: Machine[], replace?: boolean) => void;
     applyLoaded: () => void;
@@ -86,6 +87,7 @@ interface StorageState {
     applyPurchases: (customerInfo: CustomerInfo) => void;
     applyProfile: (profile: Profile) => void;
     applyGitStatus: (sessionId: string, status: GitStatus | null) => void;
+    applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
@@ -224,6 +226,7 @@ export const storage = create<StorageState>()((set, get) => {
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
         isDataReady: false,
+        nativeUpdateStatus: null,
         isMutableToolCall: (sessionId: string, callId: string) => {
             const sessionMessages = get().sessionMessages[sessionId];
             if (!sessionMessages) {
@@ -450,9 +453,9 @@ export const storage = create<StorageState>()((set, get) => {
                 const messagesArray = Object.values(mergedMessagesMap)
                     .sort((a, b) => b.createdAt - a.createdAt);
 
-                // Update session with todos if they changed
+                // Update session with todos if they changed (including when reset to empty)
                 let updatedSessions = state.sessions;
-                if (reducerResult.todos && session) {
+                if (reducerResult.todos !== undefined && session) {
                     updatedSessions = {
                         ...state.sessions,
                         [sessionId]: {
@@ -471,6 +474,7 @@ export const storage = create<StorageState>()((set, get) => {
                             ...existingSession,
                             messages: messagesArray,
                             messagesMap: mergedMessagesMap,
+                            reducerState: existingSession.reducerState, // Explicitly include the mutated reducer state
                             isLoaded: true
                         }
                     }
@@ -593,6 +597,10 @@ export const storage = create<StorageState>()((set, get) => {
                 }
             };
         }),
+        applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => set((state) => ({
+            ...state,
+            nativeUpdateStatus: status
+        })),
         setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => ({
             ...state,
             realtimeStatus: status

@@ -5,16 +5,45 @@ import { ItemGroup } from './ItemGroup';
 import { useUnistyles } from 'react-native-unistyles';
 import { useUpdates } from '@/hooks/useUpdates';
 import { useChangelog } from '@/hooks/useChangelog';
+import { useNativeUpdate } from '@/hooks/useNativeUpdate';
 import { useRouter } from 'expo-router';
+import { Linking, Platform } from 'react-native';
 import { t } from '@/text';
 
 export const UpdateBanner = React.memo(() => {
     const { theme } = useUnistyles();
     const { updateAvailable, reloadApp } = useUpdates();
     const { hasUnread, isInitialized, markAsRead } = useChangelog();
+    const updateUrl = useNativeUpdate();
     const router = useRouter();
 
-    // Show update banner if app update is available
+    // Show native app update banner (highest priority)
+    if (updateUrl) {
+        const handleOpenStore = async () => {
+            try {
+                const supported = await Linking.canOpenURL(updateUrl);
+                if (supported) {
+                    await Linking.openURL(updateUrl);
+                }
+            } catch (error) {
+                console.error('Error opening app store:', error);
+            }
+        };
+
+        return (
+            <ItemGroup>
+                <Item
+                    title={t('updateBanner.nativeUpdateAvailable')}
+                    subtitle={Platform.OS === 'ios' ? t('updateBanner.tapToUpdateAppStore') : t('updateBanner.tapToUpdatePlayStore')}
+                    icon={<Ionicons name="download-outline" size={28} color={theme.colors.success} />}
+                    showChevron={true}
+                    onPress={handleOpenStore}
+                />
+            </ItemGroup>
+        );
+    }
+
+    // Show OTA update banner if available (second priority)
     if (updateAvailable) {
         return (
             <ItemGroup>
@@ -29,7 +58,7 @@ export const UpdateBanner = React.memo(() => {
         );
     }
 
-    // Show changelog banner if there are unread changelog entries and changelog is initialized
+    // Show changelog banner if there are unread changelog entries and changelog is initialized (lowest priority)
     if (isInitialized && hasUnread) {
         return (
             <ItemGroup>

@@ -1,5 +1,5 @@
 import React, { useMemo, useCallback } from 'react';
-import { View, Text, Pressable, Platform, Animated } from 'react-native';
+import { View, Text, Pressable, Platform, Animated, ScrollView } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
@@ -15,6 +15,7 @@ import { sessionKill } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
+import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -129,6 +130,19 @@ export default React.memo(() => {
     const sessionName = getSessionName(session);
     const sessionStatus = useSessionStatus(session);
 
+    // Check if CLI version is outdated
+    const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
+
+    const handleCopyUpdateCommand = useCallback(async () => {
+        const updateCommand = 'npm install -g happy-coder@latest';
+        try {
+            await Clipboard.setStringAsync(updateCommand);
+            Modal.alert(t('common.success'), updateCommand);
+        } catch (error) {
+            Modal.alert(t('common.error'), t('common.error'));
+        }
+    }, []);
+
     return (
         <>
             <ItemList>
@@ -159,6 +173,19 @@ export default React.memo(() => {
                         </View>
                     </View>
                 </View>
+
+                {/* CLI Version Warning */}
+                {isCliOutdated && (
+                    <ItemGroup>
+                        <Item
+                            title={t('sessionInfo.cliVersionOutdated')}
+                            subtitle={t('sessionInfo.updateCliInstructions')}
+                            icon={<Ionicons name="warning-outline" size={29} color="#FF9500" />}
+                            showChevron={false}
+                            onPress={handleCopyUpdateCommand}
+                        />
+                    </ItemGroup>
+                )}
 
                 {/* Session Details */}
                 <ItemGroup>
@@ -246,9 +273,10 @@ export default React.memo(() => {
                         />
                         {session.metadata.version && (
                             <Item
-                                title={t('common.version')}
+                                title={t('sessionInfo.cliVersion')}
                                 subtitle={session.metadata.version}
-                                icon={<Ionicons name="git-branch-outline" size={29} color="#5856D6" />}
+                                detail={isCliOutdated ? '⚠️' : undefined}
+                                icon={<Ionicons name="git-branch-outline" size={29} color={isCliOutdated ? "#FF9500" : "#5856D6"} />}
                                 showChevron={false}
                             />
                         )}
@@ -289,7 +317,7 @@ export default React.memo(() => {
                     <ItemGroup title={t('sessionInfo.agentState')}>
                         <Item
                             title={t('sessionInfo.controlledByUser')}
-                        detail={session.agentState.controlledByUser ? t('common.yes') : t('common.no')}
+                            detail={session.agentState.controlledByUser ? t('common.yes') : t('common.no')}
                             icon={<Ionicons name="person-outline" size={29} color="#FF9500" />}
                             showChevron={false}
                         />

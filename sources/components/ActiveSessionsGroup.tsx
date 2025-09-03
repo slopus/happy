@@ -146,6 +146,10 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     },
     newSessionButtonIcon: {
         marginRight: 6,
+        width: 18,
+        height: 18,
+        alignItems: 'center',
+        justifyContent: 'center',
     },
     newSessionButtonText: {
         fontSize: 14,
@@ -372,20 +376,20 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                         onPress={() => handleStartSession(firstMachineId, projectGroup.path)}
                                     >
                                         <View style={styles.newSessionButtonContent}>
-                                            {isLoading ? (
-                                                <ActivityIndicator
-                                                    size="small"
-                                                    color={hasOnlineMachine ? "#007AFF" : "#999"}
-                                                    style={styles.newSessionButtonIcon}
-                                                />
-                                            ) : (
-                                                <Ionicons
-                                                    name="add"
-                                                    size={18}
-                                                    color={hasOnlineMachine ? "#007AFF" : "#999"}
-                                                    style={styles.newSessionButtonIcon}
-                                                />
-                                            )}
+                                            <View style={styles.newSessionButtonIcon}>
+                                                {isLoading ? (
+                                                    <ActivityIndicator
+                                                        size={Platform.OS === 'ios' ? "small" : 14 as any}
+                                                        color={hasOnlineMachine ? "#007AFF" : "#999"}
+                                                    />
+                                                ) : (
+                                                    <Ionicons
+                                                        name="add"
+                                                        size={18}
+                                                        color={hasOnlineMachine ? "#007AFF" : "#999"}
+                                                    />
+                                                )}
+                                            </View>
                                             <Text style={[
                                                 styles.newSessionButtonText,
                                                 (!hasOnlineMachine || isLoading) && styles.newSessionButtonTextDisabled
