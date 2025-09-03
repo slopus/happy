@@ -12,7 +12,7 @@
 /**
  * Supported language codes
  */
-export type SupportedLanguage = 'en' | 'ru' | 'pl' | 'es' | 'pt' | 'ca';
+export type SupportedLanguage = 'en' | 'ru' | 'pl' | 'es' | 'pt' | 'ca' | 'zh';
 
 /**
  * Language metadata interface
@@ -56,6 +56,11 @@ export const SUPPORTED_LANGUAGES: Record<SupportedLanguage, LanguageInfo> = {
         code: 'ca',
         nativeName: 'Català',
         englishName: 'Catalan'
+    },
+    zh: {
+        code: 'zh',
+        nativeName: '中文(简体)',
+        englishName: 'Chinese (Simplified)'
     }
 } as const;
 
