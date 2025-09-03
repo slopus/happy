@@ -213,7 +213,7 @@ export const pt: TranslationStructure = {
         sessionTimeout: 'Tempo limite de inicialização da sessão esgotado. A máquina pode estar lenta ou o daemon pode não estar respondendo.',
         notConnectedToServer: 'Não conectado ao servidor. Verifique sua conexão com a internet.',
         startingSession: 'Iniciando sessão...',
-        startNewSessionInFolder: 'Iniciar nova sessão nesta pasta'
+        startNewSessionInFolder: 'Nova sessão aqui'
     },
 
     sessionHistory: {

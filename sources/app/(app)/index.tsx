@@ -37,7 +37,6 @@ function Authenticated() {
     const { theme } = useUnistyles();
     let sessionListViewData = useSessionListViewData();
     const isTablet = useIsTablet();
-    const isExperimental = useSetting('experiments');
     const realtimeStatus = useRealtimeStatus();
     const machines = useAllMachines();
 
@@ -80,9 +79,7 @@ function Authenticated() {
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
                 </View>
-                {isExperimental && (
-                    <FAB onPress={handleNewSession} />
-                )}
+                <FAB onPress={handleNewSession} />
             </>
         )
     }
@@ -108,9 +105,7 @@ function Authenticated() {
                     <SessionsList />
                 )}
             </View>
-            {isExperimental && (
-                <FAB onPress={handleNewSession} />
-            )}
+            <FAB onPress={handleNewSession} />
         </>
     );
 }

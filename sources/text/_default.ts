@@ -210,7 +210,7 @@ export const en = {
         sessionStartedMessage: 'The session has been started successfully.',
         sessionSpawningFailed: 'Session spawning failed - no session ID returned.',
         startingSession: 'Starting session...',
-        startNewSessionInFolder: 'Start new session in this folder',
+        startNewSessionInFolder: 'New session here',
         failedToStart: 'Failed to start session. Make sure the daemon is running on the target machine.',
         sessionTimeout: 'Session startup timed out. The machine may be slow or the daemon may not be responding.',
         notConnectedToServer: 'Not connected to server. Check your internet connection.'
