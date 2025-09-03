@@ -413,11 +413,7 @@ export const knownTools = {
             }
             return t('tools.names.terminal');
         },
-        icon: (size: number = 24, color: string = '#000') => {
-            // Note: We can't access the tool input here, so we'll use terminal icon as default
-            // The actual icon will be determined in the component
-            return ICON_TERMINAL(size, color);
-        },
+        icon: ICON_TERMINAL,
         minimal: true,
         hideDefaultError: true,
         isMutable: true,
