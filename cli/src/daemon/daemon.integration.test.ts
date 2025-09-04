@@ -119,6 +119,7 @@ describe.skipIf(!await isServerHealthy())('Daemon Integration Tests', { timeout:
       homeDir: '/test/home',
       happyHomeDir: '/test/happy-home',
       happyLibDir: '/test/happy-lib',
+      happyToolsDir: '/test/happy-tools',
       hostPid: 99999,
       startedBy: 'terminal',
       machineId: 'test-machine-123'
