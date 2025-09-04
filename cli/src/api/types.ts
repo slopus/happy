@@ -344,6 +344,7 @@ export type Metadata = {
   homeDir: string,
   happyHomeDir: string,
   happyLibDir: string,
+  happyToolsDir: string,
   startedFromDaemon?: boolean,
   hostPid?: number,
   startedBy?: 'daemon' | 'terminal',

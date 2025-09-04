@@ -10,6 +10,7 @@ import packageJson from '../../../package.json';
 import os from 'node:os';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { projectPath } from '@/projectPath';
+import { resolve } from 'node:path';
 
 /**
  * Main entry point for the codex command
@@ -58,6 +59,7 @@ export async function runCodex(opts: {
         homeDir: os.homedir(),
         happyHomeDir: configuration.happyHomeDir,
         happyLibDir: projectPath(),
+        happyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
         startedFromDaemon: false,
         hostPid: process.pid,
         startedBy: 'terminal',
