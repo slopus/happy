@@ -190,7 +190,8 @@ export const MachineMetadataSchema = z.object({
   platform: z.string(),
   happyCliVersion: z.string(),
   homeDir: z.string(),
-  happyHomeDir: z.string()
+  happyHomeDir: z.string(),
+  happyLibDir: z.string()
 })
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>
@@ -232,7 +233,7 @@ export const MachineSchema = z.object({
   activeAt: z.number(),
   createdAt: z.number(),
   updatedAt: z.number(),
-  
+
   // Connectivity tracking (from server)
   connectivityStatus: z.union([
     z.enum(['neverConnected', 'online', 'offline']),
@@ -340,8 +341,9 @@ export type Metadata = {
   claudeSessionId?: string, // Claude Code session ID
   tools?: string[],
   slashCommands?: string[],
-  homeDir?: string,
-  happyHomeDir?: string,
+  homeDir: string,
+  happyHomeDir: string,
+  happyLibDir: string,
   startedFromDaemon?: boolean,
   hostPid?: number,
   startedBy?: 'daemon' | 'terminal',
@@ -350,6 +352,7 @@ export type Metadata = {
   lifecycleStateSince?: number,
   archivedBy?: string,
   archiveReason?: string,
+  flavor?: string
 };
 
 export type AgentState = {

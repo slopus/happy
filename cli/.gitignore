@@ -7,6 +7,9 @@
 /node_modules
 oclif.manifest.json
 
+# Unpacked binaries (keep archives)
+/tools/unpacked/
+
 
 
 pnpm-lock.yaml

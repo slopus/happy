@@ -83,6 +83,22 @@ import { execFileSync, execSync } from 'node:child_process'
       process.exit(1)
     }
     return;
+  } else if (subcommand === 'codex') {
+    // Handle codex command
+    try {
+      const { runCodex } = await import('@/modules/codex');
+      const {
+        credentials
+      } = await authAndSetupMachineIfNeeded();
+      await runCodex(credentials);
+    } catch (error) {
+      console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
+      if (process.env.DEBUG) {
+        console.error(error)
+      }
+      process.exit(1)
+    }
+    return;
   } else if (subcommand === 'logout') {
     // Keep for backward compatibility - redirect to auth logout
     console.log(chalk.yellow('Note: "happy logout" is deprecated. Use "happy auth logout" instead.\n'));

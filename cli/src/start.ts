@@ -20,6 +20,7 @@ import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { registerKillSessionHandler } from './claude/registerKillSessionHandler';
+import { projectPath } from './projectPath';
 
 export interface StartOptions {
     model?: string
@@ -76,6 +77,7 @@ export async function start(credentials: { secret: Uint8Array, token: string }, 
         machineId: machineId,
         homeDir: os.homedir(),
         happyHomeDir: configuration.happyHomeDir,
+        happyLibDir: projectPath(),
         startedFromDaemon: options.startedBy === 'daemon',
         hostPid: process.pid,
         startedBy: options.startedBy || 'terminal',

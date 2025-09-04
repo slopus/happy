@@ -5,6 +5,7 @@ import { readFile, writeFile, readdir, stat } from 'fs/promises';
 import { createHash } from 'crypto';
 import { join } from 'path';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
+import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
 
 const execAsync = promisify(exec);
@@ -88,6 +89,19 @@ interface RipgrepRequest {
 }
 
 interface RipgrepResponse {
+    success: boolean;
+    exitCode?: number;
+    stdout?: string;
+    stderr?: string;
+    error?: string;
+}
+
+interface DifftasticRequest {
+    args: string[];
+    cwd?: string;
+}
+
+interface DifftasticResponse {
     success: boolean;
     exitCode?: number;
     stdout?: string;
@@ -391,6 +405,27 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager) {
             return {
                 success: false,
                 error: error instanceof Error ? error.message : 'Failed to run ripgrep'
+            };
+        }
+    });
+
+    // Difftastic handler - raw interface to difftastic
+    rpcHandlerManager.registerHandler<DifftasticRequest, DifftasticResponse>('difftastic', async (data) => {
+        logger.debug('Difftastic request with args:', data.args, 'cwd:', data.cwd);
+
+        try {
+            const result = await runDifftastic(data.args, { cwd: data.cwd });
+            return {
+                success: true,
+                exitCode: result.exitCode,
+                stdout: result.stdout.toString(),
+                stderr: result.stderr.toString()
+            };
+        } catch (error) {
+            logger.debug('Failed to run difftastic:', error);
+            return {
+                success: false,
+                error: error instanceof Error ? error.message : 'Failed to run difftastic'
             };
         }
     });

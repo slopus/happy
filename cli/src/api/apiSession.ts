@@ -218,6 +218,24 @@ export class ApiSessionClient extends EventEmitter {
         }
     }
 
+    sendCodexMessage(body: any) {
+        let content = {
+            role: 'agent',
+            content: {
+                type: 'codex',
+                data: body  // This wraps the entire Claude message
+            },
+            meta: {
+                sentFrom: 'cli'
+            }
+        };
+        const encrypted = encodeBase64(encrypt(content, this.secret));
+        this.socket.emit('message', {
+            sid: this.sessionId,
+            message: encrypted
+        });
+    }
+
     sendSessionEvent(event: {
         type: 'switch', mode: 'local' | 'remote'
     } | {
