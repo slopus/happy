@@ -60,7 +60,7 @@ ${chalk.bold('Usage:')}
   happy auth login [--force]    Authenticate with Happy
   happy auth logout             Remove authentication and machine data  
   happy auth status             Show authentication status
-  happy auth backup             Display backup key for mobile/web clients
+  happy auth show-backup        Display backup key for mobile/web clients
   happy auth help               Show this help message
 
 ${chalk.bold('Options:')}
