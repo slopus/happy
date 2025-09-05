@@ -81,8 +81,12 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
             description = subtitle;
         }
     }
-    if (knownTool && typeof knownTool.minimal === 'boolean') {
-        minimal = knownTool.minimal;
+    if (knownTool && knownTool.minimal !== undefined) {
+        if (typeof knownTool.minimal === 'function') {
+            minimal = knownTool.minimal({ tool, metadata: props.metadata, messages: props.messages });
+        } else {
+            minimal = knownTool.minimal;
+        }
     }
     
     // Special handling for CodexBash to determine icon based on parsed_cmd
@@ -243,7 +247,7 @@ export const ToolView = React.memo<ToolViewProps>((props) => {
 
             {/* Permission footer - always renders when permission exists to maintain consistent height */}
             {tool.permission && sessionId && (
-                <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} />
+                <PermissionFooter permission={tool.permission} sessionId={sessionId} toolName={tool.name} toolInput={tool.input} metadata={props.metadata} />
             )}
         </View>
     );

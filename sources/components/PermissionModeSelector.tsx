@@ -4,9 +4,9 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { hapticsLight } from './haptics';
 
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo';
 
-export type ModelMode = 'default' | 'adaptiveUsage' | 'sonnet' | 'opus';
+export type ModelMode = 'default' | 'adaptiveUsage' | 'sonnet' | 'opus' | 'gpt-5-minimal' | 'gpt-5-low' | 'gpt-5-medium' | 'gpt-5-high';
 
 interface PermissionModeSelectorProps {
     mode: PermissionMode;
@@ -34,6 +34,22 @@ const modeConfig = {
         label: 'Yolo',
         icon: 'flash' as const,
         description: 'Skip all permissions'
+    },
+    // Codex modes (not displayed in this component, but needed for type compatibility)
+    'read-only': {
+        label: 'Read-only',
+        icon: 'eye' as const,
+        description: 'Read-only mode'
+    },
+    'safe-yolo': {
+        label: 'Safe YOLO',
+        icon: 'shield' as const,
+        description: 'Safe YOLO mode'
+    },
+    'yolo': {
+        label: 'YOLO',
+        icon: 'rocket' as const,
+        description: 'YOLO mode'
     },
 };
 

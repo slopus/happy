@@ -23,7 +23,7 @@ export const ChatList = React.memo((props: { session: Session }) => {
 const ListHeader = React.memo(() => {
     const headerHeight = useHeaderHeight();
     const safeArea = useSafeAreaInsets();
-    return <View style={{ flexDirection: 'row', alignItems: 'center', height: (Platform.OS === 'web' ? 0 : (headerHeight + safeArea.top)) + 32 }} />;
+    return <View style={{ flexDirection: 'row', alignItems: 'center', height: headerHeight + safeArea.top + 32 }} />;
 });
 
 const ListFooter = React.memo((props: { sessionId: string }) => {

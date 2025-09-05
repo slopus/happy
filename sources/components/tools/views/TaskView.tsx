@@ -93,17 +93,7 @@ export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages })
     });
 
     if (filtered.length === 0) {
-        if (tool.state === 'error') {
-            return null;
-        }
-        return (
-            <View style={styles.container}>
-                <View style={styles.loadingItem}>
-                    <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={theme.colors.textSecondary} />
-                    <Text style={styles.loadingText}>{t('tools.taskView.initializing')}</Text>
-                </View>
-            </View>
-        );
+        return null;
     }
 
     const visibleTools = filtered.slice(filtered.length - 3);

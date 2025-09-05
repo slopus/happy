@@ -144,6 +144,8 @@ export const es: TranslationStructure = {
             gradient: 'Gradiente',
             brutalist: 'Brutalista',
         },
+        showFlavorIcons: 'Mostrar íconos de proveedor de IA',
+        showFlavorIconsDescription: 'Mostrar íconos del proveedor de IA en los avatares de sesión',
         compactSessionView: 'Vista compacta de sesiones',
         compactSessionViewDescription: 'Mostrar sesiones activas en un diseño más compacto',
     },
@@ -263,6 +265,7 @@ export const es: TranslationStructure = {
         happySessionId: 'ID de sesión de Happy',
         claudeCodeSessionId: 'ID de sesión de Claude Code',
         claudeCodeSessionIdCopied: 'ID de sesión de Claude Code copiado al portapapeles',
+        aiProvider: 'Proveedor de IA',
         failedToCopyClaudeCodeSessionId: 'Falló al copiar ID de sesión de Claude Code',
         metadataCopied: 'Metadatos copiados al portapapeles',
         failedToCopyMetadata: 'Falló al copiar metadatos',
@@ -327,6 +330,27 @@ export const es: TranslationStructure = {
             sonnet: 'Sonnet',
             opus: 'Opus',
         },
+        codexPermissionMode: {
+            title: 'MODO DE PERMISOS CODEX',
+            default: 'Configuración del CLI',
+            readOnly: 'Read Only Mode',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Read Only Mode',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
+        },
+        codexModel: {
+            title: 'MODELO CODEX',
+            gpt5Minimal: 'GPT-5 Mínimo',
+            gpt5MinimalDesc: 'Respuestas más rápidas con razonamiento limitado',
+            gpt5Low: 'GPT-5 Bajo',
+            gpt5LowDesc: 'Equilibra velocidad con algo de razonamiento',
+            gpt5Medium: 'GPT-5 Medio',
+            gpt5MediumDesc: 'Equilibrio predeterminado entre razonamiento y latencia',
+            gpt5High: 'GPT-5 Alto',
+            gpt5HighDesc: 'Maximiza la profundidad del razonamiento',
+        },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
         },
@@ -387,6 +411,9 @@ export const es: TranslationStructure = {
             editNotebook: 'Editar cuaderno',
             todoList: 'Lista de tareas',
             webSearch: 'Búsqueda web',
+            reasoning: 'Razonamiento',
+            applyChanges: 'Actualizar archivo',
+            viewDiff: 'Cambios del archivo actual',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -400,6 +427,10 @@ export const es: TranslationStructure = {
             multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count} ediciones)`,
             readingFile: ({ file }: { file: string }) => `Leyendo ${file}`,
             writingFile: ({ file }: { file: string }) => `Escribiendo ${file}`,
+            modifyingFile: ({ file }: { file: string }) => `Modificando ${file}`,
+            modifyingFiles: ({ count }: { count: number }) => `Modificando ${count} archivos`,
+            modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} y ${count} más`,
+            showingDiff: 'Mostrando cambios',
         }
     },
 
@@ -619,6 +650,23 @@ export const es: TranslationStructure = {
         unknownEvent: 'Evento desconocido',
         usageLimitUntil: ({ time }: { time: string }) => `Límite de uso alcanzado hasta ${time}`,
         unknownTime: 'tiempo desconocido',
+    },
+
+    codex: {
+        // Codex permission dialog buttons
+        permissions: {
+            yesForSession: 'Sí, y no preguntar por esta sesión',
+            stopAndExplain: 'Detener, y explicar qué hacer',
+        }
+    },
+
+    claude: {
+        // Claude permission dialog buttons
+        permissions: {
+            yesAllowAllEdits: 'Sí, permitir todas las ediciones durante esta sesión',
+            yesForTool: 'Sí, no volver a preguntar para esta herramienta',
+            noTellClaude: 'No, y decirle a Claude qué hacer diferente',
+        }
     }
 } as const;
 

@@ -144,6 +144,8 @@ export const en = {
             gradient: 'Gradient',
             brutalist: 'Brutalist',
         },
+        showFlavorIcons: 'Show AI Provider Icons',
+        showFlavorIconsDescription: 'Display AI provider icons on session avatars',
         compactSessionView: 'Compact Session View',
         compactSessionViewDescription: 'Show active sessions in a more compact layout',
     },
@@ -263,6 +265,7 @@ export const en = {
         happySessionId: 'Happy Session ID',
         claudeCodeSessionId: 'Claude Code Session ID',
         claudeCodeSessionIdCopied: 'Claude Code Session ID copied to clipboard',
+        aiProvider: 'AI Provider',
         failedToCopyClaudeCodeSessionId: 'Failed to copy Claude Code Session ID',
         metadataCopied: 'Metadata copied to clipboard',
         failedToCopyMetadata: 'Failed to copy metadata',
@@ -327,6 +330,27 @@ export const en = {
             sonnet: 'Sonnet',
             opus: 'Opus',
         },
+        codexPermissionMode: {
+            title: 'CODEX PERMISSION MODE',
+            default: 'CLI Settings',
+            readOnly: 'Read Only Mode',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Read Only Mode',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
+        },
+        codexModel: {
+            title: 'CODEX MODEL',
+            gpt5Minimal: 'GPT-5 Minimal',
+            gpt5MinimalDesc: 'Fastest responses with limited reasoning',
+            gpt5Low: 'GPT-5 Low',
+            gpt5LowDesc: 'Balances speed with some reasoning',
+            gpt5Medium: 'GPT-5 Medium',
+            gpt5MediumDesc: 'Default balance of reasoning and latency',
+            gpt5High: 'GPT-5 High',
+            gpt5HighDesc: 'Maximizes reasoning depth',
+        },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% left`,
         },
@@ -387,6 +411,9 @@ export const en = {
             editNotebook: 'Edit Notebook',
             todoList: 'Todo List',
             webSearch: 'Web Search',
+            reasoning: 'Reasoning',
+            applyChanges: 'Update file',
+            viewDiff: 'Current file changes',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -400,6 +427,10 @@ export const en = {
             multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count} edits)`,
             readingFile: ({ file }: { file: string }) => `Reading ${file}`,
             writingFile: ({ file }: { file: string }) => `Writing ${file}`,
+            modifyingFile: ({ file }: { file: string }) => `Modifying ${file}`,
+            modifyingFiles: ({ count }: { count: number }) => `Modifying ${count} files`,
+            modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} and ${count} more`,
+            showingDiff: 'Showing changes',
         }
     },
 
@@ -619,6 +650,23 @@ export const en = {
         unknownEvent: 'Unknown event',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         unknownTime: 'unknown time',
+    },
+
+    codex: {
+        // Codex permission dialog buttons
+        permissions: {
+            yesForSession: "Yes, and don't ask for a session",
+            stopAndExplain: 'Stop, and explain what to do',
+        }
+    },
+
+    claude: {
+        // Claude permission dialog buttons
+        permissions: {
+            yesAllowAllEdits: 'Yes, allow all edits during this session',
+            yesForTool: "Yes, don't ask again for this tool",
+            noTellClaude: 'No, and tell Claude what to do differently',
+        }
     }
 } as const;
 

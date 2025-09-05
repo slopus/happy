@@ -1,5 +1,5 @@
 import { Metadata } from '@/sync/storageTypes';
-import { ToolCall } from '@/sync/typesMessage';
+import { ToolCall, Message } from '@/sync/typesMessage';
 import { resolvePath } from '@/utils/pathUtils';
 import * as z from 'zod';
 import { Ionicons, Octicons } from '@expo/vector-icons';
@@ -15,6 +15,7 @@ const ICON_EDIT = (size: number = 24, color: string = '#000') => <Octicons name=
 const ICON_WEB = (size: number = 24, color: string = '#000') => <Ionicons name="globe-outline" size={size} color={color} />;
 const ICON_EXIT = (size: number = 24, color: string = '#000') => <Ionicons name="exit-outline" size={size} color={color} />;
 const ICON_TODO = (size: number = 24, color: string = '#000') => <Ionicons name="bulb-outline" size={size} color={color} />;
+const ICON_REASONING = (size: number = 24, color: string = '#000') => <Octicons name="light-bulb" size={size} color={color} />;
 
 export const knownTools = {
     'Task': {
@@ -27,6 +28,17 @@ export const knownTools = {
         },
         icon: ICON_TASK,
         isMutable: true,
+        minimal: (opts: { metadata: Metadata | null, tool: ToolCall, messages?: Message[] }) => {
+            // Check if there would be any filtered tasks
+            const messages = opts.messages || [];
+            for (let m of messages) {
+                if (m.kind === 'tool-call' && 
+                    (m.tool.state === 'running' || m.tool.state === 'completed' || m.tool.state === 'error')) {
+                    return false; // Has active sub-tasks, show expanded
+                }
+            }
+            return true; // No active sub-tasks, render as minimal
+        },
         input: z.object({
             prompt: z.string().describe('The task for the agent to perform'),
             subagent_type: z.string().optional().describe('The type of specialized agent to use')
@@ -327,6 +339,19 @@ export const knownTools = {
         title: t('tools.names.todoList'),
         icon: ICON_TODO,
         noStatus: true,
+        minimal: (opts: { metadata: Metadata | null, tool: ToolCall, messages?: Message[] }) => {
+            // Check if there are todos in the input
+            if (opts.tool.input?.todos && Array.isArray(opts.tool.input.todos) && opts.tool.input.todos.length > 0) {
+                return false; // Has todos, show expanded
+            }
+            
+            // Check if there are todos in the result
+            if (opts.tool.result?.newTodos && Array.isArray(opts.tool.result.newTodos) && opts.tool.result.newTodos.length > 0) {
+                return false; // Has todos, show expanded
+            }
+            
+            return true; // No todos, render as minimal
+        },
         input: z.object({
             todos: z.array(z.object({
                 content: z.string().describe('The todo item content'),
@@ -382,37 +407,7 @@ export const knownTools = {
         }
     },
     'CodexBash': {
-        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
-            // Check for parsed_cmd to determine the type of operation
-            if (opts.tool.input?.parsed_cmd && Array.isArray(opts.tool.input.parsed_cmd) && opts.tool.input.parsed_cmd.length > 0) {
-                const parsedCmd = opts.tool.input.parsed_cmd[0];
-                if (parsedCmd.type === 'read' && parsedCmd.name) {
-                    // For read operations, show the filename
-                    const path = resolvePath(parsedCmd.name, opts.metadata);
-                    return path;
-                } else if (parsedCmd.type === 'write' && parsedCmd.name) {
-                    // For write operations, show the filename
-                    const path = resolvePath(parsedCmd.name, opts.metadata);
-                    return path;
-                } else if (parsedCmd.cmd) {
-                    // For other commands, show a truncated command
-                    const cmd = parsedCmd.cmd;
-                    const firstWord = cmd.split(' ')[0];
-                    if (['cd', 'ls', 'pwd', 'mkdir', 'rm', 'cp', 'mv', 'npm', 'yarn', 'git'].includes(firstWord)) {
-                        return t('tools.desc.terminalCmd', { cmd: firstWord });
-                    }
-                    const truncated = cmd.length > 20 ? cmd.substring(0, 20) + '...' : cmd;
-                    return t('tools.desc.terminalCmd', { cmd: truncated });
-                }
-            }
-            // Fallback to showing the command if available
-            if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
-                const cmdStr = opts.tool.input.command.join(' ');
-                const truncated = cmdStr.length > 20 ? cmdStr.substring(0, 20) + '...' : cmdStr;
-                return t('tools.desc.terminalCmd', { cmd: truncated });
-            }
-            return t('tools.names.terminal');
-        },
+        title: t('tools.names.terminal'),
         icon: ICON_TERMINAL,
         minimal: true,
         hideDefaultError: true,
@@ -435,7 +430,13 @@ export const knownTools = {
                 }
             }
             if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
-                return opts.tool.input.command.join(' ');
+                let cmdArray = opts.tool.input.command;
+                // Remove ["bash", "-lc"] prefix if present
+                if (cmdArray.length >= 3 && cmdArray[0] === 'bash' && cmdArray[1] === '-lc') {
+                    // The actual command is in the third element
+                    return cmdArray[2];
+                }
+                return cmdArray.join(' ');
             }
             return null;
         },
@@ -455,6 +456,114 @@ export const knownTools = {
             }
             return t('tools.names.terminal');
         }
+    },
+    'CodexReasoning': {
+        title: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            // Use the title from input if provided
+            if (opts.tool.input?.title && typeof opts.tool.input.title === 'string') {
+                return opts.tool.input.title;
+            }
+            return t('tools.names.reasoning');
+        },
+        icon: ICON_REASONING,
+        minimal: true,
+        input: z.object({
+            title: z.string().describe('The title of the reasoning')
+        }).partial().loose(),
+        result: z.object({
+            content: z.string().describe('The reasoning content'),
+            status: z.enum(['completed', 'in_progress', 'error']).optional().describe('The status of the reasoning')
+        }).partial().loose(),
+        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            if (opts.tool.input?.title && typeof opts.tool.input.title === 'string') {
+                return opts.tool.input.title;
+            }
+            return t('tools.names.reasoning');
+        }
+    },
+    'CodexPatch': {
+        title: t('tools.names.applyChanges'),
+        icon: ICON_EDIT,
+        minimal: true,
+        hideDefaultError: true,
+        input: z.object({
+            auto_approved: z.boolean().optional().describe('Whether changes were auto-approved'),
+            changes: z.record(z.string(), z.object({
+                add: z.object({
+                    content: z.string()
+                }).optional(),
+                modify: z.object({
+                    old_content: z.string(),
+                    new_content: z.string()
+                }).optional(),
+                delete: z.object({
+                    content: z.string()
+                }).optional()
+            }).loose()).describe('File changes to apply')
+        }).partial().loose(),
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            // Show the first file being modified
+            if (opts.tool.input?.changes && typeof opts.tool.input.changes === 'object') {
+                const files = Object.keys(opts.tool.input.changes);
+                if (files.length > 0) {
+                    const path = resolvePath(files[0], opts.metadata);
+                    const fileName = path.split('/').pop() || path;
+                    if (files.length > 1) {
+                        return t('tools.desc.modifyingMultipleFiles', { 
+                            file: fileName, 
+                            count: files.length - 1 
+                        });
+                    }
+                    return fileName;
+                }
+            }
+            return null;
+        },
+        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            // Show the number of files being modified
+            if (opts.tool.input?.changes && typeof opts.tool.input.changes === 'object') {
+                const files = Object.keys(opts.tool.input.changes);
+                const fileCount = files.length;
+                if (fileCount === 1) {
+                    const path = resolvePath(files[0], opts.metadata);
+                    const fileName = path.split('/').pop() || path;
+                    return t('tools.desc.modifyingFile', { file: fileName });
+                } else if (fileCount > 1) {
+                    return t('tools.desc.modifyingFiles', { count: fileCount });
+                }
+            }
+            return t('tools.names.applyChanges');
+        }
+    },
+    'CodexDiff': {
+        title: t('tools.names.viewDiff'),
+        icon: ICON_EDIT,
+        minimal: false,  // Show full diff view
+        hideDefaultError: true,
+        noStatus: true,  // Always successful, stateless like Task
+        input: z.object({
+            unified_diff: z.string().describe('Unified diff content')
+        }).partial().loose(),
+        result: z.object({
+            status: z.literal('completed').describe('Always completed')
+        }).partial().loose(),
+        extractSubtitle: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            // Try to extract filename from unified diff
+            if (opts.tool.input?.unified_diff && typeof opts.tool.input.unified_diff === 'string') {
+                const diffLines = opts.tool.input.unified_diff.split('\n');
+                for (const line of diffLines) {
+                    if (line.startsWith('+++ b/') || line.startsWith('+++ ')) {
+                        const fileName = line.replace(/^\+\+\+ (b\/)?/, '');
+                        const basename = fileName.split('/').pop() || fileName;
+                        return basename;
+                    }
+                }
+            }
+            return null;
+        },
+        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+            return t('tools.desc.showingDiff');
+        }
     }
 } satisfies Record<string, {
     title?: string | ((opts: { metadata: Metadata | null, tool: ToolCall }) => string);
@@ -464,7 +573,7 @@ export const knownTools = {
     isMutable?: boolean;
     input?: z.ZodObject<any>;
     result?: z.ZodObject<any>;
-    minimal?: boolean;
+    minimal?: boolean | ((opts: { metadata: Metadata | null, tool: ToolCall, messages?: Message[] }) => boolean);
     extractDescription?: (opts: { metadata: Metadata | null, tool: ToolCall }) => string;
     extractSubtitle?: (opts: { metadata: Metadata | null, tool: ToolCall }) => string | null;
     extractStatus?: (opts: { metadata: Metadata | null, tool: ToolCall }) => string | null;

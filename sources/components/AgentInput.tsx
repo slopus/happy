@@ -21,6 +21,7 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
+import { Metadata } from '@/sync/storageTypes';
 
 interface AgentInputProps {
     value: string;
@@ -35,6 +36,7 @@ interface AgentInputProps {
     onPermissionModeChange?: (mode: PermissionMode) => void;
     modelMode?: ModelMode;
     onModelModeChange?: (mode: ModelMode) => void;
+    metadata?: Metadata | null;
     onAbort?: () => void | Promise<void>;
     showAbortButton?: boolean;
     connectionStatus?: {
@@ -279,6 +281,9 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
     const screenWidth = useWindowDimensions().width;
 
     const hasText = props.value.trim().length > 0;
+    
+    // Check if this is a Codex session
+    const isCodex = props.metadata?.flavor === 'codex';
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
@@ -435,7 +440,9 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
             }
             // Handle Shift+Tab for mode switching
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-                const modeOrder: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+                const modeOrder: PermissionMode[] = isCodex 
+                    ? ['default', 'read-only', 'safe-yolo', 'yolo']
+                    : ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
                 const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
                 const nextIndex = (currentIndex + 1) % modeOrder.length;
                 props.onPermissionModeChange(modeOrder[nextIndex]);
@@ -490,16 +497,25 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
-                                        {t('agentInput.permissionMode.title')}
+                                        {isCodex ? t('agentInput.codexPermissionMode.title') : t('agentInput.permissionMode.title')}
                                     </Text>
-                                    {(['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const).map((mode) => {
-                                        const modeConfig = {
+                                    {(isCodex 
+                                        ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
+                                        : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
+                                    ).map((mode) => {
+                                        const modeConfig = isCodex ? {
+                                            'default': { label: t('agentInput.codexPermissionMode.default') },
+                                            'read-only': { label: t('agentInput.codexPermissionMode.readOnly') },
+                                            'safe-yolo': { label: t('agentInput.codexPermissionMode.safeYolo') },
+                                            'yolo': { label: t('agentInput.codexPermissionMode.yolo') },
+                                        } : {
                                             default: { label: t('agentInput.permissionMode.default') },
                                             acceptEdits: { label: t('agentInput.permissionMode.acceptEdits') },
                                             plan: { label: t('agentInput.permissionMode.plan') },
                                             bypassPermissions: { label: t('agentInput.permissionMode.bypassPermissions') },
-                                        } as const;
-                                        const config = modeConfig[mode];
+                                        };
+                                        const config = modeConfig[mode as keyof typeof modeConfig];
+                                        if (!config) return null;
                                         const isSelected = props.permissionMode === mode;
 
                                         return (
@@ -562,17 +578,28 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                         paddingBottom: 4,
                                         ...Typography.default('semiBold')
                                     }}>
-                                        {t('agentInput.model.title')}
+                                        {isCodex ? t('agentInput.codexModel.title') : t('agentInput.model.title')}
                                     </Text>
-                                    {(['default', 'adaptiveUsage', 'sonnet', 'opus'] as const).map((model) => {
-                                        const modelConfig = {
+                                    {(isCodex 
+                                        ? (['gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'] as const)
+                                        : (['default', 'adaptiveUsage', 'sonnet', 'opus'] as const)
+                                    ).map((model) => {
+                                        const modelConfig = isCodex ? {
+                                            'gpt-5-minimal': { label: t('agentInput.codexModel.gpt5Minimal') },
+                                            'gpt-5-low': { label: t('agentInput.codexModel.gpt5Low') },
+                                            'gpt-5-medium': { label: t('agentInput.codexModel.gpt5Medium') },
+                                            'gpt-5-high': { label: t('agentInput.codexModel.gpt5High') },
+                                        } : {
                                             default: { label: t('agentInput.model.default') },
                                             adaptiveUsage: { label: t('agentInput.model.adaptiveUsage') },
                                             sonnet: { label: t('agentInput.model.sonnet') },
                                             opus: { label: t('agentInput.model.opus') },
-                                        } as const;
-                                        const config = modelConfig[model];
-                                        const isSelected = props.modelMode === model || (model === 'default' && !props.modelMode);
+                                        };
+                                        const config = modelConfig[model as keyof typeof modelConfig];
+                                        if (!config) return null;
+                                        const isSelected = isCodex 
+                                            ? props.modelMode === model || (model === 'gpt-5-medium' && !props.modelMode)
+                                            : props.modelMode === model || (model === 'default' && !props.modelMode);
 
                                         return (
                                             <Pressable
@@ -665,12 +692,22 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                     fontSize: 11,
                                     color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
                                         props.permissionMode === 'bypassPermissions' ? theme.colors.permission.bypass :
-                                            props.permissionMode === 'plan' ? theme.colors.permission.plan : theme.colors.permission.default,
+                                            props.permissionMode === 'plan' ? theme.colors.permission.plan :
+                                                props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
+                                                    props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
+                                                        props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
+                                                            theme.colors.permission.default,
                                     ...Typography.default()
                                 }}>
-                                    {props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
-                                        props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                                            props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''}
+                                    {isCodex ? (
+                                        props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
+                                            props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
+                                                props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
+                                    ) : (
+                                        props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
+                                            props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
+                                                props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
+                                    )}
                                 </Text>
                             )}
                         </View>
