@@ -1,6 +1,7 @@
 import { ApiClient } from '@/api/api';
 import { CodexMcpClient } from './codexMcpClient';
 import { CodexPermissionHandler } from './utils/permissionHandler';
+import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
 import { readSettings } from '@/persistence';
@@ -92,6 +93,7 @@ export async function runCodex(opts: {
             abortController.abort();
             messageQueue.reset();
             permissionHandler.reset();
+            reasoningProcessor.abort();
             logger.debug('[Codex] Abort completed');
         } catch (error) {
             logger.debug('[Codex] Error during abort:', error);
@@ -109,9 +111,20 @@ export async function runCodex(opts: {
 
     const client = new CodexMcpClient();
     const permissionHandler = new CodexPermissionHandler(session);
+    const reasoningProcessor = new ReasoningProcessor((message) => {
+        // Callback to send messages directly from the processor
+        session.sendCodexMessage(message);
+    });
     client.setPermissionHandler(permissionHandler);
     client.setHandler((msg) => {
+        // if (msg.type !== 'agent_reasoning_delta'
+        //     // && msg.type !== 'agent_message_delta'
+        //     && msg.type !== 'exec_command_output_delta'
+        // ) {
+        //     console.log(msg);
+        // }
         console.log(msg);
+
         if (msg.type === 'task_started') {
             if (!thinking) {
                 console.log('thinking started');
@@ -126,12 +139,17 @@ export async function runCodex(opts: {
                 session.keepAlive(thinking, 'remote');
             }
         }
+        if (msg.type === 'agent_reasoning_section_break') {
+            // Reset reasoning processor for new section
+            reasoningProcessor.handleSectionBreak();
+        }
+        if (msg.type === 'agent_reasoning_delta') {
+            // Process reasoning delta - tool calls are sent automatically via callback
+            reasoningProcessor.processDelta(msg.delta);
+        }
         if (msg.type === 'agent_reasoning') {
-            session.sendCodexMessage({
-                type: 'reasoning',
-                message: msg.text,
-                id: randomUUID()
-            });
+            // Complete the reasoning section - tool results or reasoning messages sent via callback
+            reasoningProcessor.complete(msg.text);
         }
         if (msg.type === 'agent_message') {
             session.sendCodexMessage({
@@ -190,14 +208,18 @@ export async function runCodex(opts: {
                     );
                 }
             } catch (error) {
+                console.warn(error);
                 if (error instanceof Error && error.name === 'AbortError') {
                     session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
                 } else {
                     session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                 }
             } finally {
-                // Reset permission handler
+                // Reset permission handler and reasoning processor
                 permissionHandler.reset();
+                reasoningProcessor.abort();  // Use abort to properly finish any in-progress tool calls
+                thinking = false;
+                session.keepAlive(thinking, 'remote');
             }
         }
 

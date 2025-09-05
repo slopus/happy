@@ -10,6 +10,8 @@ import { z } from 'zod';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { CodexPermissionHandler } from './utils/permissionHandler';
 
+const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half of the maximum possible timeout (~28 days for int32 value in NodeJS)
+
 export class CodexMcpClient {
     private client: Client;
     private transport: StdioClientTransport | null = null;
@@ -30,12 +32,6 @@ export class CodexMcpClient {
                 msg: z.any()
             })
         }).passthrough(), (data) => {
-            if ((data.params as any).msg.type === 'agent_reasoning_delta'
-                || (data.params as any).msg.type === 'agent_message_delta'
-                || (data.params as any).msg.type === 'exec_command_output_delta'
-            ) {
-                return;
-            }
             if (data.params.msg.type === 'session_configured') {
                 this.sessionId = data.params.msg.session_id;
             }
@@ -137,8 +133,8 @@ export class CodexMcpClient {
             name: 'codex',
             arguments: config as any
         }, undefined, {
-            signal: options?.signal
-            // timeout: 10000000000,
+            signal: options?.signal,
+            timeout: DEFAULT_TIMEOUT,
             // maxTotalTimeout: 10000000000 
         });
 
@@ -164,9 +160,8 @@ export class CodexMcpClient {
             name: 'codex-reply',
             arguments: args
         }, undefined, {
-            signal: options?.signal
-            // timeout: 1000000,
-            // maxTotalTimeout: 1000000
+            signal: options?.signal,
+            timeout: DEFAULT_TIMEOUT
         });
 
         return response as CodexToolResponse;
