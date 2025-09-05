@@ -343,13 +343,9 @@ export const en = {
         codexModel: {
             title: 'CODEX MODEL',
             gpt5Minimal: 'GPT-5 Minimal',
-            gpt5MinimalDesc: 'Fastest responses with limited reasoning',
             gpt5Low: 'GPT-5 Low',
-            gpt5LowDesc: 'Balances speed with some reasoning',
             gpt5Medium: 'GPT-5 Medium',
-            gpt5MediumDesc: 'Default balance of reasoning and latency',
             gpt5High: 'GPT-5 High',
-            gpt5HighDesc: 'Maximizes reasoning depth',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% left`,

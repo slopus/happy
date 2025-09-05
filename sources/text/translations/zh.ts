@@ -343,13 +343,9 @@ export const zh = {
         codexModel: {
             title: 'CODEX 模型',
             gpt5Minimal: 'GPT-5 极简',
-            gpt5MinimalDesc: '最快响应，推理能力有限',
             gpt5Low: 'GPT-5 低',
-            gpt5LowDesc: '平衡速度与一定推理能力',
             gpt5Medium: 'GPT-5 中',
-            gpt5MediumDesc: '推理和延迟的默认平衡',
             gpt5High: 'GPT-5 高',
-            gpt5HighDesc: '最大化推理深度',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
