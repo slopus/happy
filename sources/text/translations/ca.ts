@@ -343,13 +343,9 @@ export const ca: TranslationStructure = {
         codexModel: {
             title: 'MODEL CODEX',
             gpt5Minimal: 'GPT-5 Mínim',
-            gpt5MinimalDesc: 'Respostes més ràpides amb raonament limitat',
             gpt5Low: 'GPT-5 Baix',
-            gpt5LowDesc: 'Equilibra velocitat amb cert raonament',
             gpt5Medium: 'GPT-5 Mitjà',
-            gpt5MediumDesc: 'Equilibri predeterminat entre raonament i latència',
             gpt5High: 'GPT-5 Alt',
-            gpt5HighDesc: 'Maximitza la profunditat del raonament',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restant`,

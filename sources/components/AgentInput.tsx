@@ -581,10 +581,11 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                         {isCodex ? t('agentInput.codexModel.title') : t('agentInput.model.title')}
                                     </Text>
                                     {(isCodex 
-                                        ? (['gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'] as const)
+                                        ? (['default', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'] as const)
                                         : (['default', 'adaptiveUsage', 'sonnet', 'opus'] as const)
                                     ).map((model) => {
                                         const modelConfig = isCodex ? {
+                                            'default': { label: t('agentInput.model.default') },
                                             'gpt-5-minimal': { label: t('agentInput.codexModel.gpt5Minimal') },
                                             'gpt-5-low': { label: t('agentInput.codexModel.gpt5Low') },
                                             'gpt-5-medium': { label: t('agentInput.codexModel.gpt5Medium') },
@@ -597,9 +598,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                         };
                                         const config = modelConfig[model as keyof typeof modelConfig];
                                         if (!config) return null;
-                                        const isSelected = isCodex 
-                                            ? props.modelMode === model || (model === 'gpt-5-medium' && !props.modelMode)
-                                            : props.modelMode === model || (model === 'default' && !props.modelMode);
+                                        const isSelected = props.modelMode === model || (model === 'default' && !props.modelMode);
 
                                         return (
                                             <Pressable
