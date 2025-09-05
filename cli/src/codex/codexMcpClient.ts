@@ -208,7 +208,33 @@ export class CodexMcpClient {
     async disconnect(): Promise<void> {
         if (!this.connected) return;
 
-        await this.client.close();
+        // Capture pid in case we need to force-kill
+        const pid = this.transport?.pid ?? null;
+        logger.debug(`[CodexMCP] Disconnecting; child pid=${pid ?? 'none'}`);
+
+        try {
+            // Ask client to close the transport
+            logger.debug('[CodexMCP] client.close begin');
+            await this.client.close();
+            logger.debug('[CodexMCP] client.close done');
+        } catch (e) {
+            logger.debug('[CodexMCP] Error closing client, attempting transport close directly', e);
+            try { 
+                logger.debug('[CodexMCP] transport.close begin');
+                await this.transport?.close?.(); 
+                logger.debug('[CodexMCP] transport.close done');
+            } catch {}
+        }
+
+        // As a last resort, if child still exists, send SIGKILL
+        if (pid) {
+            try {
+                process.kill(pid, 0); // check if alive
+                logger.debug('[CodexMCP] Child still alive, sending SIGKILL');
+                try { process.kill(pid, 'SIGKILL'); } catch {}
+            } catch { /* not running */ }
+        }
+
         this.transport = null;
         this.connected = false;
         this.sessionId = null;

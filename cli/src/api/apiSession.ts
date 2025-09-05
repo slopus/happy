@@ -383,6 +383,7 @@ export class ApiSessionClient extends EventEmitter {
     }
 
     async close() {
+        logger.debug('[API] socket.close() called');
         this.socket.close();
     }
 }

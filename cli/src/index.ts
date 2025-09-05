@@ -91,6 +91,7 @@ import { execFileSync, execSync } from 'node:child_process'
         credentials
       } = await authAndSetupMachineIfNeeded();
       await runCodex(credentials);
+      // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {

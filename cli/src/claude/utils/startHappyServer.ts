@@ -106,6 +106,7 @@ export async function startHappyServer(client: ApiSessionClient) {
         url: baseUrl.toString(),
         toolNames: ['change_title'],
         stop: () => {
+            logger.debug('[happyMCP] Stopping server');
             mcp.close();
             server.close();
         }

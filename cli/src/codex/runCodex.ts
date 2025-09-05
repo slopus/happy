@@ -14,12 +14,14 @@ import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
 import os from 'node:os';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
+import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { resolve, join } from 'node:path';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
+import type { CodexSessionConfig } from './types';
 
 /**
  * Main entry point for the codex command with ink UI
@@ -28,6 +30,11 @@ export async function runCodex(opts: {
     token: string;
     secret: Uint8Array;
 }): Promise<void> {
+    type PermissionMode = 'default' | 'read-only' | 'safe-yolo' | 'yolo';
+    interface EnhancedMode {
+        permissionMode: PermissionMode;
+        model?: string;
+    }
 
     //
     // Define session
@@ -79,15 +86,66 @@ export async function runCodex(opts: {
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     const session = api.sessionSyncClient(response);
-    const messageQueue = new MessageQueue2((mode) => '');
+    const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
+        permissionMode: mode.permissionMode,
+        model: mode.model,
+    }));
+
+    // Track current overrides to apply per message
+    let currentPermissionMode: PermissionMode | undefined = undefined;
+    let currentModel: string | undefined = undefined;
+
     session.onUserMessage((message) => {
-        messageQueue.push(message.content.text, {});
+        // Resolve permission mode (validate)
+        let messagePermissionMode = currentPermissionMode;
+        if (message.meta?.permissionMode) {
+            const validModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+            if (validModes.includes(message.meta.permissionMode as PermissionMode)) {
+                messagePermissionMode = message.meta.permissionMode as PermissionMode;
+                currentPermissionMode = messagePermissionMode;
+                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
+            } else {
+                logger.debug(`[Codex] Invalid permission mode received: ${message.meta.permissionMode}`);
+            }
+        } else {
+            logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
+        }
+
+        // Resolve model; explicit null resets to default (undefined)
+        let messageModel = currentModel;
+        if (message.meta?.hasOwnProperty('model')) {
+            messageModel = message.meta.model || undefined;
+            currentModel = messageModel;
+            logger.debug(`[Codex] Model updated from user message: ${messageModel || 'reset to default'}`);
+        } else {
+            logger.debug(`[Codex] User message received with no model override, using current: ${currentModel || 'default'}`);
+        }
+
+        const enhancedMode: EnhancedMode = {
+            permissionMode: messagePermissionMode || 'default',
+            model: messageModel,
+        };
+        messageQueue.push(message.content.text, enhancedMode);
     });
     let thinking = false;
     session.keepAlive(thinking, 'remote');
-    setInterval(() => {
+    // Periodic keep-alive; store handle so we can clear on exit
+    const keepAliveInterval = setInterval(() => {
         session.keepAlive(thinking, 'remote');
     }, 2000);
+
+    // Debug helper: log active handles/requests if DEBUG is enabled
+    function logActiveHandles(tag: string) {
+        if (!process.env.DEBUG) return;
+        const anyProc: any = process as any;
+        const handles = typeof anyProc._getActiveHandles === 'function' ? anyProc._getActiveHandles() : [];
+        const requests = typeof anyProc._getActiveRequests === 'function' ? anyProc._getActiveRequests() : [];
+        logger.debug(`[codex][handles] ${tag}: handles=${handles.length} requests=${requests.length}`);
+        try {
+            const kinds = handles.map((h: any) => (h && h.constructor ? h.constructor.name : typeof h));
+            logger.debug(`[codex][handles] kinds=${JSON.stringify(kinds)}`);
+        } catch {}
+    }
 
     //
     // Abort handling
@@ -315,26 +373,85 @@ export async function runCodex(opts: {
     } as const;
 
     try {
+        logger.debug('[codex]: client.connect begin');
         await client.connect();
+        logger.debug('[codex]: client.connect done');
         let wasCreated = false;
+        let currentModeHash: string | null = null;
+        let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
 
         while (!shouldExit) {
-            // Display user messages in the UI
-            const message = await messageQueue.waitForMessagesAndGetAsString(abortController.signal);
-            if (!message || shouldExit) {
+            logActiveHandles('loop-top');
+            // Get next batch; respect mode boundaries like Claude
+            let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
+            pending = null;
+            if (!message) {
+                const batch = await messageQueue.waitForMessagesAndGetAsString(abortController.signal);
+                if (!batch || shouldExit) {
+                    logger.debug(`[codex]: batch=${!!batch}, shouldExit=${shouldExit}`);
+                    break;
+                }
+                message = batch;
+            }
+
+            // Defensive check for TS narrowing
+            if (!message) {
                 break;
             }
 
+            // If a session exists and mode changed, restart on next iteration
+            if (wasCreated && currentModeHash && message.hash !== currentModeHash) {
+                logger.debug('[Codex] Mode changed – restarting Codex session');
+                messageBuffer.addMessage('═'.repeat(40), 'status');
+                messageBuffer.addMessage('Starting new Codex session (mode changed)...', 'status');
+                client.clearSession();
+                wasCreated = false;
+                currentModeHash = null;
+                pending = message;
+                // Reset processors/permissions like end-of-turn cleanup
+                permissionHandler.reset();
+                reasoningProcessor.abort();
+                diffProcessor.reset();
+                thinking = false;
+                session.keepAlive(thinking, 'remote');
+                continue;
+            }
+
+            // Display user messages in the UI
             messageBuffer.addMessage(message.message, 'user');
+            currentModeHash = message.hash;
 
             try {
+                // Map permission mode to approval policy and sandbox for startSession
+                const approvalPolicy = (() => {
+                    switch (message.mode.permissionMode) {
+                        case 'default': return 'untrusted' as const;
+                        case 'read-only': return 'never' as const;
+                        case 'safe-yolo': return 'on-failure' as const;
+                        case 'yolo': return 'on-failure' as const;
+                    }
+                })();
+                const sandbox = (() => {
+                    switch (message.mode.permissionMode) {
+                        case 'default': return 'workspace-write' as const;
+                        case 'read-only': return 'read-only' as const;
+                        case 'safe-yolo': return 'workspace-write' as const;
+                        case 'yolo': return 'danger-full-access' as const;
+                    }
+                })();
+
                 if (!wasCreated) {
+                    const startConfig: CodexSessionConfig = {
+                        prompt: message.message + '\n\n' + trimIdent(`Based on this message, call functions.happy__change_title to change chat session title that would represent the current task. If chat idea would change dramatically - call this function again to update the title.`),
+                        sandbox,
+                        'approval-policy': approvalPolicy,
+                        config: { mcp_servers: mcpServers }
+                    };
+                    if (message.mode.model) {
+                        startConfig.model = message.mode.model;
+                    }
                     await client.startSession(
-                        {
-                            prompt: message.message + '\n\n' + trimIdent(`Based on this message, call functions.happy__change_title to change chat session title that would represent the current task. If chat idea would change dramatically - call this function again to update the title.`),
-                            sandbox: 'workspace-write',
-                            config: { mcp_servers: mcpServers }
-                        },
+                        startConfig,
                         { signal: abortController.signal }
                     );
                     wasCreated = true;
@@ -360,24 +477,53 @@ export async function runCodex(opts: {
                 diffProcessor.reset();
                 thinking = false;
                 session.keepAlive(thinking, 'remote');
+                logActiveHandles('after-turn');
             }
         }
 
     } finally {
         // Clean up
+        logger.debug('[codex]: Cleanup start');
+        logActiveHandles('cleanup-start');
+        try {
+            logger.debug('[codex]: sendSessionDeath');
+            session.sendSessionDeath();
+            logger.debug('[codex]: flush begin');
+            await session.flush();
+            logger.debug('[codex]: flush done');
+            logger.debug('[codex]: session.close begin');
+            await session.close();
+            logger.debug('[codex]: session.close done');
+        } catch (e) {
+            logger.debug('[codex]: Error while closing session', e);
+        }
+        logger.debug('[codex]: client.disconnect begin');
         await client.disconnect();
+        logger.debug('[codex]: client.disconnect done');
         // Stop Happy MCP server
+        logger.debug('[codex]: happyServer.stop');
         happyServer.stop();
 
         // Clean up ink UI
         if (process.stdin.isTTY) {
-            process.stdin.setRawMode(false);
+            logger.debug('[codex]: setRawMode(false)');
+            try { process.stdin.setRawMode(false); } catch {}
         }
+        // Stop reading from stdin so the process can exit
+        if (hasTTY) {
+            logger.debug('[codex]: stdin.pause()');
+            try { process.stdin.pause(); } catch {}
+        }
+        // Clear periodic keep-alive to avoid keeping event loop alive
+        logger.debug('[codex]: clearInterval(keepAlive)');
+        clearInterval(keepAliveInterval);
         if (inkInstance) {
+            logger.debug('[codex]: inkInstance.unmount()');
             inkInstance.unmount();
         }
         messageBuffer.clear();
 
+        logActiveHandles('cleanup-end');
         logger.debug('[codex]: Cleanup completed');
     }
 }
