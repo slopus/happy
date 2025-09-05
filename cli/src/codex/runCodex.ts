@@ -1,12 +1,13 @@
 import { ApiClient } from '@/api/api';
 import { CodexMcpClient } from './codexMcpClient';
+import { CodexPermissionHandler } from './utils/permissionHandler';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
 import { readSettings } from '@/persistence';
 import { AgentState, Metadata } from '@/api/types';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
-import packageJson from '../../../package.json';
+import packageJson from '../../package.json';
 import os from 'node:os';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { projectPath } from '@/projectPath';
@@ -90,6 +91,7 @@ export async function runCodex(opts: {
         try {
             abortController.abort();
             messageQueue.reset();
+            permissionHandler.reset();
             logger.debug('[Codex] Abort completed');
         } catch (error) {
             logger.debug('[Codex] Error during abort:', error);
@@ -106,6 +108,8 @@ export async function runCodex(opts: {
     //
 
     const client = new CodexMcpClient();
+    const permissionHandler = new CodexPermissionHandler(session);
+    client.setPermissionHandler(permissionHandler);
     client.setHandler((msg) => {
         console.log(msg);
         if (msg.type === 'task_started') {
@@ -136,7 +140,7 @@ export async function runCodex(opts: {
                 id: randomUUID()
             });
         }
-        if (msg.type === 'exec_command_begin') {
+        if (msg.type === 'exec_command_begin' || msg.type === 'exec_approval_request') {
             let { call_id, type, ...inputs } = msg;
             session.sendCodexMessage({
                 type: 'tool-call',
@@ -191,6 +195,9 @@ export async function runCodex(opts: {
                 } else {
                     session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
                 }
+            } finally {
+                // Reset permission handler
+                permissionHandler.reset();
             }
         }
 

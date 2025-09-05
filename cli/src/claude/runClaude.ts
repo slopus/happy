@@ -6,9 +6,9 @@ import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
 import { AgentState, Metadata } from '@/api/types';
 // @ts-ignore
-import packageJson from '../package.json';
+import packageJson from '../../package.json';
 import { readSettings } from '@/persistence';
-import { EnhancedMode, PermissionMode } from './claude/loop';
+import { EnhancedMode, PermissionMode } from './loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
@@ -19,8 +19,8 @@ import { configuration } from '@/configuration';
 import { notifyDaemonSessionStarted } from '@/daemon/controlClient';
 import { initialMachineMetadata } from '@/daemon/run';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
-import { registerKillSessionHandler } from './claude/registerKillSessionHandler';
-import { projectPath } from './projectPath';
+import { registerKillSessionHandler } from './registerKillSessionHandler';
+import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
 
 export interface StartOptions {
@@ -33,7 +33,7 @@ export interface StartOptions {
     startedBy?: 'daemon' | 'terminal'
 }
 
-export async function start(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
+export async function runClaude(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
     const workingDirectory = process.cwd();
     const sessionTag = randomUUID();
 

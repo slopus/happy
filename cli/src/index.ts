@@ -8,7 +8,7 @@
 
 
 import chalk from 'chalk'
-import { start, StartOptions } from '@/start'
+import { runClaude, StartOptions } from '@/claude/runClaude'
 import { join } from 'node:path'
 import { logger } from './ui/logger'
 import { readCredentials, readSettings, updateSettings } from './persistence'
@@ -86,7 +86,7 @@ import { execFileSync, execSync } from 'node:child_process'
   } else if (subcommand === 'codex') {
     // Handle codex command
     try {
-      const { runCodex } = await import('@/modules/codex');
+      const { runCodex } = await import('@/codex/runCodex');
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
@@ -347,7 +347,7 @@ ${chalk.bold.cyan('Claude Code Options (from `claude --help`):')}
 
     // Start the CLI
     try {
-      await start(credentials, options);
+      await runClaude(credentials, options);
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
       if (process.env.DEBUG) {

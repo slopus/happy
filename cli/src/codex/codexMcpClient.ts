@@ -7,6 +7,8 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { logger } from '@/ui/logger';
 import type { CodexSessionConfig, CodexToolResponse } from './types';
 import { z } from 'zod';
+import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { CodexPermissionHandler } from './utils/permissionHandler';
 
 export class CodexMcpClient {
     private client: Client;
@@ -14,11 +16,12 @@ export class CodexMcpClient {
     private connected: boolean = false;
     private sessionId: string | null = null;
     private handler: ((event: any) => void) | null = null;
+    private permissionHandler: CodexPermissionHandler | null = null;
 
     constructor() {
         this.client = new Client(
             { name: 'happy-codex-client', version: '1.0.0' },
-            { capabilities: { tools: {} } }
+            { capabilities: { tools: {}, elicitation: {} } }
         );
 
         this.client.setNotificationHandler(z.object({
@@ -44,6 +47,13 @@ export class CodexMcpClient {
         this.handler = handler;
     }
 
+    /**
+     * Set the permission handler for tool approval
+     */
+    setPermissionHandler(handler: CodexPermissionHandler): void {
+        this.permissionHandler = handler;
+    }
+
     async connect(): Promise<void> {
         if (this.connected) return;
 
@@ -54,10 +64,68 @@ export class CodexMcpClient {
             args: ['mcp']
         });
 
+        // Register request handlers for Codex permission methods
+        this.registerPermissionHandlers();
+
         await this.client.connect(this.transport);
         this.connected = true;
 
         logger.debug('[CodexMCP] Connected to Codex');
+    }
+
+    private registerPermissionHandlers(): void {
+        // Register handler for exec command approval requests
+        this.client.setRequestHandler(
+            ElicitRequestSchema,
+            async (request) => {
+                console.log('[CodexMCP] Received elicitation request:', request.params);
+
+                // Load params
+                const params = request.params as unknown as {
+                    message: string,
+                    codex_elicitation: string,
+                    codex_mcp_tool_call_id: string,
+                    codex_event_id: string,
+                    codex_call_id: string,
+                    codex_command: string[],
+                    codex_cwd: string
+                }
+                const toolName = 'CodexBash';
+
+                // If no permission handler set, deny by default
+                if (!this.permissionHandler) {
+                    logger.debug('[CodexMCP] No permission handler set, denying by default');
+                    return {
+                        decision: 'denied' as const,
+                    };
+                }
+
+                try {
+                    // Request permission through the handler
+                    const result = await this.permissionHandler.handleToolCall(
+                        params.codex_call_id,
+                        toolName,
+                        {
+                            command: params.codex_command,
+                            cwd: params.codex_cwd
+                        }
+                    );
+
+                    logger.debug('[CodexMCP] Permission result:', result);
+                    return {
+                        decision: result.decision
+                    }
+                } catch (error) {
+                    logger.debug('[CodexMCP] Error handling permission request:', error);
+                    return {
+                        decision: 'denied' as const,
+                        reason: error instanceof Error ? error.message : 'Permission request failed'
+                    };
+                }
+            }
+        );
+
+        logger.debug('[CodexMCP] Permission handlers registered');
     }
 
     async startSession(config: CodexSessionConfig, options?: { signal?: AbortSignal }): Promise<CodexToolResponse> {
