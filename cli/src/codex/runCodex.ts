@@ -15,9 +15,11 @@ import packageJson from '../../package.json';
 import os from 'node:os';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { projectPath } from '@/projectPath';
-import { resolve } from 'node:path';
+import { resolve, join } from 'node:path';
+import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
+import { trimIdent } from "@/utils/trimIdent";
 
 /**
  * Main entry point for the codex command with ink UI
@@ -93,7 +95,7 @@ export async function runCodex(opts: {
 
     let abortController = new AbortController();
     let shouldExit = false;
-    
+
     async function handleAbort() {
         logger.debug('[Codex] Abort requested');
         try {
@@ -163,7 +165,7 @@ export async function runCodex(opts: {
     client.setPermissionHandler(permissionHandler);
     client.setHandler((msg) => {
         logger.debug(`[Codex] MCP message: ${JSON.stringify(msg)}`);
-        
+
         // Add messages to the ink UI buffer based on message type
         if (msg.type === 'agent_message') {
             messageBuffer.addMessage(msg.message, 'assistant');
@@ -177,7 +179,7 @@ export async function runCodex(opts: {
             const output = msg.output || msg.error || 'Command completed';
             const truncatedOutput = output.substring(0, 200);
             messageBuffer.addMessage(
-                `Result: ${truncatedOutput}${output.length > 200 ? '...' : ''}`, 
+                `Result: ${truncatedOutput}${output.length > 200 ? '...' : ''}`,
                 'result'
             );
         } else if (msg.type === 'task_started') {
@@ -251,12 +253,12 @@ export async function runCodex(opts: {
         if (msg.type === 'patch_apply_begin') {
             // Handle the start of a patch operation
             let { call_id, auto_approved, changes } = msg;
-            
+
             // Add UI feedback for patch operation
             const changeCount = Object.keys(changes).length;
             const filesMsg = changeCount === 1 ? '1 file' : `${changeCount} files`;
             messageBuffer.addMessage(`Modifying ${filesMsg}...`, 'tool');
-            
+
             // Send tool call message
             session.sendCodexMessage({
                 type: 'tool-call',
@@ -272,7 +274,7 @@ export async function runCodex(opts: {
         if (msg.type === 'patch_apply_end') {
             // Handle the end of a patch operation
             let { call_id, stdout, stderr, success } = msg;
-            
+
             // Add UI feedback for completion
             if (success) {
                 const message = stdout || 'Files modified successfully';
@@ -281,7 +283,7 @@ export async function runCodex(opts: {
                 const errorMsg = stderr || 'Failed to modify files';
                 messageBuffer.addMessage(`Error: ${errorMsg.substring(0, 200)}`, 'result');
             }
-            
+
             // Send tool call result message
             session.sendCodexMessage({
                 type: 'tool-call-result',
@@ -301,24 +303,38 @@ export async function runCodex(opts: {
             }
         }
     });
-    
+
+    // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
+    const happyServer = await startHappyServer(session);
+    const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
+    const mcpServers = {
+        happy: {
+            command: bridgeCommand,
+            args: ['--url', happyServer.url]
+        }
+    } as const;
+
     try {
         await client.connect();
         let wasCreated = false;
-        
+
         while (!shouldExit) {
             // Display user messages in the UI
             const message = await messageQueue.waitForMessagesAndGetAsString(abortController.signal);
             if (!message || shouldExit) {
                 break;
             }
-            
+
             messageBuffer.addMessage(message.message, 'user');
-            
+
             try {
                 if (!wasCreated) {
                     await client.startSession(
-                        { prompt: message.message, sandbox: 'workspace-write' },
+                        {
+                            prompt: message.message + '\n\n' + trimIdent(`Based on this message, call functions.happy__change_title to change chat session title that would represent the current task. If chat idea would change dramatically - call this function again to update the title.`),
+                            sandbox: 'workspace-write',
+                            config: { mcp_servers: mcpServers }
+                        },
                         { signal: abortController.signal }
                     );
                     wasCreated = true;
@@ -350,7 +366,9 @@ export async function runCodex(opts: {
     } finally {
         // Clean up
         await client.disconnect();
-        
+        // Stop Happy MCP server
+        happyServer.stop();
+
         // Clean up ink UI
         if (process.stdin.isTTY) {
             process.stdin.setRawMode(false);
@@ -359,7 +377,7 @@ export async function runCodex(opts: {
             inkInstance.unmount();
         }
         messageBuffer.clear();
-        
+
         logger.debug('[codex]: Cleanup completed');
     }
 }

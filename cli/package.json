@@ -9,7 +9,8 @@
   "bugs": "https://github.com/slopus/happy-cli/issues",
   "repository": "slopus/happy-cli",
   "bin": {
-    "happy": "./bin/happy.mjs"
+    "happy": "./bin/happy.mjs",
+    "happy-mcp": "./bin/happy-mcp.mjs"
   },
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -33,6 +34,16 @@
       "import": {
         "types": "./dist/lib.d.mts",
         "default": "./dist/lib.mjs"
+      }
+    },
+    "./codex/happyMcpStdioBridge": {
+      "require": {
+        "types": "./dist/codex/happyMcpStdioBridge.d.cts",
+        "default": "./dist/codex/happyMcpStdioBridge.cjs"
+      },
+      "import": {
+        "types": "./dist/codex/happyMcpStdioBridge.d.mts",
+        "default": "./dist/codex/happyMcpStdioBridge.mjs"
       }
     }
   },
