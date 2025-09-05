@@ -55,14 +55,13 @@ export const IGNORED_COMMANDS = [
 // Default commands always available
 const DEFAULT_COMMANDS: CommandItem[] = [
     { command: 'compact', description: 'Compact the conversation history' },
-    { command: 'settings', description: 'View claude settings' }
+    { command: 'clear', description: 'Clear the conversation' }
 ];
 
 // Command descriptions for known tools/commands
 const COMMAND_DESCRIPTIONS: Record<string, string> = {
     // Default commands
     compact: 'Compact the conversation history',
-    settings: 'View claude settings',
     
     // Common tool commands
     help: 'Show available commands',
