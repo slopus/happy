@@ -17,6 +17,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { resolve, join } from 'node:path';
+import fs from 'node:fs';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
@@ -211,6 +212,47 @@ export async function runCodex(opts: {
     //
 
     const client = new CodexMcpClient();
+    
+    // Helper: find Codex session transcript for a given sessionId
+    function findCodexResumeFile(sessionId: string | null): string | null {
+        if (!sessionId) return null;
+        try {
+            const rootDir = join(os.homedir(), '.codex', 'sessions');
+
+            // Recursively collect all files under the sessions directory
+            function collectFilesRecursive(dir: string, acc: string[] = []): string[] {
+                let entries: fs.Dirent[];
+                try {
+                    entries = fs.readdirSync(dir, { withFileTypes: true });
+                } catch {
+                    return acc;
+                }
+                for (const entry of entries) {
+                    const full = join(dir, entry.name);
+                    if (entry.isDirectory()) {
+                        collectFilesRecursive(full, acc);
+                    } else if (entry.isFile()) {
+                        acc.push(full);
+                    }
+                }
+                return acc;
+            }
+
+            const candidates = collectFilesRecursive(rootDir)
+                .filter(full => full.endsWith(`-${sessionId}.jsonl`))
+                .filter(full => {
+                    try { return fs.statSync(full).isFile(); } catch { return false; }
+                })
+                .sort((a, b) => {
+                    const sa = fs.statSync(a).mtimeMs;
+                    const sb = fs.statSync(b).mtimeMs;
+                    return sb - sa; // newest first
+                });
+            return candidates[0] || null;
+        } catch {
+            return null;
+        }
+    }
     const permissionHandler = new CodexPermissionHandler(session);
     const reasoningProcessor = new ReasoningProcessor((message) => {
         // Callback to send messages directly from the processor
@@ -371,6 +413,7 @@ export async function runCodex(opts: {
             args: ['--url', happyServer.url]
         }
     } as const;
+    let first = true;
 
     try {
         logger.debug('[codex]: client.connect begin');
@@ -379,6 +422,8 @@ export async function runCodex(opts: {
         let wasCreated = false;
         let currentModeHash: string | null = null;
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
+        // If we restart (e.g., mode change), use this to carry a resume file
+        let nextExperimentalResume: string | null = null;
 
         while (!shouldExit) {
             logActiveHandles('loop-top');
@@ -404,6 +449,19 @@ export async function runCodex(opts: {
                 logger.debug('[Codex] Mode changed – restarting Codex session');
                 messageBuffer.addMessage('═'.repeat(40), 'status');
                 messageBuffer.addMessage('Starting new Codex session (mode changed)...', 'status');
+                // Capture previous sessionId and try to find its transcript to resume
+                try {
+                    const prevSessionId = client.getSessionId();
+                    nextExperimentalResume = findCodexResumeFile(prevSessionId);
+                    if (nextExperimentalResume) {
+                        logger.debug(`[Codex] Found resume file for session ${prevSessionId}: ${nextExperimentalResume}`);
+                        messageBuffer.addMessage('Resuming previous context…', 'status');
+                    } else {
+                        logger.debug('[Codex] No resume file found for previous session');
+                    }
+                } catch (e) {
+                    logger.debug('[Codex] Error while searching resume file', e);
+                }
                 client.clearSession();
                 wasCreated = false;
                 currentModeHash = null;
@@ -442,7 +500,7 @@ export async function runCodex(opts: {
 
                 if (!wasCreated) {
                     const startConfig: CodexSessionConfig = {
-                        prompt: message.message + '\n\n' + trimIdent(`Based on this message, call functions.happy__change_title to change chat session title that would represent the current task. If chat idea would change dramatically - call this function again to update the title.`),
+                        prompt: first ? message.message + '\n\n' + trimIdent(`Based on this message, call functions.happy__change_title to change chat session title that would represent the current task. If chat idea would change dramatically - call this function again to update the title.`) : message.message,
                         sandbox,
                         'approval-policy': approvalPolicy,
                         config: { mcp_servers: mcpServers }
@@ -450,11 +508,17 @@ export async function runCodex(opts: {
                     if (message.mode.model) {
                         startConfig.model = message.mode.model;
                     }
+                    // If we have a resume file from the previous session, pass it through
+                    if (nextExperimentalResume) {
+                        (startConfig.config as any).experimental_resume = nextExperimentalResume;
+                        nextExperimentalResume = null; // consume once
+                    }
                     await client.startSession(
                         startConfig,
                         { signal: abortController.signal }
                     );
                     wasCreated = true;
+                    first = false;
                 } else {
                     await client.continueSession(
                         message.message,
