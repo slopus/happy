@@ -59,14 +59,26 @@ export const Avatar = React.memo((props: AvatarProps) => {
     // Determine flavor icon
     const effectiveFlavor = flavor || 'claude';
     const flavorIcon = flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
-    const iconSize = Math.round(size * 0.35);
+    // Make icons smaller while keeping same circle size
+    // Claude slightly bigger than codex
+    const circleSize = Math.round(size * 0.35);
+    const iconSize = effectiveFlavor === 'codex'
+        ? Math.round(size * 0.25)
+        : effectiveFlavor === 'claude'
+        ? Math.round(size * 0.28)
+        : Math.round(size * 0.35);
     
     // Only wrap in container if showing flavor icons
     if (showFlavorIcons) {
         return (
             <View style={[styles.container, { width: size, height: size }]}>
                 <AvatarComponent {...avatarProps} size={size} />
-                <View style={styles.flavorIcon}>
+                <View style={[styles.flavorIcon, { 
+                    width: circleSize, 
+                    height: circleSize,
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                }]}>
                     <Image
                         source={flavorIcon}
                         style={{ width: iconSize, height: iconSize }}
