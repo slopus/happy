@@ -138,6 +138,15 @@ class Logger {
     }
   }
   
+  warn(message: string, ...args: unknown[]): void {
+    this.logToConsole('warn', '', message, ...args)
+    this.debug(`[WARN] ${message}`, ...args)
+  }
+  
+  getLogPath(): string {
+    return this.logFilePath
+  }
+  
   private logToConsole(level: 'debug' | 'error' | 'info' | 'warn', prefix: string, message: string, ...args: unknown[]): void {
     switch (level) {
       case 'debug': {

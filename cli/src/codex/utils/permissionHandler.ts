@@ -92,7 +92,7 @@ export class CodexPermissionHandler {
         this.session.rpcHandlerManager.registerHandler<PermissionResponse, void>(
             'permission',
             async (response) => {
-                console.log(`[Codex] Permission response received:`, response);
+                // console.log(`[Codex] Permission response received:`, response);
 
                 const pending = this.pendingRequests.get(response.id);
                 if (!pending) {
@@ -115,7 +115,7 @@ export class CodexPermissionHandler {
                     const request = currentState.requests?.[response.id];
                     if (!request) return currentState;
 
-                    console.log(`[Codex] Permission ${response.approved ? 'approved' : 'denied'} for ${pending.toolName}`);
+                    // console.log(`[Codex] Permission ${response.approved ? 'approved' : 'denied'} for ${pending.toolName}`);
 
                     const { [response.id]: _, ...remainingRequests } = currentState.requests || {};
 
@@ -132,7 +132,7 @@ export class CodexPermissionHandler {
                             }
                         }
                     } satisfies AgentState;
-                    console.log(`[Codex] Updated agent state:`, res);
+                    // console.log(`[Codex] Updated agent state:`, res);
                     return res;
                 });
 
