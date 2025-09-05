@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { Text, View, ScrollView, ActivityIndicator, Platform, useWindowDimensions } from 'react-native';
+import { Text, View, ScrollView, Platform, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { ToolCall, Message } from '@/sync/typesMessage';
 import { CodeView } from '../CodeView';
@@ -20,7 +20,8 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
     // Check if there's a specialized content view for this tool
     const SpecializedFullView = getToolFullViewComponent(tool.name);
     const screenWidth = useWindowDimensions().width;
-    const devModeEnabled = useLocalSetting('devModeEnabled');
+    const devModeEnabled = (useLocalSetting('devModeEnabled') || __DEV__);
+    console.log('ToolFullView', devModeEnabled);
 
     return (
         <ScrollView style={[styles.container, { paddingHorizontal: screenWidth > 700 ? 16 : 0 }]}>
@@ -89,15 +90,6 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                         </View>
                     )}
 
-                    {/* Running State */}
-                    {tool.state === 'running' && (
-                        <View style={styles.section}>
-                            <View style={styles.runningContainer}>
-                                <ActivityIndicator size="large" color="#007AFF" />
-                                <Text style={styles.runningText}>{t('tools.fullView.running')}</Text>
-                            </View>
-                        </View>
-                    )}
                 </>
                 )}
                 
@@ -193,15 +185,6 @@ const styles = StyleSheet.create((theme) => ({
     emptyOutputSubtext: {
         fontSize: 14,
         color: theme.colors.textSecondary,
-    },
-    runningContainer: {
-        alignItems: 'center',
-        paddingVertical: 48,
-        gap: 16,
-    },
-    runningText: {
-        fontSize: 16,
-        color: theme.colors.text,
     },
 }));
 

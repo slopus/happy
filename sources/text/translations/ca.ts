@@ -144,6 +144,8 @@ export const ca: TranslationStructure = {
             gradient: 'Gradient',
             brutalist: 'Brutalista',
         },
+        showFlavorIcons: "Mostrar icones de proveïdors d'IA",
+        showFlavorIconsDescription: "Mostrar icones del proveïdor d'IA als avatars de sessió",
         compactSessionView: 'Vista compacta de sessions',
         compactSessionViewDescription: 'Mostra les sessions actives en un disseny més compacte',
     },
@@ -263,6 +265,7 @@ export const ca: TranslationStructure = {
         happySessionId: 'ID de la sessió de Happy',
         claudeCodeSessionId: 'ID de la sessió de Claude Code',
         claudeCodeSessionIdCopied: 'ID de la sessió de Claude Code copiat al porta-retalls',
+        aiProvider: 'Proveïdor d\'IA',
         failedToCopyClaudeCodeSessionId: 'Ha fallat copiar l\'ID de la sessió de Claude Code',
         metadataCopied: 'Metadades copiades al porta-retalls',
         failedToCopyMetadata: 'Ha fallat copiar les metadades',
@@ -327,6 +330,27 @@ export const ca: TranslationStructure = {
             sonnet: 'Sonnet',
             opus: 'Opus',
         },
+        codexPermissionMode: {
+            title: 'MODE DE PERMISOS CODEX',
+            default: 'Configuració del CLI',
+            readOnly: 'Read Only Mode',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Read Only Mode',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
+        },
+        codexModel: {
+            title: 'MODEL CODEX',
+            gpt5Minimal: 'GPT-5 Mínim',
+            gpt5MinimalDesc: 'Respostes més ràpides amb raonament limitat',
+            gpt5Low: 'GPT-5 Baix',
+            gpt5LowDesc: 'Equilibra velocitat amb cert raonament',
+            gpt5Medium: 'GPT-5 Mitjà',
+            gpt5MediumDesc: 'Equilibri predeterminat entre raonament i latència',
+            gpt5High: 'GPT-5 Alt',
+            gpt5HighDesc: 'Maximitza la profunditat del raonament',
+        },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restant`,
         },
@@ -387,6 +411,9 @@ export const ca: TranslationStructure = {
             editNotebook: 'Edita quadern',
             todoList: 'Llista de tasques',
             webSearch: 'Cerca web',
+            reasoning: 'Raonament',
+            applyChanges: 'Actualitza fitxer',
+            viewDiff: 'Canvis del fitxer actual',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -400,6 +427,10 @@ export const ca: TranslationStructure = {
             multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count} edicions)`,
             readingFile: ({ file }: { file: string }) => `Llegint ${file}`,
             writingFile: ({ file }: { file: string }) => `Escrivint ${file}`,
+            modifyingFile: ({ file }: { file: string }) => `Modificant ${file}`,
+            modifyingFiles: ({ count }: { count: number }) => `Modificant ${count} fitxers`,
+            modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} i ${count} més`,
+            showingDiff: 'Mostrant canvis',
         }
     },
 
@@ -619,6 +650,23 @@ export const ca: TranslationStructure = {
         unknownEvent: 'Esdeveniment desconegut',
         usageLimitUntil: ({ time }: { time: string }) => `Límit d'ús assolit fins a ${time}`,
         unknownTime: 'temps desconegut',
+    },
+
+    codex: {
+        // Codex permission dialog buttons
+        permissions: {
+            yesForSession: 'Sí, i no preguntar per aquesta sessió',
+            stopAndExplain: 'Atura, i explica què fer',
+        }
+    },
+
+    claude: {
+        // Claude permission dialog buttons
+        permissions: {
+            yesAllowAllEdits: 'Sí, permet totes les edicions durant aquesta sessió',
+            yesForTool: 'Sí, no tornis a preguntar per aquesta eina',
+            noTellClaude: 'No, i digues a Claude què fer diferent',
+        }
     }
 } as const;
 

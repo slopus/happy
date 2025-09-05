@@ -155,6 +155,8 @@ export const pl: TranslationStructure = {
             gradient: 'Gradientowy',
             brutalist: 'Brutalistyczny',
         },
+        showFlavorIcons: 'Pokaż ikony dostawcy AI',
+        showFlavorIconsDescription: 'Wyświetlaj ikony dostawcy AI na awatarach sesji',
         compactSessionView: 'Kompaktowy widok sesji',
         compactSessionViewDescription: 'Pokazuj aktywne sesje w bardziej zwartym układzie',
     },
@@ -274,6 +276,7 @@ export const pl: TranslationStructure = {
         happySessionId: 'ID sesji Happy',
         claudeCodeSessionId: 'ID sesji Claude Code',
         claudeCodeSessionIdCopied: 'ID sesji Claude Code skopiowane do schowka',
+        aiProvider: 'Dostawca AI',
         failedToCopyClaudeCodeSessionId: 'Nie udało się skopiować ID sesji Claude Code',
         metadataCopied: 'Metadane skopiowane do schowka',
         failedToCopyMetadata: 'Nie udało się skopiować metadanych',
@@ -337,6 +340,27 @@ export const pl: TranslationStructure = {
             sonnet: 'Sonnet',
             opus: 'Opus',
         },
+        codexPermissionMode: {
+            title: 'TRYB UPRAWNIEŃ CODEX',
+            default: 'Ustawienia CLI',
+            readOnly: 'Read Only Mode',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Read Only Mode',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
+        },
+        codexModel: {
+            title: 'MODEL CODEX',
+            gpt5Minimal: 'GPT-5 Minimalny',
+            gpt5MinimalDesc: 'Najszybsze odpowiedzi z ograniczonym rozumowaniem',
+            gpt5Low: 'GPT-5 Niski',
+            gpt5LowDesc: 'Równowaga między szybkością a pewnym rozumowaniem',
+            gpt5Medium: 'GPT-5 Średni',
+            gpt5MediumDesc: 'Domyślna równowaga rozumowania i opóźnienia',
+            gpt5High: 'GPT-5 Wysoki',
+            gpt5HighDesc: 'Maksymalizuje głębokość rozumowania',
+        },
         context: {
             remaining: ({ percent }: { percent: number }) => `Pozostało ${percent}%`,
         },
@@ -397,6 +421,9 @@ export const pl: TranslationStructure = {
             editNotebook: 'Edytuj notatnik',
             todoList: 'Lista zadań',
             webSearch: 'Wyszukiwanie w sieci',
+            reasoning: 'Rozumowanie',
+            applyChanges: 'Zaktualizuj plik',
+            viewDiff: 'Bieżące zmiany pliku',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -410,6 +437,10 @@ export const pl: TranslationStructure = {
             multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count} ${plural({ count, one: 'edycja', few: 'edycje', many: 'edycji' })})`,
             readingFile: ({ file }: { file: string }) => `Odczytywanie ${file}`,
             writingFile: ({ file }: { file: string }) => `Zapisywanie ${file}`,
+            modifyingFile: ({ file }: { file: string }) => `Modyfikowanie ${file}`,
+            modifyingFiles: ({ count }: { count: number }) => `Modyfikowanie ${count} ${plural({ count, one: 'pliku', few: 'plików', many: 'plików' })}`,
+            modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} i ${count} ${plural({ count, one: 'więcej', few: 'więcej', many: 'więcej' })}`,
+            showingDiff: 'Pokazywanie zmian',
         }
     },
 
@@ -629,6 +660,23 @@ export const pl: TranslationStructure = {
         unknownEvent: 'Nieznane zdarzenie',
         usageLimitUntil: ({ time }: { time: string }) => `Osiągnięto limit użycia do ${time}`,
         unknownTime: 'nieznany czas',
+    },
+
+    codex: {
+        // Codex permission dialog buttons
+        permissions: {
+            yesForSession: 'Tak, i nie pytaj dla tej sesji',
+            stopAndExplain: 'Zatrzymaj i wyjaśnij, co zrobić',
+        }
+    },
+
+    claude: {
+        // Claude permission dialog buttons
+        permissions: {
+            yesAllowAllEdits: 'Tak, zezwól na wszystkie edycje podczas tej sesji',
+            yesForTool: 'Tak, nie pytaj ponownie dla tego narzędzia',
+            noTellClaude: 'Nie, i powiedz Claude co zrobić inaczej',
+        }
     }
 } as const;
 

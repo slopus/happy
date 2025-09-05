@@ -136,6 +136,8 @@ export const ru: TranslationStructure = {
             gradient: 'Градиентная',
             brutalist: 'Бруталистская',
         },
+        showFlavorIcons: 'Показывать иконки провайдеров ИИ',
+        showFlavorIconsDescription: 'Отображать иконки провайдеров ИИ на аватарах сессий',
         compactSessionView: 'Компактный вид сессий',
         compactSessionViewDescription: 'Отображать активные сессии в более компактном виде',
     },
@@ -247,6 +249,7 @@ export const ru: TranslationStructure = {
         happySessionId: 'ID сессии Happy',
         claudeCodeSessionId: 'ID сессии Claude Code',
         claudeCodeSessionIdCopied: 'ID сессии Claude Code скопирован в буфер обмена',
+        aiProvider: 'Поставщик ИИ',
         failedToCopyClaudeCodeSessionId: 'Не удалось скопировать ID сессии Claude Code',
         metadataCopied: 'Метаданные скопированы в буфер обмена',
         failedToCopyMetadata: 'Не удалось скопировать метаданные',
@@ -337,6 +340,27 @@ export const ru: TranslationStructure = {
             sonnet: 'Sonnet',
             opus: 'Opus',
         },
+        codexPermissionMode: {
+            title: 'РЕЖИМ РАЗРЕШЕНИЙ CODEX',
+            default: 'Настройки CLI',
+            readOnly: 'Read Only Mode',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Только чтение',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
+        },
+        codexModel: {
+            title: 'МОДЕЛЬ CODEX',
+            gpt5Minimal: 'GPT-5 Минимальная',
+            gpt5MinimalDesc: 'Самые быстрые ответы с ограниченным рассуждением',
+            gpt5Low: 'GPT-5 Низкая',
+            gpt5LowDesc: 'Баланс скорости и некоторого рассуждения',
+            gpt5Medium: 'GPT-5 Средняя',
+            gpt5MediumDesc: 'Стандартный баланс рассуждения и задержки',
+            gpt5High: 'GPT-5 Высокая',
+            gpt5HighDesc: 'Максимальная глубина рассуждения',
+        },
         context: {
             remaining: ({ percent }: { percent: number }) => `Осталось ${percent}%`,
         },
@@ -397,6 +421,9 @@ export const ru: TranslationStructure = {
             editNotebook: 'Редактирование блокнота',
             todoList: 'Список задач',
             webSearch: 'Веб-поиск',
+            reasoning: 'Рассуждение',
+            applyChanges: 'Обновить файл',
+            viewDiff: 'Текущие изменения файла',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Терминал(команда: ${cmd})`,
@@ -410,6 +437,10 @@ export const ru: TranslationStructure = {
             multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count} ${plural({ count, one: 'правка', few: 'правки', many: 'правок' })})`,
             readingFile: ({ file }: { file: string }) => `Чтение ${file}`,
             writingFile: ({ file }: { file: string }) => `Запись ${file}`,
+            modifyingFile: ({ file }: { file: string }) => `Изменение ${file}`,
+            modifyingFiles: ({ count }: { count: number }) => `Изменение ${count} ${plural({ count, one: 'файла', few: 'файлов', many: 'файлов' })}`,
+            modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} и ещё ${count}`,
+            showingDiff: 'Показ изменений',
         }
     },
 
@@ -617,6 +648,23 @@ export const ru: TranslationStructure = {
         unknownEvent: 'Неизвестное событие',
         usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,
         unknownTime: 'неизвестное время',
+    },
+
+    codex: {
+        // Codex permission dialog buttons
+        permissions: {
+            yesForSession: 'Да, и не спрашивать для этой сессии',
+            stopAndExplain: 'Остановить и объяснить, что делать',
+        }
+    },
+
+    claude: {
+        // Claude permission dialog buttons
+        permissions: {
+            yesAllowAllEdits: 'Да, разрешить все правки в этой сессии',
+            yesForTool: 'Да, больше не спрашивать для этого инструмента',
+            noTellClaude: 'Нет, и сказать Claude что делать по-другому',
+        }
     },
 
     settingsLanguage: {

@@ -1,6 +1,6 @@
-import React, { useMemo, useCallback } from 'react';
-import { View, Text, Pressable, Platform, Animated, ScrollView } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import React, { useCallback } from 'react';
+import { View, Text, Animated } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { Item } from '@/components/Item';
@@ -16,6 +16,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
+import { CodeView } from '@/components/CodeView';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -61,10 +62,7 @@ export default React.memo(() => {
     const router = useRouter();
     const { id } = useLocalSearchParams<{ id: string }>();
     const session = useSession(id);
-
-    const handleClose = useCallback(() => {
-        router.back();
-    }, [router]);
+    const devModeEnabled = __DEV__;
 
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
@@ -149,7 +147,7 @@ export default React.memo(() => {
                 {/* Session Header */}
                 <View style={{ maxWidth: layout.maxWidth, alignSelf: 'center', width: '100%' }}>
                     <View style={{ alignItems: 'center', paddingVertical: 24, backgroundColor: theme.colors.surface, marginBottom: 8, borderRadius: 12, marginHorizontal: 16, marginTop: 16 }}>
-                        <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} />
+                        <Avatar id={getSessionAvatarId(session)} size={80} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
                         <Text style={{
                             fontSize: 20,
                             fontWeight: '600',
@@ -288,6 +286,18 @@ export default React.memo(() => {
                                 showChevron={false}
                             />
                         )}
+                        <Item
+                            title={t('sessionInfo.aiProvider')}
+                            subtitle={(() => {
+                                const flavor = session.metadata.flavor || 'claude';
+                                if (flavor === 'claude') return 'Claude';
+                                if (flavor === 'gpt' || flavor === 'openai') return 'Codex';
+                                if (flavor === 'gemini') return 'Gemini';
+                                return flavor;
+                            })()}
+                            icon={<Ionicons name="sparkles-outline" size={29} color="#5856D6" />}
+                            showChevron={false}
+                        />
                         {session.metadata.hostPid && (
                             <Item
                                 title={t('sessionInfo.processId')}
@@ -349,6 +359,75 @@ export default React.memo(() => {
                         />
                     )}
                 </ItemGroup>
+
+                {/* Raw JSON (Dev Mode Only) */}
+                {devModeEnabled && (
+                    <ItemGroup title="Raw JSON (Dev Mode)">
+                        {session.agentState && (
+                            <>
+                                <Item
+                                    title="Agent State"
+                                    icon={<Ionicons name="code-working-outline" size={29} color="#FF9500" />}
+                                    showChevron={false}
+                                />
+                                <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
+                                    <CodeView 
+                                        code={JSON.stringify(session.agentState, null, 2)}
+                                        language="json"
+                                    />
+                                </View>
+                            </>
+                        )}
+                        {session.metadata && (
+                            <>
+                                <Item
+                                    title="Metadata"
+                                    icon={<Ionicons name="information-circle-outline" size={29} color="#5856D6" />}
+                                    showChevron={false}
+                                />
+                                <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
+                                    <CodeView 
+                                        code={JSON.stringify(session.metadata, null, 2)}
+                                        language="json"
+                                    />
+                                </View>
+                            </>
+                        )}
+                        {sessionStatus && (
+                            <>
+                                <Item
+                                    title="Session Status"
+                                    icon={<Ionicons name="analytics-outline" size={29} color="#007AFF" />}
+                                    showChevron={false}
+                                />
+                                <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
+                                    <CodeView 
+                                        code={JSON.stringify({
+                                            isConnected: sessionStatus.isConnected,
+                                            statusText: sessionStatus.statusText,
+                                            statusColor: sessionStatus.statusColor,
+                                            statusDotColor: sessionStatus.statusDotColor,
+                                            isPulsing: sessionStatus.isPulsing
+                                        }, null, 2)}
+                                        language="json"
+                                    />
+                                </View>
+                            </>
+                        )}
+                        {/* Full Session Object */}
+                        <Item
+                            title="Full Session Object"
+                            icon={<Ionicons name="document-text-outline" size={29} color="#34C759" />}
+                            showChevron={false}
+                        />
+                        <View style={{ marginHorizontal: 16, marginBottom: 12 }}>
+                            <CodeView 
+                                code={JSON.stringify(session, null, 2)}
+                                language="json"
+                            />
+                        </View>
+                    </ItemGroup>
+                )}
             </ItemList>
         </>
     );

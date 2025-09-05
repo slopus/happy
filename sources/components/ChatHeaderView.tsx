@@ -18,6 +18,7 @@ interface ChatHeaderViewProps {
     backgroundColor?: string;
     tintColor?: string;
     isConnected?: boolean;
+    flavor?: string | null;
 }
 
 export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
@@ -27,6 +28,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
     onAvatarPress,
     avatarId,
     isConnected = true,
+    flavor,
 }) => {
     const { theme } = useUnistyles();
     const navigation = useNavigation();
@@ -95,6 +97,7 @@ export const ChatHeaderView: React.FC<ChatHeaderViewProps> = ({
                             id={avatarId}
                             size={32}
                             monochrome={!isConnected}
+                            flavor={flavor}
                         />
                     </Pressable>
                 )}

@@ -144,6 +144,8 @@ export const zh = {
             gradient: '渐变',
             brutalist: '粗糙风格',
         },
+        showFlavorIcons: '显示 AI 提供商图标',
+        showFlavorIconsDescription: '在会话头像上显示 AI 提供商图标',
         compactSessionView: '紧凑会话视图',
         compactSessionViewDescription: '以更紧凑的布局显示活跃会话',
     },
@@ -263,6 +265,7 @@ export const zh = {
         happySessionId: 'Happy 会话 ID',
         claudeCodeSessionId: 'Claude Code 会话 ID',
         claudeCodeSessionIdCopied: 'Claude Code 会话 ID 已复制到剪贴板',
+        aiProvider: 'AI 提供商',
         failedToCopyClaudeCodeSessionId: '复制 Claude Code 会话 ID 失败',
         metadataCopied: '元数据已复制到剪贴板',
         failedToCopyMetadata: '复制元数据失败',
@@ -327,6 +330,27 @@ export const zh = {
             sonnet: 'Sonnet',
             opus: 'Opus',
         },
+        codexPermissionMode: {
+            title: 'CODEX 权限模式',
+            default: 'CLI 设置',
+            readOnly: 'Read Only Mode',
+            safeYolo: 'Safe YOLO',
+            yolo: 'YOLO',
+            badgeReadOnly: 'Read Only Mode',
+            badgeSafeYolo: 'Safe YOLO',
+            badgeYolo: 'YOLO',
+        },
+        codexModel: {
+            title: 'CODEX 模型',
+            gpt5Minimal: 'GPT-5 极简',
+            gpt5MinimalDesc: '最快响应，推理能力有限',
+            gpt5Low: 'GPT-5 低',
+            gpt5LowDesc: '平衡速度与一定推理能力',
+            gpt5Medium: 'GPT-5 中',
+            gpt5MediumDesc: '推理和延迟的默认平衡',
+            gpt5High: 'GPT-5 高',
+            gpt5HighDesc: '最大化推理深度',
+        },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
         },
@@ -387,6 +411,9 @@ export const zh = {
             editNotebook: '编辑 Notebook',
             todoList: '待办列表',
             webSearch: 'Web 搜索',
+            reasoning: '推理',
+            applyChanges: '更新文件',
+            viewDiff: '当前文件更改',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `终端(命令: ${cmd})`,
@@ -398,6 +425,12 @@ export const zh = {
             webSearchQuery: ({ query }: { query: string }) => `Web 搜索(查询: ${query})`,
             grepPattern: ({ pattern }: { pattern: string }) => `grep(模式: ${pattern})`,
             multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count} 处编辑)`,
+            readingFile: ({ file }: { file: string }) => `正在读取 ${file}`,
+            writingFile: ({ file }: { file: string }) => `正在写入 ${file}`,
+            modifyingFile: ({ file }: { file: string }) => `正在修改 ${file}`,
+            modifyingFiles: ({ count }: { count: number }) => `正在修改 ${count} 个文件`,
+            modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} 和其他 ${count} 个`,
+            showingDiff: '显示更改',
         }
     },
 
@@ -617,5 +650,22 @@ export const zh = {
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知时间',
+    },
+
+    codex: {
+        // Codex permission dialog buttons
+        permissions: {
+            yesForSession: '是，并且本次会话不再询问',
+            stopAndExplain: '停止，并说明该做什么',
+        }
+    },
+
+    claude: {
+        // Claude permission dialog buttons
+        permissions: {
+            yesAllowAllEdits: '是，允许本次会话的所有编辑',
+            yesForTool: '是，不再询问此工具',
+            noTellClaude: '否，并告诉 Claude 该如何不同地操作',
+        }
     }
 } as const;

@@ -54,6 +54,7 @@ const rawToolResultContentSchema = z.object({
         result: z.enum(['approved', 'denied']),
         mode: z.string().optional(),
         allowedTools: z.array(z.string()).optional(),
+        decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).optional(),
     }).optional(),
 });
 export type RawToolResultContent = z.infer<typeof rawToolResultContentSchema>;
@@ -157,6 +158,7 @@ type NormalizedAgentContent =
             result: 'approved' | 'denied';
             mode?: string;
             allowedTools?: string[];
+            decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
         };
     } | {
         type: 'summary',
@@ -191,7 +193,8 @@ export type NormalizedMessage = ({
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
     let parsed = rawRecordSchema.safeParse(raw);
     if (!parsed.success) {
-        console.error('Invalid raw record:', parsed.error);
+        console.error('Invalid raw record:');
+        console.error(raw);
         return null;
     }
     raw = parsed.data;
@@ -305,7 +308,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                                 date: c.permissions.date,
                                 result: c.permissions.result,
                                 mode: c.permissions.mode,
-                                allowedTools: c.permissions.allowedTools
+                                allowedTools: c.permissions.allowedTools,
+                                decision: c.permissions.decision
                             } : undefined
                         });
                     }

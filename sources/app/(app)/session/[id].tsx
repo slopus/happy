@@ -97,12 +97,12 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
     }, [machineId, cliVersion, acknowledgedCliVersions]);
 
     // Function to update permission mode
-    const updatePermissionMode = useCallback((mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan') => {
+    const updatePermissionMode = useCallback((mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => {
         storage.getState().updateSessionPermissionMode(sessionId, mode);
     }, [sessionId]);
 
     // Function to update model mode
-    const updateModelMode = useCallback((mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus') => {
+    const updateModelMode = useCallback((mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus' | 'gpt-5-minimal' | 'gpt-5-low' | 'gpt-5-medium' | 'gpt-5-high') => {
         storage.getState().updateSessionModelMode(sessionId, mode);
     }, [sessionId]);
 
@@ -191,6 +191,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             onPermissionModeChange={updatePermissionMode}
             modelMode={modelMode}
             onModelModeChange={updateModelMode}
+            metadata={session.metadata}
             connectionStatus={{
                 text: sessionStatus.statusText,
                 color: sessionStatus.statusColor,
@@ -271,6 +272,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                         avatarId={getSessionAvatarId(session)}
                         tintColor={sessionStatus.isConnected ? '#000' : '#8E8E93'}
                         isConnected={sessionStatus.isConnected}
+                        flavor={session.metadata?.flavor}
                     />
                 </View>
             )}
