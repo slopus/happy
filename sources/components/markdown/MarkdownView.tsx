@@ -8,12 +8,25 @@ import { Typography } from '@/constants/Typography';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
 import { Modal } from '@/modal';
 import { useLocalSetting } from '@/sync/storage';
+import { storeTempText } from '@/sync/persistence';
+import { useRouter } from 'expo-router';
 
 
 export const MarkdownView = React.memo((props: { markdown: string }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
     const markdownCopyV2 = useLocalSetting('markdownCopyV2');
     const selectable = !markdownCopyV2;
+    const router = useRouter();
+
+    const handleLongPress = React.useCallback(() => {
+        try {
+            const textId = storeTempText(props.markdown);
+            router.push(`/text-selection?textId=${textId}`);
+        } catch (error) {
+            console.error('Error storing text for selection:', error);
+            Modal.alert('Error', 'Failed to open text selection. Please try again.');
+        }
+    }, [props.markdown, router]);
     const renderContent = () => {
         return (
             <View>
@@ -46,14 +59,7 @@ export const MarkdownView = React.memo((props: { markdown: string }) => {
         return renderContent();
     }
     
-    return <Pressable
-        onLongPress={() => {
-            Modal.alert('Title', 'tried to select text')
-        }}
-        delayLongPress={500}
-    >
-        {renderContent()}
-    </Pressable>
+    return <Pressable onLongPress={handleLongPress} delayLongPress={500}>{renderContent()}</Pressable>;
 });
 
 function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
