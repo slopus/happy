@@ -173,6 +173,8 @@ export const pl: TranslationStructure = {
         commandPalette: 'Paleta poleceń',
         commandPaletteEnabled: 'Naciśnij ⌘K, aby otworzyć',
         commandPaletteDisabled: 'Szybki dostęp do poleceń wyłączony',
+        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
     },
 
     errors: {
@@ -676,14 +678,11 @@ export const pl: TranslationStructure = {
     },
 
     textSelection: {
-        // Text selection modal
+        // Text selection screen
         selectText: 'Wybierz zakres tekstu',
-        selectFromMessage: ({ title }: { title: string }) => `Wybierz tekst z ${title}`,
-        copySelected: 'Kopiuj zaznaczony tekst',
-        selectAll: 'Zaznacz wszystko',
-        startPosition: 'Pozycja początkowa',
-        endPosition: 'Pozycja końcowa',
-        copiedToClipboard: 'Zaznaczony tekst skopiowany do schowka',
+        title: 'Wybierz tekst',
+        noTextProvided: 'Nie podano tekstu',
+        textNotFound: 'Tekst nie został znaleziony lub wygasł',
     }
 } as const;
 

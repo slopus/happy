@@ -162,6 +162,8 @@ export const zhHans = {
         commandPalette: '命令面板',
         commandPaletteEnabled: '按 ⌘K 打开',
         commandPaletteDisabled: '快速命令访问已禁用',
+        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2Subtitle: '长按打开复制模态框',
     },
 
     errors: {
@@ -666,13 +668,10 @@ export const zhHans = {
     },
 
     textSelection: {
-        // Text selection modal
+        // Text selection screen
         selectText: '选择文本范围',
-        selectFromMessage: ({ title }: { title: string }) => `从 ${title} 选择文本`,
-        copySelected: '复制选中的文本',
-        selectAll: '全选',
-        startPosition: '起始位置',
-        endPosition: '结束位置',
-        copiedToClipboard: '选中的文本已复制到剪贴板',
+        title: '选择文本',
+        noTextProvided: '未提供文本',
+        textNotFound: '文本未找到或已过期',
     }
 } as const;

@@ -32,8 +32,8 @@ export default function FeaturesSettingsScreen() {
                     showChevron={false}
                 />
                 <Item
-                    title="Markdown Copy v2"
-                    subtitle="Long press opens copy modal"
+                    title={t('settingsFeatures.markdownCopyV2')}
+                    subtitle={t('settingsFeatures.markdownCopyV2Subtitle')}
                     icon={<Ionicons name="text-outline" size={29} color="#34C759" />}
                     rightElement={
                         <Switch
