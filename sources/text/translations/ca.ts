@@ -673,6 +673,9 @@ export const ca: TranslationStructure = {
         title: 'Seleccionar text',
         noTextProvided: 'No s\'ha proporcionat text',
         textNotFound: 'Text no trobat o expirat',
+        textCopied: 'Text copiat al porta-retalls',
+        failedToCopy: 'No s\'ha pogut copiar el text al porta-retalls',
+        noTextToCopy: 'No hi ha text disponible per copiar',
     }
 } as const;
 

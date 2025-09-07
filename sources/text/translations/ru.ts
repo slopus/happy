@@ -683,6 +683,9 @@ export const ru: TranslationStructure = {
         title: 'Выделить текст',
         noTextProvided: 'Текст не предоставлен',
         textNotFound: 'Текст не найден или устарел',
+        textCopied: 'Текст скопирован в буфер обмена',
+        failedToCopy: 'Не удалось скопировать текст в буфер обмена',
+        noTextToCopy: 'Нет текста для копирования',
     }
 } as const;
 

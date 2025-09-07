@@ -673,5 +673,8 @@ export const zhHans = {
         title: '选择文本',
         noTextProvided: '未提供文本',
         textNotFound: '文本未找到或已过期',
+        textCopied: '文本已复制到剪贴板',
+        failedToCopy: '复制文本到剪贴板失败',
+        noTextToCopy: '没有可复制的文本',
     }
 } as const;

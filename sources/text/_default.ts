@@ -673,6 +673,9 @@ export const en = {
         title: 'Select Text',
         noTextProvided: 'No text provided',
         textNotFound: 'Text not found or expired',
+        textCopied: 'Text copied to clipboard',
+        failedToCopy: 'Failed to copy text to clipboard',
+        noTextToCopy: 'No text available to copy',
     }
 } as const;
 

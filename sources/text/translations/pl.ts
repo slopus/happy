@@ -683,6 +683,9 @@ export const pl: TranslationStructure = {
         title: 'Wybierz tekst',
         noTextProvided: 'Nie podano tekstu',
         textNotFound: 'Tekst nie został znaleziony lub wygasł',
+        textCopied: 'Tekst skopiowany do schowka',
+        failedToCopy: 'Nie udało się skopiować tekstu do schowka',
+        noTextToCopy: 'Brak tekstu do skopiowania',
     }
 } as const;
 
