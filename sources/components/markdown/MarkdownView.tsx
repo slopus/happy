@@ -14,8 +14,14 @@ import { useRouter } from 'expo-router';
 
 export const MarkdownView = React.memo((props: { markdown: string }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
+    
+    // Backwards compatibility: The original version just returned the view, wrapping the list of blocks.
+    // It made each of the individual text elements selectable. When we enable the markdownCopyV2 feature,
+    // we disable the selectable property on individual text segments on mobile only. Instead, the long press
+    // will be handled by a wrapper Pressable. If we don't disable the selectable property, then you will see
+    // the native copy modal come up at the same time as the long press handler is fired.
     const markdownCopyV2 = useLocalSetting('markdownCopyV2');
-    const selectable = !markdownCopyV2;
+    const selectable = Platform.OS === 'web' || !markdownCopyV2;
     const router = useRouter();
 
     const handleLongPress = React.useCallback(() => {
