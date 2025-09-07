@@ -1,19 +1,60 @@
 import React from 'react';
-import { View, Text, ScrollView, TextInput, Alert } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { View, Text, ScrollView, TextInput, Alert, Pressable } from 'react-native';
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { retrieveTempText } from '@/sync/persistence';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import * as Clipboard from 'expo-clipboard';
+import { Modal } from '@/modal';
+import { Ionicons } from '@expo/vector-icons';
 
 export default function TextSelectionScreen() {
     const router = useRouter();
+    const navigation = useNavigation();
     const { textId } = useLocalSearchParams<{ textId: string }>();
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
     const [fullText, setFullText] = React.useState<string>('');
     const [loading, setLoading] = React.useState(true);
+
+    // Copy functionality
+    const handleCopyAll = React.useCallback(async () => {
+        if (!fullText) {
+            Modal.alert(t('common.error'), t('textSelection.noTextToCopy'));
+            return;
+        }
+
+        try {
+            await Clipboard.setStringAsync(fullText);
+            Modal.alert(t('textSelection.textCopied'));
+        } catch (error) {
+            Modal.alert(t('common.error'), t('textSelection.failedToCopy'));
+        }
+    }, [fullText]);
+
+    // Set up header right button
+    React.useLayoutEffect(() => {
+        navigation.setOptions({
+            headerRight: () => (
+                <Pressable
+                    onPress={handleCopyAll}
+                    style={({ pressed }) => [
+                        styles.copyButton,
+                        { opacity: pressed ? 0.7 : 1 }
+                    ]}
+                    disabled={loading || !fullText}
+                >
+                    <Ionicons 
+                        name="copy-outline" 
+                        size={24} 
+                        color={loading || !fullText ? theme.colors.textSecondary : theme.colors.header.tint} 
+                    />
+                </Pressable>
+            ),
+        });
+    }, [navigation, handleCopyAll, loading, fullText, theme]);
 
     React.useEffect(() => {
         if (!textId) {
@@ -99,5 +140,10 @@ const styles = StyleSheet.create((theme) => ({
         borderWidth: 0,
         paddingHorizontal: 0,
         paddingVertical: 0,
+    },
+    copyButton: {
+        padding: 8,
+        marginRight: 8,
+        borderRadius: 8,
     },
 }));
