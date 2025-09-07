@@ -154,6 +154,8 @@ export const ru: TranslationStructure = {
         commandPalette: 'Command Palette',
         commandPaletteEnabled: 'Нажмите ⌘K для открытия',
         commandPaletteDisabled: 'Быстрый доступ к командам отключён',
+        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
     },
 
     errors: {
@@ -676,14 +678,11 @@ export const ru: TranslationStructure = {
     },
 
     textSelection: {
-        // Text selection modal
+        // Text selection screen
         selectText: 'Выделить диапазон текста',
-        selectFromMessage: ({ title }: { title: string }) => `Выделить текст из ${title}`,
-        copySelected: 'Копировать выделенный текст',
-        selectAll: 'Выделить всё',
-        startPosition: 'Начальная позиция',
-        endPosition: 'Конечная позиция',
-        copiedToClipboard: 'Выделенный текст скопирован в буфер обмена',
+        title: 'Выделить текст',
+        noTextProvided: 'Текст не предоставлен',
+        textNotFound: 'Текст не найден или устарел',
     }
 } as const;
 

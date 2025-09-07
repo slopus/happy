@@ -150,7 +150,7 @@ export default function RootLayout() {
                 name="text-selection"
                 options={{
                     headerShown: true,
-                    headerTitle: 'Select Text',
+                    headerTitle: t('textSelection.title'),
                     headerBackTitle: t('common.back'),
                 }}
             />
