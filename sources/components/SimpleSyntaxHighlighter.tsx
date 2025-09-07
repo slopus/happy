@@ -6,6 +6,7 @@ import { Typography } from '@/constants/Typography';
 interface SimpleSyntaxHighlighterProps {
   code: string;
   language: string | null;
+  selectable: boolean;
 }
 
 // Get theme-aware colors
@@ -248,7 +249,8 @@ const tokenizeCode = (code: string, language: string | null) => {
 
 export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = ({
   code,
-  language
+  language,
+  selectable
 }) => {
   const { theme } = useUnistyles();
   const colors = getColors(theme);
@@ -294,7 +296,7 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
   return (
     <View>
       <Text 
-        selectable
+        selectable={selectable}
         style={{ 
           fontFamily: Typography.mono().fontFamily,
           fontSize: 14,
@@ -304,7 +306,7 @@ export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = (
         {tokens.map((token, index) => (
           <Text
             key={index}
-            selectable
+            selectable={selectable}
             style={{
               color: getColorForType(token.type, token.nestLevel),
               fontFamily: Typography.mono().fontFamily,

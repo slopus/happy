@@ -1,73 +1,97 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import { Link } from 'expo-router';
 import * as React from 'react';
-import { ScrollView, View, Platform } from 'react-native';
+import { ScrollView, View, Platform, Pressable } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
+import { Modal } from '@/modal';
+import { useLocalSetting } from '@/sync/storage';
+
 
 export const MarkdownView = React.memo((props: { markdown: string }) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
-    return (
-        <View>
-            {blocks.map((block, index) => {
-                if (block.type === 'text') {
-                    return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} />;
-                } else if (block.type === 'header') {
-                    return <RenderHeaderBlock level={block.level} spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} />;
-                } else if (block.type === 'horizontal-rule') {
-                    return <View style={style.horizontalRule} key={index} />;
-                } else if (block.type === 'list') {
-                    return <RenderListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} />;
-                } else if (block.type === 'numbered-list') {
-                    return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} />;
-                } else if (block.type === 'code-block') {
-                    return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} />;
-                } else {
-                    return null;
-                }
-            })}
-        </View>
-    );
+    const markdownCopyV2 = useLocalSetting('markdownCopyV2');
+    const selectable = !markdownCopyV2;
+    const renderContent = () => {
+        return (
+            <View>
+                {blocks.map((block, index) => {
+                    if (block.type === 'text') {
+                        return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                    } else if (block.type === 'header') {
+                        return <RenderHeaderBlock level={block.level} spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                    } else if (block.type === 'horizontal-rule') {
+                        return <View style={style.horizontalRule} key={index} />;
+                    } else if (block.type === 'list') {
+                        return <RenderListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                    } else if (block.type === 'numbered-list') {
+                        return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                    } else if (block.type === 'code-block') {
+                        return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                    } else {
+                        return null;
+                    }
+                })}
+            </View>
+        );
+    }
+
+    if (!markdownCopyV2) {
+        return renderContent();
+    }
+    
+    if (Platform.OS === 'web') {
+        return renderContent();
+    }
+    
+    return <Pressable
+        onLongPress={() => {
+            Modal.alert('Title', 'tried to select text')
+        }}
+        delayLongPress={500}
+    >
+        {renderContent()}
+    </Pressable>
 });
 
-function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean }) {
-    return <Text selectable style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} /></Text>;
+function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
+    return <Text selectable={props.selectable} style={[style.text, props.first && style.first, props.last && style.last]}><RenderSpans spans={props.spans} baseStyle={style.text} /></Text>;
 }
 
-function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: MarkdownSpan[], first: boolean, last: boolean }) {
+function RenderHeaderBlock(props: { level: 1 | 2 | 3 | 4 | 5 | 6, spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
     const s = (style as any)[`header${props.level}`];
     const headerStyle = [style.header, s, props.first && style.first, props.last && style.last];
-    return <Text selectable style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} /></Text>;
+    return <Text selectable={props.selectable} style={headerStyle}><RenderSpans spans={props.spans} baseStyle={headerStyle} /></Text>;
 }
 
-function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean }) {
+function RenderListBlock(props: { items: MarkdownSpan[][], first: boolean, last: boolean, selectable: boolean }) {
     const listStyle = [style.text, style.list];
     return (
         <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text selectable style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} /></Text>
+                <Text selectable={props.selectable} style={listStyle} key={index}>- <RenderSpans spans={item} baseStyle={listStyle} /></Text>
             ))}
         </View>
     );
 }
 
-function RenderNumberedListBlock(props: { items: { number: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean }) {
+function RenderNumberedListBlock(props: { items: { number: number, spans: MarkdownSpan[] }[], first: boolean, last: boolean, selectable: boolean }) {
     const listStyle = [style.text, style.list];
     return (
         <View style={{ flexDirection: 'column', marginBottom: 8, gap: 1 }}>
             {props.items.map((item, index) => (
-                <Text selectable style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} /></Text>
+                <Text selectable={props.selectable} style={listStyle} key={index}>{item.number.toString()}. <RenderSpans spans={item.spans} baseStyle={listStyle} /></Text>
             ))}
         </View>
     );
 }
 
-function RenderCodeBlock(props: { content: string, language: string | null, first: boolean, last: boolean }) {
+function RenderCodeBlock(props: { content: string, language: string | null, first: boolean, last: boolean, selectable: boolean }) {
     return (
         <View style={[style.codeBlock, props.first && style.first, props.last && style.last]}>
-            {props.language && <Text selectable style={style.codeLanguage}>{props.language}</Text>}
+            {props.language && <Text selectable={props.selectable} style={style.codeLanguage}>{props.language}</Text>}
             <ScrollView
                 style={{ flexGrow: 0, flexShrink: 0 }}
                 horizontal={true}
@@ -77,6 +101,7 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
                 <SimpleSyntaxHighlighter 
                     code={props.content} 
                     language={props.language} 
+                    selectable={props.selectable}
                 />
             </ScrollView>
         </View>
