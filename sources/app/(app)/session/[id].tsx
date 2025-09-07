@@ -206,6 +206,17 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
                     trackMessageSent();
                 }
             }}
+            onFileSelected={(file) => {
+                // Handle file upload
+                const fileMessage = `[Uploaded ${file.type.startsWith('image/') ? 'image' : 'file'}: ${file.name}]`;
+                // For now, just send a message about the file
+                // In production, you'd upload the file and send its reference
+                sync.sendMessage(sessionId, fileMessage);
+                trackMessageSent();
+                
+                // TODO: Implement actual file upload to Claude Code
+                console.log('File selected:', file);
+            }}
             onMicPress={micButtonState.onMicPress}
             isMicActive={micButtonState.isMicActive}
             onAbort={() => sessionAbort(sessionId)}

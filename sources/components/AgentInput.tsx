@@ -22,6 +22,7 @@ import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
+import { FilePickerButton } from './FilePickerButton';
 
 interface AgentInputProps {
     value: string;
@@ -56,6 +57,7 @@ interface AgentInputProps {
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
+    onFileSelected?: (file: { uri: string, name: string, type: string, base64?: string }) => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -792,6 +794,12 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                     </Pressable>
                                 </Shaker>
                             )}
+
+                            {/* File Picker Button */}
+                            <FilePickerButton 
+                                sessionId={props.sessionId} 
+                                onFileSelected={props.onFileSelected}
+                            />
 
                             {/* Git Status Badge */}
                             <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
