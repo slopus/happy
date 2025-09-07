@@ -663,5 +663,16 @@ export const zhHans = {
             yesForTool: '是，不再询问此工具',
             noTellClaude: '否，并告诉 Claude 该如何不同地操作',
         }
+    },
+
+    textSelection: {
+        // Text selection modal
+        selectText: '选择文本范围',
+        selectFromMessage: ({ title }: { title: string }) => `从 ${title} 选择文本`,
+        copySelected: '复制选中的文本',
+        selectAll: '全选',
+        startPosition: '起始位置',
+        endPosition: '结束位置',
+        copiedToClipboard: '选中的文本已复制到剪贴板',
     }
 } as const;

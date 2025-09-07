@@ -663,6 +663,17 @@ export const ca: TranslationStructure = {
             yesForTool: 'Sí, no tornis a preguntar per aquesta eina',
             noTellClaude: 'No, i digues a Claude què fer diferent',
         }
+    },
+
+    textSelection: {
+        // Text selection modal
+        selectText: 'Seleccionar rang de text',
+        selectFromMessage: ({ title }: { title: string }) => `Seleccionar text de ${title}`,
+        copySelected: 'Copiar text seleccionat',
+        selectAll: 'Seleccionar tot',
+        startPosition: 'Posició inicial',
+        endPosition: 'Posició final',
+        copiedToClipboard: 'Text seleccionat copiat al porta-retalls',
     }
 } as const;
 
