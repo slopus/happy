@@ -4,7 +4,7 @@ import { pl } from './translations/pl';
 import { es } from './translations/es';
 import { pt } from './translations/pt';
 import { ca } from './translations/ca';
-import { zh } from './translations/zh';
+import { zhHans } from './translations/zh-Hans';
 import * as Localization from 'expo-localization';
 import { loadSettings } from '@/sync/persistence';
 import { type SupportedLanguage, SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE } from './_all';
@@ -76,7 +76,7 @@ const translations: Record<SupportedLanguage, TranslationStructure> = {
     es, // TypeScript will enforce that es matches the TranslationStructure type exactly
     pt, // TypeScript will enforce that pt matches the TranslationStructure type exactly
     ca, // TypeScript will enforce that ca matches the TranslationStructure type exactly
-    zh, // TypeScript will enforce that zh matches the TranslationStructure type exactly
+    'zh-Hans': zhHans, // TypeScript will enforce that zh matches the TranslationStructure type exactly
 };
 
 // Compile-time check: ensure all supported languages have translations
@@ -102,10 +102,19 @@ if (!found) {
     let locales = Localization.getLocales();
     console.log(`[i18n] Device locales:`, locales.map(l => l.languageCode));
     for (let l of locales) {
-        if (l.languageCode && l.languageCode in translations) {
-            currentLanguage = l.languageCode as SupportedLanguage;
-            console.log(`[i18n] Using device locale: ${currentLanguage}`);
-            break;
+        if (l.languageCode) {
+            // Direct match
+            if (l.languageCode in translations) {
+                currentLanguage = l.languageCode as SupportedLanguage;
+                console.log(`[i18n] Using device locale: ${currentLanguage}`);
+                break;
+            }
+            // Backward compatibility: handle 'zh' -> 'zh-Hans' mapping
+            if (l.languageCode === 'zh' && 'zh-Hans' in translations) {
+                currentLanguage = 'zh-Hans';
+                console.log(`[i18n] Using device locale with migration: zh -> zh-Hans`);
+                break;
+            }
         }
     }
 }
