@@ -162,6 +162,8 @@ export const ca: TranslationStructure = {
         commandPalette: 'Paleta de comandes',
         commandPaletteEnabled: 'Prem ⌘K per obrir',
         commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
+        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
     },
 
     errors: {
@@ -666,14 +668,11 @@ export const ca: TranslationStructure = {
     },
 
     textSelection: {
-        // Text selection modal
+        // Text selection screen
         selectText: 'Seleccionar rang de text',
-        selectFromMessage: ({ title }: { title: string }) => `Seleccionar text de ${title}`,
-        copySelected: 'Copiar text seleccionat',
-        selectAll: 'Seleccionar tot',
-        startPosition: 'Posició inicial',
-        endPosition: 'Posició final',
-        copiedToClipboard: 'Text seleccionat copiat al porta-retalls',
+        title: 'Seleccionar text',
+        noTextProvided: 'No s\'ha proporcionat text',
+        textNotFound: 'Text no trobat o expirat',
     }
 } as const;
 
