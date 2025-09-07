@@ -673,6 +673,9 @@ export const es: TranslationStructure = {
         title: 'Seleccionar texto',
         noTextProvided: 'No se proporcionó texto',
         textNotFound: 'Texto no encontrado o expirado',
+        textCopied: 'Texto copiado al portapapeles',
+        failedToCopy: 'Error al copiar el texto al portapapeles',
+        noTextToCopy: 'No hay texto disponible para copiar',
     }
 } as const;
 
