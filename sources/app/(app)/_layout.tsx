@@ -147,6 +147,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="text-selection"
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Select Text',
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
                 name="dev/index"
                 options={{
                     headerTitle: 'Developer Tools',
