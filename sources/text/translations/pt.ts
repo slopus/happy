@@ -663,6 +663,17 @@ export const pt: TranslationStructure = {
             yesForTool: 'Sim, não perguntar novamente para esta ferramenta',
             noTellClaude: 'Não, e dizer ao Claude o que fazer diferente',
         }
+    },
+
+    textSelection: {
+        // Text selection modal
+        selectText: 'Selecionar intervalo de texto',
+        selectFromMessage: ({ title }: { title: string }) => `Selecionar texto de ${title}`,
+        copySelected: 'Copiar texto selecionado',
+        selectAll: 'Selecionar tudo',
+        startPosition: 'Posição inicial',
+        endPosition: 'Posição final',
+        copiedToClipboard: 'Texto selecionado copiado para a área de transferência',
     }
 } as const;
 

@@ -663,6 +663,17 @@ export const en = {
             yesForTool: "Yes, don't ask again for this tool",
             noTellClaude: 'No, and tell Claude what to do differently',
         }
+    },
+
+    textSelection: {
+        // Text selection modal
+        selectText: 'Select text range',
+        selectFromMessage: ({ title }: { title: string }) => `Select text from ${title}`,
+        copySelected: 'Copy selected text',
+        selectAll: 'Select all',
+        startPosition: 'Start position',
+        endPosition: 'End position',
+        copiedToClipboard: 'Selected text copied to clipboard',
     }
 } as const;
 

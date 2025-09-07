@@ -674,6 +674,17 @@ export const ru: TranslationStructure = {
         needsRestartMessage: 'Приложение нужно перезапустить для применения новых языковых настроек.',
         restartNow: 'Перезапустить',
     },
+
+    textSelection: {
+        // Text selection modal
+        selectText: 'Выделить диапазон текста',
+        selectFromMessage: ({ title }: { title: string }) => `Выделить текст из ${title}`,
+        copySelected: 'Копировать выделенный текст',
+        selectAll: 'Выделить всё',
+        startPosition: 'Начальная позиция',
+        endPosition: 'Конечная позиция',
+        copiedToClipboard: 'Выделенный текст скопирован в буфер обмена',
+    }
 } as const;
 
 export type TranslationsRu = typeof ru;
