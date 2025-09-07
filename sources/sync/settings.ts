@@ -69,6 +69,13 @@ export function settingsParse(settings: unknown): Settings {
     if (!parsed.success) {
         return { ...settingsDefaults };
     }
+    
+    // Migration: Convert old 'zh' language code to 'zh-Hans'
+    if (parsed.data.preferredLanguage === 'zh') {
+        console.log('[Settings Migration] Converting language code from "zh" to "zh-Hans"');
+        parsed.data.preferredLanguage = 'zh-Hans';
+    }
+    
     return { ...settingsDefaults, ...parsed.data };
 }
 

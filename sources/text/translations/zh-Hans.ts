@@ -14,7 +14,7 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
     return count === 1 ? singular : plural;
 }
 
-export const zh = {
+export const zhHans = {
     common: {
         // Simple string constants
         cancel: '取消',
