@@ -1,6 +1,10 @@
 import { getRandomBytes } from 'expo-crypto';
 import sodium from 'react-native-libsodium';
 
+export function getPublicKeyForBox(secretKey: Uint8Array): Uint8Array {
+    return sodium.crypto_box_seed_keypair(secretKey).publicKey;
+}
+
 export function encryptBox(data: Uint8Array, recipientPublicKey: Uint8Array): Uint8Array {
     const ephemeralKeyPair = sodium.crypto_box_keypair();
     const nonce = getRandomBytes(sodium.crypto_box_NONCEBYTES);

@@ -195,6 +195,19 @@ class Expect<T> {
         }
     }
 
+    toBeGreaterThan(expected: number) {
+        const actualNum = this.actual as unknown as number;
+        if (this.negated) {
+            if (actualNum > expected) {
+                throw new Error(`Expected ${actualNum} to not be greater than ${expected}`);
+            }
+        } else {
+            if (!(actualNum > expected)) {
+                throw new Error(`Expected ${actualNum} to be greater than ${expected}`);
+            }
+        }
+    }
+
     toThrow(message?: string) {
         if (typeof this.actual !== 'function') {
             throw new Error('toThrow can only be used with functions');
