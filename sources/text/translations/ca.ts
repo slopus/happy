@@ -162,6 +162,8 @@ export const ca: TranslationStructure = {
         commandPalette: 'Paleta de comandes',
         commandPaletteEnabled: 'Prem ⌘K per obrir',
         commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
+        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
     },
 
     errors: {
@@ -663,6 +665,17 @@ export const ca: TranslationStructure = {
             yesForTool: 'Sí, no tornis a preguntar per aquesta eina',
             noTellClaude: 'No, i digues a Claude què fer diferent',
         }
+    },
+
+    textSelection: {
+        // Text selection screen
+        selectText: 'Seleccionar rang de text',
+        title: 'Seleccionar text',
+        noTextProvided: 'No s\'ha proporcionat text',
+        textNotFound: 'Text no trobat o expirat',
+        textCopied: 'Text copiat al porta-retalls',
+        failedToCopy: 'No s\'ha pogut copiar el text al porta-retalls',
+        noTextToCopy: 'No hi ha text disponible per copiar',
     }
 } as const;
 

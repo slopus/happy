@@ -154,6 +154,8 @@ export const ru: TranslationStructure = {
         commandPalette: 'Command Palette',
         commandPaletteEnabled: 'Нажмите ⌘K для открытия',
         commandPaletteDisabled: 'Быстрый доступ к командам отключён',
+        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
     },
 
     errors: {
@@ -674,6 +676,17 @@ export const ru: TranslationStructure = {
         needsRestartMessage: 'Приложение нужно перезапустить для применения новых языковых настроек.',
         restartNow: 'Перезапустить',
     },
+
+    textSelection: {
+        // Text selection screen
+        selectText: 'Выделить диапазон текста',
+        title: 'Выделить текст',
+        noTextProvided: 'Текст не предоставлен',
+        textNotFound: 'Текст не найден или устарел',
+        textCopied: 'Текст скопирован в буфер обмена',
+        failedToCopy: 'Не удалось скопировать текст в буфер обмена',
+        noTextToCopy: 'Нет текста для копирования',
+    }
 } as const;
 
 export type TranslationsRu = typeof ru;

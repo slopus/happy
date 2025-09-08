@@ -146,6 +146,23 @@ export function saveProfile(profile: Profile) {
     mmkv.set('profile', JSON.stringify(profile));
 }
 
+// Simple temporary text storage for passing large strings between screens
+export function storeTempText(content: string): string {
+    const id = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    mmkv.set(`temp_text_${id}`, content);
+    return id;
+}
+
+export function retrieveTempText(id: string): string | null {
+    const content = mmkv.getString(`temp_text_${id}`);
+    if (content) {
+        // Auto-delete after retrieval
+        mmkv.delete(`temp_text_${id}`);
+        return content;
+    }
+    return null;
+}
+
 export function clearPersistence() {
     mmkv.clearAll();
 }

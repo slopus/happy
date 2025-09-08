@@ -162,6 +162,8 @@ export const zhHans = {
         commandPalette: '命令面板',
         commandPaletteEnabled: '按 ⌘K 打开',
         commandPaletteDisabled: '快速命令访问已禁用',
+        markdownCopyV2: 'Markdown 复制 v2',
+        markdownCopyV2Subtitle: '长按打开复制模态框',
     },
 
     errors: {
@@ -663,5 +665,16 @@ export const zhHans = {
             yesForTool: '是，不再询问此工具',
             noTellClaude: '否，并告诉 Claude 该如何不同地操作',
         }
+    },
+
+    textSelection: {
+        // Text selection screen
+        selectText: '选择文本范围',
+        title: '选择文本',
+        noTextProvided: '未提供文本',
+        textNotFound: '文本未找到或已过期',
+        textCopied: '文本已复制到剪贴板',
+        failedToCopy: '复制文本到剪贴板失败',
+        noTextToCopy: '没有可复制的文本',
     }
 } as const;

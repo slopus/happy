@@ -162,6 +162,8 @@ export const en = {
         commandPalette: 'Command Palette',
         commandPaletteEnabled: 'Press ⌘K to open',
         commandPaletteDisabled: 'Quick command access disabled',
+        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2Subtitle: 'Long press opens copy modal',
     },
 
     errors: {
@@ -663,6 +665,17 @@ export const en = {
             yesForTool: "Yes, don't ask again for this tool",
             noTellClaude: 'No, and tell Claude what to do differently',
         }
+    },
+
+    textSelection: {
+        // Text selection screen
+        selectText: 'Select text range',
+        title: 'Select Text',
+        noTextProvided: 'No text provided',
+        textNotFound: 'Text not found or expired',
+        textCopied: 'Text copied to clipboard',
+        failedToCopy: 'Failed to copy text to clipboard',
+        noTextToCopy: 'No text available to copy',
     }
 } as const;
 
