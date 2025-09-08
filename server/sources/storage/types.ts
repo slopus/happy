@@ -40,6 +40,7 @@ declare global {
             metadataVersion: number;
             agentState: string | null;
             agentStateVersion: number;
+            dataEncryptionKey: string | null;
             active: boolean;
             activeAt: number;
             createdAt: number;

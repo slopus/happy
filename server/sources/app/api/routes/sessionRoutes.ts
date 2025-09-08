@@ -28,6 +28,7 @@ export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
                 metadataVersion: true,
                 agentState: true,
                 agentStateVersion: true,
+                dataEncryptionKey: true,
                 active: true,
                 lastActiveAt: true,
                 // messages: {
@@ -61,6 +62,7 @@ export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
                     metadataVersion: v.metadataVersion,
                     agentState: v.agentState,
                     agentStateVersion: v.agentStateVersion,
+                    dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
                     lastMessage: null
                 };
             })
@@ -96,6 +98,7 @@ export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
                 metadataVersion: true,
                 agentState: true,
                 agentStateVersion: true,
+                dataEncryptionKey: true,
                 active: true,
                 lastActiveAt: true,
             }
@@ -113,6 +116,7 @@ export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
                 metadataVersion: v.metadataVersion,
                 agentState: v.agentState,
                 agentStateVersion: v.agentStateVersion,
+                dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
             }))
         });
     });
@@ -174,6 +178,7 @@ export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
                 metadataVersion: true,
                 agentState: true,
                 agentStateVersion: true,
+                dataEncryptionKey: true,
                 active: true,
                 lastActiveAt: true,
             }
@@ -202,6 +207,7 @@ export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
                 metadataVersion: v.metadataVersion,
                 agentState: v.agentState,
                 agentStateVersion: v.agentStateVersion,
+                dataEncryptionKey: v.dataEncryptionKey ? Buffer.from(v.dataEncryptionKey).toString('base64') : null,
             })),
             nextCursor,
             hasNext
@@ -214,13 +220,14 @@ export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
             body: z.object({
                 tag: z.string(),
                 metadata: z.string(),
-                agentState: z.string().nullish()
+                agentState: z.string().nullish(),
+                dataEncryptionKey: z.string().nullish()
             })
         },
         preHandler: app.authenticate
     }, async (request, reply) => {
         const userId = request.userId;
-        const { tag, metadata } = request.body;
+        const { tag, metadata, dataEncryptionKey } = request.body;
 
         const session = await db.session.findFirst({
             where: {
@@ -238,6 +245,7 @@ export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
                     metadataVersion: session.metadataVersion,
                     agentState: session.agentState,
                     agentStateVersion: session.agentStateVersion,
+                    dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),
@@ -256,7 +264,8 @@ export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
                 data: {
                     accountId: userId,
                     tag: tag,
-                    metadata: metadata
+                    metadata: metadata,
+                    dataEncryptionKey: dataEncryptionKey ? Buffer.from(dataEncryptionKey, 'base64') : undefined
                 }
             });
             log({ module: 'session-create', sessionId: session.id, userId }, `Session created: ${session.id}`);
@@ -284,6 +293,7 @@ export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
                     metadataVersion: session.metadataVersion,
                     agentState: session.agentState,
                     agentStateVersion: session.agentStateVersion,
+                    dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
                     active: session.active,
                     activeAt: session.lastActiveAt.getTime(),
                     createdAt: session.createdAt.getTime(),

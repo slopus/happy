@@ -90,6 +90,7 @@ model Session {
     metadataVersion   Int              @default(0)
     agentState        String?
     agentStateVersion Int              @default(0)
+    dataEncryptionKey Bytes?
     seq               Int              @default(0)
     active            Boolean          @default(true)
     lastActiveAt      DateTime         @default(now())

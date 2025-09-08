@@ -56,6 +56,7 @@ export type UpdateEvent = {
     metadataVersion: number;
     agentState: string | null;
     agentStateVersion: number;
+    dataEncryptionKey: string | null;
     active: boolean;
     activeAt: number;
     createdAt: number;
@@ -266,6 +267,7 @@ export function buildNewSessionUpdate(session: {
     metadataVersion: number;
     agentState: string | null;
     agentStateVersion: number;
+    dataEncryptionKey: Uint8Array | null;
     active: boolean;
     lastActiveAt: Date;
     createdAt: Date;
@@ -282,6 +284,7 @@ export function buildNewSessionUpdate(session: {
             metadataVersion: session.metadataVersion,
             agentState: session.agentState,
             agentStateVersion: session.agentStateVersion,
+            dataEncryptionKey: session.dataEncryptionKey ? Buffer.from(session.dataEncryptionKey).toString('base64') : null,
             active: session.active,
             activeAt: session.lastActiveAt.getTime(),
             createdAt: session.createdAt.getTime(),

@@ -135,6 +135,7 @@ This document contains the development guidelines and instructions for the Happy
 - Use "inTx" to wrap database operations in transactions
 - Do not update schema without absolute necessity
 - For complex fields, use "Json" type
+- NEVER DO MIGRATION YOURSELF. Only run yarn generate when new types needed
 
 ### Current Schema Status
 The project has pending Prisma migrations that need to be applied:
