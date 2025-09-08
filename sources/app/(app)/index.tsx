@@ -39,14 +39,11 @@ function Authenticated() {
     const isTablet = useIsTablet();
     const realtimeStatus = useRealtimeStatus();
     const machines = useAllMachines();
+    const router = useRouter();
 
     const handleNewSession = () => {
-        // If there's only one online machine, go directly to it
-        if (machines.length === 1) {
-            router.push(`/machine/${machines[0].id}`);
-        } else {
-            router.push('/new-session');
-        }
+        // Navigate to composer screen
+        router.push('/composer');
     }
 
     // Empty state in tabled view

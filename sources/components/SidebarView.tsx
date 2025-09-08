@@ -151,9 +151,9 @@ export const SidebarView = React.memo(() => {
                 };
         }
     };
-
+    
     const handleNewSession = () => {
-        router.push('/new-session');
+        router.push('/composer');
     }
 
     return (
