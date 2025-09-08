@@ -10,6 +10,7 @@ import { Typography } from '@/constants/Typography';
 // Import all test files here
 import '@/encryption/hmac_sha512.appspec';
 import '@/encryption/deriveKey.appspec';
+import '@/sync/encryption/encryptor.appspec';
 
 interface TestRunState {
     running: boolean;

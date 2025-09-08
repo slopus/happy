@@ -1,6 +1,6 @@
 import sodium from 'react-native-libsodium';
 import { decodeBase64, encodeBase64 } from '@/auth/base64';
-import { AgentState, AgentStateSchema, Metadata, MetadataSchema } from './storageTypes';
+import { AgentState, AgentStateSchema, Metadata, MetadataSchema } from '../storageTypes';
 import { decryptSecretBox, encryptSecretBox } from '@/encryption/libsodium';
 import { deriveKey } from '@/encryption/deriveKey';
 import { encodeHex } from '@/encryption/hex';
@@ -104,26 +104,5 @@ export class ApiEncryption {
         } catch (error) {
             return null;
         }
-    }
-
-    /**
-     * Clear cache for a specific session
-     */
-    clearSessionCache(sessionId: string): void {
-        this.cache.clearSessionCache(sessionId);
-    }
-
-    /**
-     * Clear all cached data
-     */
-    clearAllCache(): void {
-        this.cache.clearAll();
-    }
-
-    /**
-     * Get cache statistics for debugging
-     */
-    getCacheStats() {
-        return this.cache.getStats();
     }
 }

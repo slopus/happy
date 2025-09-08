@@ -10,10 +10,6 @@ export const MetadataSchema = z.object({
     version: z.string().optional(),
     name: z.string().optional(),
     os: z.string().optional(),
-    encryption: z.object({
-        type: z.literal('aes-gcm-256'),
-        key: z.string(),
-    }).nullish(),
     summary: z.object({
         text: z.string(),
         updatedAt: z.number()

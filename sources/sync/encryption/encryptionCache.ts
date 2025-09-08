@@ -1,5 +1,5 @@
-import { AgentState, Metadata } from './storageTypes';
-import { DecryptedMessage } from './storageTypes';
+import { AgentState, Metadata } from '../storageTypes';
+import { DecryptedMessage } from '../storageTypes';
 
 interface CacheEntry<T> {
     data: T;

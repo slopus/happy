@@ -1,11 +1,11 @@
 import Constants from 'expo-constants';
 import { apiSocket } from '@/sync/apiSocket';
 import { AuthCredentials } from '@/auth/tokenStorage';
-import { ApiEncryption } from '@/sync/apiEncryption';
+import { ApiEncryption } from '@/sync/encryption/apiEncryption';
 import { storage } from './storage';
-import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema, ApiEphemeralActivityUpdateSchema } from './apiTypes';
-import type { ApiEphemeralUpdate, ApiEphemeralActivityUpdate } from './apiTypes';
-import { DecryptedMessage, Session, Machine } from './storageTypes';
+import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
+import type { ApiEphemeralActivityUpdate } from './apiTypes';
+import { Session, Machine } from './storageTypes';
 import { InvalidateSync } from '@/utils/sync';
 import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
@@ -14,8 +14,7 @@ import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
-import { decodeBase64 } from '@/auth/base64';
-import { SessionEncryption } from './apiSessionEncryption';
+import { SessionEncryption } from './encryption/apiSessionEncryption';
 import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
@@ -27,11 +26,9 @@ import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
-import { isMutableTool } from '@/components/tools/knownTools';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
-import { EncryptionCache } from './encryptionCache';
-import { loadAppConfig } from './appConfig';
+import { EncryptionCache } from './encryption/encryptionCache';
 
 class Sync {
 
@@ -44,6 +41,8 @@ class Sync {
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionEncryption = new Map<string, SessionEncryption>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
+    private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
+    private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private settingsSync: InvalidateSync;
     private profileSync: InvalidateSync;
     private purchasesSync: InvalidateSync;
@@ -453,13 +452,9 @@ class Sync {
             // Create encryption
             //
 
-            let encryption: SessionEncryption;
+            let encryption: SessionEncryption
             if (!this.sessionEncryption.has(session.id)) {
-                if (metadata?.encryption) {
-                    encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'aes-gcm-256', key: decodeBase64(metadata.encryption.key) }, this.encryptionCache);
-                } else {
-                    encryption = new SessionEncryption(session.id, this.encryption.secretKey, { type: 'libsodium' }, this.encryptionCache);
-                }
+                encryption = new SessionEncryption(session.id, this.encryption.secretKey, this.encryptionCache);
                 this.sessionEncryption.set(session.id, encryption);
             } else {
                 encryption = this.sessionEncryption.get(session.id)!;
@@ -866,7 +861,6 @@ class Sync {
             }
         }
         console.log('Decrypted and normalized messages in', Date.now() - start, 'ms');
-        console.log('Cache stats:', this.encryption.getCacheStats());
         console.log('normalizedMessages', JSON.stringify(normalizedMessages));
         // console.log('messages', JSON.stringify(normalizedMessages));
 
@@ -1202,27 +1196,6 @@ class Sync {
                 voiceHooks.onSessionOnline(s.id, s.metadata ?? undefined);
             }
         }
-    }
-
-    /**
-     * Clear cache for a specific session (useful when session is deleted)
-     */
-    clearSessionCache(sessionId: string): void {
-        this.encryption.clearSessionCache(sessionId);
-    }
-
-    /**
-     * Clear all cached data (useful on logout)
-     */
-    clearAllCache(): void {
-        this.encryption.clearAllCache();
-    }
-
-    /**
-     * Get cache statistics for debugging performance
-     */
-    getCacheStats() {
-        return this.encryption.getCacheStats();
     }
 }
 

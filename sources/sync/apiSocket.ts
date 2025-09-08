@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { TokenStorage } from '@/auth/tokenStorage';
-import { ApiEncryption } from './apiEncryption';
+import { ApiEncryption } from './encryption/apiEncryption';
 
 //
 // Types
