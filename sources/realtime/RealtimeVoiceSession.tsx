@@ -25,10 +25,11 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
             const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
             
-            // Use hardcoded agent ID for Eleven Labs
-            await conversationInstance.startSession({
-                agentId: __DEV__ ? 'agent_7801k2c0r5hjfraa1kdbytpvs6yt' : 'agent_6701k211syvvegba4kt7m68nxjmw',
-                // Pass session ID and initial context as dynamic variables
+            if (!config.token && !config.agentId) {
+                throw new Error('Neither token nor agentId provided');
+            }
+            
+            const sessionConfig: any = {
                 dynamicVariables: {
                     sessionId: config.sessionId,
                     initialConversationContext: config.initialContext || ''
@@ -37,8 +38,11 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                     agent: {
                         language: elevenLabsLanguage
                     }
-                }
-            });
+                },
+                ...(config.token ? { conversationToken: config.token } : { agentId: config.agentId })
+            };
+            
+            await conversationInstance.startSession(sessionConfig);
         } catch (error) {
             console.error('Failed to start realtime session:', error);
             storage.getState().setRealtimeStatus('error');

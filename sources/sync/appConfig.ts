@@ -2,7 +2,13 @@ import Constants from 'expo-constants';
 import { requireOptionalNativeModule } from 'expo-modules-core';
 
 export interface AppConfig {
-    [key: string]: any;
+    postHogKey?: string;
+    revenueCatAppleKey?: string;
+    revenueCatGoogleKey?: string;
+    revenueCatStripeKey?: string;
+    elevenLabsAgentIdDev?: string;
+    elevenLabsAgentIdProd?: string;
+    serverUrl?: string;
 }
 
 /**
@@ -15,7 +21,7 @@ export interface AppConfig {
  * 2. Constants.expoConfig
  */
 export function loadAppConfig(): AppConfig {
-    const config: AppConfig = {};
+    const config: Partial<AppConfig> = {};
 
     try {
         // 1. Try ExponentConstants native module directly
@@ -56,6 +62,17 @@ export function loadAppConfig(): AppConfig {
         console.warn('[loadAppConfig] Error accessing Constants.expoConfig:', e);
     }
 
-    console.log('[loadAppConfig] Final merged config:', config);
-    return config;
+    console.log('[loadAppConfig] Final merged config:', JSON.stringify(config, null, 2));
+    
+    // Add default values if not present
+    if (!config.elevenLabsAgentIdDev) {
+        config.elevenLabsAgentIdDev = 'agent_7801k2c0r5hjfraa1kdbytpvs6yt';
+        console.log('[loadAppConfig] Added default elevenLabsAgentIdDev');
+    }
+    if (!config.elevenLabsAgentIdProd) {
+        config.elevenLabsAgentIdProd = 'agent_6701k211syvvegba4kt7m68nxjmw';
+        console.log('[loadAppConfig] Added default elevenLabsAgentIdProd');
+    }
+    
+    return config as AppConfig;
 }

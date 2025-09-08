@@ -109,6 +109,7 @@ sources/
 - **Never use Alert module from React Native, always use @sources/modal/index.ts instead**
 - **Always apply layout width constraints** from `@/components/layout` to full-screen ScrollViews and content containers for responsive design across device sizes
 - Always run `yarn typecheck` after all changes to ensure type safety
+- **Never use `require()` for imports** - always use ES6 import statements (e.g., `import { config } from '@/config'` instead of `const { config } = require('@/config')`)
 
 ### Internationalization (i18n) Guidelines
 

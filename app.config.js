@@ -168,7 +168,9 @@ export default {
                 postHogKey: process.env.EXPO_PUBLIC_POSTHOG_API_KEY,
                 revenueCatAppleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_APPLE,
                 revenueCatGoogleKey: process.env.EXPO_PUBLIC_REVENUE_CAT_GOOGLE,
-                revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE
+                revenueCatStripeKey: process.env.EXPO_PUBLIC_REVENUE_CAT_STRIPE,
+                elevenLabsAgentIdDev: 'agent_7801k2c0r5hjfraa1kdbytpvs6yt',
+                elevenLabsAgentIdProd: 'agent_6701k211syvvegba4kt7m68nxjmw'
             }
         },
         owner: "bulkacorp"
