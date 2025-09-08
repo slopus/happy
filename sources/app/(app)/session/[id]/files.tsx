@@ -4,7 +4,7 @@ import { t } from '@/text';
 import { useRoute } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Octicons } from '@expo/vector-icons';
 import { Text } from '@/components/StyledText';
 import { Item } from '@/components/Item';
 import { ItemList } from '@/components/ItemList';
@@ -14,6 +14,7 @@ import { searchFiles, FileItem } from '@/sync/suggestionFile';
 import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
+import { FileIcon } from '@/components/FileIcon';
 
 export default function FilesScreen() {
     const route = useRoute();
@@ -92,21 +93,40 @@ export default function FilesScreen() {
         router.push(`/session/${sessionId}/file?path=${encodedPath}`);
     }, [router, sessionId]);
 
+    const renderFileIcon = (file: GitFileStatus) => {
+        return <FileIcon fileName={file.fileName} size={32} />;
+    };
+
     const renderStatusIcon = (file: GitFileStatus) => {
+        let statusColor: string;
+        let statusIcon: string;
+
         switch (file.status) {
             case 'modified':
-                return <Octicons name="git-compare" size={29} color="#FF9500" />;
+                statusColor = "#FF9500";
+                statusIcon = "diff-modified";
+                break;
             case 'added':
-                return <Octicons name="diff-added" size={29} color="#34C759" />;
+                statusColor = "#34C759";
+                statusIcon = "diff-added";
+                break;
             case 'deleted':
-                return <Octicons name="diff-removed" size={29} color="#FF3B30" />;
+                statusColor = "#FF3B30";
+                statusIcon = "diff-removed";
+                break;
             case 'renamed':
-                return <Octicons name="arrow-right" size={29} color="#007AFF" />;
+                statusColor = "#007AFF";
+                statusIcon = "arrow-right";
+                break;
             case 'untracked':
-                return <Octicons name="file" size={29} color="#8E8E93" />;
+                statusColor = theme.dark ? "#b0b0b0" : "#8E8E93";
+                statusIcon = "file";
+                break;
             default:
-                return <Octicons name="file" size={29} color={theme.colors.textSecondary} />;
+                return null;
         }
+
+        return <Octicons name={statusIcon as any} size={16} color={statusColor} />;
     };
 
     const renderLineChanges = (file: GitFileStatus) => {
@@ -126,44 +146,12 @@ export default function FilesScreen() {
         return lineChanges ? `${pathPart} • ${lineChanges}` : pathPart;
     };
 
-    const renderFileIcon = (file: FileItem) => {
+    const renderFileIconForSearch = (file: FileItem) => {
         if (file.fileType === 'folder') {
             return <Octicons name="file-directory" size={29} color="#007AFF" />;
         }
         
-        // File type based icons
-        const ext = file.fileName.split('.').pop()?.toLowerCase();
-        switch (ext) {
-            case 'js':
-            case 'jsx':
-                return <Octicons name="file-code" size={29} color="#F7DF1E" />;
-            case 'ts':
-            case 'tsx':
-                return <Octicons name="file-code" size={29} color="#3178C6" />;
-            case 'py':
-                return <Octicons name="file-code" size={29} color="#3776AB" />;
-            case 'html':
-            case 'htm':
-                return <Octicons name="file-code" size={29} color="#E34F26" />;
-            case 'css':
-                return <Octicons name="file-code" size={29} color="#1572B6" />;
-            case 'json':
-                return <Octicons name="file-code" size={29} color="#000" />;
-            case 'md':
-                return <Octicons name="markdown" size={29} color="#000" />;
-            case 'png':
-            case 'jpg':
-            case 'jpeg':
-            case 'gif':
-            case 'svg':
-                return <Octicons name="image" size={29} color="#4CAF50" />;
-            case 'zip':
-            case 'tar':
-            case 'gz':
-                return <Octicons name="file-zip" size={29} color="#666" />;
-            default:
-                return <Octicons name="file" size={29} color={theme.colors.textSecondary} />;
-        }
+        return <FileIcon fileName={file.fileName} size={29} />;
     };
 
     return (
@@ -347,7 +335,7 @@ export default function FilesScreen() {
                                     key={`file-${file.fullPath}-${index}`}
                                     title={file.fileName}
                                     subtitle={file.filePath || t('files.projectRoot')}
-                                    icon={renderFileIcon(file)}
+                                    icon={renderFileIconForSearch(file)}
                                     onPress={() => handleFilePress(file)}
                                     showDivider={index < searchResults.length - 1}
                                 />
@@ -380,7 +368,8 @@ export default function FilesScreen() {
                                         key={`staged-${file.fullPath}-${index}`}
                                         title={file.fileName}
                                         subtitle={renderFileSubtitle(file)}
-                                        icon={renderStatusIcon(file)}
+                                        icon={renderFileIcon(file)}
+                                        rightElement={renderStatusIcon(file)}
                                         onPress={() => handleFilePress(file)}
                                         showDivider={index < gitStatusFiles.stagedFiles.length - 1 || gitStatusFiles.unstagedFiles.length > 0}
                                     />
@@ -412,7 +401,8 @@ export default function FilesScreen() {
                                         key={`unstaged-${file.fullPath}-${index}`}
                                         title={file.fileName}
                                         subtitle={renderFileSubtitle(file)}
-                                        icon={renderStatusIcon(file)}
+                                        icon={renderFileIcon(file)}
+                                        rightElement={renderStatusIcon(file)}
                                         onPress={() => handleFilePress(file)}
                                         showDivider={index < gitStatusFiles.unstagedFiles.length - 1}
                                     />

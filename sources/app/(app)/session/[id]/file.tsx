@@ -11,6 +11,7 @@ import { Modal } from '@/modal';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
+import { FileIcon } from '@/components/FileIcon';
 
 interface FileContent {
     content: string;
@@ -380,11 +381,16 @@ export default function FileScreen() {
                 padding: 16,
                 borderBottomWidth: Platform.select({ ios: 0.33, default: 1 }),
                 borderBottomColor: theme.colors.divider,
-                backgroundColor: theme.colors.surfaceHigh
+                backgroundColor: theme.colors.surfaceHigh,
+                flexDirection: 'row',
+                alignItems: 'center'
             }}>
+                <FileIcon fileName={fileName} size={20} />
                 <Text style={{
                     fontSize: 14,
                     color: theme.colors.textSecondary,
+                    marginLeft: 8,
+                    flex: 1,
                     ...Typography.mono()
                 }}>
                     {filePath}

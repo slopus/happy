@@ -32,6 +32,7 @@
     "@livekit/react-native-expo-plugin": "^1.0.1",
     "@livekit/react-native-webrtc": "^137.0.0",
     "@lottiefiles/dotlottie-react": "^0.14.3",
+    "@peoplesgrocers/seti-ui-file-icons": "1.11.3",
     "@react-native-async-storage/async-storage": "2.1.2",
     "@react-native-community/datetimepicker": "8.4.1",
     "@react-native-community/slider": "4.5.6",
