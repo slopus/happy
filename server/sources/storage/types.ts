@@ -65,6 +65,19 @@ declare global {
             } | null | undefined;
             github?: GitHubProfileType | null | undefined;
         } | {
+            t: 'new-machine';
+            machineId: string;
+            seq: number;
+            metadata: string;
+            metadataVersion: number;
+            daemonState: string | null;
+            daemonStateVersion: number;
+            dataEncryptionKey: string | null;
+            active: boolean;
+            activeAt: number;
+            createdAt: number;
+            updatedAt: number;
+        } | {
             t: 'update-machine';
             machineId: string;
             metadata?: {

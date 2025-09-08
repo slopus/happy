@@ -199,6 +199,7 @@ model Machine {
     metadataVersion    Int      @default(0)
     daemonState        String? // Encrypted - contains dynamic daemon state
     daemonStateVersion Int      @default(0)
+    dataEncryptionKey  Bytes?
     seq                Int      @default(0)
     active             Boolean  @default(true)
     lastActiveAt       DateTime @default(now())

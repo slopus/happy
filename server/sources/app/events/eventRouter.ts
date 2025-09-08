@@ -81,6 +81,19 @@ export type UpdateEvent = {
     } | null | undefined;
     github?: GitHubProfile | null | undefined;
 } | {
+    type: 'new-machine';
+    machineId: string;
+    seq: number;
+    metadata: string;
+    metadataVersion: number;
+    daemonState: string | null;
+    daemonStateVersion: number;
+    dataEncryptionKey: string | null;
+    active: boolean;
+    activeAt: number;
+    createdAt: number;
+    updatedAt: number;
+} | {
     type: 'update-machine';
     machineId: string;
     metadata?: {
@@ -344,6 +357,40 @@ export function buildUpdateAccountUpdate(userId: string, profile: Partial<Accoun
             id: userId,
             ...profile,
             avatar: profile.avatar ? { ...profile.avatar, url: getPublicUrl(profile.avatar.path) } : undefined
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildNewMachineUpdate(machine: {
+    id: string;
+    seq: number;
+    metadata: string;
+    metadataVersion: number;
+    daemonState: string | null;
+    daemonStateVersion: number;
+    dataEncryptionKey: Uint8Array | null;
+    active: boolean;
+    lastActiveAt: Date;
+    createdAt: Date;
+    updatedAt: Date;
+}, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'new-machine',
+            machineId: machine.id,
+            seq: machine.seq,
+            metadata: machine.metadata,
+            metadataVersion: machine.metadataVersion,
+            daemonState: machine.daemonState,
+            daemonStateVersion: machine.daemonStateVersion,
+            dataEncryptionKey: machine.dataEncryptionKey ? Buffer.from(machine.dataEncryptionKey).toString('base64') : null,
+            active: machine.active,
+            activeAt: machine.lastActiveAt.getTime(),
+            createdAt: machine.createdAt.getTime(),
+            updatedAt: machine.updatedAt.getTime()
         },
         createdAt: Date.now()
     };
