@@ -162,7 +162,7 @@ export const zhHans = {
         commandPalette: '命令面板',
         commandPaletteEnabled: '按 ⌘K 打开',
         commandPaletteDisabled: '快速命令访问已禁用',
-        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2: 'Markdown 复制 v2',
         markdownCopyV2Subtitle: '长按打开复制模态框',
     },
 
