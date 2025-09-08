@@ -70,6 +70,8 @@ interface StorageState {
     sessionGitStatus: Record<string, GitStatus | null>;
     machines: Record<string, Machine>;
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+    realtimeMode: 'idle' | 'listening' | 'speaking';
+    realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null;
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
@@ -90,6 +92,8 @@ interface StorageState {
     applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
+    setRealtimeMode: (mode: 'idle' | 'listening' | 'speaking', immediate?: boolean) => void;
+    clearRealtimeModeDebounce: () => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
@@ -222,6 +226,8 @@ export const storage = create<StorageState>()((set, get) => {
         sessionMessages: {},
         sessionGitStatus: {},
         realtimeStatus: 'disconnected',
+        realtimeMode: 'idle',
+        realtimeModeDebounceTimer: null,
         socketStatus: 'disconnected',
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
@@ -634,6 +640,48 @@ export const storage = create<StorageState>()((set, get) => {
             ...state,
             realtimeStatus: status
         })),
+        setRealtimeMode: (mode: 'idle' | 'listening' | 'speaking', immediate?: boolean) => {
+            const state = get();
+            
+            // Clear existing debounce timer
+            if (state.realtimeModeDebounceTimer) {
+                clearTimeout(state.realtimeModeDebounceTimer);
+            }
+            
+            if (mode === 'speaking' || immediate) {
+                // Set mode immediately for speaking or when immediate is true
+                set((state) => ({
+                    ...state,
+                    realtimeMode: mode,
+                    realtimeModeDebounceTimer: null
+                }));
+            } else {
+                // Debounce when switching away from speaking (200ms)
+                // This prevents flashing when mode rapidly switches
+                const timerId = setTimeout(() => {
+                    set((state) => ({
+                        ...state,
+                        realtimeMode: mode,
+                        realtimeModeDebounceTimer: null
+                    }));
+                }, 200);
+                
+                set((state) => ({
+                    ...state,
+                    realtimeModeDebounceTimer: timerId
+                }));
+            }
+        },
+        clearRealtimeModeDebounce: () => {
+            const state = get();
+            if (state.realtimeModeDebounceTimer) {
+                clearTimeout(state.realtimeModeDebounceTimer);
+                set((state) => ({
+                    ...state,
+                    realtimeModeDebounceTimer: null
+                }));
+            }
+        },
         setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => {
             const now = Date.now();
             const updates: Partial<StorageState> = {
@@ -904,6 +952,10 @@ export function useEntitlement(id: KnownEntitlements): boolean {
 
 export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected' | 'error' {
     return storage(useShallow((state) => state.realtimeStatus));
+}
+
+export function useRealtimeMode(): 'idle' | 'listening' | 'speaking' {
+    return storage(useShallow((state) => state.realtimeMode));
 }
 
 export function useSocketStatus() {
