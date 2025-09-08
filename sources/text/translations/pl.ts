@@ -173,6 +173,8 @@ export const pl: TranslationStructure = {
         commandPalette: 'Paleta poleceń',
         commandPaletteEnabled: 'Naciśnij ⌘K, aby otworzyć',
         commandPaletteDisabled: 'Szybki dostęp do poleceń wyłączony',
+        markdownCopyV2: 'Markdown Copy v2',
+        markdownCopyV2Subtitle: 'Długie naciśnięcie otwiera modal kopiowania',
     },
 
     errors: {
@@ -673,6 +675,17 @@ export const pl: TranslationStructure = {
             yesForTool: 'Tak, nie pytaj ponownie dla tego narzędzia',
             noTellClaude: 'Nie, i powiedz Claude co zrobić inaczej',
         }
+    },
+
+    textSelection: {
+        // Text selection screen
+        selectText: 'Wybierz zakres tekstu',
+        title: 'Wybierz tekst',
+        noTextProvided: 'Nie podano tekstu',
+        textNotFound: 'Tekst nie został znaleziony lub wygasł',
+        textCopied: 'Tekst skopiowany do schowka',
+        failedToCopy: 'Nie udało się skopiować tekstu do schowka',
+        noTextToCopy: 'Brak tekstu do skopiowania',
     }
 } as const;
 
