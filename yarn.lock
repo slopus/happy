@@ -1747,6 +1747,11 @@
     "@nodelib/fs.scandir" "2.1.5"
     fastq "^1.6.0"
 
+"@peoplesgrocers/seti-ui-file-icons@1.11.3":
+  version "1.11.3"
+  resolved "https://registry.yarnpkg.com/@peoplesgrocers/seti-ui-file-icons/-/seti-ui-file-icons-1.11.3.tgz#45e5233119e7787d2fa44c4d3d16fc908d985592"
+  integrity sha512-+WZ8Ne9Pf7XbugC2v01PP9ZSpEbjbkFELyqIG3EbTZLL5xKXT/jzqvKWsEpO/fHXjBRieURgcAbxk7twhj5Nyw==
+
 "@pkgjs/parseargs@^0.11.0":
   version "0.11.0"
   resolved "https://registry.npmjs.org/@pkgjs/parseargs/-/parseargs-0.11.0.tgz"
@@ -2016,9 +2021,9 @@
     reselect "^5.1.0"
 
 "@revenuecat/purchases-js@^1.11.1":
-  version "1.11.1"
-  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-js/-/purchases-js-1.11.1.tgz#49ff154a7175539803eb877f2fd1f181b6076d65"
-  integrity sha512-P0jxwUBWOIFSZQ1/NIMpbOXG3brraNDGYoCnES1r5w97yonhAw1brpKwhFKUhlq+DvAUDCG1q1d8FdTzI+MgXg==
+  version "1.13.2"
+  resolved "https://registry.yarnpkg.com/@revenuecat/purchases-js/-/purchases-js-1.13.2.tgz#86fae5c50b5c19af817c348d0c18a6c9cbdfc4f7"
+  integrity sha512-rLX+yD774Q3m6m9fYU1tTix4ziJ0e+lk5fcrFJIT/aYw4dN6vXsrtSBaXk1bDlH8HJGT4JtPmZzLx6QdCt06gA==
 
 "@revenuecat/purchases-typescript-internal@16.0.2":
   version "16.0.2"
