@@ -9,21 +9,6 @@ import { logger } from '@/ui/logger';
 import { formatSecretKeyForBackup } from '@/utils/backupKey';
 import os from 'node:os';
 
-/**
- * Handle auth subcommand
- * 
- * Implements auth subcommands as requested:
- * - auth login: Authenticate (use existing creds if available)
- * - auth logout: Clear private key that originally came from phone
- * - auth show-backup: Show backup key in format expected by mobile/web clients
- * - auth status: Show authentication and machine status
- * 
- * Also supports --force flag that:
- * - Clears credentials
- * - Clears machine ID
- * - Stops daemon
- * - Runs authAndSetupMachineIfNeeded
- */
 export async function handleAuthCommand(args: string[]): Promise<void> {
   const subcommand = args[0];
 
@@ -39,7 +24,7 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
     case 'logout':
       await handleAuthLogout();
       break;
-    case 'show-backup':
+    case 'backup':
       await handleAuthShowBackup();
       break;
     case 'status':
@@ -65,11 +50,6 @@ ${chalk.bold('Usage:')}
 
 ${chalk.bold('Options:')}
   --force    Clear credentials, machine ID, and stop daemon before re-auth
-
-${chalk.bold('Notes:')} 
-  • Use 'auth login --force' when you need to re-register your machine
-  • 'auth show-backup' displays the key format expected by mobile/web clients
-  • The backup key allows linking multiple devices to the same account
 `);
 }
 
@@ -185,10 +165,6 @@ async function handleAuthLogout(): Promise<void> {
 }
 
 async function handleAuthShowBackup(): Promise<void> {
-  // "auth show-backup: Show backup key in the way that mobile client expects it and web client as well"
-  // This is for when "I want to link another phone, or link my web to that same machine"
-  // "The only place I can actually copy the backup key is from my phone"
-
   const credentials = await readCredentials();
   const settings = await readSettings();
 

@@ -12,6 +12,7 @@ import packageJson from '../package.json'
 
 class Configuration {
   public readonly serverUrl: string
+  public readonly webappUrl: string
   public readonly isDaemonProcess: boolean
 
   // Directories and paths (from persistence)
@@ -28,6 +29,7 @@ class Configuration {
   constructor() {
     // Server configuration - priority: parameter > environment > default
     this.serverUrl = process.env.HAPPY_SERVER_URL || 'https://api.cluster-fluster.com'
+    this.webappUrl = process.env.HAPPY_WEBAPP_URL || 'https://app.happy.engineering'
 
     // Check if we're running as daemon based on process args
     const args = process.argv.slice(2)

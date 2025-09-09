@@ -1,4 +1,5 @@
 import { encodeBase64 } from './encryption';
+import { configuration } from '@/configuration';
 
 /**
  * Generate a URL for web authentication
@@ -7,5 +8,5 @@ import { encodeBase64 } from './encryption';
  */
 export function generateWebAuthUrl(publicKey: Uint8Array): string {
     const publicKeyBase64 = encodeBase64(publicKey, 'base64url');
-    return `https://app.happy.engineering/terminal/connect#key=${publicKeyBase64}`;
+    return `${configuration.webappUrl}/terminal/connect#key=${publicKeyBase64}`;
 }

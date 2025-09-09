@@ -22,7 +22,7 @@ export class ApiClient {
   private constructor(token: string, secret: Uint8Array) {
     this.token = token
     this.secret = secret
-    this.pushClient = new PushNotificationClient(token)
+    this.pushClient = new PushNotificationClient(token, configuration.serverUrl)
   }
 
   /**
