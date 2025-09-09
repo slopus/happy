@@ -285,6 +285,9 @@ ${chalk.bold('happy')} - Claude Code On the Go
 ${chalk.bold('Usage:')}
   happy [options]         Start Claude with mobile control
   happy auth              Manage authentication
+  happy codex             Start Codex mode
+  happy connect           Connect AI vendor API keys
+  happy notify            Send push notification
   happy daemon            Manage background service that allows
                             to spawn new sessions away from your computer
   happy doctor            System diagnostics & troubleshooting
@@ -413,7 +416,7 @@ ${chalk.bold('Examples:')}
   // Load credentials
   let credentials = await readCredentials()
   if (!credentials) {
-    console.error(chalk.red('Error: Not authenticated. Please run "happy --auth" first.'))
+    console.error(chalk.red('Error: Not authenticated. Please run "happy auth login" first.'))
     process.exit(1)
   }
 
