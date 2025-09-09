@@ -42,7 +42,7 @@ export async function runCodex(opts: {
     //
 
     const sessionTag = randomUUID();
-    const api = new ApiClient(opts.token, opts.secret);
+    const api = await ApiClient.create(opts.token, opts.secret);
 
     //
     // Machine

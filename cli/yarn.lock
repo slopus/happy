@@ -871,6 +871,11 @@
   resolved "https://registry.yarnpkg.com/@stablelib/base64/-/base64-2.0.1.tgz#f1546ab26896b3490d1ab531373c0dc39e12cee1"
   integrity sha512-P2z89A7N1ETt6RxgpVdDT2xlg8cnm3n6td0lY9gyK7EiWK3wdq388yFX/hLknkCC0we05OZAD1rfxlQJUbl5VQ==
 
+"@stablelib/hex@^2.0.1":
+  version "2.0.1"
+  resolved "https://registry.yarnpkg.com/@stablelib/hex/-/hex-2.0.1.tgz#e8fd33086778135ad60c35f3b7d25eb7d4f7aafb"
+  integrity sha512-nsAgs3109myeijRQg3HASq3vlxe/8uDKHEUuIwn9ZLxfWtXavgojAGLBjI7Sda6seOhy7rKrpmeehYo0Z5VGQA==
+
 "@tootallnate/quickjs-emscripten@^0.23.0":
   version "0.23.0"
   resolved "https://registry.yarnpkg.com/@tootallnate/quickjs-emscripten/-/quickjs-emscripten-0.23.0.tgz#db4ecfd499a9765ab24002c3b696d02e6d32a12c"

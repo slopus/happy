@@ -421,7 +421,7 @@ ${chalk.bold('Examples:')}
 
   try {
     // Create API client and send push notification
-    const api = new ApiClient(credentials.token, credentials.secret)
+    const api = await ApiClient.create(credentials.token, credentials.secret)
 
     // Use custom title or default to "Happy"
     const notificationTitle = title || 'Happy'

@@ -50,7 +50,7 @@ export async function runClaude(credentials: { secret: Uint8Array, token: string
     }
 
     // Create session service
-    const api = new ApiClient(credentials.token, credentials.secret);
+    const api = await ApiClient.create(credentials.token, credentials.secret);
 
     // Create a new session
     let state: AgentState = {};

@@ -72,6 +72,7 @@
     "@anthropic-ai/sdk": "^0.56.0",
     "@modelcontextprotocol/sdk": "^1.15.1",
     "@stablelib/base64": "^2.0.1",
+    "@stablelib/hex": "^2.0.1",
     "@types/cross-spawn": "^6.0.6",
     "@types/http-proxy": "^1.17.16",
     "@types/ps-list": "^6.2.1",

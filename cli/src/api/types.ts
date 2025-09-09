@@ -155,32 +155,18 @@ export interface ClientToServerEvents {
 /**
  * Session information
  */
-export const SessionSchema = z.object({
-  createdAt: z.number(),
-  id: z.string(),
-  seq: z.number(),
-  updatedAt: z.number(),
-  metadata: z.any(),
-  metadataVersion: z.number(),
-  agentState: z.any().nullable(),
-  agentStateVersion: z.number(),
-  // Connectivity tracking (from server)
-  connectivityStatus: z.union([
-    z.enum(['neverConnected', 'online', 'offline']),
-    z.string() // Forward compatibility
-  ]).optional(),
-  connectivityStatusSince: z.number().optional(),
-  connectivityStatusReason: z.string().optional(),
-  // State tracking (from server)
-  state: z.union([
-    z.enum(['running', 'archiveRequested', 'archived']),
-    z.string() // Forward compatibility
-  ]).optional(),
-  stateSince: z.number().optional(),
-  stateReason: z.string().optional()
-})
-
-export type Session = z.infer<typeof SessionSchema>
+export type Session = {
+  id: string,
+  seq: number,
+  encryptionKey: Uint8Array;
+  encryptionVariant: 'legacy' | 'dataKey';
+  createdAt: number,
+  updatedAt: number,
+  metadata: Metadata,
+  metadataVersion: number,
+  agentState: AgentState | null,
+  agentStateVersion: number,
+}
 
 /**
  * Machine metadata - static information (rarely changes)

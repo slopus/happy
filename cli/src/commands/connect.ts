@@ -78,7 +78,7 @@ async function handleConnectVendor(vendor: 'codex' | 'claude' | 'gemini', displa
     }
 
     // Create API client
-    const api = new ApiClient(credentials.token, credentials.secret);
+    const api = await ApiClient.create(credentials.token, credentials.secret);
 
     // Handle vendor authentication
     if (vendor === 'codex') {

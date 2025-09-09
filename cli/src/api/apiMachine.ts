@@ -8,7 +8,7 @@ import { logger } from '@/ui/logger';
 import { configuration } from '@/configuration';
 import { MachineMetadata, DaemonState, Machine, Update, UpdateMachineBody } from './types';
 import { registerCommonHandlers, SpawnSessionOptions, SpawnSessionResult } from '../modules/common/registerCommonHandlers';
-import { encrypt, decrypt, encodeBase64, decodeBase64 } from './encryption';
+import { encryptLegacy, decryptLegacy, encodeBase64, decodeBase64 } from './encryption';
 import { backoff } from '@/utils/time';
 import { RpcHandlerManager } from './rpc/RpcHandlerManager';
 
@@ -88,7 +88,8 @@ export class ApiMachineClient {
         // Initialize RPC handler manager
         this.rpcHandlerManager = new RpcHandlerManager({
             scopePrefix: this.machine.id,
-            secret: this.secret,
+            encryptionKey: this.secret,
+            encryptionVariant: 'legacy',
             logger: (msg, data) => logger.debug(msg, data)
         });
 
@@ -166,18 +167,18 @@ export class ApiMachineClient {
 
             const answer = await this.socket.emitWithAck('machine-update-metadata', {
                 machineId: this.machine.id,
-                metadata: encodeBase64(encrypt(updated, this.secret)),
+                metadata: encodeBase64(encryptLegacy(updated, this.secret)),
                 expectedVersion: this.machine.metadataVersion
             });
 
             if (answer.result === 'success') {
-                this.machine.metadata = decrypt(decodeBase64(answer.metadata), this.secret);
+                this.machine.metadata = decryptLegacy(decodeBase64(answer.metadata), this.secret);
                 this.machine.metadataVersion = answer.version;
                 logger.debug('[API MACHINE] Metadata updated successfully');
             } else if (answer.result === 'version-mismatch') {
                 if (answer.version > this.machine.metadataVersion) {
                     this.machine.metadataVersion = answer.version;
-                    this.machine.metadata = decrypt(decodeBase64(answer.metadata), this.secret);
+                    this.machine.metadata = decryptLegacy(decodeBase64(answer.metadata), this.secret);
                 }
                 throw new Error('Metadata version mismatch'); // Triggers retry
             }
@@ -194,18 +195,18 @@ export class ApiMachineClient {
 
             const answer = await this.socket.emitWithAck('machine-update-state', {
                 machineId: this.machine.id,
-                daemonState: encodeBase64(encrypt(updated, this.secret)),
+                daemonState: encodeBase64(encryptLegacy(updated, this.secret)),
                 expectedVersion: this.machine.daemonStateVersion
             });
 
             if (answer.result === 'success') {
-                this.machine.daemonState = decrypt(decodeBase64(answer.daemonState), this.secret);
+                this.machine.daemonState = decryptLegacy(decodeBase64(answer.daemonState), this.secret);
                 this.machine.daemonStateVersion = answer.version;
                 logger.debug('[API MACHINE] Daemon state updated successfully');
             } else if (answer.result === 'version-mismatch') {
                 if (answer.version > this.machine.daemonStateVersion) {
                     this.machine.daemonStateVersion = answer.version;
-                    this.machine.daemonState = decrypt(decodeBase64(answer.daemonState), this.secret);
+                    this.machine.daemonState = decryptLegacy(decodeBase64(answer.daemonState), this.secret);
                 }
                 throw new Error('Daemon state version mismatch'); // Triggers retry
             }
@@ -272,13 +273,13 @@ export class ApiMachineClient {
 
                 if (update.metadata) {
                     logger.debug('[API MACHINE] Received external metadata update');
-                    this.machine.metadata = decrypt(decodeBase64(update.metadata.value), this.secret);
+                    this.machine.metadata = decryptLegacy(decodeBase64(update.metadata.value), this.secret);
                     this.machine.metadataVersion = update.metadata.version;
                 }
 
                 if (update.daemonState) {
                     logger.debug('[API MACHINE] Received external daemon state update');
-                    this.machine.daemonState = decrypt(decodeBase64(update.daemonState.value), this.secret);
+                    this.machine.daemonState = decryptLegacy(decodeBase64(update.daemonState.value), this.secret);
                     this.machine.daemonStateVersion = update.daemonState.version;
                 }
             } else {
