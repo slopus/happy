@@ -13,6 +13,7 @@ import { startSocket } from "./socket";
 import { machinesRoutes } from "./routes/machinesRoutes";
 import { devRoutes } from "./routes/devRoutes";
 import { versionRoutes } from "./routes/versionRoutes";
+import { voiceRoutes } from "./routes/voiceRoutes";
 import { enableMonitoring } from "./utils/enableMonitoring";
 import { enableErrorHandlers } from "./utils/enableErrorHandlers";
 import { enableAuthentication } from "./utils/enableAuthentication";
@@ -55,6 +56,7 @@ export async function startApi(eventRouter: EventRouter) {
     machinesRoutes(typed, eventRouter);
     devRoutes(typed);
     versionRoutes(typed);
+    voiceRoutes(typed);
 
     // Start HTTP 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
