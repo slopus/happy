@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, randomBytes, createHash } from 'node:crypto';
 import tweetnacl from 'tweetnacl';
 
 /**
@@ -52,7 +52,10 @@ export function getRandomBytes(size: number): Uint8Array {
   return new Uint8Array(randomBytes(size))
 }
 
-export function libsodiumPublicKeyFromSecretKey(secretKey: Uint8Array): Uint8Array {
+export function libsodiumPublicKeyFromSecretKey(seed: Uint8Array): Uint8Array {
+  // NOTE: This matches libsodium implementation, tweetnacl doesnt do this by default
+  const hashedSeed = new Uint8Array(createHash('sha512').update(seed).digest());
+  const secretKey = hashedSeed.slice(0, 32);
   return new Uint8Array(tweetnacl.box.keyPair.fromSecretKey(secretKey).publicKey);
 }
 
