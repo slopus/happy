@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { apiSocket } from '@/sync/apiSocket';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { Encryption } from '@/sync/encryption/encryption';
-import { decodeBase64 } from '@/auth/base64';
+import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
@@ -430,6 +430,7 @@ class Sync {
             metadataVersion: number;
             agentState: string | null;
             agentStateVersion: number;
+            dataEncryptionKey: string | null;
             active: boolean;
             activeAt: number;
             createdAt: number;
@@ -440,9 +441,16 @@ class Sync {
         // Initialize all session encryptions first
         const sessionKeys = new Map<string, Uint8Array | null>();
         for (const session of sessions) {
-            // Get data key if available (for now, we don't have it from the API)
-            // TODO: Get data keys from sessions when available
-            sessionKeys.set(session.id, null);
+            if (session.dataEncryptionKey) {
+                let decrypted = await this.encryption.decryptEncryptionKey(session.dataEncryptionKey);
+                if (!decrypted) {
+                    console.error(`Failed to decrypt data encryption key for session ${session.id}`);
+                    continue;
+                }
+                sessionKeys.set(session.id, decrypted);
+            } else {
+                sessionKeys.set(session.id, null);
+            }
         }
         await this.encryption.initializeSessions(sessionKeys);
 
@@ -578,7 +586,7 @@ class Sync {
                 const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
                     method: 'POST',
                     body: JSON.stringify({
-                        settings: this.encryption.encryptRaw(settings),
+                        settings: await this.encryption.encryptRaw(settings),
                         expectedVersion: version ?? 0
                     }),
                     headers: {
@@ -1001,11 +1009,8 @@ class Sync {
                 // Get session encryption
                 const sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
                 if (!sessionEncryption) {
-                    console.error(`Session encryption not found for ${updateData.body.id}`);
-                    // Initialize it if needed
-                    const sessionKeys = new Map<string, Uint8Array | null>();
-                    sessionKeys.set(updateData.body.id, null);
-                    await this.encryption.initializeSessions(sessionKeys);
+                    console.error(`Session encryption not found for ${updateData.body.id} - this should never happen`);
+                    return;
                 }
 
                 const agentState = updateData.body.agentState && sessionEncryption

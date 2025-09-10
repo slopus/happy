@@ -1,4 +1,4 @@
-import { encodeBase64, decodeBase64 } from '@/auth/base64';
+import { encodeBase64, decodeBase64 } from '@/encryption/base64';
 
 /**
  * Converts a 32-byte secret key to a user-readable format similar to 1Password

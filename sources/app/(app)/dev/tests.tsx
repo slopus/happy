@@ -11,6 +11,8 @@ import { Typography } from '@/constants/Typography';
 import '@/encryption/hmac_sha512.appspec';
 import '@/encryption/deriveKey.appspec';
 import '@/sync/encryption/encryptor.appspec';
+import '@/encryption/aes.appspec';
+import '@/encryption/base64.appspec';
 
 interface TestRunState {
     running: boolean;

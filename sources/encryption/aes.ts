@@ -1,14 +1,21 @@
-import { decodeBase64 } from '@/auth/base64';
 import * as crypto from 'rn-encryption';
+import { decodeUTF8, encodeUTF8 } from './text';
+import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 
-export function encryptAES(data: any, key: string): string {
-    return crypto.encryptAES(new TextEncoder().encode(JSON.stringify(data)), key);
+export async function encryptAESGCMString(data: string, key64: string): Promise<string> {
+    return await crypto.encryptAsyncAES(data, key64);
 }
 
-export function decryptAES(data: string, key: string): any {
-    const decrypted = crypto.decryptAES(data, key);
-    if (!decrypted) {
-        return null;
-    }
-    return JSON.parse(new TextDecoder().decode(decodeBase64(decrypted)));
+export async function decryptAESGCMString(data: string, key64: string): Promise<string | null> {
+    const res = (await crypto.decryptAsyncAES(data, key64)).trim();
+    return res;
+}
+
+export async function encryptAESGCM(data: Uint8Array, key64: string): Promise<Uint8Array> {
+    const encrypted = (await crypto.encryptAsyncAES(decodeUTF8(data), key64)).trim();
+    return decodeBase64(encrypted);
+}
+export async function decryptAESGCM(data: Uint8Array, key64: string): Promise<Uint8Array | null> {
+    let raw = await crypto.decryptAsyncAES(encodeBase64(data), key64);
+    return raw ? encodeUTF8(raw) : null;
 }
