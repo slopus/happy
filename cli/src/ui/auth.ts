@@ -5,7 +5,7 @@ import tweetnacl from 'tweetnacl';
 import axios from 'axios';
 import { displayQRCode } from "./qrcode";
 import { delay } from "@/utils/time";
-import { writeCredentials, readCredentials, updateSettings, readSettings } from "@/persistence";
+import { writeCredentialsLegacy, readCredentials, updateSettings, readSettings, Credentials } from "@/persistence";
 import { generateWebAuthUrl } from "@/api/webAuth";
 import { openBrowser } from "@/utils/browser";
 import { AuthSelector, AuthMethod } from "./ink/AuthSelector";
@@ -165,7 +165,7 @@ async function waitForAuthentication(keypair: tweetnacl.BoxKeyPair): Promise<{ s
                             secret: decrypted,
                             token: token
                         }
-                        await writeCredentials(credentials);
+                        await writeCredentialsLegacy(credentials);
                         console.log('\n\n✓ Authentication successful\n');
                         return credentials;
                     } else {
@@ -211,7 +211,7 @@ export function decryptWithEphemeralKey(encryptedBundle: Uint8Array, recipientSe
  * This replaces the onboarding flow and ensures everything is ready
  */
 export async function authAndSetupMachineIfNeeded(): Promise<{
-    credentials: { token: string; secret: Uint8Array };
+    credentials: Credentials;
     machineId: string;
 }> {
     logger.debug('[AUTH] Starting auth and machine setup...');
@@ -225,7 +225,13 @@ export async function authAndSetupMachineIfNeeded(): Promise<{
         if (!authResult) {
             throw new Error('Authentication failed or was cancelled');
         }
-        credentials = authResult;
+        credentials = {
+            token: authResult.token,
+            encryption: {
+                type: 'legacy',
+                secret: authResult.secret
+            }
+        };
     } else {
         logger.debug('[AUTH] Using existing credentials');
     }

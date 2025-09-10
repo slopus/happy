@@ -6,7 +6,6 @@ import { existsSync, rmSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { stopDaemon, checkIfDaemonRunningAndCleanupStaleState } from '@/daemon/controlClient';
 import { logger } from '@/ui/logger';
-import { formatSecretKeyForBackup } from '@/utils/backupKey';
 import os from 'node:os';
 
 export async function handleAuthCommand(args: string[]): Promise<void> {
@@ -24,9 +23,9 @@ export async function handleAuthCommand(args: string[]): Promise<void> {
     case 'logout':
       await handleAuthLogout();
       break;
-    case 'backup':
-      await handleAuthShowBackup();
-      break;
+    // case 'backup':
+    //   await handleAuthShowBackup();
+    //   break;
     case 'status':
       await handleAuthStatus();
       break;
@@ -164,41 +163,41 @@ async function handleAuthLogout(): Promise<void> {
   }
 }
 
-async function handleAuthShowBackup(): Promise<void> {
-  const credentials = await readCredentials();
-  const settings = await readSettings();
+// async function handleAuthShowBackup(): Promise<void> {
+//   const credentials = await readCredentials();
+//   const settings = await readSettings();
 
-  if (!credentials) {
-    console.log(chalk.yellow('Not authenticated'));
-    console.log(chalk.gray('Run "happy auth login" to authenticate first'));
-    return;
-  }
+//   if (!credentials) {
+//     console.log(chalk.yellow('Not authenticated'));
+//     console.log(chalk.gray('Run "happy auth login" to authenticate first'));
+//     return;
+//   }
 
-  // Format the backup key exactly like the mobile client expects
-  // Mobile client uses formatSecretKeyForBackup which converts to base32 with dashes
-  const formattedBackupKey = formatSecretKeyForBackup(credentials.secret);
+//   // Format the backup key exactly like the mobile client expects
+//   // Mobile client uses formatSecretKeyForBackup which converts to base32 with dashes
+//   const formattedBackupKey = formatSecretKeyForBackup(credentials.encryption.secret);
 
-  console.log(chalk.bold('\n📱 Backup Key\n'));
+//   console.log(chalk.bold('\n📱 Backup Key\n'));
 
-  // Display in the format XXXXX-XXXXX-XXXXX-... that mobile expects
-  console.log(chalk.cyan('Your backup key:'));
-  console.log(chalk.bold(formattedBackupKey));
-  console.log('');
+//   // Display in the format XXXXX-XXXXX-XXXXX-... that mobile expects
+//   console.log(chalk.cyan('Your backup key:'));
+//   console.log(chalk.bold(formattedBackupKey));
+//   console.log('');
 
-  console.log(chalk.cyan('Machine Information:'));
-  console.log(`  Machine ID: ${settings?.machineId || 'not set'}`);
-  console.log(`  Host: ${os.hostname()}`);
-  console.log('');
+//   console.log(chalk.cyan('Machine Information:'));
+//   console.log(`  Machine ID: ${settings?.machineId || 'not set'}`);
+//   console.log(`  Host: ${os.hostname()}`);
+//   console.log('');
 
-  console.log(chalk.bold('How to use this backup key:'));
-  console.log(chalk.gray('• In Happy mobile app: Go to restore/link device and enter this key'));
-  console.log(chalk.gray('• This key format matches what the mobile app expects'));
-  console.log(chalk.gray('• You can type it with or without dashes - the app will normalize it'));
-  console.log(chalk.gray('• Common typos (0→O, 1→I) are automatically corrected'));
-  console.log('');
+//   console.log(chalk.bold('How to use this backup key:'));
+//   console.log(chalk.gray('• In Happy mobile app: Go to restore/link device and enter this key'));
+//   console.log(chalk.gray('• This key format matches what the mobile app expects'));
+//   console.log(chalk.gray('• You can type it with or without dashes - the app will normalize it'));
+//   console.log(chalk.gray('• Common typos (0→O, 1→I) are automatically corrected'));
+//   console.log('');
 
-  console.log(chalk.yellow('⚠️  Keep this key secure - it provides full access to your account'));
-}
+//   console.log(chalk.yellow('⚠️  Keep this key secure - it provides full access to your account'));
+// }
 
 async function handleAuthStatus(): Promise<void> {
   const credentials = await readCredentials();

@@ -160,8 +160,6 @@ export type Session = {
   seq: number,
   encryptionKey: Uint8Array;
   encryptionVariant: 'legacy' | 'dataKey';
-  createdAt: number,
-  updatedAt: number,
   metadata: Metadata,
   metadataVersion: number,
   agentState: AgentState | null,
@@ -203,40 +201,15 @@ export const DaemonStateSchema = z.object({
 
 export type DaemonState = z.infer<typeof DaemonStateSchema>
 
-/**
- * Machine information - similar to Session
- */
-export const MachineSchema = z.object({
-  id: z.string(),
-  metadata: z.any(), // Decrypted MachineMetadata
-  metadataVersion: z.number(),
-  daemonState: z.any().nullable(), // Decrypted DaemonState
-  daemonStateVersion: z.number(),
-
-  // We don't really care about these on the CLI for now
-  // ApiMachineClient will not sync these
-  active: z.boolean(),
-  activeAt: z.number(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-
-  // Connectivity tracking (from server)
-  connectivityStatus: z.union([
-    z.enum(['neverConnected', 'online', 'offline']),
-    z.string() // Forward compatibility
-  ]).optional(),
-  connectivityStatusSince: z.number().optional(),
-  connectivityStatusReason: z.string().optional(),
-  // State tracking (from server)
-  state: z.union([
-    z.enum(['running', 'archiveRequested', 'archived']),
-    z.string() // Forward compatibility
-  ]).optional(),
-  stateSince: z.number().optional(),
-  stateReason: z.string().optional()
-})
-
-export type Machine = z.infer<typeof MachineSchema>
+export type Machine = {
+  id: string,
+  encryptionKey: Uint8Array;
+  encryptionVariant: 'legacy' | 'dataKey';
+  metadata: MachineMetadata,
+  metadataVersion: number,
+  daemonState: DaemonState | null,
+  daemonStateVersion: number,
+}
 
 /**
  * Session message from API

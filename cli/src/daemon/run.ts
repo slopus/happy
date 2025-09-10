@@ -397,7 +397,7 @@ export async function startDaemon(): Promise<void> {
     };
 
     // Create API client
-    const api = await ApiClient.create(credentials.token, credentials.secret);
+    const api = await ApiClient.create(credentials);
 
     // Get or create machine
     const machine = await api.getOrCreateMachine({

@@ -3,26 +3,24 @@ import { logger } from '@/ui/logger'
 import type { AgentState, CreateSessionResponse, Metadata, Session, Machine, MachineMetadata, DaemonState } from '@/api/types'
 import { ApiSessionClient } from './apiSession';
 import { ApiMachineClient } from './apiMachine';
-import { decodeBase64, encodeBase64, encryptLegacy, decryptLegacy, getRandomBytes, encrypt, decrypt, libsodiumPublicKeyFromSecretKey, libsodiumEncryptForPublicKey } from './encryption';
+import { decodeBase64, encodeBase64, getRandomBytes, encrypt, decrypt, libsodiumEncryptForPublicKey } from './encryption';
 import { PushNotificationClient } from './pushNotifications';
 import { configuration } from '@/configuration';
 import chalk from 'chalk';
-import { deriveKey } from '@/utils/deriveKey';
+import { Credentials } from '@/persistence';
 
 export class ApiClient {
 
-  static async create(token: string, secret: Uint8Array) {
-    return new ApiClient(token, secret);
+  static async create(credential: Credentials) {
+    return new ApiClient(credential);
   }
 
-  private readonly token: string;
-  private readonly secret: Uint8Array;
+  private readonly credential: Credentials;
   private readonly pushClient: PushNotificationClient;
 
-  private constructor(token: string, secret: Uint8Array) {
-    this.token = token
-    this.secret = secret
-    this.pushClient = new PushNotificationClient(token, configuration.serverUrl)
+  private constructor(credential: Credentials) {
+    this.credential = credential
+    this.pushClient = new PushNotificationClient(credential.token, configuration.serverUrl)
   }
 
   /**
@@ -36,21 +34,24 @@ export class ApiClient {
 
     // Resolve encryption key
     let dataEncryptionKey: Uint8Array | null = null;
-    let encryptionKey = this.secret;
-    let encryptionVariant: 'legacy' | 'dataKey' = 'legacy';
-    if (configuration.isExperimentalEnabled) {
+    let encryptionKey: Uint8Array;
+    let encryptionVariant: 'legacy' | 'dataKey';
+    if (this.credential.encryption.type === 'dataKey') {
 
       // Generate new encryption key
       encryptionKey = getRandomBytes(32);
       encryptionVariant = 'dataKey';
 
       // Derive and encrypt data encryption key
-      const contentDataKey = await deriveKey(this.secret, 'Happy EnCoder', ['content']);
-      const publicKey = libsodiumPublicKeyFromSecretKey(contentDataKey);
-      let encryptedDataKey = libsodiumEncryptForPublicKey(encryptionKey, publicKey);
+      // const contentDataKey = await deriveKey(this.secret, 'Happy EnCoder', ['content']);
+      // const publicKey = libsodiumPublicKeyFromSecretKey(contentDataKey);
+      let encryptedDataKey = libsodiumEncryptForPublicKey(encryptionKey, this.credential.encryption.publicKey);
       dataEncryptionKey = new Uint8Array(encryptedDataKey.length + 1);
       dataEncryptionKey.set([0], 0); // Version byte
       dataEncryptionKey.set(encryptedDataKey, 1); // Data key
+    } else {
+      encryptionKey = this.credential.encryption.secret;
+      encryptionVariant = 'legacy';
     }
 
     // Create session
@@ -65,7 +66,7 @@ export class ApiClient {
         },
         {
           headers: {
-            'Authorization': `Bearer ${this.token}`,
+            'Authorization': `Bearer ${this.credential.token}`,
             'Content-Type': 'application/json'
           },
           timeout: 60000 // 1 minute timeout for very bad network connections
@@ -76,8 +77,6 @@ export class ApiClient {
       let raw = response.data.session;
       let session: Session = {
         id: raw.id,
-        createdAt: raw.createdAt,
-        updatedAt: raw.updatedAt,
         seq: raw.seq,
         metadata: decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.metadata)),
         metadataVersion: raw.metadataVersion,
@@ -102,16 +101,40 @@ export class ApiClient {
     metadata: MachineMetadata,
     daemonState?: DaemonState
   }): Promise<Machine> {
+
+    // Resolve encryption key
+    let dataEncryptionKey: Uint8Array | null = null;
+    let encryptionKey: Uint8Array;
+    let encryptionVariant: 'legacy' | 'dataKey';
+    if (this.credential.encryption.type === 'dataKey') {
+
+      // Generate new encryption key
+      encryptionKey = getRandomBytes(32);
+      encryptionVariant = 'dataKey';
+
+      // Derive and encrypt data encryption key
+      // const contentDataKey = await deriveKey(this.secret, 'Happy EnCoder', ['content']);
+      // const publicKey = libsodiumPublicKeyFromSecretKey(contentDataKey);
+      let encryptedDataKey = libsodiumEncryptForPublicKey(encryptionKey, this.credential.encryption.publicKey);
+      dataEncryptionKey = new Uint8Array(encryptedDataKey.length + 1);
+      dataEncryptionKey.set([0], 0); // Version byte
+      dataEncryptionKey.set(encryptedDataKey, 1); // Data key
+    } else {
+      encryptionKey = this.credential.encryption.secret;
+      encryptionVariant = 'legacy';
+    }
+
+    // Create machine
     const response = await axios.post(
       `${configuration.serverUrl}/v1/machines`,
       {
         id: opts.machineId,
-        metadata: encodeBase64(encryptLegacy(opts.metadata, this.secret)),
-        daemonState: opts.daemonState ? encodeBase64(encryptLegacy(opts.daemonState, this.secret)) : undefined
+        metadata: encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.metadata)),
+        daemonState: opts.daemonState ? encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.daemonState)) : undefined
       },
       {
         headers: {
-          'Authorization': `Bearer ${this.token}`,
+          'Authorization': `Bearer ${this.credential.token}`,
           'Content-Type': 'application/json'
         },
         timeout: 60000 // 1 minute timeout for very bad network connections
@@ -130,24 +153,22 @@ export class ApiClient {
     // Return decrypted machine like we do for sessions
     const machine: Machine = {
       id: raw.id,
-      metadata: raw.metadata ? decryptLegacy(decodeBase64(raw.metadata), this.secret) : null,
+      encryptionKey: encryptionKey,
+      encryptionVariant: encryptionVariant,
+      metadata: raw.metadata ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.metadata)) : null,
       metadataVersion: raw.metadataVersion || 0,
-      daemonState: raw.daemonState ? decryptLegacy(decodeBase64(raw.daemonState), this.secret) : null,
+      daemonState: raw.daemonState ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.daemonState)) : null,
       daemonStateVersion: raw.daemonStateVersion || 0,
-      active: raw.active,
-      activeAt: raw.activeAt,
-      createdAt: raw.createdAt,
-      updatedAt: raw.updatedAt
     };
     return machine;
   }
 
   sessionSyncClient(session: Session): ApiSessionClient {
-    return new ApiSessionClient(this.token, session);
+    return new ApiSessionClient(this.credential.token, session);
   }
 
   machineSyncClient(machine: Machine): ApiMachineClient {
-    return new ApiMachineClient(this.token, this.secret, machine);
+    return new ApiMachineClient(this.credential.token, machine);
   }
 
   push(): PushNotificationClient {
@@ -167,7 +188,7 @@ export class ApiClient {
         },
         {
           headers: {
-            'Authorization': `Bearer ${this.token}`,
+            'Authorization': `Bearer ${this.credential.token}`,
             'Content-Type': 'application/json'
           },
           timeout: 5000

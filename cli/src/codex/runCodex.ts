@@ -7,7 +7,7 @@ import { ReasoningProcessor } from './utils/reasoningProcessor';
 import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
-import { readSettings } from '@/persistence';
+import { Credentials, readSettings } from '@/persistence';
 import { AgentState, Metadata } from '@/api/types';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
@@ -28,8 +28,7 @@ import type { CodexSessionConfig } from './types';
  * Main entry point for the codex command with ink UI
  */
 export async function runCodex(opts: {
-    token: string;
-    secret: Uint8Array;
+    credentials: Credentials;
 }): Promise<void> {
     type PermissionMode = 'default' | 'read-only' | 'safe-yolo' | 'yolo';
     interface EnhancedMode {
@@ -42,7 +41,7 @@ export async function runCodex(opts: {
     //
 
     const sessionTag = randomUUID();
-    const api = await ApiClient.create(opts.token, opts.secret);
+    const api = await ApiClient.create(opts.credentials);
 
     //
     // Machine
@@ -145,7 +144,7 @@ export async function runCodex(opts: {
         try {
             const kinds = handles.map((h: any) => (h && h.constructor ? h.constructor.name : typeof h));
             logger.debug(`[codex][handles] kinds=${JSON.stringify(kinds)}`);
-        } catch {}
+        } catch { }
     }
 
     //
@@ -212,7 +211,7 @@ export async function runCodex(opts: {
     //
 
     const client = new CodexMcpClient();
-    
+
     // Helper: find Codex session transcript for a given sessionId
     function findCodexResumeFile(sessionId: string | null): string | null {
         if (!sessionId) return null;
@@ -571,12 +570,12 @@ export async function runCodex(opts: {
         // Clean up ink UI
         if (process.stdin.isTTY) {
             logger.debug('[codex]: setRawMode(false)');
-            try { process.stdin.setRawMode(false); } catch {}
+            try { process.stdin.setRawMode(false); } catch { }
         }
         // Stop reading from stdin so the process can exit
         if (hasTTY) {
             logger.debug('[codex]: stdin.pause()');
-            try { process.stdin.pause(); } catch {}
+            try { process.stdin.pause(); } catch { }
         }
         // Clear periodic keep-alive to avoid keeping event loop alive
         logger.debug('[codex]: clearInterval(keepAlive)');

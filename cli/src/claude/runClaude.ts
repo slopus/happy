@@ -7,7 +7,7 @@ import { loop } from '@/claude/loop';
 import { AgentState, Metadata } from '@/api/types';
 // @ts-ignore
 import packageJson from '../../package.json';
-import { readSettings } from '@/persistence';
+import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
 import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
@@ -33,7 +33,7 @@ export interface StartOptions {
     startedBy?: 'daemon' | 'terminal'
 }
 
-export async function runClaude(credentials: { secret: Uint8Array, token: string }, options: StartOptions = {}): Promise<void> {
+export async function runClaude(credentials: Credentials, options: StartOptions = {}): Promise<void> {
     const workingDirectory = process.cwd();
     const sessionTag = randomUUID();
 
@@ -50,7 +50,7 @@ export async function runClaude(credentials: { secret: Uint8Array, token: string
     }
 
     // Create session service
-    const api = await ApiClient.create(credentials.token, credentials.secret);
+    const api = await ApiClient.create(credentials);
 
     // Create a new session
     let state: AgentState = {};

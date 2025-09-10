@@ -9,13 +9,11 @@
 
 import chalk from 'chalk'
 import { runClaude, StartOptions } from '@/claude/runClaude'
-import { join } from 'node:path'
 import { logger } from './ui/logger'
-import { readCredentials, readSettings, updateSettings } from './persistence'
-import { doAuth, authAndSetupMachineIfNeeded } from './ui/auth'
+import { readCredentials } from './persistence'
+import { authAndSetupMachineIfNeeded } from './ui/auth'
 import packageJson from '../package.json'
 import { z } from 'zod'
-import { spawn } from 'child_process'
 import { startDaemon } from './daemon/run'
 import { checkIfDaemonRunningAndCleanupStaleState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './daemon/controlClient'
 import { getLatestDaemonLog } from './ui/logger'
@@ -27,13 +25,9 @@ import { runDoctorCommand } from './ui/doctor'
 import { listDaemonSessions, stopDaemonSession } from './daemon/controlClient'
 import { handleAuthCommand } from './commands/auth'
 import { handleConnectCommand } from './commands/connect'
-import { clearCredentials, clearMachineId, writeCredentials } from './persistence'
 import { spawnHappyCLI } from './utils/spawnHappyCLI'
-import { render } from 'ink'
-import React from 'react'
-import { DaemonPrompt } from './ui/ink/DaemonPrompt'
 import { claudeCliPath } from './claude/claudeLocal'
-import { execFileSync, execSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 
 
 (async () => {
@@ -90,7 +84,7 @@ import { execFileSync, execSync } from 'node:child_process'
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-      await runCodex(credentials);
+      await runCodex({credentials});
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
@@ -421,7 +415,7 @@ ${chalk.bold('Examples:')}
 
   try {
     // Create API client and send push notification
-    const api = await ApiClient.create(credentials.token, credentials.secret)
+    const api = await ApiClient.create(credentials);
 
     // Use custom title or default to "Happy"
     const notificationTitle = title || 'Happy'

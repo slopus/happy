@@ -135,32 +135,66 @@ export async function updateSettings(
 //
 
 const credentialsSchema = z.object({
-  secret: z.string().base64(),
   token: z.string(),
+  secret: z.string().base64().nullish(), // Legacy
+  encryption: z.object({
+    publicKey: z.string().base64(),
+    machineKey: z.string().base64()
+  }).nullish()
 })
 
-export async function readCredentials(): Promise<{ secret: Uint8Array, token: string } | null> {
+export type Credentials = {
+  token: string,
+  encryption: { type: 'legacy', secret: Uint8Array } | { type: 'dataKey', publicKey: Uint8Array, machineKey: Uint8Array }
+}
+
+export async function readCredentials(): Promise<Credentials | null> {
   if (!existsSync(configuration.privateKeyFile)) {
     return null
   }
   try {
     const keyBase64 = (await readFile(configuration.privateKeyFile, 'utf8'));
     const credentials = credentialsSchema.parse(JSON.parse(keyBase64));
-    return {
-      secret: new Uint8Array(Buffer.from(credentials.secret, 'base64')),
-      token: credentials.token
+    if (credentials.secret) {
+      return {
+        token: credentials.token,
+        encryption: {
+          type: 'legacy',
+          secret: new Uint8Array(Buffer.from(credentials.secret, 'base64'))
+        }
+      };
+    } else if (credentials.encryption) {
+      return {
+        token: credentials.token,
+        encryption: {
+          type: 'dataKey',
+          publicKey: new Uint8Array(Buffer.from(credentials.encryption.publicKey, 'base64')),
+          machineKey: new Uint8Array(Buffer.from(credentials.encryption.machineKey, 'base64'))
+        }
+      }
     }
   } catch {
     return null
   }
+  return null
 }
 
-export async function writeCredentials(credentials: { secret: Uint8Array, token: string }): Promise<void> {
+export async function writeCredentialsLegacy(credentials: { secret: Uint8Array, token: string }): Promise<void> {
   if (!existsSync(configuration.happyHomeDir)) {
     await mkdir(configuration.happyHomeDir, { recursive: true })
   }
   await writeFile(configuration.privateKeyFile, JSON.stringify({
     secret: encodeBase64(credentials.secret),
+    token: credentials.token
+  }, null, 2));
+}
+
+export async function writeCredentialsDataKey(credentials: { publicKey: Uint8Array, machineKey: Uint8Array, token: string }): Promise<void> {
+  if (!existsSync(configuration.happyHomeDir)) {
+    await mkdir(configuration.happyHomeDir, { recursive: true })
+  }
+  await writeFile(configuration.privateKeyFile, JSON.stringify({
+    encryption: { publicKey: encodeBase64(credentials.publicKey), machineKey: encodeBase64(credentials.machineKey) },
     token: credentials.token
   }, null, 2));
 }
@@ -256,7 +290,7 @@ export async function acquireDaemonLock(
           // Can't read lock file, might be corrupted
         }
       }
-      
+
       if (attempt === maxAttempts) {
         return null;
       }
@@ -273,12 +307,12 @@ export async function acquireDaemonLock(
 export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
   try {
     await lockHandle.close();
-  } catch {}
-  
+  } catch { }
+
   try {
     if (existsSync(configuration.daemonLockFile)) {
       unlinkSync(configuration.daemonLockFile);
     }
-  } catch {}
+  } catch { }
 }
 
