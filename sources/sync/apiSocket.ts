@@ -1,6 +1,6 @@
 import { io, Socket } from 'socket.io-client';
 import { TokenStorage } from '@/auth/tokenStorage';
-import { ApiEncryption } from './encryption/apiEncryption';
+import { Encryption } from './encryption/encryption';
 
 //
 // Types
@@ -28,7 +28,7 @@ class ApiSocket {
     // State
     private socket: Socket | null = null;
     private config: SyncSocketConfig | null = null;
-    private encryption: ApiEncryption | null = null;
+    private encryption: Encryption | null = null;
     private messageHandlers: Map<string, (data: any) => void> = new Map();
     private reconnectedListeners: Set<() => void> = new Set();
     private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
@@ -38,7 +38,7 @@ class ApiSocket {
     // Initialization
     //
 
-    initialize(config: SyncSocketConfig, encryption: ApiEncryption) {
+    initialize(config: SyncSocketConfig, encryption: Encryption) {
         this.config = config;
         this.encryption = encryption;
         this.connect();
@@ -109,15 +109,36 @@ class ApiSocket {
     }
 
     /**
-     * listernerId is either sessionId or machineId
+     * RPC call for sessions - uses session-specific encryption
      */
-    async rpc<R, A>(listernerId: string, method: string, params: A): Promise<R> {
+    async sessionRPC<R, A>(sessionId: string, method: string, params: A): Promise<R> {
+        const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
+        if (!sessionEncryption) {
+            throw new Error(`Session encryption not found for ${sessionId}`);
+        }
+        
         const result = await this.socket!.emitWithAck('rpc-call', {
-            method: `${listernerId}:${method}`,
-            params: this.encryption!.encryptRaw(params)
+            method: `${sessionId}:${method}`,
+            params: await sessionEncryption.encryptRaw(params)
         });
+        
         if (result.ok) {
-            return this.encryption?.decryptRaw(result.result) as R;
+            return await sessionEncryption.decryptRaw(result.result) as R;
+        }
+        throw new Error('RPC call failed');
+    }
+
+    /**
+     * RPC call for machines - uses legacy/global encryption (for now)
+     */
+    async machineRPC<R, A>(machineId: string, method: string, params: A): Promise<R> {        
+        const result = await this.socket!.emitWithAck('rpc-call', {
+            method: `${machineId}:${method}`,
+            params: await this.encryption!.encryptRaw(params)
+        });
+        
+        if (result.ok) {
+            return await this.encryption!.decryptRaw(result.result) as R;
         }
         throw new Error('RPC call failed');
     }

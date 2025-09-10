@@ -460,6 +460,7 @@ export default function FileScreen() {
                     <SimpleSyntaxHighlighter 
                         code={fileContent.content}
                         language={language}
+                        selectable={true}
                     />
                 ) : displayMode === 'file' && fileContent && !fileContent.content ? (
                     <Text style={{
