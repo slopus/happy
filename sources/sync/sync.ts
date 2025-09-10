@@ -516,6 +516,7 @@ class Sync {
             metadataVersion: number;
             daemonState?: string | null;
             daemonStateVersion?: number;
+            dataEncryptionKey?: string | null; // Add support for per-machine encryption keys
             seq: number;
             active: boolean;
             activeAt: number;  // Changed from lastActiveAt
@@ -523,19 +524,45 @@ class Sync {
             updatedAt: number;
         }>;
 
+        // First, collect and decrypt encryption keys for all machines
+        const machineKeysMap = new Map<string, Uint8Array | null>();
+        for (const machine of machines) {
+            if (machine.dataEncryptionKey) {
+                const decryptedKey = await this.encryption.decryptEncryptionKey(machine.dataEncryptionKey);
+                if (!decryptedKey) {
+                    console.error(`Failed to decrypt data encryption key for machine ${machine.id}`);
+                    continue;
+                }
+                machineKeysMap.set(machine.id, decryptedKey);
+                this.machineDataKeys.set(machine.id, decryptedKey);
+            } else {
+                machineKeysMap.set(machine.id, null);
+            }
+        }
+
+        // Initialize machine encryptions
+        await this.encryption.initializeMachines(machineKeysMap);
+
         // Process all machines first, then update state once
         const decryptedMachines: Machine[] = [];
 
         for (const machine of machines) {
+            // Get machine-specific encryption (might exist from previous initialization)
+            const machineEncryption = this.encryption.getMachineEncryption(machine.id);
+            if (!machineEncryption) {
+                console.error(`Machine encryption not found for ${machine.id} - this should never happen`);
+                continue;
+            }
+
             try {
-                // Decrypt metadata if present - decryptRaw already returns parsed JSON
+                
+                // Use machine-specific encryption (which handles fallback internally)
                 const metadata = machine.metadata
-                    ? await this.encryption.decryptRaw(machine.metadata)
+                    ? await machineEncryption.decryptMetadata(machine.metadataVersion, machine.metadata)
                     : null;
 
-                // Decrypt daemonState if present
                 const daemonState = machine.daemonState
-                    ? await this.encryption.decryptRaw(machine.daemonState)
+                    ? await machineEncryption.decryptDaemonState(machine.daemonStateVersion || 0, machine.daemonState)
                     : null;
 
                 decryptedMachines.push({
@@ -1082,12 +1109,18 @@ class Sync {
                 daemonStateVersion: machine?.daemonStateVersion ?? 0
             };
 
+            // Get machine-specific encryption (might not exist if machine wasn't initialized)
+            const machineEncryption = this.encryption.getMachineEncryption(machineId);
+            if (!machineEncryption) {
+                console.error(`Machine encryption not found for ${machineId} - cannot decrypt updates`);
+                return;
+            }
+
             // If metadata is provided, decrypt and update it
             const metadataUpdate = machineUpdate.metadata;
             if (metadataUpdate) {
                 try {
-                    // Decrypt metadata - decryptRaw already returns parsed JSON
-                    const metadata = await this.encryption.decryptRaw(metadataUpdate.value);
+                    const metadata = await machineEncryption.decryptMetadata(metadataUpdate.version, metadataUpdate.value);
                     updatedMachine.metadata = metadata;
                     updatedMachine.metadataVersion = metadataUpdate.version;
                 } catch (error) {
@@ -1099,8 +1132,7 @@ class Sync {
             const daemonStateUpdate = machineUpdate.daemonState;
             if (daemonStateUpdate) {
                 try {
-                    // Decrypt daemonState - decryptRaw already returns parsed JSON
-                    const daemonState = await this.encryption.decryptRaw(daemonStateUpdate.value);
+                    const daemonState = await machineEncryption.decryptDaemonState(daemonStateUpdate.version, daemonStateUpdate.value);
                     updatedMachine.daemonState = daemonState;
                     updatedMachine.daemonStateVersion = daemonStateUpdate.version;
                 } catch (error) {

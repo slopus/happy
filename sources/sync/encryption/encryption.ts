@@ -3,6 +3,7 @@ import { AES256Encryption, BoxEncryption, SecretBoxEncryption, Encryptor, Decryp
 import { encodeHex } from "@/encryption/hex";
 import { EncryptionCache } from "./encryptionCache";
 import { SessionEncryption } from "./sessionEncryption";
+import { MachineEncryption } from "./machineEncryption";
 import { encodeBase64, decodeBase64 } from "@/encryption/base64";
 import sodium from "react-native-libsodium";
 import { decryptBox } from "@/encryption/libsodium";
@@ -30,6 +31,7 @@ export class Encryption {
 
     // Session and machine encryption management
     private sessionEncryptions = new Map<string, SessionEncryption>();
+    private machineEncryptions = new Map<string, MachineEncryption>();
     private cache: EncryptionCache;
 
     private constructor(anonID: string, masterSecret: Uint8Array, contentKeyPair: sodium.KeyPair) {
@@ -84,6 +86,42 @@ export class Encryption {
      */
     getSessionEncryption(sessionId: string): SessionEncryption | null {
         return this.sessionEncryptions.get(sessionId) || null;
+    }
+
+    //
+    // Machine operations
+    //
+
+    /**
+     * Initialize machines with their encryption keys
+     * This should be called once when machines are loaded
+     */
+    async initializeMachines(machines: Map<string, Uint8Array | null>): Promise<void> {
+        for (const [machineId, dataKey] of machines) {
+            // Skip if already initialized
+            if (this.machineEncryptions.has(machineId)) {
+                continue;
+            }
+
+            // Create appropriate encryptor based on data key
+            const encryptor = await this.openEncryption(dataKey);
+
+            // Create and cache machine encryption
+            const machineEnc = new MachineEncryption(
+                machineId,
+                encryptor,
+                this.cache
+            );
+            this.machineEncryptions.set(machineId, machineEnc);
+        }
+    }
+
+    /**
+     * Get machine encryption if it has been initialized
+     * Returns null if not initialized (should never happen in normal flow)
+     */
+    getMachineEncryption(machineId: string): MachineEncryption | null {
+        return this.machineEncryptions.get(machineId) || null;
     }
 
     //

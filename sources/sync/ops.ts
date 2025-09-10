@@ -192,8 +192,13 @@ export async function machineUpdateMetadata(
     let currentMetadata = { ...metadata };
     let retryCount = 0;
 
+    const machineEncryption = sync.encryption.getMachineEncryption(machineId);
+    if (!machineEncryption) {
+        throw new Error(`Machine encryption not found for ${machineId}`);
+    }
+
     while (retryCount < maxRetries) {
-        const encryptedMetadata = await sync.encryption.encryptRaw(currentMetadata);
+        const encryptedMetadata = await machineEncryption.encryptRaw(currentMetadata);
 
         const result = await apiSocket.emitWithAck<{
             result: 'success' | 'version-mismatch' | 'error';
@@ -214,7 +219,7 @@ export async function machineUpdateMetadata(
         } else if (result.result === 'version-mismatch') {
             // Get the latest version and metadata from the response
             currentVersion = result.version!;
-            const latestMetadata = await sync.encryption.decryptRaw(result.metadata!) as MachineMetadata;
+            const latestMetadata = await machineEncryption.decryptRaw(result.metadata!) as MachineMetadata;
 
             // Merge our changes with the latest metadata
             // Preserve the displayName we're trying to set, but use latest values for other fields
