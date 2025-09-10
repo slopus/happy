@@ -4,7 +4,7 @@ import {
     isValidSecretKey, 
     normalizeSecretKey 
 } from './secretKeyBackup';
-import { encodeBase64, decodeBase64 } from '@/auth/base64';
+import { encodeBase64, decodeBase64 } from '@/encryption/base64';
 import { describe, it, expect } from 'vitest';
 
 describe.skip('secretKeyBackup', () => {

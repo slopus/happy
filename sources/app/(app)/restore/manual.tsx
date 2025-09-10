@@ -6,7 +6,7 @@ import { RoundButton } from '@/components/RoundButton';
 import { Typography } from '@/constants/Typography';
 import { normalizeSecretKey } from '@/auth/secretKeyBackup';
 import { authGetToken } from '@/auth/authGetToken';
-import { decodeBase64, encodeBase64 } from '@/auth/base64';
+import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 import { generateAuthKeyPair, authQRStart, QRAuthKeyPair } from '@/auth/authQRStart';
 import { authQRWait } from '@/auth/authQRWait';
 import { layout } from '@/components/layout';

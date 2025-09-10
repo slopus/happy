@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { decodeBase64, encodeBase64 } from './base64';
+import { decodeBase64, encodeBase64 } from '../encryption/base64';
 import { getServerUrl } from '@/sync/serverConfig';
 import { QRAuthKeyPair } from './authQRStart';
 import { decryptBox } from '@/encryption/libsodium';

@@ -3,39 +3,39 @@ import { AES256Encryption, BoxEncryption, SecretBoxEncryption, Encryptor, Decryp
 import { encodeHex } from "@/encryption/hex";
 import { EncryptionCache } from "./encryptionCache";
 import { SessionEncryption } from "./sessionEncryption";
-import { encodeBase64, decodeBase64 } from "@/auth/base64";
+import { encodeBase64, decodeBase64 } from "@/encryption/base64";
+import sodium from "react-native-libsodium";
+import { decryptBox } from "@/encryption/libsodium";
 
 export class Encryption {
 
     static async create(masterSecret: Uint8Array) {
 
-        // It is the same as the master secret
-        let legacyMasterSecret = masterSecret;
-
         // Derive content data key to open session and machine records
         const contentDataKey = await deriveKey(masterSecret, 'Happy EnCoder', ['content']);
+
+        // Derive content data key keypair
+        const contentKeyPair = sodium.crypto_box_seed_keypair(contentDataKey);
 
         // Derive anonymous ID
         const anonID = encodeHex((await deriveKey(masterSecret, 'Happy Coder', ['analytics', 'id']))).slice(0, 16).toLowerCase();
 
         // Create encryption
-        return new Encryption(anonID, legacyMasterSecret, contentDataKey);
+        return new Encryption(anonID, masterSecret, contentKeyPair);
     }
 
     private readonly legacyEncryption: SecretBoxEncryption;
-    private readonly contentEncryption: BoxEncryption;
+    private readonly contentKeyPair: sodium.KeyPair;
     readonly anonID: string;
 
     // Session and machine encryption management
     private sessionEncryptions = new Map<string, SessionEncryption>();
-    private sessionDataKeys = new Map<string, Uint8Array>();
-    private machineEncryptions = new Map<string, SessionEncryption>(); // Machine encryption uses same class
     private cache: EncryptionCache;
 
-    private constructor(anonID: string, legacyMasterSecret: Uint8Array, contentDataKey: Uint8Array) {
+    private constructor(anonID: string, masterSecret: Uint8Array, contentKeyPair: sodium.KeyPair) {
         this.anonID = anonID;
-        this.legacyEncryption = new SecretBoxEncryption(legacyMasterSecret);
-        this.contentEncryption = new BoxEncryption(contentDataKey);
+        this.contentKeyPair = contentKeyPair;
+        this.legacyEncryption = new SecretBoxEncryption(masterSecret);
         this.cache = new EncryptionCache();
     }
 
@@ -47,11 +47,7 @@ export class Encryption {
         if (!dataEncryptionKey) {
             return this.legacyEncryption;
         }
-        const decrypted = await this.contentEncryption.decrypt([dataEncryptionKey]);
-        if (!decrypted || !decrypted[0]) {
-            throw Error('Failed to decrypt data encryption key');
-        }
-        return new AES256Encryption(decrypted[0]);
+        return new AES256Encryption(dataEncryptionKey);
     }
 
     //
@@ -78,11 +74,7 @@ export class Encryption {
                 encryptor,
                 this.cache
             );
-
             this.sessionEncryptions.set(sessionId, sessionEnc);
-            if (dataKey) {
-                this.sessionDataKeys.set(sessionId, dataKey);
-            }
         }
     }
 
@@ -111,5 +103,22 @@ export class Encryption {
         } catch (error) {
             return null;
         }
+    }
+
+    //
+    // Data Encryption Key decryption
+    //
+
+    async decryptEncryptionKey(encrypted: string) {
+        const encryptedKey = decodeBase64(encrypted, 'base64');
+        if (encryptedKey[0] !== 0) {
+            return null;
+        }
+
+        const decrypted = decryptBox(encryptedKey.slice(1), this.contentKeyPair.privateKey);
+        if (!decrypted) {
+            return null;
+        }
+        return decrypted;
     }
 }

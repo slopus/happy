@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { encodeBase64 } from "./base64";
+import { encodeBase64 } from "../encryption/base64";
 import { getServerUrl } from "@/sync/serverConfig";
 
 export async function authAccountApprove(token: string, publicKey: Uint8Array, answer: Uint8Array) {
