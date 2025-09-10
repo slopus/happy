@@ -1,4 +1,4 @@
-import { AgentState, Metadata } from '../storageTypes';
+import { AgentState, Metadata, MachineMetadata } from '../storageTypes';
 import { DecryptedMessage } from '../storageTypes';
 
 interface CacheEntry<T> {
@@ -15,11 +15,15 @@ export class EncryptionCache {
     private agentStateCache = new Map<string, CacheEntry<AgentState>>();
     private metadataCache = new Map<string, CacheEntry<Metadata>>();
     private messageCache = new Map<string, CacheEntry<DecryptedMessage>>();
+    private machineMetadataCache = new Map<string, CacheEntry<MachineMetadata>>();
+    private daemonStateCache = new Map<string, CacheEntry<any>>();
     
     // Configuration
     private readonly maxAgentStates = 1000;
     private readonly maxMetadata = 1000;
     private readonly maxMessages = 1000;
+    private readonly maxMachineMetadata = 500;
+    private readonly maxDaemonStates = 500;
 
     /**
      * Get cached agent state for a session
@@ -101,6 +105,78 @@ export class EncryptionCache {
     }
 
     /**
+     * Get cached machine metadata
+     */
+    getCachedMachineMetadata(machineId: string, version: number): MachineMetadata | null {
+        const key = `${machineId}:${version}`;
+        const entry = this.machineMetadataCache.get(key);
+        if (entry) {
+            entry.accessTime = Date.now();
+            return entry.data;
+        }
+        return null;
+    }
+
+    /**
+     * Cache machine metadata
+     */
+    setCachedMachineMetadata(machineId: string, version: number, data: MachineMetadata): void {
+        const key = `${machineId}:${version}`;
+        this.machineMetadataCache.set(key, {
+            data,
+            accessTime: Date.now()
+        });
+        
+        // Evict if over limit
+        this.evictOldest(this.machineMetadataCache, this.maxMachineMetadata);
+    }
+
+    /**
+     * Get cached daemon state
+     */
+    getCachedDaemonState(machineId: string, version: number): any | undefined {
+        const key = `${machineId}:${version}`;
+        const entry = this.daemonStateCache.get(key);
+        if (entry) {
+            entry.accessTime = Date.now();
+            return entry.data;
+        }
+        return undefined;
+    }
+
+    /**
+     * Cache daemon state (including null values)
+     */
+    setCachedDaemonState(machineId: string, version: number, data: any): void {
+        const key = `${machineId}:${version}`;
+        this.daemonStateCache.set(key, {
+            data,
+            accessTime: Date.now()
+        });
+        
+        // Evict if over limit
+        this.evictOldest(this.daemonStateCache, this.maxDaemonStates);
+    }
+
+    /**
+     * Clear all cache entries for a specific machine
+     */
+    clearMachineCache(machineId: string): void {
+        // Clear machine metadata and daemon state for this machine (all versions)
+        for (const key of this.machineMetadataCache.keys()) {
+            if (key.startsWith(`${machineId}:`)) {
+                this.machineMetadataCache.delete(key);
+            }
+        }
+        
+        for (const key of this.daemonStateCache.keys()) {
+            if (key.startsWith(`${machineId}:`)) {
+                this.daemonStateCache.delete(key);
+            }
+        }
+    }
+
+    /**
      * Clear all cache entries for a specific session
      */
     clearSessionCache(sessionId: string): void {
@@ -127,6 +203,8 @@ export class EncryptionCache {
         this.agentStateCache.clear();
         this.metadataCache.clear();
         this.messageCache.clear();
+        this.machineMetadataCache.clear();
+        this.daemonStateCache.clear();
     }
 
     /**
@@ -137,7 +215,10 @@ export class EncryptionCache {
             agentStates: this.agentStateCache.size,
             metadata: this.metadataCache.size,
             messages: this.messageCache.size,
-            totalEntries: this.agentStateCache.size + this.metadataCache.size + this.messageCache.size
+            machineMetadata: this.machineMetadataCache.size,
+            daemonStates: this.daemonStateCache.size,
+            totalEntries: this.agentStateCache.size + this.metadataCache.size + this.messageCache.size + 
+                         this.machineMetadataCache.size + this.daemonStateCache.size
         };
     }
 
