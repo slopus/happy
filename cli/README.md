@@ -21,6 +21,15 @@ This will:
 2. Display a QR code to connect from your mobile device
 3. Allow real-time session sharing between Claude Code and your mobile app
 
+## Commands
+
+- `happy auth` – Manage authentication
+- `happy codex` – Start Codex mode
+- `happy connect` – Store AI vendor API keys in Happy cloud
+- `happy notify` – Send a push notification to your devices
+- `happy daemon` – Manage background service
+- `happy doctor` – System diagnostics & troubleshooting
+
 ## Options
 
 - `-h, --help` - Show help

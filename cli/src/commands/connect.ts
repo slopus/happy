@@ -9,8 +9,8 @@ import { authenticateGemini } from './connect/authenticateGemini';
  * Handle connect subcommand
  * 
  * Implements connect subcommands for storing AI vendor API keys:
- * - connect openai: Store OpenAI API key in Happy cloud
- * - connect anthropic: Store Anthropic API key in Happy cloud
+ * - connect codex: Store OpenAI API key in Happy cloud
+ * - connect claude: Store Anthropic API key in Happy cloud
  * - connect gemini: Store Gemini API key in Happy cloud
  * - connect help: Show help for connect command
  */
@@ -45,7 +45,7 @@ ${chalk.bold('happy connect')} - Connect AI vendor API keys to Happy cloud
 
 ${chalk.bold('Usage:')}
   happy connect codex        Store your Codex API key in Happy cloud
-  happy connect anthropic    Store your Anthropic API key in Happy cloud
+  happy connect claude       Store your Anthropic API key in Happy cloud
   happy connect gemini       Store your Gemini API key in Happy cloud
   happy connect help         Show this help message
 
@@ -56,7 +56,7 @@ ${chalk.bold('Description:')}
 
 ${chalk.bold('Examples:')}
   happy connect codex
-  happy connect anthropic
+  happy connect claude
   happy connect gemini
 
 ${chalk.bold('Notes:')} 
