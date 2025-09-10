@@ -1,7 +1,8 @@
 import Constants from 'expo-constants';
 import { apiSocket } from '@/sync/apiSocket';
 import { AuthCredentials } from '@/auth/tokenStorage';
-import { ApiEncryption } from '@/sync/encryption/apiEncryption';
+import { Encryption } from '@/sync/encryption/encryption';
+import { decodeBase64 } from '@/auth/base64';
 import { storage } from './storage';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
@@ -14,7 +15,6 @@ import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
-import { SessionEncryption } from './encryption/apiSessionEncryption';
 import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
@@ -32,14 +32,13 @@ import { EncryptionCache } from './encryption/encryptionCache';
 
 class Sync {
 
-    encryption!: ApiEncryption;
+    encryption!: Encryption;
     serverID!: string;
     anonID!: string;
     private credentials!: AuthCredentials;
     public encryptionCache = new EncryptionCache();
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
-    private sessionEncryption = new Map<string, SessionEncryption>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
@@ -91,7 +90,7 @@ class Sync {
         });
     }
 
-    async create(credentials: AuthCredentials, encryption: ApiEncryption) {
+    async create(credentials: AuthCredentials, encryption: Encryption) {
         this.credentials = credentials;
         this.encryption = encryption;
         this.anonID = encryption.anonID;
@@ -108,7 +107,7 @@ class Sync {
         await this.purchasesSync.awaitQueue();
     }
 
-    async restore(credentials: AuthCredentials, encryption: ApiEncryption) {
+    async restore(credentials: AuthCredentials, encryption: Encryption) {
         // NOTE: No awaiting anything here, we're restoring from a disk (ie app restarted)
         this.credentials = credentials;
         this.encryption = encryption;
@@ -172,10 +171,10 @@ class Sync {
     }
 
 
-    sendMessage(sessionId: string, text: string) {
+    async sendMessage(sessionId: string, text: string) {
 
         // Get encryption
-        const encryption = this.sessionEncryption.get(sessionId);
+        const encryption = this.encryption.getSessionEncryption(sessionId);
         if (!encryption) { // Should never happen
             console.error(`Session ${sessionId} not found`);
             return;
@@ -254,7 +253,7 @@ class Sync {
                 fallbackModel
             }
         };
-        const encryptedRawRecord = encryption.encryptRawRecord(content);
+        const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
         // Add to messages - normalize the raw record
         const createdAt = Date.now();
@@ -438,38 +437,32 @@ class Sync {
             lastMessage: ApiMessage | null;
         }>;
 
+        // Initialize all session encryptions first
+        const sessionKeys = new Map<string, Uint8Array | null>();
+        for (const session of sessions) {
+            // Get data key if available (for now, we don't have it from the API)
+            // TODO: Get data keys from sessions when available
+            sessionKeys.set(session.id, null);
+        }
+        await this.encryption.initializeSessions(sessionKeys);
+
         // Decrypt sessions
         let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
         for (const session of sessions) {
-
-            //
-            // Load decrypted metadata
-            //
-
-            let metadata = this.encryption.decryptMetadata(session.id, session.metadataVersion, session.metadata);
-
-            //
-            // Create encryption
-            //
-
-            let encryption: SessionEncryption
-            if (!this.sessionEncryption.has(session.id)) {
-                encryption = new SessionEncryption(session.id, this.encryption.secretKey, this.encryptionCache);
-                this.sessionEncryption.set(session.id, encryption);
-            } else {
-                encryption = this.sessionEncryption.get(session.id)!;
+            // Get session encryption (should always exist after initialization)
+            const sessionEncryption = this.encryption.getSessionEncryption(session.id);
+            if (!sessionEncryption) {
+                console.error(`Session encryption not found for ${session.id} - this should never happen`);
+                continue;
             }
 
-            //
-            // Decrypt agent state
-            //
+            // Decrypt metadata using session-specific encryption
+            let metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
 
-            let agentState = this.encryption.decryptAgentState(session.id, session.agentStateVersion, session.agentState);
+            // Decrypt agent state using session-specific encryption
+            let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
 
-            //
             // Put it all together
-            //
-
             const processedSession = {
                 ...session,
                 thinking: false,
@@ -529,12 +522,12 @@ class Sync {
             try {
                 // Decrypt metadata if present - decryptRaw already returns parsed JSON
                 const metadata = machine.metadata
-                    ? this.encryption.decryptRaw(machine.metadata)
+                    ? await this.encryption.decryptRaw(machine.metadata)
                     : null;
 
                 // Decrypt daemonState if present
                 const daemonState = machine.daemonState
-                    ? this.encryption.decryptRaw(machine.daemonState)
+                    ? await this.encryption.decryptRaw(machine.daemonState)
                     : null;
 
                 decryptedMachines.push({
@@ -607,7 +600,7 @@ class Sync {
                 if (data.error === 'version-mismatch') {
                     let parsedSettings: Settings;
                     if (data.currentSettings) {
-                        parsedSettings = settingsParse(this.encryption.decryptRaw(data.currentSettings));
+                        parsedSettings = settingsParse(await this.encryption.decryptRaw(data.currentSettings));
                     } else {
                         parsedSettings = { ...settingsDefaults };
                     }
@@ -658,7 +651,7 @@ class Sync {
         // Parse response
         let parsedSettings: Settings;
         if (data.settings) {
-            parsedSettings = settingsParse(this.encryption.decryptRaw(data.settings));
+            parsedSettings = settingsParse(await this.encryption.decryptRaw(data.settings));
         } else {
             parsedSettings = { ...settingsDefaults };
         }
@@ -826,7 +819,7 @@ class Sync {
         log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
 
         // Get encryption
-        const encryption = this.sessionEncryption.get(sessionId);
+        const encryption = this.encryption.getSessionEncryption(sessionId);
         if (!encryption) { // Should never happen
             console.error(`Session ${sessionId} not found`);
             return;
@@ -846,11 +839,21 @@ class Sync {
         // Decrypt and normalize messages
         let start = Date.now();
         let normalizedMessages: NormalizedMessage[] = [];
+
+        // Filter out existing messages and prepare for batch decryption
+        const messagesToDecrypt: ApiMessage[] = [];
         for (const msg of [...data.messages as ApiMessage[]].reverse()) {
-            if (eixstingMessages.has(msg.id)) {
-                continue;
+            if (!eixstingMessages.has(msg.id)) {
+                messagesToDecrypt.push(msg);
             }
-            let decrypted = encryption.decryptMessage(msg);
+        }
+
+        // Batch decrypt all messages at once
+        const decryptedMessages = await encryption.decryptMessages(messagesToDecrypt);
+
+        // Process decrypted messages
+        for (let i = 0; i < decryptedMessages.length; i++) {
+            const decrypted = decryptedMessages[i];
             if (decrypted) {
                 eixstingMessages.add(decrypted.id);
                 // Normalize the decrypted message
@@ -860,7 +863,7 @@ class Sync {
                 }
             }
         }
-        console.log('Decrypted and normalized messages in', Date.now() - start, 'ms');
+        console.log('Batch decrypted and normalized messages in', Date.now() - start, 'ms');
         console.log('normalizedMessages', JSON.stringify(normalizedMessages));
         // console.log('messages', JSON.stringify(normalizedMessages));
 
@@ -930,7 +933,7 @@ class Sync {
         });
     }
 
-    private handleUpdate = (update: unknown) => {
+    private handleUpdate = async (update: unknown) => {
         console.log('🔄 Sync: handleUpdate called with:', JSON.stringify(update).substring(0, 300));
         const validatedUpdate = ApiUpdateContainerSchema.safeParse(update);
         if (!validatedUpdate.success) {
@@ -944,7 +947,7 @@ class Sync {
         if (updateData.body.t === 'new-message') {
 
             // Get encryption
-            const encryption = this.sessionEncryption.get(updateData.body.sid);
+            const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
             if (!encryption) { // Should never happen
                 console.error(`Session ${updateData.body.sid} not found`);
                 this.fetchSessions(); // Just fetch sessions again
@@ -954,7 +957,7 @@ class Sync {
             // Decrypt message
             let lastMessage: NormalizedMessage | null = null;
             if (updateData.body.message) {
-                const decrypted = encryption.decryptMessage(updateData.body.message);
+                const decrypted = await encryption.decryptMessage(updateData.body.message);
                 if (decrypted) {
                     lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
 
@@ -995,17 +998,30 @@ class Sync {
         } else if (updateData.body.t === 'update-session') {
             const session = storage.getState().sessions[updateData.body.id];
             if (session) {
+                // Get session encryption
+                const sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
+                if (!sessionEncryption) {
+                    console.error(`Session encryption not found for ${updateData.body.id}`);
+                    // Initialize it if needed
+                    const sessionKeys = new Map<string, Uint8Array | null>();
+                    sessionKeys.set(updateData.body.id, null);
+                    await this.encryption.initializeSessions(sessionKeys);
+                }
+
+                const agentState = updateData.body.agentState && sessionEncryption
+                    ? await sessionEncryption.decryptAgentState(updateData.body.agentState.version, updateData.body.agentState.value)
+                    : session.agentState;
+                const metadata = updateData.body.metadata && sessionEncryption
+                    ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
+                    : session.metadata;
+
                 this.applySessions([{
                     ...session,
-                    agentState: updateData.body.agentState
-                        ? this.encryption.decryptAgentState(updateData.body.id, updateData.body.agentState.version, updateData.body.agentState.value)
-                        : session.agentState,
+                    agentState,
                     agentStateVersion: updateData.body.agentState
                         ? updateData.body.agentState.version
                         : session.agentStateVersion,
-                    metadata: updateData.body.metadata
-                        ? this.encryption.decryptMetadata(updateData.body.id, updateData.body.metadata.version, updateData.body.metadata.value)
-                        : session.metadata,
+                    metadata,
                     metadataVersion: updateData.body.metadata
                         ? updateData.body.metadata.version
                         : session.metadataVersion,
@@ -1018,10 +1034,9 @@ class Sync {
                     gitStatusSync.invalidate(updateData.body.id);
 
                     // Check for new permission requests and notify voice assistant
-                    const newAgentState = this.encryption.decryptAgentState(updateData.body.id, updateData.body.agentState.version, updateData.body.agentState.value);
-                    if (newAgentState?.requests && Object.keys(newAgentState.requests).length > 0) {
-                        const requestIds = Object.keys(newAgentState.requests);
-                        const firstRequest = newAgentState.requests[requestIds[0]];
+                    if (agentState?.requests && Object.keys(agentState.requests).length > 0) {
+                        const requestIds = Object.keys(agentState.requests);
+                        const firstRequest = agentState.requests[requestIds[0]];
                         const toolName = firstRequest?.tool;
                         voiceHooks.onPermissionRequested(updateData.body.id, requestIds[0], toolName, firstRequest?.arguments);
                     }
@@ -1067,7 +1082,7 @@ class Sync {
             if (metadataUpdate) {
                 try {
                     // Decrypt metadata - decryptRaw already returns parsed JSON
-                    const metadata = this.encryption.decryptRaw(metadataUpdate.value);
+                    const metadata = await this.encryption.decryptRaw(metadataUpdate.value);
                     updatedMachine.metadata = metadata;
                     updatedMachine.metadataVersion = metadataUpdate.version;
                 } catch (error) {
@@ -1080,7 +1095,7 @@ class Sync {
             if (daemonStateUpdate) {
                 try {
                     // Decrypt daemonState - decryptRaw already returns parsed JSON
-                    const daemonState = this.encryption.decryptRaw(daemonStateUpdate.value);
+                    const daemonState = await this.encryption.decryptRaw(daemonStateUpdate.value);
                     updatedMachine.daemonState = daemonState;
                     updatedMachine.daemonStateVersion = daemonStateUpdate.version;
                 } catch (error) {
@@ -1228,7 +1243,11 @@ export async function syncRestore(credentials: AuthCredentials) {
 async function syncInit(credentials: AuthCredentials, restore: boolean) {
 
     // Initialize sync engine
-    const encryption = await ApiEncryption.create(credentials.secret, sync.encryptionCache);
+    const secretKey = decodeBase64(credentials.secret, 'base64url');
+    if (secretKey.length !== 32) {
+        throw new Error(`Invalid secret key length: ${secretKey.length}, expected 32`);
+    }
+    const encryption = await Encryption.create(secretKey);
 
     // Initialize tracking
     initializeTracking(encryption.anonID);
