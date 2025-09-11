@@ -19,6 +19,9 @@ export type MarkdownBlock = {
     content: string
 } | {
     type: 'horizontal-rule'
+} | {
+    type: 'options',
+    items: string[]
 }
 
 export type MarkdownSpan = {

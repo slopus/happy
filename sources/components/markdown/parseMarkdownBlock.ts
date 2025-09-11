@@ -43,6 +43,28 @@ export function parseMarkdownBlock(markdown: string) {
             continue;
         }
 
+        // Options block
+        if (trimmed.startsWith('<options>')) {
+            let items: string[] = [];
+            while (index < lines.length) {
+                const nextLine = lines[index];
+                if (nextLine.trim() === '</options>') {
+                    index++;
+                    break;
+                }
+                // Extract content from <option> tags
+                const optionMatch = nextLine.match(/<option>(.*?)<\/option>/);
+                if (optionMatch) {
+                    items.push(optionMatch[1]);
+                }
+                index++;
+            }
+            if (items.length > 0) {
+                blocks.push({ type: 'options', items });
+            }
+            continue;
+        }
+
         // If it is a numbered list
         const numberedListMatch = trimmed.match(/^(\d+)\.\s/);
         if (numberedListMatch) {

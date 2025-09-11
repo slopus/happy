@@ -29,6 +29,7 @@ import { gitStatusSync } from './gitStatusSync';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
+import { systemPrompt } from './prompt/systemPrompt';
 
 class Sync {
 
@@ -250,7 +251,8 @@ class Sync {
                 sentFrom,
                 permissionMode: permissionMode || 'default',
                 model,
-                fallbackModel
+                fallbackModel,
+                appendSystemPrompt: systemPrompt
             }
         };
         const encryptedRawRecord = await encryption.encryptRawRecord(content);

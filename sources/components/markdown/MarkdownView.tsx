@@ -11,8 +11,15 @@ import { useLocalSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
 
+// Option type for callback
+export type Option = {
+    title: string;
+};
 
-export const MarkdownView = React.memo((props: { markdown: string }) => {
+export const MarkdownView = React.memo((props: { 
+    markdown: string;
+    onOptionPress?: (option: Option) => void;
+}) => {
     const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
     
     // Backwards compatibility: The original version just returned the view, wrapping the list of blocks.
@@ -49,6 +56,8 @@ export const MarkdownView = React.memo((props: { markdown: string }) => {
                         return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
                     } else if (block.type === 'code-block') {
                         return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                    } else if (block.type === 'options') {
+                        return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} />;
                     } else {
                         return null;
                     }
@@ -116,6 +125,41 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
                     selectable={props.selectable}
                 />
             </ScrollView>
+        </View>
+    );
+}
+
+function RenderOptionsBlock(props: { 
+    items: string[], 
+    first: boolean, 
+    last: boolean, 
+    selectable: boolean,
+    onOptionPress?: (option: Option) => void 
+}) {
+    return (
+        <View style={[style.optionsContainer, props.first && style.first, props.last && style.last]}>
+            {props.items.map((item, index) => {
+                if (props.onOptionPress) {
+                    return (
+                        <Pressable 
+                            key={index} 
+                            style={({ pressed }) => [
+                                style.optionItem,
+                                pressed && style.optionItemPressed
+                            ]}
+                            onPress={() => props.onOptionPress?.({ title: item })}
+                        >
+                            <Text selectable={props.selectable} style={style.optionText}>{item}</Text>
+                        </Pressable>
+                    );
+                } else {
+                    return (
+                        <View key={index} style={style.optionItem}>
+                            <Text selectable={props.selectable} style={style.optionText}>{item}</Text>
+                        </View>
+                    );
+                }
+            })}
         </View>
     );
 }
@@ -264,5 +308,33 @@ const style = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.divider,
         marginTop: 8,
         marginBottom: 8,
+    },
+
+    //
+    // Options Block
+    //
+
+    optionsContainer: {
+        flexDirection: 'column',
+        gap: 8,
+        marginVertical: 8,
+    },
+    optionItem: {
+        backgroundColor: theme.colors.surfaceHighest,
+        borderRadius: 8,
+        paddingHorizontal: 16,
+        paddingVertical: 12,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+    },
+    optionItemPressed: {
+        opacity: 0.7,
+        backgroundColor: theme.colors.surfaceHigh,
+    },
+    optionText: {
+        ...Typography.default(),
+        fontSize: 16,
+        lineHeight: 24,
+        color: theme.colors.text,
     },
 }));

@@ -8,6 +8,8 @@ import { Metadata } from "@/sync/storageTypes";
 import { layout } from "./layout";
 import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
+import { sync } from '@/sync/sync';
+import { Option } from './markdown/MarkdownView';
 
 export const MessageView = (props: {
   message: Message;
@@ -38,10 +40,10 @@ function RenderBlock(props: {
 }): React.ReactElement {
   switch (props.message.kind) {
     case 'user-text':
-      return <UserTextBlock message={props.message} />;
+      return <UserTextBlock message={props.message} sessionId={props.sessionId} />;
 
     case 'agent-text':
-      return <AgentTextBlock message={props.message} />;
+      return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
 
     case 'tool-call':
       return <ToolCallBlock
@@ -64,11 +66,16 @@ function RenderBlock(props: {
 
 function UserTextBlock(props: {
   message: UserTextMessage;
+  sessionId: string;
 }) {
+  const handleOptionPress = React.useCallback((option: Option) => {
+    sync.sendMessage(props.sessionId, option.title);
+  }, [props.sessionId]);
+
   return (
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
-        <MarkdownView markdown={props.message.text} />
+        <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
         {/* {__DEV__ && (
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
@@ -79,10 +86,15 @@ function UserTextBlock(props: {
 
 function AgentTextBlock(props: {
   message: AgentTextMessage;
+  sessionId: string;
 }) {
+  const handleOptionPress = React.useCallback((option: Option) => {
+    sync.sendMessage(props.sessionId, option.title);
+  }, [props.sessionId]);
+
   return (
     <View style={styles.agentMessageContainer}>
-      <MarkdownView markdown={props.message.text} />
+      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
     </View>
   );
 }
