@@ -5,7 +5,7 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Typography } from '@/constants/Typography';
-import { useSessions, useAllMachines } from '@/sync/storage';
+import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
@@ -67,7 +67,7 @@ export default function MachineDetailScreen() {
     const { id: machineId } = useLocalSearchParams<{ id: string }>();
     const router = useRouter();
     const sessions = useSessions();
-    const machines = useAllMachines();
+    const machine = useMachine(machineId!);
     const navigateToSession = useNavigateToSession();
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [isStoppingDaemon, setIsStoppingDaemon] = useState(false);
@@ -77,10 +77,6 @@ export default function MachineDetailScreen() {
     const inputRef = useRef<MultiTextInputHandle>(null);
     const [showAllPaths, setShowAllPaths] = useState(false);
     // Variant D only
-
-    const machine = useMemo(() => {
-        return machines.find(m => m.id === machineId);
-    }, [machines, machineId]);
 
     const machineSessions = useMemo(() => {
         if (!sessions || !machineId) return [];
