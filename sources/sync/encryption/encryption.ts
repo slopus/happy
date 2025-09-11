@@ -28,6 +28,7 @@ export class Encryption {
     private readonly legacyEncryption: SecretBoxEncryption;
     private readonly contentKeyPair: sodium.KeyPair;
     readonly anonID: string;
+    readonly contentDataKey: Uint8Array;
 
     // Session and machine encryption management
     private sessionEncryptions = new Map<string, SessionEncryption>();
@@ -39,6 +40,7 @@ export class Encryption {
         this.contentKeyPair = contentKeyPair;
         this.legacyEncryption = new SecretBoxEncryption(masterSecret);
         this.cache = new EncryptionCache();
+        this.contentDataKey = contentKeyPair.publicKey;
     }
 
     //
