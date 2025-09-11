@@ -99,7 +99,7 @@ export class ApiClient {
   async getOrCreateMachine(opts: {
     machineId: string,
     metadata: MachineMetadata,
-    daemonState?: DaemonState
+    daemonState?: DaemonState,
   }): Promise<Machine> {
 
     // Resolve encryption key
@@ -107,19 +107,15 @@ export class ApiClient {
     let encryptionKey: Uint8Array;
     let encryptionVariant: 'legacy' | 'dataKey';
     if (this.credential.encryption.type === 'dataKey') {
-
-      // Generate new encryption key
-      encryptionKey = getRandomBytes(32);
+      // Encrypt data encryption key
       encryptionVariant = 'dataKey';
-
-      // Derive and encrypt data encryption key
-      // const contentDataKey = await deriveKey(this.secret, 'Happy EnCoder', ['content']);
-      // const publicKey = libsodiumPublicKeyFromSecretKey(contentDataKey);
-      let encryptedDataKey = libsodiumEncryptForPublicKey(encryptionKey, this.credential.encryption.publicKey);
+      encryptionKey = this.credential.encryption.machineKey;
+      let encryptedDataKey = libsodiumEncryptForPublicKey(this.credential.encryption.machineKey, this.credential.encryption.publicKey);
       dataEncryptionKey = new Uint8Array(encryptedDataKey.length + 1);
       dataEncryptionKey.set([0], 0); // Version byte
       dataEncryptionKey.set(encryptedDataKey, 1); // Data key
     } else {
+      // Legacy encryption
       encryptionKey = this.credential.encryption.secret;
       encryptionVariant = 'legacy';
     }
@@ -130,7 +126,8 @@ export class ApiClient {
       {
         id: opts.machineId,
         metadata: encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.metadata)),
-        daemonState: opts.daemonState ? encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.daemonState)) : undefined
+        daemonState: opts.daemonState ? encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.daemonState)) : undefined,
+        dataEncryptionKey: dataEncryptionKey ? encodeBase64(dataEncryptionKey) : undefined
       },
       {
         headers: {
