@@ -42,6 +42,7 @@ export function authRoutes(app: Fastify) {
         schema: {
             body: z.object({
                 publicKey: z.string(),
+                supportsV2: z.boolean().nullish()
             }),
             response: {
                 200: z.union([z.object({
@@ -70,7 +71,7 @@ export function authRoutes(app: Fastify) {
         const answer = await db.terminalAuthRequest.upsert({
             where: { publicKey: publicKeyHex },
             update: {},
-            create: { publicKey: publicKeyHex }
+            create: { publicKey: publicKeyHex, supportsV2: request.body.supportsV2 ?? false }
         });
 
         if (answer.response && answer.responseAccountId) {
@@ -83,6 +84,43 @@ export function authRoutes(app: Fastify) {
         }
 
         return reply.send({ state: 'requested' });
+    });
+
+    // Get auth request status
+    app.get('/v1/auth/request/status', {
+        schema: {
+            querystring: z.object({
+                publicKey: z.string(),
+            }),
+            response: {
+                200: z.object({
+                    status: z.enum(['not_found', 'pending', 'authorized']),
+                    supportsV2: z.boolean()
+                })
+            }
+        }
+    }, async (request, reply) => {
+        const tweetnacl = (await import("tweetnacl")).default;
+        const publicKey = privacyKit.decodeBase64(request.query.publicKey);
+        const isValid = tweetnacl.box.publicKeyLength === publicKey.length;
+        if (!isValid) {
+            return reply.send({ status: 'not_found', supportsV2: false });
+        }
+
+        const publicKeyHex = privacyKit.encodeHex(publicKey);
+        const authRequest = await db.terminalAuthRequest.findUnique({
+            where: { publicKey: publicKeyHex }
+        });
+
+        if (!authRequest) {
+            return reply.send({ status: 'not_found', supportsV2: false });
+        }
+
+        if (authRequest.response && authRequest.responseAccountId) {
+            return reply.send({ status: 'authorized', supportsV2: false });
+        }
+
+        return reply.send({ status: 'pending', supportsV2: authRequest.supportsV2 });
     });
 
     // Approve auth request

@@ -49,6 +49,7 @@ model Account {
 model TerminalAuthRequest {
     id                String   @id @default(cuid())
     publicKey         String   @unique
+    supportsV2        Boolean  @default(false)
     response          String?
     responseAccountId String?
     responseAccount   Account? @relation(fields: [responseAccountId], references: [id])
@@ -227,16 +228,16 @@ model UploadedFile {
 }
 
 model ServiceAccountToken {
-    id          String    @id @default(cuid())
-    accountId   String
-    account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-    vendor      String    
-    token       Bytes     // Encrypted token
-    metadata    Json?     // Optional vendor metadata
-    lastUsedAt  DateTime?
-    createdAt   DateTime  @default(now())
-    updatedAt   DateTime  @updatedAt
-    
+    id         String    @id @default(cuid())
+    accountId  String
+    account    Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    vendor     String
+    token      Bytes // Encrypted token
+    metadata   Json? // Optional vendor metadata
+    lastUsedAt DateTime?
+    createdAt  DateTime  @default(now())
+    updatedAt  DateTime  @updatedAt
+
     @@unique([accountId, vendor])
     @@index([accountId])
 }
