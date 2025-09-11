@@ -377,7 +377,7 @@ export const storage = create<StorageState>()((set, get) => {
                         reducerState: existingSessionMessages.reducerState, // The reducer modifies state in-place, so this has the updates
                         isLoaded: existingSessionMessages.isLoaded
                     };
-                    
+
                     // IMPORTANT: Copy latestUsage from reducerState to Session for immediate availability
                     if (existingSessionMessages.reducerState.latestUsage) {
                         mergedSessions[session.id] = {
@@ -466,7 +466,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // This ensures latestUsage is available immediately on load, even before messages are fully loaded
                 let updatedSessions = state.sessions;
                 const needsUpdate = (reducerResult.todos !== undefined || existingSession.reducerState.latestUsage) && session;
-                
+
                 if (needsUpdate) {
                     updatedSessions = {
                         ...state.sessions,
@@ -842,8 +842,10 @@ export function useLocalSettings(): LocalSettings {
 }
 
 export function useAllMachines(): Machine[] {
-    const m = storage((state) => state.machines);
-    return React.useMemo(() => Object.values(m).sort((a, b) => b.id.localeCompare(a.id)), [m]);
+    return storage(useShallow((state) => {
+        if (!state.isDataReady) return [];
+        return (Object.values(state.machines).sort((a, b) => b.createdAt - a.createdAt)).filter((v) => v.active);
+    }));
 }
 
 export function useMachine(machineId: string): Machine | null {
