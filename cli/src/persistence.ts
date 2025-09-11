@@ -145,7 +145,11 @@ const credentialsSchema = z.object({
 
 export type Credentials = {
   token: string,
-  encryption: { type: 'legacy', secret: Uint8Array } | { type: 'dataKey', publicKey: Uint8Array, machineKey: Uint8Array }
+  encryption: {
+    type: 'legacy', secret: Uint8Array
+  } | {
+    type: 'dataKey', publicKey: Uint8Array, machineKey: Uint8Array
+  }
 }
 
 export async function readCredentials(): Promise<Credentials | null> {
