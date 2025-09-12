@@ -196,7 +196,7 @@ export default function NewSessionScreen() {
         }
         return 'claude';
     });
-    
+
     const handleAgentClick = React.useCallback(() => {
         setAgentType(prev => {
             const newAgent = prev === 'claude' ? 'codex' : 'claude';
@@ -298,7 +298,7 @@ export default function NewSessionScreen() {
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Constants.statusBarHeight + headerHeight}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + headerHeight : 0}
             style={{
                 flex: 1,
                 justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
