@@ -4,7 +4,7 @@ import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { Typography } from '@/constants/Typography';
-import { useAllMachines, useSessions } from '@/sync/storage';
+import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -66,6 +66,7 @@ export default function PathPickerScreen() {
     const machines = useAllMachines();
     const sessions = useSessions();
     const inputRef = useRef<MultiTextInputHandle>(null);
+    const recentMachinePaths = useSetting('recentMachinePaths');
 
     const [customPath, setCustomPath] = useState(params.selectedPath || '');
 
@@ -74,34 +75,49 @@ export default function PathPickerScreen() {
         return machines.find(m => m.id === params.machineId);
     }, [machines, params.machineId]);
 
-    // Get recent paths for this machine from sessions
+    // Get recent paths for this machine - prioritize from settings, then fall back to sessions
     const recentPaths = useMemo(() => {
-        if (!sessions || !params.machineId) return [];
+        if (!params.machineId) return [];
 
+        const paths: string[] = [];
         const pathSet = new Set<string>();
-        const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
 
-        sessions.forEach(item => {
-            if (typeof item === 'string') return; // Skip section headers
-
-            const session = item as any;
-            if (session.metadata?.machineId === params.machineId && session.metadata?.path) {
-                const path = session.metadata.path;
-                if (!pathSet.has(path)) {
-                    pathSet.add(path);
-                    pathsWithTimestamps.push({
-                        path,
-                        timestamp: session.updatedAt || session.createdAt
-                    });
-                }
+        // First, add paths from recentMachinePaths (these are the most recent)
+        recentMachinePaths.forEach(entry => {
+            if (entry.machineId === params.machineId && !pathSet.has(entry.path)) {
+                paths.push(entry.path);
+                pathSet.add(entry.path);
             }
         });
 
-        // Sort by most recent first and return just the paths
-        return pathsWithTimestamps
-            .sort((a, b) => b.timestamp - a.timestamp)
-            .map(item => item.path);
-    }, [sessions, params.machineId]);
+        // Then add paths from sessions if we need more
+        if (sessions) {
+            const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
+
+            sessions.forEach(item => {
+                if (typeof item === 'string') return; // Skip section headers
+
+                const session = item as any;
+                if (session.metadata?.machineId === params.machineId && session.metadata?.path) {
+                    const path = session.metadata.path;
+                    if (!pathSet.has(path)) {
+                        pathSet.add(path);
+                        pathsWithTimestamps.push({
+                            path,
+                            timestamp: session.updatedAt || session.createdAt
+                        });
+                    }
+                }
+            });
+
+            // Sort session paths by most recent first and add them
+            pathsWithTimestamps
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .forEach(item => paths.push(item.path));
+        }
+
+        return paths;
+    }, [sessions, params.machineId, recentMachinePaths]);
 
 
     const handleSelectPath = React.useCallback(() => {

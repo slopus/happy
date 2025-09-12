@@ -108,6 +108,8 @@ describe('settings', () => {
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
                 preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: true
@@ -148,6 +150,8 @@ describe('settings', () => {
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
                 preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual({
@@ -173,6 +177,8 @@ describe('settings', () => {
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
                 preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: false
@@ -213,6 +219,8 @@ describe('settings', () => {
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
                 preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
             };
             expect(applySettings(currentSettings, {})).toEqual({
                 ...settingsDefaults,
@@ -252,6 +260,8 @@ describe('settings', () => {
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
                 preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
             };
             const delta: any = {
                 viewInline: false,

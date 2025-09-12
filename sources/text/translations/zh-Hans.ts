@@ -208,6 +208,8 @@ export const zhHans = {
         noMachinesFound: '未找到设备。请先在您的计算机上启动 Happy 会话。',
         allMachinesOffline: '所有设备似乎都已离线',
         machineDetails: '查看设备详情 →',
+        noMachineSelected: '未选择设备',
+        noPathSelected: '未选择路径',
         directoryDoesNotExist: '目录不存在',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `目录 ${directory} 不存在。您要创建它吗？`,
         sessionStarted: '会话已启动',

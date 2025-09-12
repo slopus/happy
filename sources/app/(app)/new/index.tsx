@@ -1,7 +1,7 @@
 import React from 'react';
-import { View, Text, Platform, Pressable } from 'react-native';
+import { View, Text, Platform, Pressable, useWindowDimensions } from 'react-native';
 import { Typography } from '@/constants/Typography';
-import { useAllMachines, storage } from '@/sync/storage';
+import { useAllMachines, storage, useSetting } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
@@ -15,7 +15,6 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { sync } from '@/sync/sync';
 
 // Simple temporary state for passing selections back from picker screens
@@ -30,11 +29,17 @@ export const callbacks = {
     }
 }
 
-// Helper function to get the most recent path for a machine
-const getRecentPathForMachine = (machineId: string | null): string => {
+// Helper function to get the most recent path for a machine from settings or sessions
+const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ machineId: string; path: string }>): string => {
     if (!machineId) return '/home/';
 
-    // Get the machine from storage to access its metadata
+    // First check recent paths from settings
+    const recentPath = recentPaths.find(rp => rp.machineId === machineId);
+    if (recentPath) {
+        return recentPath.path;
+    }
+
+    // Fallback to session history
     const machine = storage.getState().machines[machineId];
     const defaultPath = machine?.metadata?.homeDir || '/home/';
 
@@ -61,6 +66,20 @@ const getRecentPathForMachine = (machineId: string | null): string => {
     return pathsWithTimestamps[0]?.path || defaultPath;
 };
 
+// Helper function to update recent machine paths
+const updateRecentMachinePaths = (
+    currentPaths: Array<{ machineId: string; path: string }>,
+    machineId: string,
+    path: string
+): Array<{ machineId: string; path: string }> => {
+    // Remove any existing entry for this machine
+    const filtered = currentPaths.filter(rp => rp.machineId !== machineId);
+    // Add new entry at the beginning
+    const updated = [{ machineId, path }, ...filtered];
+    // Keep only the last 10 entries
+    return updated.slice(0, 10);
+};
+
 export default function NewSessionScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
@@ -70,7 +89,11 @@ export default function NewSessionScreen() {
     const ref = React.useRef<MultiTextInputHandle>(null);
     const headerHeight = useHeaderHeight();
     const safeArea = useSafeAreaInsets();
+    const screenWidth = useWindowDimensions().width;
 
+    // Load recent machine paths and last used agent from settings
+    const recentMachinePaths = useSetting('recentMachinePaths');
+    const lastUsedAgent = useSetting('lastUsedAgent');
 
     //
     // Machines state
@@ -79,19 +102,58 @@ export default function NewSessionScreen() {
     const machines = useAllMachines();
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
         if (machines.length > 0) {
+            // Check if we have a recently used machine that's currently available
+            if (recentMachinePaths.length > 0) {
+                // Find the first machine from recent paths that's currently available
+                for (const recent of recentMachinePaths) {
+                    if (machines.find(m => m.id === recent.machineId)) {
+                        return recent.machineId;
+                    }
+                }
+            }
+            // Fallback to first machine if no recent machine is available
             return machines[0].id;
         }
         return null;
     });
     React.useEffect(() => {
-        if (machines.length > 0 && !selectedMachineId) {
-            const firstMachineId = machines[0].id;
-            setSelectedMachineId(firstMachineId);
-            // Also set the best path for the initially selected machine
-            const bestPath = getRecentPathForMachine(firstMachineId);
-            setSelectedPath(bestPath);
+        if (machines.length > 0) {
+            if (!selectedMachineId) {
+                // No machine selected yet, prefer the most recently used machine
+                let machineToSelect = machines[0].id; // Default to first machine
+
+                // Check if we have a recently used machine that's currently available
+                if (recentMachinePaths.length > 0) {
+                    for (const recent of recentMachinePaths) {
+                        if (machines.find(m => m.id === recent.machineId)) {
+                            machineToSelect = recent.machineId;
+                            break; // Use the first (most recent) match
+                        }
+                    }
+                }
+
+                setSelectedMachineId(machineToSelect);
+                // Also set the best path for the selected machine
+                const bestPath = getRecentPathForMachine(machineToSelect, recentMachinePaths);
+                setSelectedPath(bestPath);
+            } else {
+                // Machine is already selected, but check if we need to update path
+                // This handles the case where machines load after initial render
+                const currentMachine = machines.find(m => m.id === selectedMachineId);
+                if (currentMachine) {
+                    // Update path based on recent paths (only if path hasn't been manually changed)
+                    const bestPath = getRecentPathForMachine(selectedMachineId, recentMachinePaths);
+                    setSelectedPath(prevPath => {
+                        // Only update if current path is the default /home/
+                        if (prevPath === '/home/' && bestPath !== '/home/') {
+                            return bestPath;
+                        }
+                        return prevPath;
+                    });
+                }
+            }
         }
-    }, [machines, selectedMachineId]);
+    }, [machines, selectedMachineId, recentMachinePaths]);
 
     React.useEffect(() => {
         let handler = (machineId: string) => {
@@ -99,7 +161,7 @@ export default function NewSessionScreen() {
             if (machine) {
                 setSelectedMachineId(machineId);
                 // Also update the path when machine changes
-                const bestPath = getRecentPathForMachine(machineId);
+                const bestPath = getRecentPathForMachine(machineId, recentMachinePaths);
                 setSelectedPath(bestPath);
             }
         };
@@ -107,7 +169,7 @@ export default function NewSessionScreen() {
         return () => {
             onMachineSelected = () => { };
         };
-    }, []);
+    }, [recentMachinePaths]);
 
     React.useEffect(() => {
         let handler = (path: string) => {
@@ -127,18 +189,31 @@ export default function NewSessionScreen() {
     // Agent selection
     //
 
-    const [agentType, setAgentType] = React.useState<'claude' | 'codex'>('claude');
+    const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
+        // Initialize with last used agent if valid, otherwise default to 'claude'
+        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
+            return lastUsedAgent;
+        }
+        return 'claude';
+    });
+    
     const handleAgentClick = React.useCallback(() => {
-        setAgentType(prev => prev === 'claude' ? 'codex' : 'claude');
+        setAgentType(prev => {
+            const newAgent = prev === 'claude' ? 'codex' : 'claude';
+            // Save the new selection immediately
+            sync.applySettings({ lastUsedAgent: newAgent });
+            return newAgent;
+        });
     }, []);
 
     //
     // Path selection
     //
 
-    const [selectedPath, setSelectedPath] = React.useState<string>(() =>
-        getRecentPathForMachine(selectedMachineId)
-    );
+    const [selectedPath, setSelectedPath] = React.useState<string>(() => {
+        // Initialize with the path from the selected machine (which should be the most recent if available)
+        return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
+    });
     const handlePathClick = React.useCallback(() => {
         if (selectedMachineId) {
             router.push(`/new/pick/path?machineId=${selectedMachineId}`);
@@ -172,13 +247,19 @@ export default function NewSessionScreen() {
             Modal.alert(t('common.error'), t('newSession.noPathSelected'));
             return;
         }
+
+        // Save the machine-path combination to settings before sending
+        const updatedPaths = updateRecentMachinePaths(recentMachinePaths, selectedMachineId, selectedPath);
+        sync.applySettings({ recentMachinePaths: updatedPaths });
+
         setIsSending(true);
         try {
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
                 directory: selectedPath,
                 // For now we assume you already have a path to start in
-                approvedNewDirectoryCreation: true
+                approvedNewDirectoryCreation: true,
+                agent: agentType
             });
 
             // Use sessionId to check for success for backwards compatibility
@@ -212,7 +293,7 @@ export default function NewSessionScreen() {
         } finally {
             setIsSending(false);
         }
-    }, [agentType, selectedMachineId, selectedPath, input]);
+    }, [agentType, selectedMachineId, selectedPath, input, recentMachinePaths]);
 
     return (
         <KeyboardAvoidingView
@@ -227,7 +308,6 @@ export default function NewSessionScreen() {
         >
             <View style={{
                 width: '100%',
-                maxWidth: layout.maxWidth,
                 alignSelf: 'center',
                 paddingTop: safeArea.top,
             }}>
@@ -250,35 +330,42 @@ export default function NewSessionScreen() {
                     autocompleteSuggestions={async () => []}
                 />
 
-                <Pressable
-                    onPress={handlePathClick}
-                    style={(p) => ({
-                        backgroundColor: theme.colors.input.background,
-                        borderRadius: Platform.select({ default: 16, android: 20 }),
-                        paddingHorizontal: 12,
-                        paddingVertical: 10,
-                        marginBottom: 8,
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        opacity: p.pressed ? 0.7 : 1,
-                        marginHorizontal: 8,
-                    })}
-                >
-                    <Ionicons
-                        name="folder-outline"
-                        size={14}
-                        color={theme.colors.button.secondary.tint}
-                    />
-                    <Text style={{
-                        fontSize: 13,
-                        color: theme.colors.button.secondary.tint,
-                        fontWeight: '600',
-                        marginLeft: 6,
-                        ...Typography.default('semiBold'),
-                    }}>
-                        {selectedPath}
-                    </Text>
-                </Pressable>
+                <View style={[
+                    { paddingHorizontal: screenWidth > 700 ? 16 : 8, flexDirection: 'row', justifyContent: 'center' }
+                ]}>
+                    <View style={[
+                        { maxWidth: layout.maxWidth, flex: 1 }
+                    ]}>
+                        <Pressable
+                            onPress={handlePathClick}
+                            style={(p) => ({
+                                backgroundColor: theme.colors.input.background,
+                                borderRadius: Platform.select({ default: 16, android: 20 }),
+                                paddingHorizontal: 12,
+                                paddingVertical: 10,
+                                marginBottom: 8,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                opacity: p.pressed ? 0.7 : 1,
+                            })}
+                        >
+                            <Ionicons
+                                name="folder-outline"
+                                size={14}
+                                color={theme.colors.button.secondary.tint}
+                            />
+                            <Text style={{
+                                fontSize: 13,
+                                color: theme.colors.button.secondary.tint,
+                                fontWeight: '600',
+                                marginLeft: 6,
+                                ...Typography.default('semiBold'),
+                            }}>
+                                {selectedPath}
+                            </Text>
+                        </Pressable>
+                    </View>
+                </View>
             </View>
         </KeyboardAvoidingView>
     )

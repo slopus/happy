@@ -208,6 +208,8 @@ export const pt: TranslationStructure = {
         noMachinesFound: 'Nenhuma máquina encontrada. Inicie uma sessão Happy no seu computador primeiro.',
         allMachinesOffline: 'Todas as máquinas estão offline',
         machineDetails: 'Ver detalhes da máquina →',
+        noMachineSelected: 'Nenhuma máquina selecionada',
+        noPathSelected: 'Nenhum caminho selecionado',
         directoryDoesNotExist: 'Diretório não encontrado',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `O diretório ${directory} não existe. Deseja criá-lo?`,
         sessionStarted: 'Sessão iniciada',
