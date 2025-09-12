@@ -226,8 +226,6 @@ export default function NewSessionScreen() {
                 maxWidth: layout.maxWidth,
                 alignSelf: 'center',
                 paddingTop: safeArea.top,
-                paddingLeft: safeArea.left,
-                paddingRight: safeArea.right,
             }}>
                 {/* Path selector above input */}
 
