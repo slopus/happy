@@ -189,7 +189,7 @@ export default function NewSessionScreen() {
                 await sync.sendMessage(result.sessionId, input);
                 // Navigate to session
                 router.replace(`/session/${result.sessionId}`, {
-                    dangerouslySingular(name, params) {
+                    dangerouslySingular() {
                         return 'session'
                     },
                 });

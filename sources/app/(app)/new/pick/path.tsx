@@ -9,7 +9,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
-import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { MultiTextInput, MultiTextInputHandle } from '@/components/MultiTextInput';
 import { callbacks } from '../index';
 
@@ -68,7 +67,7 @@ export default function PathPickerScreen() {
     const sessions = useSessions();
     const inputRef = useRef<MultiTextInputHandle>(null);
 
-    const [customPath, setCustomPath] = useState(params.selectedPath || '~');
+    const [customPath, setCustomPath] = useState(params.selectedPath || '');
 
     // Get the selected machine
     const machine = useMemo(() => {
@@ -106,11 +105,11 @@ export default function PathPickerScreen() {
 
 
     const handleSelectPath = React.useCallback(() => {
-        const pathToUse = customPath.trim() || '~';
+        const pathToUse = customPath.trim() || machine?.metadata?.homeDir || '/home';
         // Set the selection and go back
         callbacks.onPathSelected(pathToUse);
         router.back();
-    }, [customPath, router]);
+    }, [customPath, router, machine]);
 
     if (!machine) {
         return (
@@ -189,7 +188,7 @@ export default function PathPickerScreen() {
                                         ref={inputRef}
                                         value={customPath}
                                         onChangeText={setCustomPath}
-                                        placeholder="Enter path (e.g. ~/projects)"
+                                        placeholder="Enter path (e.g. /home/user/projects)"
                                         maxHeight={76}
                                         paddingTop={8}
                                         paddingBottom={8}
@@ -204,14 +203,13 @@ export default function PathPickerScreen() {
                         {recentPaths.length > 0 && (
                             <ItemGroup title="Recent Paths">
                                 {recentPaths.map((path, index) => {
-                                    const display = formatPathRelativeToHome(path, machine.metadata?.homeDir);
-                                    const isSelected = customPath.trim() === display;
+                                    const isSelected = customPath.trim() === path;
                                     const isLast = index === recentPaths.length - 1;
 
                                     return (
                                         <Item
                                             key={path}
-                                            title={display}
+                                            title={path}
                                             leftElement={
                                                 <Ionicons
                                                     name="folder-outline"
@@ -220,7 +218,7 @@ export default function PathPickerScreen() {
                                                 />
                                             }
                                             onPress={() => {
-                                                setCustomPath(display);
+                                                setCustomPath(path);
                                                 setTimeout(() => inputRef.current?.focus(), 50);
                                             }}
                                             selected={isSelected}
@@ -235,32 +233,40 @@ export default function PathPickerScreen() {
 
                         {recentPaths.length === 0 && (
                             <ItemGroup title="Suggested Paths">
-                                {['~', '~/projects', '~/Documents', '~/Desktop'].map((path, index) => {
-                                    const display = formatPathRelativeToHome(path, machine.metadata?.homeDir);
-                                    const isSelected = customPath.trim() === display;
+                                {(() => {
+                                    const homeDir = machine.metadata?.homeDir || '/home';
+                                    const suggestedPaths = [
+                                        homeDir,
+                                        `${homeDir}/projects`,
+                                        `${homeDir}/Documents`,
+                                        `${homeDir}/Desktop`
+                                    ];
+                                    return suggestedPaths.map((path, index) => {
+                                        const isSelected = customPath.trim() === path;
 
-                                    return (
-                                        <Item
-                                            key={path}
-                                            title={display}
-                                            leftElement={
-                                                <Ionicons
-                                                    name="folder-outline"
-                                                    size={18}
-                                                    color={theme.colors.textSecondary}
-                                                />
-                                            }
-                                            onPress={() => {
-                                                setCustomPath(display);
-                                                setTimeout(() => inputRef.current?.focus(), 50);
-                                            }}
-                                            selected={isSelected}
-                                            showChevron={false}
-                                            pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                            showDivider={index < 3}
-                                        />
-                                    );
-                                })}
+                                        return (
+                                            <Item
+                                                key={path}
+                                                title={path}
+                                                leftElement={
+                                                    <Ionicons
+                                                        name="folder-outline"
+                                                        size={18}
+                                                        color={theme.colors.textSecondary}
+                                                    />
+                                                }
+                                                onPress={() => {
+                                                    setCustomPath(path);
+                                                    setTimeout(() => inputRef.current?.focus(), 50);
+                                                }}
+                                                selected={isSelected}
+                                                showChevron={false}
+                                                pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                                showDivider={index < 3}
+                                            />
+                                        );
+                                    });
+                                })()}
                             </ItemGroup>
                         )}
                     </View>
