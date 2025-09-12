@@ -127,7 +127,7 @@ interface SessionKillResponse {
 }
 
 // Response types for spawn session
-export type SpawnSessionResult = 
+export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     | { type: 'error'; errorMessage: string };
@@ -137,6 +137,8 @@ export interface SpawnSessionOptions {
     machineId: string;
     directory: string;
     approvedNewDirectoryCreation?: boolean;
+    token?: string;
+    agent?: 'codex' | 'claude';
 }
 
 // Exported session operation functions
@@ -145,17 +147,20 @@ export interface SpawnSessionOptions {
  * Spawn a new remote session on a specific machine
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
-    const { machineId, directory, approvedNewDirectoryCreation = false } = options;
     
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent } = options;
+
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
             type: 'spawn-in-directory'
             directory: string
-            approvedNewDirectoryCreation?: boolean
+            approvedNewDirectoryCreation?: boolean,
+            token?: string,
+            agent?: 'codex' | 'claude'
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent }
         );
         return result;
     } catch (error) {
