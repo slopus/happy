@@ -561,7 +561,7 @@ class Sync {
             }
 
             try {
-                
+
                 // Use machine-specific encryption (which handles fallback internally)
                 const metadata = machine.metadata
                     ? await machineEncryption.decryptMetadata(machine.metadataVersion, machine.metadata)
@@ -654,6 +654,9 @@ class Sync {
 
                     // Apply settings to storage
                     storage.getState().applySettings(parsedSettings, data.currentVersion);
+
+                    // Clear pending
+                    savePendingSettings({});
 
                     // Sync PostHog opt-out state with settings
                     if (tracking) {
