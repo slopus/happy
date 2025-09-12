@@ -32,7 +32,11 @@ export const callbacks = {
 
 // Helper function to get the most recent path for a machine
 const getRecentPathForMachine = (machineId: string | null): string => {
-    if (!machineId) return '~';
+    if (!machineId) return '/home/';
+
+    // Get the machine from storage to access its metadata
+    const machine = storage.getState().machines[machineId];
+    const defaultPath = machine?.metadata?.homeDir || '/home/';
 
     const sessions = Object.values(storage.getState().sessions);
     const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
@@ -54,7 +58,7 @@ const getRecentPathForMachine = (machineId: string | null): string => {
     // Sort by most recent first
     pathsWithTimestamps.sort((a, b) => b.timestamp - a.timestamp);
 
-    return pathsWithTimestamps[0]?.path || '~';
+    return pathsWithTimestamps[0]?.path || defaultPath;
 };
 
 export default function NewSessionScreen() {
