@@ -292,7 +292,7 @@ export default React.memo(function SettingsScreen() {
             <ItemGroup title={t('settings.connectedAccounts')}>
                 <Item
                     title="Claude"
-                    subtitle={isAnthropicConnected 
+                    subtitle={isAnthropicConnected
                         ? t('settingsAccount.statusActive')
                         : t('settings.connectAccount')
                     }
@@ -309,8 +309,8 @@ export default React.memo(function SettingsScreen() {
                 />
                 <Item
                     title={t('settings.github')}
-                    subtitle={isGitHubConnected 
-                        ? t('settings.githubConnected', { login: profile.github?.login! }) 
+                    subtitle={isGitHubConnected
+                        ? t('settings.githubConnected', { login: profile.github?.login! })
                         : t('settings.connectGithubAccount')
                     }
                     icon={
@@ -329,17 +329,7 @@ export default React.memo(function SettingsScreen() {
             {/* Machines (sorted: online first, then last seen desc) */}
             {allMachines.length > 0 && (
                 <ItemGroup title={t('settings.machines')}>
-                    {[...allMachines]
-                        .sort((a, b) => {
-                            const aOnline = isMachineOnline(a);
-                            const bOnline = isMachineOnline(b);
-                            if (aOnline && !bOnline) return -1;
-                            if (!aOnline && bOnline) return 1;
-                            const aTime = a.activeAt || 0;
-                            const bTime = b.activeAt || 0;
-                            return bTime - aTime;
-                        })
-                        .map((machine) => {
+                    {[...allMachines].map((machine) => {
                         const isOnline = isMachineOnline(machine);
                         const host = machine.metadata?.host || 'Unknown';
                         const displayName = machine.metadata?.displayName;
