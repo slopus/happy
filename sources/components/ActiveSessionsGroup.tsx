@@ -184,11 +184,7 @@ interface ActiveSessionsGroupProps {
 
 export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessionsGroupProps) {
     const styles = stylesheet;
-    const router = useRouter();
     const machines = useAllMachines();
-    const [startingSessionFor, setStartingSessionFor] = React.useState<string | null>(null);
-    const navigateToSession = useNavigateToSession();
-
     const machinesMap = React.useMemo(() => {
         const map: Record<string, Machine> = {};
         machines.forEach(machine => {
@@ -196,40 +192,6 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
         });
         return map;
     }, [machines]);
-
-    const handleStartSession = async (machineId: string, path: string) => {
-        try {
-            setStartingSessionFor(`${machineId}-${path}`);
-            const result = await machineSpawnNewSession({
-                machineId,
-                directory: path,
-                // For now we assume you already have a path to start in
-                approvedNewDirectoryCreation: true
-            });
-
-            // Use sessionId to check for success for backwards compatibility
-            if ('sessionId' in result && result.sessionId) {
-                navigateToSession(result.sessionId);
-                setStartingSessionFor(null);
-            } else {
-                throw new Error('Session spawning failed - no session ID returned.');
-            }
-        } catch (error) {
-            console.error('Failed to start session', error);
-
-            let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
-            if (error instanceof Error) {
-                if (error.message.includes('timeout')) {
-                    errorMessage = 'Session startup timed out. The machine may be slow or the daemon may not be responding.';
-                } else if (error.message.includes('Socket not connected')) {
-                    errorMessage = 'Not connected to server. Check your internet connection.';
-                }
-            }
-
-            Modal.alert(t('common.error'), errorMessage);
-            setStartingSessionFor(null);
-        }
-    };
 
     // Group sessions by project, then associate with machine
     const projectGroups = React.useMemo(() => {
@@ -347,53 +309,6 @@ export function ActiveSessionsGroup({ sessions, selectedSessionId }: ActiveSessi
                                         ))}
                                     </View>
                                 ))}
-
-                            {/* New Session Button - only show if at least one machine is online */}
-                            {(() => {
-                                const machineIds = Array.from(projectGroup.machines.keys());
-                                const hasOnlineMachine = machineIds.some(machineId => {
-                                    const machine = machinesMap[machineId];
-                                    return machine && isMachineOnline(machine);
-                                });
-
-                                // Use the first machine for the session creation
-                                const firstMachineId = machineIds[0];
-                                const isLoading = startingSessionFor === `${firstMachineId}-${projectGroup.path}`;
-
-                                return (
-                                    <Pressable
-                                        style={[
-                                            styles.newSessionButton,
-                                            (!hasOnlineMachine || isLoading) && styles.newSessionButtonDisabled
-                                        ]}
-                                        disabled={!hasOnlineMachine || isLoading}
-                                        onPress={() => handleStartSession(firstMachineId, projectGroup.path)}
-                                    >
-                                        <View style={styles.newSessionButtonContent}>
-                                            <View style={styles.newSessionButtonIcon}>
-                                                {isLoading ? (
-                                                    <ActivityIndicator
-                                                        size={Platform.OS === 'ios' ? "small" : 14 as any}
-                                                        color={hasOnlineMachine ? "#007AFF" : "#999"}
-                                                    />
-                                                ) : (
-                                                    <Ionicons
-                                                        name="add"
-                                                        size={18}
-                                                        color={hasOnlineMachine ? "#007AFF" : "#999"}
-                                                    />
-                                                )}
-                                            </View>
-                                            <Text style={[
-                                                styles.newSessionButtonText,
-                                                (!hasOnlineMachine || isLoading) && styles.newSessionButtonTextDisabled
-                                            ]}>
-                                                {isLoading ? t('newSession.startingSession') : t('newSession.startNewSessionInFolder')}
-                                            </Text>
-                                        </View>
-                                    </Pressable>
-                                );
-                            })()}
                         </View>
                     </View>
                 );

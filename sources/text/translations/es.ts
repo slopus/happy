@@ -217,7 +217,9 @@ export const es: TranslationStructure = {
         sessionTimeout: 'El inicio de sesión expiró. La máquina puede ser lenta o el daemon puede no estar respondiendo.',
         notConnectedToServer: 'No conectado al servidor. Verifica tu conexión a internet.',
         startingSession: 'Iniciando sesión...',
-        startNewSessionInFolder: 'Nueva sesión aquí'
+        startNewSessionInFolder: 'Nueva sesión aquí',
+        noMachineSelected: 'Por favor, selecciona una máquina para iniciar la sesión',
+        noPathSelected: 'Por favor, selecciona un directorio para iniciar la sesión'
     },
 
     sessionHistory: {
@@ -325,6 +327,10 @@ export const es: TranslationStructure = {
             badgeBypassAllPermissions: 'Omitir todos los permisos',
             badgePlanMode: 'Modo de planificación',
         },
+        agent: {
+            claude: 'Claude',
+            codex: 'Codex',
+        },
         model: {
             title: 'MODELO',
             default: 'Usar configuración del CLI',
@@ -355,7 +361,8 @@ export const es: TranslationStructure = {
         suggestion: {
             fileLabel: 'ARCHIVO',
             folderLabel: 'CARPETA',
-        }
+        },
+        noMachinesAvailable: 'Sin máquinas',
     },
 
     machineLauncher: {

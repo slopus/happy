@@ -217,7 +217,9 @@ export const en = {
         startNewSessionInFolder: 'New session here',
         failedToStart: 'Failed to start session. Make sure the daemon is running on the target machine.',
         sessionTimeout: 'Session startup timed out. The machine may be slow or the daemon may not be responding.',
-        notConnectedToServer: 'Not connected to server. Check your internet connection.'
+        notConnectedToServer: 'Not connected to server. Check your internet connection.',
+        noMachineSelected: 'Please select a machine to start the session',
+        noPathSelected: 'Please select a directory to start the session in'
     },
 
     sessionHistory: {
@@ -325,6 +327,10 @@ export const en = {
             badgeBypassAllPermissions: 'Bypass All Permissions',
             badgePlanMode: 'Plan Mode',
         },
+        agent: {
+            claude: 'Claude',
+            codex: 'Codex',
+        },
         model: {
             title: 'MODEL',
             default: 'Use CLI settings',
@@ -355,7 +361,8 @@ export const en = {
         suggestion: {
             fileLabel: 'FILE',
             folderLabel: 'FOLDER',
-        }
+        },
+        noMachinesAvailable: 'No machines',
     },
 
     machineLauncher: {

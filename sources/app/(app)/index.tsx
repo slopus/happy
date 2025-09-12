@@ -5,22 +5,20 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
 import { encodeBase64 } from "@/encryption/base64";
 import { authGetToken } from "@/auth/authGetToken";
-import { useUpdates } from "@/hooks/useUpdates";
 import { UpdateBanner } from "@/components/UpdateBanner";
 import { SessionsList } from "@/components/SessionsList";
-import { router, Stack, useRouter } from "expo-router";
-import { useSessionListViewData, useEntitlement, useSocketStatus, useSetting, useAllMachines } from "@/sync/storage";
+import { router, useRouter } from "expo-router";
+import { useSessionListViewData } from "@/sync/storage";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { getRandomBytesAsync } from "expo-crypto";
 import { useIsTablet, useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
 import { EmptyMainScreen } from "@/components/EmptyMainScreen";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
-import { FAB } from "@/components/FAB";
+import { FABWide } from "@/components/FABWide";
 import { HomeHeader, HomeHeaderNotAuth } from "@/components/HomeHeader";
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
-import { isMachineOnline } from '@/utils/machineUtils';
 import { t } from '@/text';
 
 export default function Home() {
@@ -38,15 +36,9 @@ function Authenticated() {
     let sessionListViewData = useSessionListViewData();
     const isTablet = useIsTablet();
     const realtimeStatus = useRealtimeStatus();
-    const machines = useAllMachines();
 
     const handleNewSession = () => {
-        // If there's only one online machine, go directly to it
-        if (machines.length === 1) {
-            router.push(`/machine/${machines[0].id}`);
-        } else {
-            router.push('/new-session');
-        }
+        router.push('/new');
     }
 
     // Empty state in tabled view
@@ -79,7 +71,7 @@ function Authenticated() {
                         <ActivityIndicator size="small" color={theme.colors.textSecondary} />
                     </View>
                 </View>
-                <FAB onPress={handleNewSession} />
+                <FABWide onPress={handleNewSession} />
             </>
         )
     }
@@ -105,7 +97,7 @@ function Authenticated() {
                     <SessionsList />
                 )}
             </View>
-            <FAB onPress={handleNewSession} />
+            <FABWide onPress={handleNewSession} />
         </>
     );
 }

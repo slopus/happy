@@ -29,7 +29,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 category: 'Sessions',
                 shortcut: '⌘N',
                 action: () => {
-                    router.push('/new-session');
+                    router.push('/new');
                 }
             },
             {

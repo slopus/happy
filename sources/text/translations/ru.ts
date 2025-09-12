@@ -209,7 +209,9 @@ export const ru: TranslationStructure = {
         sessionTimeout: 'Время запуска сессии истекло. Машина может работать медленно или daemon не отвечает.',
         notConnectedToServer: 'Нет подключения к серверу. Проверьте интернет-соединение.',
         startingSession: 'Запуск сессии...',
-        startNewSessionInFolder: 'Новая сессия здесь'
+        startNewSessionInFolder: 'Новая сессия здесь',
+        noMachineSelected: 'Пожалуйста, выберите машину для запуска сессии',
+        noPathSelected: 'Пожалуйста, выберите директорию для запуска сессии'
     },
 
     sessionHistory: {
@@ -335,6 +337,10 @@ export const ru: TranslationStructure = {
             badgeBypassAllPermissions: 'Обход всех разрешений',
             badgePlanMode: 'Режим планирования',
         },
+        agent: {
+            claude: 'Claude',
+            codex: 'Codex',
+        },
         model: {
             title: 'МОДЕЛЬ',
             default: 'Использовать настройки CLI',
@@ -365,7 +371,8 @@ export const ru: TranslationStructure = {
         suggestion: {
             fileLabel: 'ФАЙЛ',
             folderLabel: 'ПАПКА',
-        }
+        },
+        noMachinesAvailable: 'Нет машин',
     },
 
     machineLauncher: {

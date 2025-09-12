@@ -185,7 +185,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                     fontSize: 16,
                     maxHeight,
                     color: theme.colors.input.text,
-                    textAlignVertical: 'center',
+                    textAlignVertical: 'top',
                     padding:0,
                     paddingTop: props.paddingTop,
                     paddingBottom: props.paddingBottom,
