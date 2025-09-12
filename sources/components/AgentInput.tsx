@@ -56,6 +56,15 @@ interface AgentInputProps {
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
+    agentType?: 'claude' | 'codex';
+    onAgentClick?: () => void;
+    machineName?: string | null;
+    onMachineClick?: () => void;
+    currentPath?: string | null;
+    onPathClick?: () => void;
+    isSendDisabled?: boolean;
+    isSending?: boolean;
+    minHeight?: number;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -275,7 +284,7 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
     return null; // No display needed
 };
 
-export const AgentInput = React.memo((props: AgentInputProps) => {
+export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, AgentInputProps>((props, ref) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
@@ -295,6 +304,9 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
     const [isAborting, setIsAborting] = React.useState(false);
     const shakerRef = React.useRef<ShakeInstance>(null);
     const inputRef = React.useRef<MultiTextInputHandle>(null);
+
+    // Forward ref to the MultiTextInput
+    React.useImperativeHandle(ref, () => inputRef.current!, []);
 
     // Autocomplete state - track text and selection together
     const [inputState, setInputState] = React.useState<TextInputState>({
@@ -715,7 +727,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                 {/* Unified panel containing input and action buttons */}
                 <View style={styles.unifiedPanel}>
                     {/* Input field */}
-                    <View style={styles.inputContainer}>
+                    <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
                         <MultiTextInput
                             ref={inputRef}
                             value={props.value}
@@ -757,7 +769,113 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                 </Pressable>
                             )}
 
+                            {/* Agent selector button */}
+                            {props.agentType && props.onAgentClick && (
+                                <Pressable
+                                    onPress={() => {
+                                        hapticsLight();
+                                        props.onAgentClick?.();
+                                    }}
+                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                    style={(p) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 6,
+                                        justifyContent: 'center',
+                                        height: 32,
+                                        opacity: p.pressed ? 0.7 : 1,
+                                        gap: 6,
+                                    })}
+                                >
+                                    <Octicons
+                                        name="cpu"
+                                        size={14}
+                                        color={theme.colors.button.secondary.tint}
+                                    />
+                                    <Text style={{
+                                        fontSize: 13,
+                                        color: theme.colors.button.secondary.tint,
+                                        fontWeight: '600',
+                                        ...Typography.default('semiBold'),
+                                    }}>
+                                        {props.agentType === 'claude' ? t('agentInput.agent.claude') : t('agentInput.agent.codex')}
+                                    </Text>
+                                </Pressable>
+                            )}
 
+                            {/* Machine selector button */}
+                            {(props.machineName !== undefined) && props.onMachineClick && (
+                                <Pressable
+                                    onPress={() => {
+                                        hapticsLight();
+                                        props.onMachineClick?.();
+                                    }}
+                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                    style={(p) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 6,
+                                        justifyContent: 'center',
+                                        height: 32,
+                                        opacity: p.pressed ? 0.7 : 1,
+                                        gap: 6,
+                                    })}
+                                >
+                                    <Ionicons
+                                        name="desktop-outline"
+                                        size={14}
+                                        color={theme.colors.button.secondary.tint}
+                                    />
+                                    <Text style={{
+                                        fontSize: 13,
+                                        color: theme.colors.button.secondary.tint,
+                                        fontWeight: '600',
+                                        ...Typography.default('semiBold'),
+                                    }}>
+                                        {props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName}
+                                    </Text>
+                                </Pressable>
+                            )}
+
+                            {/* Path selector button */}
+                            {props.currentPath && props.onPathClick && (
+                                <Pressable
+                                    onPress={() => {
+                                        hapticsLight();
+                                        props.onPathClick?.();
+                                    }}
+                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                    style={(p) => ({
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        borderRadius: Platform.select({ default: 16, android: 20 }),
+                                        paddingHorizontal: 10,
+                                        paddingVertical: 6,
+                                        justifyContent: 'center',
+                                        height: 32,
+                                        opacity: p.pressed ? 0.7 : 1,
+                                        gap: 6,
+                                    })}
+                                >
+                                    <Ionicons
+                                        name="folder-outline"
+                                        size={14}
+                                        color={theme.colors.button.secondary.tint}
+                                    />
+                                    <Text style={{
+                                        fontSize: 13,
+                                        color: theme.colors.button.secondary.tint,
+                                        fontWeight: '600',
+                                        ...Typography.default('semiBold'),
+                                    }}>
+                                        {props.currentPath}
+                                    </Text>
+                                </Pressable>
+                            )}
 
                             {/* Abort button */}
                             {props.onAbort && (
@@ -801,7 +919,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                         <View
                             style={[
                                 styles.sendButton,
-                                (hasText || (props.onMicPress && !props.isMicActive))
+                                (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
                                     ? styles.sendButtonActive
                                     : styles.sendButtonInactive
                             ]}
@@ -823,9 +941,14 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
                                         props.onMicPress?.();
                                     }
                                 }}
-                                disabled={!hasText && !props.onMicPress}
+                                disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
                             >
-                                {hasText ? (
+                                {props.isSending ? (
+                                    <ActivityIndicator
+                                        size="small"
+                                        color={theme.colors.button.primary.tint}
+                                    />
+                                ) : hasText ? (
                                     <Octicons
                                         name="arrow-up"
                                         size={16}
@@ -862,7 +985,7 @@ export const AgentInput = React.memo((props: AgentInputProps) => {
             </View>
         </View>
     );
-});
+}));
 
 // Git Status Button Component
 function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {

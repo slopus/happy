@@ -493,6 +493,10 @@ class Sync {
         return this.fetchMachines();
     }
 
+    public refreshSessions = async () => {
+        return this.sessionsSync.invalidateAndAwait();
+    }
+
     private fetchMachines = async () => {
         if (!this.credentials) return;
 

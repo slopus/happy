@@ -325,6 +325,10 @@ export const zhHans = {
             badgeBypassAllPermissions: '绕过所有权限',
             badgePlanMode: '计划模式',
         },
+        agent: {
+            claude: 'Claude',
+            codex: 'Codex',
+        },
         model: {
             title: '模型',
             default: '使用 CLI 设置',
@@ -355,7 +359,8 @@ export const zhHans = {
         suggestion: {
             fileLabel: '文件',
             folderLabel: '文件夹',
-        }
+        },
+        noMachinesAvailable: '无设备',
     },
 
     machineLauncher: {

@@ -325,6 +325,10 @@ export const pt: TranslationStructure = {
             badgeBypassAllPermissions: 'Ignorar todas as permissões',
             badgePlanMode: 'Modo de planejamento',
         },
+        agent: {
+            claude: 'Claude',
+            codex: 'Codex',
+        },
         model: {
             title: 'MODELO',
             default: 'Usar configurações do CLI',
@@ -355,7 +359,8 @@ export const pt: TranslationStructure = {
         suggestion: {
             fileLabel: 'ARQUIVO',
             folderLabel: 'PASTA',
-        }
+        },
+        noMachinesAvailable: 'Sem máquinas',
     },
 
     machineLauncher: {

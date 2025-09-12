@@ -291,7 +291,7 @@ export default React.memo(function SettingsScreen() {
 
             <ItemGroup title={t('settings.connectedAccounts')}>
                 <Item
-                    title="Claude"
+                    title="Claude Code"
                     subtitle={isAnthropicConnected
                         ? t('settingsAccount.statusActive')
                         : t('settings.connectAccount')

@@ -325,6 +325,10 @@ export const ca: TranslationStructure = {
             badgeBypassAllPermissions: 'Omet tots els permisos',
             badgePlanMode: 'Mode de planificació',
         },
+        agent: {
+            claude: 'Claude',
+            codex: 'Codex',
+        },
         model: {
             title: 'MODEL',
             default: 'Utilitza la configuració del CLI',
@@ -355,7 +359,8 @@ export const ca: TranslationStructure = {
         suggestion: {
             fileLabel: 'FITXER',
             folderLabel: 'CARPETA',
-        }
+        },
+        noMachinesAvailable: 'Sense màquines',
     },
 
     machineLauncher: {

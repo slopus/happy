@@ -228,7 +228,9 @@ export const pl: TranslationStructure = {
         sessionTimeout: 'Przekroczono czas uruchamiania sesji. Maszyna może działać wolno lub daemon może nie odpowiadać.',
         notConnectedToServer: 'Brak połączenia z serwerem. Sprawdź połączenie internetowe.',
         startingSession: 'Rozpoczynanie sesji...',
-        startNewSessionInFolder: 'Nowa sesja tutaj'
+        startNewSessionInFolder: 'Nowa sesja tutaj',
+        noMachineSelected: 'Proszę wybrać maszynę do rozpoczęcia sesji',
+        noPathSelected: 'Proszę wybrać katalog do rozpoczęcia sesji'
     },
 
     sessionHistory: {
@@ -335,6 +337,10 @@ export const pl: TranslationStructure = {
             badgeBypassAllPermissions: 'Omiń wszystkie uprawnienia',
             badgePlanMode: 'Tryb planowania',
         },
+        agent: {
+            claude: 'Claude',
+            codex: 'Codex',
+        },
         model: {
             title: 'MODEL',
             default: 'Użyj ustawień CLI',
@@ -365,7 +371,8 @@ export const pl: TranslationStructure = {
         suggestion: {
             fileLabel: 'PLIK',
             folderLabel: 'FOLDER',
-        }
+        },
+        noMachinesAvailable: 'Brak maszyn',
     },
 
     machineLauncher: {

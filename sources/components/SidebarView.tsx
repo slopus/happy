@@ -9,7 +9,7 @@ import { useHeaderHeight } from '@/utils/responsive';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
-import { FAB } from './FAB';
+import { FABWide } from './FABWide';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 import { Image } from 'expo-image';
@@ -153,7 +153,7 @@ export const SidebarView = React.memo(() => {
     };
 
     const handleNewSession = () => {
-        router.push('/new-session');
+        router.push('/new');
     }
 
     return (
@@ -220,7 +220,7 @@ export const SidebarView = React.memo(() => {
                     )}
                 </View>
             </View>
-            <FAB onPress={handleNewSession} />
+            <FABWide onPress={handleNewSession} />
         </>
     )
 });
