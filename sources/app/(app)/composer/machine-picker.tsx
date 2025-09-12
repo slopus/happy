@@ -10,6 +10,7 @@ import { isMachineOnline } from '@/utils/machineUtils';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
+import { composerSelection } from '../composer';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -87,11 +88,9 @@ export default function MachinePickerScreen() {
     const allOffline = sortedMachines.every(m => !isMachineOnline(m));
     
     const handleSelectMachine = (machineId: string) => {
-        // Replace current route to go back to composer with the selected machine ID
-        router.replace({
-            pathname: '/composer',
-            params: { machineId }
-        });
+        // Set the selection and go back
+        composerSelection.setPendingMachine(machineId);
+        router.back();
     };
     
     if (machines.length === 0) {

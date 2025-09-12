@@ -19,6 +19,7 @@ import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useIsTablet } from '@/utils/responsive';
 import { ProjectGitStatus } from './ProjectGitStatus';
+import { navigateToComposer } from '@/utils/navigation';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -142,6 +143,7 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
     const styles = stylesheet;
     const router = useRouter();
     const machines = useAllMachines();
+    const experiments = useSetting('experiments');
     const [startingSessionFor, setStartingSessionFor] = React.useState<string | null>(null);
 
     const machinesMap = React.useMemo(() => {
@@ -153,6 +155,16 @@ export function ActiveSessionsGroupCompact({ sessions, selectedSessionId }: Acti
     }, [machines]);
 
     const handleStartSession = async (machineId: string, path: string) => {
+        // If experiments enabled, use composer
+        if (experiments) {
+            navigateToComposer({ 
+                machineId: machineId,
+                selectedPath: path || '~'
+            });
+            return;
+        }
+        
+        // Otherwise use classic flow
         try {
             setStartingSessionFor(`${machineId}-${path}`);
             // Resolve to absolute path using machine info if available

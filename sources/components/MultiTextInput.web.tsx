@@ -39,6 +39,9 @@ interface MultiTextInputProps {
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
+    onSubmitEditing?: () => void;
+    blurOnSubmit?: boolean;
+    returnKeyType?: 'done' | 'go' | 'next' | 'search' | 'send' | 'none' | 'previous' | 'default';
 }
 
 export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
@@ -49,7 +52,9 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         maxHeight = 120,
         onKeyPress,
         onSelectionChange,
-        onStateChange
+        onStateChange,
+        onSubmitEditing,
+        blurOnSubmit
     } = props;
     
     const { theme } = useUnistyles();
@@ -59,9 +64,19 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     const maxRows = Math.floor(maxHeight / 24);
 
     const handleKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (!onKeyPress) return;
-
         const key = e.key;
+        
+        // Handle Enter key for submission (without Shift)
+        if (key === 'Enter' && !e.shiftKey && onSubmitEditing) {
+            e.preventDefault();
+            onSubmitEditing();
+            if (blurOnSubmit) {
+                textareaRef.current?.blur();
+            }
+            return;
+        }
+        
+        if (!onKeyPress) return;
         
         // Map browser key names to our normalized format
         let normalizedKey: SupportedKey | null = null;
@@ -101,7 +116,7 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                 e.preventDefault();
             }
         }
-    }, [onKeyPress]);
+    }, [onKeyPress, onSubmitEditing, blurOnSubmit]);
 
     const handleChange = React.useCallback((e: React.ChangeEvent<HTMLTextAreaElement>) => {
         const text = e.target.value;

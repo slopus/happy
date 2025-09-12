@@ -1,4 +1,4 @@
-import { useSessionListViewData, useEntitlement, useSocketStatus, useSetting } from '@/sync/storage';
+import { useSessionListViewData, useEntitlement, useSocketStatus, useSetting, useAllMachines } from '@/sync/storage';
 import * as React from 'react';
 import { Text, View, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -12,6 +12,8 @@ import { StatusDot } from './StatusDot';
 import { FAB } from './FAB';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { navigateToComposer } from '@/utils/navigation';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { UpdateBanner } from './UpdateBanner';
@@ -109,6 +111,8 @@ export const SidebarView = React.memo(() => {
     const headerHeight = useHeaderHeight();
     const socketStatus = useSocketStatus();
     const realtimeStatus = useRealtimeStatus();
+    const experiments = useSetting('experiments');
+    const machines = useAllMachines();
 
     // Get connection status styling (matching sessionUtils.ts pattern)
     const getConnectionStatus = () => {
@@ -153,7 +157,28 @@ export const SidebarView = React.memo(() => {
     };
     
     const handleNewSession = () => {
-        router.push('/composer');
+        if (experiments) {
+            // Use new composer flow (experimental)
+            // Quick start: If there's only one online machine, prefill it
+            const onlineMachines = machines.filter(m => isMachineOnline(m));
+            if (onlineMachines.length === 1) {
+                navigateToComposer({ 
+                    machineId: onlineMachines[0].id,
+                    selectedPath: '~'
+                });
+            } else {
+                navigateToComposer();
+            }
+        } else {
+            // Use existing flow
+            // If there's only one online machine, go directly to it
+            const onlineMachines = machines.filter(m => isMachineOnline(m));
+            if (onlineMachines.length === 1) {
+                router.push(`/machine/${onlineMachines[0].id}`);
+            } else {
+                router.push('/new-session');
+            }
+        }
     }
 
     return (

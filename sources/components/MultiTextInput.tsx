@@ -38,6 +38,9 @@ interface MultiTextInputProps {
     onKeyPress?: OnKeyPressCallback;
     onSelectionChange?: (selection: { start: number; end: number }) => void;
     onStateChange?: (state: TextInputState) => void;
+    onSubmitEditing?: () => void;
+    blurOnSubmit?: boolean;
+    returnKeyType?: 'done' | 'go' | 'next' | 'search' | 'send' | 'none' | 'previous' | 'default';
 }
 
 export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextInputProps>((props, ref) => {
@@ -48,7 +51,10 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
         maxHeight = 120,
         onKeyPress,
         onSelectionChange,
-        onStateChange
+        onStateChange,
+        onSubmitEditing,
+        blurOnSubmit,
+        returnKeyType
     } = props;
 
     const { theme } = useUnistyles();
@@ -199,11 +205,13 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
                 onChangeText={handleTextChange}
                 onKeyPress={handleKeyPress}
                 onSelectionChange={handleSelectionChange}
+                onSubmitEditing={onSubmitEditing}
+                blurOnSubmit={blurOnSubmit}
+                returnKeyType={returnKeyType || "default"}
                 multiline={true}
                 autoCapitalize="sentences"
                 autoCorrect={true}
                 keyboardType="default"
-                returnKeyType="default"
                 autoComplete="off"
                 textContentType="none"
                 submitBehavior="newline"

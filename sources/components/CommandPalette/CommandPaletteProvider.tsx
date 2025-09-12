@@ -6,9 +6,11 @@ import { CommandPalette } from './CommandPalette';
 import { Command } from './types';
 import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard.web';
 import { useAuth } from '@/auth/AuthContext';
-import { storage } from '@/sync/storage';
+import { storage, useSetting, useAllMachines } from '@/sync/storage';
 import { useShallow } from 'zustand/react/shallow';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { navigateToComposer } from '@/utils/navigation';
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();
@@ -16,6 +18,8 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
     const sessions = storage(useShallow((state) => state.sessions));
     const commandPaletteEnabled = storage(useShallow((state) => state.localSettings.commandPaletteEnabled));
     const navigateToSession = useNavigateToSession();
+    const experiments = useSetting('experiments');
+    const machines = useAllMachines();
 
     // Define available commands
     const commands = useMemo((): Command[] => {
@@ -29,7 +33,28 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
                 category: 'Sessions',
                 shortcut: '⌘N',
                 action: () => {
-                    router.push('/composer');
+                    if (experiments) {
+                        // Use new composer flow (experimental)
+                        // Quick start: If there's only one online machine, prefill it
+                        const onlineMachines = machines.filter(m => isMachineOnline(m));
+                        if (onlineMachines.length === 1) {
+                            navigateToComposer({ 
+                                machineId: onlineMachines[0].id,
+                                selectedPath: '~'
+                            });
+                        } else {
+                            navigateToComposer();
+                        }
+                    } else {
+                        // Use existing flow
+                        // If there's only one online machine, go directly to it
+                        const onlineMachines = machines.filter(m => isMachineOnline(m));
+                        if (onlineMachines.length === 1) {
+                            router.push(`/machine/${onlineMachines[0].id}`);
+                        } else {
+                            router.push('/new-session');
+                        }
+                    }
                 }
             },
             {
@@ -121,7 +146,7 @@ export function CommandPaletteProvider({ children }: { children: React.ReactNode
         }
 
         return cmds;
-    }, [router, logout, sessions]);
+    }, [router, logout, sessions, experiments, machines]);
 
     const showCommandPalette = useCallback(() => {
         if (Platform.OS !== 'web' || !commandPaletteEnabled) return;

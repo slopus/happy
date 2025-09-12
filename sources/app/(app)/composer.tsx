@@ -1,26 +1,49 @@
 import * as React from 'react';
 import { 
     View, 
-    Text, 
+    Text,
     Pressable, 
-    Platform, 
-    ScrollView,
+    Platform,
     KeyboardAvoidingView
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
-import { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import { t } from '@/text';
-import { useAllMachines, storage } from '@/sync/storage';
+import { useAllMachines } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { Modal as AlertModal } from '@/modal';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { MultiTextInput, MultiTextInputHandle } from '@/components/MultiTextInput';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useNavigation, Stack, useFocusEffect } from 'expo-router';
 import { sync } from '@/sync/sync';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { navigateToSession } from '@/utils/navigation';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
 
+
+// Simple temporary state for passing selections back from picker screens
+let pendingMachineId: string | null = null;
+let pendingPath: string | null = null;
+
+export const composerSelection = {
+    setPendingMachine: (machineId: string) => {
+        pendingMachineId = machineId;
+    },
+    setPendingPath: (path: string) => {
+        pendingPath = path;
+    },
+    consumePendingMachine: () => {
+        const value = pendingMachineId;
+        pendingMachineId = null;
+        return value;
+    },
+    consumePendingPath: () => {
+        const value = pendingPath;
+        pendingPath = null;
+        return value;
+    }
+};
 
 const PERMISSION_MODES = [
     { id: 'default' as const, label: 'Default', icon: 'shield-checkmark-outline' as const },
@@ -34,91 +57,70 @@ const PERMISSION_MODES = [
 
 type PermissionMode = typeof PERMISSION_MODES[number]['id'];
 
-const stylesheet = StyleSheet.create((theme, runtime) => ({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
         backgroundColor: theme.colors.surface,
     },
-    header: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderBottomWidth: 0.5,
-        borderBottomColor: theme.colors.divider,
-    },
-    headerButton: {
-        fontSize: 17,
-        ...Typography.default(),
-    },
-    headerButtonCancel: {
-        color: theme.colors.textSecondary,
-    },
-    headerButtonCreate: {
-        color: theme.colors.textLink,
-    },
-    headerButtonDisabled: {
-        opacity: 0.3,
-    },
-    headerTitle: {
-        fontSize: 17,
-        ...Typography.default('semiBold'),
-        color: theme.colors.text,
-    },
     contentContainer: {
         flex: 1,
+    },
+    placeholderContainer: {
+        flex: 1,
+    },
+    inputContainer: {
         backgroundColor: theme.colors.input.background,
+        borderRadius: 20,
+        paddingTop: 12,
+        paddingHorizontal: 12,
+        paddingBottom: 8,
+        marginHorizontal: 12,
+        marginBottom: 12,
     },
     inputWrapper: {
-        flex: 1,
-        paddingHorizontal: 16,
-        paddingVertical: 12,
+        minHeight: 60,
+        maxHeight: 300,
     },
-    bottomContainer: {
-        backgroundColor: theme.colors.surface,
-        borderTopWidth: 0.5,
-        borderTopColor: theme.colors.divider,
-    },
-    pillsScroll: {
-        flexGrow: 0,
-    },
-    pillsContainer: {
-        flexDirection: 'row',
-        paddingHorizontal: 16,
-        paddingVertical: 12,
-        gap: 8,
-    },
-    pill: {
+    bottomRow: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: theme.colors.surfaceHighest,
-        paddingHorizontal: 12,
-        paddingVertical: 8,
-        borderRadius: 16,
-        gap: 6,
+        marginTop: 8,
+        gap: 4,
     },
-    pillPressed: {
+    iconButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingHorizontal: 10,
+        paddingVertical: 6,
+        borderRadius: 16,
+        backgroundColor: theme.colors.surfaceHighest,
+        gap: 4,
+    },
+    iconButtonText: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+    },
+    iconButtonPressed: {
         backgroundColor: theme.colors.surfacePressed,
     },
-    pillIcon: {
-        marginRight: 2,
+    iconButtonOffline: {
+        opacity: 0.5,
     },
-    pillText: {
-        fontSize: 14,
-        color: theme.colors.text,
-        ...Typography.default(),
+    spacer: {
+        flex: 1,
     },
-    pillValue: {
-        fontSize: 14,
-        color: theme.colors.textSecondary,
-        ...Typography.default(),
+    sendButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
     },
-    pillDot: {
-        width: 6,
-        height: 6,
-        borderRadius: 3,
-        backgroundColor: theme.colors.status.disconnected,
+    sendButtonActive: {
+        backgroundColor: theme.colors.button.primary.background,
+    },
+    sendButtonInactive: {
+        backgroundColor: theme.colors.button.primary.disabled,
     },
 }));
 
@@ -126,8 +128,8 @@ export default function ComposerScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
+    const navigation = useNavigation();
     const params = useLocalSearchParams<{ machineId?: string; selectedPath?: string }>();
-    const safeArea = useSafeAreaInsets();
     const machines = useAllMachines();
     const inputRef = useRef<MultiTextInputHandle>(null);
     
@@ -145,45 +147,83 @@ export default function ComposerScreen() {
     const [selectedPermission, setSelectedPermission] = useState<PermissionMode>('default');
     const [isCreating, setIsCreating] = useState(false);
     
-    // Update state when params change (when returning from pickers)
+    // Set navigation title and subtitle
+    useLayoutEffect(() => {
+        // Only show subtitle if path is set and not the default
+        const shouldShowPath = selectedPath && selectedPath !== '~';
+        const displayPath = shouldShowPath 
+            ? formatPathRelativeToHome(selectedPath, selectedMachine?.metadata?.homeDir)
+            : undefined;
+        
+        navigation.setOptions({
+            headerTitle: t('navigation.newTask') || 'New Task',
+            headerSubtitle: displayPath,
+        });
+    }, [navigation, selectedPath, selectedMachine]);
+    
+    // Handle selections when returning from picker screens
+    useFocusEffect(
+        useCallback(() => {
+            // Check for pending path selection first (from path picker)
+            const pendingPath = composerSelection.consumePendingPath();
+            if (pendingPath) {
+                setSelectedPath(pendingPath);
+                // Path picker also sends back machine ID to preserve it
+                const pendingMachineId = composerSelection.consumePendingMachine();
+                if (pendingMachineId) {
+                    const machine = machines.find(m => m.id === pendingMachineId);
+                    if (machine) {
+                        setSelectedMachine(machine);
+                    }
+                }
+                return;
+            }
+            
+            // Check for pending machine selection (from machine picker)
+            const pendingMachineId = composerSelection.consumePendingMachine();
+            if (pendingMachineId) {
+                const machine = machines.find(m => m.id === pendingMachineId);
+                if (machine) {
+                    setSelectedMachine(machine);
+                    // Reset path when switching machine from machine picker
+                    setSelectedPath('~');
+                }
+            }
+        }, [machines])
+    );
+    
+    // Handle initial params from navigation
     useEffect(() => {
-        if (params.machineId) {
+        if (params.machineId && !selectedMachine) {
             const machine = machines.find(m => m.id === params.machineId);
-            if (machine && selectedMachine?.id !== machine.id) {
+            if (machine) {
                 setSelectedMachine(machine);
-                // Reset path to default when switching to a different machine
-                setSelectedPath('~');
             }
         }
-        if (params.selectedPath) {
+        if (params.selectedPath && selectedPath === '~') {
             setSelectedPath(params.selectedPath);
         }
     }, [params.machineId, params.selectedPath, machines]);
     
-    // Focus input on mount
-    useEffect(() => {
-        inputRef.current?.focus();
-    }, []);
-    
-    const handleCancel = useCallback(() => {
-        router.back();
-    }, [router]);
+    // Remove auto-focus to prevent animation issues
+    // User can tap to focus when ready
     
     const handleCreate = useCallback(async () => {
         if (!message.trim() || !selectedMachine || isCreating) return;
         
         setIsCreating(true);
         try {
+            // Resolve ~ to absolute path before sending to RPC
+            const absolutePath = resolveAbsolutePath(selectedPath, selectedMachine.metadata?.homeDir);
             const result = await machineSpawnNewSession({
                 machineId: selectedMachine.id,
-                directory: selectedPath === '~' ? '' : selectedPath,
+                directory: absolutePath,
                 approvedNewDirectoryCreation: false
             });
             
             if (result.type === 'success') {
-                // Navigate to the new session and send message
-                router.back(); // Close composer
-                router.push(`/session/${result.sessionId}`);
+                // Replace current screen with the new session
+                navigateToSession(result.sessionId);
                 
                 // Send the message after a short delay
                 setTimeout(() => {
@@ -192,32 +232,33 @@ export default function ComposerScreen() {
             } else if (result.type === 'requestToApproveDirectoryCreation') {
                 const approved = await AlertModal.confirm(
                     t('modals.createDirectory.title'),
-                    t('modals.createDirectory.message', { directory: result.directory })
+                    `${t('modals.createDirectory.message')}: ${result.directory}`
                 );
                 
                 if (approved) {
+                    // Resolve ~ to absolute path before sending to RPC
+                    const absolutePath = resolveAbsolutePath(selectedPath, selectedMachine.metadata?.homeDir);
                     const retryResult = await machineSpawnNewSession({
                         machineId: selectedMachine.id,
-                        directory: selectedPath === '~' ? '' : selectedPath,
+                        directory: absolutePath,
                         approvedNewDirectoryCreation: true
                     });
                     
                     if (retryResult.type === 'success') {
-                        router.back();
-                        router.push(`/session/${retryResult.sessionId}`);
+                        navigateToSession(retryResult.sessionId);
                         setTimeout(() => {
                             sync.sendMessage(retryResult.sessionId, message.trim());
                         }, 100);
                     }
                 }
             } else if (result.type === 'error') {
-                await AlertModal.alert(
+                AlertModal.alert(
                     'Error',
                     result.errorMessage
                 );
             }
         } catch (error) {
-            await AlertModal.alert(
+            AlertModal.alert(
                 'Error',
                 error instanceof Error ? error.message : 'An unexpected error occurred'
             );
@@ -229,7 +270,9 @@ export default function ComposerScreen() {
     const handleSelectMachine = useCallback(() => {
         router.push({
             pathname: '/composer/machine-picker',
-            params: { selectedId: selectedMachine?.id }
+            params: { 
+                selectedId: selectedMachine?.id
+            }
         });
     }, [router, selectedMachine]);
     
@@ -248,134 +291,124 @@ export default function ComposerScreen() {
     }, [router, selectedMachine, selectedPath]);
     
     const handleSelectPermission = useCallback(() => {
-        AlertModal.alert('Coming Soon', 'Permission selection will be implemented');
-    }, []);
+        // Cycle through permission modes for now
+        const currentIndex = PERMISSION_MODES.findIndex(m => m.id === selectedPermission);
+        const nextIndex = (currentIndex + 1) % PERMISSION_MODES.length;
+        setSelectedPermission(PERMISSION_MODES[nextIndex].id);
+    }, [selectedPermission]);
     
     const canCreate = message.trim().length > 0 && selectedMachine && !isCreating;
+    const isMachineOnlineStatus = selectedMachine ? isMachineOnline(selectedMachine) : false;
     
     return (
-        <View style={styles.container}>
-            <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                keyboardVerticalOffset={0}
-            >
-                <View style={[styles.container, { paddingTop: safeArea.top }]}>
+        <>
+            <Stack.Screen
+                options={{
+                    headerTitle: t('navigation.newTask') || 'New Task',
+                }}
+            />
+            <View style={styles.container}>
+                <KeyboardAvoidingView
+                    style={{ flex: 1 }}
+                    behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                    keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+                >
+                    <View style={styles.contentContainer}>
+                        {/* Spacer - takes up the rest of the screen */}
+                        <View style={styles.placeholderContainer} />
                         
-                        {/* Header */}
-                        <View style={styles.header}>
-                            <Pressable onPress={handleCancel} disabled={isCreating}>
-                                <Text style={[styles.headerButton, styles.headerButtonCancel]}>
-                                    {t('common.cancel')}
-                                </Text>
-                            </Pressable>
-                            
-                            <Text style={styles.headerTitle}>New Session</Text>
-                            
-                            <Pressable onPress={handleCreate} disabled={!canCreate}>
-                                <Text style={[
-                                    styles.headerButton, 
-                                    styles.headerButtonCreate,
-                                    !canCreate && styles.headerButtonDisabled
-                                ]}>
-                                    {t('common.create')}
-                                </Text>
-                            </Pressable>
-                        </View>
-                        
-                        {/* Input Area */}
-                        <View style={styles.contentContainer}>
+                        {/* Input at bottom like session screen */}
+                        <View style={styles.inputContainer}>
+                            {/* Input Area */}
                             <View style={styles.inputWrapper}>
                                 <MultiTextInput
                                     ref={inputRef}
-                                    placeholder={t('session.inputPlaceholder')}
+                                    placeholder={t('composer.placeholder') || 'Describe a task...'}
                                     value={message}
                                     onChangeText={setMessage}
-                                    maxHeight={400}
+                                    maxHeight={300}
                                 />
                             </View>
-                        </View>
-                        
-                        {/* Bottom Pills - Above keyboard */}
-                        <View style={[styles.bottomContainer, { paddingBottom: safeArea.bottom || 8 }]}>
-                            <ScrollView 
-                                horizontal 
-                                showsHorizontalScrollIndicator={false}
-                                style={styles.pillsScroll}
-                                contentContainerStyle={styles.pillsContainer}
-                                keyboardShouldPersistTaps="handled"
-                            >
-                                {/* Path Pill */}
+                            
+                            {/* Bottom Row with Icon Pills and Send Button */}
+                            <View style={styles.bottomRow}>
+                                {/* Machine Selector */}
                                 <Pressable 
                                     style={({ pressed }) => [
-                                        styles.pill,
-                                        pressed && styles.pillPressed
-                                    ]}
-                                    onPress={handleSelectPath}
-                                >
-                                    <Ionicons 
-                                        name="folder-outline" 
-                                        size={16} 
-                                        color={theme.colors.textSecondary}
-                                        style={styles.pillIcon}
-                                    />
-                                    <Text style={styles.pillText}>{selectedPath}</Text>
-                                </Pressable>
-                                
-                                {/* Machine Pill */}
-                                <Pressable 
-                                    style={({ pressed }) => [
-                                        styles.pill,
-                                        pressed && styles.pillPressed
+                                        styles.iconButton,
+                                        pressed && styles.iconButtonPressed,
+                                        !isMachineOnlineStatus && styles.iconButtonOffline
                                     ]}
                                     onPress={handleSelectMachine}
                                 >
                                     <Ionicons 
-                                        name="desktop-outline" 
-                                        size={16} 
-                                        color={theme.colors.textSecondary}
-                                        style={styles.pillIcon}
+                                        name="desktop" 
+                                        size={14} 
+                                        color={isMachineOnlineStatus ? theme.colors.text : theme.colors.textSecondary}
                                     />
-                                    {selectedMachine && isMachineOnline(selectedMachine) ? (
-                                        <Text style={styles.pillText}>
-                                            {selectedMachine.metadata?.displayName || 
-                                             selectedMachine.metadata?.host || 
-                                             selectedMachine.id}
+                                    {selectedMachine && (
+                                        <Text style={styles.iconButtonText} numberOfLines={1}>
+                                            {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}
                                         </Text>
-                                    ) : (
-                                        <>
-                                            <Text style={styles.pillValue}>
-                                                {selectedMachine?.metadata?.displayName || 
-                                                 selectedMachine?.metadata?.host || 
-                                                 'No machine'}
-                                            </Text>
-                                            <View style={styles.pillDot} />
-                                        </>
                                     )}
                                 </Pressable>
                                 
-                                {/* Permission Pill */}
+                                {/* Path Selector */}
                                 <Pressable 
                                     style={({ pressed }) => [
-                                        styles.pill,
-                                        pressed && styles.pillPressed
+                                        styles.iconButton,
+                                        pressed && styles.iconButtonPressed
+                                    ]}
+                                    onPress={handleSelectPath}
+                                >
+                                    <Ionicons 
+                                        name="folder" 
+                                        size={14} 
+                                        color={theme.colors.text}
+                                    />
+                                    <Text style={styles.iconButtonText} numberOfLines={1}>
+                                        {selectedPath === '~' ? 'Set' : formatPathRelativeToHome(selectedPath, selectedMachine?.metadata?.homeDir)}
+                                    </Text>
+                                </Pressable>
+                                
+                                {/* Permission Mode Selector */}
+                                <Pressable 
+                                    style={({ pressed }) => [
+                                        styles.iconButton,
+                                        pressed && styles.iconButtonPressed
                                     ]}
                                     onPress={handleSelectPermission}
                                 >
                                     <Ionicons 
-                                        name={PERMISSION_MODES.find(m => m.id === selectedPermission)?.icon || 'shield-checkmark-outline'}
-                                        size={16} 
-                                        color={theme.colors.textSecondary}
-                                        style={styles.pillIcon}
+                                        name={PERMISSION_MODES.find(m => m.id === selectedPermission)?.icon || 'shield-checkmark'} 
+                                        size={14} 
+                                        color={theme.colors.text}
                                     />
-                                    <Text style={styles.pillText}>
-                                        {PERMISSION_MODES.find(m => m.id === selectedPermission)?.label || 'Default'}
-                                    </Text>
                                 </Pressable>
-                            </ScrollView>
+                                
+                                {/* Spacer */}
+                                <View style={styles.spacer} />
+                                
+                                {/* Send Button */}
+                                <Pressable 
+                                    style={[
+                                        styles.sendButton,
+                                        canCreate ? styles.sendButtonActive : styles.sendButtonInactive
+                                    ]}
+                                    onPress={handleCreate} 
+                                    disabled={!canCreate}
+                                >
+                                    <Ionicons 
+                                        name="arrow-up" 
+                                        size={16} 
+                                        color={theme.colors.button.primary.tint}
+                                    />
+                                </Pressable>
+                            </View>
                         </View>
-                </View>
-            </KeyboardAvoidingView>
-        </View>
+                    </View>
+                </KeyboardAvoidingView>
+            </View>
+        </>
     );
 }

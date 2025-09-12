@@ -1,12 +1,5 @@
-import { useRouter } from "expo-router"
+import { navigateToSession } from '@/utils/navigation';
 
 export function useNavigateToSession() {
-    const router = useRouter();
-    return (sessionId: string) => {
-        router.navigate(`/session/${sessionId}`, {
-            dangerouslySingular(name, params) {
-                return 'session'
-            },
-        });
-    }
+    return navigateToSession;
 }

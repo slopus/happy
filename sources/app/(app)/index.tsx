@@ -22,6 +22,7 @@ import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 import { isMachineOnline } from '@/utils/machineUtils';
 import { t } from '@/text';
+import { navigateToComposer } from '@/utils/navigation';
 
 export default function Home() {
     const auth = useAuth();
@@ -39,11 +40,32 @@ function Authenticated() {
     const isTablet = useIsTablet();
     const realtimeStatus = useRealtimeStatus();
     const machines = useAllMachines();
+    const experiments = useSetting('experiments');
     const router = useRouter();
 
     const handleNewSession = () => {
-        // Navigate to composer screen
-        router.push('/composer');
+        if (experiments) {
+            // Use new composer flow (experimental)
+            // Quick start: If there's only one online machine, prefill it
+            const onlineMachines = machines.filter(m => isMachineOnline(m));
+            if (onlineMachines.length === 1) {
+                navigateToComposer({ 
+                    machineId: onlineMachines[0].id,
+                    selectedPath: '~'
+                });
+            } else {
+                navigateToComposer();
+            }
+        } else {
+            // Use existing flow
+            // If there's only one online machine, go directly to it
+            const onlineMachines = machines.filter(m => isMachineOnline(m));
+            if (onlineMachines.length === 1) {
+                router.push(`/machine/${onlineMachines[0].id}`);
+            } else {
+                router.push('/new-session');
+            }
+        }
     }
 
     // Empty state in tabled view

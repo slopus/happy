@@ -13,7 +13,7 @@ import { Pressable } from 'react-native';
 import { AgentInput } from '@/components/AgentInput';
 import { Deferred } from '@/components/Deferred';
 import { Session } from '@/sync/storageTypes';
-import { startRealtimeSession, stopRealtimeSession, updateCurrentSessionId } from '@/realtime/RealtimeSession';
+import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { Ionicons } from '@expo/vector-icons';
 import { useIsLandscape, useDeviceType, useHeaderHeight } from '@/utils/responsive';
 import { AgentContentView } from '@/components/AgentContentView';
@@ -153,10 +153,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         // Trigger session sync
         sync.onSessionVisible(sessionId);
 
-        // Update realtime session ID if voice is active to ensure messages go to current session
-        if (realtimeStatus === 'connected') {
-            updateCurrentSessionId(sessionId);
-        }
+        // Voice session is already bound to the correct session ID
 
         // Initialize git status sync for this session
         gitStatusSync.getSync(sessionId);

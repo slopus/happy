@@ -11,6 +11,7 @@ import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { MultiTextInput, MultiTextInputHandle } from '@/components/MultiTextInput';
+import { composerSelection } from '../composer';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -126,14 +127,12 @@ export default function PathPickerScreen() {
     
     const handleSelectPath = () => {
         const pathToUse = customPath.trim() || '~';
-        // Replace current route to go back to composer with the selected path
-        router.replace({
-            pathname: '/composer',
-            params: { 
-                machineId: params.machineId,
-                selectedPath: pathToUse 
-            }
-        });
+        // Set the selection and go back
+        if (params.machineId) {
+            composerSelection.setPendingMachine(params.machineId);
+        }
+        composerSelection.setPendingPath(pathToUse);
+        router.back();
     };
     
     if (!machine) {
@@ -185,6 +184,9 @@ export default function PathPickerScreen() {
                                         paddingTop={8}
                                         paddingBottom={8}
                                         paddingRight={48}
+                                        onSubmitEditing={handleSelectPath}
+                                        blurOnSubmit={true}
+                                        returnKeyType="done"
                                     />
                                     <Pressable
                                         onPress={handleSelectPath}
