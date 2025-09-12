@@ -22,7 +22,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         flex: 1,
     },
     scrollContent: {
-        paddingVertical: 16,
         alignItems: 'center',
     },
     contentWrapper: {
@@ -58,23 +57,6 @@ const stylesheet = StyleSheet.create((theme) => ({
         borderWidth: 0.5,
         borderColor: theme.colors.divider,
     },
-    inlineSendButton: {
-        position: 'absolute',
-        right: 4,
-        top: '50%',
-        transform: [{ translateY: -16 }],
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    inlineSendActive: {
-        backgroundColor: theme.colors.button.primary.background,
-    },
-    inlineSendInactive: {
-        backgroundColor: 'transparent',
-    },
 }));
 
 export default function PathPickerScreen() {
@@ -87,7 +69,6 @@ export default function PathPickerScreen() {
     const inputRef = useRef<MultiTextInputHandle>(null);
 
     const [customPath, setCustomPath] = useState(params.selectedPath || '~');
-    const [showAllPaths, setShowAllPaths] = useState(false);
 
     // Get the selected machine
     const machine = useMemo(() => {
@@ -123,14 +104,13 @@ export default function PathPickerScreen() {
             .map(item => item.path);
     }, [sessions, params.machineId]);
 
-    const pathsToShow = showAllPaths ? recentPaths : recentPaths.slice(0, 5);
 
-    const handleSelectPath = () => {
+    const handleSelectPath = React.useCallback(() => {
         const pathToUse = customPath.trim() || '~';
         // Set the selection and go back
         callbacks.onPathSelected(pathToUse);
         router.back();
-    };
+    }, [customPath, router]);
 
     if (!machine) {
         return (
@@ -139,7 +119,24 @@ export default function PathPickerScreen() {
                     options={{
                         headerShown: true,
                         headerTitle: 'Select Path',
-                        headerBackTitle: t('common.back')
+                        headerBackTitle: t('common.back'),
+                        headerRight: () => (
+                            <Pressable
+                                onPress={handleSelectPath}
+                                disabled={!customPath.trim()}
+                                style={({ pressed }) => ({
+                                    marginRight: 16,
+                                    opacity: pressed ? 0.7 : 1,
+                                    padding: 4,
+                                })}
+                            >
+                                <Ionicons
+                                    name="checkmark"
+                                    size={24}
+                                    color={theme.colors.header.tint}
+                                />
+                            </Pressable>
+                        )
                     }}
                 />
                 <View style={styles.container}>
@@ -155,6 +152,29 @@ export default function PathPickerScreen() {
 
     return (
         <>
+            <Stack.Screen
+                options={{
+                    headerShown: true,
+                    headerTitle: 'Select Path',
+                    headerBackTitle: t('common.back'),
+                    headerRight: () => (
+                        <Pressable
+                            onPress={handleSelectPath}
+                            disabled={!customPath.trim()}
+                            style={({ pressed }) => ({
+                                opacity: pressed ? 0.7 : 1,
+                                padding: 4,
+                            })}
+                        >
+                            <Ionicons
+                                name="checkmark"
+                                size={24}
+                                color={theme.colors.header.tint}
+                            />
+                        </Pressable>
+                    )
+                }}
+            />
             <View style={styles.container}>
                 <ScrollView
                     style={styles.scrollContainer}
@@ -173,36 +193,20 @@ export default function PathPickerScreen() {
                                         maxHeight={76}
                                         paddingTop={8}
                                         paddingBottom={8}
-                                        paddingRight={48}
                                         // onSubmitEditing={handleSelectPath}
                                         // blurOnSubmit={true}
                                         // returnKeyType="done"
                                     />
-                                    <Pressable
-                                        onPress={handleSelectPath}
-                                        disabled={!customPath.trim()}
-                                        style={[
-                                            styles.inlineSendButton,
-                                            customPath.trim() ? styles.inlineSendActive : styles.inlineSendInactive
-                                        ]}
-                                    >
-                                        <Ionicons
-                                            name="checkmark"
-                                            size={16}
-                                            color={customPath.trim() ? theme.colors.button.primary.tint : theme.colors.textSecondary}
-                                        />
-                                    </Pressable>
                                 </View>
                             </View>
                         </ItemGroup>
 
                         {recentPaths.length > 0 && (
                             <ItemGroup title="Recent Paths">
-                                {pathsToShow.map((path, index) => {
+                                {recentPaths.map((path, index) => {
                                     const display = formatPathRelativeToHome(path, machine.metadata?.homeDir);
                                     const isSelected = customPath.trim() === display;
-                                    const isLast = index === pathsToShow.length - 1;
-                                    const hideDivider = isLast && pathsToShow.length <= 5;
+                                    const isLast = index === recentPaths.length - 1;
 
                                     return (
                                         <Item
@@ -222,23 +226,10 @@ export default function PathPickerScreen() {
                                             selected={isSelected}
                                             showChevron={false}
                                             pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
-                                            showDivider={!hideDivider}
+                                            showDivider={!isLast}
                                         />
                                     );
                                 })}
-
-                                {recentPaths.length > 5 && (
-                                    <Item
-                                        title={showAllPaths ? t('machineLauncher.showLess') : t('machineLauncher.showAll', { count: recentPaths.length })}
-                                        onPress={() => setShowAllPaths(!showAllPaths)}
-                                        showChevron={false}
-                                        showDivider={false}
-                                        titleStyle={{
-                                            textAlign: 'center',
-                                            color: (theme as any).dark ? theme.colors.button.primary.tint : theme.colors.button.primary.background
-                                        }}
-                                    />
-                                )}
                             </ItemGroup>
                         )}
 
@@ -266,6 +257,7 @@ export default function PathPickerScreen() {
                                             selected={isSelected}
                                             showChevron={false}
                                             pressableStyle={isSelected ? { backgroundColor: theme.colors.surfaceSelected } : undefined}
+                                            showDivider={index < 3}
                                         />
                                     );
                                 })}
