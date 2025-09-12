@@ -3,7 +3,7 @@
  */
 
 // Minimum required CLI version for full compatibility
-export const MINIMUM_CLI_VERSION = '0.9.0';
+export const MINIMUM_CLI_VERSION = '0.10.0';
 
 /**
  * Compare two semantic version strings
