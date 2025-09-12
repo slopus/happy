@@ -85,7 +85,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         startedBy: options.startedBy || 'terminal',
         // Initialize lifecycle state
         lifecycleState: 'running',
-        lifecycleStateSince: Date.now()
+        lifecycleStateSince: Date.now(),
+        flavor: 'claude'
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     logger.debug(`Session created: ${response.id}`);

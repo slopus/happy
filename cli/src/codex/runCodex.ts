@@ -23,12 +23,14 @@ import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import type { CodexSessionConfig } from './types';
+import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 
 /**
  * Main entry point for the codex command with ink UI
  */
 export async function runCodex(opts: {
     credentials: Credentials;
+    startedBy?: 'daemon' | 'terminal';
 }): Promise<void> {
     type PermissionMode = 'default' | 'read-only' | 'safe-yolo' | 'yolo';
     interface EnhancedMode {
@@ -42,6 +44,9 @@ export async function runCodex(opts: {
 
     const sessionTag = randomUUID();
     const api = await ApiClient.create(opts.credentials);
+
+    // Log startup options
+    logger.debug(`[codex] Starting with options: startedBy=${opts.startedBy || 'terminal'}`);
 
     //
     // Machine
@@ -76,9 +81,9 @@ export async function runCodex(opts: {
         happyHomeDir: configuration.happyHomeDir,
         happyLibDir: projectPath(),
         happyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
-        startedFromDaemon: false,
+        startedFromDaemon: opts.startedBy === 'daemon',
         hostPid: process.pid,
-        startedBy: 'terminal',
+        startedBy: opts.startedBy || 'terminal',
         // Initialize lifecycle state
         lifecycleState: 'running',
         lifecycleStateSince: Date.now(),
@@ -86,6 +91,20 @@ export async function runCodex(opts: {
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
     const session = api.sessionSyncClient(response);
+
+    // Always report to daemon if it exists
+    try {
+        logger.debug(`[START] Reporting session ${response.id} to daemon`);
+        const result = await notifyDaemonSessionStarted(response.id, metadata);
+        if (result.error) {
+            logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
+        } else {
+            logger.debug(`[START] Reported session ${response.id} to daemon`);
+        }
+    } catch (error) {
+        logger.debug('[START] Failed to report to daemon (may not be running):', error);
+    }
+
     const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
         permissionMode: mode.permissionMode,
         model: mode.model,
@@ -216,7 +235,8 @@ export async function runCodex(opts: {
     function findCodexResumeFile(sessionId: string | null): string | null {
         if (!sessionId) return null;
         try {
-            const rootDir = join(os.homedir(), '.codex', 'sessions');
+            const codexHomeDir = process.env.CODEX_HOME || join(os.homedir(), '.codex');
+            const rootDir = join(codexHomeDir, 'sessions');
 
             // Recursively collect all files under the sessions directory
             function collectFilesRecursive(dir: string, acc: string[] = []): string[] {

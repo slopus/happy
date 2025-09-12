@@ -78,6 +78,7 @@
     "@types/ps-list": "^6.2.1",
     "@types/qrcode-terminal": "^0.12.2",
     "@types/react": "^19.1.9",
+    "@types/tmp": "^0.2.6",
     "axios": "^1.10.0",
     "chalk": "^5.4.1",
     "cross-spawn": "^7.0.6",
@@ -93,6 +94,7 @@
     "react": "^19.1.1",
     "socket.io-client": "^4.8.1",
     "tar": "^7.4.3",
+    "tmp": "^0.2.5",
     "tweetnacl": "^1.0.3",
     "zod": "^3.23.8"
   },

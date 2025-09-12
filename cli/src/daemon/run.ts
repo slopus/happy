@@ -1,5 +1,6 @@
 import fs from 'fs/promises';
 import os from 'os';
+import * as tmp from 'tmp';
 
 import { ApiClient } from '@/api/api';
 import { TrackedSession } from './types';
@@ -232,7 +233,32 @@ export async function startDaemon(): Promise<void> {
       }
 
       try {
+
+        // Resolve authentication token if provided
+        let extraEnv: Record<string, string> = {};
+        if (options.token) {
+          if (options.agent === 'codex') {
+
+            // Create a temporary directory for Codex
+            const codexHomeDir = tmp.dirSync();
+
+            // Write the token to the temporary directory
+            fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
+
+            // Set the environment variable for Codex
+            extraEnv = {
+              CODEX_HOME: codexHomeDir.name
+            };
+          } else { // Assuming claude
+            extraEnv = {
+              CLAUDE_CODE_OAUTH_TOKEN: options.token
+            };
+          }
+        }
+
+        // Construct arguments for the CLI
         const args = [
+          options.agent === 'claude' ? 'claude' : 'codex',
           '--happy-starting-mode', 'remote',
           '--started-by', 'daemon'
         ];
@@ -242,8 +268,11 @@ export async function startDaemon(): Promise<void> {
         const happyProcess = spawnHappyCLI(args, {
           cwd: directory,
           detached: true,  // Sessions stay alive when daemon stops
-          stdio: ['ignore', 'pipe', 'pipe']  // Capture stdout/stderr for debugging
-          // env is inherited automatically from parent process
+          stdio: ['ignore', 'pipe', 'pipe'],  // Capture stdout/stderr for debugging
+          env: {
+            ...process.env,
+            ...extraEnv
+          }
         });
 
         // Log output for debugging

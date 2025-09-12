@@ -81,10 +81,19 @@ import { execFileSync } from 'node:child_process'
     // Handle codex command
     try {
       const { runCodex } = await import('@/codex/runCodex');
+      
+      // Parse startedBy argument
+      let startedBy: 'daemon' | 'terminal' | undefined = undefined;
+      for (let i = 1; i < args.length; i++) {
+        if (args[i] === '--started-by') {
+          startedBy = args[++i] as 'daemon' | 'terminal';
+        }
+      }
+      
       const {
         credentials
       } = await authAndSetupMachineIfNeeded();
-      await runCodex({credentials});
+      await runCodex({credentials, startedBy});
       // Do not force exit here; allow instrumentation to show lingering handles
     } catch (error) {
       console.error(chalk.red('Error:'), error instanceof Error ? error.message : 'Unknown error')
@@ -232,6 +241,12 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
     }
     return;
   } else {
+
+    // If the first argument is claude, remove it
+    if (args.length > 0 && args[0] === 'claude') {
+      args.shift()
+    }
+
     // Parse command line arguments for main command
     const options: StartOptions = {}
     let showHelp = false

@@ -119,9 +119,11 @@ export interface SpawnSessionOptions {
     directory: string;
     sessionId?: string;
     approvedNewDirectoryCreation?: boolean;
+    agent?: 'claude' | 'codex';
+    token?: string;
 }
 
-export type SpawnSessionResult = 
+export type SpawnSessionResult =
     | { type: 'success'; sessionId: string }
     | { type: 'requestToApproveDirectoryCreation'; directory: string }
     | { type: 'error'; errorMessage: string };
