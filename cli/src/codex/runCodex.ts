@@ -24,6 +24,9 @@ import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import type { CodexSessionConfig } from './types';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
+import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
+import { delay } from "@/utils/time";
+import { stopCaffeinate } from "@/utils/caffeinate";
 
 /**
  * Main entry point for the codex command with ink UI
@@ -189,8 +192,46 @@ export async function runCodex(opts: {
         }
     }
 
+    const cleanup = async () => {
+        logger.debug('[Codex] Cleanup start');
+        await handleAbort();
+        logger.debug('[Codex] Cleanup completed');
+
+        try {
+            // Update lifecycle state to archived before closing
+            if (session) {
+                session.updateMetadata((currentMetadata) => ({
+                    ...currentMetadata,
+                    lifecycleState: 'archived',
+                    lifecycleStateSince: Date.now(),
+                    archivedBy: 'cli',
+                    archiveReason: 'User terminated'
+                }));
+                
+                // Send session death message
+                session.sendSessionDeath();
+                await session.flush();
+                await session.close();
+            }
+
+            // Stop caffeinate
+            stopCaffeinate();
+
+            // Stop Happy MCP server
+            happyServer.stop();
+
+            logger.debug('[Codex] Cleanup complete, exiting');
+            process.exit(0);
+        } catch (error) {
+            logger.debug('[Codex] Error during cleanup:', error);
+            process.exit(1);
+        }
+    };
+
     // Register abort handler
     session.rpcHandlerManager.registerHandler('abort', handleAbort);
+
+    registerKillSessionHandler(session.rpcHandlerManager, cleanup);
 
     //
     // Initialize Ink UI
