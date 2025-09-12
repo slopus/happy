@@ -5,7 +5,7 @@ import { AvatarSkia } from "./AvatarSkia";
 import { AvatarGradient } from "./AvatarGradient";
 import { AvatarBrutalist } from "./AvatarBrutalist";
 import { useSetting } from '@/sync/storage';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 interface AvatarProps {
     id: string;
@@ -45,6 +45,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
     const { flavor, size = 48, ...avatarProps } = props;
     const avatarStyle = useSetting('avatarStyle');
     const showFlavorIcons = useSetting('showFlavorIcons');
+    const { theme } = useUnistyles();
     
     // Determine which avatar variant to render
     let AvatarComponent: React.ComponentType<any>;
@@ -81,8 +82,9 @@ export const Avatar = React.memo((props: AvatarProps) => {
                 }]}>
                     <Image
                         source={flavorIcon}
-                        style={{ width: iconSize, height: iconSize }}
+                        style={{ width: iconSize, height: iconSize, tintColor: effectiveFlavor === 'codex' ? theme.colors.text : undefined }}
                         contentFit="contain"
+                        tintColor={effectiveFlavor === 'codex' ? theme.colors.text : undefined}
                     />
                 </View>
             </View>
