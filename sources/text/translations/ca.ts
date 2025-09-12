@@ -208,6 +208,8 @@ export const ca: TranslationStructure = {
         noMachinesFound: 'No s\'han trobat màquines. Inicia una sessió de Happy al teu ordinador primer.',
         allMachinesOffline: 'Totes les màquines estan fora de línia',
         machineDetails: 'Veure detalls de la màquina →',
+        noMachineSelected: 'Cap màquina seleccionada',
+        noPathSelected: 'Cap camí seleccionat',
         directoryDoesNotExist: 'Directori no trobat',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `El directori ${directory} no existeix. Vols crear-lo?`,
         sessionStarted: 'Sessió iniciada',

@@ -20,6 +20,11 @@ export const SettingsSchema = z.object({
     reviewPromptLikedApp: z.boolean().nullish().describe('Whether user liked the app when asked'),
     voiceAssistantLanguage: z.string().nullable().describe('Preferred language for voice assistant (null for auto-detect)'),
     preferredLanguage: z.string().nullable().describe('Preferred UI language (null for auto-detect from device locale)'),
+    recentMachinePaths: z.array(z.object({
+        machineId: z.string(),
+        path: z.string()
+    })).describe('Last 10 machine-path combinations, ordered by most recent first'),
+    lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
 });
 
 //
@@ -57,6 +62,8 @@ export const settingsDefaults: Settings = {
     reviewPromptLikedApp: null,
     voiceAssistantLanguage: null,
     preferredLanguage: null,
+    recentMachinePaths: [],
+    lastUsedAgent: null,
 };
 Object.freeze(settingsDefaults);
 
