@@ -8,8 +8,8 @@ import { MessageMetaSchema, MessageMeta } from './typesMessageMeta';
 // Usage data type from Claude API
 const usageDataSchema = z.object({
     input_tokens: z.number(),
-    cache_creation_input_tokens: z.number(),
-    cache_read_input_tokens: z.number(),
+    cache_creation_input_tokens: z.number().optional(),
+    cache_read_input_tokens: z.number().optional(),
     output_tokens: z.number(),
     service_tier: z.string().optional(),
 });
