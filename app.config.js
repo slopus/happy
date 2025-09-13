@@ -14,8 +14,8 @@ export default {
     expo: {
         name,
         slug: "happy",
-        version: "1.4.1",
-        runtimeVersion: "16",
+        version: "1.5.0",
+        runtimeVersion: "17",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
         scheme: "happy",
@@ -83,6 +83,7 @@ export default {
                     root: "./sources/app"
                 }
             ],
+            "expo-font",
             "expo-updates",
             "expo-asset",
             "expo-localization",
