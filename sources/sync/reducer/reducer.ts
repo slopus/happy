@@ -1087,9 +1087,9 @@ function processUsageData(state: ReducerState, usage: UsageData, timestamp: numb
         state.latestUsage = {
             inputTokens: usage.input_tokens,
             outputTokens: usage.output_tokens,
-            cacheCreation: usage.cache_creation_input_tokens,
-            cacheRead: usage.cache_read_input_tokens,
-            contextSize: usage.cache_creation_input_tokens + usage.cache_read_input_tokens + usage.input_tokens,
+            cacheCreation: usage.cache_creation_input_tokens || 0,
+            cacheRead: usage.cache_read_input_tokens || 0,
+            contextSize: (usage.cache_creation_input_tokens || 0) + (usage.cache_read_input_tokens || 0) + usage.input_tokens,
             timestamp: timestamp
         };
     }
