@@ -1,0 +1,107 @@
+diff --git a/node_modules/react-native/React/Base/UIKitProxies/RCTWindowSafeAreaProxy.mm b/node_modules/react-native/React/Base/UIKitProxies/RCTWindowSafeAreaProxy.mm
+index 440514a..ab4c2cc 100644
+--- a/node_modules/react-native/React/Base/UIKitProxies/RCTWindowSafeAreaProxy.mm
++++ b/node_modules/react-native/React/Base/UIKitProxies/RCTWindowSafeAreaProxy.mm
+@@ -35,6 +35,12 @@ - (void)startObservingSafeArea
+   if (!_isObserving) {
+     _isObserving = YES;
+     _currentSafeAreaInsets = RCTKeyWindow().safeAreaInsets;
++    // Check if iPad app running on macOS
++    if (@available(iOS 14.0, *)) {
++    if ([NSProcessInfo processInfo].isiOSAppOnMac) {
++        _currentSafeAreaInsets.top = 0;
++      }
++    }
+     [[NSNotificationCenter defaultCenter] addObserver:self
+                                              selector:@selector(_interfaceFrameDidChange)
+                                                  name:RCTUserInterfaceStyleDidChangeNotification
+@@ -56,6 +62,12 @@ - (UIEdgeInsets)currentSafeAreaInsets
+ #if !TARGET_OS_MACCATALYST
+   RCTUnsafeExecuteOnMainQueueSync(^{
+     insets = [UIApplication sharedApplication].delegate.window.safeAreaInsets;
++    // Check if iPad app running on macOS
++    if (@available(iOS 14.0, *)) {
++      if ([NSProcessInfo processInfo].isiOSAppOnMac) {
++        insets.top = 0;
++      }
++    }
+   });
+ #endif
+   return insets;
+@@ -65,6 +77,12 @@ - (void)_interfaceFrameDidChange
+ {
+   std::lock_guard<std::mutex> lock(_mutex);
+   _currentSafeAreaInsets = RCTKeyWindow().safeAreaInsets;
++  // Check if iPad app running on macOS
++  if (@available(iOS 14.0, *)) {
++    if ([NSProcessInfo processInfo].isiOSAppOnMac) {
++      _currentSafeAreaInsets.top = 0;
++    }
++  }
+ }
+ 
+ @end
+diff --git a/node_modules/react-native/React/CoreModules/RCTDevLoadingView.mm b/node_modules/react-native/React/CoreModules/RCTDevLoadingView.mm
+index 3022f42..557b147 100644
+--- a/node_modules/react-native/React/CoreModules/RCTDevLoadingView.mm
++++ b/node_modules/react-native/React/CoreModules/RCTDevLoadingView.mm
+@@ -140,6 +140,12 @@ - (void)showMessage:(NSString *)message color:(UIColor *)color backgroundColor:(
+     [self->_container addSubview:self->_label];
+ 
+     CGFloat topSafeAreaHeight = mainWindow.safeAreaInsets.top;
++    // Check if iPad app running on macOS
++    if (@available(iOS 14.0, *)) {
++    if ([NSProcessInfo processInfo].isiOSAppOnMac) {
++        topSafeAreaHeight = 0;
++      }
++    }
+     CGFloat height = topSafeAreaHeight + 25;
+     self->_window.frame = CGRectMake(0, 0, mainWindow.frame.size.width, height);
+ 
+diff --git a/node_modules/react-native/React/CoreModules/RCTPerfMonitor.mm b/node_modules/react-native/React/CoreModules/RCTPerfMonitor.mm
+index 824075b..16c16f6 100644
+--- a/node_modules/react-native/React/CoreModules/RCTPerfMonitor.mm
++++ b/node_modules/react-native/React/CoreModules/RCTPerfMonitor.mm
+@@ -172,6 +172,12 @@ - (UIView *)container
+ {
+   if (!_container) {
+     UIEdgeInsets safeInsets = RCTKeyWindow().safeAreaInsets;
++    // Check if iPad app running on macOS
++    if (@available(iOS 14.0, *)) {
++      if ([NSProcessInfo processInfo].isiOSAppOnMac) {
++        safeInsets.top = 0;
++      }
++    }
+ 
+     _container =
+         [[UIView alloc] initWithFrame:CGRectMake(safeInsets.left, safeInsets.top, 180, RCTPerfMonitorBarHeight)];
+@@ -454,6 +460,12 @@ - (void)tap
+   [self loadPerformanceLoggerData];
+   if (CGRectIsEmpty(_storedMonitorFrame)) {
+     UIEdgeInsets safeInsets = RCTKeyWindow().safeAreaInsets;
++    // Check if iPad app running on macOS
++    if (@available(iOS 14.0, *)) {
++      if ([NSProcessInfo processInfo].isiOSAppOnMac) {
++        safeInsets.top = 0;
++      }
++    }
+     _storedMonitorFrame =
+         CGRectMake(safeInsets.left, safeInsets.top, self.container.window.frame.size.width, RCTPerfMonitorExpandHeight);
+     [self.container addSubview:self.metrics];
+diff --git a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/SafeAreaView/RCTSafeAreaViewComponentView.mm b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/SafeAreaView/RCTSafeAreaViewComponentView.mm
+index 4c05633..0873cd1 100644
+--- a/node_modules/react-native/React/Fabric/Mounting/ComponentViews/SafeAreaView/RCTSafeAreaViewComponentView.mm
++++ b/node_modules/react-native/React/Fabric/Mounting/ComponentViews/SafeAreaView/RCTSafeAreaViewComponentView.mm
+@@ -42,6 +42,12 @@ - (void)_updateStateIfNecessary
+   }
+ 
+   UIEdgeInsets insets = self.safeAreaInsets;
++  // Check if iPad app running on macOS
++  if (@available(iOS 14.0, *)) {
++    if ([NSProcessInfo processInfo].isiOSAppOnMac) {
++        insets.top = 0;
++    }
++  }
+   insets.left = RCTRoundPixelValue(insets.left);
+   insets.top = RCTRoundPixelValue(insets.top);
+   insets.right = RCTRoundPixelValue(insets.right);
