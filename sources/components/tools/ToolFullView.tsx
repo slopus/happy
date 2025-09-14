@@ -110,7 +110,8 @@ export function ToolFullView({ tool, metadata, messages = [] }: ToolFullViewProp
                                 createdAt: tool.createdAt,
                                 startedAt: tool.startedAt,
                                 completedAt: tool.completedAt,
-                                permission: tool.permission
+                                permission: tool.permission,
+                                messages
                             }, null, 2)} 
                         />
                     </View>

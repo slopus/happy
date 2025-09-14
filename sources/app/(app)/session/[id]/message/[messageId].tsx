@@ -105,7 +105,7 @@ function FullView(props: { message: Message }) {
     const styles = stylesheet;
     
     if (props.message.kind === 'tool-call') {
-        return <ToolFullView tool={props.message.tool} />
+        return <ToolFullView tool={props.message.tool} messages={props.message.children} />
     }
     if (props.message.kind === 'agent-text') {
         return (

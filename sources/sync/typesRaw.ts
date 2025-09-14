@@ -73,7 +73,7 @@ const rawAgentRecordSchema = z.discriminatedUnion('type', [z.object({
         z.object({ type: z.literal('result') }),
         z.object({ type: z.literal('summary'), summary: z.string() }),
         z.object({ type: z.literal('assistant'), message: z.object({ role: z.literal('assistant'), model: z.string(), content: z.array(rawAgentContentSchema), usage: usageDataSchema.optional() }), parent_tool_use_id: z.string().nullable().optional() }),
-        z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.array(rawAgentContentSchema) }), parent_tool_use_id: z.string().nullable().optional(), toolUseResult: z.any().nullable().optional() }),
+        z.object({ type: z.literal('user'), message: z.object({ role: z.literal('user'), content: z.union([z.string(), z.array(rawAgentContentSchema)]) }), parent_tool_use_id: z.string().nullable().optional(), toolUseResult: z.any().nullable().optional() }),
     ]), z.object({
         isSidechain: z.boolean().nullish(),
         isCompactSummary: z.boolean().nullish(),
@@ -194,6 +194,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
     let parsed = rawRecordSchema.safeParse(raw);
     if (!parsed.success) {
         console.error('Invalid raw record:');
+        console.error(parsed.error.issues);
         console.error(raw);
         return null;
     }
@@ -295,23 +296,32 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
 
                 // Handle tool results
                 let content: NormalizedAgentContent[] = [];
-                for (let c of raw.content.data.message.content) {
-                    if (c.type === 'tool_result') {
-                        content.push({
-                            type: 'tool-result',
-                            tool_use_id: c.tool_use_id,
-                            content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text),
-                            is_error: c.is_error || false,
-                            uuid: raw.content.data.uuid,
-                            parentUUID: raw.content.data.parentUuid ?? null,
-                            permissions: c.permissions ? {
-                                date: c.permissions.date,
-                                result: c.permissions.result,
-                                mode: c.permissions.mode,
-                                allowedTools: c.permissions.allowedTools,
-                                decision: c.permissions.decision
-                            } : undefined
-                        });
+                if (typeof raw.content.data.message.content === 'string') {
+                    content.push({
+                        type: 'text',
+                        text: raw.content.data.message.content,
+                        uuid: raw.content.data.uuid,
+                        parentUUID: raw.content.data.parentUuid ?? null
+                    });
+                } else {
+                    for (let c of raw.content.data.message.content) {
+                        if (c.type === 'tool_result') {
+                            content.push({
+                                type: 'tool-result',
+                                tool_use_id: c.tool_use_id,
+                                content: raw.content.data.toolUseResult ? raw.content.data.toolUseResult : (typeof c.content === 'string' ? c.content : c.content[0].text),
+                                is_error: c.is_error || false,
+                                uuid: raw.content.data.uuid,
+                                parentUUID: raw.content.data.parentUuid ?? null,
+                                permissions: c.permissions ? {
+                                    date: c.permissions.date,
+                                    result: c.permissions.result,
+                                    mode: c.permissions.mode,
+                                    allowedTools: c.permissions.allowedTools,
+                                    decision: c.permissions.decision
+                                } : undefined
+                            });
+                        }
                     }
                 }
                 return {
