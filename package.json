@@ -162,7 +162,7 @@
     "patch-package": "^8.0.0",
     "react-test-renderer": "19.0.0",
     "tsx": "^4.20.4",
-    "typescript": "~5.8.3"
+    "typescript": "~5.9.2"
   },
   "private": true,
   "packageManager": "yarn@1.22.22"
