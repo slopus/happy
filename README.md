@@ -61,6 +61,14 @@ happy
 
 *Desktop builds are automatically generated via GitHub Actions for every release.*
 
+### 🍎 macOS Installation Note
+Due to macOS Gatekeeper security, you may see a "damaged" app warning for unsigned builds. To bypass this:
+```bash
+# Remove quarantine attribute from the app
+xattr -d com.apple.quarantine /Applications/Happy.app
+```
+Then the app will launch normally. This is required for all unsigned macOS applications downloaded from the internet.
+
 ## 🔥 Why Happy Coder?
 
 - 📱 **Mobile access to Claude Code** - Check what Claude is building while away from your desk
