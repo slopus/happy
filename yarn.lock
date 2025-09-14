@@ -4021,10 +4021,10 @@ expo-battery@~9.1.4:
   resolved "https://registry.npmjs.org/expo-battery/-/expo-battery-9.1.4.tgz"
   integrity sha512-iPV0ZIXVHfoVoxPwpCSkLKg4TFRexIGO7DLl/kZhXr70mR4IscanJwaWh9yvER80Lu6Q0WSp1afmJPJLu3Fesg==
 
-expo-blur@~14.1.5:
-  version "14.1.5"
-  resolved "https://registry.npmjs.org/expo-blur/-/expo-blur-14.1.5.tgz"
-  integrity sha512-CCLJHxN4eoAl06ESKT3CbMasJ98WsjF9ZQEJnuxtDb9ffrYbZ+g9ru84fukjNUOTtc8A8yXE5z8NgY1l0OMrmQ==
+expo-blur@~15.0.7:
+  version "15.0.7"
+  resolved "https://registry.yarnpkg.com/expo-blur/-/expo-blur-15.0.7.tgz#a11466e697fbf2b272444a38722065e60d0ecbe5"
+  integrity sha512-SugQQbQd+zRPy8z2G5qDD4NqhcD7srBF7fN7O7yq6q7ZFK59VWvpDxtMoUkmSfdxgqONsrBN/rLdk00USADrMg==
 
 expo-brightness@~13.1.4:
   version "13.1.4"
