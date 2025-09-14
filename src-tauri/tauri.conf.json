@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Happy",
-  "version": "0.1.0",
+  "version": "2.1.0",
   "identifier": "com.slopus.happy",
   "build": {
     "frontendDist": "../dist",
