@@ -136,7 +136,7 @@
     "react-native-typography": "^1.4.1",
     "react-native-unistyles": "^3.0.10",
     "react-native-view-shot": "4.0.3",
-    "react-native-vision-camera": "^4.7.1",
+    "react-native-vision-camera": "^4.7.2",
     "react-native-web": "~0.20.0",
     "react-native-webview": "13.13.5",
     "react-native-worklets": "0.5.1",
