@@ -48,16 +48,32 @@ jobs:
         security unlock-keychain -p "" build.keychain
         security set-keychain-settings -t 3600 -u build.keychain
 
-        # Create self-signed certificate
+        # Create self-signed certificate for code signing
+        cat > cert.conf <<EOF
+        [req]
+        distinguished_name = req_distinguished_name
+        x509_extensions = v3_req
+        prompt = no
+
+        [req_distinguished_name]
+        CN = Happy Desktop App
+        O = Happy Engineering
+        C = US
+
+        [v3_req]
+        keyUsage = digitalSignature
+        extendedKeyUsage = codeSigning
+        EOF
+
         openssl req -new -x509 -days 365 -nodes \
           -out cert.pem -keyout cert.key \
-          -subj "/CN=Happy Desktop App/O=Happy Engineering/C=US"
+          -config cert.conf
 
-        # Convert to p12 format
-        openssl pkcs12 -export -out cert.p12 -inkey cert.key -in cert.pem -passout pass:
+        # Convert to p12 format with no password
+        openssl pkcs12 -export -out cert.p12 -inkey cert.key -in cert.pem -nodes -passin pass: -passout pass:
 
         # Import to keychain
-        security import cert.p12 -k build.keychain -P "" -A
+        security import cert.p12 -k build.keychain -A
         security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
 
         # Make sure the identity is available
