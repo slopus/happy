@@ -4135,10 +4135,10 @@ expo-font@~13.3.2:
   dependencies:
     fontfaceobserver "^2.1.0"
 
-expo-gl@~15.1.7:
-  version "15.1.7"
-  resolved "https://registry.npmjs.org/expo-gl/-/expo-gl-15.1.7.tgz"
-  integrity sha512-ozvaQn3Ev1oZ3lraOpp6PJpSCbb5DRxu29K/prtfUdygrNJbCFhhxG7zgpEcPaFZXj4b1Yc7jzn1UzOylfUdaw==
+expo-gl@~16.0.7:
+  version "16.0.7"
+  resolved "https://registry.yarnpkg.com/expo-gl/-/expo-gl-16.0.7.tgz#bfe4dc95b12f229fc8100aa78786c159988cefc5"
+  integrity sha512-x4EIMgeXEzv8FZuS2FmoT+qBgdsvHphwleTwPwj+nWat84Al4N9QqLZawTz0AcFZBQLXawrpIXJ0dc+TJsYqSQ==
   dependencies:
     invariant "^2.2.4"
 
