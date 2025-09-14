@@ -61,7 +61,7 @@ jobs:
       run: npm install --legacy-peer-deps
 
     - name: Run tests
-      run: npx vitest run --coverage
+      run: npx vitest run
       env:
         CI: true
 
