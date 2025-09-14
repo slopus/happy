@@ -6874,10 +6874,10 @@ react-native-enriched@^0.1.1:
   resolved "https://registry.npmjs.org/react-native-enriched/-/react-native-enriched-0.1.1.tgz"
   integrity sha512-od2PCnD/+MljgZUfbapwzrhNFaHPOEvn8TvKVYZlDmfEdS3T9kyl1LSK7VuJ1BLmsgccS73y03/UcysFVEbocw==
 
-react-native-fast-squircle@^1.0.5:
-  version "1.0.5"
-  resolved "https://registry.npmjs.org/react-native-fast-squircle/-/react-native-fast-squircle-1.0.5.tgz"
-  integrity sha512-xwJbfzxjNTijfDhfusbEX9toHYlEMvIX0CP8t/LOYEplXf/wmif4OjgQT9Oa8Hy/IAtGEQFEeSL8hbn60bRuRA==
+react-native-fast-squircle@^1.0.10:
+  version "1.0.10"
+  resolved "https://registry.yarnpkg.com/react-native-fast-squircle/-/react-native-fast-squircle-1.0.10.tgz#d1380411bf6c4d9053a5cbd2aae79673217e53de"
+  integrity sha512-OLT/U5RRfjQCu2p31sZZ6s0+m+yDNvQeBdXDxlcmuIOQXXMjXIEaBSa7KhHx+04EJRWQv1vF2g9CqKqoY3fuYQ==
 
 react-native-gesture-handler@2.27.2:
   version "2.27.2"

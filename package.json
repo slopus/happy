@@ -117,7 +117,7 @@
     "react-native-diff-view": "^1.1.2",
     "react-native-edge-to-edge": "^1.6.2",
     "react-native-enriched": "^0.1.1",
-    "react-native-fast-squircle": "^1.0.5",
+    "react-native-fast-squircle": "^1.0.10",
     "react-native-gesture-handler": "2.27.2",
     "react-native-incall-manager": "^4.2.1",
     "react-native-keyboard-controller": "1.18.6",
