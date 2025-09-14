@@ -42,41 +42,23 @@ jobs:
     - name: Create self-signed certificate (macOS only)
       if: matrix.platform == 'macos-latest'
       run: |
-        # Create a temporary keychain
-        security create-keychain -p "" build.keychain
+        echo "Creating self-signed certificate for macOS code signing..."
+
+        # Create temporary keychain
+        security create-keychain -p "temp123" build.keychain
         security default-keychain -s build.keychain
-        security unlock-keychain -p "" build.keychain
+        security unlock-keychain -p "temp123" build.keychain
         security set-keychain-settings -t 3600 -u build.keychain
 
-        # Create self-signed certificate for code signing
-        cat > cert.conf <<EOF
-        [req]
-        distinguished_name = req_distinguished_name
-        x509_extensions = v3_req
-        prompt = no
+        # Create certificate directly in keychain using security command
+        security create-certificate \
+          -c "Happy Desktop App" \
+          -C 0 \
+          -T /usr/bin/codesign \
+          -T /usr/bin/security \
+          build.keychain
 
-        [req_distinguished_name]
-        CN = Happy Desktop App
-        O = Happy Engineering
-        C = US
-
-        [v3_req]
-        keyUsage = digitalSignature
-        extendedKeyUsage = codeSigning
-        EOF
-
-        openssl req -new -x509 -days 365 -nodes \
-          -out cert.pem -keyout cert.key \
-          -config cert.conf
-
-        # Convert to p12 format with no password
-        openssl pkcs12 -export -out cert.p12 -inkey cert.key -in cert.pem -nodes -passin pass: -passout pass:
-
-        # Import to keychain
-        security import cert.p12 -k build.keychain -A
-        security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
-
-        # Make sure the identity is available
+        # Verify certificate was created
         security find-identity -v -p codesigning build.keychain
 
     - name: Build Tauri app
