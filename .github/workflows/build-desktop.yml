@@ -39,10 +39,35 @@ jobs:
     - name: Install dependencies
       run: npm install --legacy-peer-deps
 
+    - name: Create self-signed certificate (macOS only)
+      if: matrix.platform == 'macos-latest'
+      run: |
+        # Create a temporary keychain
+        security create-keychain -p "" build.keychain
+        security default-keychain -s build.keychain
+        security unlock-keychain -p "" build.keychain
+        security set-keychain-settings -t 3600 -u build.keychain
+
+        # Create self-signed certificate
+        openssl req -new -x509 -days 365 -nodes \
+          -out cert.pem -keyout cert.key \
+          -subj "/CN=Happy Desktop App/O=Happy Engineering/C=US"
+
+        # Convert to p12 format
+        openssl pkcs12 -export -out cert.p12 -inkey cert.key -in cert.pem -passout pass:
+
+        # Import to keychain
+        security import cert.p12 -k build.keychain -P "" -A
+        security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain
+
+        # Make sure the identity is available
+        security find-identity -v -p codesigning build.keychain
+
     - name: Build Tauri app
       uses: tauri-apps/tauri-action@v0
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        APPLE_SIGNING_IDENTITY: ${{ matrix.platform == 'macos-latest' && 'Happy Desktop App' || '' }}
       with:
         tagName: app-v__VERSION__ # the action automatically replaces \_\_VERSION\_\_ with the app version
         releaseName: 'Happy Desktop v__VERSION__'
