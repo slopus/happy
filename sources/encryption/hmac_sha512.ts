@@ -10,7 +10,7 @@ export async function hmac_sha512(key: Uint8Array, data: Uint8Array): Promise<Ui
     if (key.length > blockSize) {
         // If key is longer than block size, hash it
         const keyHash = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA512, key);
-        actualKey = new Uint8Array(keyHash);
+        actualKey = new Uint8Array(keyHash as ArrayBuffer);
     }
     
     // Pad key to block size
@@ -31,12 +31,12 @@ export async function hmac_sha512(key: Uint8Array, data: Uint8Array): Promise<Ui
     innerData.set(innerKey);
     innerData.set(data, blockSize);
     const innerHash = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA512, innerData);
-    
+
     // Outer hash: SHA512(outerKey || innerHash)
     const outerData = new Uint8Array(blockSize + 64); // 64 bytes for SHA512 hash
     outerData.set(outerKey);
-    outerData.set(new Uint8Array(innerHash), blockSize);
+    outerData.set(new Uint8Array(innerHash as ArrayBuffer), blockSize);
     const finalHash = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA512, outerData);
-    
-    return new Uint8Array(finalHash);
+
+    return new Uint8Array(finalHash as ArrayBuffer);
 }
