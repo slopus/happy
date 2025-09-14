@@ -258,12 +258,6 @@ export default function DevScreen() {
                     icon={<Ionicons name="qr-code-outline" size={28} color="#007AFF" />}
                     onPress={() => router.push('/dev/qr-test')}
                 />
-                <Item
-                    title="HTTP Server"
-                    subtitle="Simple HTTP server with Hello World endpoints"
-                    icon={<Ionicons name="globe-outline" size={28} color="#007AFF" />}
-                    onPress={() => router.push('/dev/http-server')}
-                />
             </ItemGroup>
 
             {/* Test Features */}

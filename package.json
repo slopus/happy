@@ -89,7 +89,6 @@
     "expo-manifests": "~0.16.6",
     "expo-mesh-gradient": "~0.3.4",
     "expo-navigation-bar": "~4.2.7",
-    "expo-network": "~7.1.5",
     "expo-notifications": "~0.31.4",
     "expo-print": "~14.1.4",
     "expo-router": "^5.1.3",
