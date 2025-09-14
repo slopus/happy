@@ -1,0 +1,79 @@
+name: 🐛 Bug Report
+description: Report a bug or issue with the Happy app
+title: "[BUG] "
+labels: ["bug", "triage"]
+assignees: ["jeffersonwarrior"]
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to fill out this bug report! Please provide as much detail as possible.
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      description: Which platform are you experiencing the bug on?
+      options:
+        - iOS
+        - Android
+        - Web
+        - Desktop (macOS)
+        - Desktop (Windows)
+        - Desktop (Linux)
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear and concise description of the bug.
+      placeholder: Tell us what you see!
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What did you expect to happen?
+      placeholder: Tell us what should have happened
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can we reproduce this bug?
+      placeholder: |
+        1. Go to '...'
+        2. Click on '....'
+        3. Scroll down to '....'
+        4. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: |
+        Please provide details about your environment:
+      value: |
+        - Device: [e.g. iPhone 15, Samsung Galaxy S24]
+        - OS Version: [e.g. iOS 18.0, Android 14]
+        - App Version: [e.g. 1.0.0]
+        - Server URL: [if using custom server]
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional
+    attributes:
+      label: Additional context
+      description: Add any other context about the problem here, including screenshots or logs.
+      placeholder: Any additional information that might help us debug this issue

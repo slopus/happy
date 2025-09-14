@@ -1,0 +1,101 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint-and-format:
+    name: Lint & Format Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm install --legacy-peer-deps
+
+    - name: TypeScript Check
+      run: npm run typecheck
+
+    - name: Run ESLint (if configured)
+      run: |
+        if [ -f ".eslintrc.js" ] || [ -f ".eslintrc.json" ] || [ -f "eslint.config.js" ]; then
+          npx eslint . --ext .ts,.tsx,.js,.jsx --max-warnings 0
+        else
+          echo "ESLint not configured, skipping..."
+        fi
+      continue-on-error: true
+
+    - name: Run Prettier (if configured)
+      run: |
+        if [ -f ".prettierrc" ] || [ -f "prettier.config.js" ]; then
+          npx prettier --check "sources/**/*.{ts,tsx,js,jsx,json,md}"
+        else
+          echo "Prettier not configured, skipping..."
+        fi
+      continue-on-error: true
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm install --legacy-peer-deps
+
+    - name: Run tests
+      run: npm test -- --coverage --watchAll=false
+      env:
+        CI: true
+
+    - name: Upload coverage to Codecov
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./coverage/lcov.info
+        flags: unittests
+        name: codecov-umbrella
+        fail_ci_if_error: false
+
+  build-check:
+    name: Build Check
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '22'
+        cache: 'npm'
+
+    - name: Install dependencies
+      run: npm install --legacy-peer-deps
+
+    - name: Check Expo build
+      run: npx expo export --platform web --output-dir dist
+
+    - name: Verify build artifacts
+      run: |
+        ls -la dist/
+        if [ ! -f "dist/index.html" ]; then
+          echo "Build failed: index.html not found"
+          exit 1
+        fi
