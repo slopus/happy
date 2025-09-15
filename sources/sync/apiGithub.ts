@@ -82,7 +82,8 @@ export async function disconnectGitHub(credentials: AuthCredentials): Promise<vo
         const response = await fetch(`${API_ENDPOINT}/v1/connect/github`, {
             method: 'DELETE',
             headers: {
-                'Authorization': `Bearer ${credentials.token}`
+                'Authorization': `Bearer ${credentials.token}`,
+                'Content-Type': 'application/json'
             }
         });
 

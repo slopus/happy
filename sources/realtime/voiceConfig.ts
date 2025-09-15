@@ -27,5 +27,5 @@ export const VOICE_CONFIG = {
     MAX_HISTORY_MESSAGES: 50,
     
     /** Enable debug logging for voice context updates */
-    ENABLE_DEBUG_LOGGING: true,
+    ENABLE_DEBUG_LOGGING: false,
 } as const;

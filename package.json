@@ -16,7 +16,11 @@
     "ota:production": "npx eas-cli@latest workflow:run ota.yaml",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package",
-    "generate-theme": "tsx sources/theme.gen.ts"
+    "generate-theme": "tsx sources/theme.gen.ts",
+    "lint": "eslint sources --ext .ts,.tsx,.js,.jsx",
+    "lint:fix": "eslint sources --ext .ts,.tsx,.js,.jsx --fix",
+    "format": "prettier --write \"sources/**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"sources/**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "jest": {
     "preset": "jest-expo"

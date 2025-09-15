@@ -21,17 +21,16 @@ export function generateAuthKeyPair(): QRAuthKeyPair {
 export async function authQRStart(keypair: QRAuthKeyPair): Promise<boolean> {
     try {
         const serverUrl = getServerUrl();
-        console.log(`[AUTH DEBUG] Sending auth request to: ${serverUrl}/v1/auth/account/request`);
-        console.log(`[AUTH DEBUG] Public key: ${encodeBase64(keypair.publicKey).substring(0, 20)}...`);
+        // Auth request initiated
 
         await axios.post(`${serverUrl}/v1/auth/account/request`, {
             publicKey: encodeBase64(keypair.publicKey),
         });
 
-        console.log('[AUTH DEBUG] Auth request sent successfully');
+        // Auth request completed successfully
         return true;
     } catch (error) {
-        console.log('[AUTH DEBUG] Failed to send auth request:', error);
+        // Authentication request failed
         console.log('Failed to create authentication request, please try again later.');
         return false;
     }

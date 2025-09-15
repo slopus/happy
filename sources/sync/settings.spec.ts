@@ -123,13 +123,15 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'brutalist',
+                avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
                 preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
             });
         });
 
@@ -192,13 +194,15 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'brutalist',
+                avatarStyle: 'gradient',
                 showFlavorIcons: false,
                 compactSessionView: false,
                 reviewPromptAnswered: false,
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
                 preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
             });
         });
 
@@ -296,13 +300,22 @@ describe('settings', () => {
         it('should have correct default values', () => {
             expect(settingsDefaults).toEqual({
                 viewInline: false,
+                inferenceOpenAIKey: null,
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
                 analyticsOptOut: false,
-                inferenceOpenAIKey: null,
                 experiments: false,
-                alwaysShowContextSize: false
+                alwaysShowContextSize: false,
+                avatarStyle: 'gradient',
+                showFlavorIcons: false,
+                compactSessionView: false,
+                reviewPromptAnswered: false,
+                reviewPromptLikedApp: null,
+                voiceAssistantLanguage: null,
+                preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null
             });
         });
 
