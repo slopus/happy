@@ -1,0 +1,74 @@
+# Gitleaks configuration for Happy repository
+title = "Happy Secrets Detection"
+
+[extend]
+# Use default rules as base
+useDefault = true
+
+[[rules]]
+id = "firebase-api-key-allowed"
+description = "Firebase API keys are allowed in google-services.json"
+regex = '''AIza[0-9A-Za-z_-]{35}'''
+path = '''google-services\.json'''
+# This is an allowlist rule - Firebase keys in google-services.json are expected
+
+[[rules]]
+id = "github-token"
+description = "GitHub Personal Access Token"
+regex = '''ghp_[A-Za-z0-9_]{36}'''
+secretGroup = 1
+
+[[rules]]
+id = "openai-api-key"
+description = "OpenAI API Key"
+regex = '''sk-[a-zA-Z0-9]{48}'''
+secretGroup = 1
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API Key"
+regex = '''sk-ant-api03-[a-zA-Z0-9_-]{95}'''
+secretGroup = 1
+
+[[rules]]
+id = "generic-api-key"
+description = "Generic API Key"
+regex = '''(?i)api[_-]?key['"]*\s*[:=]\s*['"][a-zA-Z0-9_-]{20,}['"]'''
+secretGroup = 1
+
+[[rules]]
+id = "bearer-token"
+description = "Bearer Token"
+regex = '''(?i)bearer\s+[a-zA-Z0-9_-]{20,}'''
+secretGroup = 1
+
+[[rules]]
+id = "private-key"
+description = "Private Key"
+regex = '''-----BEGIN [A-Z ]+PRIVATE KEY-----'''
+secretGroup = 1
+
+[[rules]]
+id = "aws-access-key"
+description = "AWS Access Key"
+regex = '''AKIA[0-9A-Z]{16}'''
+secretGroup = 1
+
+# Allowlist for expected patterns
+[allowlist]
+description = "Allowlisted patterns"
+paths = [
+    '''google-services\.json''',  # Firebase config files are expected to have API keys
+    '''node_modules/.*''',        # Ignore node_modules
+    '''\.git/.*''',               # Ignore git directory
+    '''dist/.*''',                # Ignore build artifacts
+    '''src-tauri/target/.*''',    # Ignore Rust build artifacts
+]
+
+regexes = [
+    '''secretKey[a-zA-Z0-9_]*\s*[:=]\s*[a-zA-Z0-9_().[\]]*''',  # Cryptographic secretKey variables
+    '''secret[a-zA-Z0-9_]*\s*[:=]\s*[a-zA-Z0-9_().[\]]*''',     # Local secret variables (not hardcoded)
+    '''\$\{\{\s*secrets\.[A-Z_]+\s*\}\}''',                     # GitHub Actions secrets
+    '''process\.env\.[A-Z_]+''',                                # Environment variables
+    '''EXPO_PUBLIC_[A-Z_]+''',                                  # Expo public environment variables
+]
