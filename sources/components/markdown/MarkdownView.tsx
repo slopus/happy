@@ -1,4 +1,5 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
+import { parseMarkdownSpans } from './parseMarkdownSpans';
 import { Link } from 'expo-router';
 import * as React from 'react';
 import { ScrollView, View, Platform, Pressable } from 'react-native';
@@ -6,6 +7,7 @@ import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
+import { TerminalView } from '../TerminalView';
 import { Modal } from '@/modal';
 import { useLocalSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
@@ -56,6 +58,17 @@ export const MarkdownView = React.memo((props: {
                         return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
                     } else if (block.type === 'code-block') {
                         return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                    } else if (block.type === 'xml-block') {
+                        // Render XML blocks as normal text by default
+                        // Special case: if the tag name is 'local-command-stdout', handle it differently
+                        if (block.tagName === 'local-command-stdout') {
+                            // Extract inner content using pre-calculated indices
+                            const innerContent = block.content.slice(block.innerStart, block.innerEnd);
+                            return <TerminalView content={innerContent} key={index} selectable={selectable} />;
+                        } else {
+                            // Render all other XML as normal text (preserves verbatim reproduction)
+                            return <RenderTextBlock spans={parseMarkdownSpans(block.content, false)} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                        }
                     } else if (block.type === 'options') {
                         return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} />;
                     } else {
