@@ -18,12 +18,6 @@ export type MarkdownBlock = {
     language: string | null,
     content: string
 } | {
-    type: 'xml-block',
-    tagName: string,
-    content: string,
-    innerStart: number,
-    innerEnd: number
-} | {
     type: 'horizontal-rule'
 } | {
     type: 'options',
