@@ -3530,10 +3530,10 @@ color@^4.2.3:
     color-convert "^2.0.1"
     color-string "^1.9.0"
 
-color@^5.0.0:
-  version "5.0.0"
-  resolved "https://registry.yarnpkg.com/color/-/color-5.0.0.tgz#3583bf8f6a77cec41b329ea228dd05d2f5270218"
-  integrity sha512-16BlyiuyLq3MLxpRWyOTiWsO3ii/eLQLJUQXBSNcxMBBSnyt1ee9YUdaozQp03ifwm5woztEZGDbk9RGVuCsdw==
+color@^5.0.2:
+  version "5.0.2"
+  resolved "https://registry.yarnpkg.com/color/-/color-5.0.2.tgz#712ec894007ab27b37207732d182784e001b4a3d"
+  integrity sha512-e2hz5BzbUPcYlIRHo8ieAhYgoajrJr+hWoceg6E345TPsATMUKqDgzt8fSXZJJbxfpiPzkWyphz8yn8At7q3fA==
   dependencies:
     color-convert "^3.0.1"
     color-string "^2.0.0"
