@@ -694,6 +694,19 @@ export const ru: TranslationStructure = {
         textCopied: 'Текст скопирован в буфер обмена',
         failedToCopy: 'Не удалось скопировать текст в буфер обмена',
         noTextToCopy: 'Нет текста для копирования',
+    },
+
+    daemonCleanup: {
+        // Daemon cleanup modal
+        unableToStop: 'Не удалось остановить демон',
+        couldNotStop: ({ machineName }: { machineName: string }) => `Демон на "${machineName}" не удалось остановить.`,
+        whatToDo: 'Что вы хотите сделать?',
+        forceStop: 'Принудительная остановка',
+        forceStopDescription: 'Попробовать альтернативные методы завершения демона',
+        removeSession: 'Удалить сессию',
+        removeSessionDescription: 'Очистить состояние сессии локально (демон может остаться запущенным)',
+        cancelDescription: 'Оставить сессию без изменений и попробовать позже',
+        error: ({ error }: { error: string }) => `Ошибка: ${error}`,
     }
 } as const;
 

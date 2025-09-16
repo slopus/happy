@@ -684,6 +684,19 @@ export const es: TranslationStructure = {
         textCopied: 'Texto copiado al portapapeles',
         failedToCopy: 'Error al copiar el texto al portapapeles',
         noTextToCopy: 'No hay texto disponible para copiar',
+    },
+
+    daemonCleanup: {
+        // Daemon cleanup modal
+        unableToStop: 'No se pudo detener el daemon',
+        couldNotStop: ({ machineName }: { machineName: string }) => `El daemon en "${machineName}" no pudo ser detenido.`,
+        whatToDo: '¿Qué le gustaría hacer?',
+        forceStop: 'Forzar detención',
+        forceStopDescription: 'Intentar métodos alternativos para terminar el daemon',
+        removeSession: 'Eliminar sesión',
+        removeSessionDescription: 'Limpiar el estado de la sesión localmente (el daemon puede permanecer en ejecución)',
+        cancelDescription: 'Mantener la sesión sin cambios e intentar más tarde',
+        error: ({ error }: { error: string }) => `Error: ${error}`,
     }
 } as const;
 

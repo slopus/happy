@@ -81,6 +81,10 @@ interface StorageState {
     applyReady: () => void;
     applyMessages: (sessionId: string, messages: NormalizedMessage[]) => { changed: string[], hasReadyEvent: boolean };
     applyMessagesLoaded: (sessionId: string) => void;
+    clearSessionMessages: (sessionId: string) => void;
+    removeSession: (sessionId: string) => void;
+    updateSession: (sessionId: string, session: Session) => void;
+    compactStorage?: () => Promise<void>;
     applySettings: (settings: Settings, version: number) => void;
     applySettingsLocal: (settings: Partial<Settings>) => void;
     applyLocalSettings: (settings: Partial<LocalSettings>) => void;
@@ -784,6 +788,59 @@ export const storage = create<StorageState>()((set, get) => {
                 sessionListViewData
             };
         }),
+
+        // Session cleanup and management methods
+        clearSessionMessages: (sessionId: string) => set((state) => {
+            const updatedSessionMessages = { ...state.sessionMessages };
+            delete updatedSessionMessages[sessionId];
+
+            return {
+                ...state,
+                sessionMessages: updatedSessionMessages
+            };
+        }),
+
+        removeSession: (sessionId: string) => set((state) => {
+            const updatedSessions = { ...state.sessions };
+            delete updatedSessions[sessionId];
+
+            const updatedSessionMessages = { ...state.sessionMessages };
+            delete updatedSessionMessages[sessionId];
+
+            // Rebuild session list data using proper function
+            const sessionListViewData = buildSessionListViewData(updatedSessions);
+
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionMessages: updatedSessionMessages,
+                sessionListViewData,
+                sessionsData: null  // Legacy - clear it
+            };
+        }),
+
+        updateSession: (sessionId: string, session: Session) => set((state) => {
+            const updatedSessions = {
+                ...state.sessions,
+                [sessionId]: session
+            };
+
+            // Rebuild session list data using proper function
+            const sessionListViewData = buildSessionListViewData(updatedSessions);
+
+            return {
+                ...state,
+                sessions: updatedSessions,
+                sessionListViewData,
+                sessionsData: null  // Legacy - clear it
+            };
+        }),
+
+        compactStorage: async () => {
+            // This is a placeholder for storage compaction functionality
+            // Could be expanded to include cache cleanup, unused data removal, etc.
+            console.log('🗜️ Storage: Compacting storage (placeholder)');
+        },
     }
 });
 

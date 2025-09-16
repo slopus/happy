@@ -189,7 +189,33 @@ This backlog contains prioritized features, improvements, and fixes for Happy Co
 
 ## 📋 Low Priority (Future Releases)
 
-### 8. Upstream Fixes & Features Integration
+### 8. MCP Manager (Research Required)
+**Priority**: Low | **Difficulty**: TBD | **Effort**: TBD
+
+**Problem**: Need improved MCP (Model Context Protocol) management capabilities.
+
+**Status**: **Requires detailed specification** - awaiting user requirements and technical details.
+
+**Scope**: TBD based on specific MCP management requirements
+
+**Technical Implementation**: TBD pending requirements analysis
+
+---
+
+### 9. SSH Controls for Automatic Happy Management
+**Priority**: Low | **Difficulty**: TBD | **Effort**: TBD
+
+**Problem**: Need automated SSH-based controls for better Happy Coder management.
+
+**Status**: **Requires detailed specification** - awaiting user requirements and technical details.
+
+**Scope**: TBD based on specific SSH automation requirements
+
+**Technical Implementation**: TBD pending requirements analysis
+
+---
+
+### 10. Upstream Fixes & Features Integration
 **Priority**: Low | **Difficulty**: Medium | **Effort**: 1-2 weeks
 
 **Research**: Valuable upstream improvements identified:
@@ -208,7 +234,7 @@ This backlog contains prioritized features, improvements, and fixes for Happy Co
 
 ---
 
-### 9. Community-Requested Features
+### 11. Community-Requested Features
 **Priority**: Low | **Difficulty**: Varies | **Research from slopus/happy issues**
 
 **Easy Wins** (1-3 days each):

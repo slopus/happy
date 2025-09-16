@@ -684,6 +684,19 @@ export const ca: TranslationStructure = {
         textCopied: 'Text copiat al porta-retalls',
         failedToCopy: 'No s\'ha pogut copiar el text al porta-retalls',
         noTextToCopy: 'No hi ha text disponible per copiar',
+    },
+
+    daemonCleanup: {
+        // Daemon cleanup modal
+        unableToStop: 'No s\'ha pogut aturar el daemon',
+        couldNotStop: ({ machineName }: { machineName: string }) => `El daemon a "${machineName}" no s'ha pogut aturar.`,
+        whatToDo: 'Què voleu fer?',
+        forceStop: 'Forçar aturada',
+        forceStopDescription: 'Provar mètodes alternatius per finalitzar el daemon',
+        removeSession: 'Eliminar sessió',
+        removeSessionDescription: 'Netejar l\'estat de la sessió localment (el daemon pot continuar executant-se)',
+        cancelDescription: 'Mantenir la sessió sense canvis i provar més tard',
+        error: ({ error }: { error: string }) => `Error: ${error}`,
     }
 } as const;
 

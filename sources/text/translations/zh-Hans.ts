@@ -684,5 +684,18 @@ export const zhHans = {
         textCopied: '文本已复制到剪贴板',
         failedToCopy: '复制文本到剪贴板失败',
         noTextToCopy: '没有可复制的文本',
+    },
+
+    daemonCleanup: {
+        // Daemon cleanup modal
+        unableToStop: '无法停止守护进程',
+        couldNotStop: ({ machineName }: { machineName: string }) => `"${machineName}" 上的守护进程无法停止。`,
+        whatToDo: '您想要做什么？',
+        forceStop: '强制停止',
+        forceStopDescription: '尝试其他方法来终止守护进程',
+        removeSession: '移除会话',
+        removeSessionDescription: '在本地清理会话状态（守护进程可能仍在运行）',
+        cancelDescription: '保持会话不变，稍后再试',
+        error: ({ error }: { error: string }) => `错误：${error}`,
     }
 } as const;

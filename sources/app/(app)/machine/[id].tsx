@@ -9,6 +9,8 @@ import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import type { Session } from '@/sync/storageTypes';
 import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { showDaemonCleanupModal } from '@/components/modals/DaemonCleanupModal';
+import { stopDaemon, forceStopDaemon, removeSessionLocally, getDaemonStatus } from '@/sync/daemonControl';
 import { Modal } from '@/modal';
 import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 import { isMachineOnline } from '@/utils/machineUtils';
@@ -109,19 +111,17 @@ export default function MachineDetailScreen() {
         return recentPaths.slice(0, 5);
     }, [recentPaths, showAllPaths]);
 
-    // Determine daemon status from metadata
+    // Determine daemon status from metadata and connection health
     const daemonStatus = useMemo(() => {
         if (!machine) return 'unknown';
 
-        // Check metadata for daemon status
-        const metadata = machine.metadata as any;
-        if (metadata?.daemonLastKnownStatus === 'shutting-down') {
-            return 'stopped';
+        const status = getDaemonStatus(machineId!);
+        switch (status) {
+            case 'likely-alive': return 'likely alive';
+            case 'stopped': return 'stopped';
+            default: return 'unknown';
         }
-
-        // Use machine online status as proxy for daemon status
-        return isMachineOnline(machine) ? 'likely alive' : 'stopped';
-    }, [machine]);
+    }, [machine, machineId]);
 
     const handleStopDaemon = async () => {
         // Show confirmation modal using alert with buttons
@@ -139,12 +139,43 @@ export default function MachineDetailScreen() {
                     onPress: async () => {
                         setIsStoppingDaemon(true);
                         try {
-                            const result = await machineStopDaemon(machineId!);
-                            Modal.alert('Daemon Stopped', result.message);
-                            // Refresh to get updated metadata
-                            await sync.refreshMachines();
+                            const result = await stopDaemon(machineId!);
+                            if (result.success) {
+                                Modal.alert('Daemon Stopped', result.message);
+                                // Refresh to get updated metadata
+                                await sync.refreshMachines();
+                            } else {
+                                // Show enhanced cleanup modal on failure
+                                const machineName = machine?.metadata?.displayName || machine?.metadata?.host || 'Unknown Machine';
+                                showDaemonCleanupModal({
+                                    machineName,
+                                    error: result.error || result.message,
+                                    onRemoveSession: async () => {
+                                        const cleanupResult = await removeSessionLocally(machineId!);
+                                        if (cleanupResult.success) {
+                                            Modal.alert('Sessions Removed', cleanupResult.message);
+                                            await sync.refreshMachines();
+                                        } else {
+                                            throw new Error(cleanupResult.error || cleanupResult.message);
+                                        }
+                                    },
+                                    onCancel: () => {
+                                        // User cancelled, nothing to do
+                                    },
+                                    onForceStop: async () => {
+                                        const forceResult = await forceStopDaemon(machineId!);
+                                        if (forceResult.success) {
+                                            Modal.alert('Daemon Force Stopped', forceResult.message);
+                                        } else {
+                                            Modal.alert(t('common.error'), forceResult.error || forceResult.message);
+                                        }
+                                        await sync.refreshMachines();
+                                    }
+                                });
+                            }
                         } catch (error) {
-                            Modal.alert(t('common.error'), 'Failed to stop daemon. It may not be running.');
+                            // This should not happen with the new error handling, but keeping as fallback
+                            Modal.alert(t('common.error'), error instanceof Error ? error.message : 'Failed to stop daemon. It may not be running.');
                         } finally {
                             setIsStoppingDaemon(false);
                         }

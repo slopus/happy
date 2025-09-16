@@ -30,6 +30,9 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
+import { startConnectionHealthMonitoring, stopConnectionHealthMonitoring } from './connectionHealth';
+import { startStaleConnectionCleanup, stopStaleConnectionCleanup } from './staleConnectionCleaner';
+import { startSessionStatePersistence, stopSessionStatePersistence } from './sessionStatePersistence';
 
 class Sync {
 
@@ -118,6 +121,15 @@ class Sync {
     }
 
     async #init() {
+
+        // Start connection health monitoring
+        startConnectionHealthMonitoring();
+
+        // Start stale connection cleanup
+        startStaleConnectionCleanup();
+
+        // Start session state persistence
+        startSessionStatePersistence();
 
         // Subscribe to updates
         this.subscribeToUpdates();

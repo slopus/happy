@@ -684,6 +684,19 @@ export const en = {
         textCopied: 'Text copied to clipboard',
         failedToCopy: 'Failed to copy text to clipboard',
         noTextToCopy: 'No text available to copy',
+    },
+
+    daemonCleanup: {
+        // Daemon cleanup modal
+        unableToStop: 'Unable to Stop Daemon',
+        couldNotStop: ({ machineName }: { machineName: string }) => `The daemon on "${machineName}" could not be stopped.`,
+        whatToDo: 'What would you like to do?',
+        forceStop: 'Force Stop',
+        forceStopDescription: 'Try alternative methods to terminate the daemon',
+        removeSession: 'Remove Session',
+        removeSessionDescription: 'Clean up session state locally (daemon may remain running)',
+        cancelDescription: 'Keep session as-is and try again later',
+        error: ({ error }: { error: string }) => `Error: ${error}`,
     }
 } as const;
 

@@ -7,6 +7,7 @@ import { layout } from '../layout';
 import { useHeaderHeight } from '@/utils/responsive';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet } from 'react-native-unistyles';
+import { ConnectionDot } from '../ConnectionIndicator';
 
 interface HeaderProps {
     title?: React.ReactNode;
@@ -76,6 +77,9 @@ export const Header = React.memo((props: HeaderProps) => {
                     </View>
 
                     <View style={styles.rightContainer}>
+                        <View style={styles.connectionDotContainer}>
+                            <ConnectionDot size={8} />
+                        </View>
                         {headerRight && headerRight()}
                     </View>
                 </View>
@@ -218,6 +222,13 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexGrow: 0,
         flexShrink: 0,
         alignItems: 'flex-end',
+        flexDirection: 'row',
+        gap: 8,
+    },
+    connectionDotContainer: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 4,
     },
     title: {
         fontSize: 17,

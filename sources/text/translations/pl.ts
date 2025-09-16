@@ -694,6 +694,19 @@ export const pl: TranslationStructure = {
         textCopied: 'Tekst skopiowany do schowka',
         failedToCopy: 'Nie udało się skopiować tekstu do schowka',
         noTextToCopy: 'Brak tekstu do skopiowania',
+    },
+
+    daemonCleanup: {
+        // Daemon cleanup modal
+        unableToStop: 'Nie można zatrzymać demona',
+        couldNotStop: ({ machineName }: { machineName: string }) => `Demon na "${machineName}" nie mógł zostać zatrzymany.`,
+        whatToDo: 'Co chcesz zrobić?',
+        forceStop: 'Wymuś zatrzymanie',
+        forceStopDescription: 'Spróbuj alternatywnych metod zakończenia demona',
+        removeSession: 'Usuń sesję',
+        removeSessionDescription: 'Wyczyść stan sesji lokalnie (demon może pozostać uruchomiony)',
+        cancelDescription: 'Zachowaj sesję bez zmian i spróbuj ponownie później',
+        error: ({ error }: { error: string }) => `Błąd: ${error}`,
     }
 } as const;
 
