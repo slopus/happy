@@ -1,7 +1,7 @@
 # Happy Coder v1.5.2 - Detailed Task List
 ## AI-Speed Development: 1-2 Days Total Implementation
 
-### **Feature Count: 7 Major Features → 28 Detailed Tasks**
+### **Feature Count: 8 Major Features → 31 Detailed Tasks**
 
 ---
 
@@ -183,6 +183,31 @@
 
 ---
 
+## **FEATURE 8: Repository File Browser**
+*Tasks 29-31 (3 tasks)*
+
+### Task 29: Add folder button to input area
+- Add folder icon button next to existing "files" button at bottom of input box
+- Position and style consistently with existing input controls
+- Add proper accessibility labels and touch targets
+- Integrate with existing input area layout and responsive design
+
+### Task 30: Create file browser modal with tree navigation
+- Build `FileBrowserModal` component with expandable folder tree
+- Implement repository root detection and file system traversal
+- Add file type icons and file size display
+- Support expand/collapse folder functionality with smooth animations
+- Add breadcrumb navigation and current path display
+
+### Task 31: Implement file reading and markdown rendering
+- Add file content reading for common text formats (.txt, .md, .js, .ts, .py, .json, .yaml)
+- Create clean markdown renderer with proper styling for .md files
+- Add syntax highlighting for code files
+- Implement file preview modal with search and navigation
+- Add recent files quick access and file filtering
+
+---
+
 ## **📊 Implementation Timeline (AI-Speed)**
 
 ### **Day 1 (8-10 hours)**
@@ -196,6 +221,7 @@
 - **Afternoon (2 hours)**: Tasks 20-22 (MCP Model Detection)
 - **Evening (2 hours)**: Tasks 23-25 (Global Permissions)
 - **Evening (1 hour)**: Tasks 26-28 (Default Coder)
+- **Evening (1 hour)**: Tasks 29-31 (Repository File Browser)
 
 ---
 
@@ -210,6 +236,7 @@
 - Tasks 17-19 (UI) can be done parallel to encryption work
 - Tasks 20-22 (MCP) can be done independently
 - Tasks 26-28 (Default Coder) can start after Task 25
+- Tasks 29-31 (File Browser) can be developed independently
 
 ---
 
@@ -253,11 +280,19 @@
 - Users can change coder for existing sessions
 - Session list shows current coder clearly
 
+### **Feature 8 Complete When**:
+- Folder button appears next to files button in input area
+- File browser modal opens with expandable tree navigation
+- Users can click to read any text file or .md file
+- Markdown files render cleanly with proper formatting
+- File browser shows file types, sizes, and supports search
+- Recent files and breadcrumb navigation work correctly
+
 ---
 
 ## **🚀 Release Readiness Checklist**
 
-- [ ] All 28 tasks completed and tested
+- [ ] All 31 tasks completed and tested
 - [ ] Security scanning passes (TruffleHog, GitLeaks, CodeQL)
 - [ ] TypeScript compilation successful
 - [ ] Mobile/web/desktop testing complete
@@ -268,4 +303,4 @@
 
 ---
 
-**Total: 7 Features → 28 Tasks → 1-2 Days Implementation**
+**Total: 8 Features → 31 Tasks → 1-2 Days Implementation**

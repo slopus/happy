@@ -156,6 +156,37 @@ This backlog contains prioritized features, improvements, and fixes for Happy Co
 
 ---
 
+### 8. Repository File Browser
+**Priority**: Medium | **Difficulty**: Low | **Effort**: 2-3 days
+
+**Problem**: Users need easy access to browse and read repository files during AI conversations.
+
+**Scope**:
+- **Folder Button**: Add folder icon button next to "files" button at bottom of input box
+- **Repository Navigation**: Tree-view file browser for current repository
+- **File Reading**: Click to read any text file or .md file
+- **Markdown Rendering**: Clean, formatted display of .md files with proper styling
+- **File Type Support**: Text files (.txt, .md, .js, .ts, .py, .json, .yaml, etc.)
+- **Quick Preview**: Show file contents in modal or sidebar
+- **File Path Display**: Show current file path and breadcrumbs
+
+**Technical Implementation**:
+- Add folder icon button to input area UI
+- Create `FileBrowserModal` component with tree navigation
+- Integrate with existing file system access
+- Add markdown parser and renderer for .md files
+- Support common text file formats with syntax highlighting
+- Add file search and filtering capabilities
+
+**UX Features**:
+- Expand/collapse folder tree
+- File type icons and file size display
+- Recent files quick access
+- Search within file browser
+- Keyboard navigation support
+
+---
+
 ## 📋 Low Priority (Future Releases)
 
 ### 8. Upstream Fixes & Features Integration
