@@ -30,9 +30,10 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
-import { startConnectionHealthMonitoring, stopConnectionHealthMonitoring } from './connectionHealth';
-import { startStaleConnectionCleanup, stopStaleConnectionCleanup } from './staleConnectionCleaner';
-import { startSessionStatePersistence, stopSessionStatePersistence } from './sessionStatePersistence';
+// Enhanced connection management - imported but not auto-started for backwards compatibility
+// import { startConnectionHealthMonitoring, stopConnectionHealthMonitoring } from './connectionHealth';
+// import { startStaleConnectionCleanup, stopStaleConnectionCleanup } from './staleConnectionCleaner';
+// import { startSessionStatePersistence, stopSessionStatePersistence } from './sessionStatePersistence';
 
 class Sync {
 
@@ -122,14 +123,11 @@ class Sync {
 
     async #init() {
 
-        // Start connection health monitoring
-        startConnectionHealthMonitoring();
-
-        // Start stale connection cleanup
-        startStaleConnectionCleanup();
-
-        // Start session state persistence
-        startSessionStatePersistence();
+        // Enhanced connection management systems are available but not auto-started
+        // for backwards compatibility. Enable manually if needed:
+        // startConnectionHealthMonitoring();
+        // startStaleConnectionCleanup();
+        // startSessionStatePersistence();
 
         // Subscribe to updates
         this.subscribeToUpdates();
@@ -507,6 +505,31 @@ class Sync {
 
     public refreshSessions = async () => {
         return this.sessionsSync.invalidateAndAwait();
+    }
+
+    // Optional: Enable enhanced connection management systems
+    public enableEnhancedConnectionManagement = () => {
+        try {
+            // Dynamically import and start enhanced connection systems
+            import('./connectionHealth').then(({ startConnectionHealthMonitoring }) => {
+                startConnectionHealthMonitoring();
+                console.log('🔍 Enhanced connection health monitoring enabled');
+            });
+
+            import('./staleConnectionCleaner').then(({ startStaleConnectionCleanup }) => {
+                startStaleConnectionCleanup();
+                console.log('🧹 Stale connection cleanup enabled');
+            });
+
+            import('./sessionStatePersistence').then(({ startSessionStatePersistence }) => {
+                startSessionStatePersistence();
+                console.log('💾 Session state persistence enabled');
+            });
+
+            console.log('✨ Enhanced connection management systems enabled');
+        } catch (error) {
+            console.warn('⚠️ Failed to enable enhanced connection management:', error);
+        }
     }
 
     private fetchMachines = async () => {

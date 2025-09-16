@@ -154,12 +154,17 @@ class ApiSocket {
         return true;
     }
 
-    async emitWithAck<T = any>(event: string, data: any, timeout: number = 30000): Promise<T> {
+    async emitWithAck<T = any>(event: string, data: any, timeout?: number): Promise<T> {
         if (!this.socket) {
             throw new Error('Socket not connected');
         }
 
-        // Create a timeout promise
+        // If no timeout specified, use original behavior for backwards compatibility
+        if (timeout === undefined) {
+            return await this.socket.emitWithAck(event, data);
+        }
+
+        // Enhanced timeout handling only when timeout is explicitly specified
         const timeoutPromise = new Promise<never>((_, reject) => {
             setTimeout(() => {
                 reject(new Error(`Socket operation timeout after ${timeout}ms for event: ${event}`));
@@ -187,7 +192,31 @@ class ApiSocket {
     // HTTP Requests
     //
 
-    async request(path: string, options?: RequestInit & RequestOptions): Promise<Response> {
+    async request(path: string, options?: RequestInit): Promise<Response> {
+        if (!this.config) {
+            throw new Error('SyncSocket not initialized');
+        }
+
+        const credentials = await TokenStorage.getCredentials();
+        if (!credentials) {
+            throw new Error('No authentication credentials');
+        }
+
+        const url = `${this.config.endpoint}${path}`;
+        const headers = {
+            'Authorization': `Bearer ${credentials.token}`,
+            ...options?.headers
+        };
+
+        // Use original fetch behavior for backwards compatibility
+        return fetch(url, {
+            ...options,
+            headers
+        });
+    }
+
+    // Enhanced request method with timeout handling - opt-in usage
+    async requestWithTimeout(path: string, options?: RequestInit & RequestOptions): Promise<Response> {
         if (!this.config) {
             throw new Error('SyncSocket not initialized');
         }
