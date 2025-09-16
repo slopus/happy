@@ -43,54 +43,6 @@ export function parseMarkdownBlock(markdown: string) {
             continue;
         }
 
-        // XML block detection (excluding self-closing tags)
-        // This parser looks generic but is specifically designed to handle <local-command-stdout> tags.
-        // The goal is to render XML contents as normal text, but provide special handling for local-command-stdout
-        // by extracting the inner content without reparsing. All XML is preserved verbatim for reproduction.
-        const xmlMatch = trimmed.match(/^<([a-zA-Z][\w-]*)[^>]*>(?!.*\/>)/);
-        if (xmlMatch) {
-            const tagName = xmlMatch[1];
-            const closingTag = `</${tagName}>`;
-            let content = [line];
-            
-            // Look for closing tag
-            let foundClosing = false;
-            while (index < lines.length) {
-                const nextLine = lines[index];
-                content.push(nextLine);
-                const trimmedLine = nextLine.trim();
-                if (trimmedLine.endsWith(closingTag)) {
-                    foundClosing = true;
-                    index++;
-                    break;
-                }
-                index++;
-            }
-            
-            if (foundClosing) {
-                const fullContent = content.join('\n');
-                
-                // Calculate inner content indices
-                // Use the full opening tag match to handle attributes correctly
-                const openingTagMatch = fullContent.match(/^<[^>]*>/);
-                const openingTagEnd = openingTagMatch ? openingTagMatch[0].length : 0;
-                const closingTagStart = fullContent.lastIndexOf(`</${tagName}>`);
-                
-                blocks.push({ 
-                    type: 'xml-block', 
-                    tagName, 
-                    content: fullContent,
-                    innerStart: openingTagEnd,
-                    innerEnd: closingTagStart
-                });
-                continue;
-            } else {
-                // If no closing tag found, treat as regular text
-                // Reset index to process this line as text
-                index -= content.length - 1;
-            }
-        }
-
         // Options block
         if (trimmed.startsWith('<options>')) {
             let items: string[] = [];
