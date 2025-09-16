@@ -248,12 +248,12 @@ export class StaleConnectionCleaner {
         new Promise((_, reject) => setTimeout(() => reject(new Error('Verification timeout')), 5000))
       ]);
 
-      // If sessionKill succeeded, the session was dead
-      return false;
-    } catch (error) {
-      // If sessionKill failed, the session might be alive or there's a network issue
-      // For now, assume it's alive to be safe
+      // If sessionKill succeeded, the session was alive and has been killed
       return true;
+    } catch (error) {
+      // If sessionKill failed, the session was already dead or there's a network issue
+      // For now, assume it's dead to be safe (since we're cleaning up stale connections)
+      return false;
     }
   }
 

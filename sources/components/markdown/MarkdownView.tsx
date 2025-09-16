@@ -129,20 +129,25 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
     );
 }
 
-function RenderOptionsBlock(props: { 
-    items: string[], 
-    first: boolean, 
-    last: boolean, 
+function RenderOptionsBlock(props: {
+    items: string[],
+    first: boolean,
+    last: boolean,
     selectable: boolean,
-    onOptionPress?: (option: Option) => void 
+    onOptionPress?: (option: Option) => void
 }) {
+    // Don't render anything if no items
+    if (props.items.length === 0) {
+        return null;
+    }
+
     return (
         <View style={[style.optionsContainer, props.first && style.first, props.last && style.last]}>
             {props.items.map((item, index) => {
                 if (props.onOptionPress) {
                     return (
-                        <Pressable 
-                            key={index} 
+                        <Pressable
+                            key={index}
                             style={({ pressed }) => [
                                 style.optionItem,
                                 pressed && style.optionItemPressed

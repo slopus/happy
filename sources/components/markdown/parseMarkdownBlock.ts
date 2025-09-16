@@ -46,22 +46,26 @@ export function parseMarkdownBlock(markdown: string) {
         // Options block
         if (trimmed.startsWith('<options>')) {
             let items: string[] = [];
+            // Skip the opening <options> line
             while (index < lines.length) {
                 const nextLine = lines[index];
-                if (nextLine.trim() === '</options>') {
+                const nextLineTrimmed = nextLine.trim();
+
+                if (nextLineTrimmed === '</options>') {
                     index++;
                     break;
                 }
+
                 // Extract content from <option> tags
-                const optionMatch = nextLine.match(/<option>(.*?)<\/option>/);
+                const optionMatch = nextLineTrimmed.match(/<option>(.*?)<\/option>/);
                 if (optionMatch) {
                     items.push(optionMatch[1]);
                 }
                 index++;
             }
-            if (items.length > 0) {
-                blocks.push({ type: 'options', items });
-            }
+
+            // Always add the options block, even if no items found, to consume the XML tags
+            blocks.push({ type: 'options', items });
             continue;
         }
 

@@ -156,7 +156,12 @@ export function showDaemonCleanupModal(props: DaemonCleanupModalProps): void {
   );
 }
 
-// Note: Using Modal.alert for simplicity. Custom modal component removed to avoid TypeScript issues.
+// Note: Using Modal.alert for simplicity and reliability across platforms.
+// A custom modal component was previously used, but was removed due to complex TypeScript typing issues
+// (e.g., difficulty typing modal props and lifecycle events in a way compatible with our codebase and Modal API).
+// If a custom modal is needed in the future, consider defining a well-typed interface for modal props and handlers,
+// or refactoring the modal logic to better align with TypeScript's type system.
+// For now, Modal.alert provides a straightforward, type-safe solution.
 
 export const DaemonCleanupModal = {
   show: showDaemonCleanupModal

@@ -6,7 +6,58 @@
 import { storage } from './storage';
 import { apiSocket } from './apiSocket';
 import type { Session } from './storageTypes';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+// Platform-agnostic storage - falls back to localStorage on web
+let platformStorage: any;
+try {
+  // Try React Native platformStorage first
+  platformStorage = require('@react-native-async-storage/async-storage').default;
+} catch {
+  // Fallback to web localStorage with platformStorage-like interface
+  platformStorage = {
+    async getItem(key: string): Promise<string | null> {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return window.localStorage.getItem(key);
+      }
+      return null;
+    },
+    async setItem(key: string, value: string): Promise<void> {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.setItem(key, value);
+      }
+    },
+    async removeItem(key: string): Promise<void> {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        window.localStorage.removeItem(key);
+      }
+    },
+    async getAllKeys(): Promise<string[]> {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return Object.keys(window.localStorage);
+      }
+      return [];
+    },
+    async multiGet(keys: string[]): Promise<[string, string | null][]> {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        return keys.map((key: string): [string, string | null] => [key, window.localStorage.getItem(key)]);
+      }
+      return keys.map((key: string): [string, string | null] => [key, null]);
+    },
+    async multiSet(keyValuePairs: [string, string][]): Promise<void> {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        keyValuePairs.forEach(([key, value]) => {
+          window.localStorage.setItem(key, value);
+        });
+      }
+    },
+    async multiRemove(keys: string[]): Promise<void> {
+      if (typeof window !== 'undefined' && window.localStorage) {
+        keys.forEach((key: string) => {
+          window.localStorage.removeItem(key);
+        });
+      }
+    }
+  };
+}
 
 export interface SessionStateBackup {
   sessionId: string;
@@ -110,7 +161,7 @@ export class SessionStatePersistence {
    */
   async clearBackup(sessionId: string): Promise<void> {
     this.localStateCache.delete(sessionId);
-    await AsyncStorage.removeItem(`${STORAGE_PREFIX}${sessionId}`);
+    await platformStorage.removeItem(`${STORAGE_PREFIX}${sessionId}`);
   }
 
   /**
@@ -120,9 +171,9 @@ export class SessionStatePersistence {
     const keys = Array.from(this.localStateCache.keys());
     this.localStateCache.clear();
 
-    // Remove from AsyncStorage
+    // Remove from platformStorage
     const storageKeys = keys.map(sessionId => `${STORAGE_PREFIX}${sessionId}`);
-    await AsyncStorage.multiRemove(storageKeys);
+    await platformStorage.multiRemove(storageKeys);
   }
 
   /**
@@ -179,10 +230,10 @@ export class SessionStatePersistence {
         });
       }
 
-      // Save to AsyncStorage
+      // Save to platformStorage
       if (backupsToSave.length > 0) {
         const keyValuePairs = backupsToSave.map(item => [item.key, item.value] as [string, string]);
-        await AsyncStorage.multiSet(keyValuePairs);
+        await platformStorage.multiSet(keyValuePairs);
       }
 
       // Clean up old backups
@@ -196,19 +247,19 @@ export class SessionStatePersistence {
   }
 
   /**
-   * Load backups from AsyncStorage
+   * Load backups from platformStorage
    */
   private async loadBackupsFromStorage(): Promise<void> {
     try {
-      const allKeys = await AsyncStorage.getAllKeys();
-      const backupKeys = allKeys.filter(key => key.startsWith(STORAGE_PREFIX));
+      const allKeys = await platformStorage.getAllKeys();
+      const backupKeys = allKeys.filter((key: string) => key.startsWith(STORAGE_PREFIX));
 
       if (backupKeys.length === 0) {
         console.log('💾 SessionStatePersistence: No existing backups found');
         return;
       }
 
-      const backupData = await AsyncStorage.multiGet(backupKeys);
+      const backupData = await platformStorage.multiGet(backupKeys);
       let loadedCount = 0;
 
       for (const [key, value] of backupData) {
@@ -220,7 +271,7 @@ export class SessionStatePersistence {
             const now = Date.now();
             if (now - backup.timestamp > this.config.maxBackupAge) {
               // Remove expired backup
-              await AsyncStorage.removeItem(key);
+              await platformStorage.removeItem(key);
               continue;
             }
 
@@ -229,7 +280,7 @@ export class SessionStatePersistence {
           } catch (parseError) {
             console.warn(`💾 SessionStatePersistence: Failed to parse backup for key ${key}:`, parseError);
             // Remove corrupted backup
-            await AsyncStorage.removeItem(key);
+            await platformStorage.removeItem(key);
           }
         }
       }
@@ -258,7 +309,7 @@ export class SessionStatePersistence {
     // Remove from cache and storage
     for (const sessionId of toRemove) {
       this.localStateCache.delete(sessionId);
-      await AsyncStorage.removeItem(`${STORAGE_PREFIX}${sessionId}`);
+      await platformStorage.removeItem(`${STORAGE_PREFIX}${sessionId}`);
     }
 
     if (toRemove.length > 0) {

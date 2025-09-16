@@ -248,6 +248,24 @@ class ApiSocket {
     }
 
     //
+    // Connection Health API
+    //
+
+    isSocketConnected(): boolean {
+        return this.socket?.connected || false;
+    }
+
+    getSocketInstance() {
+        return this.socket;
+    }
+
+    addStatusListener(listener: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void): () => void {
+        this.statusListeners.add(listener);
+        listener(this.currentStatus);
+        return () => this.statusListeners.delete(listener);
+    }
+
+    //
     // Token Management
     //
 

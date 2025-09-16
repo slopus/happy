@@ -200,19 +200,23 @@ export class ConnectionHealthMonitor {
 
       try {
         // Use socket.io ping mechanism if available
-        if (apiSocket['socket'] && apiSocket['socket'].connected) {
-          const socket = apiSocket['socket'];
+        if (apiSocket.isSocketConnected()) {
+          const socket = apiSocket.getSocketInstance();
 
-          // Send a ping and wait for pong
-          socket.emit('ping', { timestamp: Date.now() });
+          if (socket) {
+            // Send a ping and wait for pong
+            socket.emit('ping', { timestamp: Date.now() });
 
-          const handlePong = () => {
-            clearTimeout(timeout);
-            socket.off('pong', handlePong);
-            resolve();
-          };
+            const handlePong = () => {
+              clearTimeout(timeout);
+              socket.off('pong', handlePong);
+              resolve();
+            };
 
-          socket.once('pong', handlePong);
+            socket.once('pong', handlePong);
+          } else {
+            reject(new Error('Socket instance not available'));
+          }
         } else {
           reject(new Error('Socket not connected'));
         }
