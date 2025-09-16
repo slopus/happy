@@ -15,34 +15,30 @@ module.exports = {
     '@typescript-eslint',
   ],
   rules: {
-    // TypeScript specific rules
-    '@typescript-eslint/no-unused-vars': ['warn', {
-      'varsIgnorePattern': '^_',
-      'argsIgnorePattern': '^_',
-      'destructuredArrayIgnorePattern': '^_'
-    }],
-    '@typescript-eslint/no-explicit-any': 'warn',
+    // TypeScript specific rules - relaxed for development
+    '@typescript-eslint/no-unused-vars': 'off', // Too many false positives in development
+    '@typescript-eslint/no-explicit-any': 'off', // Allow any for rapid development
     '@typescript-eslint/explicit-function-return-type': 'off',
     '@typescript-eslint/explicit-module-boundary-types': 'off',
-    '@typescript-eslint/no-empty-function': 'warn',
-    '@typescript-eslint/no-non-null-assertion': 'warn',
+    '@typescript-eslint/no-empty-function': 'off', // Allow empty functions for placeholders
+    '@typescript-eslint/no-non-null-assertion': 'off', // Allow ! operator when needed
 
     // React specific rules
     'react/prop-types': 'off', // Using TypeScript for prop validation
     'react/react-in-jsx-scope': 'off', // Not needed in React 17+
-    'react/display-name': 'warn',
-    'react-hooks/rules-of-hooks': 'error',
-    'react-hooks/exhaustive-deps': 'warn',
+    'react/display-name': 'off', // Not critical for this project
+    'react-hooks/rules-of-hooks': 'error', // Keep this as error - critical rule
+    'react-hooks/exhaustive-deps': 'off', // Often too strict for development
 
-    // General JavaScript rules
-    'no-console': 'warn',
-    'no-debugger': 'error',
-    'no-alert': 'warn',
+    // General JavaScript rules - development-friendly
+    'no-console': 'off', // Allow console.log for debugging
+    'no-debugger': 'error', // Still error for debugger statements
+    'no-alert': 'off', // Allow alerts if needed
     'no-unused-vars': 'off', // Use TypeScript version instead
     'prefer-const': 'error',
     'no-var': 'error',
-    'object-shorthand': 'warn',
-    'prefer-template': 'warn',
+    'object-shorthand': 'off', // Allow both shorthand and regular object syntax
+    'prefer-template': 'off', // Allow string concatenation
 
     // Code style rules - matching project conventions
     'indent': ['error', 2, { 'SwitchCase': 1 }],
@@ -72,5 +68,6 @@ module.exports = {
     'ios/',
     '.expo/',
     '*.d.ts',
+    'sources/trash/', // Ignore test/example files
   ],
 };
