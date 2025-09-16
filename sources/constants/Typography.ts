@@ -54,7 +54,7 @@ export const FontFamilies = {
   legacy: {
     spaceMono: 'SpaceMono',
     systemMono: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-  }
+  },
 };
 
 // Helper functions for easy access to font families
@@ -112,5 +112,5 @@ export const Typography = {
     systemMono: () => ({
       fontFamily: FontFamilies.legacy.systemMono,
     }),
-  }
+  },
 }; 

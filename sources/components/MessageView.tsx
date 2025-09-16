@@ -1,13 +1,13 @@
-import * as React from "react";
-import { View, Text } from "react-native";
+import * as React from 'react';
+import { View, Text } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { MarkdownView } from "./markdown/MarkdownView";
+import { MarkdownView } from './markdown/MarkdownView';
 import { t } from '@/text';
-import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
-import { Metadata } from "@/sync/storageTypes";
-import { layout } from "./layout";
-import { ToolView } from "./tools/ToolView";
-import { AgentEvent } from "@/sync/typesRaw";
+import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from '@/sync/typesMessage';
+import { Metadata } from '@/sync/storageTypes';
+import { layout } from './layout';
+import { ToolView } from './tools/ToolView';
+import { AgentEvent } from '@/sync/typesRaw';
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
 

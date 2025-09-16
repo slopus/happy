@@ -1,4 +1,4 @@
-import { trimIdent } from "@/utils/trimIdent";
+import { trimIdent } from '@/utils/trimIdent';
 
 export const systemPrompt = trimIdent(`
     # Options

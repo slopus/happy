@@ -10,38 +10,38 @@ interface PlaceholderContainerViewProps {
 }
 
 export const PlaceholderContainerView: React.FC<PlaceholderContainerViewProps> = ({
-    children,
-    style,
-    contentContainerStyle
+  children,
+  style,
+  contentContainerStyle,
 }) => {
-    const { height, progress } = useReanimatedKeyboardAnimation();
+  const { height, progress } = useReanimatedKeyboardAnimation();
 
-    const animatedStyle = useAnimatedStyle(() => {
-        // Shift content up by half the keyboard height when keyboard is visible
-        const translateY = height.value * progress.value * 0.5;
+  const animatedStyle = useAnimatedStyle(() => {
+    // Shift content up by half the keyboard height when keyboard is visible
+    const translateY = height.value * progress.value * 0.5;
         
-        return {
-            transform: [{ translateY }],
-        };
-    }, []);
+    return {
+      transform: [{ translateY }],
+    };
+  }, []);
 
-    return (
-        <Animated.View style={[{ flex: 1 }, style]}>
-            <Pressable
-                style={[
-                    {
-                        flex: 1,
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                    },
-                    contentContainerStyle
-                ]}
-                onPress={() => Keyboard.dismiss()}
-            >
-                <Animated.View style={animatedStyle}>
-                    {children}
-                </Animated.View>
-            </Pressable>
+  return (
+    <Animated.View style={[{ flex: 1 }, style]}>
+      <Pressable
+        style={[
+          {
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+          },
+          contentContainerStyle,
+        ]}
+        onPress={() => Keyboard.dismiss()}
+      >
+        <Animated.View style={animatedStyle}>
+          {children}
         </Animated.View>
-    );
+      </Pressable>
+    </Animated.View>
+  );
 };

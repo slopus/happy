@@ -26,33 +26,33 @@ export type ToolViewComponent = React.ComponentType<ToolViewProps>;
 
 // Registry of tool-specific view components
 export const toolViewRegistry: Record<string, ToolViewComponent> = {
-    Edit: EditView,
-    Bash: BashView,
-    CodexBash: CodexBashView,
-    CodexPatch: CodexPatchView,
-    CodexDiff: CodexDiffView,
-    Write: WriteView,
-    TodoWrite: TodoView,
-    ExitPlanMode: ExitPlanToolView,
-    exit_plan_mode: ExitPlanToolView,
-    MultiEdit: MultiEditView,
-    Task: TaskView
+  Edit: EditView,
+  Bash: BashView,
+  CodexBash: CodexBashView,
+  CodexPatch: CodexPatchView,
+  CodexDiff: CodexDiffView,
+  Write: WriteView,
+  TodoWrite: TodoView,
+  ExitPlanMode: ExitPlanToolView,
+  exit_plan_mode: ExitPlanToolView,
+  MultiEdit: MultiEditView,
+  Task: TaskView,
 };
 
 export const toolFullViewRegistry: Record<string, ToolViewComponent> = {
-    Bash: BashViewFull,
-    Edit: EditViewFull,
-    MultiEdit: MultiEditViewFull
+  Bash: BashViewFull,
+  Edit: EditViewFull,
+  MultiEdit: MultiEditViewFull,
 };
 
 // Helper function to get the appropriate view component for a tool
 export function getToolViewComponent(toolName: string): ToolViewComponent | null {
-    return toolViewRegistry[toolName] || null;
+  return toolViewRegistry[toolName] || null;
 }
 
 // Helper function to get the full view component for a tool
 export function getToolFullViewComponent(toolName: string): ToolViewComponent | null {
-    return toolFullViewRegistry[toolName] || null;
+  return toolFullViewRegistry[toolName] || null;
 }
 
 // Export individual components

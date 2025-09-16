@@ -2,17 +2,17 @@
 // React Native's bundler will automatically choose .native.ts or .web.ts
 
 export { 
-    RevenueCatInterface,
-    CustomerInfo,
-    Product,
-    Offerings,
-    PurchaseResult,
-    RevenueCatConfig,
-    LogLevel,
-    PaywallResult,
-    PaywallOptions,
-    Offering,
-    Package
+  RevenueCatInterface,
+  CustomerInfo,
+  Product,
+  Offerings,
+  PurchaseResult,
+  RevenueCatConfig,
+  LogLevel,
+  PaywallResult,
+  PaywallOptions,
+  Offering,
+  Package,
 } from './types';
 
 // This will be resolved to either revenueCat.native.ts or revenueCat.web.ts

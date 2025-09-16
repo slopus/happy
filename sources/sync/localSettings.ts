@@ -5,14 +5,14 @@ import * as z from 'zod';
 //
 
 export const LocalSettingsSchema = z.object({
-    // Developer settings (device-specific)
-    debugMode: z.boolean().describe('Enable debug logging'),
-    devModeEnabled: z.boolean().describe('Enable developer menu in settings'),
-    commandPaletteEnabled: z.boolean().describe('Enable CMD+K command palette (web only)'),
-    themePreference: z.enum(['light', 'dark', 'adaptive']).describe('Theme preference: light, dark, or adaptive (follows system)'),
-    markdownCopyV2: z.boolean().describe('Replace native paragraph selection with long-press modal for full markdown copy'),
-    // CLI version acknowledgments - keyed by machineId
-    acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
+  // Developer settings (device-specific)
+  debugMode: z.boolean().describe('Enable debug logging'),
+  devModeEnabled: z.boolean().describe('Enable developer menu in settings'),
+  commandPaletteEnabled: z.boolean().describe('Enable CMD+K command palette (web only)'),
+  themePreference: z.enum(['light', 'dark', 'adaptive']).describe('Theme preference: light, dark, or adaptive (follows system)'),
+  markdownCopyV2: z.boolean().describe('Replace native paragraph selection with long-press modal for full markdown copy'),
+  // CLI version acknowledgments - keyed by machineId
+  acknowledgedCliVersions: z.record(z.string(), z.string()).describe('Acknowledged CLI versions per machine'),
 });
 
 //
@@ -29,12 +29,12 @@ export type LocalSettings = z.infer<typeof LocalSettingsSchema>;
 //
 
 export const localSettingsDefaults: LocalSettings = {
-    debugMode: false,
-    devModeEnabled: false,
-    commandPaletteEnabled: false,
-    themePreference: 'adaptive',
-    markdownCopyV2: false,
-    acknowledgedCliVersions: {},
+  debugMode: false,
+  devModeEnabled: false,
+  commandPaletteEnabled: false,
+  themePreference: 'adaptive',
+  markdownCopyV2: false,
+  acknowledgedCliVersions: {},
 };
 Object.freeze(localSettingsDefaults);
 
@@ -43,11 +43,11 @@ Object.freeze(localSettingsDefaults);
 //
 
 export function localSettingsParse(settings: unknown): LocalSettings {
-    const parsed = LocalSettingsSchemaPartial.safeParse(settings);
-    if (!parsed.success) {
-        return { ...localSettingsDefaults };
-    }
-    return { ...localSettingsDefaults, ...parsed.data };
+  const parsed = LocalSettingsSchemaPartial.safeParse(settings);
+  if (!parsed.success) {
+    return { ...localSettingsDefaults };
+  }
+  return { ...localSettingsDefaults, ...parsed.data };
 }
 
 //
@@ -55,5 +55,5 @@ export function localSettingsParse(settings: unknown): LocalSettings {
 //
 
 export function applyLocalSettings(settings: LocalSettings, delta: Partial<LocalSettings>): LocalSettings {
-    return { ...localSettingsDefaults, ...settings, ...delta };
+  return { ...localSettingsDefaults, ...settings, ...delta };
 }

@@ -55,7 +55,7 @@ try {
           window.localStorage.removeItem(key);
         });
       }
-    }
+    },
   };
 }
 
@@ -77,7 +77,7 @@ const DEFAULT_CONFIG: SessionStatePersistenceConfig = {
   backupInterval: 10000,          // 10 seconds
   maxBackups: 10,
   maxBackupAge: 24 * 60 * 60 * 1000, // 24 hours
-  conflictResolution: 'merge'
+  conflictResolution: 'merge',
 };
 
 const STORAGE_PREFIX = 'session_backup_';
@@ -205,7 +205,7 @@ export class SessionStatePersistence {
         const lastActivity = Math.max(
           session.activeAt || 0,
           session.updatedAt || 0,
-          session.thinkingAt || 0
+          session.thinkingAt || 0,
         );
 
         const timeSinceActivity = now - lastActivity;
@@ -217,7 +217,7 @@ export class SessionStatePersistence {
           sessionId,
           state: { ...session },
           timestamp: now,
-          version: session.metadataVersion || 0
+          version: session.metadataVersion || 0,
         };
 
         // Update cache
@@ -226,7 +226,7 @@ export class SessionStatePersistence {
         // Prepare for storage
         backupsToSave.push({
           key: `${STORAGE_PREFIX}${sessionId}`,
-          value: JSON.stringify(backup)
+          value: JSON.stringify(backup),
         });
       }
 
@@ -341,7 +341,7 @@ export class SessionStatePersistence {
         const reconciledSession = await this.resolveSessionConflict(
           cachedBackup.state,
           currentSession,
-          sessionId
+          sessionId,
         );
 
         if (reconciledSession) {
@@ -366,7 +366,7 @@ export class SessionStatePersistence {
   private async resolveSessionConflict(
     localSession: Session,
     remoteSession: Session,
-    sessionId: string
+    sessionId: string,
   ): Promise<Session | null> {
     try {
       switch (this.config.conflictResolution) {
@@ -392,16 +392,16 @@ export class SessionStatePersistence {
             // Merge metadata if local is newer
             metadata: localSession.metadataVersion && remoteSession.metadataVersion &&
                      localSession.metadataVersion > remoteSession.metadataVersion
-                     ? localSession.metadata
-                     : remoteSession.metadata,
+              ? localSession.metadata
+              : remoteSession.metadata,
 
             metadataVersion: Math.max(localSession.metadataVersion || 0, remoteSession.metadataVersion || 0),
 
             // Merge agent state if local is newer
             agentState: localSession.agentStateVersion && remoteSession.agentStateVersion &&
                        localSession.agentStateVersion > remoteSession.agentStateVersion
-                       ? localSession.agentState
-                       : remoteSession.agentState,
+              ? localSession.agentState
+              : remoteSession.agentState,
 
             agentStateVersion: Math.max(localSession.agentStateVersion || 0, remoteSession.agentStateVersion || 0),
 
@@ -412,8 +412,8 @@ export class SessionStatePersistence {
             // Prefer local thinking state if more recent
             thinking: localSession.thinkingAt && remoteSession.thinkingAt &&
                      localSession.thinkingAt > remoteSession.thinkingAt
-                     ? localSession.thinking
-                     : remoteSession.thinking
+              ? localSession.thinking
+              : remoteSession.thinking,
           };
 
           console.log(`💾 SessionStatePersistence: Merged local and remote state for session ${sessionId}`);
@@ -448,12 +448,12 @@ export class SessionStatePersistence {
     lastBackupTime: number;
     backupCount: number;
     config: SessionStatePersistenceConfig;
-  } {
+    } {
     return {
       isRunning: this.isRunning,
       lastBackupTime: this.lastBackupTime,
       backupCount: this.localStateCache.size,
-      config: { ...this.config }
+      config: { ...this.config },
     };
   }
 }

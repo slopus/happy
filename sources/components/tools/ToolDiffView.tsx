@@ -11,26 +11,26 @@ interface ToolDiffViewProps {
 }
 
 export const ToolDiffView = React.memo<ToolDiffViewProps>(({ 
-    oldText, 
-    newText, 
-    style, 
-    showLineNumbers = false,
-    showPlusMinusSymbols = false 
+  oldText, 
+  newText, 
+  style, 
+  showLineNumbers = false,
+  showPlusMinusSymbols = false, 
 }) => {
-    return (
-        <ScrollView 
-            horizontal 
-            showsHorizontalScrollIndicator={true}
-            contentContainerStyle={{ flexGrow: 1 }}
-        >
-            <DiffView 
-                oldText={oldText} 
-                newText={newText} 
-                wrapLines={false}
-                showLineNumbers={showLineNumbers}
-                showPlusMinusSymbols={showPlusMinusSymbols}
-                style={{ flex: 1, ...style }}
-            />
-        </ScrollView>
-    );
+  return (
+    <ScrollView 
+      horizontal 
+      showsHorizontalScrollIndicator={true}
+      contentContainerStyle={{ flexGrow: 1 }}
+    >
+      <DiffView 
+        oldText={oldText} 
+        newText={newText} 
+        wrapLines={false}
+        showLineNumbers={showLineNumbers}
+        showPlusMinusSymbols={showPlusMinusSymbols}
+        style={{ flex: 1, ...style }}
+      />
+    </ScrollView>
+  );
 });

@@ -148,309 +148,309 @@ export interface SpawnSessionOptions {
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
     
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent } = options;
+  const { machineId, directory, approvedNewDirectoryCreation = false, token, agent } = options;
 
-    try {
-        const result = await apiSocket.machineRPC<SpawnSessionResult, {
+  try {
+    const result = await apiSocket.machineRPC<SpawnSessionResult, {
             type: 'spawn-in-directory'
             directory: string
             approvedNewDirectoryCreation?: boolean,
             token?: string,
             agent?: 'codex' | 'claude'
         }>(
-            machineId,
-            'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent }
+          machineId,
+          'spawn-happy-session',
+          { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent },
         );
-        return result;
-    } catch (error) {
-        // Handle RPC errors
-        return {
-            type: 'error',
-            errorMessage: error instanceof Error ? error.message : 'Failed to spawn session'
-        };
-    }
+    return result;
+  } catch (error) {
+    // Handle RPC errors
+    return {
+      type: 'error',
+      errorMessage: error instanceof Error ? error.message : 'Failed to spawn session',
+    };
+  }
 }
 
 /**
  * Stop the daemon on a specific machine
  */
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {
-    const result = await apiSocket.machineRPC<{ message: string }, {}>(
-        machineId,
-        'stop-daemon',
-        {}
-    );
-    return result;
+  const result = await apiSocket.machineRPC<{ message: string }, {}>(
+    machineId,
+    'stop-daemon',
+    {},
+  );
+  return result;
 }
 
 /**
  * Update machine metadata with optimistic concurrency control and automatic retry
  */
 export async function machineUpdateMetadata(
-    machineId: string,
-    metadata: MachineMetadata,
-    expectedVersion: number,
-    maxRetries: number = 3
+  machineId: string,
+  metadata: MachineMetadata,
+  expectedVersion: number,
+  maxRetries: number = 3,
 ): Promise<{ version: number; metadata: string }> {
-    let currentVersion = expectedVersion;
-    let currentMetadata = { ...metadata };
-    let retryCount = 0;
+  let currentVersion = expectedVersion;
+  let currentMetadata = { ...metadata };
+  let retryCount = 0;
 
-    const machineEncryption = sync.encryption.getMachineEncryption(machineId);
-    if (!machineEncryption) {
-        throw new Error(`Machine encryption not found for ${machineId}`);
-    }
+  const machineEncryption = sync.encryption.getMachineEncryption(machineId);
+  if (!machineEncryption) {
+    throw new Error(`Machine encryption not found for ${machineId}`);
+  }
 
-    while (retryCount < maxRetries) {
-        const encryptedMetadata = await machineEncryption.encryptRaw(currentMetadata);
+  while (retryCount < maxRetries) {
+    const encryptedMetadata = await machineEncryption.encryptRaw(currentMetadata);
 
-        const result = await apiSocket.emitWithAck<{
+    const result = await apiSocket.emitWithAck<{
             result: 'success' | 'version-mismatch' | 'error';
             version?: number;
             metadata?: string;
             message?: string;
         }>('machine-update-metadata', {
-            machineId,
-            metadata: encryptedMetadata,
-            expectedVersion: currentVersion
+          machineId,
+          metadata: encryptedMetadata,
+          expectedVersion: currentVersion,
         });
 
-        if (result.result === 'success') {
-            return {
-                version: result.version!,
-                metadata: result.metadata!
-            };
-        } else if (result.result === 'version-mismatch') {
-            // Get the latest version and metadata from the response
-            currentVersion = result.version!;
-            const latestMetadata = await machineEncryption.decryptRaw(result.metadata!) as MachineMetadata;
+    if (result.result === 'success') {
+      return {
+        version: result.version!,
+        metadata: result.metadata!,
+      };
+    } else if (result.result === 'version-mismatch') {
+      // Get the latest version and metadata from the response
+      currentVersion = result.version!;
+      const latestMetadata = await machineEncryption.decryptRaw(result.metadata!) as MachineMetadata;
 
-            // Merge our changes with the latest metadata
-            // Preserve the displayName we're trying to set, but use latest values for other fields
-            currentMetadata = {
-                ...latestMetadata,
-                displayName: metadata.displayName // Keep our intended displayName change
-            };
+      // Merge our changes with the latest metadata
+      // Preserve the displayName we're trying to set, but use latest values for other fields
+      currentMetadata = {
+        ...latestMetadata,
+        displayName: metadata.displayName, // Keep our intended displayName change
+      };
 
-            retryCount++;
+      retryCount++;
 
-            // If we've exhausted retries, throw error
-            if (retryCount >= maxRetries) {
-                throw new Error(`Failed to update after ${maxRetries} retries due to version conflicts`);
-            }
+      // If we've exhausted retries, throw error
+      if (retryCount >= maxRetries) {
+        throw new Error(`Failed to update after ${maxRetries} retries due to version conflicts`);
+      }
 
-            // Otherwise, loop will retry with updated version and merged metadata
-        } else {
-            throw new Error(result.message || 'Failed to update machine metadata');
-        }
+      // Otherwise, loop will retry with updated version and merged metadata
+    } else {
+      throw new Error(result.message || 'Failed to update machine metadata');
     }
+  }
 
-    throw new Error('Unexpected error in machineUpdateMetadata');
+  throw new Error('Unexpected error in machineUpdateMetadata');
 }
 
 /**
  * Abort the current session operation
  */
 export async function sessionAbort(sessionId: string): Promise<void> {
-    await apiSocket.sessionRPC(sessionId, 'abort', {
-        reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`
-    });
+  await apiSocket.sessionRPC(sessionId, 'abort', {
+    reason: `The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.`,
+  });
 }
 
 /**
  * Allow a permission request
  */
 export async function sessionAllow(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'approved' | 'approved_for_session'): Promise<void> {
-    const request: SessionPermissionRequest = { id, approved: true, mode, allowTools: allowedTools, decision };
-    await apiSocket.sessionRPC(sessionId, 'permission', request);
+  const request: SessionPermissionRequest = { id, approved: true, mode, allowTools: allowedTools, decision };
+  await apiSocket.sessionRPC(sessionId, 'permission', request);
 }
 
 /**
  * Deny a permission request
  */
 export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'denied' | 'abort'): Promise<void> {
-    const request: SessionPermissionRequest = { id, approved: false, mode, allowTools: allowedTools, decision };
-    await apiSocket.sessionRPC(sessionId, 'permission', request);
+  const request: SessionPermissionRequest = { id, approved: false, mode, allowTools: allowedTools, decision };
+  await apiSocket.sessionRPC(sessionId, 'permission', request);
 }
 
 /**
  * Request mode change for a session
  */
 export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): Promise<boolean> {
-    const request: SessionModeChangeRequest = { to };
-    const response = await apiSocket.sessionRPC<boolean, SessionModeChangeRequest>(
-        sessionId,
-        'switch',
-        request,
-    );
-    return response;
+  const request: SessionModeChangeRequest = { to };
+  const response = await apiSocket.sessionRPC<boolean, SessionModeChangeRequest>(
+    sessionId,
+    'switch',
+    request,
+  );
+  return response;
 }
 
 /**
  * Execute a bash command in the session
  */
 export async function sessionBash(sessionId: string, request: SessionBashRequest): Promise<SessionBashResponse> {
-    try {
-        const response = await apiSocket.sessionRPC<SessionBashResponse, SessionBashRequest>(
-            sessionId,
-            'bash',
-            request
-        );
-        return response;
-    } catch (error) {
-        return {
-            success: false,
-            stdout: '',
-            stderr: error instanceof Error ? error.message : 'Unknown error',
-            exitCode: -1,
-            error: error instanceof Error ? error.message : 'Unknown error'
-        };
-    }
+  try {
+    const response = await apiSocket.sessionRPC<SessionBashResponse, SessionBashRequest>(
+      sessionId,
+      'bash',
+      request,
+    );
+    return response;
+  } catch (error) {
+    return {
+      success: false,
+      stdout: '',
+      stderr: error instanceof Error ? error.message : 'Unknown error',
+      exitCode: -1,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }
 
 /**
  * Read a file from the session
  */
 export async function sessionReadFile(sessionId: string, path: string): Promise<SessionReadFileResponse> {
-    try {
-        const request: SessionReadFileRequest = { path };
-        const response = await apiSocket.sessionRPC<SessionReadFileResponse, SessionReadFileRequest>(
-            sessionId,
-            'readFile',
-            request
-        );
-        return response;
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
-        };
-    }
+  try {
+    const request: SessionReadFileRequest = { path };
+    const response = await apiSocket.sessionRPC<SessionReadFileResponse, SessionReadFileRequest>(
+      sessionId,
+      'readFile',
+      request,
+    );
+    return response;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }
 
 /**
  * Write a file to the session
  */
 export async function sessionWriteFile(
-    sessionId: string,
-    path: string,
-    content: string,
-    expectedHash?: string | null
+  sessionId: string,
+  path: string,
+  content: string,
+  expectedHash?: string | null,
 ): Promise<SessionWriteFileResponse> {
-    try {
-        const request: SessionWriteFileRequest = { path, content, expectedHash };
-        const response = await apiSocket.sessionRPC<SessionWriteFileResponse, SessionWriteFileRequest>(
-            sessionId,
-            'writeFile',
-            request
-        );
-        return response;
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
-        };
-    }
+  try {
+    const request: SessionWriteFileRequest = { path, content, expectedHash };
+    const response = await apiSocket.sessionRPC<SessionWriteFileResponse, SessionWriteFileRequest>(
+      sessionId,
+      'writeFile',
+      request,
+    );
+    return response;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }
 
 /**
  * List directory contents in the session
  */
 export async function sessionListDirectory(sessionId: string, path: string): Promise<SessionListDirectoryResponse> {
-    try {
-        const request: SessionListDirectoryRequest = { path };
-        const response = await apiSocket.sessionRPC<SessionListDirectoryResponse, SessionListDirectoryRequest>(
-            sessionId,
-            'listDirectory',
-            request
-        );
-        return response;
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
-        };
-    }
+  try {
+    const request: SessionListDirectoryRequest = { path };
+    const response = await apiSocket.sessionRPC<SessionListDirectoryResponse, SessionListDirectoryRequest>(
+      sessionId,
+      'listDirectory',
+      request,
+    );
+    return response;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }
 
 /**
  * Get directory tree from the session
  */
 export async function sessionGetDirectoryTree(
-    sessionId: string,
-    path: string,
-    maxDepth: number
+  sessionId: string,
+  path: string,
+  maxDepth: number,
 ): Promise<SessionGetDirectoryTreeResponse> {
-    try {
-        const request: SessionGetDirectoryTreeRequest = { path, maxDepth };
-        const response = await apiSocket.sessionRPC<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
-            sessionId,
-            'getDirectoryTree',
-            request
-        );
-        return response;
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
-        };
-    }
+  try {
+    const request: SessionGetDirectoryTreeRequest = { path, maxDepth };
+    const response = await apiSocket.sessionRPC<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
+      sessionId,
+      'getDirectoryTree',
+      request,
+    );
+    return response;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }
 
 /**
  * Run ripgrep in the session
  */
 export async function sessionRipgrep(
-    sessionId: string,
-    args: string[],
-    cwd?: string
+  sessionId: string,
+  args: string[],
+  cwd?: string,
 ): Promise<SessionRipgrepResponse> {
-    try {
-        const request: SessionRipgrepRequest = { args, cwd };
-        const response = await apiSocket.sessionRPC<SessionRipgrepResponse, SessionRipgrepRequest>(
-            sessionId,
-            'ripgrep',
-            request
-        );
-        return response;
-    } catch (error) {
-        return {
-            success: false,
-            error: error instanceof Error ? error.message : 'Unknown error'
-        };
-    }
+  try {
+    const request: SessionRipgrepRequest = { args, cwd };
+    const response = await apiSocket.sessionRPC<SessionRipgrepResponse, SessionRipgrepRequest>(
+      sessionId,
+      'ripgrep',
+      request,
+    );
+    return response;
+  } catch (error) {
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }
 
 /**
  * Kill the session process immediately
  */
 export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
-    try {
-        const response = await apiSocket.sessionRPC<SessionKillResponse, {}>(
-            sessionId,
-            'killSession',
-            {}
-        );
-        return response;
-    } catch (error) {
-        return {
-            success: false,
-            message: error instanceof Error ? error.message : 'Unknown error'
-        };
-    }
+  try {
+    const response = await apiSocket.sessionRPC<SessionKillResponse, {}>(
+      sessionId,
+      'killSession',
+      {},
+    );
+    return response;
+  } catch (error) {
+    return {
+      success: false,
+      message: error instanceof Error ? error.message : 'Unknown error',
+    };
+  }
 }
 
 // Export types for external use
 export type {
-    SessionBashRequest,
-    SessionBashResponse,
-    SessionReadFileResponse,
-    SessionWriteFileResponse,
-    SessionListDirectoryResponse,
-    DirectoryEntry,
-    SessionGetDirectoryTreeResponse,
-    TreeNode,
-    SessionRipgrepResponse,
-    SessionKillResponse
+  SessionBashRequest,
+  SessionBashResponse,
+  SessionReadFileResponse,
+  SessionWriteFileResponse,
+  SessionListDirectoryResponse,
+  DirectoryEntry,
+  SessionGetDirectoryTreeResponse,
+  TreeNode,
+  SessionRipgrepResponse,
+  SessionKillResponse,
 };

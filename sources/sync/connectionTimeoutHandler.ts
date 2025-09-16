@@ -18,7 +18,7 @@ const DEFAULT_CONFIG: ConnectionTimeoutConfig = {
   baseDelay: 1000,              // 1 second
   maxDelay: 10000,              // 10 seconds
   retryMultiplier: 2,
-  retryableStatuses: [408, 429, 500, 502, 503, 504] // Request timeout, rate limit, server errors
+  retryableStatuses: [408, 429, 500, 502, 503, 504], // Request timeout, rate limit, server errors
 };
 
 export interface RequestOptions extends RequestInit {
@@ -52,7 +52,7 @@ export class ConnectionTimeoutHandler {
    */
   async requestWithTimeout<T = any>(
     url: string,
-    options: RequestOptions = {}
+    options: RequestOptions = {},
   ): Promise<T> {
     const {
       timeout = this.config.defaultTimeout,
@@ -102,8 +102,8 @@ export class ConnectionTimeoutHandler {
               name: 'RetryableError' as const,
               attempt,
               maxRetries: retries,
-              originalError: lastError
-            }
+              originalError: lastError,
+            },
           );
           throw retryableError;
         }
@@ -126,7 +126,7 @@ export class ConnectionTimeoutHandler {
     url: string,
     options: RequestInit,
     timeout: number,
-    attempt: number
+    attempt: number,
   ): Promise<Response> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
@@ -136,7 +136,7 @@ export class ConnectionTimeoutHandler {
     try {
       const response = await fetch(url, {
         ...options,
-        signal: controller.signal
+        signal: controller.signal,
       });
 
       clearTimeout(timeoutId);
@@ -153,8 +153,8 @@ export class ConnectionTimeoutHandler {
             {
               name: 'TimeoutError' as const,
               timeout,
-              attempt
-            }
+              attempt,
+            },
           );
           throw timeoutError;
         }
@@ -240,9 +240,9 @@ export class ConnectionTimeoutHandler {
    */
   getStatistics(): {
     config: ConnectionTimeoutConfig;
-  } {
+    } {
     return {
-      config: { ...this.config }
+      config: { ...this.config },
     };
   }
 }
@@ -257,7 +257,7 @@ export function createApiTimeoutHandler(config?: Partial<ConnectionTimeoutConfig
     defaultTimeout: 15000,  // 15 seconds for API calls
     maxRetries: 2,
     baseDelay: 500,        // Faster retry for API calls
-    ...config
+    ...config,
   });
 }
 
@@ -269,7 +269,7 @@ export function createUploadTimeoutHandler(config?: Partial<ConnectionTimeoutCon
     defaultTimeout: 60000,  // 60 seconds for uploads
     maxRetries: 1,         // Less retries for uploads
     baseDelay: 2000,       // Longer delay between upload retries
-    ...config
+    ...config,
   });
 }
 
@@ -282,7 +282,7 @@ export function createCriticalTimeoutHandler(config?: Partial<ConnectionTimeoutC
     maxRetries: 5,         // More retries for critical operations
     baseDelay: 1000,
     maxDelay: 15000,       // Allow longer delays for critical ops
-    ...config
+    ...config,
   });
 }
 
@@ -294,7 +294,7 @@ export const connectionTimeoutHandler = new ConnectionTimeoutHandler();
  */
 export function requestWithTimeout<T = any>(
   url: string,
-  options: RequestOptions = {}
+  options: RequestOptions = {},
 ): Promise<T> {
   return connectionTimeoutHandler.requestWithTimeout<T>(url, options);
 }

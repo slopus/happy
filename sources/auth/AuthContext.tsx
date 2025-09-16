@@ -16,60 +16,60 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children, initialCredentials }: { children: ReactNode; initialCredentials: AuthCredentials | null }) {
-    const [isAuthenticated, setIsAuthenticated] = useState(!!initialCredentials);
-    const [credentials, setCredentials] = useState<AuthCredentials | null>(initialCredentials);
+  const [isAuthenticated, setIsAuthenticated] = useState(!!initialCredentials);
+  const [credentials, setCredentials] = useState<AuthCredentials | null>(initialCredentials);
 
-    const login = async (token: string, secret: string) => {
-        const newCredentials: AuthCredentials = { token, secret };
-        const success = await TokenStorage.setCredentials(newCredentials);
-        if (success) {
-            await syncCreate(newCredentials);
-            setCredentials(newCredentials);
-            setIsAuthenticated(true);
-        } else {
-            throw new Error('Failed to save credentials');
-        }
-    };
+  const login = async (token: string, secret: string) => {
+    const newCredentials: AuthCredentials = { token, secret };
+    const success = await TokenStorage.setCredentials(newCredentials);
+    if (success) {
+      await syncCreate(newCredentials);
+      setCredentials(newCredentials);
+      setIsAuthenticated(true);
+    } else {
+      throw new Error('Failed to save credentials');
+    }
+  };
 
-    const logout = async () => {
-        trackLogout();
-        clearPersistence();
-        await TokenStorage.removeCredentials();
+  const logout = async () => {
+    trackLogout();
+    clearPersistence();
+    await TokenStorage.removeCredentials();
         
-        // Update React state to ensure UI consistency
-        setCredentials(null);
-        setIsAuthenticated(false);
+    // Update React state to ensure UI consistency
+    setCredentials(null);
+    setIsAuthenticated(false);
         
-        if (Platform.OS === 'web') {
-            window.location.reload();
-        } else {
-            try {
-                await Updates.reloadAsync();
-            } catch (error) {
-                // In dev mode, reloadAsync will throw ERR_UPDATES_DISABLED
-                console.log('Reload failed (expected in dev mode):', error);
-            }
-        }
-    };
+    if (Platform.OS === 'web') {
+      window.location.reload();
+    } else {
+      try {
+        await Updates.reloadAsync();
+      } catch (error) {
+        // In dev mode, reloadAsync will throw ERR_UPDATES_DISABLED
+        console.log('Reload failed (expected in dev mode):', error);
+      }
+    }
+  };
 
-    return (
-        <AuthContext.Provider
-            value={{
-                isAuthenticated,
-                credentials,
-                login,
-                logout,
-            }}
-        >
-            {children}
-        </AuthContext.Provider>
-    );
+  return (
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        credentials,
+        login,
+        logout,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth() {
-    const context = useContext(AuthContext);
-    if (context === undefined) {
-        throw new Error('useAuth must be used within an AuthProvider');
-    }
-    return context;
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }

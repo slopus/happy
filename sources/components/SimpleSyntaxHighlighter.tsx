@@ -189,7 +189,7 @@ const tokenizeCode = (code: string, language: string | null) => {
           end: tokenStart + tokenText.length,
           type: pattern.type,
           text: tokenText,
-          captureGroup: pattern.captureGroup
+          captureGroup: pattern.captureGroup,
         });
       }
     });
@@ -224,7 +224,7 @@ const tokenizeCode = (code: string, language: string | null) => {
         tokens.push({ 
           text: token.text, 
           type: token.type,
-          nestLevel: nestLevel
+          nestLevel,
         });
       } else {
         tokens.push({ text: token.text, type: token.type });
@@ -250,7 +250,7 @@ const tokenizeCode = (code: string, language: string | null) => {
 export const SimpleSyntaxHighlighter: React.FC<SimpleSyntaxHighlighterProps> = ({
   code,
   language,
-  selectable
+  selectable,
 }) => {
   const { theme } = useUnistyles();
   const colors = getColors(theme);

@@ -19,7 +19,7 @@ const DEFAULT_CONFIG: StaleConnectionConfig = {
   checkInterval: 60000,           // Check every minute
   staleThreshold: 5 * 60 * 1000,  // 5 minutes
   inactiveThreshold: 30 * 60 * 1000, // 30 minutes
-  maxRetries: 3
+  maxRetries: 3,
 };
 
 export interface CleanupResult {
@@ -117,7 +117,7 @@ export class StaleConnectionCleaner {
       totalSessions: allSessions.length,
       staleSessions: staleSessions.length,
       cleanedSessions: 0,
-      errors: []
+      errors: [],
     };
 
     if (staleSessions.length === 0) {
@@ -171,7 +171,7 @@ export class StaleConnectionCleaner {
       const lastActivity = Math.max(
         session.activeAt || 0,
         session.updatedAt || 0,
-        session.thinkingAt || 0
+        session.thinkingAt || 0,
       );
 
       const timeSinceActivity = now - lastActivity;
@@ -245,7 +245,7 @@ export class StaleConnectionCleaner {
       // Try to ping the session with a short timeout
       const result = await Promise.race([
         sessionKill(sessionId), // This will fail if session is alive
-        new Promise((_, reject) => setTimeout(() => reject(new Error('Verification timeout')), 5000))
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Verification timeout')), 5000)),
       ]);
 
       // If sessionKill succeeded, the session was alive and has been killed
@@ -270,7 +270,7 @@ export class StaleConnectionCleaner {
         active: false,
         thinking: false,
         thinkingAt: 0,
-        updatedAt: Date.now()
+        updatedAt: Date.now(),
       };
 
       // Update local storage
@@ -321,12 +321,12 @@ export class StaleConnectionCleaner {
     lastCleanupTime: number;
     retryCount: number;
     config: StaleConnectionConfig;
-  } {
+    } {
     return {
       isRunning: this.isRunning,
       lastCleanupTime: this.lastCleanupTime,
       retryCount: this.retryCount.size,
-      config: this.getConfig()
+      config: this.getConfig(),
     };
   }
 }

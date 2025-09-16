@@ -22,48 +22,48 @@ const emptyArray: AutocompleteResult[] = [];
 
 export function useAutocomplete(query: string | null, resolver: (text: string) => Promise<AutocompleteResult[]>) {
 
-    const [results, setResults] = React.useState<AutocompleteResult[]>([]);
+  const [results, setResults] = React.useState<AutocompleteResult[]>([]);
 
-    const sync = React.useMemo(() => {
+  const sync = React.useMemo(() => {
 
-        const state = { query };
-        let cache = new Map<string, AutocompleteResult[]>();
+    const state = { query };
+    const cache = new Map<string, AutocompleteResult[]>();
 
-        let sync = new InvalidateSync(async () => {
-            let t = state.query;
-            if (t === null) {
-                setResults(emptyArray);
-                return;
-            }
-            let results = cache.get(t);
-            if (results === undefined) {
-                results = await resolver(t);
-                cache.set(t, results);
-            }
-            if (state.query === t) {
-                setResults(results);
-            }
-        });
+    const sync = new InvalidateSync(async () => {
+      const t = state.query;
+      if (t === null) {
+        setResults(emptyArray);
+        return;
+      }
+      let results = cache.get(t);
+      if (results === undefined) {
+        results = await resolver(t);
+        cache.set(t, results);
+      }
+      if (state.query === t) {
+        setResults(results);
+      }
+    });
 
-        return {
-            sync,
-            state,
-            onSearchQueryChange: (text: string | null) => {
-                state.query = text;
-                sync.invalidate();
-            },
-        };
-    }, []);
+    return {
+      sync,
+      state,
+      onSearchQueryChange: (text: string | null) => {
+        state.query = text;
+        sync.invalidate();
+      },
+    };
+  }, []);
 
-    // Trigger sync
-    React.useEffect(() => {
-        sync.onSearchQueryChange(query);
-    }, [query]);
+  // Trigger sync
+  React.useEffect(() => {
+    sync.onSearchQueryChange(query);
+  }, [query]);
 
-    // Return empty array if no query
-    if (query === null) {
-        return emptyArray;
-    } else {
-        return results;
-    }
+  // Return empty array if no query
+  if (query === null) {
+    return emptyArray;
+  } else {
+    return results;
+  }
 }

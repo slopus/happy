@@ -21,13 +21,13 @@ export async function stopDaemon(machineId: string): Promise<DaemonControlResult
     const result = await machineStopDaemon(machineId);
     return {
       success: true,
-      message: result.message
+      message: result.message,
     };
   } catch (error) {
     return {
       success: false,
       message: 'Failed to stop daemon',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }
@@ -40,7 +40,7 @@ export async function forceStopDaemon(machineId: string): Promise<DaemonControlR
     // First, try to kill all active sessions on this machine
     const sessions = storage.getState().sessions;
     const machineSessions = Object.values(sessions).filter(
-      session => session.metadata?.machineId === machineId && session.active
+      session => session.metadata?.machineId === machineId && session.active,
     );
 
     console.log(`Force stopping daemon on ${machineId}: found ${machineSessions.length} active sessions`);
@@ -64,7 +64,7 @@ export async function forceStopDaemon(machineId: string): Promise<DaemonControlR
 
     const killResults = await Promise.allSettled(killPromises);
     const successfulKills = killResults.filter(result =>
-      result.status === 'fulfilled' && result.value.success
+      result.status === 'fulfilled' && result.value.success,
     ).length;
 
     // Now try the standard daemon stop
@@ -72,14 +72,14 @@ export async function forceStopDaemon(machineId: string): Promise<DaemonControlR
       const result = await machineStopDaemon(machineId);
       return {
         success: true,
-        message: `Force stop successful: killed ${successfulKills}/${machineSessions.length} sessions, daemon stopped. ${result.message}`
+        message: `Force stop successful: killed ${successfulKills}/${machineSessions.length} sessions, daemon stopped. ${result.message}`,
       };
     } catch (daemonError) {
       // Even if daemon stop fails, we might have successfully killed sessions
       if (successfulKills > 0) {
         return {
           success: true,
-          message: `Partial force stop: killed ${successfulKills}/${machineSessions.length} sessions, but daemon stop failed.`
+          message: `Partial force stop: killed ${successfulKills}/${machineSessions.length} sessions, but daemon stop failed.`,
         };
       } else {
         throw daemonError;
@@ -90,7 +90,7 @@ export async function forceStopDaemon(machineId: string): Promise<DaemonControlR
     return {
       success: false,
       message: 'Force stop failed',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }
@@ -102,7 +102,7 @@ export async function removeSessionLocally(machineId: string): Promise<DaemonCon
   try {
     const sessions = storage.getState().sessions;
     const machineSessions = Object.values(sessions).filter(
-      session => session.metadata?.machineId === machineId
+      session => session.metadata?.machineId === machineId,
     );
 
     console.log(`Removing ${machineSessions.length} sessions locally for machine ${machineId}`);
@@ -113,7 +113,7 @@ export async function removeSessionLocally(machineId: string): Promise<DaemonCon
       active: false,
       thinking: false,
       thinkingAt: 0,
-      updatedAt: Date.now()
+      updatedAt: Date.now(),
     }));
 
     // Update storage
@@ -131,7 +131,7 @@ export async function removeSessionLocally(machineId: string): Promise<DaemonCon
         ...machine.metadata,
         daemonLastKnownStatus: 'manually-cleaned' as any,
         lastCleanupAt: Date.now(),
-        cleanupReason: 'user-requested-session-removal'
+        cleanupReason: 'user-requested-session-removal',
       };
 
       try {
@@ -154,14 +154,14 @@ export async function removeSessionLocally(machineId: string): Promise<DaemonCon
 
     return {
       success: true,
-      message: `Successfully removed ${machineSessions.length} session(s) locally. The daemon may still be running on the remote machine.`
+      message: `Successfully removed ${machineSessions.length} session(s) locally. The daemon may still be running on the remote machine.`,
     };
 
   } catch (error) {
     return {
       success: false,
       message: 'Failed to remove sessions locally',
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: error instanceof Error ? error.message : 'Unknown error',
     };
   }
 }
@@ -197,7 +197,7 @@ export function getDaemonStatus(machineId: string): 'likely-alive' | 'stopped' |
 export function hasActiveSessions(machineId: string): boolean {
   const sessions = storage.getState().sessions;
   return Object.values(sessions).some(
-    session => session.metadata?.machineId === machineId && session.active
+    session => session.metadata?.machineId === machineId && session.active,
   );
 }
 
@@ -207,6 +207,6 @@ export function hasActiveSessions(machineId: string): boolean {
 export function getActiveSessionCount(machineId: string): number {
   const sessions = storage.getState().sessions;
   return Object.values(sessions).filter(
-    session => session.metadata?.machineId === machineId && session.active
+    session => session.metadata?.machineId === machineId && session.active,
   ).length;
 }

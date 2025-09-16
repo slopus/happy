@@ -54,7 +54,7 @@ function getToolSummary(tools: ToolCall[]): string {
       case 'RunCommand':
         const command = tool.input?.command;
         if (command && typeof command === 'string') {
-          return `Ran: ${command.length > 20 ? command.substring(0, 20) + '...' : command}`;
+          return `Ran: ${command.length > 20 ? `${command.substring(0, 20)  }...` : command}`;
         }
         return 'Ran command';
       
@@ -170,7 +170,7 @@ function extractClaudeToolCalls(content: any): any[] {
             tools.push({
               name: item.name,
               arguments: item.input || {},
-              state: 'completed' // Assume completed for preview
+              state: 'completed', // Assume completed for preview
             });
           }
         }
@@ -197,7 +197,7 @@ export function getMessagePreview(message: DecryptedMessage | null, maxLength: n
     if (content.content && content.content.type === 'text') {
       const plainText = stripMarkdown(content.content.text);
       return plainText.length > maxLength
-        ? plainText.substring(0, maxLength) + '...'
+        ? `${plainText.substring(0, maxLength)  }...`
         : plainText;
     }
     return 'User message';
@@ -211,7 +211,7 @@ export function getMessagePreview(message: DecryptedMessage | null, maxLength: n
       if (content.content.type === 'text' && content.content.text) {
         const plainText = stripMarkdown(content.content.text);
         return plainText.length > maxLength
-          ? plainText.substring(0, maxLength) + '...'
+          ? `${plainText.substring(0, maxLength)  }...`
           : plainText;
       }
       
@@ -225,7 +225,7 @@ export function getMessagePreview(message: DecryptedMessage | null, maxLength: n
     if (textContent) {
       const plainText = stripMarkdown(textContent);
       return plainText.length > maxLength
-        ? plainText.substring(0, maxLength) + '...'
+        ? `${plainText.substring(0, maxLength)  }...`
         : plainText;
     }
     

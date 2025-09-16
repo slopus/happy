@@ -50,7 +50,7 @@ const styles = StyleSheet.create((theme) => ({
 export const ConnectionIndicator: React.FC<ConnectionIndicatorProps> = ({
   compact = false,
   showLatency = false,
-  style
+  style,
 }) => {
   const [status, setStatus] = useState<ConnectionHealthStatus>(connectionHealthMonitor.getStatus());
 
@@ -113,7 +113,7 @@ export const ConnectionIndicator: React.FC<ConnectionIndicatorProps> = ({
     <View style={[
       styles.container,
       compact && styles.compactContainer,
-      style
+      style,
     ]}>
       <Ionicons
         name={getStatusIcon()}

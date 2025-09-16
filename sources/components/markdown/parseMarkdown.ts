@@ -1,4 +1,4 @@
-import { parseMarkdownBlock } from "./parseMarkdownBlock"
+import { parseMarkdownBlock } from './parseMarkdownBlock';
 
 export type MarkdownBlock = {
     type: 'text'
@@ -31,5 +31,5 @@ export type MarkdownSpan = {
 }
 
 export function parseMarkdown(markdown: string) {
-    return parseMarkdownBlock(markdown);
+  return parseMarkdownBlock(markdown);
 }

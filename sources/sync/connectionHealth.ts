@@ -37,8 +37,8 @@ const DEFAULT_CONFIG: ConnectionHealthConfig = {
   qualityThresholds: {
     excellent: 100,           // < 100ms
     good: 500,               // < 500ms
-    poor: 2000               // < 2000ms
-  }
+    poor: 2000,               // < 2000ms
+  },
 };
 
 export class ConnectionHealthMonitor {
@@ -63,7 +63,7 @@ export class ConnectionHealthMonitor {
       lastSuccessfulPing: null,
       consecutiveFailures: 0,
       uptime: 0,
-      downtime: 0
+      downtime: 0,
     };
 
     this.setupSocketListeners();
@@ -315,7 +315,7 @@ export class ConnectionHealthMonitor {
       console.log('🏥 ConnectionHealthMonitor: Reconnection detected');
       const event: StateTransitionEvent = {
         type: 'connect',
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
       connectionStateMachine.transition(event);
     });

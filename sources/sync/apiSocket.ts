@@ -26,312 +26,312 @@ export type SyncSocketListener = (state: SyncSocketState) => void;
 
 class ApiSocket {
 
-    // State
-    private socket: Socket | null = null;
-    private config: SyncSocketConfig | null = null;
-    private encryption: Encryption | null = null;
-    private messageHandlers: Map<string, (data: any) => void> = new Map();
-    private reconnectedListeners: Set<() => void> = new Set();
-    private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
-    private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
+  // State
+  private socket: Socket | null = null;
+  private config: SyncSocketConfig | null = null;
+  private encryption: Encryption | null = null;
+  private messageHandlers: Map<string, (data: any) => void> = new Map();
+  private reconnectedListeners: Set<() => void> = new Set();
+  private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
+  private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
 
-    //
-    // Initialization
-    //
+  //
+  // Initialization
+  //
 
-    initialize(config: SyncSocketConfig, encryption: Encryption) {
-        this.config = config;
-        this.encryption = encryption;
-        this.connect();
+  initialize(config: SyncSocketConfig, encryption: Encryption) {
+    this.config = config;
+    this.encryption = encryption;
+    this.connect();
+  }
+
+  //
+  // Connection Management
+  //
+
+  connect() {
+    if (!this.config || this.socket) {
+      return;
     }
 
-    //
-    // Connection Management
-    //
+    this.updateStatus('connecting');
 
-    connect() {
-        if (!this.config || this.socket) {
-            return;
-        }
+    this.socket = io(this.config.endpoint, {
+      path: '/v1/updates',
+      auth: {
+        token: this.config.token,
+        clientType: 'user-scoped' as const,
+      },
+      transports: ['websocket'],
+      reconnection: true,
+      reconnectionDelay: 1000,
+      reconnectionDelayMax: 5000,
+      reconnectionAttempts: Infinity,
+    });
 
-        this.updateStatus('connecting');
+    this.setupEventHandlers();
+  }
 
-        this.socket = io(this.config.endpoint, {
-            path: '/v1/updates',
-            auth: {
-                token: this.config.token,
-                clientType: 'user-scoped' as const
-            },
-            transports: ['websocket'],
-            reconnection: true,
-            reconnectionDelay: 1000,
-            reconnectionDelayMax: 5000,
-            reconnectionAttempts: Infinity
-        });
-
-        this.setupEventHandlers();
+  disconnect() {
+    if (this.socket) {
+      this.socket.disconnect();
+      this.socket = null;
     }
+    this.updateStatus('disconnected');
+  }
 
-    disconnect() {
-        if (this.socket) {
-            this.socket.disconnect();
-            this.socket = null;
-        }
-        this.updateStatus('disconnected');
-    }
+  //
+  // Listener Management
+  //
 
-    //
-    // Listener Management
-    //
+  onReconnected = (listener: () => void) => {
+    this.reconnectedListeners.add(listener);
+    return () => this.reconnectedListeners.delete(listener);
+  };
 
-    onReconnected = (listener: () => void) => {
-        this.reconnectedListeners.add(listener);
-        return () => this.reconnectedListeners.delete(listener);
-    };
+  onStatusChange = (listener: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => {
+    this.statusListeners.add(listener);
+    // Immediately notify with current status
+    listener(this.currentStatus);
+    return () => this.statusListeners.delete(listener);
+  };
 
-    onStatusChange = (listener: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void) => {
-        this.statusListeners.add(listener);
-        // Immediately notify with current status
-        listener(this.currentStatus);
-        return () => this.statusListeners.delete(listener);
-    };
+  //
+  // Message Handling
+  //
 
-    //
-    // Message Handling
-    //
+  onMessage(event: string, handler: (data: any) => void) {
+    this.messageHandlers.set(event, handler);
+    return () => this.messageHandlers.delete(event);
+  }
 
-    onMessage(event: string, handler: (data: any) => void) {
-        this.messageHandlers.set(event, handler);
-        return () => this.messageHandlers.delete(event);
-    }
+  offMessage(event: string, handler: (data: any) => void) {
+    this.messageHandlers.delete(event);
+  }
 
-    offMessage(event: string, handler: (data: any) => void) {
-        this.messageHandlers.delete(event);
-    }
-
-    /**
+  /**
      * RPC call for sessions - uses session-specific encryption
      */
-    async sessionRPC<R, A>(sessionId: string, method: string, params: A, timeout?: number): Promise<R> {
-        const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
-        if (!sessionEncryption) {
-            throw new Error(`Session encryption not found for ${sessionId}`);
-        }
-
-        const result = await this.emitWithAck('rpc-call', {
-            method: `${sessionId}:${method}`,
-            params: await sessionEncryption.encryptRaw(params)
-        }, timeout);
-
-        if (result.ok) {
-            return await sessionEncryption.decryptRaw(result.result) as R;
-        }
-        throw new Error(`RPC call failed for ${sessionId}:${method}`);
+  async sessionRPC<R, A>(sessionId: string, method: string, params: A, timeout?: number): Promise<R> {
+    const sessionEncryption = this.encryption!.getSessionEncryption(sessionId);
+    if (!sessionEncryption) {
+      throw new Error(`Session encryption not found for ${sessionId}`);
     }
 
-    /**
+    const result = await this.emitWithAck('rpc-call', {
+      method: `${sessionId}:${method}`,
+      params: await sessionEncryption.encryptRaw(params),
+    }, timeout);
+
+    if (result.ok) {
+      return await sessionEncryption.decryptRaw(result.result) as R;
+    }
+    throw new Error(`RPC call failed for ${sessionId}:${method}`);
+  }
+
+  /**
      * RPC call for machines - uses legacy/global encryption (for now)
      */
-    async machineRPC<R, A>(machineId: string, method: string, params: A, timeout?: number): Promise<R> {
-        const machineEncryption = this.encryption!.getMachineEncryption(machineId);
-        if (!machineEncryption) {
-            throw new Error(`Machine encryption not found for ${machineId}`);
-        }
-
-        const result = await this.emitWithAck('rpc-call', {
-            method: `${machineId}:${method}`,
-            params: await machineEncryption.encryptRaw(params)
-        }, timeout);
-
-        if (result.ok) {
-            return await machineEncryption.decryptRaw(result.result) as R;
-        }
-        throw new Error(`RPC call failed for ${machineId}:${method}`);
+  async machineRPC<R, A>(machineId: string, method: string, params: A, timeout?: number): Promise<R> {
+    const machineEncryption = this.encryption!.getMachineEncryption(machineId);
+    if (!machineEncryption) {
+      throw new Error(`Machine encryption not found for ${machineId}`);
     }
 
-    send(event: string, data: any) {
+    const result = await this.emitWithAck('rpc-call', {
+      method: `${machineId}:${method}`,
+      params: await machineEncryption.encryptRaw(params),
+    }, timeout);
+
+    if (result.ok) {
+      return await machineEncryption.decryptRaw(result.result) as R;
+    }
+    throw new Error(`RPC call failed for ${machineId}:${method}`);
+  }
+
+  send(event: string, data: any) {
         this.socket!.emit(event, data);
         return true;
+  }
+
+  async emitWithAck<T = any>(event: string, data: any, timeout?: number): Promise<T> {
+    if (!this.socket) {
+      throw new Error('Socket not connected');
     }
 
-    async emitWithAck<T = any>(event: string, data: any, timeout?: number): Promise<T> {
-        if (!this.socket) {
-            throw new Error('Socket not connected');
-        }
-
-        // If no timeout specified, use original behavior for backwards compatibility
-        if (timeout === undefined) {
-            return await this.socket.emitWithAck(event, data);
-        }
-
-        // Enhanced timeout handling only when timeout is explicitly specified
-        const timeoutPromise = new Promise<never>((_, reject) => {
-            setTimeout(() => {
-                reject(new Error(`Socket operation timeout after ${timeout}ms for event: ${event}`));
-            }, timeout);
-        });
-
-        try {
-            // Race between the actual operation and timeout
-            const result = await Promise.race([
-                this.socket.emitWithAck(event, data),
-                timeoutPromise
-            ]);
-
-            return result;
-        } catch (error) {
-            // Add context to error
-            if (error instanceof Error) {
-                error.message = `Socket operation failed for event '${event}': ${error.message}`;
-            }
-            throw error;
-        }
+    // If no timeout specified, use original behavior for backwards compatibility
+    if (timeout === undefined) {
+      return await this.socket.emitWithAck(event, data);
     }
 
-    //
-    // HTTP Requests
-    //
+    // Enhanced timeout handling only when timeout is explicitly specified
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => {
+        reject(new Error(`Socket operation timeout after ${timeout}ms for event: ${event}`));
+      }, timeout);
+    });
 
-    async request(path: string, options?: RequestInit): Promise<Response> {
-        if (!this.config) {
-            throw new Error('SyncSocket not initialized');
-        }
+    try {
+      // Race between the actual operation and timeout
+      const result = await Promise.race([
+        this.socket.emitWithAck(event, data),
+        timeoutPromise,
+      ]);
 
-        const credentials = await TokenStorage.getCredentials();
-        if (!credentials) {
-            throw new Error('No authentication credentials');
-        }
+      return result;
+    } catch (error) {
+      // Add context to error
+      if (error instanceof Error) {
+        error.message = `Socket operation failed for event '${event}': ${error.message}`;
+      }
+      throw error;
+    }
+  }
 
-        const url = `${this.config.endpoint}${path}`;
-        const headers = {
-            'Authorization': `Bearer ${credentials.token}`,
-            ...options?.headers
-        };
+  //
+  // HTTP Requests
+  //
 
-        // Use original fetch behavior for backwards compatibility
-        return fetch(url, {
-            ...options,
-            headers
-        });
+  async request(path: string, options?: RequestInit): Promise<Response> {
+    if (!this.config) {
+      throw new Error('SyncSocket not initialized');
     }
 
-    // Enhanced request method with timeout handling - opt-in usage
-    async requestWithTimeout(path: string, options?: RequestInit & RequestOptions): Promise<Response> {
-        if (!this.config) {
-            throw new Error('SyncSocket not initialized');
-        }
-
-        const credentials = await TokenStorage.getCredentials();
-        if (!credentials) {
-            throw new Error('No authentication credentials');
-        }
-
-        const url = `${this.config.endpoint}${path}`;
-        const headers = {
-            'Authorization': `Bearer ${credentials.token}`,
-            'Content-Type': 'application/json',
-            ...options?.headers
-        };
-
-        // Extract timeout-specific options
-        const { timeout, retries, skipRetry, ...fetchOptions } = options || {};
-
-        const requestOptions: RequestOptions = {
-            ...fetchOptions,
-            headers,
-            timeout: timeout || 30000, // Default 30 seconds for API requests
-            retries: retries || 2,      // Default 2 retries
-            skipRetry
-        };
-
-        return connectionTimeoutHandler.requestWithTimeout<Response>(url, requestOptions);
+    const credentials = await TokenStorage.getCredentials();
+    if (!credentials) {
+      throw new Error('No authentication credentials');
     }
 
-    //
-    // Connection Health API
-    //
+    const url = `${this.config.endpoint}${path}`;
+    const headers = {
+      'Authorization': `Bearer ${credentials.token}`,
+      ...options?.headers,
+    };
 
-    isSocketConnected(): boolean {
-        return this.socket?.connected || false;
+    // Use original fetch behavior for backwards compatibility
+    return fetch(url, {
+      ...options,
+      headers,
+    });
+  }
+
+  // Enhanced request method with timeout handling - opt-in usage
+  async requestWithTimeout(path: string, options?: RequestInit & RequestOptions): Promise<Response> {
+    if (!this.config) {
+      throw new Error('SyncSocket not initialized');
     }
 
-    getSocketInstance() {
-        return this.socket;
+    const credentials = await TokenStorage.getCredentials();
+    if (!credentials) {
+      throw new Error('No authentication credentials');
     }
 
-    addStatusListener(listener: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void): () => void {
-        this.statusListeners.add(listener);
-        listener(this.currentStatus);
-        return () => this.statusListeners.delete(listener);
+    const url = `${this.config.endpoint}${path}`;
+    const headers = {
+      'Authorization': `Bearer ${credentials.token}`,
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    };
+
+    // Extract timeout-specific options
+    const { timeout, retries, skipRetry, ...fetchOptions } = options || {};
+
+    const requestOptions: RequestOptions = {
+      ...fetchOptions,
+      headers,
+      timeout: timeout || 30000, // Default 30 seconds for API requests
+      retries: retries || 2,      // Default 2 retries
+      skipRetry,
+    };
+
+    return connectionTimeoutHandler.requestWithTimeout<Response>(url, requestOptions);
+  }
+
+  //
+  // Connection Health API
+  //
+
+  isSocketConnected(): boolean {
+    return this.socket?.connected || false;
+  }
+
+  getSocketInstance() {
+    return this.socket;
+  }
+
+  addStatusListener(listener: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void): () => void {
+    this.statusListeners.add(listener);
+    listener(this.currentStatus);
+    return () => this.statusListeners.delete(listener);
+  }
+
+  //
+  // Token Management
+  //
+
+  updateToken(newToken: string) {
+    if (this.config && this.config.token !== newToken) {
+      this.config.token = newToken;
+
+      if (this.socket) {
+        this.disconnect();
+        this.connect();
+      }
     }
+  }
 
-    //
-    // Token Management
-    //
+  //
+  // Private Methods
+  //
 
-    updateToken(newToken: string) {
-        if (this.config && this.config.token !== newToken) {
-            this.config.token = newToken;
-
-            if (this.socket) {
-                this.disconnect();
-                this.connect();
-            }
-        }
+  private updateStatus(status: 'disconnected' | 'connecting' | 'connected' | 'error') {
+    if (this.currentStatus !== status) {
+      this.currentStatus = status;
+      this.statusListeners.forEach(listener => listener(status));
     }
+  }
 
-    //
-    // Private Methods
-    //
+  private setupEventHandlers() {
+    if (!this.socket) return;
 
-    private updateStatus(status: 'disconnected' | 'connecting' | 'connected' | 'error') {
-        if (this.currentStatus !== status) {
-            this.currentStatus = status;
-            this.statusListeners.forEach(listener => listener(status));
-        }
-    }
+    // Connection events
+    this.socket.on('connect', () => {
+      // console.log('🔌 SyncSocket: Connected, recovered: ' + this.socket?.recovered);
+      // console.log('🔌 SyncSocket: Socket ID:', this.socket?.id);
+      this.updateStatus('connected');
+      if (!this.socket?.recovered) {
+        this.reconnectedListeners.forEach(listener => listener());
+      }
+    });
 
-    private setupEventHandlers() {
-        if (!this.socket) return;
+    this.socket.on('disconnect', (reason) => {
+      // console.log('🔌 SyncSocket: Disconnected', reason);
+      this.updateStatus('disconnected');
+    });
 
-        // Connection events
-        this.socket.on('connect', () => {
-            // console.log('🔌 SyncSocket: Connected, recovered: ' + this.socket?.recovered);
-            // console.log('🔌 SyncSocket: Socket ID:', this.socket?.id);
-            this.updateStatus('connected');
-            if (!this.socket?.recovered) {
-                this.reconnectedListeners.forEach(listener => listener());
-            }
-        });
+    // Error events
+    this.socket.on('connect_error', (error) => {
+      // console.error('🔌 SyncSocket: Connection error', error);
+      this.updateStatus('error');
+    });
 
-        this.socket.on('disconnect', (reason) => {
-            // console.log('🔌 SyncSocket: Disconnected', reason);
-            this.updateStatus('disconnected');
-        });
+    this.socket.on('error', (error) => {
+      // console.error('🔌 SyncSocket: Error', error);
+      this.updateStatus('error');
+    });
 
-        // Error events
-        this.socket.on('connect_error', (error) => {
-            // console.error('🔌 SyncSocket: Connection error', error);
-            this.updateStatus('error');
-        });
-
-        this.socket.on('error', (error) => {
-            // console.error('🔌 SyncSocket: Error', error);
-            this.updateStatus('error');
-        });
-
-        // Message handling
-        this.socket.onAny((event, data) => {
-            // console.log(`📥 SyncSocket: Received event '${event}':`, JSON.stringify(data).substring(0, 200));
-            const handler = this.messageHandlers.get(event);
-            if (handler) {
-                // console.log(`📥 SyncSocket: Calling handler for '${event}'`);
-                handler(data);
-            } else {
-                // console.log(`📥 SyncSocket: No handler registered for '${event}'`);
-            }
-        });
-    }
+    // Message handling
+    this.socket.onAny((event, data) => {
+      // console.log(`📥 SyncSocket: Received event '${event}':`, JSON.stringify(data).substring(0, 200));
+      const handler = this.messageHandlers.get(event);
+      if (handler) {
+        // console.log(`📥 SyncSocket: Calling handler for '${event}'`);
+        handler(data);
+      } else {
+        // console.log(`📥 SyncSocket: No handler registered for '${event}'`);
+      }
+    });
+  }
 }
 
 //

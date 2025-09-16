@@ -1,49 +1,49 @@
-import { z } from "zod";
+import { z } from 'zod';
 
 //
 // Agent states
 //
 
 export const MetadataSchema = z.object({
-    path: z.string(),
-    host: z.string(),
-    version: z.string().optional(),
-    name: z.string().optional(),
-    os: z.string().optional(),
-    summary: z.object({
-        text: z.string(),
-        updatedAt: z.number()
-    }).optional(),
-    machineId: z.string().optional(),
-    claudeSessionId: z.string().optional(), // Claude Code session ID
-    tools: z.array(z.string()).optional(),
-    slashCommands: z.array(z.string()).optional(),
-    homeDir: z.string().optional(), // User's home directory on the machine
-    happyHomeDir: z.string().optional(), // Happy configuration directory 
-    hostPid: z.number().optional(), // Process ID of the session
-    flavor: z.string().nullish() // Session flavor/variant identifier
+  path: z.string(),
+  host: z.string(),
+  version: z.string().optional(),
+  name: z.string().optional(),
+  os: z.string().optional(),
+  summary: z.object({
+    text: z.string(),
+    updatedAt: z.number(),
+  }).optional(),
+  machineId: z.string().optional(),
+  claudeSessionId: z.string().optional(), // Claude Code session ID
+  tools: z.array(z.string()).optional(),
+  slashCommands: z.array(z.string()).optional(),
+  homeDir: z.string().optional(), // User's home directory on the machine
+  happyHomeDir: z.string().optional(), // Happy configuration directory 
+  hostPid: z.number().optional(), // Process ID of the session
+  flavor: z.string().nullish(), // Session flavor/variant identifier
 });
 
 export type Metadata = z.infer<typeof MetadataSchema>;
 
 export const AgentStateSchema = z.object({
-    controlledByUser: z.boolean().nullish(),
-    requests: z.record(z.string(), z.object({
-        tool: z.string(),
-        arguments: z.any(),
-        createdAt: z.number().nullish()
-    })).nullish(),
-    completedRequests: z.record(z.string(), z.object({
-        tool: z.string(),
-        arguments: z.any(),
-        createdAt: z.number().nullish(),
-        completedAt: z.number().nullish(),
-        status: z.enum(['canceled', 'denied', 'approved']),
-        reason: z.string().nullish(),
-        mode: z.string().nullish(),
-        allowedTools: z.array(z.string()).nullish(),
-        decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).nullish()
-    })).nullish()
+  controlledByUser: z.boolean().nullish(),
+  requests: z.record(z.string(), z.object({
+    tool: z.string(),
+    arguments: z.any(),
+    createdAt: z.number().nullish(),
+  })).nullish(),
+  completedRequests: z.record(z.string(), z.object({
+    tool: z.string(),
+    arguments: z.any(),
+    createdAt: z.number().nullish(),
+    completedAt: z.number().nullish(),
+    status: z.enum(['canceled', 'denied', 'approved']),
+    reason: z.string().nullish(),
+    mode: z.string().nullish(),
+    allowedTools: z.array(z.string()).nullish(),
+    decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).nullish(),
+  })).nullish(),
 });
 
 export type AgentState = z.infer<typeof AgentStateSchema>;
@@ -61,7 +61,7 @@ export interface Session {
     agentStateVersion: number,
     thinking: boolean,
     thinkingAt: number,
-    presence: "online" | number, // "online" when active, timestamp when last seen
+    presence: 'online' | number, // "online" when active, timestamp when last seen
     todos?: Array<{
         content: string;
         status: 'pending' | 'in_progress' | 'completed';
@@ -97,20 +97,20 @@ export interface DecryptedMessage {
 //
 
 export const MachineMetadataSchema = z.object({
-    host: z.string(),
-    platform: z.string(),
-    happyCliVersion: z.string(),
-    happyHomeDir: z.string(), // Directory for Happy auth, settings, logs (usually .happy/ or .happy-dev/)
-    homeDir: z.string(), // User's home directory (matches CLI field name)
-    // Optional fields that may be added in future versions
-    username: z.string().optional(),
-    arch: z.string().optional(),
-    displayName: z.string().optional(), // Custom display name for the machine
-    // Daemon status fields
-    daemonLastKnownStatus: z.enum(['running', 'shutting-down']).optional(),
-    daemonLastKnownPid: z.number().optional(),
-    shutdownRequestedAt: z.number().optional(),
-    shutdownSource: z.enum(['happy-app', 'happy-cli', 'os-signal', 'unknown']).optional()
+  host: z.string(),
+  platform: z.string(),
+  happyCliVersion: z.string(),
+  happyHomeDir: z.string(), // Directory for Happy auth, settings, logs (usually .happy/ or .happy-dev/)
+  homeDir: z.string(), // User's home directory (matches CLI field name)
+  // Optional fields that may be added in future versions
+  username: z.string().optional(),
+  arch: z.string().optional(),
+  displayName: z.string().optional(), // Custom display name for the machine
+  // Daemon status fields
+  daemonLastKnownStatus: z.enum(['running', 'shutting-down']).optional(),
+  daemonLastKnownPid: z.number().optional(),
+  shutdownRequestedAt: z.number().optional(),
+  shutdownSource: z.enum(['happy-app', 'happy-cli', 'os-signal', 'unknown']).optional(),
 });
 
 export type MachineMetadata = z.infer<typeof MachineMetadataSchema>;

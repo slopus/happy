@@ -47,7 +47,7 @@ const DEFAULT_CONFIG: ConnectionStateConfig = {
   reconnectMultiplier: 2,
   heartbeatInterval: 30000,      // 30 seconds
   connectionTimeout: 10000,      // 10 seconds
-  maxErrorHistory: 20
+  maxErrorHistory: 20,
 };
 
 type StateChangeListener = (state: ConnectionState, context: ConnectionStateContext, event: StateTransitionEvent) => void;
@@ -75,7 +75,7 @@ export class ConnectionStateMachine {
       consecutiveFailures: 0,
       totalDowntime: 0,
       totalUptime: 0,
-      errorHistory: []
+      errorHistory: [],
     };
 
     this.setupStateHandlers();
@@ -146,7 +146,7 @@ export class ConnectionStateMachine {
     // Immediately notify with current state
     listener(this.currentState, this.getContext(), {
       type: 'connect',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     });
 
     return () => {
@@ -162,7 +162,7 @@ export class ConnectionStateMachine {
 
     const resetEvent: StateTransitionEvent = {
       type: 'reset',
-      timestamp: Date.now()
+      timestamp: Date.now(),
     };
 
     // Reset context
@@ -173,7 +173,7 @@ export class ConnectionStateMachine {
       consecutiveFailures: 0,
       totalDowntime: 0,
       totalUptime: 0,
-      errorHistory: []
+      errorHistory: [],
     };
 
     // Transition to offline
@@ -241,7 +241,7 @@ export class ConnectionStateMachine {
       [ConnectionState.CONNECTING]: [ConnectionState.CONNECTED, ConnectionState.FAILED, ConnectionState.OFFLINE],
       [ConnectionState.CONNECTED]: [ConnectionState.RECONNECTING, ConnectionState.OFFLINE],
       [ConnectionState.RECONNECTING]: [ConnectionState.CONNECTED, ConnectionState.FAILED, ConnectionState.OFFLINE],
-      [ConnectionState.FAILED]: [ConnectionState.CONNECTING, ConnectionState.OFFLINE]
+      [ConnectionState.FAILED]: [ConnectionState.CONNECTING, ConnectionState.OFFLINE],
     };
 
     return validTransitions[from]?.includes(to) ?? false;
@@ -347,7 +347,7 @@ export class ConnectionStateMachine {
       this.transition({
         type: 'timeout',
         timestamp: Date.now(),
-        error: new Error('Connection timeout')
+        error: new Error('Connection timeout'),
       });
     }, this.config.connectionTimeout);
 
@@ -390,13 +390,13 @@ export class ConnectionStateMachine {
 
     const delay = Math.min(
       this.config.reconnectDelay * Math.pow(this.config.reconnectMultiplier, this.context.consecutiveFailures),
-      this.config.maxReconnectDelay
+      this.config.maxReconnectDelay,
     );
 
     const reconnection = setTimeout(() => {
       this.transition({
         type: 'connect',
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     }, delay);
 
@@ -416,7 +416,7 @@ export class ConnectionStateMachine {
     const retry = setTimeout(() => {
       this.transition({
         type: 'retry',
-        timestamp: Date.now()
+        timestamp: Date.now(),
       });
     }, delay);
 
@@ -491,12 +491,12 @@ export class ConnectionStateMachine {
     context: ConnectionStateContext;
     config: ConnectionStateConfig;
     activeTimers: string[];
-  } {
+    } {
     return {
       currentState: this.currentState,
       context: this.getContext(),
       config: { ...this.config },
-      activeTimers: Array.from(this.timers.keys())
+      activeTimers: Array.from(this.timers.keys()),
     };
   }
 }

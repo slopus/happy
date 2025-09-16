@@ -1,11 +1,11 @@
 export function encodeUTF8(value: string) {
-    return new TextEncoder().encode(value);
+  return new TextEncoder().encode(value);
 }
 
 export function decodeUTF8(value: Uint8Array) {
-    return new TextDecoder().decode(value);
+  return new TextDecoder().decode(value);
 }
 
 export function normalizeNFKD(value: string) {
-    return value.normalize('NFKD');
+  return value.normalize('NFKD');
 }

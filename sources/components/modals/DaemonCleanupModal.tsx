@@ -113,7 +113,7 @@ export function showDaemonCleanupModal(props: DaemonCleanupModalProps): void {
       console.error('Failed to remove session:', error);
       Modal.alert(
         t('common.error'),
-        error instanceof Error ? error.message : 'Failed to remove session'
+        error instanceof Error ? error.message : 'Failed to remove session',
       );
     }
   };
@@ -126,7 +126,7 @@ export function showDaemonCleanupModal(props: DaemonCleanupModalProps): void {
       console.error('Failed to force stop daemon:', error);
       Modal.alert(
         t('common.error'),
-        error instanceof Error ? error.message : 'Failed to force stop daemon'
+        error instanceof Error ? error.message : 'Failed to force stop daemon',
       );
     }
   };
@@ -140,19 +140,19 @@ export function showDaemonCleanupModal(props: DaemonCleanupModalProps): void {
       {
         text: t('common.cancel'),
         style: 'cancel',
-        onPress: props.onCancel
+        onPress: props.onCancel,
       },
       {
         text: t('daemonCleanup.forceStop'),
         style: 'default',
-        onPress: handleForceStop
+        onPress: handleForceStop,
       },
       {
         text: t('daemonCleanup.removeSession'),
         style: 'destructive',
-        onPress: handleRemoveSession
-      }
-    ]
+        onPress: handleRemoveSession,
+      },
+    ],
   );
 }
 
@@ -164,7 +164,7 @@ export function showDaemonCleanupModal(props: DaemonCleanupModalProps): void {
 // For now, Modal.alert provides a straightforward, type-safe solution.
 
 export const DaemonCleanupModal = {
-  show: showDaemonCleanupModal
+  show: showDaemonCleanupModal,
 };
 
 export default DaemonCleanupModal;
