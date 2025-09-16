@@ -43,3 +43,6 @@ yarn-error.*
 .plan
 
 CLAUDE.local.md
+
+# Development tasks and planning (personal files)
+devtasks/
