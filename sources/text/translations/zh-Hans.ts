@@ -88,6 +88,7 @@ export const zhHans = {
         developerTools: '开发者工具',
         about: '关于',
         aboutFooter: 'Happy Coder 是一个 Codex 和 Claude Code 移动客户端。它采用端到端加密，您的账户仅存储在本地设备上。与 Anthropic 无关联。',
+        happyAttribution: 'Claude Code 和 Codex 的移动和网页客户端',
         whatsNew: '更新日志',
         whatsNewSubtitle: '查看最新更新和改进',
         reportIssue: '报告问题',

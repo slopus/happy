@@ -409,6 +409,18 @@ export default React.memo(function SettingsScreen() {
             {/* About */}
             <ItemGroup title={t('settings.about')} footer={t('settings.aboutFooter')}>
                 <Item
+                    title="Happy Coder"
+                    subtitle={t('settings.happyAttribution')}
+                    icon={
+                        <Image
+                            source={require('@/assets/images/logotype.png')}
+                            style={{ width: 29, height: 29 }}
+                            contentFit="contain"
+                        />
+                    }
+                    onPress={handleGitHub}
+                />
+                <Item
                     title={t('settings.whatsNew')}
                     subtitle={t('settings.whatsNewSubtitle')}
                     icon={<Ionicons name="sparkles-outline" size={29} color="#FF9500" />}

@@ -80,6 +80,7 @@ export const ru: TranslationStructure = {
         developerTools: 'Инструменты разработчика',
         about: 'О программе',
         aboutFooter: 'Happy Coder — мобильное приложение для работы с Codex и Claude Code. Использует сквозное шифрование, все данные аккаунта хранятся только на вашем устройстве. Не связано с Anthropic.',
+        happyAttribution: 'Мобильный и веб-клиент для Claude Code и Codex',
         whatsNew: 'Что нового',
         whatsNewSubtitle: 'Посмотреть последние обновления и улучшения',
         reportIssue: 'Сообщить о проблеме',

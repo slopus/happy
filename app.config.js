@@ -1,3 +1,6 @@
+import { readFileSync } from 'fs';
+import { join } from 'path';
+
 const variant = process.env.APP_ENV || 'development';
 const name = {
     development: "Happy (dev)",
@@ -10,11 +13,14 @@ const bundleId = {
     production: "com.ex3ndr.happy"
 }[variant];
 
+// Read version from version.txt
+const version = readFileSync(join(process.cwd(), 'version.txt'), 'utf8').trim();
+
 export default {
     expo: {
         name,
         slug: "happy",
-        version: "1.5.0",
+        version,
         runtimeVersion: "17",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",

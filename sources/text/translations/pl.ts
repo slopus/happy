@@ -99,6 +99,7 @@ export const pl: TranslationStructure = {
         developerTools: 'Narzędzia deweloperskie',
         about: 'O aplikacji',
         aboutFooter: 'Happy Coder to mobilny klient Codex i Claude Code. Jest w pełni szyfrowany end-to-end, a Twoje konto jest przechowywane tylko na Twoim urządzeniu. Nie jest powiązany z Anthropic.',
+        happyAttribution: 'Mobilny i webowy klient dla Claude Code i Codex',
         whatsNew: 'Co nowego',
         whatsNewSubtitle: 'Zobacz najnowsze aktualizacje i ulepszenia',
         reportIssue: 'Zgłoś problem',
