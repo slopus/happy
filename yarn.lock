@@ -4696,10 +4696,10 @@ expo-updates@~0.28.17:
     ignore "^5.3.1"
     resolve-from "^5.0.0"
 
-expo-web-browser@~14.2.0:
-  version "14.2.0"
-  resolved "https://registry.npmjs.org/expo-web-browser/-/expo-web-browser-14.2.0.tgz"
-  integrity sha512-6S51d8pVlDRDsgGAp8BPpwnxtyKiMWEFdezNz+5jVIyT+ctReW42uxnjRgtsdn5sXaqzhaX+Tzk/CWaKCyC0hw==
+expo-web-browser@~15.0.7:
+  version "15.0.7"
+  resolved "https://registry.yarnpkg.com/expo-web-browser/-/expo-web-browser-15.0.7.tgz#eb4bc306db75d8c46f549d8a9150945f9436bcfc"
+  integrity sha512-eXnfO3FQ2WthTA8uEPNJ7SDRfPaLIU/P2k082HGEYIHAFZMwh2o9Wo+SDVytO3E95TAv1qwhggUjOrczYzxteQ==
 
 expo@~53.0.17:
   version "53.0.19"
