@@ -46,3 +46,12 @@ CLAUDE.local.md
 
 # Development tasks and planning (personal files)
 devtasks/
+
+# Secrets and credentials
+google-services.json
+GoogleService-Info.plist
+.env
+.env.local
+*.p12
+*.jks
+*.keystore
