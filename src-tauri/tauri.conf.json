@@ -1,13 +1,13 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Happy",
-  "version": "1.5.1",
+  "version": "0.1.0",
   "identifier": "com.slopus.happy",
   "build": {
     "frontendDist": "../dist",
     "devUrl": "http://localhost:8081",
     "beforeDevCommand": "yarn start",
-    "beforeBuildCommand": "npx expo export --platform web --output-dir dist"
+    "beforeBuildCommand": "yarn expo export --platform web --output-dir dist"
   },
   "app": {
     "windows": [
