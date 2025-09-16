@@ -4635,10 +4635,10 @@ expo-sensors@~14.1.4:
   dependencies:
     invariant "^2.2.4"
 
-expo-sharing@~13.1.5:
-  version "13.1.5"
-  resolved "https://registry.yarnpkg.com/expo-sharing/-/expo-sharing-13.1.5.tgz#73d86cdcc037b46ddc82be224dfd3d6bceec497c"
-  integrity sha512-X/5sAEiWXL2kdoGE3NO5KmbfcmaCWuWVZXHu8OQef7Yig4ZgHFkGD11HKJ5KqDrDg+SRZe4ISd6MxE7vGUgm4w==
+expo-sharing@~14.0.7:
+  version "14.0.7"
+  resolved "https://registry.yarnpkg.com/expo-sharing/-/expo-sharing-14.0.7.tgz#64845ea569c725a9a32705be7ef772e556134e1c"
+  integrity sha512-t/5tR8ZJNH6tMkHXlF7453UafNIfrpfTG+THN9EMLC4Wsi4bJuESPm3NdmWDg2D4LDALJI/LQo0iEnLAd5Sp4g==
 
 expo-splash-screen@~0.30.10:
   version "0.30.10"
