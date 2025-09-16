@@ -64,7 +64,7 @@
     "expo-cellular": "~7.1.5",
     "expo-checkbox": "~4.1.4",
     "expo-clipboard": "~7.1.5",
-    "expo-constants": "~17.1.7",
+    "expo-constants": "~18.0.8",
     "expo-crypto": "^14.1.5",
     "expo-dev-client": "~5.2.4",
     "expo-device": "~7.1.4",
