@@ -408,7 +408,7 @@ export default React.memo(function SettingsScreen() {
       )}
 
       {/* Help & Support */}
-      <ItemGroup title={t('settings.helpAndSupport')} subtitle={t('settings.helpSubtitle')}>
+      <ItemGroup title={t('settings.helpAndSupport')} footer={t('settings.helpSubtitle')}>
         <Item
           title={t('settings.githubRepository')}
           subtitle={t('settings.githubRepositorySubtitle')}
