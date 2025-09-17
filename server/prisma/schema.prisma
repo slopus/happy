@@ -44,6 +44,7 @@ model Account {
     Machine             Machine[]
     UploadedFile        UploadedFile[]
     ServiceAccountToken ServiceAccountToken[]
+    Artifact            Artifact[]
 }
 
 model TerminalAuthRequest {
@@ -240,4 +241,25 @@ model ServiceAccountToken {
 
     @@unique([accountId, vendor])
     @@index([accountId])
+}
+
+//
+// Artifacts
+//
+
+model Artifact {
+    id                String   @id // UUID provided by client
+    accountId         String
+    account           Account  @relation(fields: [accountId], references: [id])
+    header            Bytes    // Encrypted header (can contain JSON)
+    headerVersion     Int      @default(0)
+    body              Bytes    // Encrypted body
+    bodyVersion       Int      @default(0)
+    dataEncryptionKey Bytes    // Encryption key for this artifact
+    seq               Int      @default(0)
+    createdAt         DateTime @default(now())
+    updatedAt         DateTime @updatedAt
+
+    @@index([accountId])
+    @@index([accountId, updatedAt(sort: Desc)])
 }

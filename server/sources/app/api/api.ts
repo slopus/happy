@@ -14,6 +14,7 @@ import { machinesRoutes } from "./routes/machinesRoutes";
 import { devRoutes } from "./routes/devRoutes";
 import { versionRoutes } from "./routes/versionRoutes";
 import { voiceRoutes } from "./routes/voiceRoutes";
+import { artifactsRoutes } from "./routes/artifactsRoutes";
 import { enableMonitoring } from "./utils/enableMonitoring";
 import { enableErrorHandlers } from "./utils/enableErrorHandlers";
 import { enableAuthentication } from "./utils/enableAuthentication";
@@ -54,6 +55,7 @@ export async function startApi(eventRouter: EventRouter) {
     accountRoutes(typed, eventRouter);
     connectRoutes(typed, eventRouter);
     machinesRoutes(typed, eventRouter);
+    artifactsRoutes(typed, eventRouter);
     devRoutes(typed);
     versionRoutes(typed);
     voiceRoutes(typed);
