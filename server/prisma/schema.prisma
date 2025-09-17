@@ -45,6 +45,7 @@ model Account {
     UploadedFile        UploadedFile[]
     ServiceAccountToken ServiceAccountToken[]
     Artifact            Artifact[]
+    AccessKey           AccessKey[]
 }
 
 model TerminalAuthRequest {
@@ -100,6 +101,7 @@ model Session {
     updatedAt         DateTime         @updatedAt
     messages          SessionMessage[]
     usageReports      UsageReport[]
+    accessKeys        AccessKey[]
 
     @@unique([accountId, tag])
     @@index([accountId, updatedAt(sort: Desc)])
@@ -204,9 +206,10 @@ model Machine {
     dataEncryptionKey  Bytes?
     seq                Int      @default(0)
     active             Boolean  @default(true)
-    lastActiveAt       DateTime @default(now())
-    createdAt          DateTime @default(now())
-    updatedAt          DateTime @updatedAt
+    lastActiveAt       DateTime    @default(now())
+    createdAt          DateTime    @default(now())
+    updatedAt          DateTime    @updatedAt
+    accessKeys         AccessKey[]
 
     @@unique([accountId, id])
     @@index([accountId])
@@ -262,4 +265,27 @@ model Artifact {
 
     @@index([accountId])
     @@index([accountId, updatedAt(sort: Desc)])
+}
+
+//
+// Access Keys
+//
+
+model AccessKey {
+    id          String   @id @default(cuid())
+    accountId   String
+    account     Account  @relation(fields: [accountId], references: [id])
+    machineId   String
+    machine     Machine  @relation(fields: [accountId, machineId], references: [accountId, id])
+    sessionId   String
+    session     Session  @relation(fields: [sessionId], references: [id])
+    data        String   // Encrypted data
+    dataVersion Int      @default(0)
+    createdAt   DateTime @default(now())
+    updatedAt   DateTime @updatedAt
+
+    @@unique([accountId, machineId, sessionId])
+    @@index([accountId])
+    @@index([sessionId])
+    @@index([machineId])
 }

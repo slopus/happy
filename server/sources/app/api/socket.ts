@@ -11,6 +11,7 @@ import { pingHandler } from "./socket/pingHandler";
 import { sessionUpdateHandler } from "./socket/sessionUpdateHandler";
 import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
+import { accessKeyHandler } from "./socket/accessKeyHandler";
 
 export function startSocket(app: Fastify, eventRouter: EventRouter) {
     const io = new Server(app.server, {
@@ -142,6 +143,7 @@ export function startSocket(app: Fastify, eventRouter: EventRouter) {
         pingHandler(socket);
         machineUpdateHandler(userId, socket, eventRouter);
         artifactUpdateHandler(userId, socket, eventRouter);
+        accessKeyHandler(userId, socket, eventRouter);
 
         // Ready
         log({ module: 'websocket' }, `User connected: ${userId}`);
