@@ -1,5 +1,6 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import { Link } from 'expo-router';
+import * as WebBrowser from 'expo-web-browser';
 import * as React from 'react';
 import { ScrollView, View, Platform, Pressable } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
@@ -170,10 +171,32 @@ function RenderOptionsBlock(props: {
 }
 
 function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
+  const handleLinkPress = React.useCallback((url: string) => {
+    if (Platform.OS !== 'web') {
+      // Open external URLs in in-app browser on mobile
+      WebBrowser.openBrowserAsync(url);
+    }
+  }, []);
+
   return (<>
     {props.spans.map((span, index) => {
       if (span.url) {
-        return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>;
+        return (
+          <Link
+            key={index}
+            href={span.url as any}
+            target="_blank"
+            style={[style.link, span.styles.map(s => style[s])]}
+            onPress={(e) => {
+              if (Platform.OS !== 'web') {
+                e.preventDefault();
+                handleLinkPress(span.url!);
+              }
+            }}
+          >
+            {span.text}
+          </Link>
+        );
       } else {
         return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>;
       }

@@ -1,7 +1,7 @@
 import type { MarkdownSpan } from './parseMarkdown';
 
-// Updated pattern to handle nested markdown and asterisks
-const pattern = /(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(([^)]+)\))?)|(`(.*?)(?:`|$))/g;
+// Pattern to handle nested markdown, asterisks, and URLs
+const pattern = /(\*\*(.*?)(?:\*\*|$))|(\*(.*?)(?:\*|$))|(\[([^\]]+)\](?:\(([^)]+)\))?)|(`(.*?)(?:`|$))|(https?:\/\/[^\s]+)/g;
 
 export function parseMarkdownSpans(markdown: string, header: boolean) {
   const spans: MarkdownSpan[] = [];
@@ -40,6 +40,10 @@ export function parseMarkdownSpans(markdown: string, header: boolean) {
     } else if (match[8]) {
       // Inline code
       spans.push({ styles: ['code'], text: match[9], url: null });
+    } else if (match[10]) {
+      // Plain URL (https:// or http://)
+      const url = match[10];
+      spans.push({ styles: [], text: url, url: url });
     }
 
     lastIndex = pattern.lastIndex;
