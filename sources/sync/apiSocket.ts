@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { TokenStorage } from '@/auth/tokenStorage';
 import { Encryption } from './encryption/encryption';
 import { connectionTimeoutHandler, type RequestOptions } from './connectionTimeoutHandler';
+import { log } from '@/log';
 
 //
 // Types
@@ -305,18 +306,18 @@ class ApiSocket {
     });
 
     this.socket.on('disconnect', (reason) => {
-      // console.log('🔌 SyncSocket: Disconnected', reason);
+      log.log(`🔌 SyncSocket: Disconnected - ${reason} (this may indicate shell/daemon crash)`);
       this.updateStatus('disconnected');
     });
 
     // Error events
     this.socket.on('connect_error', (error) => {
-      // console.error('🔌 SyncSocket: Connection error', error);
+      log.log(`🔌 SyncSocket: Connection error - ${error.message || error}`);
       this.updateStatus('error');
     });
 
     this.socket.on('error', (error) => {
-      // console.error('🔌 SyncSocket: Error', error);
+      log.log(`🔌 SyncSocket: Socket error - ${error.message || error}`);
       this.updateStatus('error');
     });
 

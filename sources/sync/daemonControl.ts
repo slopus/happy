@@ -6,6 +6,7 @@ import { machineStopDaemon, sessionKill } from './ops';
 import { sync } from './sync';
 import { storage } from './storage';
 import type { Session } from './storageTypes';
+import { log } from '@/log';
 
 export interface DaemonControlResult {
   success: boolean;
@@ -18,16 +19,20 @@ export interface DaemonControlResult {
  */
 export async function stopDaemon(machineId: string): Promise<DaemonControlResult> {
   try {
+    log.log(`🛑 Attempting to stop daemon on machine ${machineId}`);
     const result = await machineStopDaemon(machineId);
+    log.log(`✅ Daemon stopped successfully on machine ${machineId}: ${result.message}`);
     return {
       success: true,
       message: result.message,
     };
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    log.log(`❌ Failed to stop daemon on machine ${machineId}: ${errorMsg}`);
     return {
       success: false,
       message: 'Failed to stop daemon',
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: errorMsg,
     };
   }
 }
@@ -43,21 +48,21 @@ export async function forceStopDaemon(machineId: string): Promise<DaemonControlR
       session => session.metadata?.machineId === machineId && session.active,
     );
 
-    console.log(`Force stopping daemon on ${machineId}: found ${machineSessions.length} active sessions`);
+    log.log(`🚨 Force stopping daemon on ${machineId}: found ${machineSessions.length} active sessions`);
 
     // Kill all active sessions first
     const killPromises = machineSessions.map(async (session) => {
       try {
-        console.log(`Killing session ${session.id}...`);
+        log.log(`🔪 Killing session ${session.id}...`);
         const result = await sessionKill(session.id);
         if (result.success) {
-          console.log(`Successfully killed session ${session.id}`);
+          log.log(`✅ Successfully killed session ${session.id}`);
         } else {
-          console.warn(`Failed to kill session ${session.id}: ${result.message}`);
+          log.log(`⚠️ Failed to kill session ${session.id}: ${result.message}`);
         }
         return result;
       } catch (error) {
-        console.error(`Error killing session ${session.id}:`, error);
+        log.log(`❌ Error killing session ${session.id}: ${error instanceof Error ? error.message : error}`);
         return { success: false, message: error instanceof Error ? error.message : 'Unknown error' };
       }
     });

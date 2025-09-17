@@ -6,6 +6,7 @@
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
 import type { MachineMetadata } from './storageTypes';
+import { log } from '@/log';
 
 // Strict type definitions for all operations
 
@@ -176,12 +177,20 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
  * Stop the daemon on a specific machine
  */
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {
-  const result = await apiSocket.machineRPC<{ message: string }, {}>(
-    machineId,
-    'stop-daemon',
-    {},
-  );
-  return result;
+  try {
+    log.log(`🛑 machineStopDaemon: Sending stop-daemon command to machine ${machineId}`);
+    const result = await apiSocket.machineRPC<{ message: string }, {}>(
+      machineId,
+      'stop-daemon',
+      {},
+    );
+    log.log(`✅ machineStopDaemon: Received response from machine ${machineId}: ${result.message}`);
+    return result;
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    log.log(`❌ machineStopDaemon: Failed to stop daemon on machine ${machineId}: ${errorMsg}`);
+    throw error; // Re-throw to maintain existing error handling behavior
+  }
 }
 
 /**
@@ -427,16 +436,24 @@ export async function sessionRipgrep(
  */
 export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
   try {
+    log.log(`🔪 sessionKill: Attempting to kill session ${sessionId}`);
     const response = await apiSocket.sessionRPC<SessionKillResponse, {}>(
       sessionId,
       'killSession',
       {},
     );
+    if (response.success) {
+      log.log(`✅ sessionKill: Successfully killed session ${sessionId}`);
+    } else {
+      log.log(`⚠️ sessionKill: Failed to kill session ${sessionId}: ${response.message}`);
+    }
     return response;
   } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+    log.log(`❌ sessionKill: Exception killing session ${sessionId}: ${errorMsg}`);
     return {
       success: false,
-      message: error instanceof Error ? error.message : 'Unknown error',
+      message: errorMsg,
     };
   }
 }
