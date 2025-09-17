@@ -97,7 +97,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     borderColor: theme.colors.textLink,
     backgroundColor: Platform.select({
       web: theme.colors.input.background,
-      default: theme.colors.surfaceHigh
+      default: theme.colors.surfaceHigh,
     }),
   },
   sessionContent: {
@@ -225,7 +225,7 @@ export function SessionsList() {
               const session = sessions[selectedSessionIndex];
               Modal.confirm(
                 t('sessions.deleteSessionTitle'),
-                t('sessions.deleteSessionMessage', { sessionName: getSessionName(session) })
+                t('sessions.deleteSessionMessage', { sessionName: getSessionName(session) }),
               ).then(confirmed => {
                 if (confirmed) {
                   removeSession(session.id);
@@ -244,7 +244,7 @@ export function SessionsList() {
             Modal.prompt(
               t('sessions.renameSessionTitle'),
               t('sessions.renameSessionMessage'),
-              { defaultValue: getSessionName(session) }
+              { defaultValue: getSessionName(session) },
             ).then(newName => {
               if (newName && newName.trim() && newName.trim() !== getSessionName(session)) {
                 // TODO: Update session name
@@ -414,7 +414,7 @@ const SessionItem = React.memo(({ session, selected, keyboardFocused, isFirst, i
   const handleDeleteSession = React.useCallback(async () => {
     const confirmed = await Modal.confirm(
       t('sessions.deleteSessionTitle'),
-      t('sessions.deleteSessionMessage', { sessionName: getSessionName(session) })
+      t('sessions.deleteSessionMessage', { sessionName: getSessionName(session) }),
     );
     if (confirmed) {
       removeSession(session.id);
@@ -451,7 +451,7 @@ const SessionItem = React.memo(({ session, selected, keyboardFocused, isFirst, i
     const newName = await Modal.prompt(
       t('sessions.renameSessionTitle'),
       t('sessions.renameSessionMessage'),
-      { defaultValue: getSessionName(session) }
+      { defaultValue: getSessionName(session) },
     );
 
     if (newName && newName.trim() && newName.trim() !== getSessionName(session)) {
@@ -512,7 +512,7 @@ const SessionItem = React.memo(({ session, selected, keyboardFocused, isFirst, i
   const handleLongPress = React.useCallback(() => {
     const screenWidth = Platform.select({
       web: window.innerWidth,
-      default: require('react-native').Dimensions.get('window').width
+      default: require('react-native').Dimensions.get('window').width,
     });
     const position = { x: screenWidth / 2 - 140, y: 200 };
     contextMenu.show(position);
@@ -553,47 +553,47 @@ const SessionItem = React.memo(({ session, selected, keyboardFocused, isFirst, i
           onContextMenu: handleRightClick,
         })}
       >
-      <View style={styles.avatarContainer}>
-        <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
-        {session.draft && (
-          <View style={styles.draftIconContainer}>
-            <Ionicons
-              name="create-outline"
-              size={12}
-              style={styles.draftIconOverlay}
-            />
-          </View>
-        )}
-      </View>
-      <View style={styles.sessionContent}>
-        {/* Title line */}
-        <View style={styles.sessionTitleRow}>
-          <Text style={[
-            styles.sessionTitle,
-            sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
-          ]} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
-            {sessionName}
-          </Text>
+        <View style={styles.avatarContainer}>
+          <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+          {session.draft && (
+            <View style={styles.draftIconContainer}>
+              <Ionicons
+                name="create-outline"
+                size={12}
+                style={styles.draftIconOverlay}
+              />
+            </View>
+          )}
         </View>
-
-        {/* Subtitle line */}
-        <Text style={styles.sessionSubtitle} numberOfLines={1}>
-          {sessionSubtitle}
-        </Text>
-
-        {/* Status line with dot */}
-        <View style={styles.statusRow}>
-          <View style={styles.statusDotContainer}>
-            <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+        <View style={styles.sessionContent}>
+          {/* Title line */}
+          <View style={styles.sessionTitleRow}>
+            <Text style={[
+              styles.sessionTitle,
+              sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
+            ]} numberOfLines={1}> {/* {variant !== 'no-path' ? 1 : 2} - issue is we don't have anything to take this space yet and it looks strange - if summaries were more reliably generated, we can add this. While no summary - add something like "New session" or "Empty session", and extend summary to 2 lines once we have it */}
+              {sessionName}
+            </Text>
           </View>
-          <Text style={[
-            styles.statusText,
-            { color: sessionStatus.statusColor },
-          ]}>
-            {sessionStatus.statusText}
+
+          {/* Subtitle line */}
+          <Text style={styles.sessionSubtitle} numberOfLines={1}>
+            {sessionSubtitle}
           </Text>
+
+          {/* Status line with dot */}
+          <View style={styles.statusRow}>
+            <View style={styles.statusDotContainer}>
+              <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
+            </View>
+            <Text style={[
+              styles.statusText,
+              { color: sessionStatus.statusColor },
+            ]}>
+              {sessionStatus.statusText}
+            </Text>
+          </View>
         </View>
-      </View>
       </Pressable>
 
       {/* Context Menu */}

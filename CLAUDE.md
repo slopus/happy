@@ -1,13 +1,28 @@
 # CLAUDE.md
 
-## Repository & Git
-- **Origin** (fork): https://github.com/jeffersonwarrior/happy-coder-1.5.2.git
-- **Upstream** (original): https://github.com/slopus/happy-coder.git
-- Fork workflow: develop on feature branches, push to origin, PR to upstream
+## Repository & Git Organization
+**IMPORTANT**: This is a LOCAL development environment, not remote!
+
+### Git Remote Structure:
+- **Local machine**: `/opt/happy-coder/` (where Claude works)
+- **jeffersonwarrior's fork**: https://github.com/jeffersonwarrior/happy-coder-1.5.3.git (remote target)
+- **True origin**: https://github.com/slopus/happy (original project)
+
+### Current Setup:
+- Working locally on `feature/happy-coder-1.5.3` branch
+- When committing: `git commit` = LOCAL commit
+- When pushing: `git push fork-1.5.3 feature/happy-coder-1.5.3` = push to jeffersonwarrior's fork
+- Attribution maintained to upstream `slopus/happy` project
+
+### Workflow:
+1. Develop locally on feature branches
+2. Commit locally first
+3. Push to jeffersonwarrior's fork (`fork-1.5.3` remote)
+4. PR to upstream `slopus/happy` when ready
 - NEVER modify remote URLs once configured
 
 ## Version Management
-- **Version source**: `version.txt` file (currently 1.5.2)
+- **Version source**: `version.txt` file (currently 1.5.3)
 - **Usage**: `app.config.js` reads from `version.txt`, `package.json` has note reference
 - **Updates**: Change version.txt only, other files will use it automatically
 

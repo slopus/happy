@@ -8,6 +8,7 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
 import { useSession } from '@/sync/storage';
+import type { Session } from '@/sync/storageTypes';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
@@ -127,6 +128,10 @@ export default React.memo(() => {
     }
   }, []);
 
+  // Always call hooks before any conditional returns
+  const sessionStatus = useSessionStatus(session || {} as Session);
+  const sessionName = getSessionName(session || {} as Session);
+
   if (!session) {
     return (
       <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
@@ -134,9 +139,6 @@ export default React.memo(() => {
       </View>
     );
   }
-
-  const sessionStatus = useSessionStatus(session);
-  const sessionName = getSessionName(session);
   // Check if CLI version is outdated
   const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
 
