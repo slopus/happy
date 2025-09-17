@@ -41,6 +41,7 @@ export const zhHans = {
     fileViewer: '文件查看器',
     loading: '加载中...',
     retry: '重试',
+    comingSoon: '即将推出',
   },
 
   status: {
@@ -91,7 +92,13 @@ export const zhHans = {
     happyAttribution: 'Claude Code 和 Codex 的移动和网页客户端',
     whatsNew: '更新日志',
     whatsNewSubtitle: '查看最新更新和改进',
+    help: '帮助',
+    helpAndSupport: '帮助与支持',
+    helpSubtitle: '获取帮助、报告问题并查找资源',
     reportIssue: '报告问题',
+    reportIssueSubtitle: '发现了错误？请在 GitHub 上告诉我们',
+    githubRepository: 'GitHub 仓库',
+    githubRepositorySubtitle: '查看源代码并贡献',
     privacyPolicy: '隐私政策',
     termsOfService: '服务条款',
     eula: '最终用户许可协议',
@@ -697,5 +704,20 @@ export const zhHans = {
     removeSessionDescription: '在本地清理会话状态（守护进程可能仍在运行）',
     cancelDescription: '保持会话不变，稍后再试',
     error: ({ error }: { error: string }) => `错误：${error}`,
+  },
+
+  sessions: {
+    // Session management actions
+    rename: '重命名会话',
+    duplicate: '复制会话',
+    delete: '删除会话',
+    copyId: '复制会话 ID',
+    exportHistory: '导出历史记录',
+    deleteSessionTitle: '删除会话',
+    deleteSessionMessage: ({ sessionName }: { sessionName: string }) =>
+      `您确定要删除 "${sessionName}" 吗？此操作无法撤销。`,
+    renameSessionTitle: '重命名会话',
+    renameSessionMessage: '请输入此会话的新名称：',
+    exportHistoryComingSoon: '会话历史记录导出功能即将推出。',
   },
 } as const;

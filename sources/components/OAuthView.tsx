@@ -119,11 +119,7 @@ export const OAuthView = React.memo((props: {
     foregroundColor?: string;
     config: OAuthViewConfig
 }) => {
-  // Unsupported on web
-  if (Platform.OS === 'web') {
-    return <OAuthViewUnsupported {...props} />;
-  }
-
+  // Move hooks before early return
   const [parameters, setParameters] = React.useState<{
         pkce: PKCECodes;
         state: string;
@@ -150,6 +146,11 @@ export const OAuthView = React.memo((props: {
       mounted = false;
     };
   }, [generation]); // Only regenerate when generation changes
+
+  // Unsupported on web
+  if (Platform.OS === 'web') {
+    return <OAuthViewUnsupported {...props} />;
+  }
 
   if (!parameters) {
     // Return empty view while initializing (almost instant)

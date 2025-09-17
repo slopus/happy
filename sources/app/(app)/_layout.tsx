@@ -1,17 +1,49 @@
-import { Stack } from 'expo-router';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import 'react-native-reanimated';
 import * as React from 'react';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { createHeader } from '@/components/navigation/Header';
-import { Platform } from 'react-native';
+import { Platform, Pressable } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { Ionicons } from '@expo/vector-icons';
 
 export const unstable_settings = {
   initialRouteName: 'index',
 };
+
+// Component for repository folder button in session info header
+function RepositoryFolderButton() {
+  const router = useRouter();
+  const { theme } = useUnistyles();
+  const params = useLocalSearchParams<{ id: string }>();
+
+  const handlePress = () => {
+    if (params.id) {
+      // Navigate to repository browser (to be implemented)
+      router.push(`/session/${params.id}/repository`);
+    }
+  };
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      hitSlop={15}
+      style={{
+        padding: 8,
+        opacity: 1,
+      }}
+    >
+      <Ionicons
+        name="folder-outline"
+        size={24}
+        color={theme.colors.header.tint}
+      />
+    </Pressable>
+  );
+}
 
 export default function RootLayout() {
   // Use custom header on Android and Mac Catalyst, native header on iOS (non-Catalyst)
@@ -74,6 +106,7 @@ export default function RootLayout() {
           headerShown: true,
           headerTitle: '',
           headerBackTitle: t('common.back'),
+          headerRight: () => <RepositoryFolderButton />,
         }}
       />
       <Stack.Screen
@@ -81,6 +114,14 @@ export default function RootLayout() {
         options={{
           headerShown: true,
           headerTitle: t('common.files'),
+          headerBackTitle: t('common.back'),
+        }}
+      />
+      <Stack.Screen
+        name="session/[id]/repository"
+        options={{
+          headerShown: true,
+          headerTitle: 'Repository',
           headerBackTitle: t('common.back'),
         }}
       />

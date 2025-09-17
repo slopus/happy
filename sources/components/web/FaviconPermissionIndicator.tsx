@@ -8,16 +8,13 @@ import { updateFaviconWithNotification, resetFavicon } from '@/utils/web/favicon
  * when any online session has pending permissions
  */
 export const FaviconPermissionIndicator = React.memo(() => {
-  if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
-    return null;
-  }
-
+  // Move hooks before early return
   const hasOnlineSessionWithPermissions = storage((state) => {
     return Object.values(state.sessions).some(session => {
       // Use centralized presence logic - only "online" sessions matter
       const isOnline = session.presence === 'online';
 
-      const hasPermissions = session.agentState?.requests && 
+      const hasPermissions = session.agentState?.requests &&
                 Object.keys(session.agentState.requests).length > 0;
 
       return isOnline && hasPermissions;
@@ -37,6 +34,10 @@ export const FaviconPermissionIndicator = React.memo(() => {
       resetFavicon();
     };
   }, []);
+
+  if (Platform.OS !== 'web' || typeof window === 'undefined' || typeof document === 'undefined') {
+    return null;
+  }
 
   return null;
 });

@@ -92,7 +92,8 @@ export default React.memo(function SettingsScreen() {
   const appVersion = Constants.expoConfig?.version || '1.0.0';
   const auth = useAuth();
   const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
-  const isPro = __DEV__ || useEntitlement('pro');
+  const entitlement = useEntitlement('pro');
+  const isPro = __DEV__ || entitlement;
   const isCustomServer = isUsingCustomServer();
   const allMachines = useAllMachines();
   const profile = useProfile();
@@ -406,6 +407,23 @@ export default React.memo(function SettingsScreen() {
         </ItemGroup>
       )}
 
+      {/* Help & Support */}
+      <ItemGroup title={t('settings.helpAndSupport')} subtitle={t('settings.helpSubtitle')}>
+        <Item
+          title={t('settings.githubRepository')}
+          subtitle={t('settings.githubRepositorySubtitle')}
+          icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
+          detail="slopus/happy"
+          onPress={handleGitHub}
+        />
+        <Item
+          title={t('settings.reportIssue')}
+          subtitle={t('settings.reportIssueSubtitle')}
+          icon={<Ionicons name="bug-outline" size={29} color="#FF3B30" />}
+          onPress={handleReportIssue}
+        />
+      </ItemGroup>
+
       {/* About */}
       <ItemGroup title={t('settings.about')} footer={t('settings.aboutFooter')}>
         <Item
@@ -425,17 +443,6 @@ export default React.memo(function SettingsScreen() {
           subtitle={t('settings.whatsNewSubtitle')}
           icon={<Ionicons name="sparkles-outline" size={29} color="#FF9500" />}
           onPress={() => router.push('/changelog')}
-        />
-        <Item
-          title={t('settings.github')}
-          icon={<Ionicons name="logo-github" size={29} color={theme.colors.text} />}
-          detail="slopus/happy"
-          onPress={handleGitHub}
-        />
-        <Item
-          title={t('settings.reportIssue')}
-          icon={<Ionicons name="bug-outline" size={29} color="#FF3B30" />}
-          onPress={handleReportIssue}
         />
         <Item
           title={t('settings.privacyPolicy')}

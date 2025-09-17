@@ -41,6 +41,7 @@ export const pt: TranslationStructure = {
     fileViewer: 'Visualizador de arquivos',
     loading: 'Carregando...',
     retry: 'Tentar novamente',
+    comingSoon: 'Em breve',
   },
 
   status: {
@@ -91,7 +92,13 @@ export const pt: TranslationStructure = {
     happyAttribution: 'Cliente móvel e web para Claude Code e Codex',
     whatsNew: 'Novidades',
     whatsNewSubtitle: 'Veja as atualizações e melhorias mais recentes',
+    help: 'Ajuda',
+    helpAndSupport: 'Ajuda e suporte',
+    helpSubtitle: 'Obtenha ajuda, relate problemas e encontre recursos',
     reportIssue: 'Relatar um problema',
+    reportIssueSubtitle: 'Encontrou um erro? Nos avise no GitHub',
+    githubRepository: 'Repositório do GitHub',
+    githubRepositorySubtitle: 'Veja o código-fonte e contribua',
     privacyPolicy: 'Política de privacidade',
     termsOfService: 'Termos de serviço',
     eula: 'EULA',
@@ -697,6 +704,20 @@ export const pt: TranslationStructure = {
     removeSessionDescription: 'Limpar o estado da sessão localmente (o daemon pode permanecer em execução)',
     cancelDescription: 'Manter a sessão como está e tentar novamente mais tarde',
     error: ({ error }: { error: string }) => `Erro: ${error}`,
+  },
+
+  sessions: {
+    // Session management actions
+    rename: 'Renomear sessão',
+    duplicate: 'Duplicar sessão',
+    delete: 'Excluir sessão',
+    copyId: 'Copiar ID da sessão',
+    exportHistory: 'Exportar histórico',
+    deleteSessionTitle: 'Excluir sessão',
+    deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `Tem certeza de que deseja excluir "${sessionName}"? Esta ação não pode ser desfeita.`,
+    renameSessionTitle: 'Renomear sessão',
+    renameSessionMessage: 'Digite um novo nome para esta sessão:',
+    exportHistoryComingSoon: 'O recurso de exportar histórico de sessão estará disponível em breve.',
   },
 } as const;
 

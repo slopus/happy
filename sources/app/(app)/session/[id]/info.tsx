@@ -117,20 +117,6 @@ export default React.memo(() => {
     return new Date(timestamp).toLocaleString();
   }, []);
 
-  if (!session) {
-    return (
-      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ color: theme.colors.textSecondary, fontSize: 17, ...Typography.default('semiBold') }}>{t('errors.sessionNotFound')}</Text>
-      </View>
-    );
-  }
-
-  const sessionName = getSessionName(session);
-  const sessionStatus = useSessionStatus(session);
-
-  // Check if CLI version is outdated
-  const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
-
   const handleCopyUpdateCommand = useCallback(async () => {
     const updateCommand = 'npm install -g happy-coder@latest';
     try {
@@ -140,6 +126,19 @@ export default React.memo(() => {
       Modal.alert(t('common.error'), t('common.error'));
     }
   }, []);
+
+  if (!session) {
+    return (
+      <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ color: theme.colors.textSecondary, fontSize: 17, ...Typography.default('semiBold') }}>{t('errors.sessionNotFound')}</Text>
+      </View>
+    );
+  }
+
+  const sessionStatus = useSessionStatus(session);
+  const sessionName = getSessionName(session);
+  // Check if CLI version is outdated
+  const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
 
   return (
     <>

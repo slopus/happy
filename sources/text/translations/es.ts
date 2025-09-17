@@ -41,6 +41,7 @@ export const es: TranslationStructure = {
     fileViewer: 'Visor de archivos',
     loading: 'Cargando...',
     retry: 'Reintentar',
+    comingSoon: 'Próximamente',
   },
 
   status: {
@@ -91,7 +92,13 @@ export const es: TranslationStructure = {
     happyAttribution: 'Cliente móvil y web para Claude Code y Codex',
     whatsNew: 'Novedades',
     whatsNewSubtitle: 'Ve las últimas actualizaciones y mejoras',
+    help: 'Ayuda',
+    helpAndSupport: 'Ayuda y soporte',
+    helpSubtitle: 'Obtén ayuda, reporta problemas y encuentra recursos',
     reportIssue: 'Reportar un problema',
+    reportIssueSubtitle: '¿Encontraste un error? Avísanos en GitHub',
+    githubRepository: 'Repositorio de GitHub',
+    githubRepositorySubtitle: 'Consulta el código fuente y contribuye',
     privacyPolicy: 'Política de privacidad',
     termsOfService: 'Términos de servicio',
     eula: 'EULA',
@@ -697,6 +704,20 @@ export const es: TranslationStructure = {
     removeSessionDescription: 'Limpiar el estado de la sesión localmente (el daemon puede permanecer en ejecución)',
     cancelDescription: 'Mantener la sesión sin cambios e intentar más tarde',
     error: ({ error }: { error: string }) => `Error: ${error}`,
+  },
+
+  sessions: {
+    // Session management actions
+    rename: 'Renombrar sesión',
+    duplicate: 'Duplicar sesión',
+    delete: 'Eliminar sesión',
+    copyId: 'Copiar ID de sesión',
+    exportHistory: 'Exportar historial',
+    deleteSessionTitle: 'Eliminar sesión',
+    deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `¿Está seguro de que desea eliminar "${sessionName}"? Esta acción no se puede deshacer.`,
+    renameSessionTitle: 'Renombrar sesión',
+    renameSessionMessage: 'Introduzca un nuevo nombre para esta sesión:',
+    exportHistoryComingSoon: 'La función de exportar el historial de sesión estará disponible próximamente.',
   },
 } as const;
 

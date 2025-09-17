@@ -52,6 +52,7 @@ export const pl: TranslationStructure = {
     fileViewer: 'Przeglądarka plików',
     loading: 'Ładowanie...',
     retry: 'Ponów',
+    comingSoon: 'Wkrótce',
   },
 
   status: {
@@ -102,7 +103,13 @@ export const pl: TranslationStructure = {
     happyAttribution: 'Mobilny i webowy klient dla Claude Code i Codex',
     whatsNew: 'Co nowego',
     whatsNewSubtitle: 'Zobacz najnowsze aktualizacje i ulepszenia',
+    help: 'Pomoc',
+    helpAndSupport: 'Pomoc i wsparcie',
+    helpSubtitle: 'Uzyskaj pomoc, zgłoś problemy i znajdź zasoby',
     reportIssue: 'Zgłoś problem',
+    reportIssueSubtitle: 'Znalazłeś błąd? Daj nam znać na GitHubie',
+    githubRepository: 'Repozytorium GitHub',
+    githubRepositorySubtitle: 'Zobacz kod źródłowy i współtwórz',
     privacyPolicy: 'Polityka prywatności',
     termsOfService: 'Warunki użytkowania',
     eula: 'EULA',
@@ -707,6 +714,20 @@ export const pl: TranslationStructure = {
     removeSessionDescription: 'Wyczyść stan sesji lokalnie (demon może pozostać uruchomiony)',
     cancelDescription: 'Zachowaj sesję bez zmian i spróbuj ponownie później',
     error: ({ error }: { error: string }) => `Błąd: ${error}`,
+  },
+
+  sessions: {
+    // Session management actions
+    rename: 'Zmień nazwę sesji',
+    duplicate: 'Duplikuj sesję',
+    delete: 'Usuń sesję',
+    copyId: 'Kopiuj ID sesji',
+    exportHistory: 'Eksportuj historię',
+    deleteSessionTitle: 'Usuń sesję',
+    deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `Czy na pewno chcesz usunąć "${sessionName}"? Tej operacji nie można cofnąć.`,
+    renameSessionTitle: 'Zmień nazwę sesji',
+    renameSessionMessage: 'Wprowadź nową nazwę dla tej sesji:',
+    exportHistoryComingSoon: 'Funkcja eksportowania historii sesji będzie dostępna wkrótce.',
   },
 } as const;
 

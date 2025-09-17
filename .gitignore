@@ -55,3 +55,8 @@ GoogleService-Info.plist
 *.p12
 *.jks
 *.keystore
+
+# Security reports and sensitive files
+SECURITY-INCIDENT.md
+*security-report*
+*incident-report*

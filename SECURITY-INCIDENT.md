@@ -6,7 +6,7 @@
 **Type**: Exposed API Credentials
 
 ## Details
-- **Exposed Secret**: Google API Key `AIzaSyDzdshwzE3tHcc1klD6qIPpReCoAiG2Mxs`
+- **Exposed Secret**: Google API Key `AIzaSy...` (REDACTED - 39 characters)
 - **File**: `google-services.json` (lines 18, 37, 56)
 - **First Detection**: 2025-09-16T00:35:47Z
 - **Repository**: jeffersonwarrior/happy-coder-1.5.2 (public)
@@ -22,7 +22,7 @@
 1. **🔄 REVOKE THE EXPOSED API KEY IMMEDIATELY**
    - Login to Google Cloud Console
    - Navigate to APIs & Services → Credentials
-   - Find and DELETE the key: `AIzaSyDzdshwzE3tHcc1klD6qIPpReCoAiG2Mxs`
+   - Find and DELETE the exposed key (starts with `AIzaSy...`)
    - Generate new API keys for development/production
 
 2. **🔍 Audit API Key Usage**

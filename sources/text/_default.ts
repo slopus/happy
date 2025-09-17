@@ -41,6 +41,7 @@ export const en = {
     fileViewer: 'File Viewer',
     loading: 'Loading...',
     retry: 'Retry',
+    comingSoon: 'Coming Soon',
   },
 
   status: {
@@ -91,7 +92,13 @@ export const en = {
     happyAttribution: 'Mobile and web client for Claude Code & Codex',
     whatsNew: 'What\'s New',
     whatsNewSubtitle: 'See the latest updates and improvements',
+    help: 'Help',
+    helpAndSupport: 'Help & Support',
+    helpSubtitle: 'Get help, report issues, and find resources',
     reportIssue: 'Report an Issue',
+    reportIssueSubtitle: 'Found a bug? Let us know on GitHub',
+    githubRepository: 'GitHub Repository',
+    githubRepositorySubtitle: 'View source code and contribute',
     privacyPolicy: 'Privacy Policy',
     termsOfService: 'Terms of Service',
     eula: 'EULA',
@@ -697,6 +704,20 @@ export const en = {
     removeSessionDescription: 'Clean up session state locally (daemon may remain running)',
     cancelDescription: 'Keep session as-is and try again later',
     error: ({ error }: { error: string }) => `Error: ${error}`,
+  },
+
+  sessions: {
+    // Session management actions
+    rename: 'Rename Session',
+    duplicate: 'Duplicate Session',
+    delete: 'Delete Session',
+    copyId: 'Copy Session ID',
+    exportHistory: 'Export History',
+    deleteSessionTitle: 'Delete Session',
+    deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `Are you sure you want to delete "${sessionName}"? This action cannot be undone.`,
+    renameSessionTitle: 'Rename Session',
+    renameSessionMessage: 'Enter a new name for this session:',
+    exportHistoryComingSoon: 'Session history export feature is coming soon.',
   },
 } as const;
 

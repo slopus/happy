@@ -41,6 +41,7 @@ export const ca: TranslationStructure = {
     fileViewer: 'Visualitzador de fitxers',
     loading: 'Carregant...',
     retry: 'Torna-ho a provar',
+    comingSoon: 'Properament',
   },
 
   status: {
@@ -91,7 +92,13 @@ export const ca: TranslationStructure = {
     happyAttribution: 'Client mòbil i web per a Claude Code i Codex',
     whatsNew: 'Novetats',
     whatsNewSubtitle: 'Mira les últimes actualitzacions i millores',
+    help: 'Ajuda',
+    helpAndSupport: 'Ajuda i suport',
+    helpSubtitle: 'Obtén ajuda, informa de problemes i troba recursos',
     reportIssue: 'Informa d\'un problema',
+    reportIssueSubtitle: 'Has trobat un error? Fes-nos-ho saber a GitHub',
+    githubRepository: 'Repositori de GitHub',
+    githubRepositorySubtitle: 'Consulta el codi font i contribueix',
     privacyPolicy: 'Política de privadesa',
     termsOfService: 'Condicions del servei',
     eula: 'EULA',
@@ -697,6 +704,20 @@ export const ca: TranslationStructure = {
     removeSessionDescription: 'Netejar l\'estat de la sessió localment (el daemon pot continuar executant-se)',
     cancelDescription: 'Mantenir la sessió sense canvis i provar més tard',
     error: ({ error }: { error: string }) => `Error: ${error}`,
+  },
+
+  sessions: {
+    // Session management actions
+    rename: 'Canviar nom de la sessió',
+    duplicate: 'Duplicar sessió',
+    delete: 'Eliminar sessió',
+    copyId: 'Copiar ID de sessió',
+    exportHistory: 'Exportar historial',
+    deleteSessionTitle: 'Eliminar sessió',
+    deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `Esteu segur que voleu eliminar "${sessionName}"? Aquesta acció no es pot desfer.`,
+    renameSessionTitle: 'Canviar nom de la sessió',
+    renameSessionMessage: 'Introduïu un nom nou per a aquesta sessió:',
+    exportHistoryComingSoon: 'La funció d\'exportar l\'historial de la sessió estarà disponible aviat.',
   },
 } as const;
 

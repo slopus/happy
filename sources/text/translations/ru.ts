@@ -52,6 +52,7 @@ export const ru: TranslationStructure = {
     fileViewer: 'Просмотр файла',
     loading: 'Загрузка...',
     retry: 'Повторить',
+    comingSoon: 'Скоро',
   },
 
   connect: {
@@ -83,7 +84,13 @@ export const ru: TranslationStructure = {
     happyAttribution: 'Мобильный и веб-клиент для Claude Code и Codex',
     whatsNew: 'Что нового',
     whatsNewSubtitle: 'Посмотреть последние обновления и улучшения',
+    help: 'Помощь',
+    helpAndSupport: 'Помощь и поддержка',
+    helpSubtitle: 'Получите помощь, сообщите о проблемах и найдите ресурсы',
     reportIssue: 'Сообщить о проблеме',
+    reportIssueSubtitle: 'Нашли ошибку? Сообщите нам на GitHub',
+    githubRepository: 'Репозиторий GitHub',
+    githubRepositorySubtitle: 'Просмотрите исходный код и внесите свой вклад',
     privacyPolicy: 'Политика конфиденциальности',
     termsOfService: 'Условия использования',
     eula: 'EULA',
@@ -707,6 +714,20 @@ export const ru: TranslationStructure = {
     removeSessionDescription: 'Очистить состояние сессии локально (демон может остаться запущенным)',
     cancelDescription: 'Оставить сессию без изменений и попробовать позже',
     error: ({ error }: { error: string }) => `Ошибка: ${error}`,
+  },
+
+  sessions: {
+    // Session management actions
+    rename: 'Переименовать сессию',
+    duplicate: 'Дублировать сессию',
+    delete: 'Удалить сессию',
+    copyId: 'Копировать ID сессии',
+    exportHistory: 'Экспортировать историю',
+    deleteSessionTitle: 'Удалить сессию',
+    deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `Вы уверены, что хотите удалить "${sessionName}"? Это действие нельзя отменить.`,
+    renameSessionTitle: 'Переименовать сессию',
+    renameSessionMessage: 'Введите новое имя для этой сессии:',
+    exportHistoryComingSoon: 'Функция экспорта истории сессии скоро будет доступна.',
   },
 } as const;
 

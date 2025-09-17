@@ -20,6 +20,10 @@ import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { t } from '@/text';
+import { ContextMenu, ContextMenuAction, useContextMenu } from '@/components/ContextMenu';
+import * as Clipboard from 'expo-clipboard';
+import { Modal } from '@/modal';
+import { storage } from '@/sync/storage';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
   container: {
@@ -87,6 +91,14 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
   },
   sessionItemSelected: {
     backgroundColor: theme.colors.surfaceSelected,
+  },
+  sessionItemKeyboardFocused: {
+    borderWidth: Platform.select({ web: 2, default: 1 }),
+    borderColor: theme.colors.textLink,
+    backgroundColor: Platform.select({
+      web: theme.colors.input.background,
+      default: theme.colors.surfaceHigh
+    }),
   },
   sessionContent: {
     flex: 1,
@@ -161,12 +173,106 @@ export function SessionsList() {
   const navigateToSession = useNavigateToSession();
   const compactSessionView = useSetting('compactSessionView');
   const selectable = isTablet;
-  const dataWithSelected = selectable ? React.useMemo(() => {
+  const removeSession = React.useCallback((sessionId: string) => {
+    storage.getState().removeSession(sessionId);
+  }, []);
+  const [selectedSessionIndex, setSelectedSessionIndex] = React.useState<number>(-1);
+  const [focusedSessionId, setFocusedSessionId] = React.useState<string | null>(null);
+
+  // Keyboard shortcuts for session management
+  React.useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // Only handle shortcuts when on sessions list screen
+      if (!pathname.startsWith('/') || pathname !== '/') return;
+
+      const sessions = data?.filter(item => item.type === 'session').map(item => (item as any).session) || [];
+      if (sessions.length === 0) return;
+
+      switch (event.key) {
+        case 'ArrowDown':
+          event.preventDefault();
+          setSelectedSessionIndex(prev => {
+            const newIndex = prev < sessions.length - 1 ? prev + 1 : prev;
+            setFocusedSessionId(sessions[newIndex]?.id || null);
+            return newIndex;
+          });
+          break;
+
+        case 'ArrowUp':
+          event.preventDefault();
+          setSelectedSessionIndex(prev => {
+            const newIndex = prev > 0 ? prev - 1 : prev;
+            setFocusedSessionId(sessions[newIndex]?.id || null);
+            return newIndex;
+          });
+          break;
+
+        case 'Enter':
+          event.preventDefault();
+          if (selectedSessionIndex >= 0 && selectedSessionIndex < sessions.length) {
+            const session = sessions[selectedSessionIndex];
+            navigateToSession(session.id);
+          }
+          break;
+
+        case 'Delete':
+        case 'Backspace':
+          if (event.key === 'Delete' || (event.key === 'Backspace' && event.metaKey)) {
+            event.preventDefault();
+            if (selectedSessionIndex >= 0 && selectedSessionIndex < sessions.length) {
+              const session = sessions[selectedSessionIndex];
+              Modal.confirm(
+                t('sessions.deleteSessionTitle'),
+                t('sessions.deleteSessionMessage', { sessionName: getSessionName(session) })
+              ).then(confirmed => {
+                if (confirmed) {
+                  removeSession(session.id);
+                  // Adjust selection after deletion
+                  setSelectedSessionIndex(prev => Math.max(0, Math.min(prev, sessions.length - 2)));
+                }
+              });
+            }
+          }
+          break;
+
+        case 'F2':
+          event.preventDefault();
+          if (selectedSessionIndex >= 0 && selectedSessionIndex < sessions.length) {
+            const session = sessions[selectedSessionIndex];
+            Modal.prompt(
+              t('sessions.renameSessionTitle'),
+              t('sessions.renameSessionMessage'),
+              { defaultValue: getSessionName(session) }
+            ).then(newName => {
+              if (newName && newName.trim() && newName.trim() !== getSessionName(session)) {
+                // TODO: Update session name
+                console.log('Rename session to:', newName);
+              }
+            });
+          }
+          break;
+
+        case 'Escape':
+          event.preventDefault();
+          setSelectedSessionIndex(-1);
+          setFocusedSessionId(null);
+          break;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [data, pathname, selectedSessionIndex, navigateToSession, removeSession]);
+
+  const dataWithSelected = React.useMemo(() => {
+    if (!selectable) return data;
     return data?.map(item => ({
       ...item,
       selected: pathname.startsWith(`/session/${item.type === 'session' ? item.session.id : ''}`),
     }));
-  }, [data, pathname]) : data;
+  }, [data, pathname, selectable]);
 
   // Request review
   React.useEffect(() => {
@@ -174,13 +280,6 @@ export function SessionsList() {
       requestReview();
     }
   }, [data && data.length > 0]);
-
-  // Early return if no data yet
-  if (!data) {
-    return (
-      <View style={styles.container} />
-    );
-  }
 
   const keyExtractor = React.useCallback((item: SessionListViewItem & { selected?: boolean }, index: number) => {
     switch (item.type) {
@@ -243,17 +342,14 @@ export function SessionsList() {
           <SessionItem
             session={item.session}
             selected={item.selected}
+            keyboardFocused={focusedSessionId === item.session.id}
             isFirst={isFirst}
             isLast={isLast}
             isSingle={isSingle}
           />
         );
     }
-  }, [pathname, dataWithSelected, compactSessionView]);
-
-
-  // Remove this section as we'll use FlatList for all items now
-
+  }, [pathname, dataWithSelected, compactSessionView, focusedSessionId]);
 
   const HeaderComponent = React.useCallback(() => {
     return (
@@ -262,6 +358,13 @@ export function SessionsList() {
       </View>
     );
   }, []);
+
+  // Early return if no data yet
+  if (!data) {
+    return (
+      <View style={styles.container} />
+    );
+  }
 
   // Footer removed - all sessions now shown inline
 
@@ -281,9 +384,10 @@ export function SessionsList() {
 }
 
 // Sub-component that handles session message logic
-const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }: {
+const SessionItem = React.memo(({ session, selected, keyboardFocused, isFirst, isLast, isSingle }: {
     session: Session;
     selected?: boolean;
+    keyboardFocused?: boolean;
     isFirst?: boolean;
     isLast?: boolean;
     isSingle?: boolean;
@@ -294,31 +398,161 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
   const sessionSubtitle = getSessionSubtitle(session);
   const navigateToSession = useNavigateToSession();
   const isTablet = useIsTablet();
+  const removeSession = React.useCallback((sessionId: string) => {
+    storage.getState().removeSession(sessionId);
+  }, []);
+  const updateSession = React.useCallback((sessionId: string, sessionData: Session) => {
+    storage.getState().updateSession(sessionId, sessionData);
+  }, []);
+  const contextMenu = useContextMenu();
 
   const avatarId = React.useMemo(() => {
     return getSessionAvatarId(session);
   }, [session]);
 
+  // Session management actions
+  const handleDeleteSession = React.useCallback(async () => {
+    const confirmed = await Modal.confirm(
+      t('sessions.deleteSessionTitle'),
+      t('sessions.deleteSessionMessage', { sessionName: getSessionName(session) })
+    );
+    if (confirmed) {
+      removeSession(session.id);
+    }
+  }, [session, removeSession]);
+
+  const handleDuplicateSession = React.useCallback(() => {
+    // Generate new session ID
+    const newSessionId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+    // Create duplicate session with new ID but same metadata
+    const duplicatedSession: Session = {
+      ...session,
+      id: newSessionId,
+      createdAt: Date.now(),
+      draft: null, // Clear draft for new session
+    };
+
+    // TODO: Also need to duplicate messages - for now just create empty session
+    updateSession(newSessionId, duplicatedSession);
+    navigateToSession(newSessionId);
+  }, [session, updateSession, navigateToSession]);
+
+  const handleCopySessionId = React.useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(session.id);
+      // Could show toast notification here
+    } catch (error) {
+      console.error('Failed to copy session ID:', error);
+    }
+  }, [session.id]);
+
+  const handleRenameSession = React.useCallback(async () => {
+    const newName = await Modal.prompt(
+      t('sessions.renameSessionTitle'),
+      t('sessions.renameSessionMessage'),
+      { defaultValue: getSessionName(session) }
+    );
+
+    if (newName && newName.trim() && newName.trim() !== getSessionName(session)) {
+      const updatedSession = {
+        ...session,
+        metadata: {
+          path: '',
+          host: '',
+          ...session.metadata,
+          displayName: newName.trim(),
+        },
+      };
+      updateSession(session.id, updatedSession);
+    }
+  }, [session, updateSession]);
+
+  const handleExportHistory = React.useCallback(async () => {
+    // TODO: Implement session history export
+    Modal.alert(t('common.comingSoon'), t('sessions.exportHistoryComingSoon'));
+  }, []);
+
+  // Context menu actions
+  const contextMenuActions = React.useMemo((): ContextMenuAction[] => [
+    {
+      id: 'rename',
+      title: t('sessions.rename'),
+      icon: 'create-outline',
+      onPress: handleRenameSession,
+    },
+    {
+      id: 'duplicate',
+      title: t('sessions.duplicate'),
+      icon: 'copy-outline',
+      onPress: handleDuplicateSession,
+    },
+    {
+      id: 'copy-id',
+      title: t('sessions.copyId'),
+      icon: 'clipboard-outline',
+      onPress: handleCopySessionId,
+    },
+    {
+      id: 'export',
+      title: t('sessions.exportHistory'),
+      icon: 'download-outline',
+      onPress: handleExportHistory,
+    },
+    {
+      id: 'delete',
+      title: t('sessions.delete'),
+      icon: 'trash-outline',
+      destructive: true,
+      onPress: handleDeleteSession,
+    },
+  ], [handleRenameSession, handleDuplicateSession, handleCopySessionId, handleExportHistory, handleDeleteSession]);
+
+  // Handle long press for context menu (mobile)
+  const handleLongPress = React.useCallback(() => {
+    const screenWidth = Platform.select({
+      web: window.innerWidth,
+      default: require('react-native').Dimensions.get('window').width
+    });
+    const position = { x: screenWidth / 2 - 140, y: 200 };
+    contextMenu.show(position);
+  }, [contextMenu]);
+
+  // Handle right click for context menu (web)
+  const handleRightClick = React.useCallback((event: any) => {
+    if (Platform.OS === 'web') {
+      event.preventDefault();
+      const position = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+      contextMenu.show(position);
+    }
+  }, [contextMenu]);
+
   return (
-    <Pressable
-      style={[
-        styles.sessionItem,
-        selected && styles.sessionItemSelected,
-        isSingle ? styles.sessionItemSingle :
-          isFirst ? styles.sessionItemFirst :
-            isLast ? styles.sessionItemLast : {},
-      ]}
-      onPressIn={() => {
-        if (isTablet) {
-          navigateToSession(session.id);
-        }
-      }}
-      onPress={() => {
-        if (!isTablet) {
-          navigateToSession(session.id);
-        }
-      }}
-    >
+    <>
+      <Pressable
+        style={[
+          styles.sessionItem,
+          selected && styles.sessionItemSelected,
+          keyboardFocused && styles.sessionItemKeyboardFocused,
+          isSingle ? styles.sessionItemSingle :
+            isFirst ? styles.sessionItemFirst :
+              isLast ? styles.sessionItemLast : {},
+        ]}
+        onPressIn={() => {
+          if (isTablet) {
+            navigateToSession(session.id);
+          }
+        }}
+        onPress={() => {
+          if (!isTablet) {
+            navigateToSession(session.id);
+          }
+        }}
+        onLongPress={handleLongPress}
+        {...(Platform.OS === 'web' && {
+          onContextMenu: handleRightClick,
+        })}
+      >
       <View style={styles.avatarContainer}>
         <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
         {session.draft && (
@@ -360,6 +594,16 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
           </Text>
         </View>
       </View>
-    </Pressable>
+      </Pressable>
+
+      {/* Context Menu */}
+      <ContextMenu
+        visible={contextMenu.visible}
+        onClose={contextMenu.hide}
+        actions={contextMenuActions}
+        anchorPosition={contextMenu.anchorPosition}
+        title={getSessionName(session)}
+      />
+    </>
   );
 });
