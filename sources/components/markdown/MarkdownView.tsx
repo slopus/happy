@@ -17,11 +17,22 @@ export type Option = {
     title: string;
 };
 
-export const MarkdownView = React.memo((props: { 
+export const MarkdownView = React.memo((props: {
     markdown: string;
     onOptionPress?: (option: Option) => void;
 }) => {
-  const blocks = React.useMemo(() => parseMarkdown(props.markdown), [props.markdown]);
+  const blocks = React.useMemo(() => {
+    try {
+      return parseMarkdown(props.markdown);
+    } catch (error) {
+      console.error('Error parsing markdown:', error);
+      // Return a fallback simple text block
+      return [{
+        type: 'text' as const,
+        content: [{ styles: [], text: props.markdown, url: null }]
+      }];
+    }
+  }, [props.markdown]);
     
   // Backwards compatibility: The original version just returned the view, wrapping the list of blocks.
   // It made each of the individual text elements selectable. When we enable the markdownCopyV2 feature,
@@ -172,33 +183,44 @@ function RenderOptionsBlock(props: {
 
 function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
   const handleLinkPress = React.useCallback((url: string) => {
-    if (Platform.OS !== 'web') {
-      // Open external URLs in in-app browser on mobile
-      WebBrowser.openBrowserAsync(url);
+    try {
+      if (Platform.OS !== 'web') {
+        // Open external URLs in in-app browser on mobile
+        WebBrowser.openBrowserAsync(url);
+      }
+    } catch (error) {
+      console.error('Error opening link:', error);
+      Modal.alert('Error', 'Failed to open link. Please copy and paste the URL manually.');
     }
   }, []);
 
   return (<>
     {props.spans.map((span, index) => {
-      if (span.url) {
-        return (
-          <Link
-            key={index}
-            href={span.url as any}
-            target="_blank"
-            style={[style.link, span.styles.map(s => style[s])]}
-            onPress={(e) => {
-              if (Platform.OS !== 'web') {
-                e.preventDefault();
-                handleLinkPress(span.url!);
-              }
-            }}
-          >
-            {span.text}
-          </Link>
-        );
-      } else {
-        return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>;
+      try {
+        if (span.url) {
+          return (
+            <Link
+              key={index}
+              href={span.url as any}
+              target="_blank"
+              style={[style.link, span.styles.map(s => style[s])]}
+              onPress={(e) => {
+                if (Platform.OS !== 'web') {
+                  e.preventDefault();
+                  handleLinkPress(span.url!);
+                }
+              }}
+            >
+              {span.text}
+            </Link>
+          );
+        } else {
+          return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>;
+        }
+      } catch (error) {
+        console.error('Error rendering span:', error);
+        // Fallback to plain text
+        return <Text key={index} selectable style={props.baseStyle}>{span.text}</Text>;
       }
     })}
   </>);
