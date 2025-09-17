@@ -30,6 +30,9 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
+import { fetchArtifact, fetchArtifacts } from './apiArtifacts';
+import { DecryptedArtifact, Artifact } from './artifactTypes';
+import { ArtifactEncryption } from './encryption/artifactEncryption';
 
 class Sync {
 
@@ -495,6 +498,104 @@ class Sync {
 
     public refreshSessions = async () => {
         return this.sessionsSync.invalidateAndAwait();
+    }
+
+    public getCredentials() {
+        return this.credentials;
+    }
+
+    // Artifact methods
+    public async fetchArtifactsList(): Promise<void> {
+        if (!this.credentials) return;
+
+        try {
+            const artifacts = await fetchArtifacts(this.credentials);
+            const decryptedArtifacts: DecryptedArtifact[] = [];
+
+            for (const artifact of artifacts) {
+                try {
+                    // Decrypt the data encryption key
+                    const decryptedKey = await this.encryption.decryptEncryptionKey(artifact.dataEncryptionKey);
+                    if (!decryptedKey) {
+                        console.error(`Failed to decrypt key for artifact ${artifact.id}`);
+                        continue;
+                    }
+
+                    // Create artifact encryption instance
+                    const artifactEncryption = new ArtifactEncryption(decryptedKey);
+
+                    // Decrypt header
+                    const header = await artifactEncryption.decryptHeader(artifact.header);
+                    
+                    decryptedArtifacts.push({
+                        id: artifact.id,
+                        title: header?.title || null,
+                        body: undefined, // Body not loaded in list
+                        headerVersion: artifact.headerVersion,
+                        bodyVersion: artifact.bodyVersion,
+                        seq: artifact.seq,
+                        createdAt: artifact.createdAt,
+                        updatedAt: artifact.updatedAt,
+                        isDecrypted: !!header,
+                    });
+                } catch (err) {
+                    console.error(`Failed to decrypt artifact ${artifact.id}:`, err);
+                    // Add with decryption failed flag
+                    decryptedArtifacts.push({
+                        id: artifact.id,
+                        title: null,
+                        body: undefined,
+                        headerVersion: artifact.headerVersion,
+                        seq: artifact.seq,
+                        createdAt: artifact.createdAt,
+                        updatedAt: artifact.updatedAt,
+                        isDecrypted: false,
+                    });
+                }
+            }
+
+            storage.getState().applyArtifacts(decryptedArtifacts);
+        } catch (error) {
+            console.error('Failed to fetch artifacts:', error);
+            throw error;
+        }
+    }
+
+    public async fetchArtifactWithBody(artifactId: string): Promise<DecryptedArtifact | null> {
+        if (!this.credentials) return null;
+
+        try {
+            const artifact = await fetchArtifact(this.credentials, artifactId);
+
+            // Decrypt the data encryption key
+            const decryptedKey = await this.encryption.decryptEncryptionKey(artifact.dataEncryptionKey);
+            if (!decryptedKey) {
+                console.error(`Failed to decrypt key for artifact ${artifactId}`);
+                return null;
+            }
+
+            // Create artifact encryption instance
+            const artifactEncryption = new ArtifactEncryption(decryptedKey);
+
+            // Decrypt header and body
+            const header = await artifactEncryption.decryptHeader(artifact.header);
+            const body = artifact.body ? await artifactEncryption.decryptBody(artifact.body) : null;
+
+            return {
+                id: artifact.id,
+                title: header?.title || null,
+                body: body?.body || null,
+                headerVersion: artifact.headerVersion,
+                bodyVersion: artifact.bodyVersion,
+                seq: artifact.seq,
+                createdAt: artifact.createdAt,
+                updatedAt: artifact.updatedAt,
+                isDecrypted: !!header,
+            };
+        } catch (error) {
+            console.error(`Failed to fetch artifact ${artifactId}:`, error);
+            return null;
+        }
     }
 
     private fetchMachines = async () => {

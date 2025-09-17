@@ -683,6 +683,26 @@ export const es: TranslationStructure = {
         textCopied: 'Texto copiado al portapapeles',
         failedToCopy: 'Error al copiar el texto al portapapeles',
         noTextToCopy: 'No hay texto disponible para copiar',
+    },
+
+    artifacts: {
+        // Artifacts feature
+        title: 'Artefactos',
+        countSingular: '1 artefacto',
+        countPlural: ({ count }: { count: number }) => `${count} artefactos`,
+        empty: 'No hay artefactos aún',
+        emptyDescription: 'Crea tu primer artefacto para guardar y organizar contenido',
+        new: 'Nuevo artefacto',
+        edit: 'Editar',
+        delete: 'Eliminar',
+        deleteConfirm: '¿Eliminar artefacto?',
+        deleteConfirmDescription: 'Este artefacto será eliminado permanentemente.',
+        titlePlaceholder: 'Título del artefacto',
+        bodyPlaceholder: 'Escribe tu contenido aquí...',
+        save: 'Guardar',
+        saving: 'Guardando...',
+        loading: 'Cargando...',
+        error: 'Error al cargar el artefacto',
     }
 } as const;
 

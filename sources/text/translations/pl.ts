@@ -693,6 +693,39 @@ export const pl: TranslationStructure = {
         textCopied: 'Tekst skopiowany do schowka',
         failedToCopy: 'Nie udało się skopiować tekstu do schowka',
         noTextToCopy: 'Brak tekstu do skopiowania',
+    },
+
+    artifacts: {
+        // Artifacts feature
+        title: 'Artefakty',
+        countSingular: '1 artefakt',
+        countPlural: ({ count }: { count: number }) => {
+            const n = Math.abs(count);
+            const n10 = n % 10;
+            const n100 = n % 100;
+            
+            // Polish plural rules: 1 (singular), 2-4 (few), 5+ (many)
+            if (n === 1) {
+                return `${count} artefakt`;
+            }
+            if (n10 >= 2 && n10 <= 4 && (n100 < 12 || n100 > 14)) {
+                return `${count} artefakty`;
+            }
+            return `${count} artefaktów`;
+        },
+        empty: 'Brak artefaktów',
+        emptyDescription: 'Utwórz pierwszy artefakt, aby zapisywać i organizować treści',
+        new: 'Nowy artefakt',
+        edit: 'Edytuj',
+        delete: 'Usuń',
+        deleteConfirm: 'Usunąć artefakt?',
+        deleteConfirmDescription: 'Ten artefakt zostanie trwale usunięty.',
+        titlePlaceholder: 'Tytuł artefaktu',
+        bodyPlaceholder: 'Napisz swoją treść tutaj...',
+        save: 'Zapisz',
+        saving: 'Zapisywanie...',
+        loading: 'Ładowanie...',
+        error: 'Nie udało się załadować artefaktu',
     }
 } as const;
 

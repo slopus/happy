@@ -693,6 +693,38 @@ export const ru: TranslationStructure = {
         textCopied: 'Текст скопирован в буфер обмена',
         failedToCopy: 'Не удалось скопировать текст в буфер обмена',
         noTextToCopy: 'Нет текста для копирования',
+    },
+
+    artifacts: {
+        // Artifacts feature
+        title: 'Артефакты',
+        countSingular: '1 артефакт',
+        countPlural: ({ count }: { count: number }) => {
+            const n = Math.abs(count);
+            const n10 = n % 10;
+            const n100 = n % 100;
+            
+            if (n10 === 1 && n100 !== 11) {
+                return `${count} артефакт`;
+            }
+            if (n10 >= 2 && n10 <= 4 && (n100 < 10 || n100 >= 20)) {
+                return `${count} артефакта`;
+            }
+            return `${count} артефактов`;
+        },
+        empty: 'Артефактов пока нет',
+        emptyDescription: 'Создайте первый артефакт для сохранения и организации контента',
+        new: 'Новый артефакт',
+        edit: 'Редактировать',
+        delete: 'Удалить',
+        deleteConfirm: 'Удалить артефакт?',
+        deleteConfirmDescription: 'Этот артефакт будет удален навсегда.',
+        titlePlaceholder: 'Название артефакта',
+        bodyPlaceholder: 'Напишите ваш контент здесь...',
+        save: 'Сохранить',
+        saving: 'Сохранение...',
+        loading: 'Загрузка...',
+        error: 'Не удалось загрузить артефакт',
     }
 } as const;
 

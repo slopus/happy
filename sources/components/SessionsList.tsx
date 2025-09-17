@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Pressable, FlatList, Platform } from 'react-native';
+import { View, Pressable, FlatList } from 'react-native';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
@@ -13,15 +13,18 @@ import { useSetting } from '@/sync/storage';
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
 import { StatusDot } from './StatusDot';
-import { StyleSheet } from 'react-native-unistyles';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useIsTablet } from '@/utils/responsive';
 import { requestReview } from '@/utils/requestReview';
 import { UpdateBanner } from './UpdateBanner';
 import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { t } from '@/text';
+import { useRouter } from 'expo-router';
+import { Item } from './Item';
+import { ItemGroup } from './ItemGroup';
 
-const stylesheet = StyleSheet.create((theme, runtime) => ({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
         flexDirection: 'row',
@@ -150,6 +153,11 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     draftIconOverlay: {
         color: theme.colors.textSecondary,
     },
+    artifactsSection: {
+        paddingHorizontal: 16,
+        paddingBottom: 12,
+        backgroundColor: theme.colors.groupped.background,
+    },
 }));
 
 export function SessionsList() {
@@ -160,7 +168,9 @@ export function SessionsList() {
     const isTablet = useIsTablet();
     const navigateToSession = useNavigateToSession();
     const compactSessionView = useSetting('compactSessionView');
+    const router = useRouter();
     const selectable = isTablet;
+    const experiments = useSetting('experiments');
     const dataWithSelected = selectable ? React.useMemo(() => {
         return data?.map(item => ({
             ...item,
@@ -257,11 +267,16 @@ export function SessionsList() {
 
     const HeaderComponent = React.useCallback(() => {
         return (
-            <View style={{ marginHorizontal: -4 }}>
-                <UpdateBanner />
+            <View>
+                <View style={{ marginHorizontal: -4 }}>
+                    <UpdateBanner />
+                </View>
+                {experiments && (
+                    <ArtifactsCard />
+                )}
             </View>
         );
-    }, []);
+    }, [experiments]);
 
     // Footer removed - all sessions now shown inline
 
@@ -361,5 +376,24 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
                 </View>
             </View>
         </Pressable>
+    );
+});
+
+// Artifacts Card Component
+const ArtifactsCard = React.memo(() => {
+    const styles = stylesheet;
+    const router = useRouter();
+    const { theme } = useUnistyles();
+
+    return (
+        <ItemGroup>
+            <Item
+                title={t('artifacts.title')}
+                icon={<Ionicons name="document-text-outline" size={24} color={theme.colors.text} />}
+                onPress={() => router.push('/artifacts')}
+                showDivider={false}
+                showChevron={false}
+            />
+        </ItemGroup>
     );
 });

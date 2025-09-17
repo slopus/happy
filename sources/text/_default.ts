@@ -683,6 +683,26 @@ export const en = {
         textCopied: 'Text copied to clipboard',
         failedToCopy: 'Failed to copy text to clipboard',
         noTextToCopy: 'No text available to copy',
+    },
+
+    artifacts: {
+        // Artifacts feature
+        title: 'Artifacts',
+        countSingular: '1 artifact',
+        countPlural: ({ count }: { count: number }) => `${count} artifacts`,
+        empty: 'No artifacts yet',
+        emptyDescription: 'Create your first artifact to save and organize content',
+        new: 'New Artifact',
+        edit: 'Edit',
+        delete: 'Delete',
+        deleteConfirm: 'Delete Artifact?',
+        deleteConfirmDescription: 'This artifact will be permanently deleted.',
+        titlePlaceholder: 'Artifact Title',
+        bodyPlaceholder: 'Write your content here...',
+        save: 'Save',
+        saving: 'Saving...',
+        loading: 'Loading...',
+        error: 'Failed to load artifact',
     }
 } as const;
 

@@ -147,6 +147,36 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="artifacts/index"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('artifacts.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="artifacts/[id]"
+                options={{
+                    headerShown: false, // We'll set header dynamically
+                }}
+            />
+            <Stack.Screen
+                name="artifacts/new"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('artifacts.new'),
+                    headerBackTitle: t('common.cancel'),
+                }}
+            />
+            <Stack.Screen
+                name="artifacts/edit/[id]"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('artifacts.edit'),
+                    headerBackTitle: t('common.cancel'),
+                }}
+            />
+            <Stack.Screen
                 name="text-selection"
                 options={{
                     headerShown: true,
