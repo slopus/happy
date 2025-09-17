@@ -1,6 +1,7 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import { Link } from 'expo-router';
 import * as WebBrowser from 'expo-web-browser';
+import * as Clipboard from 'expo-clipboard';
 import * as React from 'react';
 import { ScrollView, View, Platform, Pressable } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
@@ -11,6 +12,7 @@ import { Modal } from '@/modal';
 import { useLocalSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 
 // Option type for callback
 export type Option = {
@@ -121,19 +123,83 @@ function RenderNumberedListBlock(props: { items: { number: number, spans: Markdo
   );
 }
 
+// Helper function to detect if this is a terminal/command block
+function isCommandBlock(language: string | null, content: string): boolean {
+  // Check language indicators
+  const commandLanguages = ['bash', 'sh', 'shell', 'powershell', 'ps1', 'cmd', 'terminal', 'zsh', 'fish'];
+  if (language && commandLanguages.includes(language.toLowerCase())) {
+    return true;
+  }
+
+  // Check content patterns for common command indicators
+  const commandPatterns = [
+    /^\s*[$#%>]\s+/m,  // Shell prompts: $ # % >
+    /^\s*PS\s*[C-Z]:\\.*>\s*/m,  // PowerShell prompt
+    /^\s*(npm|yarn|git|docker|curl|wget|ls|cd|mkdir|rm|cp|mv)\s+/m,  // Common commands
+    /^\s*(sudo|chmod|chown|grep|find|sed|awk)\s+/m,  // Unix commands
+  ];
+
+  return commandPatterns.some(pattern => pattern.test(content));
+}
+
+// Helper function to clean command text by removing shell prompts
+function cleanCommandText(content: string): string {
+  const lines = content.split('\n');
+  const cleanedLines = lines.map(line => {
+    // Remove common shell prompts
+    line = line.replace(/^\s*[$#%>]\s+/, '');  // $ # % >
+    line = line.replace(/^\s*PS\s*[C-Z]:\\.*>\s*/, '');  // PowerShell prompt
+    line = line.replace(/^\s*[a-zA-Z0-9-_]+@[a-zA-Z0-9-_]+:\S*\$\s*/, '');  // user@host:path$
+    line = line.replace(/^\s*[a-zA-Z]:\\.*>\s*/, '');  // C:\path>
+    return line;
+  });
+
+  return cleanedLines.join('\n').trim();
+}
+
 function RenderCodeBlock(props: { content: string, language: string | null, first: boolean, last: boolean, selectable: boolean }) {
+  const isCommand = isCommandBlock(props.language, props.content);
+
+  const handleCopyCommand = React.useCallback(async () => {
+    try {
+      const cleanedCommand = cleanCommandText(props.content);
+      await Clipboard.setStringAsync(cleanedCommand);
+      Modal.alert('Copied', 'Command copied to clipboard');
+    } catch (error) {
+      console.error('Error copying command:', error);
+      Modal.alert('Error', 'Failed to copy command');
+    }
+  }, [props.content]);
   return (
     <View style={[style.codeBlock, props.first && style.first, props.last && style.last]}>
-      {props.language && <Text selectable={props.selectable} style={style.codeLanguage}>{props.language}</Text>}
+      {/* Header with language and copy button for commands */}
+      <View style={style.codeHeader}>
+        <View style={{ flex: 1 }}>
+          {props.language && <Text selectable={props.selectable} style={style.codeLanguage}>{props.language}</Text>}
+        </View>
+        {isCommand && (
+          <Pressable
+            style={({ pressed }) => [
+              style.copyButton,
+              pressed && style.copyButtonPressed,
+            ]}
+            onPress={handleCopyCommand}
+          >
+            <Ionicons name="copy-outline" size={16} color="#666" />
+            <Text style={style.copyButtonText}>Copy</Text>
+          </Pressable>
+        )}
+      </View>
+
       <ScrollView
         style={{ flexGrow: 0, flexShrink: 0 }}
         horizontal={true}
         contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
         showsHorizontalScrollIndicator={false}
       >
-        <SimpleSyntaxHighlighter 
-          code={props.content} 
-          language={props.language} 
+        <SimpleSyntaxHighlighter
+          code={props.content}
+          language={props.language}
           selectable={props.selectable}
         />
       </ScrollView>
@@ -339,13 +405,38 @@ const style = StyleSheet.create((theme) => ({
     borderRadius: 8,
     marginVertical: 8,
   },
+  codeHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 8,
+    paddingHorizontal: 16,
+  },
   codeLanguage: {
     ...Typography.mono(),
     color: theme.colors.textSecondary,
     fontSize: 12,
-    marginTop: 8,
-    paddingHorizontal: 16,
     marginBottom: 0,
+  },
+  copyButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 4,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.divider,
+    gap: 4,
+  },
+  copyButtonPressed: {
+    opacity: 0.7,
+    backgroundColor: theme.colors.surfaceHigh,
+  },
+  copyButtonText: {
+    ...Typography.default(),
+    fontSize: 12,
+    color: theme.colors.textSecondary,
   },
   codeText: {
     ...Typography.mono(),
