@@ -36,6 +36,12 @@ class ApiSocket {
   private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
   private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
 
+  // Connection V2 properties
+  private lastPingTime: number = 0;
+  private lastActivityTime: number = 0;
+  private pingInterval: number = 30000;
+  private pingIntervalId: NodeJS.Timeout | null = null;
+
   //
   // Initialization
   //
@@ -74,6 +80,7 @@ class ApiSocket {
   }
 
   disconnect() {
+    this.stopPingTracking();
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
@@ -326,6 +333,7 @@ class ApiSocket {
       // console.log('🔌 SyncSocket: Socket ID:', this.socket?.id);
       this.lastActivityTime = Date.now();
       this.updateStatus('connected');
+      this.startPingTracking();
       if (!this.socket?.recovered) {
         this.reconnectedListeners.forEach(listener => listener());
       }
@@ -333,6 +341,7 @@ class ApiSocket {
 
     this.socket.on('disconnect', (reason) => {
       log.log(`🔌 SyncSocket: Disconnected - ${reason} (this may indicate shell/daemon crash)`);
+      this.stopPingTracking();
       this.updateStatus('disconnected');
     });
 
@@ -373,22 +382,23 @@ class ApiSocket {
   }
 
   private startPingTracking() {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
+    if (this.pingIntervalId) {
+      clearInterval(this.pingIntervalId);
     }
 
     // Track ping times every 30 seconds
-    this.pingInterval = setInterval(() => {
+    this.pingIntervalId = setInterval(() => {
       if (this.socket?.connected) {
         this.socket.emit('ping');
+        this.lastPingTime = Date.now();
       }
-    }, 30000) as unknown as NodeJS.Timeout;
+    }, this.pingInterval);
   }
 
   private stopPingTracking() {
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
+    if (this.pingIntervalId) {
+      clearInterval(this.pingIntervalId);
+      this.pingIntervalId = null;
     }
   }
 }
