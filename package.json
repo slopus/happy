@@ -21,7 +21,8 @@
     "format": "prettier --write \"sources/**/*.{ts,tsx,js,jsx,json,md}\"",
     "format:check": "prettier --check \"sources/**/*.{ts,tsx,js,jsx,json,md}\"",
     "postinstall": "patch-package",
-    "generate-theme": "tsx sources/theme.gen.ts"
+    "generate-theme": "tsx sources/theme.gen.ts",
+    "validate-workers": "node .github/scripts/validate-workers.js"
   },
   "jest": {
     "preset": "jest-expo"
@@ -176,7 +177,8 @@
     "prettier": "^3.6.2",
     "react-test-renderer": "19.0.0",
     "tsx": "^4.20.4",
-    "typescript": "~5.8.3"
+    "typescript": "~5.8.3",
+    "yaml": "^2.8.1"
   },
   "private": true,
   "packageManager": "yarn@1.22.22"
