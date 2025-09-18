@@ -40,7 +40,7 @@ export class EnhancedSessionRecovery {
   private conflictResolver: Map<string, ConflictResolution> = new Map();
   private maxQueueSize: number = 1000;
   private maxOfflineTime: number = 24 * 60 * 60 * 1000; // 24 hours
-  private maintenanceInterval: NodeJS.Timeout | number | null = null;
+  private maintenanceInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.setupConflictResolvers();
@@ -343,7 +343,7 @@ export class EnhancedSessionRecovery {
     // Run maintenance every 5 minutes
     this.maintenanceInterval = setInterval(() => {
       this.enforceQueueLimits();
-    }, 5 * 60 * 1000) as unknown as NodeJS.Timeout;
+    }, 5 * 60 * 1000);
   }
 
   // Public methods for testing and monitoring

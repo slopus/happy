@@ -31,7 +31,7 @@ export interface CleanupResult {
 
 export class StaleConnectionCleaner {
   private config: StaleConnectionConfig;
-  private cleanupInterval: NodeJS.Timeout | null = null;
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private isRunning = false;
   private retryCount = new Map<string, number>();
   private lastCleanupTime = 0;
@@ -55,7 +55,7 @@ export class StaleConnectionCleaner {
     // Schedule periodic cleanup
     this.cleanupInterval = setInterval(() => {
       this.performCleanup();
-    }, this.config.checkInterval) as unknown as NodeJS.Timeout;
+    }, this.config.checkInterval);
   }
 
   /**

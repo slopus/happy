@@ -63,7 +63,7 @@ export class ConnectionStateMachine {
   private stateEntryHandlers = new Map<ConnectionState, StateEntryHandler>();
   private stateExitHandlers = new Map<ConnectionState, StateExitHandler>();
 
-  private timers = new Map<string, NodeJS.Timeout>();
+  private timers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(config: Partial<ConnectionStateConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -349,7 +349,7 @@ export class ConnectionStateMachine {
         timestamp: Date.now(),
         error: new Error('Connection timeout'),
       });
-    }, this.config.connectionTimeout) as unknown as NodeJS.Timeout;
+    }, this.config.connectionTimeout);
 
     this.timers.set('connectionTimeout', timeout);
   }
@@ -370,7 +370,7 @@ export class ConnectionStateMachine {
     const heartbeat = setInterval(() => {
       // Trigger heartbeat event - this could ping the server
       console.log('💓 ConnectionStateMachine: Heartbeat');
-    }, this.config.heartbeatInterval) as unknown as NodeJS.Timeout;
+    }, this.config.heartbeatInterval);
 
     this.timers.set('heartbeat', heartbeat);
   }
@@ -398,7 +398,7 @@ export class ConnectionStateMachine {
         type: 'connect',
         timestamp: Date.now(),
       });
-    }, delay) as unknown as NodeJS.Timeout;
+    }, delay);
 
     this.timers.set('reconnection', reconnection);
     console.log(`🔀 ConnectionStateMachine: Scheduled reconnection in ${delay}ms`);
@@ -418,7 +418,7 @@ export class ConnectionStateMachine {
         type: 'retry',
         timestamp: Date.now(),
       });
-    }, delay) as unknown as NodeJS.Timeout;
+    }, delay);
 
     this.timers.set('retry', retry);
     console.log(`🔀 ConnectionStateMachine: Scheduled retry in ${delay}ms`);

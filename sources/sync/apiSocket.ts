@@ -37,7 +37,7 @@ class ApiSocket {
   private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
   private lastPingTime: number = 0;
   private lastActivityTime: number = 0;
-  private pingInterval: NodeJS.Timeout | null = null;
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
 
   //
   // Initialization
@@ -390,7 +390,7 @@ class ApiSocket {
       if (this.socket?.connected) {
         this.socket.emit('ping');
       }
-    }, 30000) as unknown as NodeJS.Timeout;
+    }, 30000);
   }
 
   private stopPingTracking() {

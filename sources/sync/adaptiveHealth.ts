@@ -35,8 +35,8 @@ export class AdaptiveHealthMonitor {
   private consecutiveSuccesses: number = 0;
   private consecutiveFailures: number = 0;
   private pingHistory: PingResult[] = [];
-  private adaptationTimer: NodeJS.Timeout | null = null;
-  private nextPingTimer: NodeJS.Timeout | null = null;
+  private adaptationTimer: ReturnType<typeof setTimeout> | null = null;
+  private nextPingTimer: ReturnType<typeof setTimeout> | null = null;
   private isRunning: boolean = false;
   private lastAdaptation: number = Date.now();
 
@@ -174,7 +174,7 @@ export class AdaptiveHealthMonitor {
     this.adaptationTimer = setTimeout(() => {
       this.adaptPingInterval();
       this.lastAdaptation = Date.now();
-    }, delay) as unknown as NodeJS.Timeout;
+    }, delay);
   }
 
   /**

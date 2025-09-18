@@ -25,8 +25,8 @@ vi.mock('expo-task-manager', () => ({
 }));
 
 vi.mock('expo-background-fetch', () => ({
-  registerTaskAsync: vi.fn(() => Promise.resolve()),
-  unregisterTaskAsync: vi.fn(() => Promise.resolve()),
+  registerTaskAsync: vi.fn().mockResolvedValue(undefined),
+  unregisterTaskAsync: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Import modules that tests need to reference
@@ -47,12 +47,12 @@ vi.mock('@/log', () => ({
 
 vi.mock('./apiSocket', () => ({
   apiSocket: {
-    isConnected: vi.fn(() => true),
-    isConnecting: vi.fn(() => false),
-    send: vi.fn(),
-    reconnect: vi.fn(() => Promise.resolve()),
-    getLastPingTime: vi.fn(() => Date.now() - 10000),
-    getLastActivityTime: vi.fn(() => Date.now() - 5000),
+    isConnected: vi.fn().mockReturnValue(true),
+    isConnecting: vi.fn().mockReturnValue(false),
+    send: vi.fn().mockReturnValue(true),
+    reconnect: vi.fn().mockResolvedValue(undefined),
+    getLastPingTime: vi.fn().mockReturnValue(Date.now() - 10000),
+    getLastActivityTime: vi.fn().mockReturnValue(Date.now() - 5000),
   },
 }));
 
@@ -164,7 +164,7 @@ describe('BackgroundSyncManager', () => {
     });
 
     it('should attempt reconnection when disconnected', async () => {
-      apiSocket.isConnected.mockReturnValue(false);
+      (apiSocket.isConnected as any).mockReturnValue(false);
 
       // Wait for background sync to detect disconnection and attempt reconnection
       await new Promise(resolve => setTimeout(resolve, 500));
@@ -200,7 +200,7 @@ describe('BackgroundSyncManager', () => {
 
   describe('Error Handling', () => {
     it('should handle background task registration failures', async () => {
-      BackgroundFetch.registerTaskAsync.mockRejectedValue(new Error('Registration failed'));
+      (BackgroundFetch.registerTaskAsync as any).mockRejectedValue(new Error('Registration failed'));
 
       // Should not crash on registration failure
       expect(() => {
@@ -209,7 +209,7 @@ describe('BackgroundSyncManager', () => {
     });
 
     it('should handle app state change errors gracefully', async () => {
-      apiSocket.reconnect.mockRejectedValue(new Error('Reconnection failed'));
+      (apiSocket.reconnect as any).mockRejectedValue(new Error('Reconnection failed'));
 
       const appStateHandler = (AppState.addEventListener as any).mock.calls[0][1];
 
@@ -261,7 +261,7 @@ describe('BackgroundSyncManager', () => {
     it('should meet 80% connection survival requirement', async () => {
       // Mock connection checks with 90% success rate (exceeds 80% requirement)
       let checkCount = 0;
-      apiSocket.isConnected.mockImplementation(() => {
+      (apiSocket.isConnected as any).mockImplementation(() => {
         checkCount++;
         return checkCount % 10 !== 0; // 90% success rate
       });
@@ -287,7 +287,7 @@ describe('BackgroundSyncManager', () => {
       }));
 
       // Should not send large data payloads in background
-      const sendCalls = apiSocket.send.mock.calls;
+      const sendCalls = (apiSocket.send as any).mock.calls;
       sendCalls.forEach((call: any[]) => {
         const data = JSON.stringify(call[1] || {});
         expect(data.length).toBeLessThan(1000); // Small payload requirement
@@ -316,7 +316,7 @@ describe('BackgroundSyncManager', () => {
 
     it('should handle platform limitations gracefully', async () => {
       // Test with disabled background refresh
-      BackgroundFetch.registerTaskAsync.mockRejectedValue(new Error('Background refresh disabled'));
+      (BackgroundFetch.registerTaskAsync as any).mockRejectedValue(new Error('Background refresh disabled'));
 
       // Should not crash when creating manager with platform limitations
       expect(() => {
@@ -333,7 +333,7 @@ describe('BackgroundSyncManager', () => {
       expect(backgroundSyncManager.getStatus().isActive).toBe(true);
 
       // Should not perform CPU-intensive operations
-      const sendCalls = apiSocket.send.mock.calls;
+      const sendCalls = (apiSocket.send as any).mock.calls;
 
       // All operations should be lightweight
       sendCalls.forEach((call: any[]) => {
@@ -349,7 +349,7 @@ describe('BackgroundSyncManager', () => {
       expect(backgroundSyncManager.getStatus().isActive).toBe(true);
 
       // Mock disconnected state to trigger reconnection on foreground
-      apiSocket.isConnected.mockReturnValue(false);
+      (apiSocket.isConnected as any).mockReturnValue(false);
 
       // Foreground transition
       await appStateHandler('active');

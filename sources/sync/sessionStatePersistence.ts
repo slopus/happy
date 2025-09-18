@@ -84,7 +84,7 @@ const STORAGE_PREFIX = 'session_backup_';
 
 export class SessionStatePersistence {
   private config: SessionStatePersistenceConfig;
-  private backupInterval: NodeJS.Timeout | null = null;
+  private backupInterval: ReturnType<typeof setInterval> | null = null;
   private isRunning = false;
   private localStateCache = new Map<string, SessionStateBackup>();
   private lastBackupTime = 0;
@@ -114,7 +114,7 @@ export class SessionStatePersistence {
     // Schedule periodic backups
     this.backupInterval = setInterval(() => {
       this.backupCurrentState();
-    }, this.config.backupInterval) as unknown as NodeJS.Timeout;
+    }, this.config.backupInterval);
   }
 
   /**
