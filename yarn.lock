@@ -5293,12 +5293,17 @@ expo-image-loader@~5.1.0:
   resolved "https://registry.npmjs.org/expo-image-loader/-/expo-image-loader-5.1.0.tgz"
   integrity sha512-sEBx3zDQIODWbB5JwzE7ZL5FJD+DK3LVLWBVJy6VzsqIA6nDEnSFnsnWyCfCTSvbGigMATs1lgkC2nz3Jpve1Q==
 
-expo-image-manipulator@~13.1.7:
-  version "13.1.7"
-  resolved "https://registry.npmjs.org/expo-image-manipulator/-/expo-image-manipulator-13.1.7.tgz"
-  integrity sha512-DBy/Xdd0E/yFind14x36XmwfWuUxOHI/oH97/giKjjPaRc2dlyjQ3tuW3x699hX6gAs9Sixj5WEJ1qNf3c8sag==
+expo-image-loader@~6.0.0:
+  version "6.0.0"
+  resolved "https://registry.yarnpkg.com/expo-image-loader/-/expo-image-loader-6.0.0.tgz#15230442cbb90e101c080a4c81e37d974e43e072"
+  integrity sha512-nKs/xnOGw6ACb4g26xceBD57FKLFkSwEUTDXEDF3Gtcu3MqF3ZIYd3YM+sSb1/z9AKV1dYT7rMSGVNgsveXLIQ==
+
+expo-image-manipulator@~14.0.7:
+  version "14.0.7"
+  resolved "https://registry.yarnpkg.com/expo-image-manipulator/-/expo-image-manipulator-14.0.7.tgz#e0798d849bcb4e58b570cb74159fd1ffb56edb5e"
+  integrity sha512-NMHssudagLTAT6ZQ2upnJYT+gVLAt5vC+iD+TBIdV3ZS44yhrq+p2gCrYahDvtVywfmTI5WsbH+Sh1BXbmJUQw==
   dependencies:
-    expo-image-loader "~5.1.0"
+    expo-image-loader "~6.0.0"
 
 expo-image-picker@~16.1.4:
   version "16.1.4"
