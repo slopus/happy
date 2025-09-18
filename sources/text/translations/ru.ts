@@ -738,6 +738,12 @@ export const ru: TranslationStructure = {
     deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `Вы уверены, что хотите удалить "${sessionName}"? Это действие нельзя отменить.`,
     renameSessionTitle: 'Переименовать сессию',
     renameSessionMessage: 'Введите новое имя для этой сессии:',
+    sessionNamePlaceholder: 'Введите имя сессии...',
+    duplicatePrefix: ({ originalName }: { originalName: string }) => `Копия ${originalName}`,
+    sessionIdCopied: 'ID сессии скопирован в буфер обмена',
+    failedToCopySessionId: 'Не удалось скопировать ID сессии',
+    exportSaved: ({ fileName }: { fileName: string }) => `История сессии сохранена как ${fileName}`,
+    exportFailed: 'Не удалось экспортировать историю сессии',
     exportHistoryComingSoon: 'Функция экспорта истории сессии скоро будет доступна.',
   },
 

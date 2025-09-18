@@ -40,7 +40,7 @@ class ApiSocket {
   private lastPingTime: number = 0;
   private lastActivityTime: number = 0;
   private pingInterval: number = 30000;
-  private pingIntervalId: NodeJS.Timeout | null = null;
+  private pingIntervalId: ReturnType<typeof setInterval> | null = null;
 
   //
   // Initialization

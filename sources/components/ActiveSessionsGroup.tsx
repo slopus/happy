@@ -19,6 +19,8 @@ import { ProjectGitStatus } from './ProjectGitStatus';
 import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useIsTablet } from '@/utils/responsive';
+import { ContextMenu, ContextMenuAction, useContextMenu } from '@/components/ContextMenu';
+import * as Clipboard from 'expo-clipboard';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
   container: {
@@ -324,102 +326,253 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
   const sessionName = getSessionName(session);
   const navigateToSession = useNavigateToSession();
   const isTablet = useIsTablet();
+  const contextMenu = useContextMenu();
 
   const avatarId = React.useMemo(() => {
     return getSessionAvatarId(session);
   }, [session]);
 
-  return (
-    <Pressable
-      style={[
-        styles.sessionRow,
-        showBorder && styles.sessionRowWithBorder,
-        selected && styles.sessionRowSelected,
-      ]}
-      onPressIn={() => {
-        if (isTablet) {
-          navigateToSession(session.id);
-        }
-      }}
-      onPress={() => {
-        if (!isTablet) {
-          navigateToSession(session.id);
-        }
-      }}
-    >
-      <View style={styles.avatarContainer}>
-        <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
-      </View>
-      <View style={styles.sessionContent}>
-        {/* Title line */}
-        <View style={styles.sessionTitleRow}>
-          <Text
-            style={[
-              styles.sessionTitle,
-              sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
-            ]}
-            numberOfLines={2}
-          >
-            {sessionName}
-          </Text>
-        </View>
+  // Session management functions
+  const removeSession = React.useCallback((sessionId: string) => {
+    storage.getState().removeSession(sessionId);
+  }, []);
 
-        {/* Status line with dot */}
-        <View style={styles.statusRow}>
-          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <View style={styles.statusDotContainer}>
-              <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
-            </View>
-            <Text style={[
-              styles.statusText,
-              { color: sessionStatus.statusColor },
-            ]}>
-              {sessionStatus.statusText}
+  const updateSession = React.useCallback((sessionId: string, sessionData: Session) => {
+    storage.getState().updateSession(sessionId, sessionData);
+  }, []);
+
+  // Session management actions
+  const handleDeleteSession = React.useCallback(async () => {
+    const confirmed = await Modal.confirm(
+      t('sessions.deleteSessionTitle'),
+      t('sessions.deleteSessionMessage', { sessionName: getSessionName(session) }),
+    );
+    if (confirmed) {
+      removeSession(session.id);
+    }
+  }, [session, removeSession]);
+
+  const handleDuplicateSession = React.useCallback(() => {
+    // Generate new session ID
+    const newSessionId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+    // Create duplicate session with new ID but same metadata
+    const duplicatedSession: Session = {
+      ...session,
+      id: newSessionId,
+      createdAt: Date.now(),
+      draft: null, // Clear draft for new session
+    };
+
+    // TODO: Also need to duplicate messages - for now just create empty session
+    updateSession(newSessionId, duplicatedSession);
+    navigateToSession(newSessionId);
+  }, [session, updateSession, navigateToSession]);
+
+  const handleCopySessionId = React.useCallback(async () => {
+    try {
+      await Clipboard.setStringAsync(session.id);
+      // Could show toast notification here
+    } catch (error) {
+      console.error('Failed to copy session ID:', error);
+    }
+  }, [session.id]);
+
+  const handleRenameSession = React.useCallback(async () => {
+    const newName = await Modal.prompt(
+      t('sessions.renameSessionTitle'),
+      t('sessions.renameSessionMessage'),
+      { defaultValue: getSessionName(session) },
+    );
+
+    if (newName && newName.trim() && newName.trim() !== getSessionName(session)) {
+      const updatedSession = {
+        ...session,
+        metadata: {
+          path: '',
+          host: '',
+          ...session.metadata,
+          displayName: newName.trim(),
+        },
+      };
+      updateSession(session.id, updatedSession);
+    }
+  }, [session, updateSession]);
+
+  const handleExportHistory = React.useCallback(async () => {
+    // TODO: Implement session history export
+    Modal.alert(t('common.comingSoon'), t('sessions.exportHistoryComingSoon'));
+  }, []);
+
+  // Context menu actions
+  const contextMenuActions = React.useMemo((): ContextMenuAction[] => [
+    {
+      id: 'rename',
+      title: t('sessions.rename'),
+      icon: 'create-outline',
+      onPress: handleRenameSession,
+      shortcut: Platform.OS === 'web' ? 'F2' : undefined,
+    },
+    {
+      id: 'duplicate',
+      title: t('sessions.duplicate'),
+      icon: 'copy-outline',
+      onPress: handleDuplicateSession,
+      shortcut: Platform.OS === 'web' ? '⌘D' : undefined,
+    },
+    {
+      id: 'copy-id',
+      title: t('sessions.copyId'),
+      icon: 'clipboard-outline',
+      onPress: handleCopySessionId,
+      shortcut: Platform.OS === 'web' ? '⌘C' : undefined,
+    },
+    {
+      id: 'export',
+      title: t('sessions.exportHistory'),
+      icon: 'download-outline',
+      onPress: handleExportHistory,
+    },
+    {
+      id: 'delete',
+      title: t('sessions.delete'),
+      icon: 'trash-outline',
+      destructive: true,
+      onPress: handleDeleteSession,
+      shortcut: Platform.OS === 'web' ? 'Delete' : undefined,
+    },
+  ], [handleRenameSession, handleDuplicateSession, handleCopySessionId, handleExportHistory, handleDeleteSession]);
+
+  // Handle long press for context menu (mobile)
+  const handleLongPress = React.useCallback(() => {
+    const screenWidth = Platform.select({
+      web: window.innerWidth,
+      default: require('react-native').Dimensions.get('window').width,
+    });
+    const position = { x: screenWidth / 2 - 140, y: 200 };
+    contextMenu.show(position);
+  }, [contextMenu]);
+
+  // Handle right click for context menu (web)
+  const handleRightClick = React.useCallback((event: any) => {
+    if (Platform.OS === 'web') {
+      event.preventDefault();
+      const position = { x: event.nativeEvent.pageX, y: event.nativeEvent.pageY };
+      contextMenu.show(position);
+    }
+  }, [contextMenu]);
+
+  return (
+    <>
+      <Pressable
+        style={[
+          styles.sessionRow,
+          showBorder && styles.sessionRowWithBorder,
+          selected && styles.sessionRowSelected,
+        ]}
+        onPressIn={() => {
+          if (isTablet) {
+            navigateToSession(session.id);
+          }
+        }}
+        onPress={() => {
+          if (!isTablet) {
+            navigateToSession(session.id);
+          }
+        }}
+        onLongPress={handleLongPress}
+        {...(Platform.OS === 'web' && {
+          onContextMenu: handleRightClick,
+        })}
+        // Accessibility props
+        accessible={true}
+        accessibilityRole="button"
+        accessibilityLabel={`${sessionName}, ${sessionStatus.statusText}`}
+        accessibilityHint="Double tap to open session, long press for more options"
+      >
+        <View style={styles.avatarContainer}>
+          <Avatar id={avatarId} size={48} monochrome={!sessionStatus.isConnected} flavor={session.metadata?.flavor} />
+        </View>
+        <View style={styles.sessionContent}>
+          {/* Title line */}
+          <View style={styles.sessionTitleRow}>
+            <Text
+              style={[
+                styles.sessionTitle,
+                sessionStatus.isConnected ? styles.sessionTitleConnected : styles.sessionTitleDisconnected,
+              ]}
+              numberOfLines={2}
+            >
+              {sessionName}
             </Text>
           </View>
 
-          {/* Status indicators on the right side */}
-          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
-            {/* Draft status indicator */}
-            {session.draft && (
-              <View style={styles.taskStatusContainer}>
-                <Ionicons
-                  name="create-outline"
-                  size={10}
-                  color={styles.taskStatusText.color}
-                />
+          {/* Status line with dot */}
+          <View style={styles.statusRow}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={styles.statusDotContainer}>
+                <StatusDot color={sessionStatus.statusDotColor} isPulsing={sessionStatus.isPulsing} />
               </View>
-            )}
+              <Text style={[
+                styles.statusText,
+                { color: sessionStatus.statusColor },
+              ]}>
+                {sessionStatus.statusText}
+              </Text>
+            </View>
 
-            {/* No longer showing git status per item - it's in the header */}
-
-            {/* Task status indicator */}
-            {session.todos && session.todos.length > 0 && (() => {
-              const totalTasks = session.todos.length;
-              const completedTasks = session.todos.filter(t => t.status === 'completed').length;
-
-              // Don't show if all tasks are completed
-              if (completedTasks === totalTasks) {
-                return null;
-              }
-
-              return (
+            {/* Status indicators on the right side */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, transform: [{ translateY: 1 }] }}>
+              {/* Draft status indicator */}
+              {session.draft && (
                 <View style={styles.taskStatusContainer}>
                   <Ionicons
-                    name="bulb-outline"
+                    name="create-outline"
                     size={10}
                     color={styles.taskStatusText.color}
-                    style={{ marginRight: 2 }}
                   />
-                  <Text style={styles.taskStatusText}>
-                    {completedTasks}/{totalTasks}
-                  </Text>
                 </View>
-              );
-            })()}
+              )}
+
+              {/* No longer showing git status per item - it's in the header */}
+
+              {/* Task status indicator */}
+              {session.todos && session.todos.length > 0 && (() => {
+                const totalTasks = session.todos.length;
+                const completedTasks = session.todos.filter(t => t.status === 'completed').length;
+
+                // Don't show if all tasks are completed
+                if (completedTasks === totalTasks) {
+                  return null;
+                }
+
+                return (
+                  <View style={styles.taskStatusContainer}>
+                    <Ionicons
+                      name="bulb-outline"
+                      size={10}
+                      color={styles.taskStatusText.color}
+                      style={{ marginRight: 2 }}
+                    />
+                    <Text style={styles.taskStatusText}>
+                      {completedTasks}/{totalTasks}
+                    </Text>
+                  </View>
+                );
+              })()}
+            </View>
           </View>
         </View>
-      </View>
-    </Pressable>
+      </Pressable>
+
+      {/* Context Menu */}
+      <ContextMenu
+        visible={contextMenu.visible}
+        onClose={contextMenu.hide}
+        actions={contextMenuActions}
+        anchorPosition={contextMenu.anchorPosition}
+        title={getSessionName(session)}
+      />
+    </>
   );
 });

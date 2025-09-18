@@ -73,7 +73,7 @@ const DEFAULT_CONFIG: ConnectionHealthConfig = {
 export class ConnectionHealthMonitor {
   private config: ConnectionHealthConfig;
   private status: ConnectionHealthStatus;
-  private pingInterval: NodeJS.Timeout | null = null;
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
   private isRunning = false;
   private listeners = new Set<(status: ConnectionHealthStatus) => void>();
 

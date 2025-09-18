@@ -727,6 +727,12 @@ export const es: TranslationStructure = {
     deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `¿Está seguro de que desea eliminar "${sessionName}"? Esta acción no se puede deshacer.`,
     renameSessionTitle: 'Renombrar sesión',
     renameSessionMessage: 'Introduzca un nuevo nombre para esta sesión:',
+    sessionNamePlaceholder: 'Introduzca el nombre de la sesión...',
+    duplicatePrefix: ({ originalName }: { originalName: string }) => `Copia de ${originalName}`,
+    sessionIdCopied: 'ID de sesión copiado al portapapeles',
+    failedToCopySessionId: 'Error al copiar el ID de sesión',
+    exportSaved: ({ fileName }: { fileName: string }) => `Historial de sesión guardado como ${fileName}`,
+    exportFailed: 'Error al exportar el historial de sesión',
     exportHistoryComingSoon: 'La función de exportar el historial de sesión estará disponible próximamente.',
   },
 

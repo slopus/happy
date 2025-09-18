@@ -727,6 +727,12 @@ export const ca: TranslationStructure = {
     deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `Esteu segur que voleu eliminar "${sessionName}"? Aquesta acció no es pot desfer.`,
     renameSessionTitle: 'Canviar nom de la sessió',
     renameSessionMessage: 'Introduïu un nom nou per a aquesta sessió:',
+    sessionNamePlaceholder: 'Introduïu el nom de la sessió...',
+    duplicatePrefix: ({ originalName }: { originalName: string }) => `Còpia de ${originalName}`,
+    sessionIdCopied: 'ID de sessió copiat al portapapers',
+    failedToCopySessionId: 'Error en copiar l\'ID de sessió',
+    exportSaved: ({ fileName }: { fileName: string }) => `Historial de sessió desat com a ${fileName}`,
+    exportFailed: 'Error en exportar l\'historial de sessió',
     exportHistoryComingSoon: 'La funció d\'exportar l\'historial de la sessió estarà disponible aviat.',
   },
 

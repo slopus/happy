@@ -63,7 +63,7 @@ export class ConnectionStateMachine {
   private stateEntryHandlers = new Map<ConnectionState, StateEntryHandler>();
   private stateExitHandlers = new Map<ConnectionState, StateExitHandler>();
 
-  private timers = new Map<string, NodeJS.Timeout>();
+  private timers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(config: Partial<ConnectionStateConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };

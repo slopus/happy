@@ -738,6 +738,12 @@ export const pl: TranslationStructure = {
     deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `Czy na pewno chcesz usunąć "${sessionName}"? Tej operacji nie można cofnąć.`,
     renameSessionTitle: 'Zmień nazwę sesji',
     renameSessionMessage: 'Wprowadź nową nazwę dla tej sesji:',
+    sessionNamePlaceholder: 'Wprowadź nazwę sesji...',
+    duplicatePrefix: ({ originalName }: { originalName: string }) => `Kopia ${originalName}`,
+    sessionIdCopied: 'ID sesji skopiowane do schowka',
+    failedToCopySessionId: 'Nie udało się skopiować ID sesji',
+    exportSaved: ({ fileName }: { fileName: string }) => `Historia sesji zapisana jako ${fileName}`,
+    exportFailed: 'Nie udało się wyeksportować historii sesji',
     exportHistoryComingSoon: 'Funkcja eksportowania historii sesji będzie dostępna wkrótce.',
   },
 

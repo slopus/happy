@@ -1,6 +1,12 @@
 import * as React from 'react';
 import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
+import { Modal } from '@/modal';
+import { storage } from '@/sync/storage';
+import * as Clipboard from 'expo-clipboard';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import { Platform } from 'react-native';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 
@@ -215,3 +221,211 @@ export function formatLastSeen(activeAt: number, isActive: boolean = false): str
 }
 
 const vibingMessages = ['Accomplishing', 'Actioning', 'Actualizing', 'Baking', 'Booping', 'Brewing', 'Calculating', 'Cerebrating', 'Channelling', 'Churning', 'Clauding', 'Coalescing', 'Cogitating', 'Computing', 'Combobulating', 'Concocting', 'Conjuring', 'Considering', 'Contemplating', 'Cooking', 'Crafting', 'Creating', 'Crunching', 'Deciphering', 'Deliberating', 'Determining', 'Discombobulating', 'Divining', 'Doing', 'Effecting', 'Elucidating', 'Enchanting', 'Envisioning', 'Finagling', 'Flibbertigibbeting', 'Forging', 'Forming', 'Frolicking', 'Generating', 'Germinating', 'Hatching', 'Herding', 'Honking', 'Ideating', 'Imagining', 'Incubating', 'Inferring', 'Manifesting', 'Marinating', 'Meandering', 'Moseying', 'Mulling', 'Mustering', 'Musing', 'Noodling', 'Percolating', 'Perusing', 'Philosophising', 'Pontificating', 'Pondering', 'Processing', 'Puttering', 'Puzzling', 'Reticulating', 'Ruminating', 'Scheming', 'Schlepping', 'Shimmying', 'Simmering', 'Smooshing', 'Spelunking', 'Spinning', 'Stewing', 'Sussing', 'Synthesizing', 'Thinking', 'Tinkering', 'Transmuting', 'Unfurling', 'Unravelling', 'Vibing', 'Wandering', 'Whirring', 'Wibbling', 'Wizarding', 'Working', 'Wrangling'];
+
+/**
+ * Session Action Utilities
+ * These functions handle the core session management actions for context menus
+ */
+
+/**
+ * Deletes a session with confirmation modal
+ */
+export async function deleteSession(session: Session): Promise<boolean> {
+  try {
+    const confirmed = await Modal.confirm(
+      t('sessions.deleteSessionTitle'),
+      t('sessions.deleteSessionMessage', { sessionName: getSessionName(session) }),
+      {
+        destructive: true,
+        confirmText: t('sessions.delete'),
+        cancelText: t('common.cancel'),
+      },
+    );
+
+    if (confirmed) {
+      storage.getState().removeSession(session.id);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error deleting session:', error);
+    Modal.alert(t('common.error'), t('errors.operationFailed'));
+    return false;
+  }
+}
+
+/**
+ * Duplicates a session, creating a new session with the same metadata
+ */
+export async function duplicateSession(session: Session): Promise<string | null> {
+  try {
+    // Generate new session ID
+    const newSessionId = Date.now().toString(36) + Math.random().toString(36).substr(2);
+
+    // Create duplicate session with new ID but same metadata
+    const duplicatedSession: Session = {
+      ...session,
+      id: newSessionId,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      draft: null, // Clear draft for new session
+      activeAt: Date.now(),
+      active: false, // New session starts inactive
+      presence: Date.now(), // Set presence to current timestamp (offline)
+      thinking: false,
+      thinkingAt: 0,
+      seq: 0, // Reset sequence number
+      metadataVersion: session.metadataVersion,
+      agentStateVersion: 0, // Reset agent state version
+      agentState: null, // Reset agent state
+    };
+
+    // Copy session metadata with updated summary to indicate it's a duplicate
+    if (duplicatedSession.metadata) {
+      const originalName = getSessionName(session);
+      duplicatedSession.metadata = {
+        ...duplicatedSession.metadata,
+        summary: {
+          text: t('sessions.duplicatePrefix', { originalName }),
+          updatedAt: Date.now(),
+        },
+      };
+    }
+
+    // Add the session to storage
+    storage.getState().updateSession(newSessionId, duplicatedSession);
+
+    // Note: Message duplication is complex due to the normalized message structure
+    // For now, we create an empty session. Message duplication can be added later
+    // as a separate feature if needed.
+
+    return newSessionId;
+  } catch (error) {
+    console.error('Error duplicating session:', error);
+    Modal.alert(t('common.error'), t('errors.operationFailed'));
+    return null;
+  }
+}
+
+/**
+ * Renames a session with prompt modal
+ */
+export async function renameSession(session: Session): Promise<boolean> {
+  try {
+    const currentName = getSessionName(session);
+    const newName = await Modal.prompt(
+      t('sessions.renameSessionTitle'),
+      t('sessions.renameSessionMessage'),
+      {
+        defaultValue: currentName,
+        placeholder: t('sessions.sessionNamePlaceholder'),
+        confirmText: t('common.save'),
+        cancelText: t('common.cancel'),
+      },
+    );
+
+    if (newName && newName.trim() && newName.trim() !== currentName) {
+      const updatedSession: Session = {
+        ...session,
+        metadata: {
+          path: '',
+          host: '',
+          ...session.metadata,
+          summary: {
+            text: newName.trim(),
+            updatedAt: Date.now(),
+          },
+        },
+      };
+
+      storage.getState().updateSession(session.id, updatedSession);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    console.error('Error renaming session:', error);
+    Modal.alert(t('common.error'), t('errors.operationFailed'));
+    return false;
+  }
+}
+
+/**
+ * Copies session ID to clipboard
+ */
+export async function copySessionId(session: Session): Promise<boolean> {
+  try {
+    await Clipboard.setStringAsync(session.id);
+
+    // Show success feedback
+    if (Platform.OS === 'web') {
+      // For web, we can show a temporary notification or use the modal system
+      Modal.alert(t('common.success'), t('sessions.sessionIdCopied'));
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error copying session ID:', error);
+    Modal.alert(t('common.error'), t('sessions.failedToCopySessionId'));
+    return false;
+  }
+}
+
+/**
+ * Exports session history as JSON file
+ */
+export async function exportSessionHistory(session: Session): Promise<boolean> {
+  try {
+    const sessionMessages = storage.getState().sessionMessages[session.id];
+
+    // Prepare export data
+    const exportData = {
+      session: {
+        id: session.id,
+        name: getSessionName(session),
+        subtitle: getSessionSubtitle(session),
+        createdAt: session.createdAt,
+        updatedAt: session.updatedAt,
+        metadata: session.metadata,
+        latestUsage: session.latestUsage,
+      },
+      messages: sessionMessages?.messages || [],
+      exportedAt: Date.now(),
+      version: '1.0.0',
+    };
+
+    const jsonContent = JSON.stringify(exportData, null, 2);
+    const fileName = `session-${getSessionName(session).replace(/[^a-zA-Z0-9]/g, '-')}-${new Date().toISOString().split('T')[0]}.json`;
+
+    if (Platform.OS === 'web') {
+      // For web, create download
+      const blob = new Blob([jsonContent], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } else {
+      // For mobile, save to documents directory and share
+      const fileUri = FileSystem.documentDirectory + fileName;
+      await FileSystem.writeAsStringAsync(fileUri, jsonContent);
+
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(fileUri, {
+          mimeType: 'application/json',
+          dialogTitle: t('sessions.exportHistory'),
+        });
+      } else {
+        Modal.alert(t('common.success'), t('sessions.exportSaved', { fileName }));
+      }
+    }
+
+    return true;
+  } catch (error) {
+    console.error('Error exporting session history:', error);
+    Modal.alert(t('common.error'), t('sessions.exportFailed'));
+    return false;
+  }
+}

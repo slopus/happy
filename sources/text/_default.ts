@@ -728,6 +728,12 @@ export const en = {
     deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `Are you sure you want to delete "${sessionName}"? This action cannot be undone.`,
     renameSessionTitle: 'Rename Session',
     renameSessionMessage: 'Enter a new name for this session:',
+    sessionNamePlaceholder: 'Enter session name...',
+    duplicatePrefix: ({ originalName }: { originalName: string }) => `Copy of ${originalName}`,
+    sessionIdCopied: 'Session ID copied to clipboard',
+    failedToCopySessionId: 'Failed to copy session ID',
+    exportSaved: ({ fileName }: { fileName: string }) => `Session history saved as ${fileName}`,
+    exportFailed: 'Failed to export session history',
     exportHistoryComingSoon: 'Session history export feature is coming soon.',
   },
 

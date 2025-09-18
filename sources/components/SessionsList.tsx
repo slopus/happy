@@ -4,7 +4,7 @@ import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
+import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId, deleteSession, duplicateSession, renameSession, copySessionId, exportSessionHistory } from '@/utils/sessionUtils';
 import { Avatar } from './Avatar';
 import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
@@ -21,7 +21,6 @@ import { layout } from './layout';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { t } from '@/text';
 import { ContextMenu, ContextMenuAction, useContextMenu } from '@/components/ContextMenu';
-import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { storage } from '@/sync/storage';
 
@@ -223,12 +222,8 @@ export function SessionsList() {
             event.preventDefault();
             if (selectedSessionIndex >= 0 && selectedSessionIndex < sessions.length) {
               const session = sessions[selectedSessionIndex];
-              Modal.confirm(
-                t('sessions.deleteSessionTitle'),
-                t('sessions.deleteSessionMessage', { sessionName: getSessionName(session) }),
-              ).then(confirmed => {
-                if (confirmed) {
-                  removeSession(session.id);
+              deleteSession(session).then(wasDeleted => {
+                if (wasDeleted) {
                   // Adjust selection after deletion
                   setSelectedSessionIndex(prev => Math.max(0, Math.min(prev, sessions.length - 2)));
                 }
@@ -241,16 +236,7 @@ export function SessionsList() {
           event.preventDefault();
           if (selectedSessionIndex >= 0 && selectedSessionIndex < sessions.length) {
             const session = sessions[selectedSessionIndex];
-            Modal.prompt(
-              t('sessions.renameSessionTitle'),
-              t('sessions.renameSessionMessage'),
-              { defaultValue: getSessionName(session) },
-            ).then(newName => {
-              if (newName && newName.trim() && newName.trim() !== getSessionName(session)) {
-                // TODO: Update session name
-                console.log('Rename session to:', newName);
-              }
-            });
+            renameSession(session);
           }
           break;
 
@@ -398,80 +384,35 @@ const SessionItem = React.memo(({ session, selected, keyboardFocused, isFirst, i
   const sessionSubtitle = getSessionSubtitle(session);
   const navigateToSession = useNavigateToSession();
   const isTablet = useIsTablet();
-  const removeSession = React.useCallback((sessionId: string) => {
-    storage.getState().removeSession(sessionId);
-  }, []);
-  const updateSession = React.useCallback((sessionId: string, sessionData: Session) => {
-    storage.getState().updateSession(sessionId, sessionData);
-  }, []);
   const contextMenu = useContextMenu();
 
   const avatarId = React.useMemo(() => {
     return getSessionAvatarId(session);
   }, [session]);
 
-  // Session management actions
+  // Session management actions using utility functions
   const handleDeleteSession = React.useCallback(async () => {
-    const confirmed = await Modal.confirm(
-      t('sessions.deleteSessionTitle'),
-      t('sessions.deleteSessionMessage', { sessionName: getSessionName(session) }),
-    );
-    if (confirmed) {
-      removeSession(session.id);
+    await deleteSession(session);
+  }, [session]);
+
+  const handleDuplicateSession = React.useCallback(async () => {
+    const newSessionId = await duplicateSession(session);
+    if (newSessionId) {
+      navigateToSession(newSessionId);
     }
-  }, [session, removeSession]);
-
-  const handleDuplicateSession = React.useCallback(() => {
-    // Generate new session ID
-    const newSessionId = Date.now().toString(36) + Math.random().toString(36).substr(2);
-
-    // Create duplicate session with new ID but same metadata
-    const duplicatedSession: Session = {
-      ...session,
-      id: newSessionId,
-      createdAt: Date.now(),
-      draft: null, // Clear draft for new session
-    };
-
-    // TODO: Also need to duplicate messages - for now just create empty session
-    updateSession(newSessionId, duplicatedSession);
-    navigateToSession(newSessionId);
-  }, [session, updateSession, navigateToSession]);
+  }, [session, navigateToSession]);
 
   const handleCopySessionId = React.useCallback(async () => {
-    try {
-      await Clipboard.setStringAsync(session.id);
-      // Could show toast notification here
-    } catch (error) {
-      console.error('Failed to copy session ID:', error);
-    }
-  }, [session.id]);
+    await copySessionId(session);
+  }, [session]);
 
   const handleRenameSession = React.useCallback(async () => {
-    const newName = await Modal.prompt(
-      t('sessions.renameSessionTitle'),
-      t('sessions.renameSessionMessage'),
-      { defaultValue: getSessionName(session) },
-    );
-
-    if (newName && newName.trim() && newName.trim() !== getSessionName(session)) {
-      const updatedSession = {
-        ...session,
-        metadata: {
-          path: '',
-          host: '',
-          ...session.metadata,
-          displayName: newName.trim(),
-        },
-      };
-      updateSession(session.id, updatedSession);
-    }
-  }, [session, updateSession]);
+    await renameSession(session);
+  }, [session]);
 
   const handleExportHistory = React.useCallback(async () => {
-    // TODO: Implement session history export
-    Modal.alert(t('common.comingSoon'), t('sessions.exportHistoryComingSoon'));
-  }, []);
+    await exportSessionHistory(session);
+  }, [session]);
 
   // Context menu actions
   const contextMenuActions = React.useMemo((): ContextMenuAction[] => [
@@ -480,18 +421,21 @@ const SessionItem = React.memo(({ session, selected, keyboardFocused, isFirst, i
       title: t('sessions.rename'),
       icon: 'create-outline',
       onPress: handleRenameSession,
+      shortcut: Platform.OS === 'web' ? 'F2' : undefined,
     },
     {
       id: 'duplicate',
       title: t('sessions.duplicate'),
       icon: 'copy-outline',
       onPress: handleDuplicateSession,
+      shortcut: Platform.OS === 'web' ? '⌘D' : undefined,
     },
     {
       id: 'copy-id',
       title: t('sessions.copyId'),
       icon: 'clipboard-outline',
       onPress: handleCopySessionId,
+      shortcut: Platform.OS === 'web' ? '⌘C' : undefined,
     },
     {
       id: 'export',
@@ -505,6 +449,7 @@ const SessionItem = React.memo(({ session, selected, keyboardFocused, isFirst, i
       icon: 'trash-outline',
       destructive: true,
       onPress: handleDeleteSession,
+      shortcut: Platform.OS === 'web' ? 'Delete' : undefined,
     },
   ], [handleRenameSession, handleDuplicateSession, handleCopySessionId, handleExportHistory, handleDeleteSession]);
 

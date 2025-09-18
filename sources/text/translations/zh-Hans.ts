@@ -728,6 +728,12 @@ export const zhHans = {
       `您确定要删除 "${sessionName}" 吗？此操作无法撤销。`,
     renameSessionTitle: '重命名会话',
     renameSessionMessage: '请输入此会话的新名称：',
+    sessionNamePlaceholder: '输入会话名称...',
+    duplicatePrefix: ({ originalName }: { originalName: string }) => `${originalName} 的副本`,
+    sessionIdCopied: '会话 ID 已复制到剪贴板',
+    failedToCopySessionId: '复制会话 ID 失败',
+    exportSaved: ({ fileName }: { fileName: string }) => `会话历史记录已保存为 ${fileName}`,
+    exportFailed: '导出会话历史记录失败',
     exportHistoryComingSoon: '会话历史记录导出功能即将推出。',
   },
 
