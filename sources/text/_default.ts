@@ -310,7 +310,17 @@ export const en = {
     cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
       `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
     updateCliInstructions: 'Please run npm install -g happy-coder@latest',
-        
+    updateCliAutomatic: 'Update CLI Automatically',
+    updateCliUpdating: 'Updating CLI...',
+    updateCliSuccess: 'CLI updated successfully! Session will refresh automatically.',
+    updateCliError: 'Failed to update CLI. Please try manual update.',
+    updateCliDev: 'Switch to Dev Branch',
+    updateCliDevDescription: 'Get latest development features from jeffersonwarrior/happy-fork',
+    updateCliDevUpdating: 'Switching to dev branch...',
+    updateCliDevSuccess: 'Switched to dev branch successfully! Session will refresh.',
+    updateCliStable: 'Switch to Stable',
+    updateCliStableDescription: 'Return to stable release from npm',
+
   },
 
   components: {
