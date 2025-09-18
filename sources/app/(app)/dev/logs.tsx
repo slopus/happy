@@ -22,11 +22,11 @@ export default function LogsScreen() {
     }
 
     // Initial load
-    setLogs(log.getLogs());
+    setLogs(log.getLogsAsStrings());
 
     // Subscribe to changes
     const unsubscribe = log.onChange(() => {
-      setLogs(log.getLogs());
+      setLogs(log.getLogsAsStrings());
     });
 
     return unsubscribe;

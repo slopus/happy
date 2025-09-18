@@ -5,31 +5,31 @@
 
 ### Git Remote Structure:
 - **Local machine**: `/opt/happy-coder/` (where Claude works)
-- **jeffersonwarrior's fork**: https://github.com/jeffersonwarrior/happy-coder-1.5.3.git (remote target)
+- **jeffersonwarrior's fork**: https://github.com/jeffersonwarrior/happy-fork-dev.git (remote target)
 - **True origin**: https://github.com/slopus/happy (original project)
 
 ### Current Setup:
-- Working locally on `feature/happy-coder-1.5.3` branch
+- Working locally on `feature/happy-fork-dev` branch
 - When committing: `git commit` = LOCAL commit
-- When pushing: `git push fork-1.5.3 feature/happy-coder-1.5.3` = push to jeffersonwarrior's fork
+- When pushing: `git push fork-dev feature/happy-fork-dev` = push to jeffersonwarrior's fork
 - Attribution maintained to upstream `slopus/happy` project
 
 ### Workflow:
 1. Develop locally on feature branches
 2. Commit locally first
-3. Push to jeffersonwarrior's fork (`fork-1.5.3` remote)
+3. Push to jeffersonwarrior's fork (`fork-dev` remote)
 4. PR to upstream `slopus/happy` when ready
 - NEVER modify remote URLs once configured
 
 ## Version Management
-- **Version source**: `version.txt` file (currently 1.5.3)
+- **Version source**: `version.txt` file (currently 1.5.4)
 - **Usage**: `app.config.js` reads from `version.txt`, `package.json` has note reference
 - **Updates**: Change version.txt only, other files will use it automatically
 
 ## Requirements
 
 ### Happy CLI Version
-- **Minimum CLI version**: 0.11.0 for full 1.5.3 features
+- **Minimum CLI version**: 0.11.0 for full 1.5.4 features
 - **Key features requiring 0.11.0+**: Git status sync, file browser, remote session management
 - **Check CLI version**: `happy --version`
 - **Update CLI**: `npm install -g happy-coder@latest`

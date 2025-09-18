@@ -6,6 +6,15 @@
 import { apiSocket } from './apiSocket';
 import { storage } from './storage';
 import { connectionStateMachine, ConnectionState, type StateTransitionEvent } from './connectionStateMachine';
+import { log } from '@/log';
+import { 
+  CONNECTION_INTERVALS, 
+  CONNECTION_TIMEOUTS, 
+  CONNECTION_THRESHOLDS, 
+  CONNECTION_LIMITS 
+} from './config/ConnectionConstants';
+import { TimerManager } from './utils/TimerManager';
+import { ErrorHandler, TimeoutError } from './utils/ErrorHandler';
 
 export type ConnectionQuality = 'excellent' | 'good' | 'poor' | 'failed' | 'unknown';
 
@@ -27,24 +36,24 @@ export interface HeartbeatProfile {
 
 export const HEARTBEAT_PROFILES = {
   standard: {
-    interval: 30000,      // 30 seconds
-    timeout: 10000,       // 10 seconds
-    maxConsecutiveFailures: 3,
+    interval: CONNECTION_INTERVALS.HEARTBEAT_STANDARD,
+    timeout: CONNECTION_TIMEOUTS.PING_TIMEOUT,
+    maxConsecutiveFailures: CONNECTION_THRESHOLDS.MAX_CONSECUTIVE_FAILURES_STANDARD,
   } as HeartbeatProfile,
   aggressive: {
-    interval: 15000,      // 15 seconds - faster detection
-    timeout: 5000,        // 5 seconds
-    maxConsecutiveFailures: 2,
+    interval: CONNECTION_INTERVALS.HEARTBEAT_AGGRESSIVE,
+    timeout: CONNECTION_TIMEOUTS.HEALTH_CHECK_TIMEOUT,
+    maxConsecutiveFailures: CONNECTION_THRESHOLDS.MAX_CONSECUTIVE_FAILURES_AGGRESSIVE,
   } as HeartbeatProfile,
   corporate: {
-    interval: 10000,      // 10 seconds - most aggressive
-    timeout: 3000,        // 3 seconds
-    maxConsecutiveFailures: 1,
+    interval: CONNECTION_INTERVALS.HEARTBEAT_CORPORATE,
+    timeout: 3000, // 3 seconds - most aggressive
+    maxConsecutiveFailures: CONNECTION_THRESHOLDS.MAX_CONSECUTIVE_FAILURES_CORPORATE,
   } as HeartbeatProfile,
   battery_saver: {
-    interval: 60000,      // 60 seconds - reduced frequency
-    timeout: 15000,       // 15 seconds
-    maxConsecutiveFailures: 5,
+    interval: CONNECTION_INTERVALS.HEARTBEAT_BATTERY_SAVER,
+    timeout: 15000, // 15 seconds
+    maxConsecutiveFailures: CONNECTION_THRESHOLDS.MAX_CONSECUTIVE_FAILURES_BATTERY_SAVER,
   } as HeartbeatProfile,
 } as const;
 
@@ -60,22 +69,22 @@ export interface ConnectionHealthConfig {
 }
 
 const DEFAULT_CONFIG: ConnectionHealthConfig = {
-  pingInterval: 30000,        // 30 seconds
-  pingTimeout: 10000,         // 10 seconds
-  maxConsecutiveFailures: 3,
+  pingInterval: CONNECTION_INTERVALS.HEARTBEAT_STANDARD,
+  pingTimeout: CONNECTION_TIMEOUTS.PING_TIMEOUT,
+  maxConsecutiveFailures: CONNECTION_THRESHOLDS.MAX_CONSECUTIVE_FAILURES_STANDARD,
   qualityThresholds: {
-    excellent: 100,           // < 100ms
-    good: 500,               // < 500ms
-    poor: 2000,               // < 2000ms
+    excellent: CONNECTION_THRESHOLDS.LATENCY_EXCELLENT,
+    good: CONNECTION_THRESHOLDS.LATENCY_GOOD,
+    poor: CONNECTION_THRESHOLDS.LATENCY_POOR,
   },
 };
 
 export class ConnectionHealthMonitor {
   private config: ConnectionHealthConfig;
   private status: ConnectionHealthStatus;
-  private pingInterval: NodeJS.Timeout | null = null;
   private isRunning = false;
   private listeners = new Set<(status: ConnectionHealthStatus) => void>();
+  private timerManager = new TimerManager('ConnectionHealthMonitor');
 
   // Timing tracking
   private connectionStartTime: number | null = null;
@@ -85,10 +94,40 @@ export class ConnectionHealthMonitor {
   // Profile management
   private currentProfile: keyof typeof HEARTBEAT_PROFILES = 'standard';
 
-  // Auto-detection data
+  // Auto-detection data with memory management
   private failureHistory: Array<{ timestamp: number; type: string }> = [];
   private latencyHistory: number[] = [];
   private networkChangeCount = 0;
+  
+  private cleanupOldData(): void {
+    const oneHourAgo = Date.now() - CONNECTION_INTERVALS.FAILURE_CLEANUP_WINDOW;
+    
+    // Clean old failures
+    this.failureHistory = this.failureHistory.filter(f => f.timestamp > oneHourAgo);
+    
+    // Keep latency history within limits
+    if (this.latencyHistory.length > CONNECTION_LIMITS.MAX_LATENCY_HISTORY) {
+      this.latencyHistory = this.latencyHistory.slice(-CONNECTION_LIMITS.MAX_LATENCY_HISTORY);
+    }
+    
+    // Reset network change count periodically (every hour)
+    const lastCleanup = this.getLastCleanupTime();
+    if (Date.now() - lastCleanup > CONNECTION_INTERVALS.FAILURE_CLEANUP_WINDOW) {
+      this.networkChangeCount = Math.max(0, this.networkChangeCount - 1);
+      this.setLastCleanupTime(Date.now());
+    }
+  }
+  
+  private getLastCleanupTime(): number {
+    // Could be stored in storage for persistence
+    return this.lastCleanupTime || 0;
+  }
+  
+  private setLastCleanupTime(time: number): void {
+    this.lastCleanupTime = time;
+  }
+  
+  private lastCleanupTime: number = 0;
 
   constructor(config: Partial<ConnectionHealthConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
@@ -113,13 +152,16 @@ export class ConnectionHealthMonitor {
     if (this.isRunning) return;
 
     this.isRunning = true;
-    console.log('🏥 ConnectionHealthMonitor: Starting health monitoring');
+    log.info('Starting health monitoring', 'ConnectionHealthMonitor');
 
     // Start periodic ping checks using current profile interval
     const currentProfileData = HEARTBEAT_PROFILES[this.currentProfile];
-    this.pingInterval = setInterval(() => {
-      this.performHealthCheck();
-    }, currentProfileData.interval);
+    this.timerManager.setInterval(
+      () => this.performHealthCheck(),
+      currentProfileData.interval,
+      'healthCheck',
+      { name: 'Health Check Interval' }
+    );
 
     // Perform initial health check
     this.performHealthCheck();
@@ -132,12 +174,9 @@ export class ConnectionHealthMonitor {
     if (!this.isRunning) return;
 
     this.isRunning = false;
-    console.log('🏥 ConnectionHealthMonitor: Stopping health monitoring');
+    log.info('Stopping health monitoring', 'ConnectionHealthMonitor');
 
-    if (this.pingInterval) {
-      clearInterval(this.pingInterval);
-      this.pingInterval = null;
-    }
+    this.timerManager.clearAll();
   }
 
   /**
@@ -186,7 +225,7 @@ export class ConnectionHealthMonitor {
    */
   setProfile(profileName: keyof typeof HEARTBEAT_PROFILES): void {
     if (!HEARTBEAT_PROFILES[profileName]) {
-      console.warn(`Unknown profile '${profileName}', falling back to 'standard'`);
+      log.warn(`Unknown profile '${profileName}', falling back to 'standard'`, 'ConnectionHealthMonitor');
       this.currentProfile = 'standard';
       return;
     }
@@ -279,16 +318,16 @@ export class ConnectionHealthMonitor {
 
       // Track latency for auto-detection
       this.latencyHistory.push(latency);
-      if (this.latencyHistory.length > 50) {
-        this.latencyHistory = this.latencyHistory.slice(-50);
-      }
+      
+      // Periodic cleanup
+      this.cleanupOldData();
 
       // Trigger auto-detection periodically
       if (this.latencyHistory.length % 10 === 0 && this.latencyHistory.length > 0) {
         this.applyAutoDetectedProfile();
       }
 
-      console.log(`🏥 ConnectionHealthMonitor: Ping successful - ${latency}ms (${this.status.quality})`);
+      log.debug(`Ping successful - ${latency}ms (${this.status.quality})`, 'ConnectionHealthMonitor');
 
     } catch (error) {
       // Handle ping failure
@@ -300,11 +339,10 @@ export class ConnectionHealthMonitor {
         type: error instanceof Error ? error.message : 'unknown',
       });
 
-      // Clean old failures (older than 1 hour)
-      const oneHourAgo = Date.now() - (60 * 60 * 1000);
-      this.failureHistory = this.failureHistory.filter(f => f.timestamp > oneHourAgo);
+      // Periodic cleanup
+      this.cleanupOldData();
 
-      console.warn(`🏥 ConnectionHealthMonitor: Ping failed (${this.status.consecutiveFailures}/${currentProfileData.maxConsecutiveFailures})`, error);
+      log.warn(`Ping failed (${this.status.consecutiveFailures}/${currentProfileData.maxConsecutiveFailures})`, 'ConnectionHealthMonitor');
 
       // Update quality based on failure count using current profile
       if (this.status.consecutiveFailures >= currentProfileData.maxConsecutiveFailures) {
@@ -424,7 +462,7 @@ export class ConnectionHealthMonitor {
         this.lastDisconnectTime = context.lastDisconnectedAt;
       }
 
-      console.log(`🏥 ConnectionHealthMonitor: State machine updated: ${state} (${event.type})`);
+      log.debug(`State machine updated: ${state} (${event.type})`, 'ConnectionHealthMonitor');
       this.notifyListeners();
     });
 
@@ -465,7 +503,7 @@ export class ConnectionHealthMonitor {
     });
 
     apiSocket.onReconnected(() => {
-      console.log('🏥 ConnectionHealthMonitor: Reconnection detected');
+      log.info('Reconnection detected', 'ConnectionHealthMonitor');
       const event: StateTransitionEvent = {
         type: 'connect',
         timestamp: Date.now(),
@@ -483,7 +521,7 @@ export class ConnectionHealthMonitor {
       try {
         listener(status);
       } catch (error) {
-        console.error('🏥 ConnectionHealthMonitor: Error in listener:', error);
+        log.error('Error in listener', 'ConnectionHealthMonitor', error as Error);
       }
     });
   }

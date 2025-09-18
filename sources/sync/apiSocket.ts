@@ -31,7 +31,7 @@ class ApiSocket {
   private socket: Socket | null = null;
   private config: SyncSocketConfig | null = null;
   private encryption: Encryption | null = null;
-  private messageHandlers: Map<string, (data: any) => void> = new Map();
+  private messageHandlers: Map<string, (data: unknown) => void> = new Map();
   private reconnectedListeners: Set<() => void> = new Set();
   private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
   private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
@@ -108,12 +108,12 @@ class ApiSocket {
   // Message Handling
   //
 
-  onMessage(event: string, handler: (data: any) => void) {
+  onMessage(event: string, handler: (data: unknown) => void) {
     this.messageHandlers.set(event, handler);
     return () => this.messageHandlers.delete(event);
   }
 
-  offMessage(event: string, handler: (data: any) => void) {
+  offMessage(event: string, handler: (data: unknown) => void) {
     this.messageHandlers.delete(event);
   }
 
@@ -129,10 +129,10 @@ class ApiSocket {
     const result = await this.emitWithAck('rpc-call', {
       method: `${sessionId}:${method}`,
       params: await sessionEncryption.encryptRaw(params),
-    }, timeout);
+    }, timeout) as { ok: boolean; result?: unknown; error?: string };
 
-    if (result.ok) {
-      return await sessionEncryption.decryptRaw(result.result) as R;
+    if (result.ok && result.result !== undefined) {
+      return await sessionEncryption.decryptRaw(result.result as string) as R;
     }
     throw new Error(`RPC call failed for ${sessionId}:${method}`);
   }
@@ -149,20 +149,20 @@ class ApiSocket {
     const result = await this.emitWithAck('rpc-call', {
       method: `${machineId}:${method}`,
       params: await machineEncryption.encryptRaw(params),
-    }, timeout);
+    }, timeout) as { ok: boolean; result?: unknown; error?: string };
 
-    if (result.ok) {
-      return await machineEncryption.decryptRaw(result.result) as R;
+    if (result.ok && result.result !== undefined) {
+      return await machineEncryption.decryptRaw(result.result as string) as R;
     }
     throw new Error(`RPC call failed for ${machineId}:${method}`);
   }
 
-  send(event: string, data: any) {
+  send(event: string, data: unknown) {
         this.socket!.emit(event, data);
         return true;
   }
 
-  async emitWithAck<T = any>(event: string, data: any, timeout?: number): Promise<T> {
+  async emitWithAck<T = unknown>(event: string, data: unknown, timeout?: number): Promise<T> {
     if (!this.socket) {
       throw new Error('Socket not connected');
     }

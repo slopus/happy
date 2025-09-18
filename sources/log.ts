@@ -1,55 +1,116 @@
 /**
- * Simple logging mechanism that writes to console and maintains internal array
+ * Enhanced logging mechanism with proper logging levels
+ * Supports debug, info, warn, error levels with production filtering
  * Keeps last 5k records in memory with change notifications for UI updates
  */
+
+type LogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+interface LogEntry {
+  timestamp: number;
+  level: LogLevel;
+  message: string;
+  source?: string;
+}
+
 class Logger {
-  private logs: string[] = [];
+  private logs: LogEntry[] = [];
   private maxLogs = 5000;
   private listeners: Array<() => void> = [];
+  private logLevel: LogLevel = (typeof __DEV__ !== 'undefined' && __DEV__) ? 'debug' : 'warn'; // Only warn/error in production
 
-  /**
-     * Log a message - writes to both console and internal array
-     */
-  log(message: string): void {
-    // Add to internal array
-    this.logs.push(message);
+  private shouldLog(level: LogLevel): boolean {
+    const levels: Record<LogLevel, number> = {
+      debug: 0,
+      info: 1, 
+      warn: 2,
+      error: 3
+    };
+    return levels[level] >= levels[this.logLevel];
+  }
+
+  private addLog(level: LogLevel, message: string, source?: string): void {
+    const entry: LogEntry = {
+      timestamp: Date.now(),
+      level,
+      message,
+      source
+    };
+
+    this.logs.push(entry);
 
     // Maintain 5k limit with circular buffer
     if (this.logs.length > this.maxLogs) {
       this.logs.shift();
     }
 
-    // Write to console
-    console.log(message);
-
     // Notify listeners for real-time updates
     this.listeners.forEach(listener => listener());
   }
 
   /**
-     * Log an error message - writes to both console and internal array
-     */
-  error(message: string): void {
-    // Add to internal array with ERROR prefix
-    this.logs.push(`ERROR: ${message}`);
+   * Log a debug message - only in development
+   */
+  debug(message: string, source?: string): void {
+    if (!this.shouldLog('debug')) return;
+    this.addLog('debug', message, source);
+    console.log(`[DEBUG] ${source ? `[${source}]` : ''} ${message}`);
+  }
 
-    // Maintain 5k limit with circular buffer
-    if (this.logs.length > this.maxLogs) {
-      this.logs.shift();
+  /**
+   * Log an info message
+   */
+  info(message: string, source?: string): void {
+    if (!this.shouldLog('info')) return;
+    this.addLog('info', message, source);
+    console.info(`[INFO] ${source ? `[${source}]` : ''} ${message}`);
+  }
+
+  /**
+   * Log a warning message
+   */
+  warn(message: string, source?: string): void {
+    if (!this.shouldLog('warn')) return;
+    this.addLog('warn', message, source);
+    console.warn(`[WARN] ${source ? `[${source}]` : ''} ${message}`);
+  }
+
+  /**
+   * Log an error message
+   */
+  error(message: string, source?: string, error?: Error): void {
+    if (!this.shouldLog('error')) return;
+    const fullMessage = error ? `${message}: ${error.message}` : message;
+    this.addLog('error', fullMessage, source);
+    console.error(`[ERROR] ${source ? `[${source}]` : ''} ${fullMessage}`);
+    if (error && __DEV__) {
+      console.error(error.stack);
     }
-
-    // Write to console as error
-    console.error(message);
-
-    // Notify listeners for real-time updates
-    this.listeners.forEach(listener => listener());
   }
 
   /**
-     * Get all logs as a copy of the array
-     */
-  getLogs(): string[] {
+   * Legacy log method for backward compatibility
+   */
+  log(message: string, source?: string): void {
+    this.info(message, source);
+  }
+
+  /**
+   * Get all logs as a copy of the array
+   */
+  getLogs(): LogEntry[] {
     return [...this.logs];
+  }
+
+  /**
+   * Get logs as formatted strings (backward compatibility)
+   */
+  getLogsAsStrings(): string[] {
+    return this.logs.map(entry => {
+      const timestamp = new Date(entry.timestamp).toLocaleTimeString();
+      const source = entry.source ? `[${entry.source}]` : '';
+      return `${timestamp} [${entry.level.toUpperCase()}] ${source} ${entry.message}`;
+    });
   }
 
   /**
@@ -74,10 +135,24 @@ class Logger {
   }
 
   /**
-     * Get current number of logs
-     */
+   * Get current number of logs
+   */
   getCount(): number {
     return this.logs.length;
+  }
+
+  /**
+   * Set log level
+   */
+  setLogLevel(level: LogLevel): void {
+    this.logLevel = level;
+  }
+
+  /**
+   * Get current log level
+   */
+  getLogLevel(): LogLevel {
+    return this.logLevel;
   }
 }
 
