@@ -44,6 +44,8 @@ model Account {
     Machine             Machine[]
     UploadedFile        UploadedFile[]
     ServiceAccountToken ServiceAccountToken[]
+    RelationshipsFrom   UserRelationship[]    @relation("RelationshipsFrom")
+    RelationshipsTo     UserRelationship[]    @relation("RelationshipsTo")
     Artifact            Artifact[]
     AccessKey           AccessKey[]
 }
@@ -288,4 +290,30 @@ model AccessKey {
     @@index([accountId])
     @@index([sessionId])
     @@index([machineId])
+}
+
+//
+// Social Network - Relationships
+//
+
+enum RelationshipStatus {
+    pending
+    accepted
+    rejected
+    removed
+}
+
+model UserRelationship {
+    fromUserId   String
+    fromUser     Account            @relation("RelationshipsFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+    toUserId     String
+    toUser       Account            @relation("RelationshipsTo", fields: [toUserId], references: [id], onDelete: Cascade)
+    status       RelationshipStatus @default(pending)
+    createdAt    DateTime           @default(now())
+    updatedAt    DateTime           @updatedAt
+    acceptedAt   DateTime?
+    
+    @@id([fromUserId, toUserId])
+    @@index([toUserId, status])
+    @@index([fromUserId, status])
 }

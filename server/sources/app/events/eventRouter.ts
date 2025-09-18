@@ -130,6 +130,27 @@ export type UpdateEvent = {
 } | {
     type: 'delete-artifact';
     artifactId: string;
+} | {
+    type: 'relationship-updated';
+    fromUserId: string;
+    toUserId: string;
+    status: 'pending' | 'accepted' | 'rejected' | 'removed';
+    action: 'created' | 'updated' | 'deleted';
+    fromUser?: {
+        id: string;
+        firstName: string;
+        lastName: string | null;
+        avatar: any | null;
+        username: string;
+    };
+    toUser?: {
+        id: string;
+        firstName: string;
+        lastName: string | null;
+        avatar: any | null;
+        username: string;
+    };
+    timestamp: number;
 };
 
 // === EPHEMERAL EVENT TYPES (Transient) ===
@@ -525,6 +546,42 @@ export function buildDeleteArtifactUpdate(artifactId: string, updateSeq: number,
         body: {
             t: 'delete-artifact',
             artifactId
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildRelationshipUpdatedEvent(
+    data: {
+        fromUserId: string;
+        toUserId: string;
+        status: 'pending' | 'accepted' | 'rejected' | 'removed';
+        action: 'created' | 'updated' | 'deleted';
+        fromUser?: {
+            id: string;
+            firstName: string;
+            lastName: string | null;
+            avatar: any | null;
+            username: string;
+        };
+        toUser?: {
+            id: string;
+            firstName: string;
+            lastName: string | null;
+            avatar: any | null;
+            username: string;
+        };
+        timestamp: number;
+    },
+    updateSeq: number,
+    updateId: string
+): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'relationship-updated',
+            ...data
         },
         createdAt: Date.now()
     };

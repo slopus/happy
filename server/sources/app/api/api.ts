@@ -16,6 +16,7 @@ import { versionRoutes } from "./routes/versionRoutes";
 import { voiceRoutes } from "./routes/voiceRoutes";
 import { artifactsRoutes } from "./routes/artifactsRoutes";
 import { accessKeysRoutes } from "./routes/accessKeysRoutes";
+import { friendshipRoutes } from "./routes/friendshipRoutes";
 import { enableMonitoring } from "./utils/enableMonitoring";
 import { enableErrorHandlers } from "./utils/enableErrorHandlers";
 import { enableAuthentication } from "./utils/enableAuthentication";
@@ -61,6 +62,7 @@ export async function startApi(eventRouter: EventRouter) {
     devRoutes(typed);
     versionRoutes(typed);
     voiceRoutes(typed);
+    friendshipRoutes(typed, eventRouter);
 
     // Start HTTP 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
