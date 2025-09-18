@@ -547,6 +547,8 @@ class Sync {
                     decryptedArtifacts.push({
                         id: artifact.id,
                         title: header?.title || null,
+                        sessions: header?.sessions,  // Include sessions from header
+                        draft: header?.draft,        // Include draft flag from header
                         body: undefined, // Body not loaded in list
                         headerVersion: artifact.headerVersion,
                         bodyVersion: artifact.bodyVersion,
@@ -607,6 +609,8 @@ class Sync {
             return {
                 id: artifact.id,
                 title: header?.title || null,
+                sessions: header?.sessions,  // Include sessions from header
+                draft: header?.draft,        // Include draft flag from header
                 body: body?.body || null,
                 headerVersion: artifact.headerVersion,
                 bodyVersion: artifact.bodyVersion,
@@ -621,7 +625,12 @@ class Sync {
         }
     }
 
-    public async createArtifact(title: string | null, body: string | null): Promise<string> {
+    public async createArtifact(
+        title: string | null, 
+        body: string | null,
+        sessions?: string[],
+        draft?: boolean
+    ): Promise<string> {
         if (!this.credentials) {
             throw new Error('Not authenticated');
         }
@@ -643,7 +652,7 @@ class Sync {
             const artifactEncryption = new ArtifactEncryption(dataEncryptionKey);
             
             // Encrypt header and body
-            const encryptedHeader = await artifactEncryption.encryptHeader({ title });
+            const encryptedHeader = await artifactEncryption.encryptHeader({ title, sessions, draft });
             const encryptedBody = await artifactEncryption.encryptBody({ body });
             
             // Create the request
@@ -661,6 +670,8 @@ class Sync {
             const decryptedArtifact: DecryptedArtifact = {
                 id: artifact.id,
                 title,
+                sessions,
+                draft,
                 body,
                 headerVersion: artifact.headerVersion,
                 bodyVersion: artifact.bodyVersion,
@@ -679,7 +690,13 @@ class Sync {
         }
     }
 
-    public async updateArtifact(artifactId: string, title: string | null, body: string | null): Promise<void> {
+    public async updateArtifact(
+        artifactId: string, 
+        title: string | null, 
+        body: string | null,
+        sessions?: string[],
+        draft?: boolean
+    ): Promise<void> {
         if (!this.credentials) {
             throw new Error('Not authenticated');
         }
@@ -720,9 +737,15 @@ class Sync {
             // Prepare update request
             const updateRequest: ArtifactUpdateRequest = {};
             
-            // Only update title if it changed
-            if (title !== currentArtifact.title) {
-                const encryptedHeader = await artifactEncryption.encryptHeader({ title });
+            // Check if header needs updating (title, sessions, or draft changed)
+            if (title !== currentArtifact.title || 
+                JSON.stringify(sessions) !== JSON.stringify(currentArtifact.sessions) ||
+                draft !== currentArtifact.draft) {
+                const encryptedHeader = await artifactEncryption.encryptHeader({ 
+                    title, 
+                    sessions, 
+                    draft 
+                });
                 updateRequest.header = encryptedHeader;
                 updateRequest.expectedHeaderVersion = headerVersion;
             }
@@ -754,6 +777,8 @@ class Sync {
             const updatedArtifact: DecryptedArtifact = {
                 ...currentArtifact,
                 title,
+                sessions,
+                draft,
                 body,
                 headerVersion: response.headerVersion !== undefined ? response.headerVersion : headerVersion,
                 bodyVersion: response.bodyVersion !== undefined ? response.bodyVersion : bodyVersion,
@@ -1507,6 +1532,8 @@ class Sync {
                 if (artifactUpdate.header) {
                     const header = await artifactEncryption.decryptHeader(artifactUpdate.header.value);
                     updatedArtifact.title = header?.title || null;
+                    updatedArtifact.sessions = header?.sessions;
+                    updatedArtifact.draft = header?.draft;
                     updatedArtifact.headerVersion = artifactUpdate.header.version;
                 }
                 

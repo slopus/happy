@@ -956,7 +956,28 @@ export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSe
 export function useArtifacts(): DecryptedArtifact[] {
     return storage(useShallow((state) => {
         if (!state.isDataReady) return [];
+        // Filter out draft artifacts from the main list
+        return Object.values(state.artifacts)
+            .filter(artifact => !artifact.draft)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+    }));
+}
+
+export function useAllArtifacts(): DecryptedArtifact[] {
+    return storage(useShallow((state) => {
+        if (!state.isDataReady) return [];
+        // Return all artifacts including drafts
         return Object.values(state.artifacts).sort((a, b) => b.updatedAt - a.updatedAt);
+    }));
+}
+
+export function useDraftArtifacts(): DecryptedArtifact[] {
+    return storage(useShallow((state) => {
+        if (!state.isDataReady) return [];
+        // Return only draft artifacts
+        return Object.values(state.artifacts)
+            .filter(artifact => artifact.draft === true)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
     }));
 }
 
@@ -965,7 +986,10 @@ export function useArtifact(artifactId: string): DecryptedArtifact | null {
 }
 
 export function useArtifactsCount(): number {
-    return storage(useShallow((state) => Object.keys(state.artifacts).length));
+    return storage(useShallow((state) => {
+        // Count only non-draft artifacts
+        return Object.values(state.artifacts).filter(a => !a.draft).length;
+    }));
 }
 
 export function useEntitlement(id: KnownEntitlements): boolean {

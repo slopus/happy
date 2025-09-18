@@ -10,6 +10,7 @@ import { useRouter } from 'expo-router';
 import { t } from '@/text';
 import { layout } from '@/components/layout';
 import { sync } from '@/sync/sync';
+import { FAB } from '@/components/FAB';
 // Date formatting
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -257,12 +258,7 @@ export default function ArtifactsScreen() {
             />
             
             {/* Floating Action Button */}
-            <Pressable
-                style={[styles.fab, { bottom: safeArea.bottom + 24 }]}
-                onPress={() => router.push('/artifacts/new')}
-            >
-                <Ionicons name="add" size={28} style={styles.fabIcon} color={theme.colors.fab.icon} />
-            </Pressable>
+            <FAB onPress={() => router.push('/artifacts/new')} />
         </View>
     );
 }
