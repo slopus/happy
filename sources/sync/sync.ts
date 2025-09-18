@@ -30,6 +30,7 @@ import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
+<<<<<<< HEAD
 // Enhanced connection management - imported but not auto-started for backwards compatibility
 // import { startConnectionHealthMonitoring, stopConnectionHealthMonitoring } from './connectionHealth';
 // import { startStaleConnectionCleanup, stopStaleConnectionCleanup } from './staleConnectionCleaner';
@@ -56,11 +57,41 @@ class Sync {
   private activityAccumulator: ActivityUpdateAccumulator;
   private pendingSettings: Partial<Settings> = loadPendingSettings();
   revenueCatInitialized = false;
+=======
+import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
+import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
+import { ArtifactEncryption } from './encryption/artifactEncryption';
+
+class Sync {
+
+    encryption!: Encryption;
+    serverID!: string;
+    anonID!: string;
+    private credentials!: AuthCredentials;
+    public encryptionCache = new EncryptionCache();
+    private sessionsSync: InvalidateSync;
+    private messagesSync = new Map<string, InvalidateSync>();
+    private sessionReceivedMessages = new Map<string, Set<string>>();
+    private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
+    private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
+    private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
+    private settingsSync: InvalidateSync;
+    private profileSync: InvalidateSync;
+    private purchasesSync: InvalidateSync;
+    private machinesSync: InvalidateSync;
+    private pushTokenSync: InvalidateSync;
+    private nativeUpdateSync: InvalidateSync;
+    private artifactsSync: InvalidateSync;
+    private activityAccumulator: ActivityUpdateAccumulator;
+    private pendingSettings: Partial<Settings> = loadPendingSettings();
+    revenueCatInitialized = false;
+>>>>>>> slopus-happy/main
 
   // Generic locking mechanism
   private recalculationLockCount = 0;
   private lastRecalculationTime = 0;
 
+<<<<<<< HEAD
   constructor() {
     this.sessionsSync = new InvalidateSync(this.fetchSessions);
     this.settingsSync = new InvalidateSync(this.syncSettings);
@@ -68,6 +99,16 @@ class Sync {
     this.purchasesSync = new InvalidateSync(this.syncPurchases);
     this.machinesSync = new InvalidateSync(this.fetchMachines);
     this.nativeUpdateSync = new InvalidateSync(this.fetchNativeUpdate);
+=======
+    constructor() {
+        this.sessionsSync = new InvalidateSync(this.fetchSessions);
+        this.settingsSync = new InvalidateSync(this.syncSettings);
+        this.profileSync = new InvalidateSync(this.fetchProfile);
+        this.purchasesSync = new InvalidateSync(this.syncPurchases);
+        this.machinesSync = new InvalidateSync(this.fetchMachines);
+        this.nativeUpdateSync = new InvalidateSync(this.fetchNativeUpdate);
+        this.artifactsSync = new InvalidateSync(this.fetchArtifactsList);
+>>>>>>> slopus-happy/main
 
 
     const registerPushToken = async () => {
@@ -79,21 +120,93 @@ class Sync {
     this.pushTokenSync = new InvalidateSync(registerPushToken);
     this.activityAccumulator = new ActivityUpdateAccumulator(this.flushActivityUpdates.bind(this), 2000);
 
+<<<<<<< HEAD
     // Listen for app state changes to refresh purchases
     AppState.addEventListener('change', (nextAppState) => {
       if (nextAppState === 'active') {
         log.log('📱 App became active');
+=======
+        // Listen for app state changes to refresh purchases
+        AppState.addEventListener('change', (nextAppState) => {
+            if (nextAppState === 'active') {
+                log.log('📱 App became active');
+                this.purchasesSync.invalidate();
+                this.profileSync.invalidate();
+                this.machinesSync.invalidate();
+                this.pushTokenSync.invalidate();
+                this.sessionsSync.invalidate();
+                this.nativeUpdateSync.invalidate();
+                log.log('📱 App became active: Invalidating artifacts sync');
+                this.artifactsSync.invalidate();
+            } else {
+                log.log(`📱 App state changed to: ${nextAppState}`);
+            }
+        });
+    }
+
+    async create(credentials: AuthCredentials, encryption: Encryption) {
+        this.credentials = credentials;
+        this.encryption = encryption;
+        this.anonID = encryption.anonID;
+        this.serverID = parseToken(credentials.token);
+        await this.#init();
+
+        // Await settings sync to have fresh settings
+        await this.settingsSync.awaitQueue();
+
+        // Await profile sync to have fresh profile
+        await this.profileSync.awaitQueue();
+
+        // Await purchases sync to have fresh purchases
+        await this.purchasesSync.awaitQueue();
+    }
+
+    async restore(credentials: AuthCredentials, encryption: Encryption) {
+        // NOTE: No awaiting anything here, we're restoring from a disk (ie app restarted)
+        this.credentials = credentials;
+        this.encryption = encryption;
+        this.anonID = encryption.anonID;
+        this.serverID = parseToken(credentials.token);
+        await this.#init();
+    }
+
+    async #init() {
+
+        // Subscribe to updates
+        this.subscribeToUpdates();
+
+        // Sync initial PostHog opt-out state with stored settings
+        if (tracking) {
+            const currentSettings = storage.getState().settings;
+            if (currentSettings.analyticsOptOut) {
+                tracking.optOut();
+            } else {
+                tracking.optIn();
+            }
+        }
+
+        // Invalidate sync
+        log.log('🔄 #init: Invalidating all syncs');
+        this.sessionsSync.invalidate();
+        this.settingsSync.invalidate();
+        this.profileSync.invalidate();
+>>>>>>> slopus-happy/main
         this.purchasesSync.invalidate();
         this.profileSync.invalidate();
         this.machinesSync.invalidate();
         this.pushTokenSync.invalidate();
         this.sessionsSync.invalidate();
         this.nativeUpdateSync.invalidate();
+<<<<<<< HEAD
       } else {
         log.log(`📱 App state changed to: ${nextAppState}`);
       }
     });
   }
+=======
+        this.artifactsSync.invalidate();
+        log.log('🔄 #init: All syncs invalidated, including artifacts');
+>>>>>>> slopus-happy/main
 
   async create(credentials: AuthCredentials, encryption: Encryption) {
     this.credentials = credentials;
@@ -549,9 +662,320 @@ class Sync {
       return;
     }
 
+<<<<<<< HEAD
     const data = await response.json();
     console.log(`📊 Sync: Fetched ${Array.isArray(data) ? data.length : 0} machines from server`);
     const machines = data as Array<{
+=======
+    public refreshSessions = async () => {
+        return this.sessionsSync.invalidateAndAwait();
+    }
+
+    public getCredentials() {
+        return this.credentials;
+    }
+
+    // Artifact methods
+    public fetchArtifactsList = async (): Promise<void> => {
+        log.log('📦 fetchArtifactsList: Starting artifact sync');
+        if (!this.credentials) {
+            log.log('📦 fetchArtifactsList: No credentials, skipping');
+            return;
+        }
+
+        try {
+            log.log('📦 fetchArtifactsList: Fetching artifacts from server');
+            const artifacts = await fetchArtifacts(this.credentials);
+            log.log(`📦 fetchArtifactsList: Received ${artifacts.length} artifacts from server`);
+            const decryptedArtifacts: DecryptedArtifact[] = [];
+
+            for (const artifact of artifacts) {
+                try {
+                    // Decrypt the data encryption key
+                    const decryptedKey = await this.encryption.decryptEncryptionKey(artifact.dataEncryptionKey);
+                    if (!decryptedKey) {
+                        console.error(`Failed to decrypt key for artifact ${artifact.id}`);
+                        continue;
+                    }
+
+                    // Store the decrypted key in memory
+                    this.artifactDataKeys.set(artifact.id, decryptedKey);
+
+                    // Create artifact encryption instance
+                    const artifactEncryption = new ArtifactEncryption(decryptedKey);
+
+                    // Decrypt header
+                    const header = await artifactEncryption.decryptHeader(artifact.header);
+                    
+                    decryptedArtifacts.push({
+                        id: artifact.id,
+                        title: header?.title || null,
+                        sessions: header?.sessions,  // Include sessions from header
+                        draft: header?.draft,        // Include draft flag from header
+                        body: undefined, // Body not loaded in list
+                        headerVersion: artifact.headerVersion,
+                        bodyVersion: artifact.bodyVersion,
+                        seq: artifact.seq,
+                        createdAt: artifact.createdAt,
+                        updatedAt: artifact.updatedAt,
+                        isDecrypted: !!header,
+                    });
+                } catch (err) {
+                    console.error(`Failed to decrypt artifact ${artifact.id}:`, err);
+                    // Add with decryption failed flag
+                    decryptedArtifacts.push({
+                        id: artifact.id,
+                        title: null,
+                        body: undefined,
+                        headerVersion: artifact.headerVersion,
+                        seq: artifact.seq,
+                        createdAt: artifact.createdAt,
+                        updatedAt: artifact.updatedAt,
+                        isDecrypted: false,
+                    });
+                }
+            }
+
+            log.log(`📦 fetchArtifactsList: Successfully decrypted ${decryptedArtifacts.length} artifacts`);
+            storage.getState().applyArtifacts(decryptedArtifacts);
+            log.log('📦 fetchArtifactsList: Artifacts applied to storage');
+        } catch (error) {
+            log.log(`📦 fetchArtifactsList: Error fetching artifacts: ${error}`);
+            console.error('Failed to fetch artifacts:', error);
+            throw error;
+        }
+    }
+
+    public async fetchArtifactWithBody(artifactId: string): Promise<DecryptedArtifact | null> {
+        if (!this.credentials) return null;
+
+        try {
+            const artifact = await fetchArtifact(this.credentials, artifactId);
+
+            // Decrypt the data encryption key
+            const decryptedKey = await this.encryption.decryptEncryptionKey(artifact.dataEncryptionKey);
+            if (!decryptedKey) {
+                console.error(`Failed to decrypt key for artifact ${artifactId}`);
+                return null;
+            }
+
+            // Store the decrypted key in memory
+            this.artifactDataKeys.set(artifact.id, decryptedKey);
+
+            // Create artifact encryption instance
+            const artifactEncryption = new ArtifactEncryption(decryptedKey);
+
+            // Decrypt header and body
+            const header = await artifactEncryption.decryptHeader(artifact.header);
+            const body = artifact.body ? await artifactEncryption.decryptBody(artifact.body) : null;
+
+            return {
+                id: artifact.id,
+                title: header?.title || null,
+                sessions: header?.sessions,  // Include sessions from header
+                draft: header?.draft,        // Include draft flag from header
+                body: body?.body || null,
+                headerVersion: artifact.headerVersion,
+                bodyVersion: artifact.bodyVersion,
+                seq: artifact.seq,
+                createdAt: artifact.createdAt,
+                updatedAt: artifact.updatedAt,
+                isDecrypted: !!header,
+            };
+        } catch (error) {
+            console.error(`Failed to fetch artifact ${artifactId}:`, error);
+            return null;
+        }
+    }
+
+    public async createArtifact(
+        title: string | null, 
+        body: string | null,
+        sessions?: string[],
+        draft?: boolean
+    ): Promise<string> {
+        if (!this.credentials) {
+            throw new Error('Not authenticated');
+        }
+
+        try {
+            // Generate unique artifact ID
+            const artifactId = this.encryption.generateId();
+
+            // Generate data encryption key
+            const dataEncryptionKey = ArtifactEncryption.generateDataEncryptionKey();
+            
+            // Store the decrypted key in memory
+            this.artifactDataKeys.set(artifactId, dataEncryptionKey);
+            
+            // Encrypt the data encryption key with user's key
+            const encryptedKey = await this.encryption.encryptEncryptionKey(dataEncryptionKey);
+            
+            // Create artifact encryption instance
+            const artifactEncryption = new ArtifactEncryption(dataEncryptionKey);
+            
+            // Encrypt header and body
+            const encryptedHeader = await artifactEncryption.encryptHeader({ title, sessions, draft });
+            const encryptedBody = await artifactEncryption.encryptBody({ body });
+            
+            // Create the request
+            const request: ArtifactCreateRequest = {
+                id: artifactId,
+                header: encryptedHeader,
+                body: encryptedBody,
+                dataEncryptionKey: encodeBase64(encryptedKey, 'base64'),
+            };
+            
+            // Send to server
+            const artifact = await createArtifact(this.credentials, request);
+            
+            // Add to local storage
+            const decryptedArtifact: DecryptedArtifact = {
+                id: artifact.id,
+                title,
+                sessions,
+                draft,
+                body,
+                headerVersion: artifact.headerVersion,
+                bodyVersion: artifact.bodyVersion,
+                seq: artifact.seq,
+                createdAt: artifact.createdAt,
+                updatedAt: artifact.updatedAt,
+                isDecrypted: true,
+            };
+            
+            storage.getState().addArtifact(decryptedArtifact);
+            
+            return artifactId;
+        } catch (error) {
+            console.error('Failed to create artifact:', error);
+            throw error;
+        }
+    }
+
+    public async updateArtifact(
+        artifactId: string, 
+        title: string | null, 
+        body: string | null,
+        sessions?: string[],
+        draft?: boolean
+    ): Promise<void> {
+        if (!this.credentials) {
+            throw new Error('Not authenticated');
+        }
+
+        try {
+            // Get current artifact to get versions and encryption key
+            const currentArtifact = storage.getState().artifacts[artifactId];
+            if (!currentArtifact) {
+                throw new Error('Artifact not found');
+            }
+
+            // Get the data encryption key from memory or fetch it
+            let dataEncryptionKey = this.artifactDataKeys.get(artifactId);
+            
+            // Fetch full artifact if we don't have version info or encryption key
+            let headerVersion = currentArtifact.headerVersion;
+            let bodyVersion = currentArtifact.bodyVersion;
+            
+            if (headerVersion === undefined || bodyVersion === undefined || !dataEncryptionKey) {
+                const fullArtifact = await fetchArtifact(this.credentials, artifactId);
+                headerVersion = fullArtifact.headerVersion;
+                bodyVersion = fullArtifact.bodyVersion;
+                
+                // Decrypt and store the data encryption key if we don't have it
+                if (!dataEncryptionKey) {
+                    const decryptedKey = await this.encryption.decryptEncryptionKey(fullArtifact.dataEncryptionKey);
+                    if (!decryptedKey) {
+                        throw new Error('Failed to decrypt encryption key');
+                    }
+                    this.artifactDataKeys.set(artifactId, decryptedKey);
+                    dataEncryptionKey = decryptedKey;
+                }
+            }
+
+            // Create artifact encryption instance
+            const artifactEncryption = new ArtifactEncryption(dataEncryptionKey);
+
+            // Prepare update request
+            const updateRequest: ArtifactUpdateRequest = {};
+            
+            // Check if header needs updating (title, sessions, or draft changed)
+            if (title !== currentArtifact.title || 
+                JSON.stringify(sessions) !== JSON.stringify(currentArtifact.sessions) ||
+                draft !== currentArtifact.draft) {
+                const encryptedHeader = await artifactEncryption.encryptHeader({ 
+                    title, 
+                    sessions, 
+                    draft 
+                });
+                updateRequest.header = encryptedHeader;
+                updateRequest.expectedHeaderVersion = headerVersion;
+            }
+
+            // Only update body if it changed
+            if (body !== currentArtifact.body) {
+                const encryptedBody = await artifactEncryption.encryptBody({ body });
+                updateRequest.body = encryptedBody;
+                updateRequest.expectedBodyVersion = bodyVersion;
+            }
+
+            // Skip if no changes
+            if (Object.keys(updateRequest).length === 0) {
+                return;
+            }
+
+            // Send update to server
+            const response = await updateArtifact(this.credentials, artifactId, updateRequest);
+            
+            if (!response.success) {
+                // Handle version mismatch
+                if (response.error === 'version-mismatch') {
+                    throw new Error('Artifact was modified by another client. Please refresh and try again.');
+                }
+                throw new Error('Failed to update artifact');
+            }
+
+            // Update local storage
+            const updatedArtifact: DecryptedArtifact = {
+                ...currentArtifact,
+                title,
+                sessions,
+                draft,
+                body,
+                headerVersion: response.headerVersion !== undefined ? response.headerVersion : headerVersion,
+                bodyVersion: response.bodyVersion !== undefined ? response.bodyVersion : bodyVersion,
+                updatedAt: Date.now(),
+            };
+            
+            storage.getState().updateArtifact(updatedArtifact);
+        } catch (error) {
+            console.error('Failed to update artifact:', error);
+            throw error;
+        }
+    }
+
+    private fetchMachines = async () => {
+        if (!this.credentials) return;
+
+        console.log('📊 Sync: Fetching machines...');
+        const API_ENDPOINT = getServerUrl();
+        const response = await fetch(`${API_ENDPOINT}/v1/machines`, {
+            headers: {
+                'Authorization': `Bearer ${this.credentials.token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!response.ok) {
+            console.error(`Failed to fetch machines: ${response.status}`);
+            return;
+        }
+
+        const data = await response.json();
+        console.log(`📊 Sync: Fetched ${Array.isArray(data) ? data.length : 0} machines from server`);
+        const machines = data as Array<{
+>>>>>>> slopus-happy/main
             id: string;
             metadata: string;
             metadataVersion: number;
@@ -1195,6 +1619,7 @@ class Sync {
 
     const sessions: Session[] = [];
 
+<<<<<<< HEAD
     for (const [sessionId, update] of updates) {
       const session = storage.getState().sessions[sessionId];
       if (session) {
@@ -1204,6 +1629,111 @@ class Sync {
           activeAt: update.activeAt,
           thinking: update.thinking ?? false,
           thinkingAt: update.activeAt, // Always use activeAt for consistency
+=======
+        // Collect existing messages
+        let eixstingMessages = this.sessionReceivedMessages.get(sessionId);
+        if (!eixstingMessages) {
+            eixstingMessages = new Set<string>();
+            this.sessionReceivedMessages.set(sessionId, eixstingMessages);
+        }
+
+        // Decrypt and normalize messages
+        let start = Date.now();
+        let normalizedMessages: NormalizedMessage[] = [];
+
+        // Filter out existing messages and prepare for batch decryption
+        const messagesToDecrypt: ApiMessage[] = [];
+        for (const msg of [...data.messages as ApiMessage[]].reverse()) {
+            if (!eixstingMessages.has(msg.id)) {
+                messagesToDecrypt.push(msg);
+            }
+        }
+
+        // Batch decrypt all messages at once
+        const decryptedMessages = await encryption.decryptMessages(messagesToDecrypt);
+
+        // Process decrypted messages
+        for (let i = 0; i < decryptedMessages.length; i++) {
+            const decrypted = decryptedMessages[i];
+            if (decrypted) {
+                eixstingMessages.add(decrypted.id);
+                // Normalize the decrypted message
+                let normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                if (normalized) {
+                    normalizedMessages.push(normalized);
+                }
+            }
+        }
+        console.log('Batch decrypted and normalized messages in', Date.now() - start, 'ms');
+        console.log('normalizedMessages', JSON.stringify(normalizedMessages));
+        // console.log('messages', JSON.stringify(normalizedMessages));
+
+        // Apply to storage
+        this.applyMessages(sessionId, normalizedMessages);
+        log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${normalizedMessages.length} messages`);
+    }
+
+    private registerPushToken = async () => {
+        log.log('registerPushToken');
+        // Only register on mobile platforms
+        if (Platform.OS === 'web') {
+            return;
+        }
+
+        // Request permission
+        const { status: existingStatus } = await Notifications.getPermissionsAsync();
+        let finalStatus = existingStatus;
+        log.log('existingStatus: ' + JSON.stringify(existingStatus));
+
+        if (existingStatus !== 'granted') {
+            const { status } = await Notifications.requestPermissionsAsync();
+            finalStatus = status;
+        }
+        log.log('finalStatus: ' + JSON.stringify(finalStatus));
+
+        if (finalStatus !== 'granted') {
+            console.log('Failed to get push token for push notification!');
+            return;
+        }
+
+        // Get push token
+        const projectId = Constants?.expoConfig?.extra?.eas?.projectId ?? Constants?.easConfig?.projectId;
+
+        const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+        log.log('tokenData: ' + JSON.stringify(tokenData));
+
+        // Register with server
+        try {
+            await registerPushToken(this.credentials, tokenData.data);
+            log.log('Push token registered successfully');
+        } catch (error) {
+            log.log('Failed to register push token: ' + JSON.stringify(error));
+        }
+    }
+
+    private subscribeToUpdates = () => {
+        // Subscribe to message updates
+        apiSocket.onMessage('update', this.handleUpdate.bind(this));
+        apiSocket.onMessage('ephemeral', this.handleEphemeralUpdate.bind(this));
+
+        // Subscribe to connection state changes
+        apiSocket.onReconnected(() => {
+            log.log('🔌 Socket reconnected');
+            this.sessionsSync.invalidate();
+            this.machinesSync.invalidate();
+            log.log('🔌 Socket reconnected: Invalidating artifacts sync');
+            this.artifactsSync.invalidate();
+            const sessionsData = storage.getState().sessionsData;
+            if (sessionsData) {
+                for (const item of sessionsData) {
+                    if (typeof item !== 'string') {
+                        this.messagesSync.get(item.id)?.invalidate();
+                        // Also invalidate git status on reconnection
+                        gitStatusSync.invalidate(item.id);
+                    }
+                }
+            }
+>>>>>>> slopus-happy/main
         });
       }
     }
@@ -1226,10 +1756,288 @@ class Sync {
     }
     const updateData = validatedUpdate.data;
 
+<<<<<<< HEAD
     // Process activity updates through smart debounce accumulator
     if (updateData.type === 'activity') {
       // console.log('adding activity update ' + updateData.id);
       this.activityAccumulator.addUpdate(updateData);
+=======
+            // Get encryption
+            const encryption = this.encryption.getSessionEncryption(updateData.body.sid);
+            if (!encryption) { // Should never happen
+                console.error(`Session ${updateData.body.sid} not found`);
+                this.fetchSessions(); // Just fetch sessions again
+                return;
+            }
+
+            // Decrypt message
+            let lastMessage: NormalizedMessage | null = null;
+            if (updateData.body.message) {
+                const decrypted = await encryption.decryptMessage(updateData.body.message);
+                if (decrypted) {
+                    lastMessage = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+
+                    // Update session
+                    const session = storage.getState().sessions[updateData.body.sid];
+                    if (session) {
+                        this.applySessions([{
+                            ...session,
+                            updatedAt: updateData.createdAt,
+                            seq: updateData.seq
+                        }])
+                    } else {
+                        // Fetch sessions again if we don't have this session
+                        this.fetchSessions();
+                    }
+
+                    // Update messages
+                    if (lastMessage) {
+                        console.log('🔄 Sync: Applying message:', JSON.stringify(lastMessage));
+                        this.applyMessages(updateData.body.sid, [lastMessage]);
+                        let hasMutableTool = false;
+                        if (lastMessage.role === 'agent' && lastMessage.content[0] && lastMessage.content[0].type === 'tool-result') {
+                            hasMutableTool = storage.getState().isMutableToolCall(updateData.body.sid, lastMessage.content[0].tool_use_id);
+                        }
+                        if (hasMutableTool) {
+                            gitStatusSync.invalidate(updateData.body.sid);
+                        }
+                    }
+                }
+            }
+
+            // Ping session
+            this.onSessionVisible(updateData.body.sid);
+
+        } else if (updateData.body.t === 'new-session') {
+            log.log('🆕 New session update received');
+            this.sessionsSync.invalidate();
+        } else if (updateData.body.t === 'update-session') {
+            const session = storage.getState().sessions[updateData.body.id];
+            if (session) {
+                // Get session encryption
+                const sessionEncryption = this.encryption.getSessionEncryption(updateData.body.id);
+                if (!sessionEncryption) {
+                    console.error(`Session encryption not found for ${updateData.body.id} - this should never happen`);
+                    return;
+                }
+
+                const agentState = updateData.body.agentState && sessionEncryption
+                    ? await sessionEncryption.decryptAgentState(updateData.body.agentState.version, updateData.body.agentState.value)
+                    : session.agentState;
+                const metadata = updateData.body.metadata && sessionEncryption
+                    ? await sessionEncryption.decryptMetadata(updateData.body.metadata.version, updateData.body.metadata.value)
+                    : session.metadata;
+
+                this.applySessions([{
+                    ...session,
+                    agentState,
+                    agentStateVersion: updateData.body.agentState
+                        ? updateData.body.agentState.version
+                        : session.agentStateVersion,
+                    metadata,
+                    metadataVersion: updateData.body.metadata
+                        ? updateData.body.metadata.version
+                        : session.metadataVersion,
+                    updatedAt: updateData.createdAt,
+                    seq: updateData.seq
+                }]);
+
+                // Invalidate git status when agent state changes (files may have been modified)
+                if (updateData.body.agentState) {
+                    gitStatusSync.invalidate(updateData.body.id);
+
+                    // Check for new permission requests and notify voice assistant
+                    if (agentState?.requests && Object.keys(agentState.requests).length > 0) {
+                        const requestIds = Object.keys(agentState.requests);
+                        const firstRequest = agentState.requests[requestIds[0]];
+                        const toolName = firstRequest?.tool;
+                        voiceHooks.onPermissionRequested(updateData.body.id, requestIds[0], toolName, firstRequest?.arguments);
+                    }
+                }
+            }
+        } else if (updateData.body.t === 'update-account') {
+            const accountUpdate = updateData.body;
+            const currentProfile = storage.getState().profile;
+
+            // Build updated profile with new data
+            const updatedProfile: Profile = {
+                ...currentProfile,
+                firstName: accountUpdate.firstName !== undefined ? accountUpdate.firstName : currentProfile.firstName,
+                lastName: accountUpdate.lastName !== undefined ? accountUpdate.lastName : currentProfile.lastName,
+                avatar: accountUpdate.avatar !== undefined ? accountUpdate.avatar : currentProfile.avatar,
+                github: accountUpdate.github !== undefined ? accountUpdate.github : currentProfile.github,
+                timestamp: updateData.createdAt // Update timestamp to latest
+            };
+
+            // Apply the updated profile to storage
+            storage.getState().applyProfile(updatedProfile);
+        } else if (updateData.body.t === 'update-machine') {
+            const machineUpdate = updateData.body;
+            const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
+            const machine = storage.getState().machines[machineId];
+
+            // Create or update machine with all required fields
+            const updatedMachine: Machine = {
+                id: machineId,
+                seq: updateData.seq,
+                createdAt: machine?.createdAt ?? updateData.createdAt,
+                updatedAt: updateData.createdAt,
+                active: machineUpdate.active ?? true,
+                activeAt: machineUpdate.activeAt ?? updateData.createdAt,
+                metadata: machine?.metadata ?? null,
+                metadataVersion: machine?.metadataVersion ?? 0,
+                daemonState: machine?.daemonState ?? null,
+                daemonStateVersion: machine?.daemonStateVersion ?? 0
+            };
+
+            // Get machine-specific encryption (might not exist if machine wasn't initialized)
+            const machineEncryption = this.encryption.getMachineEncryption(machineId);
+            if (!machineEncryption) {
+                console.error(`Machine encryption not found for ${machineId} - cannot decrypt updates`);
+                return;
+            }
+
+            // If metadata is provided, decrypt and update it
+            const metadataUpdate = machineUpdate.metadata;
+            if (metadataUpdate) {
+                try {
+                    const metadata = await machineEncryption.decryptMetadata(metadataUpdate.version, metadataUpdate.value);
+                    updatedMachine.metadata = metadata;
+                    updatedMachine.metadataVersion = metadataUpdate.version;
+                } catch (error) {
+                    console.error(`Failed to decrypt machine metadata for ${machineId}:`, error);
+                }
+            }
+
+            // If daemonState is provided, decrypt and update it
+            const daemonStateUpdate = machineUpdate.daemonState;
+            if (daemonStateUpdate) {
+                try {
+                    const daemonState = await machineEncryption.decryptDaemonState(daemonStateUpdate.version, daemonStateUpdate.value);
+                    updatedMachine.daemonState = daemonState;
+                    updatedMachine.daemonStateVersion = daemonStateUpdate.version;
+                } catch (error) {
+                    console.error(`Failed to decrypt machine daemonState for ${machineId}:`, error);
+                }
+            }
+
+            // Update storage using applyMachines which rebuilds sessionListViewData
+            storage.getState().applyMachines([updatedMachine]);
+        } else if (updateData.body.t === 'new-artifact') {
+            log.log('📦 Received new-artifact update');
+            const artifactUpdate = updateData.body;
+            const artifactId = artifactUpdate.artifactId;
+            
+            try {
+                // Decrypt the data encryption key
+                const decryptedKey = await this.encryption.decryptEncryptionKey(artifactUpdate.dataEncryptionKey);
+                if (!decryptedKey) {
+                    console.error(`Failed to decrypt key for new artifact ${artifactId}`);
+                    return;
+                }
+                
+                // Store the decrypted key in memory
+                this.artifactDataKeys.set(artifactId, decryptedKey);
+                
+                // Create artifact encryption instance
+                const artifactEncryption = new ArtifactEncryption(decryptedKey);
+                
+                // Decrypt header
+                const header = await artifactEncryption.decryptHeader(artifactUpdate.header);
+                
+                // Decrypt body if provided
+                let decryptedBody: string | null | undefined = undefined;
+                if (artifactUpdate.body && artifactUpdate.bodyVersion !== undefined) {
+                    const body = await artifactEncryption.decryptBody(artifactUpdate.body);
+                    decryptedBody = body?.body || null;
+                }
+                
+                // Add to storage
+                const decryptedArtifact: DecryptedArtifact = {
+                    id: artifactId,
+                    title: header?.title || null,
+                    body: decryptedBody,
+                    headerVersion: artifactUpdate.headerVersion,
+                    bodyVersion: artifactUpdate.bodyVersion,
+                    seq: artifactUpdate.seq,
+                    createdAt: artifactUpdate.createdAt,
+                    updatedAt: artifactUpdate.updatedAt,
+                    isDecrypted: !!header,
+                };
+                
+                storage.getState().addArtifact(decryptedArtifact);
+                log.log(`📦 Added new artifact ${artifactId} to storage`);
+            } catch (error) {
+                console.error(`Failed to process new artifact ${artifactId}:`, error);
+            }
+        } else if (updateData.body.t === 'update-artifact') {
+            log.log('📦 Received update-artifact update');
+            const artifactUpdate = updateData.body;
+            const artifactId = artifactUpdate.artifactId;
+            
+            // Get existing artifact
+            const existingArtifact = storage.getState().artifacts[artifactId];
+            if (!existingArtifact) {
+                console.error(`Artifact ${artifactId} not found in storage`);
+                // Fetch all artifacts to sync
+                this.artifactsSync.invalidate();
+                return;
+            }
+            
+            try {
+                // Get the data encryption key from memory
+                let dataEncryptionKey = this.artifactDataKeys.get(artifactId);
+                if (!dataEncryptionKey) {
+                    console.error(`Encryption key not found for artifact ${artifactId}, fetching artifacts`);
+                    this.artifactsSync.invalidate();
+                    return;
+                }
+                
+                // Create artifact encryption instance
+                const artifactEncryption = new ArtifactEncryption(dataEncryptionKey);
+                
+                // Update artifact with new data  
+                const updatedArtifact: DecryptedArtifact = {
+                    ...existingArtifact,
+                    seq: updateData.seq,
+                    updatedAt: updateData.createdAt,
+                };
+                
+                // Decrypt and update header if provided
+                if (artifactUpdate.header) {
+                    const header = await artifactEncryption.decryptHeader(artifactUpdate.header.value);
+                    updatedArtifact.title = header?.title || null;
+                    updatedArtifact.sessions = header?.sessions;
+                    updatedArtifact.draft = header?.draft;
+                    updatedArtifact.headerVersion = artifactUpdate.header.version;
+                }
+                
+                // Decrypt and update body if provided
+                if (artifactUpdate.body) {
+                    const body = await artifactEncryption.decryptBody(artifactUpdate.body.value);
+                    updatedArtifact.body = body?.body || null;
+                    updatedArtifact.bodyVersion = artifactUpdate.body.version;
+                }
+                
+                storage.getState().updateArtifact(updatedArtifact);
+                log.log(`📦 Updated artifact ${artifactId} in storage`);
+            } catch (error) {
+                console.error(`Failed to process artifact update ${artifactId}:`, error);
+            }
+        } else if (updateData.body.t === 'delete-artifact') {
+            log.log('📦 Received delete-artifact update');
+            const artifactUpdate = updateData.body;
+            const artifactId = artifactUpdate.artifactId;
+            
+            // Remove from storage
+            storage.getState().deleteArtifact(artifactId);
+            
+            // Remove encryption key from memory
+            this.artifactDataKeys.delete(artifactId);
+            
+            log.log(`📦 Deleted artifact ${artifactId} from storage`);
+        }
+>>>>>>> slopus-happy/main
     }
 
     // Handle machine activity updates

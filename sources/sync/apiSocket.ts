@@ -256,6 +256,31 @@ class ApiSocket {
     return this.socket?.connected || false;
   }
 
+  // New properties and methods required by Connection V2
+  isConnected(): boolean {
+    return this.socket?.connected || false;
+  }
+
+  isConnecting(): boolean {
+    return this.currentStatus === 'connecting';
+  }
+
+  getLastPingTime(): number {
+    return this.lastPingTime;
+  }
+
+  getLastActivityTime(): number {
+    return this.lastActivityTime;
+  }
+
+  reconnect(): void {
+    log.log('🔄 ApiSocket: Manual reconnect requested');
+    if (this.socket) {
+      this.disconnect();
+    }
+    this.connect();
+  }
+
   getSocketInstance() {
     return this.socket;
   }
@@ -299,6 +324,7 @@ class ApiSocket {
     this.socket.on('connect', () => {
       // console.log('🔌 SyncSocket: Connected, recovered: ' + this.socket?.recovered);
       // console.log('🔌 SyncSocket: Socket ID:', this.socket?.id);
+      this.lastActivityTime = Date.now();
       this.updateStatus('connected');
       if (!this.socket?.recovered) {
         this.reconnectedListeners.forEach(listener => listener());
@@ -324,6 +350,8 @@ class ApiSocket {
     // Message handling
     this.socket.onAny((event, data) => {
       // console.log(`📥 SyncSocket: Received event '${event}':`, JSON.stringify(data).substring(0, 200));
+      this.lastActivityTime = Date.now();
+
       const handler = this.messageHandlers.get(event);
       if (handler) {
         // console.log(`📥 SyncSocket: Calling handler for '${event}'`);
@@ -332,6 +360,36 @@ class ApiSocket {
         // console.log(`📥 SyncSocket: No handler registered for '${event}'`);
       }
     });
+
+    // Track ping/pong for connection health
+    this.socket.on('ping', () => {
+      this.lastPingTime = Date.now();
+      this.lastActivityTime = Date.now();
+    });
+
+    this.socket.on('pong', () => {
+      this.lastActivityTime = Date.now();
+    });
+  }
+
+  private startPingTracking() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+    }
+
+    // Track ping times every 30 seconds
+    this.pingInterval = setInterval(() => {
+      if (this.socket?.connected) {
+        this.socket.emit('ping');
+      }
+    }, 30000) as unknown as NodeJS.Timeout;
+  }
+
+  private stopPingTracking() {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
+    }
   }
 }
 

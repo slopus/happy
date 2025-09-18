@@ -298,6 +298,12 @@ export const ru: TranslationStructure = {
     updateCliUpdating: 'Обновление CLI...',
     updateCliSuccess: 'CLI успешно обновлен! Сессия автоматически обновится.',
     updateCliError: 'Не удалось обновить CLI. Пожалуйста, попробуйте обновить вручную.',
+    updateCliDev: 'Переключиться на ветку разработки',
+    updateCliDevDescription: 'Получить последние функции разработки из jeffersonwarrior/happy-fork',
+    updateCliDevUpdating: 'Переключение на ветку разработки...',
+    updateCliDevSuccess: 'Успешно переключено на ветку разработки! Сессия будет обновлена.',
+    updateCliStable: 'Переключиться на стабильную версию',
+    updateCliStableDescription: 'Вернуться к стабильному релизу из npm',
   },
 
   components: {

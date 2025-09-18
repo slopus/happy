@@ -15,8 +15,14 @@ import type { CustomerInfo } from './revenueCat/types';
 import React from 'react';
 import { sync } from './sync';
 import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
+<<<<<<< HEAD
 import { isMutableTool } from '@/components/tools/knownTools';
 import { projectManager } from './projectManager';
+=======
+import { isMutableTool } from "@/components/tools/knownTools";
+import { projectManager } from "./projectManager";
+import { DecryptedArtifact } from "./artifactTypes";
+>>>>>>> slopus-happy/main
 
 /**
  * Centralized session online state resolver
@@ -69,6 +75,7 @@ interface StorageState {
     sessionMessages: Record<string, SessionMessages>;
     sessionGitStatus: Record<string, GitStatus | null>;
     machines: Record<string, Machine>;
+    artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
@@ -99,6 +106,11 @@ interface StorageState {
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus' | 'gpt-5-minimal' | 'gpt-5-low' | 'gpt-5-medium' | 'gpt-5-high') => void;
+    // Artifact methods
+    applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
+    addArtifact: (artifact: DecryptedArtifact) => void;
+    updateArtifact: (artifact: DecryptedArtifact) => void;
+    deleteArtifact: (artifactId: string) => void;
     // Project management methods
     getProjects: () => import('./projectManager').Project[];
     getProject: (projectId: string) => import('./projectManager').Project | null;
@@ -207,6 +219,7 @@ function buildSessionListViewData(
 }
 
 export const storage = create<StorageState>()((set, get) => {
+<<<<<<< HEAD
   const { settings, version } = loadSettings();
   const localSettings = loadLocalSettings();
   const purchases = loadPurchases();
@@ -254,6 +267,56 @@ export const storage = create<StorageState>()((set, get) => {
       // Load drafts and permission modes if sessions are empty (initial load)
       const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
       const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+=======
+    let { settings, version } = loadSettings();
+    let localSettings = loadLocalSettings();
+    let purchases = loadPurchases();
+    let profile = loadProfile();
+    let sessionDrafts = loadSessionDrafts();
+    let sessionPermissionModes = loadSessionPermissionModes();
+    return {
+        settings,
+        settingsVersion: version,
+        localSettings,
+        purchases,
+        profile,
+        sessions: {},
+        machines: {},
+        artifacts: {},  // Initialize artifacts
+        sessionsData: null,  // Legacy - to be removed
+        sessionListViewData: null,
+        sessionMessages: {},
+        sessionGitStatus: {},
+        realtimeStatus: 'disconnected',
+        socketStatus: 'disconnected',
+        socketLastConnectedAt: null,
+        socketLastDisconnectedAt: null,
+        isDataReady: false,
+        nativeUpdateStatus: null,
+        isMutableToolCall: (sessionId: string, callId: string) => {
+            const sessionMessages = get().sessionMessages[sessionId];
+            if (!sessionMessages) {
+                return true;
+            }
+            const toolCall = sessionMessages.reducerState.toolIdToMessageId.get(callId);
+            if (!toolCall) {
+                return true;
+            }
+            const toolCallMessage = sessionMessages.messagesMap[toolCall];
+            if (!toolCallMessage || toolCallMessage.kind !== 'tool-call') {
+                return true;
+            }
+            return toolCallMessage.tool?.name ? isMutableTool(toolCallMessage.tool?.name) : true;
+        },
+        getActiveSessions: () => {
+            const state = get();
+            return Object.values(state.sessions).filter(s => s.active);
+        },
+        applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
+            // Load drafts and permission modes if sessions are empty (initial load)
+            const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
+            const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
+>>>>>>> slopus-happy/main
 
       // Merge new sessions with existing ones
       const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -701,6 +764,7 @@ export const storage = create<StorageState>()((set, get) => {
       const session = state.sessions[sessionId];
       if (!session) return state;
 
+<<<<<<< HEAD
       // Update the session with the new permission mode
       const updatedSessions = {
         ...state.sessions,
@@ -842,6 +906,59 @@ export const storage = create<StorageState>()((set, get) => {
       console.log('🗜️ Storage: Compacting storage (placeholder)');
     },
   };
+=======
+            return {
+                ...state,
+                machines: mergedMachines,
+                sessionListViewData
+            };
+        }),
+        // Artifact methods
+        applyArtifacts: (artifacts: DecryptedArtifact[]) => set((state) => {
+            console.log(`🗂️ Storage.applyArtifacts: Applying ${artifacts.length} artifacts`);
+            const mergedArtifacts = { ...state.artifacts };
+            artifacts.forEach(artifact => {
+                mergedArtifacts[artifact.id] = artifact;
+            });
+            console.log(`🗂️ Storage.applyArtifacts: Total artifacts after merge: ${Object.keys(mergedArtifacts).length}`);
+            
+            return {
+                ...state,
+                artifacts: mergedArtifacts
+            };
+        }),
+        addArtifact: (artifact: DecryptedArtifact) => set((state) => {
+            const updatedArtifacts = {
+                ...state.artifacts,
+                [artifact.id]: artifact
+            };
+            
+            return {
+                ...state,
+                artifacts: updatedArtifacts
+            };
+        }),
+        updateArtifact: (artifact: DecryptedArtifact) => set((state) => {
+            const updatedArtifacts = {
+                ...state.artifacts,
+                [artifact.id]: artifact
+            };
+            
+            return {
+                ...state,
+                artifacts: updatedArtifacts
+            };
+        }),
+        deleteArtifact: (artifactId: string) => set((state) => {
+            const { [artifactId]: _, ...remainingArtifacts } = state.artifacts;
+            
+            return {
+                ...state,
+                artifacts: remainingArtifacts
+            };
+        }),
+    }
+>>>>>>> slopus-happy/main
 });
 
 export function useSessions() {
@@ -955,6 +1072,46 @@ export function useSessionProjectGitStatus(sessionId: string | null) {
 
 export function useLocalSetting<K extends keyof LocalSettings>(name: K): LocalSettings[K] {
   return storage(useShallow((state) => state.localSettings[name]));
+}
+
+// Artifact hooks
+export function useArtifacts(): DecryptedArtifact[] {
+    return storage(useShallow((state) => {
+        if (!state.isDataReady) return [];
+        // Filter out draft artifacts from the main list
+        return Object.values(state.artifacts)
+            .filter(artifact => !artifact.draft)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+    }));
+}
+
+export function useAllArtifacts(): DecryptedArtifact[] {
+    return storage(useShallow((state) => {
+        if (!state.isDataReady) return [];
+        // Return all artifacts including drafts
+        return Object.values(state.artifacts).sort((a, b) => b.updatedAt - a.updatedAt);
+    }));
+}
+
+export function useDraftArtifacts(): DecryptedArtifact[] {
+    return storage(useShallow((state) => {
+        if (!state.isDataReady) return [];
+        // Return only draft artifacts
+        return Object.values(state.artifacts)
+            .filter(artifact => artifact.draft === true)
+            .sort((a, b) => b.updatedAt - a.updatedAt);
+    }));
+}
+
+export function useArtifact(artifactId: string): DecryptedArtifact | null {
+    return storage(useShallow((state) => state.artifacts[artifactId] ?? null));
+}
+
+export function useArtifactsCount(): number {
+    return storage(useShallow((state) => {
+        // Count only non-draft artifacts
+        return Object.values(state.artifacts).filter(a => !a.draft).length;
+    }));
 }
 
 export function useEntitlement(id: KnownEntitlements): boolean {

@@ -325,6 +325,12 @@ export const pl: TranslationStructure = {
     updateCliUpdating: 'Aktualizowanie CLI...',
     updateCliSuccess: 'CLI zaktualizowane pomyślnie! Sesja odświeży się automatycznie.',
     updateCliError: 'Nie udało się zaktualizować CLI. Proszę spróbować ręcznej aktualizacji.',
+    updateCliDev: 'Przełącz na wersję deweloperską',
+    updateCliDevDescription: 'Uzyskaj najnowsze funkcje deweloperskie z jeffersonwarrior/happy-fork',
+    updateCliDevUpdating: 'Przełączanie na wersję deweloperską...',
+    updateCliDevSuccess: 'Pomyślnie przełączono na wersję deweloperską! Sesja zostanie odświeżona.',
+    updateCliStable: 'Przełącz na wersję stabilną',
+    updateCliStableDescription: 'Wróć do stabilnego wydania z npm',
   },
 
   components: {

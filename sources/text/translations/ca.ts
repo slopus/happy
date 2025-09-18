@@ -314,6 +314,12 @@ export const ca: TranslationStructure = {
     updateCliUpdating: 'Actualitzant CLI...',
     updateCliSuccess: 'CLI actualitzat amb èxit! La sessió es refrescarà automàticament.',
     updateCliError: 'Error en actualitzar el CLI. Si us plau, proveu l\'actualització manual.',
+    updateCliDev: 'Canviar a branca de desenvolupament',
+    updateCliDevDescription: 'Obtenir les últimes funcions de desenvolupament de jeffersonwarrior/happy-fork',
+    updateCliDevUpdating: 'Canviant a branca de desenvolupament...',
+    updateCliDevSuccess: 'Canviat amb èxit a la branca de desenvolupament! La sessió es refrescarà.',
+    updateCliStable: 'Canviar a versió estable',
+    updateCliStableDescription: 'Tornar a la versió estable de npm',
   },
 
   components: {

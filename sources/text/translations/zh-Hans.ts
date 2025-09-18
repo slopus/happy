@@ -314,6 +314,12 @@ export const zhHans = {
     updateCliUpdating: '正在更新 CLI...',
     updateCliSuccess: 'CLI 更新成功！会话将自动刷新。',
     updateCliError: '更新 CLI 失败。请尝试手动更新。',
+    updateCliDev: '切换到开发分支',
+    updateCliDevDescription: '从 jeffersonwarrior/happy-fork 获取最新的开发功能',
+    updateCliDevUpdating: '正在切换到开发分支...',
+    updateCliDevSuccess: '成功切换到开发分支！会话将刷新。',
+    updateCliStable: '切换到稳定版',
+    updateCliStableDescription: '返回到 npm 的稳定版本',
   },
 
   components: {

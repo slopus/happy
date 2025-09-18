@@ -18,6 +18,7 @@ import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { CodeView } from '@/components/CodeView';
+import { CliManagement } from '@/components/CliManagement';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -173,18 +174,8 @@ export default React.memo(() => {
           </View>
         </View>
 
-        {/* CLI Version Warning */}
-        {isCliOutdated && (
-          <ItemGroup>
-            <Item
-              title={t('sessionInfo.cliVersionOutdated')}
-              subtitle={t('sessionInfo.updateCliInstructions')}
-              icon={<Ionicons name="warning-outline" size={29} color="#FF9500" />}
-              showChevron={false}
-              onPress={handleCopyUpdateCommand}
-            />
-          </ItemGroup>
-        )}
+        {/* CLI Management Section */}
+        <CliManagement session={session} />
 
         {/* Session Details */}
         <ItemGroup>
