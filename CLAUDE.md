@@ -26,6 +26,14 @@
 - **Usage**: `app.config.js` reads from `version.txt`, `package.json` has note reference
 - **Updates**: Change version.txt only, other files will use it automatically
 
+## Requirements
+
+### Happy CLI Version
+- **Minimum CLI version**: 0.11.0 for full 1.5.3 features
+- **Key features requiring 0.11.0+**: Git status sync, file browser, remote session management
+- **Check CLI version**: `happy --version`
+- **Update CLI**: `npm install -g happy-coder@latest`
+
 ## Commands
 - `yarn start` - Start Expo dev server
 - `yarn typecheck` - Run TypeScript checking (required after all changes)

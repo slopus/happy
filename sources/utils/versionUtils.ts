@@ -3,7 +3,8 @@
  */
 
 // Minimum required CLI version for full compatibility
-export const MINIMUM_CLI_VERSION = '0.10.0';
+// Updated to 0.11.0 for Happy 1.5.3 features (git status sync, file browser)
+export const MINIMUM_CLI_VERSION = '0.11.0';
 
 /**
  * Compare two semantic version strings
