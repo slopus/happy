@@ -729,6 +729,29 @@ export const ca: TranslationStructure = {
     renameSessionMessage: 'Introduïu un nom nou per a aquesta sessió:',
     exportHistoryComingSoon: 'La funció d\'exportar l\'historial de la sessió estarà disponible aviat.',
   },
+
+  artifacts: {
+    // Artifacts feature
+    title: 'Artefactes',
+    countSingular: '1 artefacte',
+    countPlural: ({ count }: { count: number }) => `${count} artefactes`,
+    empty: 'No hi ha artefactes encara',
+    emptyDescription: 'Crea el teu primer artefacte per començar',
+    new: 'Nou artefacte',
+    edit: 'Edita artefacte',
+    delete: 'Elimina',
+    updateError: 'No s\'ha pogut actualitzar l\'artefacte. Si us plau, torna-ho a provar.',
+    notFound: 'Artefacte no trobat',
+    discardChanges: 'Descartar canvis?',
+    discardChangesDescription: 'Tens canvis no desats. Estàs segur que vols descartar-los?',
+    deleteConfirm: 'Eliminar artefacte?',
+    deleteConfirmDescription: 'Aquesta acció no es pot desfer',
+    titleLabel: 'TÍTOL',
+    titlePlaceholder: 'Introdueix un títol per al teu artefacte',
+    bodyLabel: 'CONTINGUT',
+    bodyPlaceholder: 'Escriu el teu contingut aquí...',
+    emptyFieldsError: 'Si us plau, introdueix un títol o contingut',
+  },
 } as const;
 
 export type TranslationsCa = typeof ca;

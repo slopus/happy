@@ -729,6 +729,29 @@ export const pt: TranslationStructure = {
     renameSessionMessage: 'Digite um novo nome para esta sessão:',
     exportHistoryComingSoon: 'O recurso de exportar histórico de sessão estará disponível em breve.',
   },
+
+  artifacts: {
+    // Artifacts feature
+    title: 'Artefatos',
+    countSingular: '1 artefato',
+    countPlural: ({ count }: { count: number }) => `${count} artefatos`,
+    empty: 'Nenhum artefato ainda',
+    emptyDescription: 'Crie seu primeiro artefato para começar',
+    new: 'Novo artefato',
+    edit: 'Editar artefato',
+    delete: 'Excluir',
+    updateError: 'Não foi possível atualizar o artefato. Tente novamente.',
+    notFound: 'Artefato não encontrado',
+    discardChanges: 'Descartar alterações?',
+    discardChangesDescription: 'Você tem alterações não salvas. Tem certeza de que deseja descartá-las?',
+    deleteConfirm: 'Excluir artefato?',
+    deleteConfirmDescription: 'Esta ação não pode ser desfeita',
+    titleLabel: 'TÍTULO',
+    titlePlaceholder: 'Digite um título para seu artefato',
+    bodyLabel: 'CONTEÚDO',
+    bodyPlaceholder: 'Escreva seu conteúdo aqui...',
+    emptyFieldsError: 'Por favor, digite um título ou conteúdo',
+  },
 } as const;
 
 export type TranslationsPt = typeof pt;

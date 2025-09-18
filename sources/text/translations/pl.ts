@@ -740,6 +740,29 @@ export const pl: TranslationStructure = {
     renameSessionMessage: 'Wprowadź nową nazwę dla tej sesji:',
     exportHistoryComingSoon: 'Funkcja eksportowania historii sesji będzie dostępna wkrótce.',
   },
+
+  artifacts: {
+    // Artifacts feature
+    title: 'Artefakty',
+    countSingular: '1 artefakt',
+    countPlural: ({ count }: { count: number }) => `${count} artefaktów`,
+    empty: 'Brak artefaktów',
+    emptyDescription: 'Utwórz swój pierwszy artefakt, aby rozpocząć',
+    new: 'Nowy artefakt',
+    edit: 'Edytuj artefakt',
+    delete: 'Usuń',
+    updateError: 'Nie można zaktualizować artefaktu. Spróbuj ponownie.',
+    notFound: 'Artefakt nie znaleziony',
+    discardChanges: 'Odrzucić zmiany?',
+    discardChangesDescription: 'Masz niezapisane zmiany. Czy na pewno chcesz je odrzucić?',
+    deleteConfirm: 'Usunąć artefakt?',
+    deleteConfirmDescription: 'Ta akcja nie może być cofnięta',
+    titleLabel: 'TYTUŁ',
+    titlePlaceholder: 'Wprowadź tytuł dla swojego artefaktu',
+    bodyLabel: 'TREŚĆ',
+    bodyPlaceholder: 'Napisz tutaj swoją treść...',
+    emptyFieldsError: 'Proszę wprowadzić tytuł lub treść',
+  },
 } as const;
 
 export type TranslationsPl = typeof pl;

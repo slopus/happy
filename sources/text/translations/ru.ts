@@ -740,6 +740,29 @@ export const ru: TranslationStructure = {
     renameSessionMessage: 'Введите новое имя для этой сессии:',
     exportHistoryComingSoon: 'Функция экспорта истории сессии скоро будет доступна.',
   },
+
+  artifacts: {
+    // Artifacts feature
+    title: 'Артефакты',
+    countSingular: '1 артефакт',
+    countPlural: ({ count }: { count: number }) => `${count} артефактов`,
+    empty: 'Пока нет артефактов',
+    emptyDescription: 'Создайте свой первый артефакт, чтобы начать',
+    new: 'Новый артефакт',
+    edit: 'Редактировать артефакт',
+    delete: 'Удалить',
+    updateError: 'Не удалось обновить артефакт. Попробуйте еще раз.',
+    notFound: 'Артефакт не найден',
+    discardChanges: 'Отменить изменения?',
+    discardChangesDescription: 'У вас есть несохраненные изменения. Вы уверены, что хотите их отменить?',
+    deleteConfirm: 'Удалить артефакт?',
+    deleteConfirmDescription: 'Это действие нельзя отменить',
+    titleLabel: 'ЗАГОЛОВОК',
+    titlePlaceholder: 'Введите заголовок для вашего артефакта',
+    bodyLabel: 'СОДЕРЖАНИЕ',
+    bodyPlaceholder: 'Напишите ваше содержание здесь...',
+    emptyFieldsError: 'Пожалуйста, введите заголовок или содержание',
+  },
 } as const;
 
 export type TranslationsRu = typeof ru;
