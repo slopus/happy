@@ -310,7 +310,10 @@ export const zhHans = {
     cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
       `已安装版本 ${currentVersion}。请更新到 ${requiredVersion} 或更高版本`,
     updateCliInstructions: '请运行 npm install -g happy-coder@latest',
-        
+    updateCliAutomatic: '自动更新 CLI',
+    updateCliUpdating: '正在更新 CLI...',
+    updateCliSuccess: 'CLI 更新成功！会话将自动刷新。',
+    updateCliError: '更新 CLI 失败。请尝试手动更新。',
   },
 
   components: {

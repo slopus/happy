@@ -294,6 +294,10 @@ export const ru: TranslationStructure = {
     cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
       `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
     updateCliInstructions: 'Пожалуйста, выполните npm install -g happy-coder@latest',
+    updateCliAutomatic: 'Обновить CLI автоматически',
+    updateCliUpdating: 'Обновление CLI...',
+    updateCliSuccess: 'CLI успешно обновлен! Сессия автоматически обновится.',
+    updateCliError: 'Не удалось обновить CLI. Пожалуйста, попробуйте обновить вручную.',
   },
 
   components: {

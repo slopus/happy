@@ -310,7 +310,10 @@ export const pt: TranslationStructure = {
     cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
       `Versão ${currentVersion} instalada. Atualize para ${requiredVersion} ou posterior`,
     updateCliInstructions: 'Por favor execute npm install -g happy-coder@latest',
-        
+    updateCliAutomatic: 'Atualizar CLI automaticamente',
+    updateCliUpdating: 'Atualizando CLI...',
+    updateCliSuccess: 'CLI atualizado com sucesso! A sessão será atualizada automaticamente.',
+    updateCliError: 'Falha ao atualizar CLI. Por favor, tente a atualização manual.',
   },
 
   components: {
