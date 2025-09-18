@@ -9,6 +9,7 @@ import { applySettings, Settings } from './settings';
 import { LocalSettings, applyLocalSettings } from './localSettings';
 import { Purchases, customerInfoToPurchases } from './purchases';
 import { Profile } from './profile';
+import { DecryptedArtifact } from './artifactTypes';
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from './persistence';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
@@ -69,6 +70,7 @@ interface StorageState {
     sessionMessages: Record<string, SessionMessages>;
     sessionGitStatus: Record<string, GitStatus | null>;
     machines: Record<string, Machine>;
+    artifacts: Record<string, DecryptedArtifact>;
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
@@ -108,6 +110,10 @@ interface StorageState {
     getProjectGitStatus: (projectId: string) => import('./storageTypes').GitStatus | null;
     getSessionProjectGitStatus: (sessionId: string) => import('./storageTypes').GitStatus | null;
     updateSessionProjectGitStatus: (sessionId: string, status: import('./storageTypes').GitStatus | null) => void;
+    // Artifacts management methods
+    applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
+    updateArtifact: (artifact: DecryptedArtifact) => void;
+    deleteArtifact: (artifactId: string) => void;
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -221,6 +227,7 @@ export const storage = create<StorageState>()((set, get) => {
     profile,
     sessions: {},
     machines: {},
+    artifacts: {},
     sessionsData: null,  // Legacy - to be removed
     sessionListViewData: null,
     sessionMessages: {},
@@ -841,6 +848,37 @@ export const storage = create<StorageState>()((set, get) => {
       // Could be expanded to include cache cleanup, unused data removal, etc.
       console.log('🗜️ Storage: Compacting storage (placeholder)');
     },
+
+    // Artifacts management methods
+    applyArtifacts: (artifacts: DecryptedArtifact[]) => set((state) => {
+      const artifactsMap: Record<string, DecryptedArtifact> = {};
+      artifacts.forEach(artifact => {
+        artifactsMap[artifact.id] = artifact;
+      });
+
+      return {
+        ...state,
+        artifacts: artifactsMap,
+      };
+    }),
+
+    updateArtifact: (artifact: DecryptedArtifact) => set((state) => ({
+      ...state,
+      artifacts: {
+        ...state.artifacts,
+        [artifact.id]: artifact,
+      },
+    })),
+
+    deleteArtifact: (artifactId: string) => set((state) => {
+      const updatedArtifacts = { ...state.artifacts };
+      delete updatedArtifacts[artifactId];
+
+      return {
+        ...state,
+        artifacts: updatedArtifacts,
+      };
+    }),
   };
 });
 
@@ -983,4 +1021,18 @@ export function useIsDataReady(): boolean {
 
 export function useProfile() {
   return storage(useShallow((state) => state.profile));
+}
+
+// Artifacts hooks
+export function useArtifacts(): DecryptedArtifact[] {
+  return storage(useShallow((state) => {
+    // Filter out draft artifacts and sort by updatedAt
+    return Object.values(state.artifacts)
+      .filter(artifact => !artifact.draft)
+      .sort((a, b) => b.updatedAt - a.updatedAt);
+  }));
+}
+
+export function useArtifact(id: string): DecryptedArtifact | null {
+  return storage(useShallow((state) => state.artifacts[id] ?? null));
 }

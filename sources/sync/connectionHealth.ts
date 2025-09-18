@@ -19,6 +19,35 @@ export interface ConnectionHealthStatus {
   downtime: number;
 }
 
+export interface HeartbeatProfile {
+  interval: number;
+  timeout: number;
+  maxConsecutiveFailures: number;
+}
+
+export const HEARTBEAT_PROFILES = {
+  standard: {
+    interval: 30000,      // 30 seconds
+    timeout: 10000,       // 10 seconds
+    maxConsecutiveFailures: 3,
+  } as HeartbeatProfile,
+  aggressive: {
+    interval: 15000,      // 15 seconds - faster detection
+    timeout: 5000,        // 5 seconds
+    maxConsecutiveFailures: 2,
+  } as HeartbeatProfile,
+  corporate: {
+    interval: 10000,      // 10 seconds - most aggressive
+    timeout: 3000,        // 3 seconds
+    maxConsecutiveFailures: 1,
+  } as HeartbeatProfile,
+  battery_saver: {
+    interval: 60000,      // 60 seconds - reduced frequency
+    timeout: 15000,       // 15 seconds
+    maxConsecutiveFailures: 5,
+  } as HeartbeatProfile,
+} as const;
+
 export interface ConnectionHealthConfig {
   pingInterval: number;        // How often to ping (ms)
   pingTimeout: number;         // Ping timeout (ms)
@@ -53,6 +82,14 @@ export class ConnectionHealthMonitor {
   private lastDisconnectTime: number | null = null;
   private totalDowntime = 0;
 
+  // Profile management
+  private currentProfile: keyof typeof HEARTBEAT_PROFILES = 'standard';
+
+  // Auto-detection data
+  private failureHistory: Array<{ timestamp: number; type: string }> = [];
+  private latencyHistory: number[] = [];
+  private networkChangeCount = 0;
+
   constructor(config: Partial<ConnectionHealthConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
 
@@ -78,10 +115,11 @@ export class ConnectionHealthMonitor {
     this.isRunning = true;
     console.log('🏥 ConnectionHealthMonitor: Starting health monitoring');
 
-    // Start periodic ping checks
+    // Start periodic ping checks using current profile interval
+    const currentProfileData = HEARTBEAT_PROFILES[this.currentProfile];
     this.pingInterval = setInterval(() => {
       this.performHealthCheck();
-    }, this.config.pingInterval);
+    }, currentProfileData.interval);
 
     // Perform initial health check
     this.performHealthCheck();
@@ -144,6 +182,78 @@ export class ConnectionHealthMonitor {
   }
 
   /**
+   * Set heartbeat profile
+   */
+  setProfile(profileName: keyof typeof HEARTBEAT_PROFILES): void {
+    if (!HEARTBEAT_PROFILES[profileName]) {
+      console.warn(`Unknown profile '${profileName}', falling back to 'standard'`);
+      this.currentProfile = 'standard';
+      return;
+    }
+
+    this.currentProfile = profileName;
+
+    // Restart monitoring with new profile if running
+    if (this.isRunning) {
+      this.stop();
+      this.start();
+    }
+  }
+
+  /**
+   * Get current profile information
+   */
+  getCurrentProfile(): { name: keyof typeof HEARTBEAT_PROFILES; profile: HeartbeatProfile } {
+    return {
+      name: this.currentProfile,
+      profile: HEARTBEAT_PROFILES[this.currentProfile],
+    };
+  }
+
+  /**
+   * Get all available profiles
+   */
+  getAvailableProfiles(): typeof HEARTBEAT_PROFILES {
+    return HEARTBEAT_PROFILES;
+  }
+
+  /**
+   * Auto-detect optimal profile based on connection conditions
+   */
+  autoDetectProfile(): keyof typeof HEARTBEAT_PROFILES {
+    const recentFailures = this.getRecentFailures();
+    const avgLatency = this.getAverageLatency();
+
+    // Corporate profile for high failure rate or frequent network changes
+    if (recentFailures >= 10 || this.networkChangeCount >= 5) {
+      return 'corporate';
+    }
+
+    // Aggressive profile for moderate failures or high latency
+    if (recentFailures >= 3 || avgLatency > 800) {
+      return 'aggressive';
+    }
+
+    // Battery saver for very stable connections
+    if (recentFailures === 0 && avgLatency < 200) {
+      return 'battery_saver';
+    }
+
+    // Standard for normal conditions
+    return 'standard';
+  }
+
+  /**
+   * Apply auto-detected profile if different from current
+   */
+  applyAutoDetectedProfile(): void {
+    const detectedProfile = this.autoDetectProfile();
+    if (detectedProfile !== this.currentProfile) {
+      this.setProfile(detectedProfile);
+    }
+  }
+
+  /**
    * Perform a health check by pinging the server
    */
   private async performHealthCheck(): Promise<void> {
@@ -153,6 +263,7 @@ export class ConnectionHealthMonitor {
     }
 
     const startTime = Date.now();
+    const currentProfileData = HEARTBEAT_PROFILES[this.currentProfile];
 
     try {
       // Use a simple ping mechanism
@@ -166,16 +277,37 @@ export class ConnectionHealthMonitor {
       this.status.consecutiveFailures = 0;
       this.status.quality = this.calculateQuality(latency);
 
+      // Track latency for auto-detection
+      this.latencyHistory.push(latency);
+      if (this.latencyHistory.length > 50) {
+        this.latencyHistory = this.latencyHistory.slice(-50);
+      }
+
+      // Trigger auto-detection periodically
+      if (this.latencyHistory.length % 10 === 0 && this.latencyHistory.length > 0) {
+        this.applyAutoDetectedProfile();
+      }
+
       console.log(`🏥 ConnectionHealthMonitor: Ping successful - ${latency}ms (${this.status.quality})`);
 
     } catch (error) {
       // Handle ping failure
       this.status.consecutiveFailures += 1;
 
-      console.warn(`🏥 ConnectionHealthMonitor: Ping failed (${this.status.consecutiveFailures}/${this.config.maxConsecutiveFailures})`, error);
+      // Track failure for auto-detection
+      this.failureHistory.push({
+        timestamp: Date.now(),
+        type: error instanceof Error ? error.message : 'unknown'
+      });
 
-      // Update quality based on failure count
-      if (this.status.consecutiveFailures >= this.config.maxConsecutiveFailures) {
+      // Clean old failures (older than 1 hour)
+      const oneHourAgo = Date.now() - (60 * 60 * 1000);
+      this.failureHistory = this.failureHistory.filter(f => f.timestamp > oneHourAgo);
+
+      console.warn(`🏥 ConnectionHealthMonitor: Ping failed (${this.status.consecutiveFailures}/${currentProfileData.maxConsecutiveFailures})`, error);
+
+      // Update quality based on failure count using current profile
+      if (this.status.consecutiveFailures >= currentProfileData.maxConsecutiveFailures) {
         this.status.quality = 'failed';
       } else {
         this.status.quality = 'poor';
@@ -194,9 +326,10 @@ export class ConnectionHealthMonitor {
    */
   private async pingServer(): Promise<void> {
     return new Promise((resolve, reject) => {
+      const currentProfileData = HEARTBEAT_PROFILES[this.currentProfile];
       const timeout = setTimeout(() => {
         reject(new Error('Ping timeout'));
-      }, this.config.pingTimeout);
+      }, currentProfileData.timeout);
 
       try {
         // Use socket.io ping mechanism if available
@@ -255,6 +388,23 @@ export class ConnectionHealthMonitor {
   }
 
   /**
+   * Get recent failures count for auto-detection
+   */
+  private getRecentFailures(): number {
+    const tenMinutesAgo = Date.now() - (10 * 60 * 1000);
+    return this.failureHistory.filter(f => f.timestamp > tenMinutesAgo).length;
+  }
+
+  /**
+   * Get average latency for auto-detection
+   */
+  private getAverageLatency(): number {
+    if (this.latencyHistory.length === 0) return 0;
+    const sum = this.latencyHistory.reduce((a, b) => a + b, 0);
+    return sum / this.latencyHistory.length;
+  }
+
+  /**
    * Setup listeners for socket connection events and state machine
    */
   private setupSocketListeners(): void {
@@ -282,6 +432,9 @@ export class ConnectionHealthMonitor {
     apiSocket.onStatusChange((socketStatus) => {
       const now = Date.now();
       let event: StateTransitionEvent;
+
+      // Track network changes for auto-detection
+      this.networkChangeCount++;
 
       switch (socketStatus) {
         case 'disconnected':

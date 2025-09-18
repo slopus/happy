@@ -1293,6 +1293,234 @@ class Sync {
       }
     }
   };
+
+  // Get credentials for API calls
+  getCredentials = () => {
+    return this.credentials;
+  };
+
+  // Artifacts methods
+  fetchArtifactsList = async () => {
+    if (!this.credentials) {
+      console.error('No credentials available for fetching artifacts');
+      return;
+    }
+
+    try {
+      const { fetchArtifacts } = await import('./apiArtifacts');
+      const encryptedArtifacts = await fetchArtifacts(this.credentials);
+
+      // Decrypt artifacts
+      const decryptedArtifacts: import('./artifactTypes').DecryptedArtifact[] = [];
+
+      for (const artifact of encryptedArtifacts) {
+        try {
+          // Decrypt header
+          const decryptedHeader = await this.encryption.decryptRaw(artifact.header);
+          const header = JSON.parse(decryptedHeader) as import('./artifactTypes').ArtifactHeader;
+
+          decryptedArtifacts.push({
+            id: artifact.id,
+            title: header.title,
+            sessions: header.sessions,
+            draft: header.draft,
+            body: undefined, // Not loaded in list view
+            headerVersion: artifact.headerVersion,
+            bodyVersion: artifact.bodyVersion,
+            seq: artifact.seq,
+            createdAt: artifact.createdAt,
+            updatedAt: artifact.updatedAt,
+            isDecrypted: true,
+          });
+        } catch (error) {
+          console.error(`Failed to decrypt artifact ${artifact.id}:`, error);
+          // Add placeholder with failed decryption
+          decryptedArtifacts.push({
+            id: artifact.id,
+            title: null,
+            body: undefined,
+            headerVersion: artifact.headerVersion,
+            bodyVersion: artifact.bodyVersion,
+            seq: artifact.seq,
+            createdAt: artifact.createdAt,
+            updatedAt: artifact.updatedAt,
+            isDecrypted: false,
+          });
+        }
+      }
+
+      // Apply to storage
+      storage.getState().applyArtifacts(decryptedArtifacts);
+      console.log(`📋 fetchArtifactsList completed - processed ${decryptedArtifacts.length} artifacts`);
+    } catch (error) {
+      console.error('Failed to fetch artifacts list:', error);
+      throw error;
+    }
+  };
+
+  fetchArtifactWithBody = async (artifactId: string): Promise<import('./artifactTypes').DecryptedArtifact | null> => {
+    if (!this.credentials) {
+      console.error('No credentials available for fetching artifact');
+      return null;
+    }
+
+    try {
+      const { fetchArtifact } = await import('./apiArtifacts');
+      const encryptedArtifact = await fetchArtifact(this.credentials, artifactId);
+
+      // Decrypt header
+      const decryptedHeader = await this.encryption.decryptRaw(encryptedArtifact.header);
+      const header = JSON.parse(decryptedHeader) as import('./artifactTypes').ArtifactHeader;
+
+      // Decrypt body if present
+      let body: string | null = null;
+      if (encryptedArtifact.body) {
+        const decryptedBody = await this.encryption.decryptRaw(encryptedArtifact.body);
+        const bodyData = JSON.parse(decryptedBody) as import('./artifactTypes').ArtifactBody;
+        body = bodyData.body;
+      }
+
+      const decryptedArtifact: import('./artifactTypes').DecryptedArtifact = {
+        id: encryptedArtifact.id,
+        title: header.title,
+        sessions: header.sessions,
+        draft: header.draft,
+        body,
+        headerVersion: encryptedArtifact.headerVersion,
+        bodyVersion: encryptedArtifact.bodyVersion,
+        seq: encryptedArtifact.seq,
+        createdAt: encryptedArtifact.createdAt,
+        updatedAt: encryptedArtifact.updatedAt,
+        isDecrypted: true,
+      };
+
+      console.log(`📋 fetchArtifactWithBody completed for artifact ${artifactId}`);
+      return decryptedArtifact;
+    } catch (error) {
+      console.error(`Failed to fetch artifact ${artifactId}:`, error);
+      throw error;
+    }
+  };
+
+  createArtifact = async (title: string | null, body: string | null): Promise<string> => {
+    if (!this.credentials) {
+      throw new Error('No credentials available for creating artifact');
+    }
+
+    try {
+      const { createArtifact } = await import('./apiArtifacts');
+      const { randomUUID } = await import('expo-crypto');
+
+      const artifactId = randomUUID();
+
+      // Create header
+      const header: import('./artifactTypes').ArtifactHeader = {
+        title,
+        draft: false,
+      };
+      const encryptedHeader = await this.encryption.encryptRaw(JSON.stringify(header));
+
+      // Create body
+      const bodyData: import('./artifactTypes').ArtifactBody = {
+        body,
+      };
+      const encryptedBody = await this.encryption.encryptRaw(JSON.stringify(bodyData));
+
+      // Generate data encryption key (not used yet but required by API)
+      const dataKey = new Uint8Array(32);
+      crypto.getRandomValues(dataKey);
+      const encryptedDataKey = await this.encryption.encryptEncryptionKey(dataKey);
+
+      const request: import('./artifactTypes').ArtifactCreateRequest = {
+        id: artifactId,
+        header: encryptedHeader,
+        body: encryptedBody,
+        dataEncryptionKey: encryptedDataKey,
+      };
+
+      const createdArtifact = await createArtifact(this.credentials, request);
+
+      // Decrypt and add to storage
+      const decryptedArtifact: import('./artifactTypes').DecryptedArtifact = {
+        id: createdArtifact.id,
+        title,
+        body,
+        headerVersion: createdArtifact.headerVersion,
+        bodyVersion: createdArtifact.bodyVersion,
+        seq: createdArtifact.seq,
+        createdAt: createdArtifact.createdAt,
+        updatedAt: createdArtifact.updatedAt,
+        isDecrypted: true,
+      };
+
+      storage.getState().updateArtifact(decryptedArtifact);
+      console.log(`📋 createArtifact completed for artifact ${artifactId}`);
+
+      return artifactId;
+    } catch (error) {
+      console.error('Failed to create artifact:', error);
+      throw error;
+    }
+  };
+
+  updateArtifact = async (artifactId: string, title: string | null, body: string | null): Promise<void> => {
+    if (!this.credentials) {
+      throw new Error('No credentials available for updating artifact');
+    }
+
+    try {
+      const { updateArtifact } = await import('./apiArtifacts');
+
+      // Get current artifact from storage
+      const currentArtifact = storage.getState().artifacts[artifactId];
+      if (!currentArtifact) {
+        throw new Error('Artifact not found in storage');
+      }
+
+      // Create updated header
+      const header: import('./artifactTypes').ArtifactHeader = {
+        title,
+        sessions: currentArtifact.sessions,
+        draft: currentArtifact.draft,
+      };
+      const encryptedHeader = await this.encryption.encryptRaw(JSON.stringify(header));
+
+      // Create updated body
+      const bodyData: import('./artifactTypes').ArtifactBody = {
+        body,
+      };
+      const encryptedBody = await this.encryption.encryptRaw(JSON.stringify(bodyData));
+
+      const request: import('./artifactTypes').ArtifactUpdateRequest = {
+        header: encryptedHeader,
+        expectedHeaderVersion: currentArtifact.headerVersion,
+        body: encryptedBody,
+        expectedBodyVersion: currentArtifact.bodyVersion,
+      };
+
+      const response = await updateArtifact(this.credentials, artifactId, request);
+
+      if (!response.success) {
+        throw new Error(`Update failed: ${response.error}`);
+      }
+
+      // Update artifact in storage
+      const updatedArtifact: import('./artifactTypes').DecryptedArtifact = {
+        ...currentArtifact,
+        title,
+        body,
+        headerVersion: response.headerVersion || currentArtifact.headerVersion,
+        bodyVersion: response.bodyVersion || currentArtifact.bodyVersion,
+        updatedAt: Date.now(),
+      };
+
+      storage.getState().updateArtifact(updatedArtifact);
+      console.log(`📋 updateArtifact completed for artifact ${artifactId}`);
+    } catch (error) {
+      console.error(`Failed to update artifact ${artifactId}:`, error);
+      throw error;
+    }
+  };
 }
 
 // Global singleton instance

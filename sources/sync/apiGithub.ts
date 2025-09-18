@@ -83,6 +83,7 @@ export async function disconnectGitHub(credentials: AuthCredentials): Promise<vo
       method: 'DELETE',
       headers: {
         'Authorization': `Bearer ${credentials.token}`,
+        'Content-Type': 'application/json',
       },
     });
 

@@ -6,7 +6,7 @@ import { SessionEncryption } from './sessionEncryption';
 import { MachineEncryption } from './machineEncryption';
 import { encodeBase64, decodeBase64 } from '@/encryption/base64';
 import sodium from 'react-native-libsodium';
-import { decryptBox } from '@/encryption/libsodium';
+import { decryptBox, encryptBox } from '@/encryption/libsodium';
 
 export class Encryption {
 
@@ -160,5 +160,14 @@ export class Encryption {
       return null;
     }
     return decrypted;
+  }
+
+  async encryptEncryptionKey(dataKey: Uint8Array): Promise<string> {
+    const encrypted = encryptBox(dataKey, this.contentKeyPair.publicKey);
+    // Prepend version byte (0) to match decryption format
+    const versionedEncrypted = new Uint8Array(encrypted.length + 1);
+    versionedEncrypted[0] = 0;
+    versionedEncrypted.set(encrypted, 1);
+    return encodeBase64(versionedEncrypted, 'base64');
   }
 }
