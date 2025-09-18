@@ -9,6 +9,8 @@ import { db } from "@/storage/db";
 import { RelationshipStatus } from "@prisma/client";
 
 // Shared Zod Schemas
+
+const RelationshipStatusSchema = z.enum(['pending', 'accepted', 'rejected', 'removed']);
 const UserProfileSchema = z.object({
     id: z.string(),
     firstName: z.string(),
@@ -20,10 +22,9 @@ const UserProfileSchema = z.object({
         height: z.number().optional(),
         thumbhash: z.string().optional()
     }).nullable(),
-    username: z.string()
+    username: z.string(),
+    status: RelationshipStatusSchema
 });
-
-const RelationshipStatusSchema = z.enum(['pending', 'accepted', 'rejected', 'removed']);
 
 const RelationshipSchema = z.object({
     fromUserId: z.string(),
@@ -37,7 +38,7 @@ const RelationshipSchema = z.object({
 export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
     
     // Get multiple user profiles
-    app.get('/v1/friends/profiles', {
+    app.get('/v1/profiles', {
         schema: {
             querystring: z.object({
                 userIds: z.string() // Comma-separated list
@@ -54,7 +55,7 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
         const userIdArray = userIds.split(',').filter(id => id.trim());
         
         try {
-            const profiles = await FriendshipService.getUserProfiles(userIdArray);
+            const profiles = await FriendshipService.getUserProfiles(userIdArray, request.userId);
             return reply.send({ profiles });
         } catch (error) {
             log({ module: 'api', level: 'error' }, `Failed to get profiles: ${error}`);
@@ -63,7 +64,7 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
     });
 
     // Search user by username
-    app.get('/v1/friends/search', {
+    app.get('/v1/profiles/search', {
         schema: {
             querystring: z.object({
                 username: z.string()
@@ -79,7 +80,7 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
         const { username } = request.query;
         
         try {
-            const profile = await FriendshipService.searchUserByUsername(username);
+            const profile = await FriendshipService.searchUserByUsername(username, request.userId);
             return reply.send({ profile });
         } catch (error) {
             log({ module: 'api', level: 'error' }, `Failed to search user: ${error}`);
@@ -94,9 +95,8 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
                 recipientId: z.string()
             }),
             response: {
-                200: RelationshipSchema,
-                400: z.object({ error: z.string() }),
-                403: z.object({ error: z.string() })
+                200: z.object({ profile: UserProfileSchema.nullable() }),
+                400: z.object({ error: z.string() })
             }
         },
         preHandler: app.authenticate
@@ -116,23 +116,24 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
             ]);
 
             if (!hasGitHub || !recipientHasGitHub) {
-                return reply.code(403).send({ error: 'Both users must have GitHub connected' });
+                return reply.send({ profile: null });
             }
 
-            const relationship = await FriendshipService.sendFriendRequest(userId, recipientId);
+            const profile = await FriendshipService.sendFriendRequest(userId, recipientId);
 
-            // Get profiles for the socket event
-            const [fromUserProfile, toUserProfile] = await FriendshipService.getUserProfiles([userId, recipientId]);
+            // Get profiles (relative to recipient) for the socket event
+            const [fromUserProfile, toUserProfile] = await FriendshipService.getUserProfiles([userId, recipientId], recipientId);
 
             // Emit socket event to recipient
             const updateSeq = await allocateUserSeq(recipientId);
             const updatePayload = buildRelationshipUpdatedEvent(
                 {
-                    fromUserId: relationship.fromUserId,
-                    toUserId: relationship.toUserId,
-                    status: relationship.status,
+                    fromUserId: userId,
+                    toUserId: recipientId,
+                    status: 'pending',
                     action: 'created',
                     fromUser: fromUserProfile,
+                    toUser: toUserProfile,
                     timestamp: Date.now()
                 },
                 updateSeq,
@@ -145,20 +146,10 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
                 recipientFilter: { type: 'user-scoped-only' }
             });
 
-            return reply.send({
-                fromUserId: relationship.fromUserId,
-                toUserId: relationship.toUserId,
-                status: relationship.status as any,
-                createdAt: relationship.createdAt.toISOString(),
-                updatedAt: relationship.updatedAt.toISOString(),
-                acceptedAt: relationship.acceptedAt?.toISOString() || null
-            });
-        } catch (error: any) {
+            return reply.send({ profile });
+        } catch (error) {
             log({ module: 'api', level: 'error' }, `Failed to send friend request: ${error}`);
-            if (error.message === 'Friend request already exists') {
-                return reply.code(400).send({ error: error.message });
-            }
-            return reply.code(500).send({ error: 'Failed to send friend request' });
+            return reply.send({ profile: null });
         }
     });
 
@@ -171,12 +162,8 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
                 accept: z.boolean()
             }),
             response: {
-                200: z.object({
-                    relationship: RelationshipSchema,
-                    reverseRelationship: RelationshipSchema.optional()
-                }),
-                400: z.object({ error: z.string() }),
-                404: z.object({ error: z.string() })
+                200: z.object({ profile: UserProfileSchema.nullable() }),
+                400: z.object({ error: z.string() })
             }
         },
         preHandler: app.authenticate
@@ -191,19 +178,17 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
 
         try {
             if (accept) {
-                const result = await FriendshipService.acceptFriendRequest(fromUserId, toUserId);
-                
-                // Get profiles for the socket event
-                const [fromUserProfile, toUserProfile] = await FriendshipService.getUserProfiles([fromUserId, toUserId]);
+                const profile = await FriendshipService.acceptFriendRequest(fromUserId, toUserId);
 
-                // Emit socket event to both users
+                // Emit socket event to both users with status accepted
                 for (const targetUserId of [fromUserId, toUserId]) {
+                    const [fromUserProfile, toUserProfile] = await FriendshipService.getUserProfiles([fromUserId, toUserId], targetUserId);
                     const updateSeq = await allocateUserSeq(targetUserId);
                     const updatePayload = buildRelationshipUpdatedEvent(
                         {
-                            fromUserId: result.relationship.fromUserId,
-                            toUserId: result.relationship.toUserId,
-                            status: result.relationship.status,
+                            fromUserId,
+                            toUserId,
+                            status: 'accepted',
                             action: 'updated',
                             fromUser: fromUserProfile,
                             toUser: toUserProfile,
@@ -220,46 +205,15 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
                     });
                 }
 
-                return reply.send({
-                    relationship: {
-                        fromUserId: result.relationship.fromUserId,
-                        toUserId: result.relationship.toUserId,
-                        status: result.relationship.status as any,
-                        createdAt: result.relationship.createdAt.toISOString(),
-                        updatedAt: result.relationship.updatedAt.toISOString(),
-                        acceptedAt: result.relationship.acceptedAt?.toISOString() || null
-                    },
-                    reverseRelationship: {
-                        fromUserId: result.reverseRelationship.fromUserId,
-                        toUserId: result.reverseRelationship.toUserId,
-                        status: result.reverseRelationship.status as any,
-                        createdAt: result.reverseRelationship.createdAt.toISOString(),
-                        updatedAt: result.reverseRelationship.updatedAt.toISOString(),
-                        acceptedAt: result.reverseRelationship.acceptedAt?.toISOString() || null
-                    }
-                });
+                return reply.send({ profile });
             } else {
-                const relationship = await FriendshipService.rejectFriendRequest(fromUserId, toUserId);
-                
+                const profile = await FriendshipService.rejectFriendRequest(fromUserId, toUserId);
                 // No socket event for rejections (hidden from requestor)
-                
-                return reply.send({
-                    relationship: {
-                        fromUserId: relationship.fromUserId,
-                        toUserId: relationship.toUserId,
-                        status: relationship.status as any,
-                        createdAt: relationship.createdAt.toISOString(),
-                        updatedAt: relationship.updatedAt.toISOString(),
-                        acceptedAt: relationship.acceptedAt?.toISOString() || null
-                    }
-                });
+                return reply.send({ profile });
             }
-        } catch (error: any) {
+        } catch (error) {
             log({ module: 'api', level: 'error' }, `Failed to respond to friend request: ${error}`);
-            if (error.message === 'No pending friend request found') {
-                return reply.code(404).send({ error: error.message });
-            }
-            return reply.code(500).send({ error: 'Failed to respond to friend request' });
+            return reply.send({ profile: null });
         }
     });
 
@@ -329,9 +283,7 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
                 friendId: z.string()
             }),
             response: {
-                200: z.object({
-                    removed: z.boolean()
-                })
+                200: z.object({ profile: UserProfileSchema.nullable() })
             }
         },
         preHandler: app.authenticate
@@ -340,10 +292,10 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
         const { friendId } = request.params;
 
         try {
-            const removed = await FriendshipService.removeFriend(userId, friendId);
+            const profile = await FriendshipService.removeFriend(userId, friendId);
 
             // Get profiles for the socket event
-            const [userProfile] = await FriendshipService.getUserProfiles([userId]);
+            const [userProfile] = await FriendshipService.getUserProfiles([userId], friendId);
 
             // Emit socket event to the friend
             const updateSeq = await allocateUserSeq(friendId);
@@ -366,10 +318,10 @@ export function friendshipRoutes(app: Fastify, eventRouter: EventRouter) {
                 recipientFilter: { type: 'user-scoped-only' }
             });
 
-            return reply.send({ removed });
+            return reply.send({ profile });
         } catch (error) {
             log({ module: 'api', level: 'error' }, `Failed to remove friend: ${error}`);
-            return reply.code(500).send({ removed: false });
+            return reply.send({ profile: null });
         }
     });
 }
