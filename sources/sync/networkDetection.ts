@@ -6,6 +6,8 @@
  * and heartbeat profiles to optimize connection reliability across different network types.
  */
 
+import { log } from '@/log';
+
 // Import NetInfo with fallback for development environments
 let NetInfo: any;
 let NetInfoState: any;
@@ -19,7 +21,7 @@ try {
   NetInfoStateType = netInfoModule.NetInfoStateType;
   NetInfoCellularGeneration = netInfoModule.NetInfoCellularGeneration;
 } catch (error) {
-  console.warn('NetInfo not available, using mock implementation');
+  log.error('NetInfo not available, using mock implementation');
   // Mock implementation for development/testing
   NetInfo = {
     fetch: () => Promise.resolve({

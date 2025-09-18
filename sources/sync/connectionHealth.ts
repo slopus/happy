@@ -6,6 +6,7 @@
 import { apiSocket } from './apiSocket';
 import { storage } from './storage';
 import { connectionStateMachine, ConnectionState, type StateTransitionEvent } from './connectionStateMachine';
+import { log } from '@/log';
 
 export type ConnectionQuality = 'excellent' | 'good' | 'poor' | 'failed' | 'unknown';
 
@@ -122,7 +123,7 @@ export class ConnectionHealthMonitor {
     if (this.isRunning) return;
 
     this.isRunning = true;
-    console.log('🏥 ConnectionHealthMonitor: Starting health monitoring');
+    log.log('🏥 ConnectionHealthMonitor: Starting health monitoring');
 
     // Start periodic ping checks using current profile interval
     this.pingInterval = setInterval(() => {
@@ -140,7 +141,7 @@ export class ConnectionHealthMonitor {
     if (!this.isRunning) return;
 
     this.isRunning = false;
-    console.log('🏥 ConnectionHealthMonitor: Stopping health monitoring');
+    log.log('🏥 ConnectionHealthMonitor: Stopping health monitoring');
 
     if (this.pingInterval) {
       clearInterval(this.pingInterval);
@@ -172,7 +173,11 @@ export class ConnectionHealthMonitor {
    * Manually trigger a health check
    */
   async checkNow(): Promise<ConnectionHealthStatus> {
-    await this.performHealthCheck();
+    try {
+      await this.performHealthCheck();
+    } catch (error) {
+      log.error(`🏥 ConnectionHealthMonitor: Error in manual health check: ${error instanceof Error ? error.message : String(error)}`);
+    }
     return this.getStatus();
   }
 
@@ -194,7 +199,7 @@ export class ConnectionHealthMonitor {
    */
   setProfile(profileName: keyof typeof HEARTBEAT_PROFILES): void {
     if (!HEARTBEAT_PROFILES[profileName]) {
-      console.warn(`🏥 ConnectionHealthMonitor: Unknown profile '${profileName}', using 'standard'`);
+      log.error(`🏥 ConnectionHealthMonitor: Unknown profile '${profileName}', using 'standard'`);
       profileName = 'standard';
     }
 
@@ -202,8 +207,8 @@ export class ConnectionHealthMonitor {
     this.currentProfile = HEARTBEAT_PROFILES[profileName];
     this.currentProfileName = profileName;
 
-    console.log(`🏥 ConnectionHealthMonitor: Profile changed from '${oldProfile}' to '${profileName}'`);
-    console.log(`🏥 Profile settings: interval=${this.currentProfile.interval}ms, timeout=${this.currentProfile.timeout}ms, maxFailures=${this.currentProfile.maxConsecutiveFailures}`);
+    log.log(`🏥 ConnectionHealthMonitor: Profile changed from '${oldProfile}' to '${profileName}'`);
+    log.log(`🏥 Profile settings: interval=${this.currentProfile.interval}ms, timeout=${this.currentProfile.timeout}ms, maxFailures=${this.currentProfile.maxConsecutiveFailures}`);
 
     // Apply new profile settings
     this.reconfigureHeartbeat();
@@ -249,7 +254,7 @@ export class ConnectionHealthMonitor {
     // Count network changes in recent history
     const recentNetworkChanges = this.networkChangeCount;
 
-    console.log(`🏥 Auto-detection metrics: failureRate=${failureRate.toFixed(2)}, avgLatency=${avgLatency.toFixed(0)}ms, networkChanges=${recentNetworkChanges}`);
+    log.log(`🏥 Auto-detection metrics: failureRate=${failureRate.toFixed(2)}, avgLatency=${avgLatency.toFixed(0)}ms, networkChanges=${recentNetworkChanges}`);
 
     // Decision logic for profile selection
     if (failureRate > 0.3 || recentNetworkChanges > 3) {
@@ -273,7 +278,7 @@ export class ConnectionHealthMonitor {
   applyAutoDetectedProfile(): void {
     const optimalProfile = this.autoDetectProfile();
     if (optimalProfile !== this.currentProfileName) {
-      console.log(`🏥 ConnectionHealthMonitor: Auto-switching to '${optimalProfile}' profile`);
+      log.log(`🏥 ConnectionHealthMonitor: Auto-switching to '${optimalProfile}' profile`);
       this.setProfile(optimalProfile);
     }
   }
@@ -289,7 +294,7 @@ export class ConnectionHealthMonitor {
 
     // If monitoring is running, restart with new timing
     if (this.isRunning && this.pingInterval) {
-      console.log(`🏥 ConnectionHealthMonitor: Reconfiguring heartbeat with new intervals`);
+      log.log(`🏥 ConnectionHealthMonitor: Reconfiguring heartbeat with new intervals`);
 
       // Clear existing interval
       clearInterval(this.pingInterval);
@@ -299,7 +304,7 @@ export class ConnectionHealthMonitor {
         this.performHealthCheck();
       }, this.currentProfile.interval);
 
-      console.log(`🏥 ConnectionHealthMonitor: Heartbeat reconfigured - interval: ${this.currentProfile.interval}ms, timeout: ${this.currentProfile.timeout}ms`);
+      log.log(`🏥 ConnectionHealthMonitor: Heartbeat reconfigured - interval: ${this.currentProfile.interval}ms, timeout: ${this.currentProfile.timeout}ms`);
     }
   }
 
@@ -332,7 +337,7 @@ export class ConnectionHealthMonitor {
         this.latencyHistory.shift(); // Keep only recent history
       }
 
-      console.log(`🏥 ConnectionHealthMonitor: Ping successful - ${latency}ms (${this.status.quality})`);
+      log.log(`🏥 ConnectionHealthMonitor: Ping successful - ${latency}ms (${this.status.quality})`);
 
     } catch (error) {
       // Handle ping failure
@@ -348,7 +353,7 @@ export class ConnectionHealthMonitor {
       const oneHourAgo = Date.now() - (60 * 60 * 1000);
       this.failureHistory = this.failureHistory.filter(f => f.timestamp > oneHourAgo);
 
-      console.warn(`🏥 ConnectionHealthMonitor: Ping failed (${this.status.consecutiveFailures}/${this.currentProfile.maxConsecutiveFailures})`, error);
+      log.error(`🏥 ConnectionHealthMonitor: Ping failed (${this.status.consecutiveFailures}/${this.currentProfile.maxConsecutiveFailures}): ${error instanceof Error ? error.message : String(error)}`);
 
       // Update quality based on failure count (using current profile max failures)
       if (this.status.consecutiveFailures >= this.currentProfile.maxConsecutiveFailures) {
@@ -455,7 +460,7 @@ export class ConnectionHealthMonitor {
         this.lastDisconnectTime = context.lastDisconnectedAt;
       }
 
-      console.log(`🏥 ConnectionHealthMonitor: State machine updated: ${state} (${event.type})`);
+      log.log(`🏥 ConnectionHealthMonitor: State machine updated: ${state} (${event.type})`);
       this.notifyListeners();
     });
 
@@ -494,7 +499,7 @@ export class ConnectionHealthMonitor {
     });
 
     apiSocket.onReconnected(() => {
-      console.log('🏥 ConnectionHealthMonitor: Reconnection detected');
+      log.log('🏥 ConnectionHealthMonitor: Reconnection detected');
       const event: StateTransitionEvent = {
         type: 'connect',
         timestamp: Date.now(),
@@ -512,7 +517,7 @@ export class ConnectionHealthMonitor {
       try {
         listener(status);
       } catch (error) {
-        console.error('🏥 ConnectionHealthMonitor: Error in listener:', error);
+        log.error(`🏥 ConnectionHealthMonitor: Error in listener: ${error instanceof Error ? error.message : String(error)}`);
       }
     });
   }

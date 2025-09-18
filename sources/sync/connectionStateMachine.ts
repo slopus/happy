@@ -1,7 +1,9 @@
 /**
- * Connection state machine
- * Manages connection states with proper transitions and state-based actions
+ * Connection State Machine
+ * Manages connection states and transitions with proper state tracking
  */
+
+import { log } from '@/log';
 
 export enum ConnectionState {
   OFFLINE = 'offline',
@@ -102,7 +104,7 @@ export class ConnectionStateMachine {
     const newState = this.getNextState(this.currentState, event);
 
     if (!newState || !this.isValidTransition(this.currentState, newState)) {
-      console.warn(`🔀 ConnectionStateMachine: Invalid transition from ${this.currentState} with event ${event.type}`);
+      log.error(`🔀 ConnectionStateMachine: Invalid transition from ${this.currentState} with event ${event.type}`);
       return false;
     }
 
@@ -133,7 +135,7 @@ export class ConnectionStateMachine {
     // Notify listeners
     this.notifyStateChange(previousState, event);
 
-    console.log(`🔀 ConnectionStateMachine: ${previousState} → ${newState} (${event.type})`);
+    log.log(`🔀 ConnectionStateMachine: ${previousState} → ${newState} (${event.type})`);
     return true;
   }
 
@@ -369,7 +371,7 @@ export class ConnectionStateMachine {
 
     const heartbeat = setInterval(() => {
       // Trigger heartbeat event - this could ping the server
-      console.log('💓 ConnectionStateMachine: Heartbeat');
+      log.log('💓 ConnectionStateMachine: Heartbeat');
     }, this.config.heartbeatInterval);
 
     this.timers.set('heartbeat', heartbeat);
@@ -401,7 +403,7 @@ export class ConnectionStateMachine {
     }, delay);
 
     this.timers.set('reconnection', reconnection);
-    console.log(`🔀 ConnectionStateMachine: Scheduled reconnection in ${delay}ms`);
+    log.log(`🔀 ConnectionStateMachine: Scheduled reconnection in ${delay}ms`);
   }
 
   /**
@@ -421,7 +423,7 @@ export class ConnectionStateMachine {
     }, delay);
 
     this.timers.set('retry', retry);
-    console.log(`🔀 ConnectionStateMachine: Scheduled retry in ${delay}ms`);
+    log.log(`🔀 ConnectionStateMachine: Scheduled retry in ${delay}ms`);
   }
 
   /**
@@ -455,7 +457,7 @@ export class ConnectionStateMachine {
       try {
         listener(this.currentState, context, event);
       } catch (error) {
-        console.error('🔀 ConnectionStateMachine: Error in state change listener:', error);
+        log.error(`🔀 ConnectionStateMachine: Error in state change listener: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
   }

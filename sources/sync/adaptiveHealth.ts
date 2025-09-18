@@ -7,6 +7,8 @@
  * and configurable min/max intervals with smooth transitions.
  */
 
+import { log } from '@/log';
+
 export interface AdaptiveHealthConfig {
   basePingInterval: number;
   minPingInterval: number;
@@ -52,13 +54,13 @@ export class AdaptiveHealthMonitor {
    */
   start(scheduleCallback: (interval: number) => void): void {
     if (this.isRunning) {
-      console.log('🔄 AdaptiveHealthMonitor: Already running, ignoring start call');
+      log.log('🔄 AdaptiveHealthMonitor: Already running, ignoring start call');
       return;
     }
 
     this.isRunning = true;
     this.scheduleCallback = scheduleCallback;
-    console.log('🔄 AdaptiveHealthMonitor: Starting adaptive monitoring');
+    log.log('🔄 AdaptiveHealthMonitor: Starting adaptive monitoring');
     // Call the callback immediately with current interval
     this.scheduleCallback(this.currentInterval);
     this.scheduleNextPing();
@@ -81,7 +83,7 @@ export class AdaptiveHealthMonitor {
       this.nextPingTimer = null;
     }
 
-    console.log('🔄 AdaptiveHealthMonitor: Stopped adaptive monitoring');
+    log.log('🔄 AdaptiveHealthMonitor: Stopped adaptive monitoring');
   }
 
   /**
@@ -100,11 +102,11 @@ export class AdaptiveHealthMonitor {
     if (result.success) {
       this.consecutiveSuccesses++;
       this.consecutiveFailures = 0;
-      console.log(`🔄 AdaptiveHealthMonitor: Ping success (${this.consecutiveSuccesses} consecutive), latency: ${result.latency}ms`);
+      log.log(`🔄 AdaptiveHealthMonitor: Ping success (${this.consecutiveSuccesses} consecutive), latency: ${result.latency}ms`);
     } else {
       this.consecutiveFailures++;
       this.consecutiveSuccesses = 0;
-      console.log(`🔄 AdaptiveHealthMonitor: Ping failure (${this.consecutiveFailures} consecutive), error: ${result.error}`);
+      log.error(`🔄 AdaptiveHealthMonitor: Ping failure (${this.consecutiveFailures} consecutive), error: ${result.error}`);
     }
 
     this.scheduleAdaptation();
@@ -154,7 +156,7 @@ export class AdaptiveHealthMonitor {
       Math.min(this.config.maxPingInterval, this.currentInterval)
     );
 
-    console.log('🔄 AdaptiveHealthMonitor: Configuration updated', this.config);
+    log.log(`🔄 AdaptiveHealthMonitor: Configuration updated: ${JSON.stringify(this.config)}`);
   }
 
   /**
@@ -187,7 +189,7 @@ export class AdaptiveHealthMonitor {
     const latencyTrend = this.calculateLatencyTrend();
     const oldInterval = this.currentInterval;
 
-    console.log(`🔄 AdaptiveHealthMonitor: Adapting interval - stability: ${stability.toFixed(2)}, latency trend: ${latencyTrend.toFixed(2)}`);
+    log.log(`🔄 AdaptiveHealthMonitor: Adapting interval - stability: ${stability.toFixed(2)}, latency trend: ${latencyTrend.toFixed(2)}`);
 
     // Decision matrix for interval adjustment
     if (this.consecutiveFailures >= 2 || stability < 0.7) {
@@ -196,7 +198,7 @@ export class AdaptiveHealthMonitor {
         this.config.minPingInterval,
         this.currentInterval * 0.7
       );
-      console.log(`🔄 AdaptiveHealthMonitor: Network unstable - increasing frequency to ${this.currentInterval}ms`);
+      log.log(`🔄 AdaptiveHealthMonitor: Network unstable - increasing frequency to ${this.currentInterval}ms`);
 
     } else if (this.consecutiveSuccesses >= 5 && stability > this.config.stabilityThreshold) {
       // Network is very stable - can reduce frequency (increase interval)
@@ -204,7 +206,7 @@ export class AdaptiveHealthMonitor {
         this.config.maxPingInterval,
         this.currentInterval * 1.3
       );
-      console.log(`🔄 AdaptiveHealthMonitor: Network stable - reducing frequency to ${this.currentInterval}ms`);
+      log.log(`🔄 AdaptiveHealthMonitor: Network stable - reducing frequency to ${this.currentInterval}ms`);
 
     } else if (latencyTrend > 1.5) {
       // Latency is increasing - check more frequently
@@ -212,7 +214,7 @@ export class AdaptiveHealthMonitor {
         this.config.minPingInterval,
         this.currentInterval * 0.8
       );
-      console.log(`🔄 AdaptiveHealthMonitor: Latency trending up - increasing frequency to ${this.currentInterval}ms`);
+      log.log(`🔄 AdaptiveHealthMonitor: Latency trending up - increasing frequency to ${this.currentInterval}ms`);
 
     } else if (latencyTrend < 0.7 && stability > 0.85) {
       // Latency improving and stable - can reduce frequency slightly
@@ -220,7 +222,7 @@ export class AdaptiveHealthMonitor {
         this.config.maxPingInterval,
         this.currentInterval * 1.1
       );
-      console.log(`🔄 AdaptiveHealthMonitor: Latency improving - reducing frequency to ${this.currentInterval}ms`);
+      log.log(`🔄 AdaptiveHealthMonitor: Latency improving - reducing frequency to ${this.currentInterval}ms`);
     }
 
     // Ensure interval is within bounds
@@ -232,7 +234,7 @@ export class AdaptiveHealthMonitor {
     // Only reschedule if interval changed significantly (>10% change)
     const changePercent = Math.abs(this.currentInterval - oldInterval) / oldInterval;
     if (changePercent > 0.1) {
-      console.log(`🔄 AdaptiveHealthMonitor: Interval changed from ${oldInterval}ms to ${this.currentInterval}ms (${(changePercent * 100).toFixed(1)}% change)`);
+      log.log(`🔄 AdaptiveHealthMonitor: Interval changed from ${oldInterval}ms to ${this.currentInterval}ms (${(changePercent * 100).toFixed(1)}% change)`);
       if (this.scheduleCallback) {
         this.scheduleCallback(this.currentInterval);
       }
@@ -334,7 +336,7 @@ export class AdaptiveHealthMonitor {
       this.adaptationTimer = null;
     }
 
-    console.log('🔄 AdaptiveHealthMonitor: State reset');
+    log.log('🔄 AdaptiveHealthMonitor: State reset');
   }
 
   /**
