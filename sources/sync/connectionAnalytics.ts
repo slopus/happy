@@ -142,7 +142,7 @@ class SimpleMLModel {
     if (this.predictions.length < 10) return 0;
 
     const errors = this.predictions.map(p =>
-      Math.abs(p.predicted - p.actual) / Math.max(p.actual, 1)
+      Math.abs(p.predicted - p.actual) / Math.max(p.actual, 1),
     );
     const avgError = errors.reduce((sum, err) => sum + err, 0) / errors.length;
 
@@ -222,7 +222,7 @@ export class ConnectionAnalytics {
         metrics.avgLatency = this.updateRollingAverage(
           metrics.avgLatency,
           event.latency,
-          effectiveAlpha
+          effectiveAlpha,
         );
       }
     }
@@ -242,7 +242,7 @@ export class ConnectionAnalytics {
       metrics.dataUsage = this.updateRollingAverage(
         metrics.dataUsage,
         event.dataUsed,
-        effectiveAlpha
+        effectiveAlpha,
       );
     }
 
@@ -250,7 +250,7 @@ export class ConnectionAnalytics {
       metrics.batteryImpact = this.updateRollingAverage(
         metrics.batteryImpact,
         event.batteryDelta,
-        effectiveAlpha
+        effectiveAlpha,
       );
     }
 
@@ -264,7 +264,7 @@ export class ConnectionAnalytics {
       metrics.optimalHeartbeat = this.calculateOptimalHeartbeat(
         metrics,
         event.heartbeatInterval,
-        event.latency || 0
+        event.latency || 0,
       );
     }
 
@@ -277,7 +277,7 @@ export class ConnectionAnalytics {
   private updateFailurePattern(metrics: ConnectionMetrics, event: ConnectionEvent) {
     const timeContext = this.getTimeContext(event.timestamp);
     const existingPattern = metrics.failurePatterns.find(
-      p => p.type === event.failureType && p.timePattern === timeContext
+      p => p.type === event.failureType && p.timePattern === timeContext,
     );
 
     if (existingPattern) {
@@ -289,7 +289,7 @@ export class ConnectionAnalytics {
         frequency: 1,
         timePattern: timeContext,
         context: event.context || 'unknown',
-        lastOccurrence: event.timestamp
+        lastOccurrence: event.timestamp,
       });
     }
 
@@ -304,7 +304,7 @@ export class ConnectionAnalytics {
       metrics.avgLatency / 1000, // Normalize latency to seconds
       metrics.successRate,
       this.getNetworkQualityScore(event.networkProfile),
-      this.getTimeOfDayScore(event.timestamp)
+      this.getTimeOfDayScore(event.timestamp),
     ];
 
     // Target is optimal heartbeat interval
@@ -335,7 +335,7 @@ export class ConnectionAnalytics {
       metrics.avgLatency / 1000,
       metrics.successRate,
       this.getNetworkQualityScore(networkProfile),
-      this.getTimeOfDayScore(Date.now())
+      this.getTimeOfDayScore(Date.now()),
     ];
 
     const predictedHeartbeat = this.learningModel.predict(features);
@@ -344,7 +344,7 @@ export class ConnectionAnalytics {
       heartbeatInterval: Math.round(predictedHeartbeat),
       connectionTimeout: this.calculateOptimalTimeout(metrics),
       retryStrategy: this.calculateOptimalRetryStrategy(metrics),
-      transportPriority: this.calculateOptimalTransports(metrics, networkProfile)
+      transportPriority: this.calculateOptimalTransports(metrics, networkProfile),
     };
   }
 
@@ -359,13 +359,13 @@ export class ConnectionAnalytics {
   private calculateOptimalRetryStrategy(metrics: ConnectionMetrics): RetryStrategy {
     const baseDelay = Math.max(500, metrics.avgLatency * 2);
     const maxRetries = metrics.successRate > 0.9 ? 3 :
-                     metrics.successRate > 0.7 ? 5 : 7;
+      metrics.successRate > 0.7 ? 5 : 7;
 
     return {
       maxRetries,
       baseDelay: Math.max(500, Math.min(5000, baseDelay)),
       backoffMultiplier: metrics.successRate > 0.8 ? 1.5 : 2.0,
-      jitter: true
+      jitter: true,
     };
   }
 
@@ -396,7 +396,7 @@ export class ConnectionAnalytics {
       commonFailures: this.getCommonFailures(),
       recommendations,
       generatedAt: Date.now(),
-      learningEffectiveness
+      learningEffectiveness,
     };
   }
 
@@ -475,7 +475,7 @@ export class ConnectionAnalytics {
       networkType: metrics.networkType,
       successRate: Math.round(metrics.successRate * 10000) / 100, // Percentage with 2 decimals
       avgLatency: Math.round(metrics.avgLatency),
-      sampleCount: metrics.sampleCount
+      sampleCount: metrics.sampleCount,
     }));
   }
 
@@ -512,7 +512,7 @@ export class ConnectionAnalytics {
     const testSources = [
       'https://www.google.com/generate_204',
       'https://www.cloudflare.com/cdn-cgi/trace',
-      'https://httpbin.org/status/200'
+      'https://httpbin.org/status/200',
     ];
 
     const results = await Promise.allSettled(
@@ -522,22 +522,22 @@ export class ConnectionAnalytics {
           const response = await fetch(url, {
             method: 'GET',
             cache: 'no-cache',
-            signal: AbortSignal.timeout(5000)
+            signal: AbortSignal.timeout(5000),
           });
           const latency = Date.now() - startTime;
           return {
             source: new URL(url).hostname,
             latency,
-            success: response.ok
+            success: response.ok,
           };
         } catch (error) {
           return {
             source: new URL(url).hostname,
             latency: Date.now() - startTime,
-            success: false
+            success: false,
           };
         }
-      })
+      }),
     );
 
     return results
@@ -549,7 +549,7 @@ export class ConnectionAnalytics {
     this.latencyTests.push({
       timestamp: Date.now(),
       latency,
-      source
+      source,
     });
 
     // Keep only recent tests (last 100)
@@ -575,7 +575,7 @@ export class ConnectionAnalytics {
       batteryImpact: 0,
       timeOfDay: this.getTimeOfDayScore(Date.now()),
       sampleCount: 0,
-      lastUpdated: Date.now()
+      lastUpdated: Date.now(),
     };
   }
 
@@ -589,7 +589,7 @@ export class ConnectionAnalytics {
     const successFactor = metrics.successRate / targetSuccessRate;
     const latencyFactor = Math.max(0.5, Math.min(2.0, latency / 200)); // 200ms baseline
 
-    let optimal = currentInterval * successFactor * latencyFactor;
+    const optimal = currentInterval * successFactor * latencyFactor;
 
     // Clamp to reasonable range
     return Math.max(5000, Math.min(60000, optimal));
@@ -626,9 +626,9 @@ export class ConnectionAnalytics {
         maxRetries: 3,
         baseDelay: 1000,
         backoffMultiplier: 2.0,
-        jitter: true
+        jitter: true,
       },
-      transportPriority: ['websocket', 'polling']
+      transportPriority: ['websocket', 'polling'],
     };
 
     // Adjust for network type
@@ -711,7 +711,7 @@ export class ConnectionAnalytics {
           networkProfile: { type: 'wifi', quality: 'good', stability: 0.9, strength: 80, isExpensive: false, isInternetReachable: true },
           success: true,
           latency: metrics.avgLatency,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         };
         this.updateLearningModel(key, metrics, dummyEvent);
       }

@@ -16,7 +16,7 @@ describe('AdaptiveHealthMonitor', () => {
     minPingInterval: 5000,
     maxPingInterval: 120000,
     adaptationRate: 0.1,
-    stabilityThreshold: 0.8
+    stabilityThreshold: 0.8,
   };
 
   beforeEach(() => {
@@ -47,7 +47,7 @@ describe('AdaptiveHealthMonitor', () => {
         minPingInterval: 3000,
         maxPingInterval: 60000,
         adaptationRate: 0.2,
-        stabilityThreshold: 0.9
+        stabilityThreshold: 0.9,
       };
       const customMonitor = new AdaptiveHealthMonitor(customConfig);
       expect(customMonitor.getCurrentInterval()).toBe(15000);
@@ -99,7 +99,7 @@ describe('AdaptiveHealthMonitor', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: true,
-          latency: 50
+          latency: 50,
         });
       }
 
@@ -119,7 +119,7 @@ describe('AdaptiveHealthMonitor', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: false,
-          error: 'Connection timeout'
+          error: 'Connection timeout',
         });
       }
 
@@ -140,7 +140,7 @@ describe('AdaptiveHealthMonitor', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: true,
-          latency
+          latency,
         });
       });
 
@@ -157,7 +157,7 @@ describe('AdaptiveHealthMonitor', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: false,
-          error: 'Timeout'
+          error: 'Timeout',
         });
         vi.advanceTimersByTime(5000);
       }
@@ -170,7 +170,7 @@ describe('AdaptiveHealthMonitor', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: true,
-          latency: 20
+          latency: 20,
         });
         vi.advanceTimersByTime(5000);
       }
@@ -190,7 +190,7 @@ describe('AdaptiveHealthMonitor', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: true,
-          latency: 50 + (i % 3) * 5 // Small variance
+          latency: 50 + (i % 3) * 5, // Small variance
         });
       }
 
@@ -206,13 +206,13 @@ describe('AdaptiveHealthMonitor', () => {
         { success: true, latency: 500 },
         { success: true, latency: 1000 },
         { success: false, error: 'network error' },
-        { success: true, latency: 100 }
+        { success: true, latency: 100 },
       ];
 
       results.forEach((result, i) => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
-          ...result
+          ...result,
         });
       });
 
@@ -225,7 +225,7 @@ describe('AdaptiveHealthMonitor', () => {
       monitor.recordPingResult({
         timestamp: Date.now(),
         success: true,
-        latency: 100
+        latency: 100,
       });
 
       const status = monitor.getStatus();
@@ -245,7 +245,7 @@ describe('AdaptiveHealthMonitor', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: true,
-          latency
+          latency,
         });
       });
 
@@ -260,7 +260,7 @@ describe('AdaptiveHealthMonitor', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: true,
-          latency
+          latency,
         });
       });
 
@@ -273,7 +273,7 @@ describe('AdaptiveHealthMonitor', () => {
       monitor.recordPingResult({
         timestamp: Date.now(),
         success: true,
-        latency: 100
+        latency: 100,
       });
 
       const status = monitor.getStatus();
@@ -287,7 +287,7 @@ describe('AdaptiveHealthMonitor', () => {
       monitor.recordPingResult({
         timestamp: Date.now(),
         success: true,
-        latency: 100
+        latency: 100,
       });
 
       // Should not crash or affect state significantly
@@ -300,7 +300,7 @@ describe('AdaptiveHealthMonitor', () => {
 
       monitor.recordPingResult({
         timestamp: Date.now(),
-        success: true
+        success: true,
         // No latency field
       });
 
@@ -315,7 +315,7 @@ describe('AdaptiveHealthMonitor', () => {
         minPingInterval: 100,
         maxPingInterval: 1000000,
         adaptationRate: 1.0,
-        stabilityThreshold: 0.0
+        stabilityThreshold: 0.0,
       };
 
       const extremeMonitor = new AdaptiveHealthMonitor(extremeConfig);
@@ -325,7 +325,7 @@ describe('AdaptiveHealthMonitor', () => {
       extremeMonitor.recordPingResult({
         timestamp: Date.now(),
         success: false,
-        error: 'test error'
+        error: 'test error',
       });
 
       expect(extremeMonitor.getCurrentInterval()).toBeGreaterThanOrEqual(100);
@@ -347,7 +347,7 @@ describe('AdaptiveHealthMonitor', () => {
           timestamp: Date.now() + i * 100,
           success: i % 2 === 0,
           latency: i % 2 === 0 ? 50 : undefined,
-          error: i % 2 === 1 ? 'timeout' : undefined
+          error: i % 2 === 1 ? 'timeout' : undefined,
         });
 
         // Small advancement to trigger adaptations
@@ -357,7 +357,7 @@ describe('AdaptiveHealthMonitor', () => {
 
       // Check that intervals don't oscillate wildly
       const intervalChanges = intervals.slice(1).map((interval, i) =>
-        Math.abs(interval - intervals[i]) / intervals[i]
+        Math.abs(interval - intervals[i]) / intervals[i],
       );
 
       // Most changes should be small (less than 50% change)
@@ -376,12 +376,12 @@ describe('AdaptiveHealthMonitor', () => {
       monitor.recordPingResult({
         timestamp: Date.now(),
         success: true,
-        latency: 100
+        latency: 100,
       });
       monitor.recordPingResult({
         timestamp: Date.now() + 1000,
         success: false,
-        error: 'timeout'
+        error: 'timeout',
       });
 
       // Trigger adaptation
@@ -408,17 +408,17 @@ describe('AdaptiveHealthMonitor', () => {
       monitor.recordPingResult({
         timestamp: Date.now(),
         success: true,
-        latency: 100
+        latency: 100,
       });
       monitor.recordPingResult({
         timestamp: Date.now() + 1000,
         success: false,
-        error: 'timeout'
+        error: 'timeout',
       });
       monitor.recordPingResult({
         timestamp: Date.now() + 2000,
         success: true,
-        latency: 150
+        latency: 150,
       });
 
       const analytics = monitor.getAnalytics();
@@ -436,7 +436,7 @@ describe('AdaptiveHealthMonitor', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: true,
-          latency: 100 + i * 10
+          latency: 100 + i * 10,
         });
       }
 
@@ -458,12 +458,12 @@ describe('AdaptiveHealthMonitor', () => {
       monitor.recordPingResult({
         timestamp: Date.now(),
         success: false,
-        error: 'timeout'
+        error: 'timeout',
       });
       monitor.recordPingResult({
         timestamp: Date.now() + 1000,
         success: false,
-        error: 'timeout'
+        error: 'timeout',
       });
 
       const initialInterval = monitor.getCurrentInterval();
@@ -508,7 +508,7 @@ describe('AdaptiveHealthMonitor - Network Condition Simulations', () => {
           timestamp: Date.now() + i * 1000,
           success,
           latency: success ? 200 + Math.random() * 300 : undefined,
-          error: success ? undefined : 'Network unreachable'
+          error: success ? undefined : 'Network unreachable',
         });
 
         vi.advanceTimersByTime(5000); // Trigger adaptation
@@ -532,13 +532,13 @@ describe('AdaptiveHealthMonitor - Network Condition Simulations', () => {
         { success: false, error: 'timeout' },
         { success: true, latency: 1500 },
         { success: true, latency: 900 },
-        { success: true, latency: 2000 }
+        { success: true, latency: 2000 },
       ];
 
       results.forEach((result, i) => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
-          ...result
+          ...result,
         });
 
         vi.advanceTimersByTime(5000);
@@ -559,7 +559,7 @@ describe('AdaptiveHealthMonitor - Network Condition Simulations', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: true,
-          latency: 50 + Math.random() * 20 // Small variance around 50ms
+          latency: 50 + Math.random() * 20, // Small variance around 50ms
         });
 
         vi.advanceTimersByTime(5000);
@@ -580,7 +580,7 @@ describe('AdaptiveHealthMonitor - Network Condition Simulations', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: true,
-          latency: 25 + Math.random() * 10 // Very low variance
+          latency: 25 + Math.random() * 10, // Very low variance
         });
 
         vi.advanceTimersByTime(5000);
@@ -602,7 +602,7 @@ describe('AdaptiveHealthMonitor - Network Condition Simulations', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: true,
-          latency: 50
+          latency: 50,
         });
       }
 
@@ -615,7 +615,7 @@ describe('AdaptiveHealthMonitor - Network Condition Simulations', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + (i + 5) * 1000,
           success: true,
-          latency
+          latency,
         });
 
         vi.advanceTimersByTime(5000);
@@ -631,7 +631,7 @@ describe('AdaptiveHealthMonitor - Network Condition Simulations', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 1000,
           success: false,
-          error: 'Timeout'
+          error: 'Timeout',
         });
       }
 
@@ -643,7 +643,7 @@ describe('AdaptiveHealthMonitor - Network Condition Simulations', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + (i + 3) * 1000,
           success: true,
-          latency: 60 + Math.random() * 20
+          latency: 60 + Math.random() * 20,
         });
 
         vi.advanceTimersByTime(5000);
@@ -664,7 +664,7 @@ describe('AdaptiveHealthMonitor - Network Condition Simulations', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 100,
           success: Math.random() > 0.1, // 90% success rate
-          latency: Math.random() * 200 + 50
+          latency: Math.random() * 200 + 50,
         });
       }
 
@@ -684,7 +684,7 @@ describe('AdaptiveHealthMonitor - Network Condition Simulations', () => {
         monitor.recordPingResult({
           timestamp: Date.now() + i * 100,
           success: i % 3 !== 0, // Varying success pattern
-          latency: Math.random() * 500 + 100
+          latency: Math.random() * 500 + 100,
         });
 
         monitor.forceAdaptation(); // Force immediate adaptation

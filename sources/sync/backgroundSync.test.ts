@@ -5,7 +5,7 @@ import { BackgroundSyncManager, DEFAULT_BACKGROUND_CONFIG } from './backgroundSy
 // Mock dependencies
 vi.mock('react-native', () => {
   const mockAppStateListener = {
-    remove: vi.fn()
+    remove: vi.fn(),
   };
 
   return {
@@ -96,7 +96,7 @@ describe('BackgroundSyncManager', () => {
     it('should set up app state listener on initialization', () => {
       expect(AppState.addEventListener).toHaveBeenCalledWith(
         'change',
-        expect.any(Function)
+        expect.any(Function),
       );
     });
 

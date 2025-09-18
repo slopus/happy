@@ -26,9 +26,9 @@ try {
       type: 'wifi',
       isConnected: true,
       isInternetReachable: true,
-      details: { isConnectionExpensive: false }
+      details: { isConnectionExpensive: false },
     }),
-    addEventListener: () => () => {} // Unsubscribe function
+    addEventListener: () => () => {}, // Unsubscribe function
   };
 }
 
@@ -85,55 +85,55 @@ export interface ConnectionStrategy {
  */
 export const NETWORK_STRATEGIES: Record<string, ConnectionStrategy> = {
   'wifi-excellent': {
-    timeouts: { connection: 8000, heartbeat: 30000, retry: 1000 },
+    timeouts: { connection: 6000, heartbeat: 30000, retry: 1000 },
     retryPolicy: { maxAttempts: 3, backoffMultiplier: 1.5, baseDelay: 500 },
-    heartbeatProfile: 'standard'
+    heartbeatProfile: 'standard',
   },
   'wifi-good': {
     timeouts: { connection: 10000, heartbeat: 25000, retry: 1500 },
     retryPolicy: { maxAttempts: 4, backoffMultiplier: 1.7, baseDelay: 750 },
-    heartbeatProfile: 'standard'
+    heartbeatProfile: 'standard',
   },
   'wifi-poor': {
     timeouts: { connection: 15000, heartbeat: 15000, retry: 2000 },
     retryPolicy: { maxAttempts: 5, backoffMultiplier: 2.0, baseDelay: 1000 },
-    heartbeatProfile: 'aggressive'
+    heartbeatProfile: 'aggressive',
   },
   'cellular-excellent': {
     timeouts: { connection: 10000, heartbeat: 28000, retry: 1500 },
     retryPolicy: { maxAttempts: 3, backoffMultiplier: 1.6, baseDelay: 700 },
-    heartbeatProfile: 'standard'
+    heartbeatProfile: 'standard',
   },
   'cellular-good': {
     timeouts: { connection: 12000, heartbeat: 25000, retry: 2000 },
     retryPolicy: { maxAttempts: 4, backoffMultiplier: 1.8, baseDelay: 1000 },
-    heartbeatProfile: 'standard'
+    heartbeatProfile: 'standard',
   },
   'cellular-poor': {
     timeouts: { connection: 20000, heartbeat: 20000, retry: 3000 },
     retryPolicy: { maxAttempts: 6, backoffMultiplier: 2.5, baseDelay: 2000 },
-    heartbeatProfile: 'aggressive'
+    heartbeatProfile: 'aggressive',
   },
   'ethernet-excellent': {
     timeouts: { connection: 6000, heartbeat: 35000, retry: 800 },
     retryPolicy: { maxAttempts: 2, backoffMultiplier: 1.3, baseDelay: 400 },
-    heartbeatProfile: 'standard'
+    heartbeatProfile: 'standard',
   },
   'ethernet-good': {
     timeouts: { connection: 8000, heartbeat: 30000, retry: 1000 },
     retryPolicy: { maxAttempts: 3, backoffMultiplier: 1.5, baseDelay: 600 },
-    heartbeatProfile: 'standard'
+    heartbeatProfile: 'standard',
   },
   'corporate-restricted': {
     timeouts: { connection: 10000, heartbeat: 8000, retry: 1500 },
     retryPolicy: { maxAttempts: 8, backoffMultiplier: 1.2, baseDelay: 800 },
-    heartbeatProfile: 'corporate'
+    heartbeatProfile: 'corporate',
   },
   'unknown-default': {
     timeouts: { connection: 12000, heartbeat: 20000, retry: 2000 },
     retryPolicy: { maxAttempts: 5, backoffMultiplier: 2.0, baseDelay: 1000 },
-    heartbeatProfile: 'standard'
-  }
+    heartbeatProfile: 'standard',
+  },
 };
 
 /**
@@ -155,7 +155,7 @@ const DEFAULT_CONFIG: NetworkDetectionConfig = {
   qualityTestUrls: [
     'https://api.happy.engineering/ping',
     'https://1.1.1.1', // Cloudflare DNS
-    'https://8.8.8.8'  // Google DNS
+    'https://8.8.8.8',  // Google DNS
   ],
   latencyThresholds: {
     excellent: 100, // < 100ms
@@ -164,7 +164,7 @@ const DEFAULT_CONFIG: NetworkDetectionConfig = {
   },
   stabilityWindow: 10,
   testTimeout: 5000,
-  adaptationDelay: 2000
+  adaptationDelay: 2000,
 };
 
 /**
@@ -238,6 +238,10 @@ export class NetworkDetection {
       clearTimeout(this.adaptationTimer);
       this.adaptationTimer = null;
     }
+
+    // Clear current state
+    this.currentProfile = null;
+    this.currentStrategy = null;
   }
 
   /**
@@ -292,7 +296,7 @@ export class NetworkDetection {
     console.log('🌐 NetworkDetection: Network state changed:', {
       type: netInfo.type,
       isConnected: netInfo.isConnected,
-      isInternetReachable: netInfo.isInternetReachable
+      isInternetReachable: netInfo.isInternetReachable,
     });
 
     const profile = await this.createNetworkProfile(netInfo);
@@ -320,7 +324,7 @@ export class NetworkDetection {
       strength,
       isExpensive,
       generation,
-      isInternetReachable: netInfo.isInternetReachable || false
+      isInternetReachable: netInfo.isInternetReachable || false,
     };
   }
 
@@ -349,14 +353,14 @@ export class NetworkDetection {
    */
   private async assessNetworkQuality(): Promise<NetworkProfile['quality']> {
     const testPromises = this.config.qualityTestUrls.map(url =>
-      this.performLatencyTest(url)
+      this.performLatencyTest(url),
     );
 
     try {
       const results = await Promise.allSettled(testPromises);
       const successfulResults = results
         .filter((result): result is PromiseFulfilledResult<LatencyTestResult> =>
-          result.status === 'fulfilled' && result.value.success
+          result.status === 'fulfilled' && result.value.success,
         )
         .map(result => result.value);
 
@@ -366,7 +370,7 @@ export class NetworkDetection {
 
       // Calculate average latency from successful tests
       const avgLatency = successfulResults.reduce((sum, result) =>
-        sum + (result.latency || 0), 0
+        sum + (result.latency || 0), 0,
       ) / successfulResults.length;
 
       // Store results for stability calculation
@@ -405,7 +409,7 @@ export class NetworkDetection {
       await fetch(url, {
         method: 'HEAD',
         signal: controller.signal,
-        cache: 'no-cache'
+        cache: 'no-cache',
       });
 
       clearTimeout(timeoutId);
@@ -415,7 +419,7 @@ export class NetworkDetection {
         url,
         latency,
         success: true,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
 
     } catch (error) {
@@ -423,7 +427,7 @@ export class NetworkDetection {
         url,
         latency: null,
         success: false,
-        timestamp: Date.now()
+        timestamp: Date.now(),
       };
     }
   }
@@ -475,7 +479,11 @@ export class NetworkDetection {
    * Determine if network is expensive (cellular data)
    */
   private isNetworkExpensive(netInfo: NetInfoState): boolean {
-    return netInfo.type === 'cellular';
+    if (netInfo.type === 'cellular') return true;
+    if (netInfo.details && 'isConnectionExpensive' in netInfo.details) {
+      return netInfo.details.isConnectionExpensive === true;
+    }
+    return false;
   }
 
   /**
@@ -518,7 +526,7 @@ export class NetworkDetection {
       quality: profile.quality,
       stability: profile.stability.toFixed(2),
       isExpensive: profile.isExpensive,
-      generation: profile.generation
+      generation: profile.generation,
     });
 
     this.currentProfile = profile;
@@ -563,7 +571,7 @@ export class NetworkDetection {
    */
   private adjustStrategyForStability(
     strategy: ConnectionStrategy,
-    profile: NetworkProfile
+    profile: NetworkProfile,
   ): ConnectionStrategy {
     const adjusted = JSON.parse(JSON.stringify(strategy)) as ConnectionStrategy;
 
@@ -587,7 +595,7 @@ export class NetworkDetection {
    */
   private adjustStrategyForCellularGeneration(
     strategy: ConnectionStrategy,
-    generation: string
+    generation: string,
   ): ConnectionStrategy {
     const adjusted = JSON.parse(JSON.stringify(strategy)) as ConnectionStrategy;
 
@@ -640,13 +648,13 @@ export class NetworkDetection {
         : 0,
       averageLatency: this.latencyHistory.length > 0
         ? this.latencyHistory
-            .filter(r => r.success && r.latency !== null)
-            .reduce((sum, r) => sum + r.latency!, 0) /
+          .filter(r => r.success && r.latency !== null)
+          .reduce((sum, r) => sum + r.latency!, 0) /
           this.latencyHistory.filter(r => r.success && r.latency !== null).length
         : null,
       currentStability: this.calculateStability(),
       strategyChanges: 0, // Could track this if needed
-      lastProfileUpdate: this.currentProfile ? Date.now() : null
+      lastProfileUpdate: this.currentProfile ? Date.now() : null,
     };
   }
 }

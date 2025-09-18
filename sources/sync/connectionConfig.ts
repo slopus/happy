@@ -39,34 +39,34 @@ export interface ConnectionConfig {
  * This represents the V2 connection logic configuration
  */
 export const CONNECTION_CONFIG: ConnectionConfig = {
-    // Enhanced Connection Management - ENABLED BY DEFAULT for V2
-    enableEnhancedConnectionManagement: true,
+  // Enhanced Connection Management - ENABLED BY DEFAULT for V2
+  enableEnhancedConnectionManagement: true,
 
-    // Connection timeouts (in milliseconds)
-    maxReconnectAttempts: 5,
-    heartbeatInterval: 30000, // 30 seconds
-    connectionTimeout: 15000, // 15 seconds
-    reconnectionDelay: 2000, // 2 seconds
+  // Connection timeouts (in milliseconds)
+  maxReconnectAttempts: 5,
+  heartbeatInterval: 30000, // 30 seconds
+  connectionTimeout: 15000, // 15 seconds
+  reconnectionDelay: 2000, // 2 seconds
 
-    // Health monitoring
-    enableConnectionHealthMonitoring: true,
-    healthCheckInterval: 60000, // 1 minute
-    maxConsecutiveFailures: 3,
+  // Health monitoring
+  enableConnectionHealthMonitoring: true,
+  healthCheckInterval: 60000, // 1 minute
+  maxConsecutiveFailures: 3,
 
-    // Cleanup and maintenance
-    enableStaleConnectionCleanup: true,
-    staleConnectionThreshold: 300000, // 5 minutes
-    cleanupInterval: 120000, // 2 minutes
+  // Cleanup and maintenance
+  enableStaleConnectionCleanup: true,
+  staleConnectionThreshold: 300000, // 5 minutes
+  cleanupInterval: 120000, // 2 minutes
 
-    // Session persistence
-    enableSessionStatePersistence: true,
-    persistenceDebounceDelay: 1000, // 1 second
+  // Session persistence
+  enableSessionStatePersistence: true,
+  persistenceDebounceDelay: 1000, // 1 second
 
-    // Retry configuration
-    enableExponentialBackoff: true,
-    baseRetryDelay: 1000, // 1 second
-    maxRetryDelay: 30000, // 30 seconds
-    retryJitter: true,
+  // Retry configuration
+  enableExponentialBackoff: true,
+  baseRetryDelay: 1000, // 1 second
+  maxRetryDelay: 30000, // 30 seconds
+  retryJitter: true,
 };
 
 /**
@@ -74,11 +74,11 @@ export const CONNECTION_CONFIG: ConnectionConfig = {
  * For backward compatibility when enhanced features need to be disabled
  */
 export const LEGACY_CONNECTION_CONFIG: ConnectionConfig = {
-    ...CONNECTION_CONFIG,
-    enableEnhancedConnectionManagement: false,
-    enableConnectionHealthMonitoring: false,
-    enableStaleConnectionCleanup: false,
-    enableSessionStatePersistence: false,
+  ...CONNECTION_CONFIG,
+  enableEnhancedConnectionManagement: false,
+  enableConnectionHealthMonitoring: false,
+  enableStaleConnectionCleanup: false,
+  enableSessionStatePersistence: false,
 };
 
 /**
@@ -86,15 +86,15 @@ export const LEGACY_CONNECTION_CONFIG: ConnectionConfig = {
  * Can be overridden by environment variables or runtime configuration
  */
 export function getConnectionConfig(): ConnectionConfig {
-    // Check for environment override to disable enhanced features
-    const forceDisableEnhanced = process.env.EXPO_PUBLIC_DISABLE_ENHANCED_CONNECTION === 'true';
+  // Check for environment override to disable enhanced features
+  const forceDisableEnhanced = process.env.EXPO_PUBLIC_DISABLE_ENHANCED_CONNECTION === 'true';
 
-    if (forceDisableEnhanced) {
-        console.warn('🔧 Enhanced connection management disabled via environment variable');
-        return LEGACY_CONNECTION_CONFIG;
-    }
+  if (forceDisableEnhanced) {
+    console.warn('🔧 Enhanced connection management disabled via environment variable');
+    return LEGACY_CONNECTION_CONFIG;
+  }
 
-    return CONNECTION_CONFIG;
+  return CONNECTION_CONFIG;
 }
 
 /**
@@ -104,25 +104,25 @@ export function getConnectionConfig(): ConnectionConfig {
 let runtimeConfig: Partial<ConnectionConfig> | null = null;
 
 export function setConnectionConfigOverride(config: Partial<ConnectionConfig>): void {
-    runtimeConfig = config;
-    console.log('🔧 Connection config override applied:', config);
+  runtimeConfig = config;
+  console.log('🔧 Connection config override applied:', config);
 }
 
 export function clearConnectionConfigOverride(): void {
-    runtimeConfig = null;
-    console.log('🔧 Connection config override cleared');
+  runtimeConfig = null;
+  console.log('🔧 Connection config override cleared');
 }
 
 export function getEffectiveConnectionConfig(): ConnectionConfig {
-    const baseConfig = getConnectionConfig();
-    return runtimeConfig ? { ...baseConfig, ...runtimeConfig } : baseConfig;
+  const baseConfig = getConnectionConfig();
+  return runtimeConfig ? { ...baseConfig, ...runtimeConfig } : baseConfig;
 }
 
 /**
  * Check if enhanced connection management is enabled
  */
 export function isEnhancedConnectionManagementEnabled(): boolean {
-    return getEffectiveConnectionConfig().enableEnhancedConnectionManagement;
+  return getEffectiveConnectionConfig().enableEnhancedConnectionManagement;
 }
 
 /**
@@ -140,13 +140,13 @@ export interface EnhancedFeatures {
  * Get current enhanced features status
  */
 export function getEnhancedFeaturesStatus(): EnhancedFeatures {
-    const config = getEffectiveConnectionConfig();
+  const config = getEffectiveConnectionConfig();
 
-    return {
-        connectionHealthMonitoring: config.enableEnhancedConnectionManagement && config.enableConnectionHealthMonitoring,
-        staleConnectionCleanup: config.enableEnhancedConnectionManagement && config.enableStaleConnectionCleanup,
-        sessionStatePersistence: config.enableEnhancedConnectionManagement && config.enableSessionStatePersistence,
-        adaptiveRetryLogic: config.enableEnhancedConnectionManagement && config.enableExponentialBackoff,
-        improvedErrorRecovery: config.enableEnhancedConnectionManagement,
-    };
+  return {
+    connectionHealthMonitoring: config.enableEnhancedConnectionManagement && config.enableConnectionHealthMonitoring,
+    staleConnectionCleanup: config.enableEnhancedConnectionManagement && config.enableStaleConnectionCleanup,
+    sessionStatePersistence: config.enableEnhancedConnectionManagement && config.enableSessionStatePersistence,
+    adaptiveRetryLogic: config.enableEnhancedConnectionManagement && config.enableExponentialBackoff,
+    improvedErrorRecovery: config.enableEnhancedConnectionManagement,
+  };
 }

@@ -6,7 +6,7 @@ import {
   getTaskManager,
   getBackgroundFetch,
   EXPO_MODULES_AVAILABILITY,
-  type TaskManagerTaskExecutor
+  type TaskManagerTaskExecutor,
 } from './expoModuleMocks';
 
 // Get conditional imports
@@ -58,7 +58,7 @@ export class BackgroundSyncManager {
   private setupAppStateListener() {
     this.appStateSubscription = AppState.addEventListener(
       'change',
-      this.handleAppStateChange.bind(this)
+      this.handleAppStateChange.bind(this),
     );
   }
 
@@ -350,7 +350,7 @@ export class BackgroundSyncManager {
 
       // Only process recent operations (within last 5 minutes)
       const recentOperations = this.criticalSyncQueue.filter(
-        op => now - op.timestamp < 300000
+        op => now - op.timestamp < 300000,
       );
 
       for (const operation of recentOperations) {
@@ -435,7 +435,7 @@ export class BackgroundSyncManager {
 
       // Clean up old critical operations (older than 10 minutes)
       this.criticalSyncQueue = this.criticalSyncQueue.filter(
-        op => now - op.timestamp < 600000
+        op => now - op.timestamp < 600000,
       );
 
       log.log(`🧹 Cleaned up stale operations, ${this.criticalSyncQueue.length} remaining`);

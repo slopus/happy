@@ -27,7 +27,7 @@ const DEFAULT_CONFIG: AdaptiveHealthConfig = {
   minPingInterval: 5000,     // 5 seconds minimum
   maxPingInterval: 120000,   // 2 minutes maximum
   adaptationRate: 0.1,       // How quickly to adapt (0.1 = 10% change per adaptation)
-  stabilityThreshold: 0.8    // Stability threshold for reducing frequency
+  stabilityThreshold: 0.8,    // Stability threshold for reducing frequency
 };
 
 export class AdaptiveHealthMonitor {
@@ -128,7 +128,7 @@ export class AdaptiveHealthMonitor {
     latencyTrend: number;
     totalPings: number;
     successRate: number;
-  } {
+    } {
     return {
       currentInterval: this.currentInterval,
       consecutiveSuccesses: this.consecutiveSuccesses,
@@ -138,7 +138,7 @@ export class AdaptiveHealthMonitor {
       totalPings: this.pingHistory.length,
       successRate: this.pingHistory.length > 0
         ? this.pingHistory.filter(r => r.success).length / this.pingHistory.length
-        : 0
+        : 0,
     };
   }
 
@@ -151,7 +151,7 @@ export class AdaptiveHealthMonitor {
     // Ensure current interval is within new bounds
     this.currentInterval = Math.max(
       this.config.minPingInterval,
-      Math.min(this.config.maxPingInterval, this.currentInterval)
+      Math.min(this.config.maxPingInterval, this.currentInterval),
     );
 
     console.log('🔄 AdaptiveHealthMonitor: Configuration updated', this.config);
@@ -194,7 +194,7 @@ export class AdaptiveHealthMonitor {
       // Network is unstable - increase frequency (decrease interval)
       this.currentInterval = Math.max(
         this.config.minPingInterval,
-        this.currentInterval * 0.7
+        this.currentInterval * 0.7,
       );
       console.log(`🔄 AdaptiveHealthMonitor: Network unstable - increasing frequency to ${this.currentInterval}ms`);
 
@@ -202,7 +202,7 @@ export class AdaptiveHealthMonitor {
       // Network is very stable - can reduce frequency (increase interval)
       this.currentInterval = Math.min(
         this.config.maxPingInterval,
-        this.currentInterval * 1.3
+        this.currentInterval * 1.3,
       );
       console.log(`🔄 AdaptiveHealthMonitor: Network stable - reducing frequency to ${this.currentInterval}ms`);
 
@@ -210,7 +210,7 @@ export class AdaptiveHealthMonitor {
       // Latency is increasing - check more frequently
       this.currentInterval = Math.max(
         this.config.minPingInterval,
-        this.currentInterval * 0.8
+        this.currentInterval * 0.8,
       );
       console.log(`🔄 AdaptiveHealthMonitor: Latency trending up - increasing frequency to ${this.currentInterval}ms`);
 
@@ -218,7 +218,7 @@ export class AdaptiveHealthMonitor {
       // Latency improving and stable - can reduce frequency slightly
       this.currentInterval = Math.min(
         this.config.maxPingInterval,
-        this.currentInterval * 1.1
+        this.currentInterval * 1.1,
       );
       console.log(`🔄 AdaptiveHealthMonitor: Latency improving - reducing frequency to ${this.currentInterval}ms`);
     }
@@ -226,7 +226,7 @@ export class AdaptiveHealthMonitor {
     // Ensure interval is within bounds
     this.currentInterval = Math.max(
       this.config.minPingInterval,
-      Math.min(this.config.maxPingInterval, this.currentInterval)
+      Math.min(this.config.maxPingInterval, this.currentInterval),
     );
 
     // Only reschedule if interval changed significantly (>10% change)
@@ -356,7 +356,7 @@ export class AdaptiveHealthMonitor {
       avgLatency: number;
       adaptationsSinceStart: number;
     };
-  } {
+    } {
     const successfulPings = this.pingHistory.filter(r => r.success && r.latency !== undefined);
     const avgLatency = successfulPings.length > 0
       ? successfulPings.reduce((sum, r) => sum + r.latency!, 0) / successfulPings.length
@@ -379,7 +379,7 @@ export class AdaptiveHealthMonitor {
           : 0,
         avgLatency,
         adaptationsSinceStart: 0, // Could track this if needed
-      }
+      },
     };
   }
 }

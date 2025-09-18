@@ -297,7 +297,7 @@ export class ConnectionHealthMonitor {
       // Track failure for auto-detection
       this.failureHistory.push({
         timestamp: Date.now(),
-        type: error instanceof Error ? error.message : 'unknown'
+        type: error instanceof Error ? error.message : 'unknown',
       });
 
       // Clean old failures (older than 1 hour)

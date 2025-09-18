@@ -67,7 +67,7 @@ export class EnhancedSessionRecovery {
   private insertByPriority(operation: QueuedOperation) {
     const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
     const insertIndex = this.offlineQueue.findIndex(
-      op => priorityOrder[op.priority] > priorityOrder[operation.priority]
+      op => priorityOrder[op.priority] > priorityOrder[operation.priority],
     );
 
     if (insertIndex === -1) {
@@ -101,7 +101,7 @@ export class EnhancedSessionRecovery {
       processed: 0,
       failed: 0,
       conflicts: 0,
-      errors: []
+      errors: [],
     };
 
     // Process operations in priority order
@@ -122,14 +122,14 @@ export class EnhancedSessionRecovery {
             results.failed++;
             results.errors.push({
               operationId: operation.id,
-              error: 'Max retries exceeded'
+              error: 'Max retries exceeded',
             });
           }
         }
       } catch (error) {
         results.errors.push({
           operationId: operation.id,
-          error: error instanceof Error ? error.message : 'Unknown error'
+          error: error instanceof Error ? error.message : 'Unknown error',
         });
       }
     }
@@ -158,7 +158,7 @@ export class EnhancedSessionRecovery {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Message processing failed'
+        error: error instanceof Error ? error.message : 'Message processing failed',
       };
     }
   }
@@ -173,7 +173,7 @@ export class EnhancedSessionRecovery {
         return {
           success: false,
           conflict: true,
-          conflictData: { remoteState: 'conflicting_data' }
+          conflictData: { remoteState: 'conflicting_data' },
         };
       }
 
@@ -181,7 +181,7 @@ export class EnhancedSessionRecovery {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'State update failed'
+        error: error instanceof Error ? error.message : 'State update failed',
       };
     }
   }
@@ -193,14 +193,14 @@ export class EnhancedSessionRecovery {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'User action processing failed'
+        error: error instanceof Error ? error.message : 'User action processing failed',
       };
     }
   }
 
   private async handleConflict(
     operation: QueuedOperation,
-    conflictData: any
+    conflictData: any,
   ): Promise<void> {
     const resolver = this.conflictResolver.get(operation.type);
     if (!resolver) {
@@ -258,7 +258,7 @@ export class EnhancedSessionRecovery {
       strategy: 'merge',
       mergeFunction: (local, remote) => {
         return local.timestamp > remote.timestamp ? local : remote;
-      }
+      },
     });
 
     // State updates: field-level merging
@@ -266,12 +266,12 @@ export class EnhancedSessionRecovery {
       strategy: 'merge',
       mergeFunction: (local, remote) => {
         return this.mergeStateUpdates(local, remote);
-      }
+      },
     });
 
     // User actions: local wins (user intent preservation)
     this.conflictResolver.set('user_action', {
-      strategy: 'local_wins'
+      strategy: 'local_wins',
     });
   }
 
@@ -296,7 +296,7 @@ export class EnhancedSessionRecovery {
       critical: 0,
       high: 0,
       medium: 0,
-      low: 0
+      low: 0,
     };
 
     let oldestOperation = now;
@@ -311,7 +311,7 @@ export class EnhancedSessionRecovery {
       totalOperations: this.offlineQueue.length,
       byPriority,
       oldestOperationAge: now - oldestOperation,
-      estimatedProcessingTime: this.estimateProcessingTime()
+      estimatedProcessingTime: this.estimateProcessingTime(),
     };
   }
 

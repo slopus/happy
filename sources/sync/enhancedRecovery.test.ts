@@ -20,7 +20,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'low',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       const criticalId = recovery.queueOperation({
@@ -29,7 +29,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'critical',
         timestamp: Date.now(),
         maxRetries: 5,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       const highId = recovery.queueOperation({
@@ -38,7 +38,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'high',
         timestamp: Date.now(),
         maxRetries: 4,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       const status = recovery.getQueueStatus();
@@ -65,7 +65,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'low',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       recovery.queueOperation({
@@ -74,7 +74,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'high',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       recovery.queueOperation({
@@ -83,7 +83,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'critical',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       await recovery.processOfflineQueue();
@@ -101,7 +101,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       const id2 = recovery.queueOperation({
@@ -110,7 +110,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       expect(id1).not.toBe(id2);
@@ -131,7 +131,7 @@ describe('Enhanced Session Recovery', () => {
           priority: 'low',
           timestamp: Date.now() + i, // Different timestamps
           maxRetries: 3,
-          expiresAt: Date.now() + 60000
+          expiresAt: Date.now() + 60000,
         });
       }
 
@@ -148,7 +148,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'low',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       recovery.queueOperation({
@@ -157,7 +157,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'low',
         timestamp: Date.now() + 1,
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       // Add critical operations
@@ -167,7 +167,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'critical',
         timestamp: Date.now() + 2,
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       recovery.queueOperation({
@@ -176,7 +176,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'critical',
         timestamp: Date.now() + 3,
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       const status = recovery.getQueueStatus();
@@ -194,7 +194,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: expiredTime
+        expiresAt: expiredTime,
       });
 
       recovery.queueOperation({
@@ -203,7 +203,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: validTime
+        expiresAt: validTime,
       });
 
       // Force queue cleanup
@@ -221,7 +221,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       const result = await recovery.processOfflineQueue();
@@ -250,7 +250,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: Date.now(),
         maxRetries: 5,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       // Process multiple times to trigger retries
@@ -278,7 +278,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: Date.now(),
         maxRetries: 2,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       // Process enough times to exceed max retries
@@ -306,7 +306,7 @@ describe('Enhanced Session Recovery', () => {
         return {
           success: false,
           conflict: true,
-          conflictData: { timestamp: now - 1000 } // Older timestamp
+          conflictData: { timestamp: now - 1000 }, // Older timestamp
         };
       };
 
@@ -316,7 +316,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: now,
         maxRetries: 3,
-        expiresAt: now + 60000
+        expiresAt: now + 60000,
       });
 
       const result = await recovery.processOfflineQueue();
@@ -330,12 +330,12 @@ describe('Enhanced Session Recovery', () => {
     test('should merge state updates correctly', () => {
       const local = {
         field1: { value: 'local1', lastModified: 1000 },
-        field2: { value: 'local2', lastModified: 2000 }
+        field2: { value: 'local2', lastModified: 2000 },
       };
 
       const remote = {
         field1: { value: 'remote1', lastModified: 1500 },
-        field2: { value: 'remote2', lastModified: 1000 }
+        field2: { value: 'remote2', lastModified: 1000 },
       };
 
       const merged = (recovery as any).mergeStateUpdates(local, remote);
@@ -350,7 +350,7 @@ describe('Enhanced Session Recovery', () => {
         return {
           success: false,
           conflict: true,
-          conflictData: { remoteAction: 'different' }
+          conflictData: { remoteAction: 'different' },
         };
       };
 
@@ -360,7 +360,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'high',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       const result = await recovery.processOfflineQueue();
@@ -382,7 +382,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       const afterMemory = recovery.getQueueMemoryUsage();
@@ -397,7 +397,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'critical',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       recovery.queueOperation({
@@ -406,7 +406,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'low',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       const status = recovery.getQueueStatus();
@@ -424,7 +424,7 @@ describe('Enhanced Session Recovery', () => {
           priority: i % 2 === 0 ? 'high' : 'low',
           timestamp: Date.now() + i,
           maxRetries: 3,
-          expiresAt: Date.now() + 60000
+          expiresAt: Date.now() + 60000,
         });
       }
 
@@ -444,7 +444,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'critical',
         timestamp: now - 5000, // 5 seconds ago
         maxRetries: 3,
-        expiresAt: now + 60000
+        expiresAt: now + 60000,
       });
 
       recovery.queueOperation({
@@ -453,7 +453,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: now - 3000, // 3 seconds ago
         maxRetries: 3,
-        expiresAt: now + 60000
+        expiresAt: now + 60000,
       });
 
       const status = recovery.getQueueStatus();
@@ -490,7 +490,7 @@ describe('Enhanced Session Recovery', () => {
           priority: 'low',
           timestamp: Date.now() + i,
           maxRetries: 3,
-          expiresAt: Date.now() + 60000
+          expiresAt: Date.now() + 60000,
         });
       }
 
@@ -512,7 +512,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       expect(recovery.getQueueSize()).toBe(1);
@@ -534,7 +534,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium' as const,
         retryCount: 0,
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       };
 
       (recovery as any).offlineQueue.push(unknownOp);
@@ -557,7 +557,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       const result = await recovery.processOfflineQueue();
@@ -580,7 +580,7 @@ describe('Enhanced Session Recovery', () => {
         priority: 'medium',
         timestamp: Date.now(),
         maxRetries: 3,
-        expiresAt: Date.now() + 60000
+        expiresAt: Date.now() + 60000,
       });
 
       expect(recovery2.getQueueSize()).toBe(1);

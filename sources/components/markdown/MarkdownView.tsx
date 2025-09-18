@@ -31,7 +31,7 @@ export const MarkdownView = React.memo((props: {
       // Return a fallback simple text block
       return [{
         type: 'text' as const,
-        content: [{ styles: [], text: props.markdown, url: null }]
+        content: [{ styles: [], text: props.markdown, url: null }],
       }];
     }
   }, [props.markdown]);
