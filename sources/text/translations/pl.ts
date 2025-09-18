@@ -42,6 +42,7 @@ export const pl: TranslationStructure = {
     logout: 'Wyloguj',
     yes: 'Tak',
     no: 'Nie',
+    discard: 'Odrzuć',
     version: 'Wersja',
     copied: 'Skopiowano',
     scanning: 'Skanowanie...',

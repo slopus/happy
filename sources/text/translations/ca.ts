@@ -31,6 +31,7 @@ export const ca: TranslationStructure = {
     logout: 'Tanca la sessió',
     yes: 'Sí',
     no: 'No',
+    discard: 'Descarta',
     version: 'Versió',
     copied: 'Copiat',
     scanning: 'Escanejant...',

@@ -42,6 +42,7 @@ export const ru: TranslationStructure = {
     logout: 'Выйти',
     yes: 'Да',
     no: 'Нет',
+    discard: 'Отменить',
     version: 'Версия',
     copied: 'Скопировано',
     scanning: 'Сканирование...',

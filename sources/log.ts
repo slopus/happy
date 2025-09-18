@@ -13,15 +13,34 @@ class Logger {
   log(message: string): void {
     // Add to internal array
     this.logs.push(message);
-        
+
     // Maintain 5k limit with circular buffer
     if (this.logs.length > this.maxLogs) {
       this.logs.shift();
     }
-        
+
     // Write to console
     console.log(message);
-        
+
+    // Notify listeners for real-time updates
+    this.listeners.forEach(listener => listener());
+  }
+
+  /**
+     * Log an error message - writes to both console and internal array
+     */
+  error(message: string): void {
+    // Add to internal array with ERROR prefix
+    this.logs.push(`ERROR: ${message}`);
+
+    // Maintain 5k limit with circular buffer
+    if (this.logs.length > this.maxLogs) {
+      this.logs.shift();
+    }
+
+    // Write to console as error
+    console.error(message);
+
     // Notify listeners for real-time updates
     this.listeners.forEach(listener => listener());
   }

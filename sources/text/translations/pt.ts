@@ -31,6 +31,7 @@ export const pt: TranslationStructure = {
     logout: 'Sair',
     yes: 'Sim',
     no: 'Não',
+    discard: 'Descartar',
     version: 'Versão',
     copied: 'Copiado',
     scanning: 'Escaneando...',
