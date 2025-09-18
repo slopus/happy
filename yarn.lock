@@ -1210,9 +1210,9 @@
     slugify "^1.3.4"
     sucrase "3.35.0"
 
-"@expo/config@~12.0.8":
+"@expo/config@~12.0.9":
   version "12.0.9"
-  resolved "https://registry.npmjs.org/@expo/config/-/config-12.0.9.tgz"
+  resolved "https://registry.yarnpkg.com/@expo/config/-/config-12.0.9.tgz#07e1ddb3c9227031e9e9322e41797ad36197a1c3"
   integrity sha512-HiDVVaXYKY57+L1MxSF3TaYjX6zZlGBnuWnOKZG+7mtsLD+aNTtW4bZM0pZqZfoRumyOU0SfTCwT10BWtUUiJQ==
   dependencies:
     "@babel/code-frame" "~7.10.4"
@@ -5194,12 +5194,12 @@ expo-constants@~17.1.7:
     "@expo/config" "~11.0.12"
     "@expo/env" "~1.0.7"
 
-expo-constants@~18.0.8:
-  version "18.0.8"
-  resolved "https://registry.npmjs.org/expo-constants/-/expo-constants-18.0.8.tgz"
-  integrity sha512-Tetphsx6RVImCTZeBAclRQMy0WOODY3y6qrUoc88YGUBVm8fAKkErCSWxLTCc6nFcJxdoOMYi62LgNIUFjZCLA==
+expo-constants@~18.0.9:
+  version "18.0.9"
+  resolved "https://registry.yarnpkg.com/expo-constants/-/expo-constants-18.0.9.tgz#fcaf37e97ea2b928bd3b92f2ea9836984ab6e48b"
+  integrity sha512-sqoXHAOGDcr+M9NlXzj1tGoZyd3zxYDy215W6E0Z0n8fgBaqce9FAYQE2bu5X4G629AYig5go7U6sQz7Pjcm8A==
   dependencies:
-    "@expo/config" "~12.0.8"
+    "@expo/config" "~12.0.9"
     "@expo/env" "~2.0.7"
 
 expo-crypto@^14.1.5:
