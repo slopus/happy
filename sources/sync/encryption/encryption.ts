@@ -6,7 +6,8 @@ import { SessionEncryption } from "./sessionEncryption";
 import { MachineEncryption } from "./machineEncryption";
 import { encodeBase64, decodeBase64 } from "@/encryption/base64";
 import sodium from "react-native-libsodium";
-import { decryptBox } from "@/encryption/libsodium";
+import { decryptBox, encryptBox } from "@/encryption/libsodium";
+import { randomUUID } from 'expo-crypto';
 
 export class Encryption {
 
@@ -160,5 +161,18 @@ export class Encryption {
             return null;
         }
         return decrypted;
+    }
+
+    async encryptEncryptionKey(key: Uint8Array): Promise<Uint8Array> {
+        // Use public key for encryption (encrypt TO ourselves)
+        const encrypted = encryptBox(key, this.contentKeyPair.publicKey);
+        const result = new Uint8Array(encrypted.length + 1);
+        result[0] = 0; // Version byte
+        result.set(encrypted, 1);
+        return result;
+    }
+
+    generateId(): string {
+        return randomUUID();
     }
 }

@@ -99,6 +99,7 @@ interface StorageState {
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus' | 'gpt-5-minimal' | 'gpt-5-low' | 'gpt-5-medium' | 'gpt-5-high') => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
+    addArtifact: (artifact: DecryptedArtifact) => void;
     updateArtifact: (artifact: DecryptedArtifact) => void;
     deleteArtifact: (artifactId: string) => void;
     // Project management methods
@@ -793,14 +794,27 @@ export const storage = create<StorageState>()((set, get) => {
         }),
         // Artifact methods
         applyArtifacts: (artifacts: DecryptedArtifact[]) => set((state) => {
+            console.log(`🗂️ Storage.applyArtifacts: Applying ${artifacts.length} artifacts`);
             const mergedArtifacts = { ...state.artifacts };
             artifacts.forEach(artifact => {
                 mergedArtifacts[artifact.id] = artifact;
             });
+            console.log(`🗂️ Storage.applyArtifacts: Total artifacts after merge: ${Object.keys(mergedArtifacts).length}`);
             
             return {
                 ...state,
                 artifacts: mergedArtifacts
+            };
+        }),
+        addArtifact: (artifact: DecryptedArtifact) => set((state) => {
+            const updatedArtifacts = {
+                ...state.artifacts,
+                [artifact.id]: artifact
+            };
+            
+            return {
+                ...state,
+                artifacts: updatedArtifacts
             };
         }),
         updateArtifact: (artifact: DecryptedArtifact) => set((state) => {

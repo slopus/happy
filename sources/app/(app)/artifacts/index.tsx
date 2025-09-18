@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRouter } from 'expo-router';
 import { t } from '@/text';
 import { layout } from '@/components/layout';
+import { sync } from '@/sync/sync';
 // Date formatting
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -123,7 +124,50 @@ export default function ArtifactsScreen() {
     const safeArea = useSafeAreaInsets();
     const router = useRouter();
     const artifacts = useArtifacts();
-    const [isLoading] = React.useState(false); // Will be used when we add data fetching
+    const [isLoading, setIsLoading] = React.useState(false);
+    
+    // Fetch artifacts on mount
+    React.useEffect(() => {
+        console.log('📱 ArtifactsScreen: Component mounted, fetching artifacts');
+        console.log(`📱 ArtifactsScreen: Current artifacts count: ${artifacts.length}`);
+        let cancelled = false;
+        
+        (async () => {
+            try {
+                // Check if credentials are available
+                const credentials = sync.getCredentials();
+                if (!credentials) {
+                    console.log('📱 ArtifactsScreen: No credentials available, skipping fetch');
+                    return;
+                }
+                
+                setIsLoading(true);
+                console.log('📱 ArtifactsScreen: Calling sync.fetchArtifactsList()');
+                await sync.fetchArtifactsList();
+                console.log('📱 ArtifactsScreen: fetchArtifactsList completed');
+            } catch (error) {
+                console.error('📱 ArtifactsScreen: Failed to fetch artifacts:', error);
+            } finally {
+                if (!cancelled) {
+                    setIsLoading(false);
+                    console.log('📱 ArtifactsScreen: Loading complete');
+                }
+            }
+        })();
+        
+        return () => {
+            cancelled = true;
+            console.log('📱 ArtifactsScreen: Component unmounted');
+        };
+    }, []);
+    
+    // Log when artifacts change
+    React.useEffect(() => {
+        console.log(`📱 ArtifactsScreen: Artifacts array updated, count: ${artifacts.length}`);
+        if (artifacts.length > 0) {
+            console.log('📱 ArtifactsScreen: First artifact:', artifacts[0]);
+        }
+    }, [artifacts]);
 
     const renderItem = React.useCallback(({ item, index }: { item: DecryptedArtifact; index: number }) => {
         const isFirst = index === 0;

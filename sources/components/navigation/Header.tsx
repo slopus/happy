@@ -114,7 +114,7 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
         if (typeof options.headerTitle === 'string') {
             title = (
                 <Text style={[
-                    { fontSize: 17, fontWeight: '600', textAlign: 'center', color: options.headerTintColor || '#000' },
+                    { fontSize: 17, fontWeight: '600', textAlign: Platform.OS === 'ios' ? 'center' : 'left', color: options.headerTintColor || '#000' },
                     Typography.default('semiBold'),
                     options.headerTitleStyle
                 ]}>
@@ -128,7 +128,7 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
     } else if (typeof options.title === 'string') {
         title = (
             <Text style={[
-                { fontSize: 17, fontWeight: '600', textAlign: 'center', color: options.headerTintColor || '#000' },
+                { fontSize: 17, fontWeight: '600', textAlign: Platform.OS === 'ios' ? 'center' : 'left', color: options.headerTintColor || '#000' },
                 Typography.default('semiBold'),
                 options.headerTitleStyle
             ]}>
@@ -212,7 +212,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignSelf: 'stretch',
         flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
+        justifyContent: Platform.OS === 'ios' ? 'center' : 'flex-start',
+        paddingLeft: Platform.OS === 'ios' ? 0 : 12,
     },
     rightContainer: {
         flexGrow: 0,
@@ -229,7 +230,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     subtitle: {
         fontSize: 13,
         fontWeight: '400',
-        textAlign: 'center',
+        textAlign: Platform.OS === 'ios' ? 'center' : 'left',
         marginTop: 2,
         color: theme.colors.header.tint,
         ...Typography.default('regular'),

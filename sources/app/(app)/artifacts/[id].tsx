@@ -11,6 +11,7 @@ import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { deleteArtifact } from '@/sync/apiArtifacts';
 import { storage } from '@/sync/storage';
+import { MarkdownView } from '@/components/markdown/MarkdownView';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -62,19 +63,13 @@ const stylesheet = StyleSheet.create((theme) => ({
         color: theme.colors.textSecondary,
     },
     bodyContainer: {
-        backgroundColor: theme.colors.surface,
-        borderRadius: 12,
-        padding: 16,
         minHeight: 200,
     },
-    body: {
-        fontSize: 15,
-        color: theme.colors.text,
-        lineHeight: 22,
-    },
     emptyBody: {
+        fontSize: 15,
         color: theme.colors.textSecondary,
         fontStyle: 'italic',
+        lineHeight: 22,
     },
 }));
 
@@ -269,15 +264,13 @@ export default function ArtifactDetailScreen() {
                     </View>
 
                     <View style={styles.bodyContainer}>
-                        <Text 
-                            style={[
-                                styles.body,
-                                !artifact.body && styles.emptyBody
-                            ]}
-                            selectable={Platform.OS === 'web'}
-                        >
-                            {artifact.body || 'No content'}
-                        </Text>
+                        {artifact.body ? (
+                            <MarkdownView markdown={artifact.body} />
+                        ) : (
+                            <Text style={styles.emptyBody}>
+                                No content
+                            </Text>
+                        )}
                     </View>
                 </ScrollView>
             </View>
