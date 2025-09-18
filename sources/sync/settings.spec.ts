@@ -123,13 +123,15 @@ describe('settings', () => {
         inferenceOpenAIKey: null,
         experiments: false,
         alwaysShowContextSize: false,
-        avatarStyle: 'brutalist',
+        avatarStyle: 'gradient',
         showFlavorIcons: false,
         compactSessionView: false,
         reviewPromptAnswered: false,
         reviewPromptLikedApp: null,
         voiceAssistantLanguage: null,
         preferredLanguage: null,
+        recentMachinePaths: [],
+        lastUsedAgent: null,
       });
     });
 

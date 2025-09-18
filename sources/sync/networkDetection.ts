@@ -28,7 +28,10 @@ try {
       isInternetReachable: true,
       details: { isConnectionExpensive: false },
     }),
-    addEventListener: () => () => {}, // Unsubscribe function
+    addEventListener: (callback: (state: any) => void) => {
+      // Return unsubscribe function
+      return () => {};
+    },
   };
 }
 
@@ -85,7 +88,7 @@ export interface ConnectionStrategy {
  */
 export const NETWORK_STRATEGIES: Record<string, ConnectionStrategy> = {
   'wifi-excellent': {
-    timeouts: { connection: 6000, heartbeat: 30000, retry: 1000 },
+    timeouts: { connection: 8000, heartbeat: 30000, retry: 1000 },
     retryPolicy: { maxAttempts: 3, backoffMultiplier: 1.5, baseDelay: 500 },
     heartbeatProfile: 'standard',
   },
@@ -212,7 +215,11 @@ export class NetworkDetection {
     console.log('🌐 NetworkDetection: Starting network monitoring');
 
     // Subscribe to network state changes
-    this.netInfoUnsubscribe = NetInfo.addEventListener(this.handleNetworkStateChange.bind(this));
+    try {
+      this.netInfoUnsubscribe = NetInfo.addEventListener(this.handleNetworkStateChange.bind(this));
+    } catch (error) {
+      console.warn('🌐 NetworkDetection: Failed to add NetInfo listener:', error);
+    }
 
     // Perform initial network detection
     this.detectNetworkProfile();
@@ -229,7 +236,11 @@ export class NetworkDetection {
 
     // Unsubscribe from network state changes
     if (this.netInfoUnsubscribe) {
-      this.netInfoUnsubscribe();
+      try {
+        this.netInfoUnsubscribe();
+      } catch (error) {
+        console.warn('🌐 NetworkDetection: Error during unsubscribe:', error);
+      }
       this.netInfoUnsubscribe = null;
     }
 
@@ -324,7 +335,7 @@ export class NetworkDetection {
       strength,
       isExpensive,
       generation,
-      isInternetReachable: netInfo.isInternetReachable || false,
+      isInternetReachable: netInfo.isInternetReachable === true,
     };
   }
 
@@ -343,6 +354,9 @@ export class NetworkDetection {
       case 'wimax':
       case 'vpn':
       case 'other':
+        return 'unknown';
+      case 'none':
+        return 'unknown';
       default:
         return 'unknown';
     }
@@ -386,7 +400,7 @@ export class NetworkDetection {
       // Determine quality based on latency thresholds
       if (avgLatency < this.config.latencyThresholds.excellent) return 'excellent';
       if (avgLatency < this.config.latencyThresholds.good) return 'good';
-      if (avgLatency < this.config.latencyThresholds.poor) return 'poor';
+      if (avgLatency <= this.config.latencyThresholds.poor) return 'poor';
       return 'unknown';
 
     } catch (error) {
@@ -479,10 +493,15 @@ export class NetworkDetection {
    * Determine if network is expensive (cellular data)
    */
   private isNetworkExpensive(netInfo: NetInfoState): boolean {
+    // Always treat cellular as expensive
     if (netInfo.type === 'cellular') return true;
+
+    // Check explicit isConnectionExpensive flag
     if (netInfo.details && 'isConnectionExpensive' in netInfo.details) {
       return netInfo.details.isConnectionExpensive === true;
     }
+
+    // Default to false for wifi/ethernet/other types
     return false;
   }
 

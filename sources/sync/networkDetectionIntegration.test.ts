@@ -17,9 +17,12 @@ const mockNetInfo = {
   addEventListener: vi.fn(),
 };
 
-// Mock NetInfo
-vi.mock('@react-native-community/netinfo', () => ({
+// Mock NetInfo - use doMock to ensure it affects the NetworkDetection import
+vi.doMock('@react-native-community/netinfo', () => ({
   default: mockNetInfo,
+  NetInfoState: {},
+  NetInfoStateType: {},
+  NetInfoCellularGeneration: {},
 }));
 
 // Mock fetch globally
