@@ -142,7 +142,7 @@ jobs:
           du -sh dist-${{ matrix.config }}-${{ matrix.bundle }}/* | head -10 >> $GITHUB_STEP_SUMMARY
           
       - name: 📦 Upload build artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: web-build-${{ matrix.config }}-${{ matrix.bundle }}
           path: dist-${{ matrix.config }}-${{ matrix.bundle }}/
@@ -202,7 +202,7 @@ jobs:
           echo "✅ ${{ matrix.platform }} build completed" >> $GITHUB_STEP_SUMMARY
           
       - name: 📦 Upload mobile build
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: mobile-build-${{ matrix.platform }}-${{ matrix.variant }}
           path: build-${{ matrix.platform }}-${{ matrix.variant }}/
@@ -249,7 +249,7 @@ jobs:
           CI: true
           
       - name: 📊 Upload test results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results-${{ matrix.suite }}
@@ -268,7 +268,7 @@ jobs:
     
     steps:
       - name: 📥 Download all artifacts
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         
       - name: 📊 Generate Aggregate Report
         run: |

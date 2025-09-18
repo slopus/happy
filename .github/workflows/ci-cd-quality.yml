@@ -69,7 +69,7 @@ jobs:
           CI: true
           
       - name: 📊 Upload test results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: test-results
@@ -118,7 +118,7 @@ jobs:
         uses: github/codeql-action/analyze@v2
         
       - name: 📊 Upload security results
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         if: always()
         with:
           name: security-results
@@ -183,7 +183,7 @@ jobs:
           fi
           
       - name: 📦 Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: build-${{ matrix.platform }}
           path: |
