@@ -751,6 +751,11 @@ export const pt: TranslationStructure = {
     bodyLabel: 'CONTEÚDO',
     bodyPlaceholder: 'Escreva seu conteúdo aqui...',
     emptyFieldsError: 'Por favor, digite um título ou conteúdo',
+    createError: 'Não foi possível criar o artefato. Tente novamente.',
+    save: 'Salvar',
+    saving: 'Salvando...',
+    loading: 'Carregando artefatos...',
+    error: 'Erro ao carregar o artefato',
   },
 } as const;
 

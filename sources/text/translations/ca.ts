@@ -751,6 +751,11 @@ export const ca: TranslationStructure = {
     bodyLabel: 'CONTINGUT',
     bodyPlaceholder: 'Escriu el teu contingut aquí...',
     emptyFieldsError: 'Si us plau, introdueix un títol o contingut',
+    createError: 'No s\'ha pogut crear l\'artefacte. Si us plau, torna-ho a provar.',
+    save: 'Desa',
+    saving: 'Desant...',
+    loading: 'Carregant artefactes...',
+    error: 'Error en carregar l\'artefacte',
   },
 } as const;
 

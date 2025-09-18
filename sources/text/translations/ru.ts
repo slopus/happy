@@ -762,6 +762,11 @@ export const ru: TranslationStructure = {
     bodyLabel: 'СОДЕРЖАНИЕ',
     bodyPlaceholder: 'Напишите ваше содержание здесь...',
     emptyFieldsError: 'Пожалуйста, введите заголовок или содержание',
+    createError: 'Не удалось создать артефакт. Попробуйте еще раз.',
+    save: 'Сохранить',
+    saving: 'Сохранение...',
+    loading: 'Загрузка артефактов...',
+    error: 'Ошибка загрузки артефакта',
   },
 } as const;
 

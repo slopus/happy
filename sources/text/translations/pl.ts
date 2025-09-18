@@ -762,6 +762,11 @@ export const pl: TranslationStructure = {
     bodyLabel: 'TREŚĆ',
     bodyPlaceholder: 'Napisz tutaj swoją treść...',
     emptyFieldsError: 'Proszę wprowadzić tytuł lub treść',
+    createError: 'Nie można utworzyć artefaktu. Spróbuj ponownie.',
+    save: 'Zapisz',
+    saving: 'Zapisywanie...',
+    loading: 'Ładowanie artefaktów...',
+    error: 'Błąd ładowania artefaktu',
   },
 } as const;
 
