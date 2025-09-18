@@ -76,55 +76,12 @@ export const ApiUpdateMachineStateSchema = z.object({
   activeAt: z.number().optional(),
 });
 
-// Artifact update schemas
-export const ApiNewArtifactSchema = z.object({
-    t: z.literal('new-artifact'),
-    artifactId: z.string(),
-    header: z.string(),
-    headerVersion: z.number(),
-    body: z.string().optional(),
-    bodyVersion: z.number().optional(),
-    dataEncryptionKey: z.string(),
-    seq: z.number(),
-    createdAt: z.number(),
-    updatedAt: z.number()
-});
-
-export const ApiUpdateArtifactSchema = z.object({
-    t: z.literal('update-artifact'),
-    artifactId: z.string(),
-    header: z.object({
-        value: z.string(),
-        version: z.number()
-    }).optional(),
-    body: z.object({
-        value: z.string(),
-        version: z.number()
-    }).optional()
-});
-
-export const ApiDeleteArtifactSchema = z.object({
-    t: z.literal('delete-artifact'),
-    artifactId: z.string()
-});
-
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
-<<<<<<< HEAD
   ApiUpdateNewMessageSchema,
   ApiUpdateNewSessionSchema,
   ApiUpdateSessionStateSchema,
   ApiUpdateAccountSchema,
   ApiUpdateMachineStateSchema,
-=======
-    ApiUpdateNewMessageSchema,
-    ApiUpdateNewSessionSchema,
-    ApiUpdateSessionStateSchema,
-    ApiUpdateAccountSchema,
-    ApiUpdateMachineStateSchema,
-    ApiNewArtifactSchema,
-    ApiUpdateArtifactSchema,
-    ApiDeleteArtifactSchema
->>>>>>> slopus-happy/main
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;

@@ -114,7 +114,7 @@ export class SessionStatePersistence {
     // Schedule periodic backups
     this.backupInterval = setInterval(() => {
       this.backupCurrentState();
-    }, this.config.backupInterval);
+    }, this.config.backupInterval) as unknown as NodeJS.Timeout;
   }
 
   /**
