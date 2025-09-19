@@ -3,15 +3,17 @@
  * Handles CLI version updates, dev branch switching, and version management
  */
 
-import React, { useState, useCallback } from 'react';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
+import React, { useState, useCallback } from 'react';
+
 import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
+
 import { Modal } from '@/modal';
 import { sessionBash } from '@/sync/ops';
-import { t } from '@/text';
 import { Session } from '@/sync/storageTypes';
+import { t } from '@/text';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 
 interface CliManagementProps {

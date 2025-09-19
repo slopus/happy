@@ -3,9 +3,11 @@
  */
 
 import { machineStopDaemon, sessionKill } from './ops';
-import { sync } from './sync';
 import { storage } from './storage';
+import { sync } from './sync';
+
 import type { Session } from './storageTypes';
+
 import { log } from '@/log';
 
 export interface DaemonControlResult {
@@ -143,7 +145,7 @@ export async function removeSessionLocally(machineId: string): Promise<DaemonCon
         // Try to update machine metadata on server
         const machineEncryption = sync.encryption.getMachineEncryption(machineId);
         if (machineEncryption) {
-          const encryptedMetadata = await machineEncryption.encryptRaw(updatedMetadata);
+          await machineEncryption.encryptRaw(updatedMetadata);
           // Note: This might fail if network is down, but that's okay for local cleanup
           try {
             await sync.refreshMachines();

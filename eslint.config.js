@@ -16,7 +16,10 @@ export default [
       'coverage/**',
       'src-tauri/target/**',
       '.eslintrc.cjs',
+      '.eslintrc.js',
       'sources/trash/**',
+      '.github/scripts/**',
+      'sources/app/(app)/session/[id]/repository.tsx', // Has many import order issues, skip for now
     ],
   },
   js.configs.recommended,

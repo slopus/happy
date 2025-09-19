@@ -1457,9 +1457,9 @@ class Sync {
 
             // Update storage using applyMachines which rebuilds sessionListViewData
             storage.getState().applyMachines([updatedMachine]);
-        } else if (updateData.body.t === 'new-artifact') {
+        } else if ('t' in updateData.body && (updateData.body as any).t === 'new-artifact') {
             log.log('📦 Received new-artifact update');
-            const artifactUpdate = updateData.body;
+            const artifactUpdate = updateData.body as any;
             const artifactId = artifactUpdate.artifactId;
             
             try {
@@ -1504,9 +1504,9 @@ class Sync {
             } catch (error) {
                 console.error(`Failed to process new artifact ${artifactId}:`, error);
             }
-        } else if (updateData.body.t === 'update-artifact') {
+        } else if ('t' in updateData.body && (updateData.body as any).t === 'update-artifact') {
             log.log('📦 Received update-artifact update');
-            const artifactUpdate = updateData.body;
+            const artifactUpdate = updateData.body as any;
             const artifactId = artifactUpdate.artifactId;
             
             // Get existing artifact
@@ -1558,9 +1558,9 @@ class Sync {
             } catch (error) {
                 console.error(`Failed to process artifact update ${artifactId}:`, error);
             }
-        } else if (updateData.body.t === 'delete-artifact') {
+        } else if ('t' in updateData.body && (updateData.body as any).t === 'delete-artifact') {
             log.log('📦 Received delete-artifact update');
-            const artifactUpdate = updateData.body;
+            const artifactUpdate = updateData.body as any;
             const artifactId = artifactUpdate.artifactId;
             
             // Remove from storage

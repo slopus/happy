@@ -103,6 +103,7 @@ interface StorageState {
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
     updateSessionModelMode: (sessionId: string, mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus' | 'gpt-5-minimal' | 'gpt-5-low' | 'gpt-5-medium' | 'gpt-5-high') => void;
+    clearSessionMessages: (sessionId: string) => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -754,6 +755,14 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 sessions: updatedSessions
+            };
+        }),
+        clearSessionMessages: (sessionId: string) => set((state) => {
+            const updatedSessionMessages = { ...state.sessionMessages };
+            delete updatedSessionMessages[sessionId];
+            return {
+                ...state,
+                sessionMessages: updatedSessionMessages
             };
         }),
         // Project management methods

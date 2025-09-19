@@ -2,8 +2,8 @@
  * Utility functions for connection analytics
  */
 
-import { NetworkProfile } from '../networkDetection';
 import { ConnectionMetrics, OptimalSettings, RetryStrategy } from '../connectionAnalytics';
+import { NetworkProfile } from '../networkDetection';
 
 export class ConnectionAnalyticsUtils {
   static generateMetricsKey(profile: NetworkProfile): string {

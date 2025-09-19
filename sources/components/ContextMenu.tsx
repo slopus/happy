@@ -1,9 +1,11 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Text, Pressable, Modal, Platform, Dimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Typography } from '@/constants/Typography';
-import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUnistyles, StyleSheet } from 'react-native-unistyles';
+
+import { Typography } from '@/constants/Typography';
+
 
 export interface ContextMenuAction {
     id: string;
@@ -32,7 +34,7 @@ export const ContextMenu: React.FC<ContextMenuProps> = ({
   const { theme } = useUnistyles();
   const safeArea = useSafeAreaInsets();
   const [menuPosition, setMenuPosition] = React.useState({ x: 0, y: 0 });
-  const [menuSize, setMenuSize] = React.useState({ width: 0, height: 0 });
+  const [, setMenuSize] = React.useState({ width: 0, height: 0 });
 
   // Calculate menu position based on anchor and screen bounds
   React.useEffect(() => {
@@ -189,7 +191,7 @@ export const useContextMenu = () => {
   return { visible, anchorPosition, show, hide };
 };
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create(() => ({
   overlay: {
     flex: 1,
     backgroundColor: 'rgba(0, 0, 0, 0.4)',

@@ -1,7 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useState, useEffect } from 'react';
 import { View, Text, Platform } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { Ionicons } from '@expo/vector-icons';
+
 import { Typography } from '@/constants/Typography';
 import { connectionHealthMonitor, type ConnectionHealthStatus } from '@/sync/connectionHealth';
 
@@ -141,7 +142,7 @@ export const ConnectionIndicator: React.FC<ConnectionIndicatorProps> = ({
 
 // Minimal version for headers/toolbars
 export const ConnectionDot: React.FC<{ size?: number }> = ({ size = 6 }) => {
-  const [status, setStatus] = useState<ConnectionHealthStatus>(connectionHealthMonitor.getStatus());
+  const [, setStatus] = useState<ConnectionHealthStatus>(connectionHealthMonitor.getStatus());
 
   useEffect(() => {
     const unsubscribe = connectionHealthMonitor.addListener(setStatus);

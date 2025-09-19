@@ -29,7 +29,7 @@ class Logger {
   /**
      * Log an error message - writes to both console and internal array
      */
-  error(message: string): void {
+  error(message: string, ...args: any[]): void {
     // Add to internal array with error prefix
     const errorMessage = `❌ ${message}`;
     this.logs.push(errorMessage);
@@ -39,10 +39,40 @@ class Logger {
       this.logs.shift();
     }
 
-    // Write to console error
-    console.error(errorMessage);
+    // Write to console error with additional args
+    console.error(errorMessage, ...args);
 
     // Notify listeners for real-time updates
+    this.listeners.forEach(listener => listener());
+  }
+
+  /**
+     * Log a warning message - writes to both console and internal array
+     */
+  warn(message: string, ...args: any[]): void {
+    const warnMessage = `⚠️ ${message}`;
+    this.logs.push(warnMessage);
+
+    if (this.logs.length > this.maxLogs) {
+      this.logs.shift();
+    }
+
+    console.warn(warnMessage, ...args);
+    this.listeners.forEach(listener => listener());
+  }
+
+  /**
+     * Log a debug message - writes to both console and internal array
+     */
+  debug(message: string, ...args: any[]): void {
+    const debugMessage = `🔍 ${message}`;
+    this.logs.push(debugMessage);
+
+    if (this.logs.length > this.maxLogs) {
+      this.logs.shift();
+    }
+
+    console.debug(debugMessage, ...args);
     this.listeners.forEach(listener => listener());
   }
 
@@ -50,6 +80,13 @@ class Logger {
      * Get all logs as a copy of the array
      */
   getLogs(): string[] {
+    return [...this.logs];
+  }
+
+  /**
+     * Get all logs as strings (same as getLogs for compatibility)
+     */
+  getLogsAsStrings(): string[] {
     return [...this.logs];
   }
 

@@ -228,9 +228,7 @@ export class TimerUtils {
    */
   static throttle<T extends (...args: any[]) => void>(
     func: T,
-    delay: number,
-    timerManager: TimerManager,
-    id: string
+    delay: number
   ): T {
     let lastExecution = 0;
     

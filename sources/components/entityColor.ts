@@ -47,5 +47,7 @@ export function entityColor(id: string) {
 }
 
 export function entitySessionColor(session: Session) {
-  return entityColor(`${(session.metadata?.path || 'unknon').toLowerCase()  }$${  session.metadata?.machineId}` || 'unknown');
+  const path = session.metadata?.path || 'unknown';
+  const machineId = session.metadata?.machineId || 'unknown';
+  return entityColor(`${path.toLowerCase()}$${machineId}`);
 }
