@@ -79,10 +79,24 @@ export default {
         web: {
             bundler: "metro",
             output: "single",
-            favicon: "./sources/assets/images/favicon.png"
+            favicon: "./sources/assets/images/favicon.png",
+            meta: {
+                "og:title": "Happy - AI Assistant",
+                "og:description": "Happy is your intelligent AI assistant for productivity, creativity, and everyday tasks.",
+                "og:image": "/icon-512.png",
+                "og:url": "https://app.happy.engineering",
+                "og:type": "website",
+                "twitter:card": "summary",
+                "twitter:title": "Happy - AI Assistant",
+                "twitter:description": "Happy is your intelligent AI assistant for productivity, creativity, and everyday tasks.",
+                "twitter:image": "/icon-512.png",
+                "description": "Happy is your intelligent AI assistant for productivity, creativity, and everyday tasks.",
+                "theme-color": "#18171C"
+            }
         },
         plugins: [
             require("./plugins/withEinkCompatibility.js"),
+            require("./plugins/withOpenGraphTags.js"),
             [
                 "expo-router",
                 {

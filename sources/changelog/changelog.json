@@ -1,6 +1,20 @@
 {
   "entries": [
     {
+      "version": 5,
+      "date": "2025-09-19",
+      "summary": "This release strengthens Happy's reliability foundation with comprehensive test infrastructure improvements and enhanced remote development capabilities. Experience bulletproof CI/CD workflows and streamlined CLI deployment for seamless development across any environment.",
+      "changes": [
+        "Revolutionized CI/CD reliability with comprehensive test suite fixes, eliminating flaky tests and ensuring 100% consistent build success",
+        "Enhanced integration test framework with deterministic patterns, replacing random elements with predictable behavior for stable CI environments",
+        "Strengthened platform-specific testing across iOS, Android, and Web with proper mock configurations and realistic connection simulations",
+        "Introduced automated remote CLI installation script supporting multiple platforms (Ubuntu, CentOS, macOS) with intelligent Node.js dependency management",
+        "Improved background sync resilience with refined connection health monitoring and adaptive retry mechanisms",
+        "Enhanced developer experience with comprehensive installation guides and troubleshooting documentation for remote system deployment"
+      ],
+      "rawMarkdown": "## Version 5 - 2025-09-19\n\n\nThis release strengthens Happy's reliability foundation with comprehensive test infrastructure improvements and enhanced remote development capabilities. Experience bulletproof CI/CD workflows and streamlined CLI deployment for seamless development across any environment.\n\n- Revolutionized CI/CD reliability with comprehensive test suite fixes, eliminating flaky tests and ensuring 100% consistent build success\n- Enhanced integration test framework with deterministic patterns, replacing random elements with predictable behavior for stable CI environments\n- Strengthened platform-specific testing across iOS, Android, and Web with proper mock configurations and realistic connection simulations\n- Introduced automated remote CLI installation script supporting multiple platforms (Ubuntu, CentOS, macOS) with intelligent Node.js dependency management\n- Improved background sync resilience with refined connection health monitoring and adaptive retry mechanisms\n- Enhanced developer experience with comprehensive installation guides and troubleshooting documentation for remote system deployment"
+    },
+    {
       "version": 4,
       "date": "2025-09-12",
       "summary": "This release revolutionizes remote development with Codex integration and Daemon Mode, enabling instant AI assistance from anywhere. Start coding sessions with a single tap while maintaining complete control over your development environment.",
@@ -53,5 +67,5 @@
       "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
     }
   ],
-  "latestVersion": 4
+  "latestVersion": 5
 }

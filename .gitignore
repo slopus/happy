@@ -42,7 +42,23 @@ yarn-error.*
 .claude/settings.local.json
 .plan
 
+# Development environment and AI assistant files
 CLAUDE.local.md
+CLAUDE.md
+WARP.md
+.cursor/
+.vscode/settings.json
+
+# Installation and deployment scripts
+install-remote-cli.sh
+plugins/withOpenGraphTags.js
+test-results-*/
+integration-results.json
+*-results.json
+downloads/
+
+# Internal documentation and release notes
+WHATS_NEW_*.md
 
 # Development tasks and planning (personal files)
 devtasks/
