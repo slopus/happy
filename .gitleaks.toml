@@ -59,6 +59,7 @@ secretGroup = 1
 description = "Allowlisted patterns"
 paths = [
     '''google-services\.json''',  # Firebase config files are expected to have API keys
+    '''SECURITY-INCIDENT\.md''', # Security incident documentation with example keys
     '''node_modules/.*''',        # Ignore node_modules
     '''\.git/.*''',               # Ignore git directory
     '''dist/.*''',                # Ignore build artifacts
