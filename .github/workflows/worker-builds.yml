@@ -58,8 +58,9 @@ jobs:
           # Mobile build matrix (platforms and variants)
           echo "matrix_mobile={\"include\":[{\"platform\":\"ios\",\"variant\":\"development\",\"architecture\":\"x64\"},{\"platform\":\"ios\",\"variant\":\"production\",\"architecture\":\"x64\"},{\"platform\":\"android\",\"variant\":\"development\",\"architecture\":\"x64\"},{\"platform\":\"android\",\"variant\":\"production\",\"architecture\":\"x64\"}]}" >> $GITHUB_OUTPUT
           
-          # Test matrix (different test suites for parallel execution)
-          echo "matrix_test={\"include\":[{\"suite\":\"unit\",\"pattern\":\"**/*.test.ts\",\"timeout\":10},{\"suite\":\"integration\",\"pattern\":\"**/*.integration.test.ts\",\"timeout\":20},{\"suite\":\"stress\",\"pattern\":\"**/*.stress.test.ts\",\"timeout\":30},{\"suite\":\"e2e\",\"pattern\":\"**/*.e2e.test.ts\",\"timeout\":40}]}" >> $GITHUB_OUTPUT
+          # Test matrix (different test suites for parallel execution) - matches vitest config
+          # Patterns match actual test file locations and exclude __tests__ dir which has integration tests
+          echo "matrix_test={\"include\":[{\"suite\":\"unit\",\"pattern\":\"sources/**/*.{spec,test}.ts --exclude sources/**/*.{integration,stress}.test.ts\",\"timeout\":10},{\"suite\":\"integration\",\"pattern\":\"sources/**/*.integration.test.ts __tests__/**/*.test.ts\",\"timeout\":20},{\"suite\":\"stress\",\"pattern\":\"sources/**/*.stress.test.ts\",\"timeout\":30}]}" >> $GITHUB_OUTPUT
           
           echo "Build matrix configured for ${{ env.WORKER_COUNT }} workers"
 
