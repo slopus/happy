@@ -7,9 +7,6 @@
  */
 
 import { NetworkProfile } from './networkDetection';
-import { log } from '@/log';
-import { ConnectionMLModel } from './analytics/ConnectionMLModel';
-import { ConnectionAnalyticsUtils } from './analytics/ConnectionAnalyticsUtils';
 
 export interface ConnectionMetrics {
   networkType: string;
@@ -70,6 +67,92 @@ export interface PerformanceReport {
   learningEffectiveness?: number; // Improvement percentage
 }
 
+/**
+ * Simple Machine Learning Model for Connection Optimization
+ * Uses linear regression for optimal parameter prediction
+ */
+class SimpleMLModel {
+  private weights: Map<string, number> = new Map();
+  private trainingData: Array<{ features: number[]; target: number }> = [];
+  private learningRate = 0.01;
+  private predictions: Array<{ predicted: number; actual: number }> = [];
+
+  constructor() {
+    // Initialize default weights
+    this.weights.set('latency', -0.1);
+    this.weights.set('successRate', 1.0);
+    this.weights.set('networkQuality', 0.5);
+    this.weights.set('timeOfDay', 0.1);
+  }
+
+  train(features: number[], target: number) {
+    // Store training data for batch processing
+    this.trainingData.push({ features: [...features], target });
+
+    // Perform simple gradient descent
+    this.performGradientDescent(features, target);
+
+    // Keep only recent training data (rolling window)
+    if (this.trainingData.length > 1000) {
+      this.trainingData = this.trainingData.slice(-500);
+    }
+  }
+
+  private performGradientDescent(features: number[], target: number) {
+    const prediction = this.predict(features);
+    const error = target - prediction;
+
+    // Update weights based on error
+    const featureNames = ['latency', 'successRate', 'networkQuality', 'timeOfDay'];
+    features.forEach((feature, index) => {
+      if (index < featureNames.length) {
+        const currentWeight = this.weights.get(featureNames[index]) || 0;
+        const newWeight = currentWeight + this.learningRate * error * feature;
+        this.weights.set(featureNames[index], newWeight);
+      }
+    });
+  }
+
+  predict(features: number[]): number {
+    if (features.length === 0) return 30000; // Default heartbeat
+
+    let prediction = 5000; // Base prediction
+    const featureNames = ['latency', 'successRate', 'networkQuality', 'timeOfDay'];
+
+    features.forEach((feature, index) => {
+      if (index < featureNames.length) {
+        const weight = this.weights.get(featureNames[index]) || 0;
+        prediction += weight * feature;
+      }
+    });
+
+    // Clamp to reasonable range
+    return Math.max(5000, Math.min(60000, prediction));
+  }
+
+  recordPredictionAccuracy(predicted: number, actual: number) {
+    this.predictions.push({ predicted, actual });
+    // Keep only recent predictions for accuracy calculation
+    if (this.predictions.length > 100) {
+      this.predictions = this.predictions.slice(-50);
+    }
+  }
+
+  getAccuracy(): number {
+    if (this.predictions.length < 10) return 0;
+
+    const errors = this.predictions.map(p =>
+      Math.abs(p.predicted - p.actual) / Math.max(p.actual, 1)
+    );
+    const avgError = errors.reduce((sum, err) => sum + err, 0) / errors.length;
+
+    return Math.max(0, 1 - avgError); // Convert error to accuracy
+  }
+
+  getTrainingDataSize(): number {
+    return this.trainingData.length;
+  }
+}
 
 /**
  * Main Connection Analytics Class
@@ -77,14 +160,14 @@ export interface PerformanceReport {
  */
 export class ConnectionAnalytics {
   private metrics: Map<string, ConnectionMetrics> = new Map();
-  private learningModel: ConnectionMLModel;
+  private learningModel: SimpleMLModel;
   private readonly LEARNING_THRESHOLD = 10; // Minimum samples for learning
   private readonly MAX_METRICS_STORAGE = 50; // Limit stored metrics
   private latencyTests: Array<{ timestamp: number; latency: number; source: string }> = [];
   private baselinePerformance: Map<string, number> = new Map();
 
   constructor() {
-    this.learningModel = new ConnectionMLModel();
+    this.learningModel = new SimpleMLModel();
     this.loadStoredMetrics();
   }
 
@@ -94,8 +177,8 @@ export class ConnectionAnalytics {
   recordConnectionEvent(event: ConnectionEvent) {
     const startTime = Date.now();
 
-    const key = ConnectionAnalyticsUtils.generateMetricsKey(event.networkProfile);
-    const existing = this.metrics.get(key) || ConnectionAnalyticsUtils.createEmptyMetrics(event.networkProfile);
+    const key = this.generateMetricsKey(event.networkProfile);
+    const existing = this.metrics.get(key) || this.createEmptyMetrics(event.networkProfile);
 
     // Record baseline performance for learning effectiveness calculation BEFORE updating
     if (!this.baselinePerformance.has(key) && existing.sampleCount === 0) {
@@ -120,7 +203,7 @@ export class ConnectionAnalytics {
     // Performance requirement: <100ms processing
     const processingTime = Date.now() - startTime;
     if (processingTime > 100) {
-      log.warn(`Processing took ${processingTime}ms, exceeding 100ms requirement`, 'ConnectionAnalytics');
+      console.warn(`Connection analytics processing took ${processingTime}ms, exceeding 100ms requirement`);
     }
   }
 
@@ -136,10 +219,10 @@ export class ConnectionAnalytics {
       if (metrics.sampleCount === 0) {
         metrics.avgLatency = event.latency;
       } else {
-        metrics.avgLatency = ConnectionAnalyticsUtils.updateRollingAverage(
+        metrics.avgLatency = this.updateRollingAverage(
           metrics.avgLatency,
           event.latency,
-          effectiveAlpha,
+          effectiveAlpha
         );
       }
     }
@@ -156,18 +239,18 @@ export class ConnectionAnalytics {
 
     // Update data usage and battery impact
     if (event.dataUsed !== undefined) {
-      metrics.dataUsage = ConnectionAnalyticsUtils.updateRollingAverage(
+      metrics.dataUsage = this.updateRollingAverage(
         metrics.dataUsage,
         event.dataUsed,
-        effectiveAlpha,
+        effectiveAlpha
       );
     }
 
     if (event.batteryDelta !== undefined) {
-      metrics.batteryImpact = ConnectionAnalyticsUtils.updateRollingAverage(
+      metrics.batteryImpact = this.updateRollingAverage(
         metrics.batteryImpact,
         event.batteryDelta,
-        effectiveAlpha,
+        effectiveAlpha
       );
     }
 
@@ -181,7 +264,7 @@ export class ConnectionAnalytics {
       metrics.optimalHeartbeat = this.calculateOptimalHeartbeat(
         metrics,
         event.heartbeatInterval,
-        event.latency || 0,
+        event.latency || 0
       );
     }
 
@@ -194,7 +277,7 @@ export class ConnectionAnalytics {
   private updateFailurePattern(metrics: ConnectionMetrics, event: ConnectionEvent) {
     const timeContext = this.getTimeContext(event.timestamp);
     const existingPattern = metrics.failurePatterns.find(
-      p => p.type === event.failureType && p.timePattern === timeContext,
+      p => p.type === event.failureType && p.timePattern === timeContext
     );
 
     if (existingPattern) {
@@ -206,7 +289,7 @@ export class ConnectionAnalytics {
         frequency: 1,
         timePattern: timeContext,
         context: event.context || 'unknown',
-        lastOccurrence: event.timestamp,
+        lastOccurrence: event.timestamp
       });
     }
 
@@ -221,7 +304,7 @@ export class ConnectionAnalytics {
       metrics.avgLatency / 1000, // Normalize latency to seconds
       metrics.successRate,
       this.getNetworkQualityScore(event.networkProfile),
-      this.getTimeOfDayScore(event.timestamp),
+      this.getTimeOfDayScore(event.timestamp)
     ];
 
     // Target is optimal heartbeat interval
@@ -252,7 +335,7 @@ export class ConnectionAnalytics {
       metrics.avgLatency / 1000,
       metrics.successRate,
       this.getNetworkQualityScore(networkProfile),
-      this.getTimeOfDayScore(Date.now()),
+      this.getTimeOfDayScore(Date.now())
     ];
 
     const predictedHeartbeat = this.learningModel.predict(features);
@@ -261,7 +344,7 @@ export class ConnectionAnalytics {
       heartbeatInterval: Math.round(predictedHeartbeat),
       connectionTimeout: this.calculateOptimalTimeout(metrics),
       retryStrategy: this.calculateOptimalRetryStrategy(metrics),
-      transportPriority: this.calculateOptimalTransports(metrics, networkProfile),
+      transportPriority: this.calculateOptimalTransports(metrics, networkProfile)
     };
   }
 
@@ -276,13 +359,13 @@ export class ConnectionAnalytics {
   private calculateOptimalRetryStrategy(metrics: ConnectionMetrics): RetryStrategy {
     const baseDelay = Math.max(500, metrics.avgLatency * 2);
     const maxRetries = metrics.successRate > 0.9 ? 3 :
-      metrics.successRate > 0.7 ? 5 : 7;
+                     metrics.successRate > 0.7 ? 5 : 7;
 
     return {
       maxRetries,
       baseDelay: Math.max(500, Math.min(5000, baseDelay)),
       backoffMultiplier: metrics.successRate > 0.8 ? 1.5 : 2.0,
-      jitter: true,
+      jitter: true
     };
   }
 
@@ -313,7 +396,7 @@ export class ConnectionAnalytics {
       commonFailures: this.getCommonFailures(),
       recommendations,
       generatedAt: Date.now(),
-      learningEffectiveness,
+      learningEffectiveness
     };
   }
 
@@ -388,11 +471,11 @@ export class ConnectionAnalytics {
   }
 
   private getNetworkBreakdown(): Array<{ networkType: string; successRate: number; avgLatency: number; sampleCount: number }> {
-    return Array.from(this.metrics.entries()).map(([key, metrics]) => ({
+return Array.from(this.metrics.entries()).map(([, metrics]) => ({
       networkType: metrics.networkType,
       successRate: Math.round(metrics.successRate * 10000) / 100, // Percentage with 2 decimals
       avgLatency: Math.round(metrics.avgLatency),
-      sampleCount: metrics.sampleCount,
+      sampleCount: metrics.sampleCount
     }));
   }
 
@@ -429,7 +512,7 @@ export class ConnectionAnalytics {
     const testSources = [
       'https://www.google.com/generate_204',
       'https://www.cloudflare.com/cdn-cgi/trace',
-      'https://httpbin.org/status/200',
+      'https://httpbin.org/status/200'
     ];
 
     const results = await Promise.allSettled(
@@ -439,22 +522,22 @@ export class ConnectionAnalytics {
           const response = await fetch(url, {
             method: 'GET',
             cache: 'no-cache',
-            signal: AbortSignal.timeout(5000),
+            signal: AbortSignal.timeout(5000)
           });
           const latency = Date.now() - startTime;
           return {
             source: new URL(url).hostname,
             latency,
-            success: response.ok,
+            success: response.ok
           };
-        } catch (error) {
+        } catch {
           return {
             source: new URL(url).hostname,
             latency: Date.now() - startTime,
-            success: false,
+            success: false
           };
         }
-      }),
+      })
     );
 
     return results
@@ -466,7 +549,7 @@ export class ConnectionAnalytics {
     this.latencyTests.push({
       timestamp: Date.now(),
       latency,
-      source,
+      source
     });
 
     // Keep only recent tests (last 100)
@@ -492,7 +575,7 @@ export class ConnectionAnalytics {
       batteryImpact: 0,
       timeOfDay: this.getTimeOfDayScore(Date.now()),
       sampleCount: 0,
-      lastUpdated: Date.now(),
+      lastUpdated: Date.now()
     };
   }
 
@@ -543,9 +626,9 @@ export class ConnectionAnalytics {
         maxRetries: 3,
         baseDelay: 1000,
         backoffMultiplier: 2.0,
-        jitter: true,
+        jitter: true
       },
-      transportPriority: ['websocket', 'polling'],
+      transportPriority: ['websocket', 'polling']
     };
 
     // Adjust for network type
@@ -628,7 +711,7 @@ export class ConnectionAnalytics {
           networkProfile: { type: 'wifi', quality: 'good', stability: 0.9, strength: 80, isExpensive: false, isInternetReachable: true },
           success: true,
           latency: metrics.avgLatency,
-          timestamp: Date.now(),
+          timestamp: Date.now()
         };
         this.updateLearningModel(key, metrics, dummyEvent);
       }

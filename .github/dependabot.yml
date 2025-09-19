@@ -5,22 +5,43 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    open-pull-requests-limit: 5
-    commit-message:
-      prefix: "deps"
-      prefix-development: "deps-dev"
-      include: "scope"
-    labels:
-      - "dependencies"
-      - "javascript"
-    ignore:
-      # Ignore major version updates for React Native (requires manual testing)
-      - dependency-name: "react-native"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "expo"
-        update-types: ["version-update:semver-major"]
+      day: "sunday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: "direct"
+    groups:
+      expo:
+        patterns:
+          - "expo*"
+          - "@expo/*"
+      react-native:
+        patterns:
+          - "react-native*"
+          - "@react-native*/*"
+      livekit:
+        patterns:
+          - "livekit*"
+          - "@livekit/*"
+      linting:
+        patterns:
+          - "eslint*"
+          - "@typescript-eslint/*"
+          - "prettier"
+      misc-patches:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "expo*"
+          - "@expo/*"
+          - "react-native*"
+          - "@react-native*/*"
+          - "livekit*"
+          - "@livekit/*"
+          - "eslint*"
+          - "@typescript-eslint/*"
+          - "prettier"
 
   # Enable version updates for Cargo (Rust/Tauri)
   - package-ecosystem: "cargo"
@@ -42,12 +63,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-      day: "monday"
-      time: "09:00"
-    open-pull-requests-limit: 3
-    commit-message:
-      prefix: "ci"
-      include: "scope"
-    labels:
-      - "dependencies"
-      - "github-actions"
+      day: "sunday"
+      time: "06:00"
+      timezone: "UTC"

@@ -1,10 +1,13 @@
-import { useAuth } from '@/auth/AuthContext';
-import * as React from 'react';
 import { Drawer } from 'expo-router/drawer';
-import { useIsTablet } from '@/utils/responsive';
-import { SidebarView } from './SidebarView';
-import { Slot } from 'expo-router';
+import * as React from 'react';
 import { useWindowDimensions } from 'react-native';
+
+import { SidebarView } from './SidebarView';
+
+import { useAuth } from '@/auth/AuthContext';
+import { useIsTablet } from '@/utils/responsive';
+
+
 
 export const SidebarNavigator = React.memo(() => {
   const auth = useAuth();

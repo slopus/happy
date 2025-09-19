@@ -1,14 +1,16 @@
+import { Ionicons } from '@expo/vector-icons';
+import { Stack } from 'expo-router';
 import * as React from 'react';
 import { View, Text, TextInput, ActivityIndicator } from 'react-native';
-import { Stack } from 'expo-router';
+
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
+import { Typography } from '@/constants/Typography';
+import { Modal } from '@/modal';
 import { storage } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { Typography } from '@/constants/Typography';
-import { Ionicons } from '@expo/vector-icons';
-import { Modal } from '@/modal';
+
 
 export default function PurchasesDevScreen() {
   // Get purchases directly from storage

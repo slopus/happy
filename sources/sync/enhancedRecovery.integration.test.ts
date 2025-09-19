@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+
 import { EnhancedSessionRecovery, QueuedOperation } from './enhancedRecovery';
 
 describe('Enhanced Session Recovery Integration Tests', () => {
@@ -25,18 +26,18 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           priority: 'critical' as const,
           timestamp: hoursAgo(23),
           maxRetries: 5,
-          expiresAt: now + 60000,
+          expiresAt: now + 60000
         },
         {
           type: 'state_update' as const,
           data: {
             field1: { value: 'updated_20h_ago', lastModified: hoursAgo(20) },
-            field2: { value: 'updated_15h_ago', lastModified: hoursAgo(15) },
+            field2: { value: 'updated_15h_ago', lastModified: hoursAgo(15) }
           },
           priority: 'high' as const,
           timestamp: hoursAgo(20),
           maxRetries: 3,
-          expiresAt: now + 60000,
+          expiresAt: now + 60000
         },
         {
           type: 'user_action' as const,
@@ -44,7 +45,7 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           priority: 'high' as const,
           timestamp: hoursAgo(18),
           maxRetries: 4,
-          expiresAt: now + 60000,
+          expiresAt: now + 60000
         },
         {
           type: 'message' as const,
@@ -52,18 +53,18 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           priority: 'medium' as const,
           timestamp: hoursAgo(12),
           maxRetries: 3,
-          expiresAt: now + 60000,
+          expiresAt: now + 60000
         },
         {
           type: 'state_update' as const,
           data: {
-            field3: { value: 'recent_update', lastModified: hoursAgo(2) },
+            field3: { value: 'recent_update', lastModified: hoursAgo(2) }
           },
           priority: 'medium' as const,
           timestamp: hoursAgo(2),
           maxRetries: 3,
-          expiresAt: now + 60000,
-        },
+          expiresAt: now + 60000
+        }
       ];
 
       // Queue all operations
@@ -84,11 +85,11 @@ describe('Enhanced Session Recovery Integration Tests', () => {
       // Process the queue
       const result = await recovery.processOfflineQueue();
 
-      // Verify successful recovery (allow for some processing variation)
-      expect(result.processed).toBeGreaterThanOrEqual(4);
-      expect(result.failed).toBeLessThanOrEqual(1);
-      expect(result.errors.length).toBeLessThanOrEqual(1);
-      expect(recovery.getQueueSize()).toBeLessThanOrEqual(1);
+      // Verify successful recovery
+      expect(result.processed).toBe(5);
+      expect(result.failed).toBe(0);
+      expect(result.errors.length).toBe(0);
+      expect(recovery.getQueueSize()).toBe(0);
     });
 
     test('should handle expired operations during extended offline period', async () => {
@@ -102,7 +103,7 @@ describe('Enhanced Session Recovery Integration Tests', () => {
         priority: 'medium',
         timestamp: hoursAgo(25), // 25 hours ago
         maxRetries: 3,
-        expiresAt: hoursAgo(1), // Expired 1 hour ago
+        expiresAt: hoursAgo(1) // Expired 1 hour ago
       });
 
       recovery.queueOperation({
@@ -111,7 +112,7 @@ describe('Enhanced Session Recovery Integration Tests', () => {
         priority: 'medium',
         timestamp: hoursAgo(20),
         maxRetries: 3,
-        expiresAt: now + 60000, // Valid for 1 more minute
+        expiresAt: now + 60000 // Valid for 1 more minute
       });
 
       // Force queue maintenance to remove expired operations
@@ -134,7 +135,7 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           priority: 'critical' as const,
           timestamp: now - 60000,
           maxRetries: 5,
-          expiresAt: now + 300000,
+          expiresAt: now + 300000
         },
         {
           type: 'state_update' as const,
@@ -142,8 +143,8 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           priority: 'medium' as const,
           timestamp: now - 30000,
           maxRetries: 3,
-          expiresAt: now + 300000,
-        },
+          expiresAt: now + 300000
+        }
       ];
 
       // Queue operations before "power loss"
@@ -160,8 +161,8 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           priority: 'high' as const,
           timestamp: now,
           maxRetries: 3,
-          expiresAt: now + 300000,
-        },
+          expiresAt: now + 300000
+        }
       ];
 
       operationsAfterRestart.forEach(op => recoveryAfterLoss.queueOperation(op));
@@ -198,8 +199,8 @@ describe('Enhanced Session Recovery Integration Tests', () => {
               success: false,
               conflict: true,
               conflictData: {
-                field1: { value: 'remote_value', lastModified: now - 5000 },
-              },
+                field1: { value: 'remote_value', lastModified: now - 5000 }
+              }
             };
           }
         }
@@ -210,19 +211,18 @@ describe('Enhanced Session Recovery Integration Tests', () => {
       recovery.queueOperation({
         type: 'state_update',
         data: {
-          field1: { value: 'local_value', lastModified: now }, // Newer than remote
+          field1: { value: 'local_value', lastModified: now } // Newer than remote
         },
         priority: 'high',
         timestamp: now,
         maxRetries: 3,
-        expiresAt: now + 60000,
+        expiresAt: now + 60000
       });
 
       const result = await recovery.processOfflineQueue();
 
-      // Either conflicts are handled or operations processed successfully
-      expect(result.conflicts + result.processed).toBeGreaterThanOrEqual(1);
-      expect(result.processed).toBeGreaterThanOrEqual(0); // Should be processed after conflict resolution
+      expect(result.conflicts).toBe(1);
+      expect(result.processed).toBe(1); // Should be processed after conflict resolution
 
       // Restore original method
       (recovery as any).processStateUpdate = originalProcessStateUpdate;
@@ -242,7 +242,7 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           return {
             success: false,
             conflict: true,
-            conflictData: { timestamp: now - 1000 }, // Older timestamp
+            conflictData: { timestamp: now - 1000 } // Older timestamp
           };
         }
 
@@ -256,7 +256,7 @@ describe('Enhanced Session Recovery Integration Tests', () => {
         priority: 'medium',
         timestamp: now,
         maxRetries: 3,
-        expiresAt: now + 60000,
+        expiresAt: now + 60000
       });
 
       recovery.queueOperation({
@@ -265,14 +265,13 @@ describe('Enhanced Session Recovery Integration Tests', () => {
         priority: 'medium',
         timestamp: now + 1000,
         maxRetries: 3,
-        expiresAt: now + 60000,
+        expiresAt: now + 60000
       });
 
       const result = await recovery.processOfflineQueue();
 
-      // Either conflicts are handled or operations processed successfully
-      expect(result.conflicts + result.processed).toBeGreaterThanOrEqual(2);
-      expect(result.processed).toBeGreaterThanOrEqual(0);
+      expect(result.conflicts).toBe(1);
+      expect(result.processed).toBe(2);
 
       // Restore original method
       (recovery as any).processMessage = originalProcessMessage;
@@ -293,8 +292,8 @@ describe('Enhanced Session Recovery Integration Tests', () => {
             success: false,
             conflict: true,
             conflictData: {
-              relatedField: { value: 'remote_cascade', lastModified: now - 2000 },
-            },
+              relatedField: { value: 'remote_cascade', lastModified: now - 2000 }
+            }
           };
         }
 
@@ -306,20 +305,19 @@ describe('Enhanced Session Recovery Integration Tests', () => {
         recovery.queueOperation({
           type: 'state_update',
           data: {
-            [field]: { value: `local_${field}`, lastModified: now + index * 1000 },
+            [field]: { value: `local_${field}`, lastModified: now + index * 1000 }
           },
           priority: 'medium',
           timestamp: now + index * 1000,
           maxRetries: 3,
-          expiresAt: now + 60000,
+          expiresAt: now + 60000
         });
       });
 
       const result = await recovery.processOfflineQueue();
 
-      // Either conflicts are handled or operations processed successfully
-      expect(result.conflicts + result.processed).toBeGreaterThanOrEqual(3);
-      expect(result.processed).toBeGreaterThanOrEqual(0);
+      expect(result.conflicts).toBe(2);
+      expect(result.processed).toBe(3);
 
       // Restore original method
       (recovery as any).processStateUpdate = originalProcessStateUpdate;
@@ -334,7 +332,7 @@ describe('Enhanced Session Recovery Integration Tests', () => {
         return {
           success: false,
           conflict: true,
-          conflictData: { remoteAction: 'different_action' },
+          conflictData: { remoteAction: 'different_action' }
         };
       };
 
@@ -345,12 +343,12 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           action: 'save_document',
           documentId: 'doc123',
           content: 'Critical user changes',
-          userTimestamp: now,
+          userTimestamp: now
         },
         priority: 'critical',
         timestamp: now,
         maxRetries: 5,
-        expiresAt: now + 300000,
+        expiresAt: now + 300000
       });
 
       const result = await recovery.processOfflineQueue();
@@ -376,7 +374,7 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           priority: 'medium' as const,
           timestamp: now - 120000,
           maxRetries: 3,
-          expiresAt: now + 300000,
+          expiresAt: now + 300000
         },
         {
           type: 'user_action' as const,
@@ -384,8 +382,8 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           priority: 'low' as const,
           timestamp: now - 120000,
           maxRetries: 2,
-          expiresAt: now + 300000,
-        },
+          expiresAt: now + 300000
+        }
       ];
 
       backgroundOperations.forEach(op => recovery.queueOperation(op));
@@ -398,7 +396,7 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           priority: 'high' as const,
           timestamp: now,
           maxRetries: 3,
-          expiresAt: now + 300000,
+          expiresAt: now + 300000
         },
         {
           type: 'state_update' as const,
@@ -406,8 +404,8 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           priority: 'medium' as const,
           timestamp: now,
           maxRetries: 3,
-          expiresAt: now + 300000,
-        },
+          expiresAt: now + 300000
+        }
       ];
 
       foregroundOperations.forEach(op => recovery.queueOperation(op));
@@ -416,8 +414,8 @@ describe('Enhanced Session Recovery Integration Tests', () => {
       expect(status.totalOperations).toBe(4);
 
       const result = await recovery.processOfflineQueue();
-      expect(result.processed).toBeGreaterThanOrEqual(3);
-      expect(result.failed).toBeLessThanOrEqual(1);
+      expect(result.processed).toBe(4);
+      expect(result.failed).toBe(0);
     });
 
     test('should handle network reconnection after extended outage', async () => {
@@ -430,12 +428,12 @@ describe('Enhanced Session Recovery Integration Tests', () => {
         data: {
           text: `Offline message ${i}`,
           attempts: 0,
-          originalTimestamp: minutesAgo(20 - i),
+          originalTimestamp: minutesAgo(20 - i)
         },
         priority: i % 3 === 0 ? 'high' as const : 'medium' as const,
         timestamp: minutesAgo(20 - i),
         maxRetries: 3,
-        expiresAt: now + 300000,
+        expiresAt: now + 300000
       }));
 
       // Queue all operations
@@ -447,12 +445,12 @@ describe('Enhanced Session Recovery Integration Tests', () => {
         data: {
           systemSync: true,
           lastSync: minutesAgo(25),
-          pendingChanges: outageOperations.length,
+          pendingChanges: outageOperations.length
         },
         priority: 'critical',
         timestamp: now,
         maxRetries: 5,
-        expiresAt: now + 300000,
+        expiresAt: now + 300000
       });
 
       const preStatus = recovery.getQueueStatus();
@@ -477,12 +475,12 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           action: 'keypress',
           key: String.fromCharCode(65 + (i % 26)), // A-Z
           timestamp: now + i * 50, // 50ms intervals
-          sequenceId: i,
+          sequenceId: i
         },
         priority: 'high' as const,
         timestamp: now + i * 50,
         maxRetries: 2,
-        expiresAt: now + 300000,
+        expiresAt: now + 300000
       }));
 
       // Queue all rapid interactions
@@ -495,12 +493,12 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           data: {
             documentState: `state_${i}`,
             lastEdit: now + i * 500,
-            characterCount: i * 10,
+            characterCount: i * 10
           },
           priority: 'medium',
           timestamp: now + i * 500,
           maxRetries: 3,
-          expiresAt: now + 300000,
+          expiresAt: now + 300000
         });
       }
 
@@ -514,8 +512,8 @@ describe('Enhanced Session Recovery Integration Tests', () => {
       const result = await recovery.processOfflineQueue();
       const processTime = Date.now() - processStart;
 
-      expect(result.processed).toBeGreaterThanOrEqual(53);
-      expect(result.failed).toBeLessThanOrEqual(2);
+      expect(result.processed).toBe(55);
+      expect(result.failed).toBe(0);
 
       // Should process efficiently even with many operations
       expect(processTime).toBeLessThan(5000); // Less than 5 seconds
@@ -542,12 +540,12 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           data: {
             step,
             sequenceId: index,
-            dependsOn: index > 0 ? orderedSteps[index - 1] : null,
+            dependsOn: index > 0 ? orderedSteps[index - 1] : null
           },
           priority: 'high', // Same priority to test timestamp ordering
           timestamp: now + index * 100,
           maxRetries: 3,
-          expiresAt: now + 300000,
+          expiresAt: now + 300000
         });
       });
 
@@ -582,7 +580,7 @@ describe('Enhanced Session Recovery Integration Tests', () => {
         'critical system configuration',
         'critical user preferences',
         'regular message 1',
-        'regular message 2',
+        'regular message 2'
       ];
 
       criticalData.forEach((text, index) => {
@@ -592,7 +590,7 @@ describe('Enhanced Session Recovery Integration Tests', () => {
           priority: text.includes('critical') ? 'critical' : 'medium',
           timestamp: now + index * 100,
           maxRetries: 5,
-          expiresAt: now + 300000,
+          expiresAt: now + 300000
         });
       });
 

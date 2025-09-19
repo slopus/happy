@@ -1,16 +1,17 @@
 import { Ionicons } from '@expo/vector-icons';
+import * as Localization from 'expo-localization';
+import { useRouter } from 'expo-router';
+import * as SystemUI from 'expo-system-ui';
+import { Appearance } from 'react-native';
+import { useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
+
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
-import { useRouter } from 'expo-router';
-import * as Localization from 'expo-localization';
-import { useUnistyles, UnistylesRuntime } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
-import { Appearance } from 'react-native';
-import * as SystemUI from 'expo-system-ui';
-import { darkTheme, lightTheme } from '@/theme';
+import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { t, getLanguageNativeName, SUPPORTED_LANGUAGES } from '@/text';
+import { darkTheme, lightTheme } from '@/theme';
 
 // Define known avatar styles for this version of the app
 type KnownAvatarStyle = 'pixelated' | 'gradient' | 'brutalist';

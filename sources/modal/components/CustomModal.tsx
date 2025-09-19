@@ -1,8 +1,11 @@
 import React from 'react';
-import { BaseModal } from './BaseModal';
+
 import { CustomModalConfig } from '../types';
-import { CommandPaletteModal } from '@/components/CommandPalette/CommandPaletteModal';
+
+import { BaseModal } from './BaseModal';
+
 import { CommandPalette } from '@/components/CommandPalette';
+import { CommandPaletteModal } from '@/components/CommandPalette/CommandPaletteModal';
 
 interface CustomModalProps {
     config: CustomModalConfig;

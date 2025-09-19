@@ -1,0 +1,7 @@
+node_modules/
+android/
+ios/
+dist/
+build/
+coverage/
+src-tauri/target/

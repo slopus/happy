@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AppState, Platform } from 'react-native';
-import { BackgroundSyncManager, initializeBackgroundSync } from '@/sync/backgroundSync';
-import { sync } from '@/sync/sync';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import { apiSocket } from '@/sync/apiSocket';
+import { BackgroundSyncManager, initializeBackgroundSync } from '@/sync/backgroundSync';
 import { storage } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 
 // Mock timers
 vi.useFakeTimers();

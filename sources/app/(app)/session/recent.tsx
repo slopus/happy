@@ -1,17 +1,20 @@
 import React from 'react';
 import { View, FlatList } from 'react-native';
-import { Text } from '@/components/StyledText';
-import { useAllSessions } from '@/sync/storage';
-import { Session } from '@/sync/storageTypes';
-import { Avatar } from '@/components/Avatar';
-import { getSessionName, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
+import { Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native-unistyles';
-import { Typography } from '@/constants/Typography';
+
+import { Avatar } from '@/components/Avatar';
 import { layout } from '@/components/layout';
+import { Text } from '@/components/StyledText';
+import { Typography } from '@/constants/Typography';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { Pressable } from 'react-native';
+import { useAllSessions } from '@/sync/storage';
+import { Session } from '@/sync/storageTypes';
 import { t } from '@/text';
+import { getSessionName, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
+
+
 
 interface SessionHistoryItem {
     type: 'session' | 'date-header';

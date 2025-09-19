@@ -1,10 +1,11 @@
-import { Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { Platform } from 'react-native';
+
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { Switch } from '@/components/Switch';
+import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { t } from '@/text';
 
 export default function FeaturesSettingsScreen() {

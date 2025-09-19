@@ -1,7 +1,9 @@
+import axios from 'axios';
 import { getRandomBytes } from 'expo-crypto';
 import sodium from 'react-native-libsodium';
-import axios from 'axios';
+
 import { encodeBase64 } from '../encryption/base64';
+
 import { getServerUrl } from '@/sync/serverConfig';
 
 export interface QRAuthKeyPair {

@@ -40,7 +40,7 @@ export class EnhancedSessionRecovery {
   private conflictResolver: Map<string, ConflictResolution> = new Map();
   private maxQueueSize: number = 1000;
   private maxOfflineTime: number = 24 * 60 * 60 * 1000; // 24 hours
-  private maintenanceInterval: NodeJS.Timeout | number | null = null;
+  private maintenanceInterval: ReturnType<typeof setInterval> | null = null;
 
   constructor() {
     this.setupConflictResolvers();
@@ -67,7 +67,7 @@ export class EnhancedSessionRecovery {
   private insertByPriority(operation: QueuedOperation) {
     const priorityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
     const insertIndex = this.offlineQueue.findIndex(
-      op => priorityOrder[op.priority] > priorityOrder[operation.priority],
+      op => priorityOrder[op.priority] > priorityOrder[operation.priority]
     );
 
     if (insertIndex === -1) {
@@ -101,10 +101,13 @@ export class EnhancedSessionRecovery {
       processed: 0,
       failed: 0,
       conflicts: 0,
-      errors: [],
+      errors: []
     };
 
-    // Process operations in priority order
+    // Collect operations that should be retried after first pass (e.g., merge conflicts)
+    const deferred: QueuedOperation[] = [];
+
+    // Process operations in priority order (first pass)
     for (const operation of [...this.offlineQueue]) {
       try {
         const result = await this.processOperation(operation);
@@ -113,8 +116,20 @@ export class EnhancedSessionRecovery {
           this.removeFromQueue(operation.id);
           results.processed++;
         } else if (result.conflict) {
+          // Track the conflict, resolve it
           results.conflicts++;
+          const resolver = this.conflictResolver.get(operation.type);
           await this.handleConflict(operation, result.conflictData);
+
+          // If strategy is local_wins, we consider the operation applied locally and done
+          if (resolver?.strategy === 'local_wins') {
+            this.removeFromQueue(operation.id);
+            results.processed++;
+            continue;
+          }
+
+          // Defer re-processing until after first pass so other operations can proceed
+          deferred.push(operation);
         } else {
           operation.retryCount++;
           if (operation.retryCount > operation.maxRetries) {
@@ -122,14 +137,43 @@ export class EnhancedSessionRecovery {
             results.failed++;
             results.errors.push({
               operationId: operation.id,
-              error: 'Max retries exceeded',
+              error: 'Max retries exceeded'
             });
           }
         }
       } catch (error) {
         results.errors.push({
           operationId: operation.id,
-          error: error instanceof Error ? error.message : 'Unknown error',
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    // Second pass: reprocess deferred operations now that conflicts may be resolved by order
+    for (const operation of deferred) {
+      try {
+        const result = await this.processOperation(operation);
+        if (result.success) {
+          this.removeFromQueue(operation.id);
+          results.processed++;
+        } else if (result.conflict) {
+          // Still conflicting; count once more and leave in queue for a future run
+          results.conflicts++;
+        } else {
+          operation.retryCount++;
+          if (operation.retryCount > operation.maxRetries) {
+            this.removeFromQueue(operation.id);
+            results.failed++;
+            results.errors.push({
+              operationId: operation.id,
+              error: 'Max retries exceeded'
+            });
+          }
+        }
+      } catch (error) {
+        results.errors.push({
+          operationId: operation.id,
+          error: error instanceof Error ? error.message : 'Unknown error'
         });
       }
     }
@@ -150,7 +194,8 @@ export class EnhancedSessionRecovery {
     }
   }
 
-  private async processMessage(operation: QueuedOperation): Promise<OperationResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async processMessage(_operation: QueuedOperation): Promise<OperationResult> {
     try {
       // Simulate message processing logic
       // In a real implementation, this would send the message to the server
@@ -158,12 +203,13 @@ export class EnhancedSessionRecovery {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'Message processing failed',
+        error: error instanceof Error ? error.message : 'Message processing failed'
       };
     }
   }
 
-  private async processStateUpdate(operation: QueuedOperation): Promise<OperationResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async processStateUpdate(_operation: QueuedOperation): Promise<OperationResult> {
     try {
       // Simulate state update processing
       // Check for conflicts with current state
@@ -173,7 +219,7 @@ export class EnhancedSessionRecovery {
         return {
           success: false,
           conflict: true,
-          conflictData: { remoteState: 'conflicting_data' },
+          conflictData: { remoteState: 'conflicting_data' }
         };
       }
 
@@ -181,26 +227,27 @@ export class EnhancedSessionRecovery {
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'State update failed',
+        error: error instanceof Error ? error.message : 'State update failed'
       };
     }
   }
 
-  private async processUserAction(operation: QueuedOperation): Promise<OperationResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async processUserAction(_operation: QueuedOperation): Promise<OperationResult> {
     try {
       // Simulate user action processing
       return { success: true };
     } catch (error) {
       return {
         success: false,
-        error: error instanceof Error ? error.message : 'User action processing failed',
+        error: error instanceof Error ? error.message : 'User action processing failed'
       };
     }
   }
 
   private async handleConflict(
     operation: QueuedOperation,
-    conflictData: any,
+    conflictData: any
   ): Promise<void> {
     const resolver = this.conflictResolver.get(operation.type);
     if (!resolver) {
@@ -221,7 +268,7 @@ export class EnhancedSessionRecovery {
         if (resolver.mergeFunction) {
           const merged = resolver.mergeFunction(operation.data, conflictData);
           operation.data = merged;
-          await this.processOperation(operation);
+          // Do not process here; let the caller re-process so conflicts are counted consistently per operation
         }
         break;
       case 'user_choice':
@@ -246,7 +293,8 @@ export class EnhancedSessionRecovery {
     // In a real implementation, this would force the update on the server
   }
 
-  private async presentConflictToUser(operation: QueuedOperation, conflictData: any): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async presentConflictToUser(operation: QueuedOperation, _conflictData: any): Promise<void> {
     // In a real implementation, this would show a UI for user to resolve conflict
     // For now, we'll default to local wins
     await this.forceLocalUpdate(operation);
@@ -258,7 +306,7 @@ export class EnhancedSessionRecovery {
       strategy: 'merge',
       mergeFunction: (local, remote) => {
         return local.timestamp > remote.timestamp ? local : remote;
-      },
+      }
     });
 
     // State updates: field-level merging
@@ -266,12 +314,12 @@ export class EnhancedSessionRecovery {
       strategy: 'merge',
       mergeFunction: (local, remote) => {
         return this.mergeStateUpdates(local, remote);
-      },
+      }
     });
 
     // User actions: local wins (user intent preservation)
     this.conflictResolver.set('user_action', {
-      strategy: 'local_wins',
+      strategy: 'local_wins'
     });
   }
 
@@ -296,7 +344,7 @@ export class EnhancedSessionRecovery {
       critical: 0,
       high: 0,
       medium: 0,
-      low: 0,
+      low: 0
     };
 
     let oldestOperation = now;
@@ -311,7 +359,7 @@ export class EnhancedSessionRecovery {
       totalOperations: this.offlineQueue.length,
       byPriority,
       oldestOperationAge: now - oldestOperation,
-      estimatedProcessingTime: this.estimateProcessingTime(),
+      estimatedProcessingTime: this.estimateProcessingTime()
     };
   }
 
@@ -343,7 +391,7 @@ export class EnhancedSessionRecovery {
     // Run maintenance every 5 minutes
     this.maintenanceInterval = setInterval(() => {
       this.enforceQueueLimits();
-    }, 5 * 60 * 1000) as unknown as NodeJS.Timeout;
+    }, 5 * 60 * 1000);
   }
 
   // Public methods for testing and monitoring

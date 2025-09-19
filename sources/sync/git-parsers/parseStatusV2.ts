@@ -3,7 +3,6 @@
  * Supports all v2 line types including branch headers, renames, conflicts, and untracked files
  */
 
-import { LineParser } from './LineParser';
 
 export interface GitFileEntryV2 {
     path: string;

@@ -1,10 +1,14 @@
 import React from 'react';
 import { View, Text, Pressable } from 'react-native';
-import { BaseModal } from './BaseModal';
-import { AlertModalConfig, ConfirmModalConfig } from '../types';
-import { Typography } from '@/constants/Typography';
 import { StyleSheet } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
+import { AlertModalConfig, ConfirmModalConfig } from '../types';
+
+import { BaseModal } from './BaseModal';
+
+import { Typography } from '@/constants/Typography';
+
 
 interface WebAlertModalProps {
     config: AlertModalConfig | ConfirmModalConfig;

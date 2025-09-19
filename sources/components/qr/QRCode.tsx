@@ -1,5 +1,6 @@
-import React from 'react';
 import { Canvas, Rect, Path, RoundedRect, DiffRect, rrect, rect, Group } from '@shopify/react-native-skia';
+import React from 'react';
+
 import { createQRMatrix } from './qrMatrix';
 
 // Check if point is in a locator pattern area

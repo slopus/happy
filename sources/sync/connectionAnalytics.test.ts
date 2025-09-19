@@ -6,6 +6,7 @@
  */
 
 import { describe, it, test, expect, beforeEach, afterEach, vi } from 'vitest';
+
 import { ConnectionAnalytics, ConnectionEvent, ConnectionMetrics, FailurePattern } from './connectionAnalytics';
 import { NetworkProfile } from './networkDetection';
 
@@ -21,7 +22,7 @@ describe('Connection Analytics', () => {
       stability: 0.9,
       strength: 80,
       isExpensive: false,
-      isInternetReachable: true,
+      isInternetReachable: true
     };
   });
 
@@ -35,7 +36,7 @@ describe('Connection Analytics', () => {
         networkProfile: mockNetworkProfile,
         success: true,
         latency: 100,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       };
 
       analytics.recordConnectionEvent(event);
@@ -57,7 +58,7 @@ describe('Connection Analytics', () => {
       const events: ConnectionEvent[] = [
         { networkProfile: mockNetworkProfile, success: true, latency: 100, timestamp: Date.now() },
         { networkProfile: mockNetworkProfile, success: true, latency: 200, timestamp: Date.now() + 1000 },
-        { networkProfile: mockNetworkProfile, success: false, latency: 300, timestamp: Date.now() + 2000, failureType: 'timeout' },
+        { networkProfile: mockNetworkProfile, success: false, latency: 300, timestamp: Date.now() + 2000, failureType: 'timeout' }
       ];
 
       events.forEach(event => analytics.recordConnectionEvent(event));
@@ -81,14 +82,14 @@ describe('Connection Analytics', () => {
         stability: 0.6,
         strength: 50,
         isExpensive: true,
-        isInternetReachable: true,
+        isInternetReachable: true
       };
 
       analytics.recordConnectionEvent({
         networkProfile: mockNetworkProfile,
         success: true,
         latency: 100,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       });
 
       analytics.recordConnectionEvent({
@@ -96,7 +97,7 @@ describe('Connection Analytics', () => {
         success: false,
         latency: 500,
         timestamp: Date.now(),
-        failureType: 'network_error',
+        failureType: 'network_error'
       });
 
       const metrics = analytics.getMetrics();
@@ -113,7 +114,7 @@ describe('Connection Analytics', () => {
         networkProfile: mockNetworkProfile,
         success: true,
         latency: 100,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       };
 
       const startTime = performance.now();
@@ -135,7 +136,7 @@ describe('Connection Analytics', () => {
         latency: 1000,
         timestamp: baseTime + i * 1000, // Same time period
         failureType: 'timeout' as const,
-        context: 'during_background',
+        context: 'during_background'
       }));
 
       const networkErrors = Array.from({ length: 3 }, (_, i) => ({
@@ -144,11 +145,11 @@ describe('Connection Analytics', () => {
         latency: 500,
         timestamp: baseTime + 5000 + i * 1000, // Same time period
         failureType: 'network_error' as const,
-        context: 'network_switch',
+        context: 'network_switch'
       }));
 
       [...timeouts, ...networkErrors].forEach(event =>
-        analytics.recordConnectionEvent(event),
+        analytics.recordConnectionEvent(event)
       );
 
       const report = analytics.generatePerformanceReport();
@@ -172,7 +173,7 @@ describe('Connection Analytics', () => {
         latency: 1000,
         timestamp: new Date('2023-01-02T08:00:00').getTime(), // Monday Morning
         failureType: 'timeout',
-        context: 'morning_commute',
+        context: 'morning_commute'
       };
 
       const eveningFailure: ConnectionEvent = {
@@ -181,7 +182,7 @@ describe('Connection Analytics', () => {
         latency: 1000,
         timestamp: new Date('2023-01-02T19:00:00').getTime(), // Monday Evening
         failureType: 'network_error', // Different failure type to create separate pattern
-        context: 'evening_usage',
+        context: 'evening_usage'
       };
 
       analytics.recordConnectionEvent(morningFailure);
@@ -214,7 +215,7 @@ describe('Connection Analytics', () => {
           latency: 1000,
           timestamp: Date.now() + i * 1000,
           failureType: 'timeout',
-          context: `context_${i}`,
+          context: `context_${i}`
         });
       }
 
@@ -234,7 +235,7 @@ describe('Connection Analytics', () => {
           success: true,
           latency: 100 + Math.random() * 50,
           timestamp: Date.now() + i * 1000,
-          heartbeatInterval: 30000,
+          heartbeatInterval: 30000
         });
       }
 
@@ -255,7 +256,7 @@ describe('Connection Analytics', () => {
           networkProfile: mockNetworkProfile,
           success: true,
           latency: 100,
-          timestamp: Date.now() + i * 1000,
+          timestamp: Date.now() + i * 1000
         });
       }
 
@@ -273,7 +274,7 @@ describe('Connection Analytics', () => {
         stability: 0.5,
         strength: 30,
         isExpensive: true,
-        isInternetReachable: true,
+        isInternetReachable: true
       };
 
       const wifiSettings = analytics.getOptimalSettings(mockNetworkProfile);
@@ -295,7 +296,7 @@ describe('Connection Analytics', () => {
         stability: 0.3,
         strength: 20,
         isExpensive: true,
-        isInternetReachable: true,
+        isInternetReachable: true
       };
 
       // Add many failure events
@@ -305,7 +306,7 @@ describe('Connection Analytics', () => {
           success: i % 3 !== 0, // 67% failure rate
           latency: 800,
           timestamp: Date.now() + i * 1000,
-          failureType: i % 2 === 0 ? 'timeout' : 'network_error',
+          failureType: i % 2 === 0 ? 'timeout' : 'network_error'
         });
       }
 
@@ -314,7 +315,7 @@ describe('Connection Analytics', () => {
       expect(report.recommendations).toBeDefined();
       expect(report.recommendations.length).toBeGreaterThan(0);
       expect(report.recommendations.some(r =>
-        r.includes('cellular') || r.includes('timeout') || r.includes('aggressive'),
+        r.includes('cellular') || r.includes('timeout') || r.includes('aggressive')
       )).toBe(true);
     });
 
@@ -322,7 +323,7 @@ describe('Connection Analytics', () => {
       const profiles = [
         mockNetworkProfile,
         { ...mockNetworkProfile, type: 'cellular' as const, quality: 'poor' as const },
-        { ...mockNetworkProfile, type: 'ethernet' as const, quality: 'excellent' as const },
+        { ...mockNetworkProfile, type: 'ethernet' as const, quality: 'excellent' as const }
       ];
 
       profiles.forEach((profile, profileIndex) => {
@@ -331,7 +332,7 @@ describe('Connection Analytics', () => {
             networkProfile: profile,
             success: profileIndex !== 1 || i < 3, // Cellular profile has some failures
             latency: 100 + profileIndex * 100,
-            timestamp: Date.now() + profileIndex * 1000 + i * 100,
+            timestamp: Date.now() + profileIndex * 1000 + i * 100
           });
         }
       });
@@ -355,7 +356,7 @@ describe('Connection Analytics', () => {
         networkProfile: mockNetworkProfile,
         success: true,
         latency: 100,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       });
 
       const beforeGeneration = Date.now();
@@ -375,7 +376,7 @@ describe('Connection Analytics', () => {
         networkProfile: mockNetworkProfile,
         success: Math.random() > 0.1, // 90% success rate
         latency: 50 + Math.random() * 200,
-        timestamp: Date.now() + i * 1000,
+        timestamp: Date.now() + i * 1000
       }));
 
       const startTime = performance.now();
@@ -398,14 +399,14 @@ describe('Connection Analytics', () => {
           stability: 0.9,
           strength: 80,
           isExpensive: false,
-          isInternetReachable: true,
+          isInternetReachable: true
         };
 
         analytics.recordConnectionEvent({
           networkProfile: profile,
           success: true,
           latency: 100,
-          timestamp: Date.now() - i * 10000, // Spread over time
+          timestamp: Date.now() - i * 10000 // Spread over time
         });
       }
 
@@ -462,7 +463,7 @@ describe('Machine Learning Algorithm', () => {
       stability: 0.9,
       strength: 80,
       isExpensive: false,
-      isInternetReachable: true,
+      isInternetReachable: true
     };
   });
 
@@ -478,7 +479,7 @@ describe('Machine Learning Algorithm', () => {
         success: i % 3 !== 0, // 67% success rate (poor baseline)
         latency: 200 + Math.random() * 100,
         timestamp: Date.now() + i * 1000,
-        heartbeatInterval: 60000,
+        heartbeatInterval: 60000
       }));
 
       // Record poor baseline performance
@@ -490,7 +491,7 @@ describe('Machine Learning Algorithm', () => {
         success: true, // 100% success rate (good performance)
         latency: 80 + Math.random() * 20,
         timestamp: Date.now() + 25000 + i * 1000,
-        heartbeatInterval: 25000,
+        heartbeatInterval: 25000
       }));
 
       goodEvents.forEach(event => analytics.recordConnectionEvent(event));
@@ -514,7 +515,7 @@ describe('Machine Learning Algorithm', () => {
           success: true,
           latency,
           timestamp: Date.now() + i * 1000,
-          heartbeatInterval: optimalHeartbeat,
+          heartbeatInterval: optimalHeartbeat
         };
       });
 
@@ -535,14 +536,14 @@ describe('Machine Learning Algorithm', () => {
         success: true,
         latency: 50 + Math.random() * 30,
         timestamp: Date.now() + i * 1000,
-        heartbeatInterval: 20000,
+        heartbeatInterval: 20000
       }));
 
       goodConditions.forEach(event => analytics.recordConnectionEvent(event));
 
       const goodSettings = analytics.getOptimalSettings({
         ...baselineProfile,
-        quality: 'excellent',
+        quality: 'excellent'
       });
 
       // Phase 2: Poor network conditions
@@ -551,14 +552,14 @@ describe('Machine Learning Algorithm', () => {
         success: Math.random() > 0.2, // 80% success rate
         latency: 300 + Math.random() * 200,
         timestamp: Date.now() + 30000 + i * 1000,
-        heartbeatInterval: 60000,
+        heartbeatInterval: 60000
       }));
 
       poorConditions.forEach(event => analytics.recordConnectionEvent(event));
 
       const poorSettings = analytics.getOptimalSettings({
         ...baselineProfile,
-        quality: 'poor',
+        quality: 'poor'
       });
 
       // Should adapt settings based on network quality (due to default settings)
@@ -574,7 +575,7 @@ describe('Machine Learning Algorithm', () => {
         success: Math.random() > 0.1,
         latency: 100 + Math.random() * 300,
         timestamp: Date.now() + i * 1000,
-        heartbeatInterval: 20000 + Math.random() * 40000,
+        heartbeatInterval: 20000 + Math.random() * 40000
       }));
 
       massiveDataSet.forEach(event => analytics.recordConnectionEvent(event));
@@ -594,7 +595,7 @@ describe('Machine Learning Algorithm', () => {
         success: true,
         latency: 100 + Math.random() * 100,
         timestamp: Date.now() + i * 1000,
-        heartbeatInterval: 30000,
+        heartbeatInterval: 30000
       }));
 
       const startTime = performance.now();
@@ -612,14 +613,14 @@ describe('Machine Learning Algorithm', () => {
         success: true,
         latency: 120, // Consistent latency
         timestamp: Date.now() + i * 1000,
-        heartbeatInterval: 25000, // Consistent optimal
+        heartbeatInterval: 25000 // Consistent optimal
       }));
 
       consistentData.forEach(event => analytics.recordConnectionEvent(event));
 
       // Get multiple predictions
       const predictions = Array.from({ length: 5 }, () =>
-        analytics.getOptimalSettings(baselineProfile).heartbeatInterval,
+        analytics.getOptimalSettings(baselineProfile).heartbeatInterval
       );
 
       // Predictions should be stable (same input = same output)
@@ -647,7 +648,7 @@ describe('Quality Assurance Requirements', () => {
       stability: 0.8,
       strength: 70,
       isExpensive: false,
-      isInternetReachable: true,
+      isInternetReachable: true
     };
 
     // Phase 1: Poor baseline performance
@@ -656,7 +657,7 @@ describe('Quality Assurance Requirements', () => {
       success: i % 3 !== 0, // 67% success rate (poor baseline)
       latency: 250 + Math.random() * 100,
       timestamp: Date.now() + i * 1000,
-      heartbeatInterval: 60000,
+      heartbeatInterval: 60000
     }));
 
     baselineEvents.forEach(event => analytics.recordConnectionEvent(event));
@@ -667,7 +668,7 @@ describe('Quality Assurance Requirements', () => {
       success: true, // 100% success rate (excellent)
       latency: 80 + Math.random() * 20,
       timestamp: Date.now() + 25000 + i * 1000,
-      heartbeatInterval: 20000,
+      heartbeatInterval: 20000
     }));
 
     learningEvents.forEach(event => analytics.recordConnectionEvent(event));
@@ -686,7 +687,7 @@ describe('Quality Assurance Requirements', () => {
       stability: 0.9,
       strength: 80,
       isExpensive: true,
-      isInternetReachable: true,
+      isInternetReachable: true
     };
 
     // Create training data with known patterns
@@ -699,7 +700,7 @@ describe('Quality Assurance Requirements', () => {
         success: true,
         latency,
         timestamp: Date.now() + i * 1000,
-        heartbeatInterval: optimalHeartbeat,
+        heartbeatInterval: optimalHeartbeat
       };
     });
 
@@ -717,7 +718,7 @@ describe('Quality Assurance Requirements', () => {
       stability: 1.0,
       strength: 100,
       isExpensive: false,
-      isInternetReachable: true,
+      isInternetReachable: true
     };
 
     const event = {
@@ -727,7 +728,7 @@ describe('Quality Assurance Requirements', () => {
       timestamp: Date.now(),
       heartbeatInterval: 30000,
       dataUsed: 1024,
-      batteryDelta: 0.001,
+      batteryDelta: 0.001
     };
 
     // Test processing time for individual events
@@ -757,7 +758,7 @@ describe('Quality Assurance Requirements', () => {
       stability: 0.9,
       strength: 80,
       isExpensive: false,
-      isInternetReachable: true,
+      isInternetReachable: true
     };
 
     // Generate more metrics than the storage limit by using different quality levels
@@ -767,14 +768,14 @@ describe('Quality Assurance Requirements', () => {
         ...networkProfile,
         quality: qualities[i % qualities.length],
         isExpensive: i % 2 === 0, // Alternate expensive flag
-        strength: 30 + (i % 50), // Vary strength but key depends on type/quality/expensive
+        strength: 30 + (i % 50) // Vary strength but key depends on type/quality/expensive
       };
 
       analytics.recordConnectionEvent({
         networkProfile: profile,
         success: true,
         latency: 100,
-        timestamp: Date.now() - i * 10000, // Spread over time (older timestamps)
+        timestamp: Date.now() - i * 10000 // Spread over time (older timestamps)
       });
     }
 
@@ -807,7 +808,7 @@ describe('Integration Requirements', () => {
       stability: 0.9,
       strength: 85,
       isExpensive: false,
-      isInternetReachable: true,
+      isInternetReachable: true
     };
 
     // ✓ Connection events recorded and analyzed
@@ -815,7 +816,7 @@ describe('Integration Requirements', () => {
       networkProfile,
       success: true,
       latency: 120,
-      timestamp: Date.now(),
+      timestamp: Date.now()
     });
 
     let report = analytics.generatePerformanceReport();
@@ -831,7 +832,7 @@ describe('Integration Requirements', () => {
         success: true,
         latency: 80 + Math.random() * 40,
         timestamp: Date.now() + i * 1000,
-        heartbeatInterval: 20000 + Math.random() * 10000,
+        heartbeatInterval: 20000 + Math.random() * 10000
       });
     }
 
@@ -846,7 +847,7 @@ describe('Integration Requirements', () => {
       latency: 1000,
       timestamp: Date.now(),
       failureType: 'timeout',
-      context: 'test_failure',
+      context: 'test_failure'
     });
 
     report = analytics.generatePerformanceReport();
@@ -870,7 +871,7 @@ describe('Integration Requirements', () => {
       stability: 0,
       strength: null,
       isExpensive: false,
-      isInternetReachable: false,
+      isInternetReachable: false
     };
 
     // Should handle unknown network types
@@ -878,7 +879,7 @@ describe('Integration Requirements', () => {
       analytics.recordConnectionEvent({
         networkProfile,
         success: false,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       });
     }).not.toThrow();
 
@@ -887,7 +888,7 @@ describe('Integration Requirements', () => {
       analytics.recordConnectionEvent({
         networkProfile,
         success: true,
-        timestamp: Date.now(),
+        timestamp: Date.now()
         // Missing latency, heartbeatInterval, etc.
       });
     }).not.toThrow();

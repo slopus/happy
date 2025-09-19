@@ -1,13 +1,14 @@
 import { AppState, AppStateStatus, Platform } from 'react-native';
-import { log } from '@/log';
+
 import { apiSocket } from './apiSocket';
-import { storage } from './storage';
 import {
   getTaskManager,
   getBackgroundFetch,
-  EXPO_MODULES_AVAILABILITY,
-  type TaskManagerTaskExecutor,
+  EXPO_MODULES_AVAILABILITY
 } from './expoModuleMocks';
+import { storage } from './storage';
+
+import { log } from '@/log';
 
 // Get conditional imports
 const TaskManager = getTaskManager();
@@ -58,7 +59,7 @@ export class BackgroundSyncManager {
   private setupAppStateListener() {
     this.appStateSubscription = AppState.addEventListener(
       'change',
-      this.handleAppStateChange.bind(this),
+      this.handleAppStateChange.bind(this)
     );
   }
 
@@ -350,7 +351,7 @@ export class BackgroundSyncManager {
 
       // Only process recent operations (within last 5 minutes)
       const recentOperations = this.criticalSyncQueue.filter(
-        op => now - op.timestamp < 300000,
+        op => now - op.timestamp < 300000
       );
 
       for (const operation of recentOperations) {
@@ -435,7 +436,7 @@ export class BackgroundSyncManager {
 
       // Clean up old critical operations (older than 10 minutes)
       this.criticalSyncQueue = this.criticalSyncQueue.filter(
-        op => now - op.timestamp < 600000,
+        op => now - op.timestamp < 600000
       );
 
       log.log(`🧹 Cleaned up stale operations, ${this.criticalSyncQueue.length} remaining`);
@@ -483,7 +484,7 @@ export class BackgroundSyncManager {
       const Battery = require('expo-battery');
       const batteryLevel = await Battery.getBatteryLevelAsync();
       return batteryLevel > 0.15; // Only sync if battery > 15%
-    } catch (error) {
+    } catch {
       // If battery info not available, assume sufficient
       return true;
     }

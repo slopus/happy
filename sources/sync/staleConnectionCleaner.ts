@@ -3,9 +3,10 @@
  * Automatically detects and cleans up orphaned connections and zombie sessions
  */
 
-import { storage } from './storage';
 import { sessionKill } from './ops';
+import { storage } from './storage';
 import { sync } from './sync';
+
 import type { Session } from './storageTypes';
 
 export interface StaleConnectionConfig {
@@ -31,7 +32,7 @@ export interface CleanupResult {
 
 export class StaleConnectionCleaner {
   private config: StaleConnectionConfig;
-  private cleanupInterval: NodeJS.Timeout | null = null;
+  private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private isRunning = false;
   private retryCount = new Map<string, number>();
   private lastCleanupTime = 0;
@@ -55,7 +56,7 @@ export class StaleConnectionCleaner {
     // Schedule periodic cleanup
     this.cleanupInterval = setInterval(() => {
       this.performCleanup();
-    }, this.config.checkInterval) as unknown as NodeJS.Timeout;
+    }, this.config.checkInterval);
   }
 
   /**
@@ -244,14 +245,14 @@ export class StaleConnectionCleaner {
   private async verifySessionAlive(sessionId: string): Promise<boolean> {
     try {
       // Try to ping the session with a short timeout
-      const result = await Promise.race([
+      await Promise.race([
         sessionKill(sessionId), // This will fail if session is alive
         new Promise((_, reject) => setTimeout(() => reject(new Error('Verification timeout')), 5000)),
       ]);
 
       // If sessionKill succeeded, the session was alive and has been killed
       return true;
-    } catch (error) {
+    } catch {
       // If sessionKill failed, the session was already dead or there's a network issue
       // For now, assume it's dead to be safe (since we're cleaning up stale connections)
       return false;

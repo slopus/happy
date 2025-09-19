@@ -47,51 +47,10 @@ class Logger {
   }
 
   /**
-     * Log an info message - alias for log() method
-     */
-  info(message: string): void {
-    this.log(message);
-  }
-
-  /**
-     * Log a debug message - alias for log() method
-     */
-  debug(message: string): void {
-    this.log(message);
-  }
-
-  /**
-     * Log a warning message - writes to both console and internal array
-     */
-  warn(message: string): void {
-    // Add to internal array with warning prefix
-    const warnMessage = `⚠️ ${message}`;
-    this.logs.push(warnMessage);
-
-    // Maintain 5k limit with circular buffer
-    if (this.logs.length > this.maxLogs) {
-      this.logs.shift();
-    }
-
-    // Write to console warn
-    console.warn(warnMessage);
-
-    // Notify listeners for real-time updates
-    this.listeners.forEach(listener => listener());
-  }
-
-  /**
      * Get all logs as a copy of the array
      */
   getLogs(): string[] {
     return [...this.logs];
-  }
-
-  /**
-     * Get logs as formatted strings (backward compatibility)
-     */
-  getLogsAsStrings(): string[] {
-    return this.getLogs();
   }
 
   /**

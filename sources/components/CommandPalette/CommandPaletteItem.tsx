@@ -1,8 +1,10 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
+
 import { Command } from './types';
+
 import { Typography } from '@/constants/Typography';
-import { Ionicons } from '@expo/vector-icons';
 
 interface CommandPaletteItemProps {
     command: Command;

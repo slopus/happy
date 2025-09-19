@@ -42,22 +42,22 @@ function getToolSummary(tools: ToolCall[]): string {
     // Try to extract meaningful info from common tools
     switch (toolName) {
       case 'Edit':
-      case 'Write':
+      case 'Write': {
         const filePath = tool.input?.target_file || tool.input?.file_path;
         return filePath ? `Edited ${filePath}` : `Used ${toolName}`;
-      
-      case 'Read':
+      }
+      case 'Read': {
         const readPath = tool.input?.target_file || tool.input?.file_path;
         return readPath ? `Read ${readPath}` : 'Read file';
-      
+      }
       case 'Bash':
-      case 'RunCommand':
+      case 'RunCommand': {
         const command = tool.input?.command;
         if (command && typeof command === 'string') {
           return `Ran: ${command.length > 20 ? `${command.substring(0, 20)  }...` : command}`;
         }
         return 'Ran command';
-      
+      }
       default:
         return `Used ${toolName}`;
     }

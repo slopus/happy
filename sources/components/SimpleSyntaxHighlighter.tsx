@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
 import { Typography } from '@/constants/Typography';
 
 interface SimpleSyntaxHighlighterProps {
@@ -102,6 +103,7 @@ const tokenizeCode = (code: string, language: string | null) => {
     
     // Strings and regex
     { regex: /(r?["'`])((?:(?!\1)[^\\]|\\.)*)(\1)/g, type: 'string' },
+    // eslint-disable-next-line no-useless-escape
     { regex: /(\/(?:[^\/\\\n]|\\.)+\/[gimuy]*)/g, type: 'regex' },
     
     // Numbers (including hex, binary, floats)
@@ -129,8 +131,8 @@ const tokenizeCode = (code: string, language: string | null) => {
     // Operators by category
     { regex: /(===|!==|==|!=|<=|>=|<|>)/g, type: 'comparison' },
     { regex: /(&&|\|\||!)/g, type: 'logical' },
-    { regex: /(=|\+=|\-=|\*=|\/=|%=|\|=|&=|\^=)/g, type: 'assignment' },
-    { regex: /(\+|\-|\*|\/|%|\*\*)/g, type: 'operator' },
+    { regex: /(=|\+=|-=|\*=|\/=|%=|\|=|&=|\^=)/g, type: 'assignment' },
+    { regex: /(\+|\*|\/|%|\*\*|-)/g, type: 'operator' },
     { regex: /(\?|:)/g, type: 'operator' },
     
     // Brackets and punctuation

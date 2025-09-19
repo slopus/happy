@@ -1,4 +1,5 @@
 import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+
 import { EnhancedSessionRecovery, QueuedOperation } from './enhancedRecovery';
 
 describe('Enhanced Session Recovery Stress Tests', () => {
@@ -30,12 +31,12 @@ describe('Enhanced Session Recovery Stress Tests', () => {
             index: i,
             payload: `data_${i}`,
             timestamp: Date.now() + i,
-            largeContent: 'x'.repeat(100), // Add some content to simulate real data
+            largeContent: 'x'.repeat(100) // Add some content to simulate real data
           },
           priority: priorities[i % 4],
           timestamp: Date.now() + i * 10,
           maxRetries: 3,
-          expiresAt: Date.now() + 300000,
+          expiresAt: Date.now() + 300000
         });
       }
 
@@ -71,10 +72,10 @@ describe('Enhanced Session Recovery Stress Tests', () => {
       const expectedMaxTime = (numOperations / 100) * 5000; // Scale linearly
       expect(processTime).toBeLessThan(expectedMaxTime);
 
-      // Verify most operations were processed (allow for some processing variation)
-      expect(result.processed).toBeGreaterThanOrEqual(Math.floor(numOperations * 0.95));
-      expect(result.failed).toBeLessThanOrEqual(Math.ceil(numOperations * 0.05));
-      expect(recovery.getQueueSize()).toBeLessThanOrEqual(Math.ceil(numOperations * 0.05));
+      // Verify all operations were processed
+      expect(result.processed).toBe(numOperations);
+      expect(result.failed).toBe(0);
+      expect(recovery.getQueueSize()).toBe(0);
 
       const totalTime = Date.now() - startTime;
       console.log(`Stress test results for ${numOperations} operations:`);
@@ -96,7 +97,7 @@ describe('Enhanced Session Recovery Stress Tests', () => {
       const trackingFunction = async (operation: QueuedOperation) => {
         processedOrder.push({
           priority: operation.priority,
-          index: operation.data.index,
+          index: operation.data.index
         });
         return { success: true };
       };
@@ -116,7 +117,7 @@ describe('Enhanced Session Recovery Stress Tests', () => {
           priority: priorities[Math.floor(Math.random() * 4)],
           timestamp: Date.now() + Math.random() * 1000,
           maxRetries: 3,
-          expiresAt: Date.now() + 300000,
+          expiresAt: Date.now() + 300000
         });
       }
 
@@ -153,12 +154,12 @@ describe('Enhanced Session Recovery Stress Tests', () => {
           data: {
             index: i,
             content: `Message ${i}`,
-            timestamp: Date.now() + i,
+            timestamp: Date.now() + i
           },
           priority: i < 50 ? 'critical' : 'low', // First 50 are critical
           timestamp: Date.now() + i,
           maxRetries: 3,
-          expiresAt: Date.now() + 300000,
+          expiresAt: Date.now() + 300000
         });
       }
 
@@ -197,13 +198,13 @@ describe('Enhanced Session Recovery Stress Tests', () => {
               userId: `user_${i % 100}`,
               timestamp: Date.now() + i,
               tags: ['tag1', 'tag2', 'tag3'],
-              settings: { priority: 'normal', encrypted: false },
-            },
+              settings: { priority: 'normal', encrypted: false }
+            }
           },
           priority: 'medium',
           timestamp: Date.now() + i,
           maxRetries: 3,
-          expiresAt: Date.now() + 300000,
+          expiresAt: Date.now() + 300000
         });
       }
 
@@ -234,12 +235,12 @@ describe('Enhanced Session Recovery Stress Tests', () => {
               batchId: batch,
               operationId: i,
               data: { field: `value_${batch}_${i}` },
-              largePayload: 'x'.repeat(500), // 500 char payload
+              largePayload: 'x'.repeat(500) // 500 char payload
             },
             priority: 'medium',
             timestamp: Date.now() + i,
             maxRetries: 3,
-            expiresAt: Date.now() + 300000,
+            expiresAt: Date.now() + 300000
           });
         }
 
@@ -276,7 +277,7 @@ describe('Enhanced Session Recovery Stress Tests', () => {
           priority: 'medium',
           timestamp: now + i,
           maxRetries: 3,
-          expiresAt: isExpired ? now - 1000 : now + 300000,
+          expiresAt: isExpired ? now - 1000 : now + 300000
         });
       }
 
@@ -300,8 +301,8 @@ describe('Enhanced Session Recovery Stress Tests', () => {
 
       // Cleanup should be fast and effective
       expect(cleanupTime).toBeLessThan(1000); // Under 1 second
-      expect(afterCleanup).toBeLessThanOrEqual(beforeCleanup); // Some operations removed or same
-      expect(afterMemory).toBeLessThanOrEqual(beforeMemory); // Memory reduced or same
+      expect(afterCleanup).toBeLessThan(beforeCleanup); // Some operations removed
+      expect(afterMemory).toBeLessThan(beforeMemory); // Memory reduced
     });
   });
 
@@ -320,12 +321,12 @@ describe('Enhanced Session Recovery Stress Tests', () => {
           data: {
             actionId: i,
             action: 'rapid_input',
-            timestamp: Date.now() + i * interval,
+            timestamp: Date.now() + i * interval
           },
           priority: 'high',
           timestamp: Date.now() + i * interval,
           maxRetries: 2,
-          expiresAt: Date.now() + 300000,
+          expiresAt: Date.now() + 300000
         });
         operationIds.push(id);
       }
@@ -359,13 +360,13 @@ describe('Enhanced Session Recovery Stress Tests', () => {
             operationType: types[i % 3],
             payload: {
               data: `operation_${i}`,
-              metadata: { batch: Math.floor(i / 50), index: i % 50 },
-            },
+              metadata: { batch: Math.floor(i / 50), index: i % 50 }
+            }
           },
           priority: priorities[i % 4],
           timestamp: Date.now() + i,
           maxRetries: 3,
-          expiresAt: Date.now() + 300000,
+          expiresAt: Date.now() + 300000
         });
       }
 
@@ -380,8 +381,8 @@ describe('Enhanced Session Recovery Stress Tests', () => {
       const result = await recovery.processOfflineQueue();
       const processTime = Date.now() - processStart;
 
-      expect(result.processed).toBeGreaterThanOrEqual(Math.floor(numOperations * 0.95));
-      expect(result.failed).toBeLessThanOrEqual(Math.ceil(numOperations * 0.05));
+      expect(result.processed).toBe(numOperations);
+      expect(result.failed).toBe(0);
 
       console.log(`Mixed operations stress test:`);
       console.log(`- Queuing time: ${queueTime}ms`);
@@ -407,12 +408,12 @@ describe('Enhanced Session Recovery Stress Tests', () => {
             data: {
               burstId: burst,
               messageIndex: i,
-              content: `Burst ${burst} Message ${i}`,
+              content: `Burst ${burst} Message ${i}`
             },
             priority: burst % 2 === 0 ? 'high' : 'medium',
             timestamp: Date.now() + i,
             maxRetries: 3,
-            expiresAt: Date.now() + 300000,
+            expiresAt: Date.now() + 300000
           });
         }
 
@@ -436,7 +437,7 @@ describe('Enhanced Session Recovery Stress Tests', () => {
       const maxProcessTime = Math.max(...processingTimes);
       const minProcessTime = Math.min(...processingTimes);
 
-      expect(maxProcessTime - minProcessTime).toBeLessThan(Math.max(avgProcessTime * 2, 50)); // Variance should be reasonable but allow more tolerance, with minimum 50ms
+      expect(maxProcessTime - minProcessTime).toBeLessThan(avgProcessTime); // Variance should be reasonable
 
       console.log(`Burst processing summary:`);
       console.log(`- Average processing time: ${avgProcessTime.toFixed(1)}ms`);
@@ -466,7 +467,7 @@ describe('Enhanced Session Recovery Stress Tests', () => {
           priority: 'medium',
           timestamp: Date.now() + i,
           maxRetries: 2,
-          expiresAt: Date.now() + 300000,
+          expiresAt: Date.now() + 300000
         });
       }
 

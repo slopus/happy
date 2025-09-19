@@ -1,7 +1,9 @@
 import { io, Socket } from 'socket.io-client';
-import { TokenStorage } from '@/auth/tokenStorage';
-import { Encryption } from './encryption/encryption';
+
 import { connectionTimeoutHandler, type RequestOptions } from './connectionTimeoutHandler';
+import { Encryption } from './encryption/encryption';
+
+import { TokenStorage } from '@/auth/tokenStorage';
 import { log } from '@/log';
 
 //
@@ -31,16 +33,13 @@ class ApiSocket {
   private socket: Socket | null = null;
   private config: SyncSocketConfig | null = null;
   private encryption: Encryption | null = null;
-  private messageHandlers: Map<string, (data: unknown) => void> = new Map();
+  private messageHandlers: Map<string, (data: any) => void> = new Map();
   private reconnectedListeners: Set<() => void> = new Set();
   private statusListeners: Set<(status: 'disconnected' | 'connecting' | 'connected' | 'error') => void> = new Set();
   private currentStatus: 'disconnected' | 'connecting' | 'connected' | 'error' = 'disconnected';
-
-  // Connection V2 properties
   private lastPingTime: number = 0;
   private lastActivityTime: number = 0;
-  private pingInterval: number = 30000;
-  private pingIntervalId: NodeJS.Timeout | null = null;
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
 
   //
   // Initialization
@@ -69,7 +68,10 @@ class ApiSocket {
         token: this.config.token,
         clientType: 'user-scoped' as const,
       },
-      transports: ['websocket'],
+      transports: ['websocket', 'polling'],
+      forceNew: true,
+      upgrade: true, // Allow upgrade from polling to websocket
+      rememberUpgrade: true, // Remember successful upgrades
       reconnection: true,
       reconnectionDelay: 1000,
       reconnectionDelayMax: 5000,
@@ -77,14 +79,15 @@ class ApiSocket {
     });
 
     this.setupEventHandlers();
+    this.startPingTracking();
   }
 
   disconnect() {
-    this.stopPingTracking();
     if (this.socket) {
       this.socket.disconnect();
       this.socket = null;
     }
+    this.stopPingTracking();
     this.updateStatus('disconnected');
   }
 
@@ -108,12 +111,13 @@ class ApiSocket {
   // Message Handling
   //
 
-  onMessage(event: string, handler: (data: unknown) => void) {
+  onMessage(event: string, handler: (data: any) => void) {
     this.messageHandlers.set(event, handler);
     return () => this.messageHandlers.delete(event);
   }
 
-  offMessage(event: string, handler: (data: unknown) => void) {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  offMessage(event: string, _handler: (data: any) => void) {
     this.messageHandlers.delete(event);
   }
 
@@ -129,10 +133,10 @@ class ApiSocket {
     const result = await this.emitWithAck('rpc-call', {
       method: `${sessionId}:${method}`,
       params: await sessionEncryption.encryptRaw(params),
-    }, timeout) as { ok: boolean; result?: unknown; error?: string };
+    }, timeout);
 
-    if (result.ok && result.result !== undefined) {
-      return await sessionEncryption.decryptRaw(result.result as string) as R;
+    if (result.ok) {
+      return await sessionEncryption.decryptRaw(result.result) as R;
     }
     throw new Error(`RPC call failed for ${sessionId}:${method}`);
   }
@@ -149,20 +153,20 @@ class ApiSocket {
     const result = await this.emitWithAck('rpc-call', {
       method: `${machineId}:${method}`,
       params: await machineEncryption.encryptRaw(params),
-    }, timeout) as { ok: boolean; result?: unknown; error?: string };
+    }, timeout);
 
-    if (result.ok && result.result !== undefined) {
-      return await machineEncryption.decryptRaw(result.result as string) as R;
+    if (result.ok) {
+      return await machineEncryption.decryptRaw(result.result) as R;
     }
     throw new Error(`RPC call failed for ${machineId}:${method}`);
   }
 
-  send(event: string, data: unknown) {
+  send(event: string, data: any) {
         this.socket!.emit(event, data);
         return true;
   }
 
-  async emitWithAck<T = unknown>(event: string, data: unknown, timeout?: number): Promise<T> {
+  async emitWithAck<T = any>(event: string, data: any, timeout?: number): Promise<T> {
     if (!this.socket) {
       throw new Error('Socket not connected');
     }
@@ -333,7 +337,6 @@ class ApiSocket {
       // console.log('🔌 SyncSocket: Socket ID:', this.socket?.id);
       this.lastActivityTime = Date.now();
       this.updateStatus('connected');
-      this.startPingTracking();
       if (!this.socket?.recovered) {
         this.reconnectedListeners.forEach(listener => listener());
       }
@@ -341,7 +344,6 @@ class ApiSocket {
 
     this.socket.on('disconnect', (reason) => {
       log.log(`🔌 SyncSocket: Disconnected - ${reason} (this may indicate shell/daemon crash)`);
-      this.stopPingTracking();
       this.updateStatus('disconnected');
     });
 
@@ -382,23 +384,22 @@ class ApiSocket {
   }
 
   private startPingTracking() {
-    if (this.pingIntervalId) {
-      clearInterval(this.pingIntervalId);
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
     }
 
     // Track ping times every 30 seconds
-    this.pingIntervalId = setInterval(() => {
+    this.pingInterval = setInterval(() => {
       if (this.socket?.connected) {
         this.socket.emit('ping');
-        this.lastPingTime = Date.now();
       }
-    }, this.pingInterval);
+    }, 30000);
   }
 
   private stopPingTracking() {
-    if (this.pingIntervalId) {
-      clearInterval(this.pingIntervalId);
-      this.pingIntervalId = null;
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
     }
   }
 }

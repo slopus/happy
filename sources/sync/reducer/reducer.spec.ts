@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest';
+
+import { AgentState } from '../storageTypes';
 import { NormalizedMessage } from '../typesRaw';
+
 import { createReducer } from './reducer';
 import { reducer } from './reducer';
-import { AgentState } from '../storageTypes';
 
 describe('reducer', () => {
   // it('should process golden cases', () => {

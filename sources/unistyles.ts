@@ -1,8 +1,9 @@
-import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
-import { darkTheme, lightTheme } from './theme';
-import { loadThemePreference } from './sync/persistence';
-import { Appearance } from 'react-native';
 import * as SystemUI from 'expo-system-ui';
+import { Appearance } from 'react-native';
+import { StyleSheet, UnistylesRuntime } from 'react-native-unistyles';
+
+import { loadThemePreference } from './sync/persistence';
+import { darkTheme, lightTheme } from './theme';
 
 //
 // Theme
@@ -54,7 +55,9 @@ type AppThemes = typeof appThemes
 type AppBreakpoints = typeof breakpoints
 
 declare module 'react-native-unistyles' {
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- Module augmentation requires empty interface extending provided types
     export interface UnistylesThemes extends AppThemes { }
+    // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- Module augmentation requires empty interface extending provided types
     export interface UnistylesBreakpoints extends AppBreakpoints { }
 }
 

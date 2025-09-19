@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { AppState, Platform } from 'react-native';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import { BackgroundSyncManager, DEFAULT_BACKGROUND_CONFIG } from '@/sync/backgroundSync';
 
 // Mock timers

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, TextInput, ScrollView } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { QRCode } from '@/components/qr';
 import { RoundButton } from '@/components/RoundButton';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 
 const stylesheet = StyleSheet.create((theme) => ({

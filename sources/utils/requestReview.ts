@@ -1,17 +1,19 @@
 import * as StoreReview from 'expo-store-review';
+import { Platform } from 'react-native';
 import { MMKV } from 'react-native-mmkv';
-import { Modal } from '@/modal';
-import { t } from '@/text';
+
 import { AsyncLock } from './lock';
+
+import { Modal } from '@/modal';
+import { storage as syncStorage } from '@/sync/storage';
+import { sync } from '@/sync/sync';
+import { t } from '@/text';
 import {
   trackReviewPromptShown,
   trackReviewPromptResponse,
   trackReviewStoreShown,
   trackReviewRetryScheduled,
 } from '@/track';
-import { sync } from '@/sync/sync';
-import { storage as syncStorage } from '@/sync/storage';
-import { Platform } from 'react-native';
 
 const localStorage = new MMKV();
 

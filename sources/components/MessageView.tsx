@@ -1,15 +1,20 @@
-import * as React from 'react';
-import { View, Text } from 'react-native';
+import * as React from "react";
+import { View, Text } from "react-native";
 import { StyleSheet } from 'react-native-unistyles';
-import { MarkdownView } from './markdown/MarkdownView';
-import { t } from '@/text';
-import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from '@/sync/typesMessage';
-import { Metadata } from '@/sync/storageTypes';
-import { layout } from './layout';
-import { ToolView } from './tools/ToolView';
-import { AgentEvent } from '@/sync/typesRaw';
-import { sync } from '@/sync/sync';
+
+import { layout } from "./layout";
+import { MarkdownView } from "./markdown/MarkdownView";
 import { Option } from './markdown/MarkdownView';
+import { ToolView } from "./tools/ToolView";
+
+import { Metadata } from "@/sync/storageTypes";
+import { sync } from '@/sync/sync';
+import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
+import { AgentEvent } from "@/sync/typesRaw";
+import { t } from '@/text';
+
+
+
 
 export const MessageView = (props: {
   message: Message;
@@ -57,10 +62,11 @@ function RenderBlock(props: {
       return <AgentEventBlock event={props.message.event} metadata={props.metadata} />;
 
 
-    default:
+    default: {
       // Exhaustive check - TypeScript will error if we miss a case
       const _exhaustive: never = props.message;
       throw new Error(`Unknown message kind: ${_exhaustive}`);
+    }
   }
 }
 
@@ -92,9 +98,23 @@ function AgentTextBlock(props: {
     sync.sendMessage(props.sessionId, option.title);
   }, [props.sessionId]);
 
+  // Detect Claude/Codex time-limit notifications and render prominently in red
+  const isTimeLimitNotice = React.useMemo(() => {
+    const text = props.message.text.toLowerCase();
+    return (
+      text.includes('5 hour limit has been reached') ||
+      text.includes('time limit has been reached') ||
+      text.includes('no commands are being executed')
+    );
+  }, [props.message.text]);
+
   return (
     <View style={styles.agentMessageContainer}>
-      <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
+      {isTimeLimitNotice ? (
+        <Text style={styles.limitReachedText}>{props.message.text}</Text>
+      ) : (
+        <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
+      )}
     </View>
   );
 }
@@ -129,7 +149,7 @@ function AgentEventBlock(props: {
 
     return (
       <View style={styles.agentEventContainer}>
-        <Text style={styles.agentEventText}>
+        <Text style={styles.limitReachedText}>
           {t('message.usageLimitUntil', { time: formatTime(props.event.endsAt) })}
         </Text>
       </View>
@@ -204,6 +224,11 @@ const styles = StyleSheet.create((theme) => ({
   agentEventText: {
     color: theme.colors.agentEventText,
     fontSize: 14,
+  },
+  limitReachedText: {
+    color: theme.colors.box.error.text,
+    fontSize: 14,
+    fontWeight: '600',
   },
   toolContainer: {
     marginHorizontal: 8,

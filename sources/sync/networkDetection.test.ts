@@ -22,7 +22,7 @@ vi.doMock('@react-native-community/netinfo', () => ({
   default: mockNetInfo,
   NetInfoState: {},
   NetInfoStateType: {},
-  NetInfoCellularGeneration: {},
+  NetInfoCellularGeneration: {}
 }));
 
 // Mock fetch globally
@@ -40,7 +40,7 @@ import {
   getCurrentNetworkProfile,
   getCurrentConnectionStrategy,
   type NetworkDetectionConfig,
-  type LatencyTestResult,
+  type LatencyTestResult
 } from '@/sync/networkDetection';
 
 describe('NetworkDetection', () => {
@@ -71,8 +71,8 @@ describe('NetworkDetection', () => {
           ssid: 'TestWiFi',
           strength: 75,
           ipAddress: '192.168.1.100',
-          subnet: '255.255.255.0',
-        },
+          subnet: '255.255.255.0'
+        }
       };
 
       mockNetInfoFetch.mockResolvedValue(mockNetInfo);
@@ -93,8 +93,8 @@ describe('NetworkDetection', () => {
         details: {
           isConnectionExpensive: true,
           cellularGeneration: '4g',
-          carrier: 'TestCarrier',
-        },
+          carrier: 'TestCarrier'
+        }
       };
 
       mockNetInfoFetch.mockResolvedValue(mockNetInfo);
@@ -114,8 +114,8 @@ describe('NetworkDetection', () => {
         isInternetReachable: true,
         details: {
           isConnectionExpensive: false,
-          ipAddress: '10.0.0.100',
-        },
+          ipAddress: '10.0.0.100'
+        }
       };
 
       mockNetInfoFetch.mockResolvedValue(mockNetInfo);
@@ -133,7 +133,7 @@ describe('NetworkDetection', () => {
         type: 'other',
         isConnected: true,
         isInternetReachable: true,
-        details: null,
+        details: null
       };
 
       mockNetInfoFetch.mockResolvedValue(mockNetInfo);
@@ -154,8 +154,8 @@ describe('NetworkDetection', () => {
         isInternetReachable: true,
         details: {
           isConnectionExpensive: false,
-          ssid: 'TestWiFi',
-        },
+          ssid: 'TestWiFi'
+        }
       };
       mockNetInfoFetch.mockResolvedValue(mockNetInfo);
     });
@@ -164,8 +164,8 @@ describe('NetworkDetection', () => {
       // Mock fast responses (50ms latency)
       mockFetch.mockImplementation(() =>
         new Promise(resolve =>
-          setTimeout(() => resolve(new Response('', { status: 200 })), 50),
-        ),
+          setTimeout(() => resolve(new Response('', { status: 200 })), 50)
+        )
       );
 
       const profile = await detector.detectNetworkProfile();
@@ -176,8 +176,8 @@ describe('NetworkDetection', () => {
       // Mock moderate responses (200ms latency)
       mockFetch.mockImplementation(() =>
         new Promise(resolve =>
-          setTimeout(() => resolve(new Response('', { status: 200 })), 200),
-        ),
+          setTimeout(() => resolve(new Response('', { status: 200 })), 200)
+        )
       );
 
       const profile = await detector.detectNetworkProfile();
@@ -188,8 +188,8 @@ describe('NetworkDetection', () => {
       // Mock slow responses (500ms latency)
       mockFetch.mockImplementation(() =>
         new Promise(resolve =>
-          setTimeout(() => resolve(new Response('', { status: 200 })), 500),
-        ),
+          setTimeout(() => resolve(new Response('', { status: 200 })), 500)
+        )
       );
 
       const profile = await detector.detectNetworkProfile();
@@ -211,7 +211,7 @@ describe('NetworkDetection', () => {
         callCount++;
         if (callCount === 1) {
           return new Promise(resolve =>
-            setTimeout(() => resolve(new Response('', { status: 200 })), 100),
+            setTimeout(() => resolve(new Response('', { status: 200 })), 100)
           );
         } else {
           return Promise.reject(new Error('Network error'));
@@ -231,7 +231,7 @@ describe('NetworkDetection', () => {
         stability: 0.95,
         strength: 85,
         isExpensive: false,
-        isInternetReachable: true,
+        isInternetReachable: true
       };
 
       const strategy = detector.getOptimalStrategy(profile);
@@ -249,7 +249,7 @@ describe('NetworkDetection', () => {
         strength: 30,
         isExpensive: true,
         generation: '3g',
-        isInternetReachable: true,
+        isInternetReachable: true
       };
 
       const strategy = detector.getOptimalStrategy(profile);
@@ -266,7 +266,7 @@ describe('NetworkDetection', () => {
         stability: 0.5,
         strength: null,
         isExpensive: false,
-        isInternetReachable: false,
+        isInternetReachable: false
       };
 
       const strategy = detector.getOptimalStrategy(profile);
@@ -281,7 +281,7 @@ describe('NetworkDetection', () => {
         stability: 0.3, // Very unstable
         strength: 50,
         isExpensive: false,
-        isInternetReachable: true,
+        isInternetReachable: true
       };
 
       const strategy = detector.getOptimalStrategy(profile);
@@ -298,7 +298,7 @@ describe('NetworkDetection', () => {
         stability: 0.98, // Very stable
         strength: 90,
         isExpensive: false,
-        isInternetReachable: true,
+        isInternetReachable: true
       };
 
       const strategy = detector.getOptimalStrategy(profile);
@@ -317,7 +317,7 @@ describe('NetworkDetection', () => {
         strength: 60,
         isExpensive: true,
         generation: '3g',
-        isInternetReachable: true,
+        isInternetReachable: true
       };
 
       const strategy = detector.getOptimalStrategy(profile);
@@ -334,7 +334,7 @@ describe('NetworkDetection', () => {
         strength: 95,
         isExpensive: true,
         generation: '5g',
-        isInternetReachable: true,
+        isInternetReachable: true
       };
 
       const strategy = detector.getOptimalStrategy(profile);
@@ -356,7 +356,7 @@ describe('NetworkDetection', () => {
         type: 'wifi',
         isConnected: true,
         isInternetReachable: true,
-        details: { isConnectionExpensive: false },
+        details: { isConnectionExpensive: false }
       };
 
       mockNetInfoFetch.mockResolvedValue(mockNetInfo);
@@ -364,8 +364,8 @@ describe('NetworkDetection', () => {
       // Mock consistent fast responses for high stability
       mockFetch.mockImplementation(() =>
         new Promise(resolve =>
-          setTimeout(() => resolve(new Response('', { status: 200 })), 95 + Math.random() * 10),
-        ),
+          setTimeout(() => resolve(new Response('', { status: 200 })), 95 + Math.random() * 10)
+        )
       );
 
       // Perform multiple detections to build history
@@ -402,7 +402,7 @@ describe('NetworkDetection', () => {
         type: 'wifi',
         isConnected: true,
         isInternetReachable: true,
-        details: { isConnectionExpensive: false },
+        details: { isConnectionExpensive: false }
       };
 
       mockNetInfoFetch.mockResolvedValue(mockNetInfo);
@@ -426,7 +426,7 @@ describe('NetworkDetection', () => {
         type: 'wifi',
         isConnected: true,
         isInternetReachable: true,
-        details: { isConnectionExpensive: false },
+        details: { isConnectionExpensive: false }
       };
 
       mockNetInfoFetch.mockResolvedValue(mockNetInfo);
@@ -443,7 +443,7 @@ describe('NetworkDetection', () => {
         type: 'wifi',
         isConnected: true,
         isInternetReachable: true,
-        details: { isConnectionExpensive: false },
+        details: { isConnectionExpensive: false }
       };
 
       mockNetInfoFetch.mockResolvedValue(mockNetInfo);
@@ -464,7 +464,7 @@ describe('NetworkDetection', () => {
         type: 'wifi',
         isConnected: true,
         isInternetReachable: true,
-        details: { isConnectionExpensive: false },
+        details: { isConnectionExpensive: false }
       };
 
       mockNetInfoFetch.mockResolvedValue(mockNetInfo);
@@ -526,7 +526,7 @@ describe('NETWORK_STRATEGIES Configuration', () => {
       'ethernet-excellent',
       'ethernet-good',
       'corporate-restricted',
-      'unknown-default',
+      'unknown-default'
     ];
 
     expectedKeys.forEach(key => {
@@ -565,7 +565,7 @@ describe('NETWORK_STRATEGIES Configuration', () => {
   it('should use aggressive heartbeat for poor networks', () => {
     const poorStrategies = [
       'wifi-poor',
-      'cellular-poor',
+      'cellular-poor'
     ];
 
     poorStrategies.forEach(key => {

@@ -1,8 +1,9 @@
 import * as React from 'react';
 import { ScrollView, View, Text, StyleSheet } from 'react-native';
-import { Typography } from '@/constants/Typography';
+
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
+import { Typography } from '@/constants/Typography';
 
 const TextSample = ({ title, style, text = 'The quick brown fox jumps over the lazy dog' }: { title: string; style: any; text?: string }) => (
   <View style={styles.sampleContainer}>

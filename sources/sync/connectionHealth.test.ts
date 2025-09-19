@@ -4,13 +4,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
+
+import { apiSocket } from './apiSocket';
 import {
   ConnectionHealthMonitor,
   HEARTBEAT_PROFILES,
   HeartbeatProfile,
-  ConnectionHealthConfig,
+  ConnectionHealthConfig
 } from './connectionHealth';
-import { apiSocket } from './apiSocket';
 import { connectionStateMachine } from './connectionStateMachine';
 
 // Mock the dependencies
@@ -20,7 +21,7 @@ vi.mock('./apiSocket', () => ({
     getSocketInstance: vi.fn(),
     onStatusChange: vi.fn(),
     onReconnected: vi.fn(),
-  },
+  }
 }));
 
 vi.mock('./connectionStateMachine', () => ({
@@ -29,16 +30,16 @@ vi.mock('./connectionStateMachine', () => ({
     CONNECTING: 'connecting',
     CONNECTED: 'connected',
     RECONNECTING: 'reconnecting',
-    FAILED: 'failed',
+    FAILED: 'failed'
   },
   connectionStateMachine: {
     addStateChangeListener: vi.fn(),
     transition: vi.fn(),
-  },
+  }
 }));
 
 vi.mock('./storage', () => ({
-  storage: {},
+  storage: {}
 }));
 
 describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
@@ -137,7 +138,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
       const currentProfile = monitor.getCurrentProfile();
       expect(currentProfile.name).toBe('standard');
       expect(consoleSpy).toHaveBeenCalledWith(
-        expect.stringContaining('Unknown profile \'unknown\''),
+        expect.stringContaining("Unknown profile 'unknown'")
       );
 
       consoleSpy.mockRestore();
@@ -147,7 +148,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
       const availableProfiles = monitor.getAvailableProfiles();
 
       expect(Object.keys(availableProfiles)).toEqual([
-        'standard', 'aggressive', 'corporate', 'battery_saver',
+        'standard', 'aggressive', 'corporate', 'battery_saver'
       ]);
       expect(availableProfiles.standard).toEqual(HEARTBEAT_PROFILES.standard);
     });
@@ -168,7 +169,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
       expect(clearIntervalSpy).toHaveBeenCalled();
       expect(setIntervalSpy).toHaveBeenCalledWith(
         expect.any(Function),
-        HEARTBEAT_PROFILES.aggressive.interval,
+        HEARTBEAT_PROFILES.aggressive.interval
       );
     });
 
@@ -182,7 +183,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
 
       expect(setIntervalSpy).toHaveBeenCalledWith(
         expect.any(Function),
-        HEARTBEAT_PROFILES.corporate.interval,
+        HEARTBEAT_PROFILES.corporate.interval
       );
     });
 
@@ -211,7 +212,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
       const monitor_any = monitor as any;
       monitor_any.failureHistory = Array(10).fill(null).map((_, i) => ({
         timestamp: Date.now() - i * 1000,
-        type: 'timeout',
+        type: 'timeout'
       }));
       monitor_any.latencyHistory = [100, 200]; // Some latency data
 
@@ -223,7 +224,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
       const monitor_any = monitor as any;
       monitor_any.failureHistory = Array(3).fill(null).map((_, i) => ({
         timestamp: Date.now() - i * 1000,
-        type: 'network_error',
+        type: 'network_error'
       }));
       monitor_any.latencyHistory = Array(15).fill(900); // High latency to trigger aggressive
       monitor_any.networkChangeCount = 1; // Low network changes
@@ -245,7 +246,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
       const monitor_any = monitor as any;
       monitor_any.failureHistory = Array(1).fill(null).map((_, i) => ({
         timestamp: Date.now() - i * 10000,
-        type: 'timeout',
+        type: 'timeout'
       }));
       monitor_any.latencyHistory = Array(15).fill(300); // Normal latency
       monitor_any.networkChangeCount = 1; // Normal network changes
@@ -271,7 +272,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
       const monitor_any = monitor as any;
       monitor_any.failureHistory = Array(12).fill(null).map((_, i) => ({
         timestamp: Date.now() - i * 1000,
-        type: 'timeout',
+        type: 'timeout'
       }));
       monitor_any.latencyHistory = Array(20).fill(800);
 
@@ -288,7 +289,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
       const monitor_any = monitor as any;
       monitor_any.failureHistory = Array(12).fill(null).map((_, i) => ({
         timestamp: Date.now() - i * 1000,
-        type: 'timeout',
+        type: 'timeout'
       }));
       monitor_any.latencyHistory = Array(20).fill(800);
 
@@ -334,7 +335,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
       expect(monitor_any.failureHistory.length).toBe(initialFailures + 1);
       expect(monitor_any.failureHistory[monitor_any.failureHistory.length - 1]).toMatchObject({
         type: expect.any(String),
-        timestamp: expect.any(Number),
+        timestamp: expect.any(Number)
       });
     });
 
@@ -417,13 +418,13 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
       monitor_any.failureHistory = [
         { timestamp: twoHoursAgo, type: 'old' },
         { timestamp: oneHourAgo - 1000, type: 'old' },
-        { timestamp: Date.now() - 1000, type: 'recent' },
+        { timestamp: Date.now() - 1000, type: 'recent' }
       ];
 
       // Trigger cleanup by adding a new failure
       monitor_any.failureHistory.push({ timestamp: Date.now(), type: 'new' });
       monitor_any.failureHistory = monitor_any.failureHistory.filter(
-        (f: any) => f.timestamp > oneHourAgo,
+        (f: any) => f.timestamp > oneHourAgo
       );
 
       expect(monitor_any.failureHistory.every((f: any) => f.type !== 'old')).toBe(true);
@@ -435,7 +436,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
       const customConfig: Partial<ConnectionHealthConfig> = {
         pingInterval: 20000,
         pingTimeout: 8000,
-        maxConsecutiveFailures: 4,
+        maxConsecutiveFailures: 4
       };
 
       const customMonitor = new ConnectionHealthMonitor(customConfig);

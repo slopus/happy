@@ -1,10 +1,13 @@
 import * as React from 'react';
-import { ToolSectionView } from '../../tools/ToolSectionView';
-import { ToolViewProps } from './_all';
-import { ToolDiffView } from '@/components/tools/ToolDiffView';
+
 import { knownTools } from '../../tools/knownTools';
-import { trimIdent } from '@/utils/trimIdent';
+import { ToolSectionView } from '../../tools/ToolSectionView';
+
+import { ToolViewProps } from './_all';
+
+import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { useSetting } from '@/sync/storage';
+import { trimIdent } from '@/utils/trimIdent';
 
 
 export const EditView = React.memo<ToolViewProps>(({ tool }) => {

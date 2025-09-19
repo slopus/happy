@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, TextInput, StyleSheet, Platform } from 'react-native';
+
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 

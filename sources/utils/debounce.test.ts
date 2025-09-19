@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
 import { createCustomDebounce, createAdvancedDebounce } from './debounce';
 
 describe('debounce utilities', () => {

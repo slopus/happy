@@ -1,11 +1,12 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, ScrollView, Text, ActivityIndicator } from 'react-native';
+
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { testRunner, TestSuite, TestResult } from '@/dev/testRunner';
-import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
+import { testRunner, TestSuite, TestResult } from '@/dev/testRunner';
 
 // Import all test files here
 import '@/encryption/hmac_sha512.appspec';

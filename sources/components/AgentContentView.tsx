@@ -1,9 +1,10 @@
-import { useHeaderHeight } from '@/utils/responsive';
 import * as React from 'react';
 import { View } from 'react-native';
 import { ScrollView } from 'react-native-gesture-handler';
 import { useKeyboardState } from 'react-native-keyboard-controller';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useHeaderHeight } from '@/utils/responsive';
 
 interface AgentContentViewProps {
     input?: React.ReactNode | null;

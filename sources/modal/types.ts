@@ -1,4 +1,4 @@
-import { ReactNode, ComponentType } from 'react';
+import { ComponentType } from 'react';
 
 export type ModalType = 'alert' | 'confirm' | 'prompt' | 'custom';
 

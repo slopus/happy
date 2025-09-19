@@ -1,13 +1,16 @@
-import { en, type Translations, type TranslationStructure } from './_default';
-import { ru } from './translations/ru';
-import { pl } from './translations/pl';
-import { es } from './translations/es';
-import { pt } from './translations/pt';
-import { ca } from './translations/ca';
-import { zhHans } from './translations/zh-Hans';
 import * as Localization from 'expo-localization';
+
+import { type SupportedLanguage, DEFAULT_LANGUAGE } from './_all';
+import { en, type Translations, type TranslationStructure } from './_default';
+import { ca } from './translations/ca';
+import { es } from './translations/es';
+import { pl } from './translations/pl';
+import { pt } from './translations/pt';
+import { ru } from './translations/ru';
+import { zhHans } from './translations/zh-Hans';
+
 import { loadSettings } from '@/sync/persistence';
-import { type SupportedLanguage, SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE } from './_all';
+
 
 /**
  * Extract all possible dot-notation keys from the nested translation object
@@ -70,16 +73,17 @@ export { SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE, getLan
  * All languages defined in SUPPORTED_LANGUAGES must be imported and included here
  */
 const translations: Record<SupportedLanguage, TranslationStructure> = {
-  en,
-  ru, // TypeScript will enforce that ru matches the TranslationStructure type exactly
-  pl, // TypeScript will enforce that pl matches the TranslationStructure type exactly
-  es, // TypeScript will enforce that es matches the TranslationStructure type exactly
-  pt, // TypeScript will enforce that pt matches the TranslationStructure type exactly
-  ca, // TypeScript will enforce that ca matches the TranslationStructure type exactly
-  'zh-Hans': zhHans, // TypeScript will enforce that zh matches the TranslationStructure type exactly
+    en,
+    ru, // TypeScript will enforce that ru matches the TranslationStructure type exactly
+    pl, // TypeScript will enforce that pl matches the TranslationStructure type exactly
+    es, // TypeScript will enforce that es matches the TranslationStructure type exactly
+    pt, // TypeScript will enforce that pt matches the TranslationStructure type exactly
+    ca, // TypeScript will enforce that ca matches the TranslationStructure type exactly
+    'zh-Hans': zhHans, // TypeScript will enforce that zh matches the TranslationStructure type exactly
 };
 
 // Compile-time check: ensure all supported languages have translations
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _typeCheck: Record<SupportedLanguage, TranslationStructure> = translations;
 
 //
@@ -92,49 +96,49 @@ let currentLanguage: SupportedLanguage = DEFAULT_LANGUAGE;
 const settings = loadSettings();
 let found = false;
 if (settings.settings.preferredLanguage && settings.settings.preferredLanguage in translations) {
-  currentLanguage = settings.settings.preferredLanguage as SupportedLanguage;
-  found = true;
-  console.log(`[i18n] Using preferred language: ${currentLanguage}`);
+    currentLanguage = settings.settings.preferredLanguage as SupportedLanguage;
+    found = true;
+    console.log(`[i18n] Using preferred language: ${currentLanguage}`);
 }
 
 // Read from device
 if (!found) {
-  const locales = Localization.getLocales();
-  console.log(`[i18n] Device locales:`, locales.map(l => l.languageCode));
-  for (const l of locales) {
-    if (l.languageCode) {
-      // Expo added special handling for Chinese variants using script code https://github.com/expo/expo/pull/34984
-      if (l.languageCode === 'zh') {
-        let chineseVariant: string | null = null;
+    const locales = Localization.getLocales();
+    console.log(`[i18n] Device locales:`, locales.map(l => l.languageCode));
+    for (const l of locales) {
+        if (l.languageCode) {
+            // Expo added special handling for Chinese variants using script code https://github.com/expo/expo/pull/34984
+            if (l.languageCode === 'zh') {
+                let chineseVariant: string | null = null;
                 
-        // We only have translations for simplified Chinese right now, but looking for help with traditional Chinese.
-        if (l.languageScriptCode === 'Hans') {
-          chineseVariant = 'zh-Hans';
-          // } else if (l.languageScriptCode === 'Hant') {
-          //     chineseVariant = 'zh-Hant';
-        }
+                // We only have translations for simplified Chinese right now, but looking for help with traditional Chinese.
+                if (l.languageScriptCode === 'Hans') {
+                    chineseVariant = 'zh-Hans';
+                // } else if (l.languageScriptCode === 'Hant') {
+                //     chineseVariant = 'zh-Hant';
+                }
                 
-        console.log(`[i18n] Chinese script code: ${l.languageScriptCode} -> ${chineseVariant}`);
+                console.log(`[i18n] Chinese script code: ${l.languageScriptCode} -> ${chineseVariant}`);
                 
-        if (chineseVariant && chineseVariant in translations) {
-          currentLanguage = chineseVariant as SupportedLanguage;
-          console.log(`[i18n] Using Chinese variant: ${currentLanguage}`);
-          break;
-        }
+                if (chineseVariant && chineseVariant in translations) {
+                    currentLanguage = chineseVariant as SupportedLanguage;
+                    console.log(`[i18n] Using Chinese variant: ${currentLanguage}`);
+                    break;
+                }
                 
-        currentLanguage = 'zh-Hans';
-        console.log(`[i18n] Falling back to simplified Chinese: zh-Hans`);
-        break;
-      }
+                currentLanguage = 'zh-Hans';
+                console.log(`[i18n] Falling back to simplified Chinese: zh-Hans`);
+                break;
+            }
             
-      // Direct match for non-Chinese languages
-      if (l.languageCode in translations) {
-        currentLanguage = l.languageCode as SupportedLanguage;
-        console.log(`[i18n] Using device locale: ${currentLanguage}`);
-        break;
-      }
+            // Direct match for non-Chinese languages
+            if (l.languageCode in translations) {
+                currentLanguage = l.languageCode as SupportedLanguage;
+                console.log(`[i18n] Using device locale: ${currentLanguage}`);
+                break;
+            }
+        }
     }
-  }
 }
 
 console.log(`[i18n] Final language: ${currentLanguage}`);
@@ -159,45 +163,45 @@ console.log(`[i18n] Final language: ${currentLanguage}`);
  * t('sessionInfo.agentState')           // "Agent State" or "Состояние агента"
  */
 export function t<K extends TranslationKey>(
-  key: K,
-  ...args: GetParams<GetValue<Translations, K>> extends void
+    key: K,
+    ...args: GetParams<GetValue<Translations, K>> extends void
         ? []
         : [GetParams<GetValue<Translations, K>>]
 ): string {
-  try {
-    // Get current language translations
-    const currentTranslations = translations[currentLanguage];
+    try {
+        // Get current language translations
+        const currentTranslations = translations[currentLanguage];
 
-    // Navigate to the value using dot notation
-    const keys = key.split('.');
-    let value: any = currentTranslations;
+        // Navigate to the value using dot notation
+        const keys = key.split('.');
+        let value: any = currentTranslations;
 
-    for (const k of keys) {
-      value = value[k];
-      if (value === undefined) {
-        console.warn(`Translation missing: ${key}`);
+        for (const k of keys) {
+            value = value[k];
+            if (value === undefined) {
+                console.warn(`Translation missing: ${key}`);
+                return key;
+            }
+        }
+
+        // If it's a function, call it with the provided parameters
+        if (typeof value === 'function') {
+            const params = args[0];
+            return value(params);
+        }
+
+        // If it's a string constant, return it directly
+        if (typeof value === 'string') {
+            return value;
+        }
+
+        // Fallback for unexpected types
+        console.warn(`Invalid translation value type for key: ${key}`);
         return key;
-      }
+    } catch (error) {
+        console.error(`Translation error for key: ${key}`, error);
+        return key;
     }
-
-    // If it's a function, call it with the provided parameters
-    if (typeof value === 'function') {
-      const params = args[0];
-      return value(params);
-    }
-
-    // If it's a string constant, return it directly
-    if (typeof value === 'string') {
-      return value;
-    }
-
-    // Fallback for unexpected types
-    console.warn(`Invalid translation value type for key: ${key}`);
-    return key;
-  } catch (error) {
-    console.error(`Translation error for key: ${key}`, error);
-    return key;
-  }
 }
 
 /**
@@ -205,5 +209,5 @@ export function t<K extends TranslationKey>(
  * Useful for debugging and language-aware components
  */
 export function getCurrentLanguage(): SupportedLanguage {
-  return currentLanguage;
+    return currentLanguage;
 }

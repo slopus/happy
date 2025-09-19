@@ -1,11 +1,12 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as React from 'react';
 import { View, Text, FlatList, Pressable } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { log } from '@/log';
+
+import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { Item } from '@/components/Item';
-import * as Clipboard from 'expo-clipboard';
+import { log } from '@/log';
 import { Modal } from '@/modal';
 
 export default function LogsScreen() {

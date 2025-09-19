@@ -1,5 +1,6 @@
-import { ValueSync } from '@/utils/sync';
 import * as React from 'react';
+
+import { ValueSync } from '@/utils/sync';
 
 interface SuggestionOptions {
     clampSelection?: boolean;  // If true, clamp instead of preserving exact position

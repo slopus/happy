@@ -1,6 +1,8 @@
-import { describe, it, expect } from '@/dev/testRunner';
-import { decryptAESGCM, decryptAESGCMString, encryptAESGCM, encryptAESGCMString } from './aes';
 import { getRandomBytes } from 'expo-crypto';
+
+import { decryptAESGCM, decryptAESGCMString, encryptAESGCM, encryptAESGCMString } from './aes';
+
+import { describe, it, expect } from '@/dev/testRunner';
 import { encodeBase64 } from '@/encryption/base64';
 
 describe('AES Tests', () => {

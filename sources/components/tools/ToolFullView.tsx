@@ -1,13 +1,17 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { Text, View, ScrollView, Platform, useWindowDimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { ToolCall, Message } from '@/sync/typesMessage';
-import { CodeView } from '../CodeView';
-import { Metadata } from '@/sync/storageTypes';
-import { getToolFullViewComponent } from './views/_all';
-import { layout } from '../layout';
-import { useLocalSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
+
+import { CodeView } from '../CodeView';
+import { layout } from '../layout';
+
+import { getToolFullViewComponent } from './views/_all';
+
+
+import { useLocalSetting } from '@/sync/storage';
+import { Metadata } from '@/sync/storageTypes';
+import { ToolCall, Message } from '@/sync/typesMessage';
 import { t } from '@/text';
 
 interface ToolFullViewProps {
