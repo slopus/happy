@@ -112,7 +112,7 @@ jobs:
           
           # Build with appropriate settings
           if [ "${{ matrix.optimize }}" = "true" ]; then
-            yarn expo export --platform web --output-dir dist-${{ matrix.config }}-${{ matrix.bundle }} --minify
+            yarn expo export --platform web --output-dir dist-${{ matrix.config }}-${{ matrix.bundle }}
           else
             yarn expo export --platform web --output-dir dist-${{ matrix.config }}-${{ matrix.bundle }}
           fi

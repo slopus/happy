@@ -8,19 +8,14 @@
 
 import { log } from '@/log';
 
-// Import NetInfo with fallback for development environments
+// Import NetInfo directly to allow proper mocking
 let NetInfo: any;
-let NetInfoState: any;
-let NetInfoStateType: any;
 
 try {
-  const netInfoModule = require('@react-native-community/netinfo');
-  NetInfo = netInfoModule.default || netInfoModule;
-  NetInfoState = netInfoModule.NetInfoState;
-  NetInfoStateType = netInfoModule.NetInfoStateType;
+  // This will be mocked in tests
+  NetInfo = require('@react-native-community/netinfo').default;
 } catch {
-  log.error('NetInfo not available, using mock implementation');
-  // Mock implementation for development/testing
+  // Fallback for environments where NetInfo is not available
   NetInfo = {
     fetch: () => Promise.resolve({
       type: 'wifi',
@@ -30,6 +25,11 @@ try {
     }),
     addEventListener: () => () => {} // Unsubscribe function
   };
+}
+
+// Use the global mock if it exists (for testing)
+if (typeof global !== 'undefined' && (global as any).mockNetInfo) {
+  NetInfo = (global as any).mockNetInfo;
 }
 
 // Type definitions for NetInfo (matching @react-native-community/netinfo)
@@ -197,9 +197,11 @@ export class NetworkDetection {
   private netInfoUnsubscribe: (() => void) | null = null;
   private isMonitoring = false;
   private adaptationTimer: ReturnType<typeof setTimeout> | null = null;
+  private netInfo: any;
 
-  constructor(config: Partial<NetworkDetectionConfig> = {}) {
+  constructor(config: Partial<NetworkDetectionConfig> = {}, netInfoInstance?: any) {
     this.config = { ...DEFAULT_CONFIG, ...config };
+    this.netInfo = netInfoInstance || NetInfo;
   }
 
   /**
@@ -212,7 +214,7 @@ export class NetworkDetection {
     console.log('🌐 NetworkDetection: Starting network monitoring');
 
     // Subscribe to network state changes
-    this.netInfoUnsubscribe = NetInfo.addEventListener(this.handleNetworkStateChange.bind(this));
+    this.netInfoUnsubscribe = this.netInfo.addEventListener(this.handleNetworkStateChange.bind(this));
 
     // Perform initial network detection
     this.detectNetworkProfile();
@@ -278,7 +280,7 @@ export class NetworkDetection {
    * Force network profile detection
    */
   async detectNetworkProfile(): Promise<NetworkProfile> {
-    const netInfo = await NetInfo.fetch();
+    const netInfo = await this.netInfo.fetch();
     const profile = await this.createNetworkProfile(netInfo);
 
     this.updateNetworkProfile(profile);

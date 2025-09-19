@@ -233,6 +233,9 @@ describe('settings', () => {
       expect(applySettings(currentSettings, {})).toEqual({
         ...settingsDefaults,
         viewInline: true,
+        avatarStyle: 'gradient',
+        recentMachinePaths: [],
+        lastUsedAgent: null,
       });
     });
 
@@ -278,6 +281,9 @@ describe('settings', () => {
       expect(applySettings(currentSettings, delta)).toEqual({
         ...settingsDefaults,
         viewInline: false,
+        avatarStyle: 'gradient',
+        recentMachinePaths: [],
+        lastUsedAgent: null,
         newField: 'new value',
       });
     });
@@ -304,13 +310,22 @@ describe('settings', () => {
     it('should have correct default values', () => {
       expect(settingsDefaults).toEqual({
         viewInline: false,
+        inferenceOpenAIKey: null,
         expandTodos: true,
         showLineNumbers: true,
         showLineNumbersInToolViews: false,
         analyticsOptOut: false,
-        inferenceOpenAIKey: null,
         experiments: false,
         alwaysShowContextSize: false,
+        avatarStyle: 'brutalist',
+        showFlavorIcons: false,
+        compactSessionView: false,
+        reviewPromptAnswered: false,
+        reviewPromptLikedApp: null,
+        voiceAssistantLanguage: null,
+        preferredLanguage: null,
+        recentMachinePaths: [],
+        lastUsedAgent: null,
       });
     });
 

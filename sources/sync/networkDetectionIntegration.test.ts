@@ -17,6 +17,9 @@ const mockNetInfo = {
   addEventListener: vi.fn(),
 };
 
+// Set up global mock for the NetworkDetection module
+(global as any).mockNetInfo = mockNetInfo;
+
 // Mock NetInfo
 vi.mock('@react-native-community/netinfo', () => ({
   default: mockNetInfo
@@ -495,7 +498,7 @@ describe('Real-world Network Scenarios', () => {
   });
 
   it('should handle corporate firewall scenario', async () => {
-    const detector = new NetworkDetection();
+    const detector = new NetworkDetection({}, mockNetInfo);
 
     const corporateState: NetInfoState = {
       type: 'wifi',
@@ -535,7 +538,7 @@ describe('Real-world Network Scenarios', () => {
   });
 
   it('should handle mobile data caps (expensive networks)', async () => {
-    const detector = new NetworkDetection();
+    const detector = new NetworkDetection({}, mockNetInfo);
 
     const expensiveState: NetInfoState = {
       type: 'cellular',
@@ -562,7 +565,7 @@ describe('Real-world Network Scenarios', () => {
   });
 
   it('should optimize for 5G networks', async () => {
-    const detector = new NetworkDetection();
+    const detector = new NetworkDetection({}, mockNetInfo);
 
     const fiveGState: NetInfoState = {
       type: 'cellular',
