@@ -6,7 +6,6 @@
  * and heartbeat profiles to optimize connection reliability across different network types.
  */
 
-import { log } from '@/log';
 
 // Import NetInfo directly to allow proper mocking
 let NetInfo: any;
@@ -451,11 +450,12 @@ export class NetworkDetection {
       acc + Math.pow(lat - avgLatency, 2), 0) / successfulLatencies.length;
 
     // Normalize variance to 0-1 scale
-    const maxExpectedVariance = avgLatency * avgLatency;
+    const maxExpectedVariance = Math.max(avgLatency * avgLatency, 1); // Avoid division by zero
     const latencyStability = Math.max(0, 1 - (variance / maxExpectedVariance));
 
     // Combine success rate and latency stability
-    return (successRate * 0.6) + (latencyStability * 0.4);
+    const result = (successRate * 0.6) + (latencyStability * 0.4);
+    return isNaN(result) ? successRate : result;
   }
 
   /**
@@ -518,7 +518,7 @@ export class NetworkDetection {
     console.log('🌐 NetworkDetection: Profile updated:', {
       type: profile.type,
       quality: profile.quality,
-      stability: profile.stability.toFixed(2),
+      stability: isNaN(profile.stability) ? '0.00' : profile.stability.toFixed(2),
       isExpensive: profile.isExpensive,
       generation: profile.generation
     });

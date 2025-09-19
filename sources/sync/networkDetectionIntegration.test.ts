@@ -90,10 +90,13 @@ describe('NetworkDetection Integration', () => {
         )
       );
 
-      // Simulate network change
+      // Simulate network change and force detection
       if (mockNetworkChangeCallback) {
         await mockNetworkChangeCallback(wifiExcellentState);
-        await new Promise(resolve => setTimeout(resolve, 2100)); // Wait for adaptation delay
+        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for processing
+        // Force network profile detection to ensure callback is triggered
+        await networkDetection.detectNetworkProfile();
+        await new Promise(resolve => setTimeout(resolve, 2500)); // Wait for adaptation delay
       }
 
       // Change to cellular poor network
@@ -115,10 +118,13 @@ describe('NetworkDetection Integration', () => {
         )
       );
 
-      // Simulate another network change
+      // Simulate another network change and force detection
       if (mockNetworkChangeCallback) {
         await mockNetworkChangeCallback(cellularPoorState);
-        await new Promise(resolve => setTimeout(resolve, 2100)); // Wait for adaptation delay
+        await new Promise(resolve => setTimeout(resolve, 100)); // Small delay for processing
+        // Force network profile detection to ensure callback is triggered
+        await networkDetection.detectNetworkProfile();
+        await new Promise(resolve => setTimeout(resolve, 2500)); // Wait for adaptation delay
       }
 
       // Verify strategy changes

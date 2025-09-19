@@ -72,6 +72,7 @@ describe('BackgroundSyncManager', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     mockAppStateListener = vi.fn();
     (AppState.addEventListener as any).mockReturnValue(mockAppStateListener);
     backgroundSyncManager = new BackgroundSyncManager(DEFAULT_BACKGROUND_CONFIG);
@@ -80,6 +81,7 @@ describe('BackgroundSyncManager', () => {
   afterEach(() => {
     backgroundSyncManager.cleanup();
     vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   describe('Initialization', () => {
@@ -152,10 +154,12 @@ describe('BackgroundSyncManager', () => {
     });
 
     it('should send heartbeat when connection is active', async () => {
-      // Wait for background sync to initialize and send heartbeat
-      // The background sync should have started in beforeEach
-      await new Promise(resolve => setTimeout(resolve, 500));
-
+      // Mock connected socket
+      (apiSocket.isConnected as any).mockReturnValue(true);
+      
+      // Fast-forward time to trigger heartbeat interval
+      vi.advanceTimersByTime(10500); // Just over the 10s interval
+      
       // Verify heartbeat was sent
       expect(apiSocket.send).toHaveBeenCalledWith('ping', {
         timestamp: expect.any(Number),
@@ -164,9 +168,10 @@ describe('BackgroundSyncManager', () => {
 
     it('should attempt reconnection when disconnected', async () => {
       (apiSocket.isConnected as any).mockReturnValue(false);
+      (apiSocket.isConnecting as any).mockReturnValue(false);
 
-      // Wait for background sync to detect disconnection and attempt reconnection
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Fast-forward time to trigger connection health check
+      vi.advanceTimersByTime(10500); // Just over the 10s interval
 
       expect(apiSocket.reconnect).toHaveBeenCalled();
     });
@@ -274,11 +279,12 @@ describe('BackgroundSyncManager', () => {
 
     it('should meet minimal data usage requirement', async () => {
       const appStateHandler = (AppState.addEventListener as any).mock.calls[0][1];
+      (apiSocket.isConnected as any).mockReturnValue(true);
 
       await appStateHandler('background');
 
-      // Wait for background sync to send heartbeat
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Fast-forward time to trigger heartbeat
+      vi.advanceTimersByTime(10500);
 
       // Should only send lightweight heartbeats, not heavy data
       expect(apiSocket.send).toHaveBeenCalledWith('ping', expect.objectContaining({

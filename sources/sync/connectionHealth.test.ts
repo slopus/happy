@@ -131,7 +131,7 @@ describe('ConnectionHealthMonitor - Heartbeat Profiles', () => {
     });
 
     it('should handle unknown profile names gracefully', () => {
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
       monitor.setProfile('unknown' as keyof typeof HEARTBEAT_PROFILES);
 

@@ -157,8 +157,7 @@ export class EnhancedSessionRecovery {
           this.removeFromQueue(operation.id);
           results.processed++;
         } else if (result.conflict) {
-          // Still conflicting; count once more and leave in queue for a future run
-          results.conflicts++;
+          // Still conflicting; leave in queue for a future run (already counted in first pass)
         } else {
           operation.retryCount++;
           if (operation.retryCount > operation.maxRetries) {

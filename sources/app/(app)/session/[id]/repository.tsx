@@ -18,7 +18,6 @@ import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { sessionReadFile } from '@/sync/ops';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { t } from '@/text';
 
 
 interface FolderStructure {
@@ -304,48 +303,6 @@ export default function RepositoryScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  // Build folder structure from flat file list
-  const buildFolderStructure = React.useCallback((files: FileItem[]): FolderStructure => {
-    const structure: FolderStructure = {};
-
-    files.forEach(file => {
-      const pathParts = file.fullPath.split('/').filter(part => part.length > 0);
-      let current = structure;
-
-      // Navigate to the correct folder in the structure
-      for (let i = 0; i < pathParts.length - 1; i++) {
-        const part = pathParts[i];
-        if (!current[part]) {
-          current[part] = { files: [], folders: {} };
-        }
-        current = current[part].folders;
-      }
-
-      // Add the file to the appropriate folder
-      const finalPart = pathParts[pathParts.length - 1];
-      if (file.fileType === 'folder') {
-        if (!current[finalPart]) {
-          current[finalPart] = { files: [], folders: {} };
-        }
-      } else {
-        const parentKey = pathParts.length > 1 ? pathParts[pathParts.length - 2] : '';
-        if (parentKey) {
-          if (!current[parentKey]) {
-            current[parentKey] = { files: [], folders: {} };
-          }
-          current[parentKey].files.push(file);
-        } else {
-          // Root level file
-          if (!current['']) {
-            current[''] = { files: [], folders: {} };
-          }
-          current[''].files.push(file);
-        }
-      }
-    });
-
-    return structure;
-  }, []);
 
   // Get current folder items based on current path
   const getCurrentFolderItems = React.useCallback((files: FileItem[], path: string, searchTerm: string): FileItem[] => {
