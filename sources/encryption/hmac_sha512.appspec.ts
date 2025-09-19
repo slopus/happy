@@ -1,6 +1,8 @@
-import { describe, it, expect } from '@/dev/testRunner';
-import { hmac_sha512 } from './hmac_sha512';
 import { decode as decodeHex } from '@stablelib/hex';
+
+import { hmac_sha512 } from './hmac_sha512';
+
+import { describe, it, expect } from '@/dev/testRunner';
 
 function decodeHexString(hexString: string, format: 'normal' | 'mac' = 'normal'): Uint8Array {
     if (format === 'mac') {
@@ -32,8 +34,8 @@ const VECTORS = [
 
 describe('hmac_sha512', () => {
     it('should process test vectors', async () => {
-        for (let vec of VECTORS) {
-            let res = await hmac_sha512(vec.key, vec.data);
+        for (const vec of VECTORS) {
+            const res = await hmac_sha512(vec.key, vec.data);
             expect(res).toEqual(vec.output);
         }
     });

@@ -1,9 +1,11 @@
-import { decodeBase64, encodeBase64 } from '@/encryption/base64';
-import { RawRecord } from '../typesRaw';
 import { ApiMessage } from '../apiTypes';
 import { DecryptedMessage, Metadata, MetadataSchema, AgentState, AgentStateSchema } from '../storageTypes';
+import { RawRecord } from '../typesRaw';
+
 import { EncryptionCache } from './encryptionCache';
 import { Decryptor, Encryptor } from './encryptor';
+
+import { decodeBase64, encodeBase64 } from '@/encryption/base64';
 
 export class SessionEncryption {
     private sessionId: string;
@@ -128,7 +130,7 @@ export class SessionEncryption {
             const encryptedData = decodeBase64(encrypted, 'base64');
             const decrypted = await this.encryptor.decrypt([encryptedData]);
             return decrypted[0] || null;
-        } catch (error) {
+        } catch {
             return null;
         }
     }

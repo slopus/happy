@@ -1,5 +1,6 @@
-import type { MarkdownBlock } from "./parseMarkdown";
 import { parseMarkdownSpans } from "./parseMarkdownSpans";
+
+import type { MarkdownBlock } from "./parseMarkdown";
 
 export function parseMarkdownBlock(markdown: string) {
     const blocks: MarkdownBlock[] = [];
@@ -18,12 +19,12 @@ export function parseMarkdownBlock(markdown: string) {
         }
 
         // Trim
-        let trimmed = line.trim();
+        const trimmed = line.trim();
 
         // Code block
         if (trimmed.startsWith('```')) {
             const language = trimmed.slice(3).trim() || null;
-            let content = [];
+            const content = [];
             while (index < lines.length) {
                 const nextLine = lines[index];
                 if (nextLine.trim() === '```') {
@@ -45,7 +46,7 @@ export function parseMarkdownBlock(markdown: string) {
 
         // Options block
         if (trimmed.startsWith('<options>')) {
-            let items: string[] = [];
+            const items: string[] = [];
             while (index < lines.length) {
                 const nextLine = lines[index];
                 if (nextLine.trim() === '</options>') {
@@ -68,7 +69,7 @@ export function parseMarkdownBlock(markdown: string) {
         // If it is a numbered list
         const numberedListMatch = trimmed.match(/^(\d+)\.\s/);
         if (numberedListMatch) {
-            let allLines = [{ number: parseInt(numberedListMatch[1]), content: trimmed.slice(numberedListMatch[0].length) }];
+            const allLines = [{ number: parseInt(numberedListMatch[1]), content: trimmed.slice(numberedListMatch[0].length) }];
             while (index < lines.length) {
                 const nextLine = lines[index].trim();
                 const nextMatch = nextLine.match(/^(\d+)\.\s/);
@@ -82,7 +83,7 @@ export function parseMarkdownBlock(markdown: string) {
 
         // If it is a list
         if (trimmed.startsWith('- ')) {
-            let allLines = [trimmed.slice(2)];
+            const allLines = [trimmed.slice(2)];
             while (index < lines.length && lines[index].trim().startsWith('- ')) {
                 allLines.push(lines[index].trim().slice(2));
                 index++;

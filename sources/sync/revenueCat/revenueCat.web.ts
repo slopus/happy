@@ -4,9 +4,8 @@ import {
     CustomerInfo as WebCustomerInfo,
     Product as WebProduct,
     Offerings as WebOfferings,
-    Offering as WebOffering,
-    Price as WebPrice
 } from '@revenuecat/purchases-js';
+
 import {
     RevenueCatInterface,
     CustomerInfo,
@@ -142,7 +141,7 @@ class RevenueCatWeb implements RevenueCatInterface {
             
             try {
                 // Attempt to purchase
-                const result = await this.purchaseStoreProduct(firstPackage.product);
+                await this.purchaseStoreProduct(firstPackage.product);
                 return PaywallResult.PURCHASED;
             } catch (purchaseError: any) {
                 // Check if user cancelled

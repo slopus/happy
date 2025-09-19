@@ -1,13 +1,14 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import * as React from 'react';
 import { View, Text, StyleSheet, Platform, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useUnistyles } from 'react-native-unistyles';
+
 import { Avatar } from '@/components/Avatar';
+import { layout } from '@/components/layout';
 import { Typography } from '@/constants/Typography';
 import { useHeaderHeight } from '@/utils/responsive';
-import { layout } from '@/components/layout';
-import { useUnistyles } from 'react-native-unistyles';
 
 interface ChatHeaderViewProps {
     title: string;

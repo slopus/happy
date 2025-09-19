@@ -43,6 +43,6 @@ export class QRMatrix {
 }
 
 export function createQRMatrix(data: string, errorCorrectionLevel: 'low' | 'medium' | 'quartile' | 'high') {
-    let bits = qrlib.create(data, { errorCorrectionLevel }).modules.data;
+    const bits = qrlib.create(data, { errorCorrectionLevel }).modules.data;
     return new QRMatrix(Array.from(bits));
 }

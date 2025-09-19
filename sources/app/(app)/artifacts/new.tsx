@@ -1,15 +1,15 @@
-import React from 'react';
-import { View, ScrollView, TextInput, Pressable, ActivityIndicator, Platform, KeyboardAvoidingView as RNKeyboardAvoidingView } from 'react-native';
-import { Text } from '@/components/StyledText';
 import { useRouter, Stack } from 'expo-router';
+import React from 'react';
+import { View, ScrollView, TextInput, Pressable, ActivityIndicator, Platform } from 'react-native';
+import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { t } from '@/text';
+
 import { layout } from '@/components/layout';
+import { Text } from '@/components/StyledText';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { t } from '@/text';
+
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -71,7 +71,6 @@ export default function NewArtifactScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const router = useRouter();
-    const safeArea = useSafeAreaInsets();
     
     const [title, setTitle] = React.useState('');
     const [body, setBody] = React.useState('');

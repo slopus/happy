@@ -1,36 +1,37 @@
-import * as React from 'react';
+import { Ionicons } from '@expo/vector-icons';
 import { useRoute } from "@react-navigation/native";
+import { useRouter } from "expo-router";
+import * as React from 'react';
 import { useState, useMemo, useCallback } from "react";
 import { View, ActivityIndicator, Platform, Text } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { useNavigation, useRouter } from "expo-router";
-import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from "@/utils/sessionUtils";
-import { useSession, useSessionMessages, useSessionUsage, useSetting, useRealtimeStatus, storage, useLocalSetting } from '@/sync/storage';
-import { sync } from '@/sync/sync';
-import { sessionAbort } from '@/sync/ops';
-import { EmptyMessages } from '@/components/EmptyMessages';
 import { Pressable } from 'react-native';
-import { AgentInput } from '@/components/AgentInput';
-import { Deferred } from '@/components/Deferred';
-import { Session } from '@/sync/storageTypes';
-import { startRealtimeSession, stopRealtimeSession, updateCurrentSessionId } from '@/realtime/RealtimeSession';
-import { Ionicons } from '@expo/vector-icons';
-import { useIsLandscape, useDeviceType, useHeaderHeight } from '@/utils/responsive';
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { useUnistyles } from 'react-native-unistyles';
+
 import { AgentContentView } from '@/components/AgentContentView';
-import { isRunningOnMac } from '@/utils/platform';
-import { Modal } from '@/modal';
+import { AgentInput } from '@/components/AgentInput';
+import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
+import { ChatList } from '@/components/ChatList';
+import { Deferred } from '@/components/Deferred';
+import { EmptyMessages } from '@/components/EmptyMessages';
+import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
+import { useDraft } from '@/hooks/useDraft';
+import { Modal } from '@/modal';
+import { voiceHooks } from '@/realtime/hooks/voiceHooks';
+import { startRealtimeSession, stopRealtimeSession, updateCurrentSessionId } from '@/realtime/RealtimeSession';
+import { gitStatusSync } from '@/sync/gitStatusSync';
+import { sessionAbort } from '@/sync/ops';
+import { useSession, useSessionMessages, useSessionUsage, useSetting, useRealtimeStatus, storage, useLocalSetting } from '@/sync/storage';
+import { Session } from '@/sync/storageTypes';
+import { sync } from '@/sync/sync';
+import { t } from '@/text';
 import { trackMessageSent } from '@/track';
 import { tracking } from '@/track';
-import { getSuggestions } from '@/components/autocomplete/suggestions';
-import { useDraft } from '@/hooks/useDraft';
-import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
+import { isRunningOnMac } from '@/utils/platform';
+import { useIsLandscape, useDeviceType, useHeaderHeight } from '@/utils/responsive';
 import { useIsTablet } from '@/utils/responsive';
-import { gitStatusSync } from '@/sync/gitStatusSync';
-import { voiceHooks } from '@/realtime/hooks/voiceHooks';
-import { useUnistyles } from 'react-native-unistyles';
-import { ChatList } from '@/components/ChatList';
-import { t } from '@/text';
+import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from "@/utils/sessionUtils";
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 
 
@@ -106,15 +107,6 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         storage.getState().updateSessionModelMode(sessionId, mode);
     }, [sessionId]);
 
-    // Memoize header-dependent styles to prevent re-renders
-    const headerDependentStyles = React.useMemo(() => ({
-        contentContainer: {
-            flex: 1
-        },
-        flatListStyle: {
-            marginTop: Platform.OS === 'web' ? headerHeight + safeArea.top : 0
-        },
-    }), [headerHeight, safeArea.top]);
 
 
     // Handle microphone button press - memoized to prevent button flashing
@@ -162,7 +154,7 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
         gitStatusSync.getSync(sessionId);
     }, [sessionId, realtimeStatus]);
 
-    let content = (
+    const content = (
         <>
             <Deferred>
                 {messages.length > 0 && (

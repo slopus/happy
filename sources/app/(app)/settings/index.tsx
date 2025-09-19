@@ -1,33 +1,33 @@
-import { View, ScrollView, Pressable, Platform, Linking, TextInput, Alert } from 'react-native';
-import { Image } from 'expo-image';
-import * as React from 'react';
-import { Text } from '@/components/StyledText';
-import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import * as React from 'react';
+import { View, Pressable, Platform, Linking, TextInput, Alert } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
+
 import { useAuth } from '@/auth/AuthContext';
-import { Typography } from "@/constants/Typography";
+import { Avatar } from '@/components/Avatar';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useConnectTerminal } from '@/hooks/useConnectTerminal';
-import { useEntitlement, useLocalSettingMutable } from '@/sync/storage';
-import { sync } from '@/sync/sync';
-import { isUsingCustomServer } from '@/sync/serverConfig';
-import { trackPaywallButtonClicked } from '@/track';
-import { Modal } from '@/modal';
-import { useMultiClick } from '@/hooks/useMultiClick';
-import { useAllMachines } from '@/sync/storage';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
+import { Text } from '@/components/StyledText';
+import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { useHappyAction } from '@/hooks/useHappyAction';
+import { useMultiClick } from '@/hooks/useMultiClick';
+import { Modal } from '@/modal';
 import { getGitHubOAuthParams, disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
-import { useProfile } from '@/sync/storage';
 import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
-import { Avatar } from '@/components/Avatar';
+import { isUsingCustomServer } from '@/sync/serverConfig';
+import { useEntitlement, useLocalSettingMutable } from '@/sync/storage';
+import { useAllMachines } from '@/sync/storage';
+import { useProfile } from '@/sync/storage';
+import { sync } from '@/sync/sync';
 import { t } from '@/text';
+import { trackPaywallButtonClicked } from '@/track';
+import { isMachineOnline } from '@/utils/machineUtils';
 
 // Manual Auth Modal Component for Android
 function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (url: string) => void }) {
@@ -93,7 +93,6 @@ export default React.memo(function SettingsScreen() {
     const auth = useAuth();
     const [devModeEnabled, setDevModeEnabled] = useLocalSettingMutable('devModeEnabled');
     const isPro = __DEV__ || useEntitlement('pro');
-    const isCustomServer = isUsingCustomServer();
     const allMachines = useAllMachines();
     const profile = useProfile();
     const displayName = getDisplayName(profile);
@@ -309,8 +308,8 @@ export default React.memo(function SettingsScreen() {
                 />
                 <Item
                     title={t('settings.github')}
-                    subtitle={isGitHubConnected
-                        ? t('settings.githubConnected', { login: profile.github?.login! })
+subtitle={isGitHubConnected
+                        ? t('settings.githubConnected', { login: profile.github?.login || '' })
                         : t('settings.connectGithubAccount')
                     }
                     icon={

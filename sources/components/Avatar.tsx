@@ -1,11 +1,14 @@
+import { Image } from "expo-image";
 import * as React from "react";
 import { View } from "react-native";
-import { Image } from "expo-image";
-import { AvatarSkia } from "./AvatarSkia";
-import { AvatarGradient } from "./AvatarGradient";
-import { AvatarBrutalist } from "./AvatarBrutalist";
-import { useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+import { AvatarBrutalist } from "./AvatarBrutalist";
+import { AvatarGradient } from "./AvatarGradient";
+import { AvatarSkia } from "./AvatarSkia";
+
+import { useSetting } from '@/sync/storage';
+
 
 interface AvatarProps {
     id: string;

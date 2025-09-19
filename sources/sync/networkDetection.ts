@@ -12,15 +12,13 @@ import { log } from '@/log';
 let NetInfo: any;
 let NetInfoState: any;
 let NetInfoStateType: any;
-let NetInfoCellularGeneration: any;
 
 try {
   const netInfoModule = require('@react-native-community/netinfo');
   NetInfo = netInfoModule.default || netInfoModule;
   NetInfoState = netInfoModule.NetInfoState;
   NetInfoStateType = netInfoModule.NetInfoStateType;
-  NetInfoCellularGeneration = netInfoModule.NetInfoCellularGeneration;
-} catch (error) {
+} catch {
   log.error('NetInfo not available, using mock implementation');
   // Mock implementation for development/testing
   NetInfo = {
@@ -420,7 +418,7 @@ export class NetworkDetection {
         timestamp: Date.now()
       };
 
-    } catch (error) {
+    } catch {
       return {
         url,
         latency: null,

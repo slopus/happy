@@ -42,7 +42,7 @@ export enum BackgroundFetchStatus {
 
 // Mock TaskManager implementation
 export const TaskManagerMock = {
-  defineTask: (taskName: string, task: TaskManagerTaskExecutor) => {
+  defineTask: (taskName: string) => {
     console.warn(`[TaskManager Mock] defineTask called for: ${taskName}. Task registered but will not execute.`);
   },
 
@@ -67,7 +67,7 @@ export const TaskManagerMock = {
 
 // Mock BackgroundFetch implementation
 export const BackgroundFetchMock = {
-  registerTaskAsync: async (taskName: string, options?: BackgroundFetchOptions) => {
+  registerTaskAsync: async (taskName: string) => {
     console.warn(`[BackgroundFetch Mock] registerTaskAsync called for: ${taskName}. Background fetch not available.`);
   },
 
@@ -94,7 +94,7 @@ export function getTaskManager() {
     // Try to import the actual expo-task-manager
     const TaskManager = require('expo-task-manager');
     return TaskManager;
-  } catch (error) {
+  } catch {
     console.warn('expo-task-manager not available, using mock implementation');
     return TaskManagerMock;
   }
@@ -105,7 +105,7 @@ export function getBackgroundFetch() {
     // Try to import the actual expo-background-fetch
     const BackgroundFetch = require('expo-background-fetch');
     return BackgroundFetch;
-  } catch (error) {
+  } catch {
     console.warn('expo-background-fetch not available, using mock implementation');
     return BackgroundFetchMock;
   }

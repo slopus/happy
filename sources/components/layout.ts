@@ -1,6 +1,7 @@
 import { Dimensions, Platform } from 'react-native';
-import { getDeviceType } from '@/utils/responsive';
+
 import { isRunningOnMac } from '@/utils/platform';
+import { getDeviceType } from '@/utils/responsive';
 
 // Calculate max width based on device type
 function getMaxWidth(): number {

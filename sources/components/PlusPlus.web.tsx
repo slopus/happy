@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text, View, ViewStyle } from 'react-native';
+
 import { Typography } from '@/constants/Typography';
 
 interface PlusPlusProps {
@@ -18,7 +19,7 @@ export const PlusPlus: React.FC<PlusPlusProps> = ({ fontSize, style }) => {
                         fontWeight: 'bold',
                         color: 'transparent',
                     },
-                    // @ts-ignore - Web-specific gradient styles
+                    // @ts-expect-error - Web-specific gradient styles
                     {
                         backgroundImage: 'linear-gradient(to right, #8B5CF6, #EC4899, #F59E0B, #10B981)',
                         backgroundClip: 'text',

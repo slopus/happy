@@ -37,7 +37,7 @@ function base32ToBytes(base32: string): Uint8Array {
     // 1. Convert to uppercase
     // 2. Replace common mistakes: 0->O, 1->I, 8->B
     // 3. Remove all non-base32 characters (spaces, dashes, etc)
-    let normalized = base32.toUpperCase()
+    const normalized = base32.toUpperCase()
         .replace(/0/g, 'O')  // Zero to O
         .replace(/1/g, 'I')  // One to I  
         .replace(/8/g, 'B')  // Eight to B

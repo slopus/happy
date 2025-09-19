@@ -110,12 +110,14 @@
  * - Updated internal state for future processing
  */
 
-import { Message, ToolCall } from "../typesMessage";
-import { AgentEvent, NormalizedMessage, UsageData } from "../typesRaw";
-import { createTracer, traceMessages, TracerState } from "./reducerTracer";
 import { AgentState } from "../storageTypes";
+import { Message, ToolCall } from "../typesMessage";
 import { MessageMeta } from "../typesMessageMeta";
+import { AgentEvent, NormalizedMessage, UsageData } from "../typesRaw";
+
 import { parseMessageAsEvent } from "./messageToEvent";
+import { createTracer, traceMessages, TracerState } from "./reducerTracer";
+
 
 type ReducerMessage = {
     id: string;
@@ -212,8 +214,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         }
     }
 
-    let newMessages: Message[] = [];
-    let changed: Set<string> = new Set();
+    const newMessages: Message[] = [];
+    const changed: Set<string> = new Set();
     let hasReadyEvent = false;
 
     // First, trace all messages to identify sidechains
@@ -322,9 +324,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
 
     // Build a set of incoming tool IDs for quick lookup
     const incomingToolIds = new Set<string>();
-    for (let msg of nonSidechainMessages) {
+    for (const msg of nonSidechainMessages) {
         if (msg.role === 'agent') {
-            for (let c of msg.content) {
+            for (const c of msg.content) {
                 if (c.type === 'tool-call') {
                     incomingToolIds.add(c.id);
                 }
@@ -369,8 +371,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     }
 
                     // Create a new tool message for the permission request
-                    let mid = allocateId();
-                    let toolCall: ToolCall = {
+                    const mid = allocateId();
+                    const toolCall: ToolCall = {
                         name: request.tool,
                         state: 'running' as const,
                         input: request.arguments,
@@ -525,8 +527,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     }
 
                     // Create a new message for completed permission without tool
-                    let mid = allocateId();
-                    let toolCall: ToolCall = {
+                    const mid = allocateId();
+                    const toolCall: ToolCall = {
                         name: completed.tool,
                         state: completed.status === 'approved' ? 'completed' : 'error',
                         input: completed.arguments,
@@ -582,7 +584,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     // Phase 1: Process non-sidechain user messages and text messages
     // 
 
-    for (let msg of nonSidechainMessages) {
+    for (const msg of nonSidechainMessages) {
         if (msg.role === 'user') {
             // Check if we've seen this localId before
             if (msg.localId && state.localIds.has(msg.localId)) {
@@ -594,7 +596,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             }
 
             // Create a new message
-            let mid = allocateId();
+            const mid = allocateId();
             state.messages.set(mid, {
                 id: mid,
                 realID: msg.id,
@@ -628,9 +630,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             }
 
             // Process text content only (tool calls handled in Phase 2)
-            for (let c of msg.content) {
+            for (const c of msg.content) {
                 if (c.type === 'text') {
-                    let mid = allocateId();
+                    const mid = allocateId();
                     state.messages.set(mid, {
                         id: mid,
                         realID: msg.id,
@@ -654,9 +656,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     if (ENABLE_LOGGING) {
         console.log(`[REDUCER] Phase 2: Processing tool calls`);
     }
-    for (let msg of nonSidechainMessages) {
+    for (const msg of nonSidechainMessages) {
         if (msg.role === 'agent') {
-            for (let c of msg.content) {
+            for (const c of msg.content) {
                 if (c.type === 'tool-call') {
                     // Direct lookup by tool ID (since permission ID = tool ID now)
                     const existingMessageId = state.toolIdToMessageId.get(c.id);
@@ -697,7 +699,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         // Check if there's a stored permission for this tool
                         const permission = state.permissions.get(c.id);
 
-                        let toolCall: ToolCall = {
+                        const toolCall: ToolCall = {
                             name: c.name,
                             state: 'running' as const,
                             input: permission ? permission.arguments : c.input,  // Use permission args if available
@@ -732,7 +734,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                             }
                         }
 
-                        let mid = allocateId();
+                        const mid = allocateId();
                         state.messages.set(mid, {
                             id: mid,
                             realID: msg.id,
@@ -767,17 +769,17 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     // Phase 3: Process non-sidechain tool results
     //
 
-    for (let msg of nonSidechainMessages) {
+    for (const msg of nonSidechainMessages) {
         if (msg.role === 'agent') {
-            for (let c of msg.content) {
+            for (const c of msg.content) {
                 if (c.type === 'tool-result') {
                     // Find the message containing this tool
-                    let messageId = state.toolIdToMessageId.get(c.tool_use_id);
+                    const messageId = state.toolIdToMessageId.get(c.tool_use_id);
                     if (!messageId) {
                         continue;
                     }
 
-                    let message = state.messages.get(messageId);
+                    const message = state.messages.get(messageId);
                     if (!message || !message.tool) {
                         continue;
                     }
@@ -844,8 +846,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
         // Process and add new sidechain messages
         if (msg.role === 'agent' && msg.content[0]?.type === 'sidechain') {
             // This is the sidechain root - create a user message
-            let mid = allocateId();
-            let userMsg: ReducerMessage = {
+            const mid = allocateId();
+            const userMsg: ReducerMessage = {
                 id: mid,
                 realID: msg.id,
                 role: 'user',
@@ -859,10 +861,10 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
             existingSidechain.push(userMsg);
         } else if (msg.role === 'agent') {
             // Process agent content in sidechain
-            for (let c of msg.content) {
+            for (const c of msg.content) {
                 if (c.type === 'text') {
-                    let mid = allocateId();
-                    let textMsg: ReducerMessage = {
+                    const mid = allocateId();
+                    const textMsg: ReducerMessage = {
                         id: mid,
                         realID: msg.id,
                         role: 'agent',
@@ -878,8 +880,8 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     // Check if there's already a permission message for this tool
                     const existingPermissionMessageId = state.toolIdToMessageId.get(c.id);
 
-                    let mid = allocateId();
-                    let toolCall: ToolCall = {
+                    const mid = allocateId();
+                    const toolCall: ToolCall = {
                         name: c.name,
                         state: 'running' as const,
                         input: c.input,
@@ -905,7 +907,7 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                         }
                     }
 
-                    let toolMsg: ReducerMessage = {
+                    const toolMsg: ReducerMessage = {
                         id: mid,
                         realID: msg.id,
                         role: 'agent',
@@ -924,9 +926,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     // Process tool result in sidechain - update BOTH messages
 
                     // Update the sidechain tool message
-                    let sidechainMessageId = state.sidechainToolIdToMessageId.get(c.tool_use_id);
+                    const sidechainMessageId = state.sidechainToolIdToMessageId.get(c.tool_use_id);
                     if (sidechainMessageId) {
-                        let sidechainMessage = state.messages.get(sidechainMessageId);
+                        const sidechainMessage = state.messages.get(sidechainMessageId);
                         if (sidechainMessage && sidechainMessage.tool && sidechainMessage.tool.state === 'running') {
                             sidechainMessage.tool.state = c.is_error ? 'error' : 'completed';
                             sidechainMessage.tool.result = c.content;
@@ -961,9 +963,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                     }
 
                     // Also update the main permission message if it exists
-                    let permissionMessageId = state.toolIdToMessageId.get(c.tool_use_id);
+                    const permissionMessageId = state.toolIdToMessageId.get(c.tool_use_id);
                     if (permissionMessageId) {
-                        let permissionMessage = state.messages.get(permissionMessageId);
+                        const permissionMessage = state.messages.get(permissionMessageId);
                         if (permissionMessage && permissionMessage.tool && permissionMessage.tool.state === 'running') {
                             permissionMessage.tool.state = c.is_error ? 'error' : 'completed';
                             permissionMessage.tool.result = c.content;
@@ -1019,9 +1021,9 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     // Phase 5: Process mode-switch messages
     //
 
-    for (let msg of nonSidechainMessages) {
+    for (const msg of nonSidechainMessages) {
         if (msg.role === 'event') {
-            let mid = allocateId();
+            const mid = allocateId();
             state.messages.set(mid, {
                 id: mid,
                 realID: msg.id,
@@ -1040,11 +1042,11 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
     // Collect changed messages (only root-level messages)
     //
 
-    for (let id of changed) {
-        let existing = state.messages.get(id);
+    for (const id of changed) {
+        const existing = state.messages.get(id);
         if (!existing) continue;
 
-        let message = convertReducerMessageToMessage(existing, state);
+        const message = convertReducerMessageToMessage(existing, state);
         if (message) {
             newMessages.push(message);
         }
@@ -1117,10 +1119,10 @@ function convertReducerMessageToMessage(reducerMsg: ReducerMessage, state: Reduc
         };
     } else if (reducerMsg.role === 'agent' && reducerMsg.tool !== null) {
         // Convert children recursively
-        let childMessages: Message[] = [];
-        let children = reducerMsg.realID ? state.sidechains.get(reducerMsg.realID) || [] : [];
-        for (let child of children) {
-            let childMessage = convertReducerMessageToMessage(child, state);
+        const childMessages: Message[] = [];
+        const children = reducerMsg.realID ? state.sidechains.get(reducerMsg.realID) || [] : [];
+        for (const child of children) {
+            const childMessage = convertReducerMessageToMessage(child, state);
             if (childMessage) {
                 childMessages.push(childMessage);
             }

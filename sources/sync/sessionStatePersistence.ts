@@ -3,8 +3,9 @@
  * Provides continuous backup and recovery of session state during network interruptions
  */
 
-import { storage } from './storage';
 import { apiSocket } from './apiSocket';
+import { storage } from './storage';
+
 import type { Session } from './storageTypes';
 // Platform-agnostic storage - falls back to localStorage on web
 let platformStorage: any;
@@ -379,7 +380,7 @@ export class SessionStatePersistence {
           return remoteSession;
 
         case 'merge':
-        default:
+        default: {
           // Merge strategy: prefer more recent data per field
           const merged: Session = {
             ...remoteSession, // Start with remote as base
@@ -418,6 +419,7 @@ export class SessionStatePersistence {
 
           console.log(`💾 SessionStatePersistence: Merged local and remote state for session ${sessionId}`);
           return merged;
+        }
       }
     } catch (error) {
       console.error(`💾 SessionStatePersistence: Failed to resolve conflict for session ${sessionId}:`, error);

@@ -1,6 +1,9 @@
-import { authChallenge } from "./authChallenge";
 import axios from 'axios';
+
 import { encodeBase64 } from "../encryption/base64";
+
+import { authChallenge } from "./authChallenge";
+
 import { getServerUrl } from "@/sync/serverConfig";
 
 export async function authGetToken(secret: Uint8Array) {

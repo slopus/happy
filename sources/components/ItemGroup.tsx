@@ -7,9 +7,11 @@ import {
     TextStyle,
     Platform
 } from 'react-native';
-import { Typography } from '@/constants/Typography';
+import { StyleSheet } from 'react-native-unistyles';
+
 import { layout } from './layout';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+import { Typography } from '@/constants/Typography';
 
 interface ItemChildProps {
     showDivider?: boolean;
@@ -28,7 +30,7 @@ export interface ItemGroupProps {
     containerStyle?: StyleProp<ViewStyle>;
 }
 
-const stylesheet = StyleSheet.create((theme, runtime) => ({
+const stylesheet = StyleSheet.create((theme) => ({
     wrapper: {
         alignItems: 'center',
     },
@@ -80,7 +82,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 }));
 
 export const ItemGroup = React.memo<ItemGroupProps>((props) => {
-    const { theme } = useUnistyles();
     const styles = stylesheet;
 
     const {

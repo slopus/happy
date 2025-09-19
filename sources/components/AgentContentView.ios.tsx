@@ -1,9 +1,10 @@
-import { useHeaderHeight } from '@/utils/responsive';
 import * as React from 'react';
 import { View } from 'react-native';
 import { useKeyboardHandler, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import Animated, { useAnimatedStyle, useSharedValue } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+
+import { useHeaderHeight } from '@/utils/responsive';
 
 interface AgentContentViewProps {
     input?: React.ReactNode | null;
@@ -21,7 +22,7 @@ export const AgentContentView: React.FC<AgentContentViewProps> = React.memo(({ i
             'worklet';
             animatedPadding.value = e.progress === 1 ? (-height.height.value - safeArea.bottom) : 0;
         },
-        onStart(e) {
+        onStart() {
             'worklet';
             animatedPadding.value = 0;
         },

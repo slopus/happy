@@ -1,19 +1,21 @@
 import * as React from 'react';
-import { EditView } from './EditView';
+
 import { BashView } from './BashView';
-import { Message, ToolCall } from '@/sync/typesMessage';
-import { Metadata } from '@/sync/storageTypes';
-import { WriteView } from './WriteView';
-import { TodoView } from './TodoView';
+import { BashViewFull } from './BashViewFull';
+import { CodexBashView } from './CodexBashView';
+import { CodexDiffView } from './CodexDiffView';
+import { CodexPatchView } from './CodexPatchView';
+import { EditView } from './EditView';
+import { EditViewFull } from './EditViewFull';
 import { ExitPlanToolView } from './ExitPlanToolView';
 import { MultiEditView } from './MultiEditView';
-import { TaskView } from './TaskView';
-import { BashViewFull } from './BashViewFull';
-import { EditViewFull } from './EditViewFull';
 import { MultiEditViewFull } from './MultiEditViewFull';
-import { CodexBashView } from './CodexBashView';
-import { CodexPatchView } from './CodexPatchView';
-import { CodexDiffView } from './CodexDiffView';
+import { TaskView } from './TaskView';
+import { TodoView } from './TodoView';
+import { WriteView } from './WriteView';
+
+import { Metadata } from '@/sync/storageTypes';
+import { Message, ToolCall } from '@/sync/typesMessage';
 
 export type ToolViewProps = {
     tool: ToolCall;

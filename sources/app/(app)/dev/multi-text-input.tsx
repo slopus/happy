@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { View, Text, ScrollView } from 'react-native';
+
 import { MultiTextInput, KeyPressEvent } from '@/components/MultiTextInput';
 import { Typography } from '@/constants/Typography';
 

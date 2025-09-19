@@ -307,34 +307,34 @@ export class ConnectionStateMachine {
    */
   private setupStateHandlers(): void {
     // CONNECTING state entry
-    this.stateEntryHandlers.set(ConnectionState.CONNECTING, (prevState, context, event) => {
+    this.stateEntryHandlers.set(ConnectionState.CONNECTING, () => {
       this.startConnectionTimeout();
     });
 
     // CONNECTED state entry
-    this.stateEntryHandlers.set(ConnectionState.CONNECTED, (prevState, context, event) => {
+    this.stateEntryHandlers.set(ConnectionState.CONNECTED, () => {
       this.clearConnectionTimeout();
       this.startHeartbeat();
     });
 
     // RECONNECTING state entry
-    this.stateEntryHandlers.set(ConnectionState.RECONNECTING, (prevState, context, event) => {
+    this.stateEntryHandlers.set(ConnectionState.RECONNECTING, () => {
       this.scheduleReconnection();
     });
 
     // FAILED state entry
-    this.stateEntryHandlers.set(ConnectionState.FAILED, (prevState, context, event) => {
+    this.stateEntryHandlers.set(ConnectionState.FAILED, () => {
       this.clearAllTimers();
       this.scheduleRetry();
     });
 
     // OFFLINE state entry
-    this.stateEntryHandlers.set(ConnectionState.OFFLINE, (prevState, context, event) => {
+    this.stateEntryHandlers.set(ConnectionState.OFFLINE, () => {
       this.clearAllTimers();
     });
 
     // CONNECTED state exit
-    this.stateExitHandlers.set(ConnectionState.CONNECTED, (nextState, context, event) => {
+    this.stateExitHandlers.set(ConnectionState.CONNECTED, () => {
       this.clearHeartbeat();
     });
   }
@@ -441,7 +441,7 @@ export class ConnectionStateMachine {
    * Clear all timers
    */
   private clearAllTimers(): void {
-    for (const [name, timer] of this.timers) {
+    for (const [, timer] of this.timers) {
       clearTimeout(timer);
     }
     this.timers.clear();

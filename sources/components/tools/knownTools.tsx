@@ -1,10 +1,12 @@
-import { Metadata } from '@/sync/storageTypes';
-import { ToolCall, Message } from '@/sync/typesMessage';
-import { resolvePath } from '@/utils/pathUtils';
-import * as z from 'zod';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import React from 'react';
+import * as z from 'zod';
+
+import { Metadata } from '@/sync/storageTypes';
+import { ToolCall, Message } from '@/sync/typesMessage';
 import { t } from '@/text';
+import { resolvePath } from '@/utils/pathUtils';
+
 
 // Icon factory functions
 const ICON_TASK = (size: number = 24, color: string = '#000') => <Octicons name="rocket" size={size} color={color} />;
@@ -31,7 +33,7 @@ export const knownTools = {
         minimal: (opts: { metadata: Metadata | null, tool: ToolCall, messages?: Message[] }) => {
             // Check if there would be any filtered tasks
             const messages = opts.messages || [];
-            for (let m of messages) {
+            for (const m of messages) {
                 if (m.kind === 'tool-call' && 
                     (m.tool.state === 'running' || m.tool.state === 'completed' || m.tool.state === 'error')) {
                     return false; // Has active sub-tasks, show expanded
@@ -454,7 +456,7 @@ export const knownTools = {
                 }
             }
             if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
-                let cmdArray = opts.tool.input.command;
+                const cmdArray = opts.tool.input.command;
                 // Remove ["bash", "-lc"] prefix if present
                 if (cmdArray.length >= 3 && cmdArray[0] === 'bash' && cmdArray[1] === '-lc') {
                     // The actual command is in the third element
@@ -589,7 +591,7 @@ export const knownTools = {
             }
             return null;
         },
-        extractDescription: (opts: { metadata: Metadata | null, tool: ToolCall }) => {
+        extractDescription: () => {
             return t('tools.desc.showingDiff');
         }
     }

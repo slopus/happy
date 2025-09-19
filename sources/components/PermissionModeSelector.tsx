@@ -1,8 +1,10 @@
-import React from 'react';
-import { Text, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { Typography } from '@/constants/Typography';
+import React from 'react';
+import { Pressable, Platform } from 'react-native';
+
 import { hapticsLight } from './haptics';
+
+
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo';
 
@@ -14,44 +16,6 @@ interface PermissionModeSelectorProps {
     disabled?: boolean;
 }
 
-const modeConfig = {
-    default: {
-        label: 'Default',
-        icon: 'shield-checkmark' as const,
-        description: 'Ask for permissions'
-    },
-    acceptEdits: {
-        label: 'Accept Edits',
-        icon: 'create' as const,
-        description: 'Auto-approve edits'
-    },
-    plan: {
-        label: 'Plan',
-        icon: 'list' as const,
-        description: 'Plan before executing'
-    },
-    bypassPermissions: {
-        label: 'Yolo',
-        icon: 'flash' as const,
-        description: 'Skip all permissions'
-    },
-    // Codex modes (not displayed in this component, but needed for type compatibility)
-    'read-only': {
-        label: 'Read-only',
-        icon: 'eye' as const,
-        description: 'Read-only mode'
-    },
-    'safe-yolo': {
-        label: 'Safe YOLO',
-        icon: 'shield' as const,
-        description: 'Safe YOLO mode'
-    },
-    'yolo': {
-        label: 'YOLO',
-        icon: 'rocket' as const,
-        description: 'YOLO mode'
-    },
-};
 
 const modeOrder: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
 
@@ -60,7 +24,6 @@ export const PermissionModeSelector: React.FC<PermissionModeSelectorProps> = ({
     onModeChange,
     disabled = false
 }) => {
-    const currentConfig = modeConfig[mode];
 
     const handleTap = () => {
         hapticsLight();

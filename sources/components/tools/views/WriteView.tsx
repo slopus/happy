@@ -1,6 +1,9 @@
 import * as React from 'react';
-import { ToolViewProps } from './_all';
+
 import { ToolSectionView } from '../../tools/ToolSectionView';
+
+import { ToolViewProps } from './_all';
+
 import { knownTools } from '@/components/tools/knownTools';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
 import { useSetting } from '@/sync/storage';

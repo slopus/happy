@@ -3,15 +3,15 @@
  * Provides real-time git repository status tracking using remote bash commands
  */
 
-import { InvalidateSync } from '@/utils/sync';
-import { sessionBash } from './ops';
-import { GitStatus } from './storageTypes';
-import { storage } from './storage';
+import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
 import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/parseStatus';
 import { parseStatusSummaryV2, getStatusCountsV2, isDirtyV2, getCurrentBranchV2, getTrackingInfoV2 } from './git-parsers/parseStatusV2';
-import { parseCurrentBranch } from './git-parsers/parseBranch';
-import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
+import { sessionBash } from './ops';
 import { projectManager, createProjectKey } from './projectManager';
+import { storage } from './storage';
+import { GitStatus } from './storageTypes';
+
+import { InvalidateSync } from '@/utils/sync';
 
 export class GitStatusSync {
     // Map project keys to sync instances
@@ -89,7 +89,7 @@ export class GitStatusSync {
     /**
      * Fetch git status for a project using any session in that project
      */
-    private async fetchGitStatusForProject(sessionId: string, projectKey: string): Promise<void> {
+private async fetchGitStatusForProject(sessionId: string): Promise<void> {
         try {
             // Check if we have a session with valid metadata
             const session = storage.getState().sessions[sessionId];

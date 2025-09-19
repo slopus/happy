@@ -1,5 +1,5 @@
-import * as React from "react";
 import { Image } from "expo-image";
+import * as React from "react";
 
 // Copy hashCode function for consistency with Avatar.tsx
 function hashCode(str: string): number {
@@ -125,7 +125,7 @@ interface AvatarGradientProps {
 }
 
 export const AvatarGradient = React.memo((props: AvatarGradientProps) => {
-    const { id, square, size = 48, monochrome } = props;
+    const { id, square, size = 48 } = props;
     
     // Use hashCode to get consistent gradient index
     const imageIndex = hashCode(id) % 100;

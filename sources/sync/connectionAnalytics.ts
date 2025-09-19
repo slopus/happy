@@ -471,7 +471,7 @@ export class ConnectionAnalytics {
   }
 
   private getNetworkBreakdown(): Array<{ networkType: string; successRate: number; avgLatency: number; sampleCount: number }> {
-    return Array.from(this.metrics.entries()).map(([key, metrics]) => ({
+return Array.from(this.metrics.entries()).map(([, metrics]) => ({
       networkType: metrics.networkType,
       successRate: Math.round(metrics.successRate * 10000) / 100, // Percentage with 2 decimals
       avgLatency: Math.round(metrics.avgLatency),
@@ -530,7 +530,7 @@ export class ConnectionAnalytics {
             latency,
             success: response.ok
           };
-        } catch (error) {
+        } catch {
           return {
             source: new URL(url).hostname,
             latency: Date.now() - startTime,
@@ -589,7 +589,7 @@ export class ConnectionAnalytics {
     const successFactor = metrics.successRate / targetSuccessRate;
     const latencyFactor = Math.max(0.5, Math.min(2.0, latency / 200)); // 200ms baseline
 
-    let optimal = currentInterval * successFactor * latencyFactor;
+    const optimal = currentInterval * successFactor * latencyFactor;
 
     // Clamp to reasonable range
     return Math.max(5000, Math.min(60000, optimal));

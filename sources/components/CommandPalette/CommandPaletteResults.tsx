@@ -1,7 +1,9 @@
 import React, { useRef, useEffect } from 'react';
 import { View, ScrollView, Text, StyleSheet, Platform } from 'react-native';
-import { Command, CommandCategory } from './types';
+
 import { CommandPaletteItem } from './CommandPaletteItem';
+import { Command, CommandCategory } from './types';
+
 import { Typography } from '@/constants/Typography';
 
 interface CommandPaletteResultsProps {

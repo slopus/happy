@@ -16,7 +16,7 @@ export interface ItemListProps extends ScrollViewProps {
     insetGrouped?: boolean;
 }
 
-const stylesheet = StyleSheet.create((theme, runtime) => ({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
         backgroundColor: theme.colors.groupped.background,

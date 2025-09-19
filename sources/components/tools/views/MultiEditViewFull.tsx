@@ -1,19 +1,21 @@
 import * as React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
-import { ToolCall } from '@/sync/typesMessage';
-import { Metadata } from '@/sync/storageTypes';
-import { knownTools } from '@/components/tools/knownTools';
+
 import { toolFullViewStyles } from '../ToolFullView';
+
 import { DiffView } from '@/components/diff/DiffView';
-import { trimIdent } from '@/utils/trimIdent';
+import { knownTools } from '@/components/tools/knownTools';
+import { Metadata } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 import { t } from '@/text';
+import { trimIdent } from '@/utils/trimIdent';
 
 interface MultiEditViewFullProps {
     tool: ToolCall;
     metadata: Metadata | null;
 }
 
-export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool, metadata }) => {
+export const MultiEditViewFull = React.memo<MultiEditViewFullProps>(({ tool }) => {
     const { input } = tool;
 
     // Parse the input

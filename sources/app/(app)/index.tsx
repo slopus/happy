@@ -1,25 +1,26 @@
-import { RoundButton } from "@/components/RoundButton";
-import { useAuth } from "@/auth/AuthContext";
+import { getRandomBytesAsync } from "expo-crypto";
+import { router, useRouter } from "expo-router";
+import * as React from 'react';
 import { ActivityIndicator, Text, View, Image, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import * as React from 'react';
-import { encodeBase64 } from "@/encryption/base64";
-import { authGetToken } from "@/auth/authGetToken";
-import { UpdateBanner } from "@/components/UpdateBanner";
-import { SessionsList } from "@/components/SessionsList";
-import { router, useRouter } from "expo-router";
-import { useSessionListViewData } from "@/sync/storage";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
-import { getRandomBytesAsync } from "expo-crypto";
-import { useIsTablet, useIsLandscape } from "@/utils/responsive";
-import { Typography } from "@/constants/Typography";
+
+import { useAuth } from "@/auth/AuthContext";
+import { authGetToken } from "@/auth/authGetToken";
 import { EmptyMainScreen } from "@/components/EmptyMainScreen";
-import { trackAccountCreated, trackAccountRestored } from '@/track';
 import { FABWide } from "@/components/FABWide";
 import { HomeHeader, HomeHeaderNotAuth } from "@/components/HomeHeader";
+import { RoundButton } from "@/components/RoundButton";
+import { SessionsList } from "@/components/SessionsList";
+import { UpdateBanner } from "@/components/UpdateBanner";
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
+import { Typography } from "@/constants/Typography";
+import { encodeBase64 } from "@/encryption/base64";
+import { useSessionListViewData } from "@/sync/storage";
 import { useRealtimeStatus } from '@/sync/storage';
 import { t } from '@/text';
+import { trackAccountCreated, trackAccountRestored } from '@/track';
+import { useIsTablet, useIsLandscape } from "@/utils/responsive";
 
 export default function Home() {
     const auth = useAuth();
@@ -33,7 +34,7 @@ export default function Home() {
 
 function Authenticated() {
     const { theme } = useUnistyles();
-    let sessionListViewData = useSessionListViewData();
+    const sessionListViewData = useSessionListViewData();
     const isTablet = useIsTablet();
     const realtimeStatus = useRealtimeStatus();
 

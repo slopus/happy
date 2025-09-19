@@ -1,18 +1,20 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Application from 'expo-application';
+import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { ActivityIndicator, Alert } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { useUnistyles } from 'react-native-unistyles';
+
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useRouter } from 'expo-router';
-import Constants from 'expo-constants';
-import * as Application from 'expo-application';
-import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
-import { Modal } from '@/modal';
-import { sync } from '@/sync/sync';
-import { getServerUrl, setServerUrl, validateServerUrl } from '@/sync/serverConfig';
 import { Switch } from '@/components/Switch';
-import { useUnistyles } from 'react-native-unistyles';
+import { Modal } from '@/modal';
+import { getServerUrl, setServerUrl, validateServerUrl } from '@/sync/serverConfig';
+import { useLocalSettingMutable, useSocketStatus } from '@/sync/storage';
+import { sync } from '@/sync/sync';
+
 
 export default function DevScreen() {
     const router = useRouter();

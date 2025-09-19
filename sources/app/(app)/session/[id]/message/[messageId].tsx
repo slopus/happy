@@ -1,15 +1,16 @@
-import * as React from 'react';
 import { useLocalSearchParams, Stack, useRouter } from "expo-router";
+import * as React from 'react';
 import { Text, View, ActivityIndicator } from "react-native";
-import { useMessage, useSession, useSessionMessages } from "@/sync/storage";
-import { sync } from '@/sync/sync';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { Deferred } from "@/components/Deferred";
 import { ToolFullView } from '@/components/tools/ToolFullView';
 import { ToolHeader } from '@/components/tools/ToolHeader';
 import { ToolStatusIndicator } from '@/components/tools/ToolStatusIndicator';
-import { Message } from '@/sync/typesMessage';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
+import { useMessage, useSession, useSessionMessages } from "@/sync/storage";
+import { sync } from '@/sync/sync';
+import { Message } from '@/sync/typesMessage';
 
 const stylesheet = StyleSheet.create((theme) => ({
     loadingContainer: {
@@ -101,7 +102,6 @@ export default React.memo(() => {
 });
 
 function FullView(props: { message: Message }) {
-    const { theme } = useUnistyles();
     const styles = stylesheet;
     
     if (props.message.kind === 'tool-call') {

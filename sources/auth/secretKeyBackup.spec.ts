@@ -1,11 +1,13 @@
+import { describe, it, expect } from 'vitest';
+
 import { 
     formatSecretKeyForBackup, 
     parseBackupSecretKey, 
     isValidSecretKey, 
     normalizeSecretKey 
 } from './secretKeyBackup';
+
 import { encodeBase64, decodeBase64 } from '@/encryption/base64';
-import { describe, it, expect } from 'vitest';
 
 describe.skip('secretKeyBackup', () => {
     // Test data: a valid 32-byte secret key

@@ -1,11 +1,11 @@
+import { LegendList } from '@legendapp/list';
+import { FlashList } from '@shopify/flash-list';
+import { Stack } from 'expo-router';
 import React, { useState } from 'react';
 import { View, Text, FlatList, TextInput, KeyboardAvoidingView, Platform, TouchableOpacity, ScrollView, StyleSheet } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
 import { useKeyboardHandler, useKeyboardState, useReanimatedKeyboardAnimation } from 'react-native-keyboard-controller';
 import Animated, { runOnJS, useSharedValue } from 'react-native-reanimated';
-import { FlashList } from '@shopify/flash-list';
-import { LegendList } from '@legendapp/list';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type ListType = 'flash' | 'flat' | 'legend';
 type PaddingType = 'animated' | 'non-animated' | 'header-footer';

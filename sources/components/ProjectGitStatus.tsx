@@ -1,9 +1,9 @@
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Octicons } from '@expo/vector-icons';
-import { useSessionProjectGitStatus } from '@/sync/storage';
-import { GitStatus } from '@/sync/storageTypes';
 import { StyleSheet } from 'react-native-unistyles';
+
+import { useSessionProjectGitStatus } from '@/sync/storage';
+
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -72,8 +72,6 @@ export function ProjectGitStatus({ sessionId }: ProjectGitStatusProps) {
         return null;
     }
 
-    const fileCount = getTotalChangedFiles(gitStatus);
-    const hasChanges = fileCount > 0 || gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0;
     const hasLineChanges = gitStatus.unstagedLinesAdded > 0 || gitStatus.unstagedLinesRemoved > 0;
 
     return (
@@ -97,6 +95,3 @@ export function ProjectGitStatus({ sessionId }: ProjectGitStatusProps) {
     );
 }
 
-function getTotalChangedFiles(status: GitStatus): number {
-    return status.modifiedCount + status.untrackedCount + status.stagedCount;
-}

@@ -1,11 +1,12 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
-import { useSessionStatus, formatPathRelativeToHome } from '@/utils/sessionUtils';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -87,7 +88,6 @@ export function EmptyMessages({ session }: EmptyMessagesProps) {
     const { theme } = useUnistyles();
     const styles = stylesheet;
     const osIcon = getOSIcon(session.metadata?.os);
-    const sessionStatus = useSessionStatus(session);
     const startedTime = formatRelativeTime(session.createdAt);
     
     return (

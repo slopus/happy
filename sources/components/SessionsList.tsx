@@ -1,28 +1,37 @@
+import { Ionicons } from '@expo/vector-icons';
+import { usePathname } from 'expo-router';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { View, Pressable, FlatList } from 'react-native';
-import { Text } from '@/components/StyledText';
-import { usePathname } from 'expo-router';
-import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
-import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
-import { Avatar } from './Avatar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSetting } from '@/sync/storage';
-import { Typography } from '@/constants/Typography';
-import { Session } from '@/sync/storageTypes';
-import { StatusDot } from './StatusDot';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useIsTablet } from '@/utils/responsive';
-import { requestReview } from '@/utils/requestReview';
-import { UpdateBanner } from './UpdateBanner';
-import { layout } from './layout';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { t } from '@/text';
-import { useRouter } from 'expo-router';
+import { Avatar } from './Avatar';
 import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
+import { layout } from './layout';
+import { StatusDot } from './StatusDot';
+import { UpdateBanner } from './UpdateBanner';
+
+import { Text } from '@/components/StyledText';
+import { Typography } from '@/constants/Typography';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
+import { useSetting } from '@/sync/storage';
+import { Session } from '@/sync/storageTypes';
+import { t } from '@/text';
+import { requestReview } from '@/utils/requestReview';
+import { useIsTablet } from '@/utils/responsive';
+import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId } from '@/utils/sessionUtils';
+
+
+
+
+
+
+
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -166,9 +175,7 @@ export function SessionsList() {
     const data = useSessionListViewData();
     const pathname = usePathname();
     const isTablet = useIsTablet();
-    const navigateToSession = useNavigateToSession();
     const compactSessionView = useSetting('compactSessionView');
-    const router = useRouter();
     const selectable = isTablet;
     const experiments = useSetting('experiments');
     const dataWithSelected = selectable ? React.useMemo(() => {
@@ -203,7 +210,7 @@ export function SessionsList() {
 
     const renderItem = React.useCallback(({ item, index }: { item: SessionListViewItem & { selected?: boolean }, index: number }) => {
         switch (item.type) {
-            case 'header':
+            case 'header': {
                 return (
                     <View style={styles.headerSection}>
                         <Text style={styles.headerText}>
@@ -211,8 +218,8 @@ export function SessionsList() {
                         </Text>
                     </View>
                 );
-
-            case 'active-sessions':
+            }
+            case 'active-sessions': {
                 // Extract just the session ID from pathname (e.g., /session/abc123/file -> abc123)
                 let selectedId: string | undefined;
                 if (isTablet && pathname.startsWith('/session/')) {
@@ -227,8 +234,8 @@ export function SessionsList() {
                         selectedSessionId={selectedId}
                     />
                 );
-
-            case 'project-group':
+            }
+            case 'project-group': {
                 return (
                     <View style={styles.projectGroup}>
                         <Text style={styles.projectGroupTitle}>
@@ -239,8 +246,8 @@ export function SessionsList() {
                         </Text>
                     </View>
                 );
-
-            case 'session':
+            }
+            case 'session': {
                 // Determine card styling based on position within date group
                 const prevItem = index > 0 && dataWithSelected ? dataWithSelected[index - 1] : null;
                 const nextItem = index < (dataWithSelected?.length || 0) - 1 && dataWithSelected ? dataWithSelected[index + 1] : null;
@@ -258,6 +265,7 @@ export function SessionsList() {
                         isSingle={isSingle}
                     />
                 );
+            }
         }
     }, [pathname, dataWithSelected, compactSessionView]);
 
@@ -381,7 +389,6 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
 
 // Artifacts Card Component
 const ArtifactsCard = React.memo(() => {
-    const styles = stylesheet;
     const router = useRouter();
     const { theme } = useUnistyles();
 

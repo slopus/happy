@@ -1,6 +1,7 @@
 import { useSegments } from "expo-router";
-import { tracking } from "./tracking";
 import React from "react";
+
+import { tracking } from "./tracking";
 
 export function useTrackScreens() {
     if (tracking) {

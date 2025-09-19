@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { ApiEphemeralActivityUpdate } from '../apiTypes';
+
 import { ActivityUpdateAccumulator } from './activityUpdateAccumulator';
+
+import type { ApiEphemeralActivityUpdate } from '../apiTypes';
 
 describe('ActivityUpdateAccumulator Smart Debounce', () => {
     let mockFlushHandler: ReturnType<typeof vi.fn>;

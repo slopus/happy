@@ -1,7 +1,8 @@
+import { useIsFocused } from '@react-navigation/native';
 import { useEffect, useRef, useCallback } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
+
 import { storage } from '@/sync/storage';
-import { useIsFocused } from '@react-navigation/native';
 
 interface UseDraftOptions {
     autoSaveInterval?: number; // in milliseconds, default 2000

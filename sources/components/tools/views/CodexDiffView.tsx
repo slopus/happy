@@ -1,12 +1,13 @@
 import * as React from 'react';
 import { View, Text } from 'react-native';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { ToolCall } from '@/sync/typesMessage';
+import { StyleSheet } from 'react-native-unistyles';
+
 import { ToolSectionView } from '../ToolSectionView';
+
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
-import { Metadata } from '@/sync/storageTypes';
 import { useSetting } from '@/sync/storage';
-import { t } from '@/text';
+import { Metadata } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 
 interface CodexDiffViewProps {
     tool: ToolCall;
@@ -75,8 +76,7 @@ function parseUnifiedDiff(unifiedDiff: string): { oldText: string; newText: stri
     };
 }
 
-export const CodexDiffView = React.memo<CodexDiffViewProps>(({ tool, metadata }) => {
-    const { theme } = useUnistyles();
+export const CodexDiffView = React.memo<CodexDiffViewProps>(({ tool }) => {
     const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
     const { input } = tool;
 

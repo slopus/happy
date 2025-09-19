@@ -30,7 +30,7 @@ export async function deriveKey(master: Uint8Array, usage: string, path: string[
     let state = await deriveSecretKeyTreeRoot(master, usage);
     let remaining = [...path];
     while (remaining.length > 0) {
-        let index = remaining[0];
+        const index = remaining[0];
         remaining = remaining.slice(1);
         state = await deriveSecretKeyTreeChild(state.chainCode, index);
     }

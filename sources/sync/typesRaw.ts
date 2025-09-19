@@ -1,4 +1,5 @@
 import * as z from 'zod';
+
 import { MessageMetaSchema, MessageMeta } from './typesMessageMeta';
 
 //
@@ -191,7 +192,7 @@ export type NormalizedMessage = ({
 };
 
 export function normalizeRawMessage(id: string, localId: string | null, createdAt: number, raw: RawRecord): NormalizedMessage | null {
-    let parsed = rawRecordSchema.safeParse(raw);
+    const parsed = rawRecordSchema.safeParse(raw);
     if (!parsed.success) {
         console.error('Invalid raw record:');
         console.error(parsed.error.issues);
@@ -228,8 +229,8 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 if (!raw.content.data.uuid) {
                     return null;
                 }
-                let content: NormalizedAgentContent[] = [];
-                for (let c of raw.content.data.message.content) {
+                const content: NormalizedAgentContent[] = [];
+                for (const c of raw.content.data.message.content) {
                     if (c.type === 'text') {
                         content.push({ type: 'text', text: c.text, uuid: raw.content.data.uuid, parentUUID: raw.content.data.parentUuid ?? null });
                     } else if (c.type === 'tool_use') {
@@ -295,7 +296,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                 }
 
                 // Handle tool results
-                let content: NormalizedAgentContent[] = [];
+                const content: NormalizedAgentContent[] = [];
                 if (typeof raw.content.data.message.content === 'string') {
                     content.push({
                         type: 'text',
@@ -304,7 +305,7 @@ export function normalizeRawMessage(id: string, localId: string | null, createdA
                         parentUUID: raw.content.data.parentUuid ?? null
                     });
                 } else {
-                    for (let c of raw.content.data.message.content) {
+                    for (const c of raw.content.data.message.content) {
                         if (c.type === 'tool_result') {
                             content.push({
                                 type: 'tool-result',

@@ -1,3 +1,5 @@
+import MaskedView from '@react-native-masked-view/masked-view';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as React from 'react';
 import { View, StyleSheet, ViewStyle } from 'react-native';
 import Animated, {
@@ -10,8 +12,6 @@ import Animated, {
     useAnimatedRef,
     measure,
 } from 'react-native-reanimated';
-import { LinearGradient } from 'expo-linear-gradient';
-import MaskedView from '@react-native-masked-view/masked-view';
 
 const AnimatedLinearGradient = Animated.createAnimatedComponent(LinearGradient);
 

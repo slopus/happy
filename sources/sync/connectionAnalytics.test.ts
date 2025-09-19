@@ -6,6 +6,7 @@
  */
 
 import { describe, it, test, expect, beforeEach, afterEach, vi } from 'vitest';
+
 import { ConnectionAnalytics, ConnectionEvent, ConnectionMetrics, FailurePattern } from './connectionAnalytics';
 import { NetworkProfile } from './networkDetection';
 

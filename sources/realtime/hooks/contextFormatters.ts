@@ -1,7 +1,8 @@
+import { VOICE_CONFIG } from "../voiceConfig";
+
 import { Session } from "@/sync/storageTypes";
 import { Message } from "@/sync/typesMessage";
 import { trimIdent } from "@/utils/trimIdent";
-import { VOICE_CONFIG } from "../voiceConfig";
 
 interface SessionMetadata {
     summary?: { text?: string };
@@ -36,7 +37,7 @@ export function formatPermissionRequest(
 export function formatMessage(message: Message): string | null {
 
     // Lines
-    let lines: string[] = [];
+    const lines: string[] = [];
     if (message.kind === 'agent-text') {
         lines.push(`Claude Code: \n<text>${message.text}</text>`);
     } else if (message.kind === 'user-text') {
@@ -58,7 +59,7 @@ export function formatMessage(message: Message): string | null {
 }
 
 export function formatNewSingleMessage(sessionId: string, message: Message): string | null {
-    let formatted = formatMessage(message);
+    const formatted = formatMessage(message);
     if (!formatted) {
         return null;
     }
@@ -66,7 +67,7 @@ export function formatNewSingleMessage(sessionId: string, message: Message): str
 }
 
 export function formatNewMessages(sessionId: string, messages: Message[]): string | null {
-    let formatted = [...messages].sort((a, b) => a.createdAt - b.createdAt).map(formatMessage).filter(Boolean);
+    const formatted = [...messages].sort((a, b) => a.createdAt - b.createdAt).map(formatMessage).filter(Boolean);
     if (formatted.length === 0) {
         return null;
     }
@@ -74,10 +75,10 @@ export function formatNewMessages(sessionId: string, messages: Message[]): strin
 }
 
 export function formatHistory(sessionId: string, messages: Message[]): string {
-    let messagesToFormat = VOICE_CONFIG.MAX_HISTORY_MESSAGES > 0
+    const messagesToFormat = VOICE_CONFIG.MAX_HISTORY_MESSAGES > 0
         ? messages.slice(0, VOICE_CONFIG.MAX_HISTORY_MESSAGES)
         : messages;
-    let formatted = messagesToFormat.map(formatMessage).filter(Boolean);
+    const formatted = messagesToFormat.map(formatMessage).filter(Boolean);
     return 'History of messages in session: ' + sessionId + '\n\n' + formatted.join('\n\n');
 }
 

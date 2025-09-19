@@ -1,10 +1,11 @@
+import { CameraView } from 'expo-camera';
 import * as React from 'react';
 import { Platform } from 'react-native';
-import { CameraView } from 'expo-camera';
+
+import { authAccountApprove } from '@/auth/authAccountApprove';
 import { useAuth } from '@/auth/AuthContext';
 import { decodeBase64 } from '@/encryption/base64';
 import { encryptBox } from '@/encryption/libsodium';
-import { authAccountApprove } from '@/auth/authAccountApprove';
 import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 import { Modal } from '@/modal';
 import { t } from '@/text';

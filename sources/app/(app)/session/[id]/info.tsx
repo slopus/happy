@@ -1,22 +1,23 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useCallback } from 'react';
 import { View, Text, Animated } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { Typography } from '@/constants/Typography';
+import { useUnistyles } from 'react-native-unistyles';
+
+import { Avatar } from '@/components/Avatar';
+import { CodeView } from '@/components/CodeView';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { Avatar } from '@/components/Avatar';
-import { useSession } from '@/sync/storage';
-import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
-import * as Clipboard from 'expo-clipboard';
+import { layout } from '@/components/layout';
+import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { sessionKill } from '@/sync/ops';
-import { useUnistyles } from 'react-native-unistyles';
-import { layout } from '@/components/layout';
+import { useSession } from '@/sync/storage';
 import { t } from '@/text';
+import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
-import { CodeView } from '@/components/CodeView';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -69,7 +70,7 @@ export default React.memo(() => {
         try {
             await Clipboard.setStringAsync(session.id);
             Modal.alert(t('common.success'), t('sessionInfo.happySessionIdCopied'));
-        } catch (error) {
+        } catch {
             Modal.alert(t('common.error'), t('sessionInfo.failedToCopySessionId'));
         }
     }, [session]);
@@ -79,7 +80,7 @@ export default React.memo(() => {
         try {
             await Clipboard.setStringAsync(JSON.stringify(session.metadata, null, 2));
             Modal.alert(t('common.success'), t('sessionInfo.metadataCopied'));
-        } catch (error) {
+        } catch {
             Modal.alert(t('common.error'), t('sessionInfo.failedToCopyMetadata'));
         }
     }, [session]);
@@ -136,7 +137,7 @@ export default React.memo(() => {
         try {
             await Clipboard.setStringAsync(updateCommand);
             Modal.alert(t('common.success'), updateCommand);
-        } catch (error) {
+        } catch {
             Modal.alert(t('common.error'), t('common.error'));
         }
     }, []);
@@ -202,7 +203,7 @@ export default React.memo(() => {
                                 try {
                                     await Clipboard.setStringAsync(session.metadata!.claudeSessionId!);
                                     Modal.alert(t('common.success'), t('sessionInfo.claudeCodeSessionIdCopied'));
-                                } catch (error) {
+                                } catch {
                                     Modal.alert(t('common.error'), t('sessionInfo.failedToCopyClaudeCodeSessionId'));
                                 }
                             }}

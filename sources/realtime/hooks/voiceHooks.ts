@@ -1,4 +1,6 @@
 import { getCurrentRealtimeSessionId, getVoiceSession, isVoiceSessionStarted } from '../RealtimeSession';
+import { VOICE_CONFIG } from '../voiceConfig';
+
 import {
     formatNewMessages,
     formatNewSingleMessage,
@@ -9,9 +11,9 @@ import {
     formatSessionOffline,
     formatSessionOnline
 } from './contextFormatters';
+
 import { storage } from '@/sync/storage';
 import { Message } from '@/sync/typesMessage';
-import { VOICE_CONFIG } from '../voiceConfig';
 
 /**
  * Centralized voice assistant hooks for multi-session context updates.
@@ -25,7 +27,7 @@ interface SessionMetadata {
     [key: string]: any;
 }
 
-let shownSessions = new Set<string>();
+const shownSessions = new Set<string>();
 let lastFocusSession: string | null = null;
 
 function reportContextualUpdate(update: string | null | undefined) {

@@ -1,4 +1,5 @@
 import * as React from 'react';
+
 import { InvalidateSync } from '@/utils/sync';
 
 // Types
@@ -27,10 +28,10 @@ export function useAutocomplete(query: string | null, resolver: (text: string) =
     const sync = React.useMemo(() => {
 
         const state = { query };
-        let cache = new Map<string, AutocompleteResult[]>();
+        const cache = new Map<string, AutocompleteResult[]>();
 
-        let sync = new InvalidateSync(async () => {
-            let t = state.query;
+        const sync = new InvalidateSync(async () => {
+            const t = state.query;
             if (t === null) {
                 setResults(emptyArray);
                 return;

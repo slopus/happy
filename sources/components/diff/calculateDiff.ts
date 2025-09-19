@@ -1,4 +1,4 @@
-import { diffLines, diffWordsWithSpace, diffChars } from 'diff';
+import { diffLines, diffWordsWithSpace } from 'diff';
 
 export interface DiffToken {
     value: string;
@@ -30,12 +30,6 @@ export interface DiffResult {
     };
 }
 
-interface LinePair {
-    oldLine?: string;
-    newLine?: string;
-    oldIndex?: number;
-    newIndex?: number;
-}
 
 /**
  * Calculate unified diff with inline highlighting
@@ -51,14 +45,13 @@ export function calculateUnifiedDiff(
     
     // Convert to our internal format and track line numbers
     const allLines: DiffLine[] = [];
-    const linePairs: LinePair[] = [];
     let oldLineNum = 1;
     let newLineNum = 1;
     let additions = 0;
     let deletions = 0;
     
     // First pass: identify all lines and potential pairs
-    let pendingRemovals: { line: string; lineNum: number; index: number }[] = [];
+    const pendingRemovals: { line: string; lineNum: number; index: number }[] = [];
     
     lineChanges.forEach((change) => {
         const lines = change.value.split('\n').filter((line, index, arr) =>

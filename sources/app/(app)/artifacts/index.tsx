@@ -1,16 +1,17 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { View, FlatList, Pressable, ActivityIndicator } from 'react-native';
-import { Text } from '@/components/StyledText';
-import { useArtifacts } from '@/sync/storage';
-import { DecryptedArtifact } from '@/sync/artifactTypes';
-import { Ionicons } from '@expo/vector-icons';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRouter } from 'expo-router';
-import { t } from '@/text';
-import { layout } from '@/components/layout';
-import { sync } from '@/sync/sync';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { FAB } from '@/components/FAB';
+import { layout } from '@/components/layout';
+import { Text } from '@/components/StyledText';
+import { DecryptedArtifact } from '@/sync/artifactTypes';
+import { useArtifacts } from '@/sync/storage';
+import { sync } from '@/sync/sync';
+import { t } from '@/text';
 // Date formatting
 
 const stylesheet = StyleSheet.create((theme) => ({
@@ -122,7 +123,6 @@ const stylesheet = StyleSheet.create((theme) => ({
 export default function ArtifactsScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    const safeArea = useSafeAreaInsets();
     const router = useRouter();
     const artifacts = useArtifacts();
     const [isLoading, setIsLoading] = React.useState(false);

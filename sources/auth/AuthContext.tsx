@@ -1,9 +1,10 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
-import { syncCreate } from '@/sync/sync';
 import * as Updates from 'expo-updates';
-import { clearPersistence } from '@/sync/persistence';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Platform } from 'react-native';
+
+import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';
+import { clearPersistence } from '@/sync/persistence';
+import { syncCreate } from '@/sync/sync';
 import { trackLogout } from '@/track';
 
 interface AuthContextType {

@@ -1,5 +1,6 @@
-import { argbFromHex, hexFromArgb, themeFromSourceColor } from "@material/material-color-utilities";
 import { writeFileSync } from "fs";
+
+import { argbFromHex, hexFromArgb, themeFromSourceColor } from "@material/material-color-utilities";
 
 export function generateTheme() {
     const theme = themeFromSourceColor(argbFromHex('#18171C'));

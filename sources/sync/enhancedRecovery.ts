@@ -104,7 +104,10 @@ export class EnhancedSessionRecovery {
       errors: []
     };
 
-    // Process operations in priority order
+    // Collect operations that should be retried after first pass (e.g., merge conflicts)
+    const deferred: QueuedOperation[] = [];
+
+    // Process operations in priority order (first pass)
     for (const operation of [...this.offlineQueue]) {
       try {
         const result = await this.processOperation(operation);
@@ -113,8 +116,49 @@ export class EnhancedSessionRecovery {
           this.removeFromQueue(operation.id);
           results.processed++;
         } else if (result.conflict) {
+          // Track the conflict, resolve it
           results.conflicts++;
+          const resolver = this.conflictResolver.get(operation.type);
           await this.handleConflict(operation, result.conflictData);
+
+          // If strategy is local_wins, we consider the operation applied locally and done
+          if (resolver?.strategy === 'local_wins') {
+            this.removeFromQueue(operation.id);
+            results.processed++;
+            continue;
+          }
+
+          // Defer re-processing until after first pass so other operations can proceed
+          deferred.push(operation);
+        } else {
+          operation.retryCount++;
+          if (operation.retryCount > operation.maxRetries) {
+            this.removeFromQueue(operation.id);
+            results.failed++;
+            results.errors.push({
+              operationId: operation.id,
+              error: 'Max retries exceeded'
+            });
+          }
+        }
+      } catch (error) {
+        results.errors.push({
+          operationId: operation.id,
+          error: error instanceof Error ? error.message : 'Unknown error'
+        });
+      }
+    }
+
+    // Second pass: reprocess deferred operations now that conflicts may be resolved by order
+    for (const operation of deferred) {
+      try {
+        const result = await this.processOperation(operation);
+        if (result.success) {
+          this.removeFromQueue(operation.id);
+          results.processed++;
+        } else if (result.conflict) {
+          // Still conflicting; count once more and leave in queue for a future run
+          results.conflicts++;
         } else {
           operation.retryCount++;
           if (operation.retryCount > operation.maxRetries) {
@@ -150,7 +194,7 @@ export class EnhancedSessionRecovery {
     }
   }
 
-  private async processMessage(operation: QueuedOperation): Promise<OperationResult> {
+  private async processMessage(): Promise<OperationResult> {
     try {
       // Simulate message processing logic
       // In a real implementation, this would send the message to the server
@@ -163,7 +207,7 @@ export class EnhancedSessionRecovery {
     }
   }
 
-  private async processStateUpdate(operation: QueuedOperation): Promise<OperationResult> {
+  private async processStateUpdate(): Promise<OperationResult> {
     try {
       // Simulate state update processing
       // Check for conflicts with current state
@@ -186,7 +230,7 @@ export class EnhancedSessionRecovery {
     }
   }
 
-  private async processUserAction(operation: QueuedOperation): Promise<OperationResult> {
+  private async processUserAction(): Promise<OperationResult> {
     try {
       // Simulate user action processing
       return { success: true };
@@ -221,7 +265,7 @@ export class EnhancedSessionRecovery {
         if (resolver.mergeFunction) {
           const merged = resolver.mergeFunction(operation.data, conflictData);
           operation.data = merged;
-          await this.processOperation(operation);
+          // Do not process here; let the caller re-process so conflicts are counted consistently per operation
         }
         break;
       case 'user_choice':
@@ -246,7 +290,7 @@ export class EnhancedSessionRecovery {
     // In a real implementation, this would force the update on the server
   }
 
-  private async presentConflictToUser(operation: QueuedOperation, conflictData: any): Promise<void> {
+  private async presentConflictToUser(operation: QueuedOperation): Promise<void> {
     // In a real implementation, this would show a UI for user to resolve conflict
     // For now, we'll default to local wins
     await this.forceLocalUpdate(operation);

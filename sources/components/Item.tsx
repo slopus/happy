@@ -1,3 +1,5 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
 import * as React from 'react';
 import { 
     View, 
@@ -9,12 +11,12 @@ import {
     Platform,
     ActivityIndicator
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { Typography } from '@/constants/Typography';
-import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 
 export interface ItemProps {
     title: string;
@@ -41,7 +43,7 @@ export interface ItemProps {
     copy?: boolean | string;
 }
 
-const stylesheet = StyleSheet.create((theme, runtime) => ({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flexDirection: 'row',
         alignItems: 'center',

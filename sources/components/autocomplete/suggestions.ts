@@ -1,7 +1,8 @@
-import { CommandSuggestion, FileMentionSuggestion } from '@/components/AgentInputSuggestionView';
 import * as React from 'react';
-import { searchFiles, FileItem } from '@/sync/suggestionFile';
+
+import { CommandSuggestion, FileMentionSuggestion } from '@/components/AgentInputSuggestionView';
 import { searchCommands, CommandItem } from '@/sync/suggestionCommands';
+import { searchFiles, FileItem } from '@/sync/suggestionFile';
 
 export async function getCommandSuggestions(sessionId: string, query: string): Promise<{
     key: string;

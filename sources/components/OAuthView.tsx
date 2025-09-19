@@ -1,16 +1,17 @@
-import { parseCallbackUrl, generatePKCE, generateState, PKCECodes, ClaudeAuthTokens } from '@/utils/oauth';
 import * as React from 'react';
 import { ActivityIndicator, Platform, Text, TouchableOpacity, View } from 'react-native';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import Animated, {
     useSharedValue,
     useAnimatedStyle,
     withTiming,
 } from 'react-native-reanimated';
-import { runOnJS } from 'react-native-worklets';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import WebView from 'react-native-webview';
-import { t } from '@/text';
+import { runOnJS } from 'react-native-worklets';
+
 import { Modal } from '@/modal';
+import { t } from '@/text';
+import { parseCallbackUrl, generatePKCE, generateState, PKCECodes, ClaudeAuthTokens } from '@/utils/oauth';
 
 const styles = StyleSheet.create((theme) => ({
     container: {

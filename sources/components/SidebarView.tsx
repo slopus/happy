@@ -1,23 +1,24 @@
-import { useSessionListViewData, useEntitlement, useSocketStatus, useSetting } from '@/sync/storage';
-import * as React from 'react';
-import { Text, View, Pressable, ActivityIndicator, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SessionsList } from './SessionsList';
-import { Ionicons } from '@expo/vector-icons';
-import { usePathname, useRouter, useSegments } from 'expo-router';
-import { useHeaderHeight } from '@/utils/responsive';
-import { EmptySessionsTablet } from './EmptySessionsTablet';
-import { Typography } from '@/constants/Typography';
-import { StatusDot } from './StatusDot';
-import { FABWide } from './FABWide';
-import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
-import { useRealtimeStatus } from '@/sync/storage';
 import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import * as React from 'react';
+import { Text, View, Pressable, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { UpdateBanner } from './UpdateBanner';
-import { t } from '@/text';
 
-const stylesheet = StyleSheet.create((theme, runtime) => ({
+import { EmptySessionsTablet } from './EmptySessionsTablet';
+import { FABWide } from './FABWide';
+import { SessionsList } from './SessionsList';
+import { StatusDot } from './StatusDot';
+import { UpdateBanner } from './UpdateBanner';
+import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
+
+import { Typography } from '@/constants/Typography';
+import { useRealtimeStatus } from '@/sync/storage';
+import { useSessionListViewData, useSocketStatus } from '@/sync/storage';
+import { t } from '@/text';
+import { useHeaderHeight } from '@/utils/responsive';
+
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
         borderStyle: 'solid',

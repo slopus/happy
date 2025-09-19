@@ -1,13 +1,16 @@
-import { en, type Translations, type TranslationStructure } from './_default';
-import { ru } from './translations/ru';
-import { pl } from './translations/pl';
-import { es } from './translations/es';
-import { pt } from './translations/pt';
-import { ca } from './translations/ca';
-import { zhHans } from './translations/zh-Hans';
 import * as Localization from 'expo-localization';
-import { loadSettings } from '@/sync/persistence';
+
 import { type SupportedLanguage, SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE } from './_all';
+import { en, type Translations, type TranslationStructure } from './_default';
+import { ca } from './translations/ca';
+import { es } from './translations/es';
+import { pl } from './translations/pl';
+import { pt } from './translations/pt';
+import { ru } from './translations/ru';
+import { zhHans } from './translations/zh-Hans';
+
+import { loadSettings } from '@/sync/persistence';
+
 
 /**
  * Extract all possible dot-notation keys from the nested translation object
@@ -89,7 +92,7 @@ const _typeCheck: Record<SupportedLanguage, TranslationStructure> = translations
 let currentLanguage: SupportedLanguage = DEFAULT_LANGUAGE;
 
 // Read from settings
-let settings = loadSettings();
+const settings = loadSettings();
 let found = false;
 if (settings.settings.preferredLanguage && settings.settings.preferredLanguage in translations) {
     currentLanguage = settings.settings.preferredLanguage as SupportedLanguage;
@@ -99,9 +102,9 @@ if (settings.settings.preferredLanguage && settings.settings.preferredLanguage i
 
 // Read from device
 if (!found) {
-    let locales = Localization.getLocales();
+    const locales = Localization.getLocales();
     console.log(`[i18n] Device locales:`, locales.map(l => l.languageCode));
-    for (let l of locales) {
+    for (const l of locales) {
         if (l.languageCode) {
             // Expo added special handling for Chinese variants using script code https://github.com/expo/expo/pull/34984
             if (l.languageCode === 'zh') {

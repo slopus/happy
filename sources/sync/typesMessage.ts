@@ -1,5 +1,5 @@
-import { AgentEvent } from "./typesRaw";
 import { MessageMeta } from "./typesMessageMeta";
+import { AgentEvent } from "./typesRaw";
 
 export type ToolCall = {
     name: string;

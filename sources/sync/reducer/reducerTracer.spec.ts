@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { createTracer, traceMessages } from './reducerTracer';
+
 import { NormalizedMessage } from '../typesRaw';
+
+import { createTracer, traceMessages } from './reducerTracer';
 
 describe('reducerTracer', () => {
     describe('createTracer', () => {

@@ -1,13 +1,16 @@
-import { deriveKey } from "@/encryption/deriveKey";
-import { AES256Encryption, BoxEncryption, SecretBoxEncryption, Encryptor, Decryptor } from "./encryptor";
-import { encodeHex } from "@/encryption/hex";
-import { EncryptionCache } from "./encryptionCache";
-import { SessionEncryption } from "./sessionEncryption";
-import { MachineEncryption } from "./machineEncryption";
-import { encodeBase64, decodeBase64 } from "@/encryption/base64";
-import sodium from "react-native-libsodium";
-import { decryptBox, encryptBox } from "@/encryption/libsodium";
 import { randomUUID } from 'expo-crypto';
+import sodium from "react-native-libsodium";
+
+import { EncryptionCache } from "./encryptionCache";
+import { AES256Encryption, SecretBoxEncryption, Encryptor, Decryptor } from "./encryptor";
+import { MachineEncryption } from "./machineEncryption";
+import { SessionEncryption } from "./sessionEncryption";
+
+import { encodeBase64, decodeBase64 } from "@/encryption/base64";
+import { deriveKey } from "@/encryption/deriveKey";
+import { encodeHex } from "@/encryption/hex";
+import { decryptBox, encryptBox } from "@/encryption/libsodium";
+
 
 export class Encryption {
 
@@ -141,7 +144,7 @@ export class Encryption {
             const encryptedData = decodeBase64(encrypted, 'base64');
             const decrypted = await this.legacyEncryption.decrypt([encryptedData]);
             return decrypted[0] || null;
-        } catch (error) {
+        } catch {
             return null;
         }
     }

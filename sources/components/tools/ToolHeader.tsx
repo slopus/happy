@@ -1,9 +1,11 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { ToolCall } from '@/sync/typesMessage';
-import { knownTools } from '@/components/tools/knownTools';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+import { knownTools } from '@/components/tools/knownTools';
+import { ToolCall } from '@/sync/typesMessage';
+
 
 interface ToolHeaderProps {
     tool: ToolCall;
@@ -13,14 +15,6 @@ export function ToolHeader({ tool }: ToolHeaderProps) {
     const { theme } = useUnistyles();
     const knownTool = knownTools[tool.name as keyof typeof knownTools] as any;
 
-    // Extract status first for Bash tool to potentially use as title
-    let status: string | null = null;
-    if (knownTool && typeof knownTool.extractStatus === 'function') {
-        const extractedStatus = knownTool.extractStatus({ tool, metadata: null });
-        if (typeof extractedStatus === 'string' && extractedStatus) {
-            status = extractedStatus;
-        }
-    }
 
     // Handle optional title and function type
     let toolTitle = tool.name;

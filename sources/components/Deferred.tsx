@@ -4,7 +4,7 @@ export const Deferred = React.memo((props: { children: React.ReactNode, enabled?
     const [enabled, setEnabled] = React.useState(props.enabled ?? false);
 
     React.useEffect(() => {
-        let timeout = setTimeout(() => {
+        const timeout = setTimeout(() => {
             setEnabled(true);
         }, 10);
         return () => clearTimeout(timeout);

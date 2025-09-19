@@ -1,12 +1,14 @@
-import * as React from 'react';
-import { View, Text, Pressable, StyleSheet, Platform } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useRealtimeStatus } from '@/sync/storage';
-import { StatusDot } from './StatusDot';
-import { Typography } from '@/constants/Typography';
 import { Ionicons } from '@expo/vector-icons';
-import { stopRealtimeSession } from '@/realtime/RealtimeSession';
+import * as React from 'react';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
+import { StatusDot } from './StatusDot';
+
+import { Typography } from '@/constants/Typography';
+import { stopRealtimeSession } from '@/realtime/RealtimeSession';
+import { useRealtimeStatus } from '@/sync/storage';
+
 
 interface VoiceAssistantStatusBarProps {
     variant?: 'full' | 'sidebar';

@@ -1,24 +1,28 @@
-import React, { useState, useMemo, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput } from 'react-native';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import React, { useState, useMemo, useCallback, useRef } from 'react';
+import { View, Text, ActivityIndicator, RefreshControl, Platform, Pressable } from 'react-native';
+import { useUnistyles, StyleSheet } from 'react-native-unistyles';
+
+import type { Session } from '@/sync/storageTypes';
+
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { Typography } from '@/constants/Typography';
-import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
-import { Ionicons, Octicons } from '@expo/vector-icons';
-import type { Session } from '@/sync/storageTypes';
-import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
-import { Modal } from '@/modal';
-import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { sync } from '@/sync/sync';
-import { useUnistyles, StyleSheet } from 'react-native-unistyles';
-import { t } from '@/text';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { machineSpawnNewSession } from '@/sync/ops';
-import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
+import { Typography } from '@/constants/Typography';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { Modal } from '@/modal';
+import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { useSessions, useMachine } from '@/sync/storage';
+import { sync } from '@/sync/sync';
+import { t } from '@/text';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
+
+
 
 const styles = StyleSheet.create((theme) => ({
     pathInputContainer: {
@@ -143,7 +147,7 @@ export default function MachineDetailScreen() {
                             Modal.alert('Daemon Stopped', result.message);
                             // Refresh to get updated metadata
                             await sync.refreshMachines();
-                        } catch (error) {
+                        } catch {
                             Modal.alert(t('common.error'), 'Failed to stop daemon. It may not be running.');
                         } finally {
                             setIsStoppingDaemon(false);
@@ -245,10 +249,6 @@ export default function MachineDetailScreen() {
         }
     };
 
-    const pastUsedRelativePath = useCallback((session: Session) => {
-        if (!session.metadata) return 'unknown path';
-        return formatPathRelativeToHome(session.metadata.path, session.metadata.homeDir);
-    }, []);
 
     if (!machine) {
         return (

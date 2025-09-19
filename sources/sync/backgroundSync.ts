@@ -1,13 +1,14 @@
 import { AppState, AppStateStatus, Platform } from 'react-native';
-import { log } from '@/log';
+
 import { apiSocket } from './apiSocket';
-import { storage } from './storage';
 import {
   getTaskManager,
   getBackgroundFetch,
-  EXPO_MODULES_AVAILABILITY,
-  type TaskManagerTaskExecutor
+  EXPO_MODULES_AVAILABILITY
 } from './expoModuleMocks';
+import { storage } from './storage';
+
+import { log } from '@/log';
 
 // Get conditional imports
 const TaskManager = getTaskManager();
@@ -483,7 +484,7 @@ export class BackgroundSyncManager {
       const Battery = require('expo-battery');
       const batteryLevel = await Battery.getBatteryLevelAsync();
       return batteryLevel > 0.15; // Only sync if battery > 15%
-    } catch (error) {
+    } catch {
       // If battery info not available, assume sufficient
       return true;
     }

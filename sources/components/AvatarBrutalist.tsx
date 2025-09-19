@@ -1,6 +1,6 @@
+import { Image } from "expo-image";
 import * as React from "react";
 import { View } from "react-native";
-import { Image } from "expo-image";
 
 interface AvatarBrutalistProps {
     id: string;

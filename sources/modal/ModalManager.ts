@@ -1,6 +1,8 @@
 import { Platform, Alert } from 'react-native';
-import { t } from '@/text';
+
 import { AlertButton, ModalConfig, CustomModalConfig } from './types';
+
+import { t } from '@/text';
 
 class ModalManagerClass {
     private showModalFn: ((config: Omit<ModalConfig, 'id'>) => string) | null = null;
@@ -155,7 +157,7 @@ class ModalManagerClass {
         if (Platform.OS === 'ios' && !options?.inputType) {
             // Use native Alert.prompt on iOS (only supports basic text input)
             return new Promise<string | null>((resolve) => {
-                // @ts-ignore - Alert.prompt is iOS only
+                // @ts-expect-error - Alert.prompt is iOS only
                 Alert.prompt(
                     title,
                     message,

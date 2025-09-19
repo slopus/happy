@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { applySuggestion } from './applySuggestion';
 
 describe('applySuggestion', () => {

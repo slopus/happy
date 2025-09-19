@@ -1,27 +1,28 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
-import * as React from 'react';
-import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage } from 'react-native';
 import { Image } from 'expo-image';
+import * as React from 'react';
+import { View, Platform, useWindowDimensions, Text, ActivityIndicator, TouchableWithoutFeedback } from 'react-native';
 import { Pressable } from 'react-native-gesture-handler';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+import { AgentInputAutocomplete } from './AgentInputAutocomplete';
+import { applySuggestion } from './autocomplete/applySuggestion';
+import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
+import { useActiveWord } from './autocomplete/useActiveWord';
+import { FloatingOverlay } from './FloatingOverlay';
+import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
+import { hapticsLight, hapticsError } from './haptics';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
-import { Typography } from '@/constants/Typography';
+import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
-import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
-import { useActiveWord } from './autocomplete/useActiveWord';
-import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
-import { AgentInputAutocomplete } from './AgentInputAutocomplete';
-import { FloatingOverlay } from './FloatingOverlay';
-import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
-import { applySuggestion } from './autocomplete/applySuggestion';
-import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useSetting } from '@/sync/storage';
-import { Theme } from '@/theme';
-import { t } from '@/text';
+
+import { Typography } from '@/constants/Typography';
 import { Metadata } from '@/sync/storageTypes';
+import { t } from '@/text';
+import { Theme } from '@/theme';
 
 interface AgentInputProps {
     value: string;
@@ -69,7 +70,7 @@ interface AgentInputProps {
 
 const MAX_CONTEXT_SIZE = 190000;
 
-const stylesheet = StyleSheet.create((theme, runtime) => ({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
         alignItems: 'center',
         paddingBottom: 8,
@@ -990,7 +991,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 // Git Status Button Component
 function GitStatusButton({ sessionId, onPress }: { sessionId?: string, onPress?: () => void }) {
     const hasMeaningfulGitStatus = useHasMeaningfulGitStatus(sessionId || '');
-    const styles = stylesheet;
     const { theme } = useUnistyles();
 
     if (!sessionId || !onPress) {

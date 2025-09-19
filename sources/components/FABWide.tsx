@@ -1,10 +1,11 @@
 import * as React from 'react';
 import { View, Pressable, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
+
 import { t } from '@/text';
 
-const stylesheet = StyleSheet.create((theme, runtime) => ({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
         position: 'absolute',
         left: 16,
@@ -36,7 +37,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 }));
 
 export const FABWide = React.memo(({ onPress }: { onPress: () => void }) => {
-    const { theme } = useUnistyles();
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
     return (

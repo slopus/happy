@@ -1,15 +1,20 @@
-import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import { Link } from 'expo-router';
+import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { ScrollView, View, Platform, Pressable } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { Text } from '../StyledText';
-import { Typography } from '@/constants/Typography';
+
 import { SimpleSyntaxHighlighter } from '../SimpleSyntaxHighlighter';
+import { Text } from '../StyledText';
+
+import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
+
+
+import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
-import { useLocalSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
-import { useRouter } from 'expo-router';
+import { useLocalSetting } from '@/sync/storage';
+
 
 // Option type for callback
 export type Option = {

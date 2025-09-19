@@ -1,17 +1,18 @@
-import * as React from 'react';
-import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
 import { useRoute } from '@react-navigation/native';
 import { useLocalSearchParams } from 'expo-router';
-import { Text } from '@/components/StyledText';
+import * as React from 'react';
+import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
+import { useUnistyles, StyleSheet } from 'react-native-unistyles';
+
+import { FileIcon } from '@/components/FileIcon';
+import { layout } from '@/components/layout';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
+import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
+import { Modal } from '@/modal';
 import { sessionReadFile, sessionBash } from '@/sync/ops';
 import { storage } from '@/sync/storage';
-import { Modal } from '@/modal';
-import { useUnistyles, StyleSheet } from 'react-native-unistyles';
-import { layout } from '@/components/layout';
 import { t } from '@/text';
-import { FileIcon } from '@/components/FileIcon';
 
 interface FileContent {
     content: string;
@@ -79,8 +80,7 @@ export default function FileScreen() {
     // Decode base64 path with error handling
     try {
         filePath = encodedPath ? atob(encodedPath) : '';
-    } catch (error) {
-        console.error('Failed to decode file path:', error);
+    } catch {
         filePath = encodedPath || ''; // Fallback to original path if decoding fails
     }
     
@@ -218,7 +218,7 @@ export default function FileScreen() {
                         let decodedContent: string;
                         try {
                             decodedContent = atob(response.content);
-                        } catch (decodeError) {
+                        } catch {
                             // If base64 decode fails, treat as binary
                             setFileContent({
                                 content: '',

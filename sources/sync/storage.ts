@@ -1,23 +1,29 @@
+import React from "react";
 import { create } from "zustand";
 import { useShallow } from 'zustand/react/shallow'
-import { Session, Machine, GitStatus } from "./storageTypes";
+
+import { DecryptedArtifact } from "./artifactTypes";
+import { LocalSettings, applyLocalSettings } from "./localSettings";
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
+import { Profile } from "./profile";
+import { projectManager } from "./projectManager";
+import { Purchases, customerInfoToPurchases } from "./purchases";
 import { createReducer, reducer, ReducerState } from "./reducer/reducer";
+import { applySettings, Settings } from "./settings";
+import { Session, Machine, GitStatus } from "./storageTypes";
+import { sync } from "./sync";
 import { Message } from "./typesMessage";
 import { NormalizedMessage } from "./typesRaw";
-import { isMachineOnline } from '@/utils/machineUtils';
-import { applySettings, Settings } from "./settings";
-import { LocalSettings, applyLocalSettings } from "./localSettings";
-import { Purchases, customerInfoToPurchases } from "./purchases";
-import { Profile } from "./profile";
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
-import type { PermissionMode } from '@/components/PermissionModeSelector';
+
 import type { CustomerInfo } from './revenueCat/types';
-import React from "react";
-import { sync } from "./sync";
-import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
+import type { PermissionMode } from '@/components/PermissionModeSelector';
+
 import { isMutableTool } from "@/components/tools/knownTools";
-import { projectManager } from "./projectManager";
-import { DecryptedArtifact } from "./artifactTypes";
+import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
+
+
+
+
 
 /**
  * Centralized session online state resolver
@@ -210,12 +216,12 @@ function buildSessionListViewData(
 }
 
 export const storage = create<StorageState>()((set, get) => {
-    let { settings, version } = loadSettings();
-    let localSettings = loadLocalSettings();
-    let purchases = loadPurchases();
-    let profile = loadProfile();
-    let sessionDrafts = loadSessionDrafts();
-    let sessionPermissionModes = loadSessionPermissionModes();
+    const { settings, version } = loadSettings();
+    const localSettings = loadLocalSettings();
+    const purchases = loadPurchases();
+    const profile = loadProfile();
+    const sessionDrafts = loadSessionDrafts();
+    const sessionPermissionModes = loadSessionPermissionModes();
     return {
         settings,
         settingsVersion: version,
@@ -430,7 +436,7 @@ export const storage = create<StorageState>()((set, get) => {
             isDataReady: true
         })),
         applyMessages: (sessionId: string, messages: NormalizedMessage[]) => {
-            let changed = new Set<string>();
+            const changed = new Set<string>();
             let hasReadyEvent = false;
             set((state) => {
 
@@ -452,7 +458,7 @@ export const storage = create<StorageState>()((set, get) => {
                 // Run reducer with agentState
                 const reducerResult = reducer(existingSession.reducerState, normalizedMessages, agentState);
                 const processedMessages = reducerResult.messages;
-                for (let message of processedMessages) {
+                for (const message of processedMessages) {
                     changed.add(message.id);
                 }
                 if (reducerResult.hasReadyEvent) {
@@ -521,7 +527,7 @@ export const storage = create<StorageState>()((set, get) => {
 
                 // Process AgentState if it exists
                 let messages: Message[] = [];
-                let messagesMap: Record<string, Message> = {};
+                const messagesMap: Record<string, Message> = {};
 
                 if (agentState) {
                     // Process AgentState through reducer to get initial permission messages
@@ -829,11 +835,11 @@ export const storage = create<StorageState>()((set, get) => {
             };
         }),
         deleteArtifact: (artifactId: string) => set((state) => {
-            const { [artifactId]: _, ...remainingArtifacts } = state.artifacts;
-            
+            const updatedArtifacts = { ...state.artifacts };
+            delete updatedArtifacts[artifactId];
             return {
                 ...state,
-                artifacts: remainingArtifacts
+                artifacts: updatedArtifacts
             };
         }),
     }

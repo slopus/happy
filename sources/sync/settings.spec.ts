@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { settingsParse, applySettings, settingsDefaults, type Settings } from './settings';
 
 describe('settings', () => {

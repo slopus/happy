@@ -1,8 +1,9 @@
-import { decryptBox, decryptSecretBox, encryptBox, encryptSecretBox } from "@/encryption/libsodium";
-import { encodeBase64, decodeBase64 } from "@/encryption/base64";
 import sodium from 'react-native-libsodium';
-import { decodeUTF8, encodeUTF8 } from "@/encryption/text";
+
 import { decryptAESGCMString, encryptAESGCMString } from "@/encryption/aes";
+import { encodeBase64, decodeBase64 } from "@/encryption/base64";
+import { decryptBox, decryptSecretBox, encryptBox, encryptSecretBox } from "@/encryption/libsodium";
+import { decodeUTF8, encodeUTF8 } from "@/encryption/text";
 
 //
 // IMPORTANT: Right now there is a bug in the AES implementation and it works only with a normal strings converted to Uint8Array. 
@@ -67,7 +68,7 @@ export class BoxEncryption implements Encryptor, Decryptor {
         // Process as batch, not Promise.all - more efficient
         const results: (any | null)[] = [];
         for (const item of data) {
-            let decrypted = decryptBox(item, this.privateKey);
+            const decrypted = decryptBox(item, this.privateKey);
             if (!decrypted) {
                 results.push(null);
                 continue;
@@ -93,7 +94,7 @@ export class AES256Encryption implements Encryptor, Decryptor {
         for (const item of data) {
             // Serialize to JSON string first
             const encrypted = decodeBase64(await encryptAESGCMString(JSON.stringify(item), this.secretKeyB64));
-            let output = new Uint8Array(encrypted.length + 1);
+            const output = new Uint8Array(encrypted.length + 1);
             output[0] = 0;
             output.set(encrypted, 1);
             results.push(output);
@@ -117,7 +118,7 @@ export class AES256Encryption implements Encryptor, Decryptor {
                     // Parse JSON string back to object
                     results.push(JSON.parse(decryptedString));
                 }
-            } catch (error) {
+            } catch {
                 results.push(null);
             }
         }

@@ -5,6 +5,7 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
+
 import type { MachineMetadata } from './storageTypes';
 
 // Strict type definitions for all operations
@@ -117,9 +118,7 @@ interface SessionRipgrepResponse {
 }
 
 // Kill session operation types
-interface SessionKillRequest {
-    // No parameters needed
-}
+type SessionKillRequest = Record<string, never>;
 
 interface SessionKillResponse {
     success: boolean;
@@ -176,7 +175,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
  * Stop the daemon on a specific machine
  */
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {
-    const result = await apiSocket.machineRPC<{ message: string }, {}>(
+    const result = await apiSocket.machineRPC<{ message: string }, Record<string, never>>(
         machineId,
         'stop-daemon',
         {}
@@ -427,7 +426,7 @@ export async function sessionRipgrep(
  */
 export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
     try {
-        const response = await apiSocket.sessionRPC<SessionKillResponse, {}>(
+        const response = await apiSocket.sessionRPC<SessionKillResponse, SessionKillRequest>(
             sessionId,
             'killSession',
             {}

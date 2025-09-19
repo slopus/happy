@@ -1,14 +1,16 @@
+import { useRouter } from 'expo-router';
 import React, { useCallback, useMemo } from 'react';
 import { Platform } from 'react-native';
-import { useRouter } from 'expo-router';
-import { Modal } from '@/modal';
+import { useShallow } from 'zustand/react/shallow';
+
 import { CommandPalette } from './CommandPalette';
 import { Command } from './types';
-import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard.web';
+
 import { useAuth } from '@/auth/AuthContext';
-import { storage } from '@/sync/storage';
-import { useShallow } from 'zustand/react/shallow';
+import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard.web';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { Modal } from '@/modal';
+import { storage } from '@/sync/storage';
 
 export function CommandPaletteProvider({ children }: { children: React.ReactNode }) {
     const router = useRouter();

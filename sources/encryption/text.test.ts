@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { encodeUTF8, decodeUTF8, normalizeNFKD } from './text';
 
 describe('Text utilities', () => {

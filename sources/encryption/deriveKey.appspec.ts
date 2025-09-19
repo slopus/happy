@@ -1,7 +1,8 @@
-import { describe, it, expect } from '@/dev/testRunner';
 import { deriveKey, deriveSecretKeyTreeRoot, deriveSecretKeyTreeChild } from './deriveKey';
-import { encodeUTF8 } from './text';
 import { encodeHex } from './hex';
+import { encodeUTF8 } from './text';
+
+import { describe, it, expect } from '@/dev/testRunner';
 
 describe('Key Derivation Tests', () => {
     // Test vectors

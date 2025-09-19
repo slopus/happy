@@ -1,12 +1,16 @@
-import * as React from 'react';
-import { View, Text, Platform, StatusBar, Pressable } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
-import { layout } from '../layout';
-import { useHeaderHeight } from '@/utils/responsive';
-import { Typography } from '@/constants/Typography';
+import * as React from 'react';
+import { View, Text, Platform, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet } from 'react-native-unistyles';
+
+import { layout } from '../layout';
+
+import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
+
+import { Typography } from '@/constants/Typography';
+import { useHeaderHeight } from '@/utils/responsive';
+
 
 interface HeaderProps {
     title?: React.ReactNode;
@@ -32,10 +36,9 @@ export const Header = React.memo((props: HeaderProps) => {
         headerLeft,
         headerRight,
         headerStyle,
-        headerTitleStyle,
         headerSubtitleStyle,
-        headerTintColor, // Accept but ignore - using theme instead
-        headerBackgroundColor, // Accept but ignore - using theme instead
+        // headerTintColor, // Accept but ignore - using theme instead
+        // headerBackgroundColor, // Accept but ignore - using theme instead
         headerShadowVisible = true,
         headerTransparent = false,
         safeAreaEnabled = true,
@@ -163,7 +166,6 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
                 undefined
             }
             headerStyle={options.headerStyle}
-            headerTitleStyle={options.headerTitleStyle}
             headerSubtitleStyle={extendedOptions.headerSubtitleStyle}
             headerShadowVisible={options.headerShadowVisible}
             headerTransparent={options.headerTransparent}
@@ -179,7 +181,7 @@ export const createHeader = (props: NativeStackHeaderProps) => {
     return <NavigationHeaderComponent {...props} />;
 };
 
-const stylesheet = StyleSheet.create((theme, runtime) => ({
+const stylesheet = StyleSheet.create((theme) => ({
     container: {
         position: 'relative',
         zIndex: 100,

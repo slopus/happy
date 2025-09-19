@@ -1,10 +1,13 @@
-import * as React from 'react';
-import { ToolViewProps } from './_all';
-import { Text, View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
-import { knownTools } from '../../tools/knownTools';
 import { Ionicons } from '@expo/vector-icons';
-import { ToolCall } from '@/sync/typesMessage';
+import * as React from 'react';
+import { Text, View, ActivityIndicator, StyleSheet, Platform } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
+import { knownTools } from '../../tools/knownTools';
+
+import { ToolViewProps } from './_all';
+
+import { ToolCall } from '@/sync/typesMessage';
 import { t } from '@/text';
 
 interface FilteredTool {
@@ -13,11 +16,11 @@ interface FilteredTool {
     state: 'running' | 'completed' | 'error';
 }
 
-export const TaskView = React.memo<ToolViewProps>(({ tool, metadata, messages }) => {
+export const TaskView = React.memo<ToolViewProps>(({ metadata, messages }) => {
     const { theme } = useUnistyles();
     const filtered: FilteredTool[] = [];
 
-    for (let m of messages) {
+    for (const m of messages) {
         if (m.kind === 'tool-call') {
             const knownTool = knownTools[m.tool.name as keyof typeof knownTools] as any;
             

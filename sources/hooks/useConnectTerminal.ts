@@ -1,14 +1,15 @@
+import { CameraView } from 'expo-camera';
 import * as React from 'react';
 import { Platform } from 'react-native';
-import { CameraView } from 'expo-camera';
+
+import { authApprove } from '@/auth/authApprove';
 import { useAuth } from '@/auth/AuthContext';
 import { decodeBase64 } from '@/encryption/base64';
 import { encryptBox } from '@/encryption/libsodium';
-import { authApprove } from '@/auth/authApprove';
 import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 import { Modal } from '@/modal';
-import { t } from '@/text';
 import { sync } from '@/sync/sync';
+import { t } from '@/text';
 
 interface UseConnectTerminalOptions {
     onSuccess?: () => void;
@@ -31,7 +32,7 @@ export function useConnectTerminal(options?: UseConnectTerminalOptions) {
             const tail = url.slice('happy://terminal?'.length);
             const publicKey = decodeBase64(tail, 'base64url');
             const responseV1 = encryptBox(decodeBase64(auth.credentials!.secret, 'base64url'), publicKey);
-            let responseV2Bundle = new Uint8Array(sync.encryption.contentDataKey.length + 1);
+            const responseV2Bundle = new Uint8Array(sync.encryption.contentDataKey.length + 1);
             responseV2Bundle[0] = 0;
             responseV2Bundle.set(sync.encryption.contentDataKey, 1);
             const responseV2 = encryptBox(responseV2Bundle, publicKey);

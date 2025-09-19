@@ -1,8 +1,10 @@
 import { MMKV } from 'react-native-mmkv';
-import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
+
 import { LocalSettings, localSettingsDefaults, localSettingsParse } from './localSettings';
-import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
 import { Profile, profileDefaults, profileParse } from './profile';
+import { Purchases, purchasesDefaults, purchasesParse } from './purchases';
+import { Settings, settingsDefaults, settingsParse, SettingsSchema } from './settings';
+
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();

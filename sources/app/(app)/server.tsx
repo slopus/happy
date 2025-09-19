@@ -1,16 +1,18 @@
+import { Stack, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { View, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { Text } from '@/components/StyledText';
-import { Typography } from '@/constants/Typography';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { RoundButton } from '@/components/RoundButton';
-import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
-import { t } from '@/text';
+import { RoundButton } from '@/components/RoundButton';
+import { Text } from '@/components/StyledText';
+import { Typography } from '@/constants/Typography';
+import { Modal } from '@/modal';
 import { getServerUrl, setServerUrl, validateServerUrl, getServerInfo } from '@/sync/serverConfig';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
+
 
 const stylesheet = StyleSheet.create((theme) => ({
     keyboardAvoidingView: {
@@ -78,7 +80,6 @@ const stylesheet = StyleSheet.create((theme) => ({
 export default function ServerConfigScreen() {
     const { theme } = useUnistyles();
     const styles = stylesheet;
-    const router = useRouter();
     const serverInfo = getServerInfo();
     const [inputUrl, setInputUrl] = useState(serverInfo.isCustom ? getServerUrl() : '');
     const [error, setError] = useState<string | null>(null);
@@ -108,7 +109,7 @@ export default function ServerConfigScreen() {
             }
             
             return true;
-        } catch (err) {
+        } catch {
             setError(t('server.failedToConnectToServer'));
             return false;
         } finally {

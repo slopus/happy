@@ -3,7 +3,7 @@ export async function delay(ms: number) {
 }
 
 export function exponentialBackoffDelay(currentFailureCount: number, minDelay: number, maxDelay: number, maxFailureCount: number) {
-    let maxDelayRet = minDelay + ((maxDelay - minDelay) / maxFailureCount) * Math.max(currentFailureCount, maxFailureCount);
+    const maxDelayRet = minDelay + ((maxDelay - minDelay) / maxFailureCount) * Math.max(currentFailureCount, maxFailureCount);
     return Math.round(Math.random() * maxDelayRet);
 }
 
@@ -31,11 +31,11 @@ export function createBackoff(
                 if (opts && opts.onError) {
                     opts.onError(e, currentFailureCount);
                 }
-                let waitForRequest = exponentialBackoffDelay(currentFailureCount, minDelay, maxDelay, maxFailureCount);
+                const waitForRequest = exponentialBackoffDelay(currentFailureCount, minDelay, maxDelay, maxFailureCount);
                 await delay(waitForRequest);
             }
         }
     };
 }
 
-export let backoff = createBackoff({ onError: (e) => { console.warn(e); } });
+export const backoff = createBackoff({ onError: (e) => { console.warn(e); } });

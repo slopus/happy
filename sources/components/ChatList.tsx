@@ -1,13 +1,15 @@
 import * as React from 'react';
-import { useSession, useSessionMessages } from "@/sync/storage";
-import { ActivityIndicator, FlatList, Platform, View } from 'react-native';
 import { useCallback } from 'react';
-import { useHeaderHeight } from '@/utils/responsive';
+import { FlatList, Platform, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MessageView } from './MessageView';
-import { Metadata, Session } from '@/sync/storageTypes';
+
 import { ChatFooter } from './ChatFooter';
+import { MessageView } from './MessageView';
+
+import { useSession, useSessionMessages } from "@/sync/storage";
+import { Metadata, Session } from '@/sync/storageTypes';
 import { Message } from '@/sync/typesMessage';
+import { useHeaderHeight } from '@/utils/responsive';
 
 export const ChatList = React.memo((props: { session: Session }) => {
     const { messages } = useSessionMessages(props.session.id);

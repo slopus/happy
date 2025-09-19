@@ -1,27 +1,8 @@
 import Constants from 'expo-constants';
-import { apiSocket } from '@/sync/apiSocket';
-import { AuthCredentials } from '@/auth/tokenStorage';
-import { Encryption } from '@/sync/encryption/encryption';
-import { decodeBase64, encodeBase64 } from '@/encryption/base64';
-import { storage } from './storage';
-import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
-import type { ApiEphemeralActivityUpdate } from './apiTypes';
-import { Session, Machine } from './storageTypes';
-import { InvalidateSync } from '@/utils/sync';
-import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
-import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
-import { isRunningOnMac } from '@/utils/platform';
-import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
-import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
-import { Profile, profileParse } from './profile';
-import { loadPendingSettings, savePendingSettings } from './persistence';
-import { initializeTracking, tracking } from '@/track';
-import { parseToken } from '@/utils/parseToken';
-import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
-import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, trackPaywallRestored, trackPaywallError } from '@/track';
+
 import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 import { log } from '@/log';
@@ -31,8 +12,30 @@ import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
 import { systemPrompt } from './prompt/systemPrompt';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
-import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
+import { registerPushToken } from './apiPush';
+import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
+import { DecryptedArtifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
 import { ArtifactEncryption } from './encryption/artifactEncryption';
+import { loadPendingSettings, savePendingSettings } from './persistence';
+import { Profile, profileParse } from './profile';
+import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
+import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
+import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
+import { storage } from './storage';
+import { Session, Machine } from './storageTypes';
+import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
+
+import type { ApiEphemeralActivityUpdate } from './apiTypes';
+
+import { AuthCredentials } from '@/auth/tokenStorage';
+import { decodeBase64, encodeBase64 } from '@/encryption/base64';
+import { apiSocket } from '@/sync/apiSocket';
+import { Encryption } from '@/sync/encryption/encryption';
+import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, trackPaywallRestored, trackPaywallError } from '@/track';
+import { initializeTracking, tracking } from '@/track';
+import { parseToken } from '@/utils/parseToken';
+import { isRunningOnMac } from '@/utils/platform';
+import { InvalidateSync } from '@/utils/sync';
 
 class Sync {
 
@@ -386,27 +389,32 @@ class Sync {
 
             // Handle the result
             switch (result) {
-                case PaywallResult.PURCHASED:
+                case PaywallResult.PURCHASED: {
                     trackPaywallPurchased();
                     // Refresh customer info after purchase
                     await this.syncPurchases();
                     return { success: true, purchased: true };
-                case PaywallResult.RESTORED:
+                }
+                case PaywallResult.RESTORED: {
                     trackPaywallRestored();
                     // Refresh customer info after restore
                     await this.syncPurchases();
                     return { success: true, purchased: true };
-                case PaywallResult.CANCELLED:
+                }
+                case PaywallResult.CANCELLED: {
                     trackPaywallCancelled();
                     return { success: true, purchased: false };
-                case PaywallResult.NOT_PRESENTED:
+                }
+                case PaywallResult.NOT_PRESENTED: {
                     // Don't track error for NOT_PRESENTED as it's a platform limitation
                     return { success: false, error: 'Paywall not available on this platform' };
+                }
                 case PaywallResult.ERROR:
-                default:
+                default: {
                     const errorMsg = 'Failed to present paywall';
                     trackPaywallError(errorMsg);
                     return { success: false, error: errorMsg };
+                }
             }
         } catch (error: any) {
             const errorMessage = error.message || 'Failed to present paywall';
@@ -455,7 +463,7 @@ class Sync {
         const sessionKeys = new Map<string, Uint8Array | null>();
         for (const session of sessions) {
             if (session.dataEncryptionKey) {
-                let decrypted = await this.encryption.decryptEncryptionKey(session.dataEncryptionKey);
+                const decrypted = await this.encryption.decryptEncryptionKey(session.dataEncryptionKey);
                 if (!decrypted) {
                     console.error(`Failed to decrypt data encryption key for session ${session.id}`);
                     continue;
@@ -468,7 +476,7 @@ class Sync {
         await this.encryption.initializeSessions(sessionKeys);
 
         // Decrypt sessions
-        let decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
+        const decryptedSessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[] = [];
         for (const session of sessions) {
             // Get session encryption (should always exist after initialization)
             const sessionEncryption = this.encryption.getSessionEncryption(session.id);
@@ -478,10 +486,10 @@ class Sync {
             }
 
             // Decrypt metadata using session-specific encryption
-            let metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
+            const metadata = await sessionEncryption.decryptMetadata(session.metadataVersion, session.metadata);
 
             // Decrypt agent state using session-specific encryption
-            let agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
+            const agentState = await sessionEncryption.decryptAgentState(session.agentStateVersion, session.agentState);
 
             // Put it all together
             const processedSession = {
@@ -909,8 +917,8 @@ class Sync {
         if (Object.keys(this.pendingSettings).length > 0) {
 
             while (true) {
-                let version = storage.getState().settingsVersion;
-                let settings = applySettings(storage.getState().settings, this.pendingSettings);
+                const version = storage.getState().settingsVersion;
+                const settings = applySettings(storage.getState().settings, this.pendingSettings);
                 const response = await fetch(`${API_ENDPOINT}/v1/account/settings`, {
                     method: 'POST',
                     body: JSON.stringify({
@@ -1063,8 +1071,9 @@ class Sync {
 
             // Get platform and app identifiers
             const platform = Platform.OS;
-            const version = Constants.expoConfig?.version!;
-            const appId = (Platform.OS === 'ios' ? Constants.expoConfig?.ios?.bundleIdentifier! : Constants.expoConfig?.android?.package!);
+            const expoConfig = Constants.expoConfig as NonNullable<typeof Constants.expoConfig>;
+            const version = expoConfig.version;
+            const appId = (Platform.OS === 'ios' ? (expoConfig.ios as NonNullable<typeof expoConfig.ios>).bundleIdentifier! : (expoConfig.android as NonNullable<typeof expoConfig.android>).package!);
 
             const response = await fetch(`${serverUrl}/v1/version`, {
                 method: 'POST',
@@ -1176,8 +1185,8 @@ class Sync {
         }
 
         // Decrypt and normalize messages
-        let start = Date.now();
-        let normalizedMessages: NormalizedMessage[] = [];
+        const start = Date.now();
+        const normalizedMessages: NormalizedMessage[] = [];
 
         // Filter out existing messages and prepare for batch decryption
         const messagesToDecrypt: ApiMessage[] = [];
@@ -1196,7 +1205,7 @@ class Sync {
             if (decrypted) {
                 eixstingMessages.add(decrypted.id);
                 // Normalize the decrypted message
-                let normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
                 if (normalized) {
                     normalizedMessages.push(normalized);
                 }
@@ -1511,7 +1520,7 @@ class Sync {
             
             try {
                 // Get the data encryption key from memory
-                let dataEncryptionKey = this.artifactDataKeys.get(artifactId);
+                const dataEncryptionKey = this.artifactDataKeys.get(artifactId);
                 if (!dataEncryptionKey) {
                     console.error(`Encryption key not found for artifact ${artifactId}, fetching artifacts`);
                     this.artifactsSync.invalidate();
@@ -1630,8 +1639,8 @@ class Sync {
 
     private applyMessages = (sessionId: string, messages: NormalizedMessage[]) => {
         const result = storage.getState().applyMessages(sessionId, messages);
-        let m: Message[] = [];
-        for (let messageId of result.changed) {
+        const m: Message[] = [];
+        for (const messageId of result.changed) {
             const message = storage.getState().sessionMessages[sessionId].messagesMap[messageId];
             if (message) {
                 m.push(message);
@@ -1655,14 +1664,14 @@ class Sync {
     }
 
     private applySessionDiff = (active: Session[], newActive: Session[]) => {
-        let wasActive = new Set(active.map(s => s.id));
-        let isActive = new Set(newActive.map(s => s.id));
-        for (let s of active) {
+        const wasActive = new Set(active.map(s => s.id));
+        const isActive = new Set(newActive.map(s => s.id));
+        for (const s of active) {
             if (!isActive.has(s.id)) {
                 voiceHooks.onSessionOffline(s.id, s.metadata ?? undefined);
             }
         }
-        for (let s of newActive) {
+        for (const s of newActive) {
             if (!wasActive.has(s.id)) {
                 voiceHooks.onSessionOnline(s.id, s.metadata ?? undefined);
             }

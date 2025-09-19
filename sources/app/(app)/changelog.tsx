@@ -1,14 +1,14 @@
 import React, { useEffect } from 'react';
 import { ScrollView, View, Text } from 'react-native';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MarkdownView } from '@/components/markdown/MarkdownView';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { getChangelogEntries, getLatestVersion, setLastViewedVersion } from '@/changelog';
-import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
+import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
-const styles = StyleSheet.create((theme, runtime) => ({
+const styles = StyleSheet.create((theme) => ({
     container: {
         flex: 1,
         backgroundColor: theme.colors.surface,
@@ -77,7 +77,6 @@ const styles = StyleSheet.create((theme, runtime) => ({
 }));
 
 export default function ChangelogScreen() {
-    const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
     const entries = getChangelogEntries();
     

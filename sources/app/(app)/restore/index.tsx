@@ -1,17 +1,18 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, TextInput, ScrollView, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { useAuth } from '@/auth/AuthContext';
-import { RoundButton } from '@/components/RoundButton';
-import { Typography } from '@/constants/Typography';
-import { encodeBase64 } from '@/encryption/base64';
 import { generateAuthKeyPair, authQRStart } from '@/auth/authQRStart';
 import { authQRWait } from '@/auth/authQRWait';
 import { layout } from '@/components/layout';
+import { QRCode } from '@/components/qr/QRCode';
+import { RoundButton } from '@/components/RoundButton';
+import { Typography } from '@/constants/Typography';
+import { encodeBase64 } from '@/encryption/base64';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { QRCode } from '@/components/qr/QRCode';
 
 const stylesheet = StyleSheet.create((theme) => ({
     scrollView: {
@@ -67,7 +68,6 @@ export default function Restore() {
     const styles = stylesheet;
     const auth = useAuth();
     const router = useRouter();
-    const [restoreKey, setRestoreKey] = useState('');
     const [isWaitingForAuth, setIsWaitingForAuth] = useState(false);
     const [authReady, setAuthReady] = useState(false);
     const [waitingDots, setWaitingDots] = useState(0);

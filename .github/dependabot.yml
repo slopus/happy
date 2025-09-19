@@ -1,0 +1,50 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "06:00"
+      timezone: "UTC"
+    open-pull-requests-limit: 10
+    allow:
+      - dependency-type: "direct"
+    groups:
+      expo:
+        patterns:
+          - "expo*"
+          - "@expo/*"
+      react-native:
+        patterns:
+          - "react-native*"
+          - "@react-native*/*"
+      livekit:
+        patterns:
+          - "livekit*"
+          - "@livekit/*"
+      linting:
+        patterns:
+          - "eslint*"
+          - "@typescript-eslint/*"
+          - "prettier"
+      misc-patches:
+        patterns:
+          - "*"
+        exclude-patterns:
+          - "expo*"
+          - "@expo/*"
+          - "react-native*"
+          - "@react-native*/*"
+          - "livekit*"
+          - "@livekit/*"
+          - "eslint*"
+          - "@typescript-eslint/*"
+          - "prettier"
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "06:00"
+      timezone: "UTC"

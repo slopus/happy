@@ -1,8 +1,10 @@
 import * as React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
-import { ToolViewProps } from "./_all";
+
 import { knownTools } from '../../tools/knownTools';
 import { ToolSectionView } from '../../tools/ToolSectionView';
+
+import { ToolViewProps } from "./_all";
 
 export interface Todo {
     content: string;
@@ -15,13 +17,13 @@ export const TodoView = React.memo<ToolViewProps>(({ tool }) => {
     let todosList: Todo[] = [];
     
     // Try to get todos from input first
-    let parsedArguments = knownTools.TodoWrite.input.safeParse(tool.input);
+    const parsedArguments = knownTools.TodoWrite.input.safeParse(tool.input);
     if (parsedArguments.success && parsedArguments.data.todos) {
         todosList = parsedArguments.data.todos;
     }
     
     // If we have a properly structured result, use newTodos from there
-    let parsed = knownTools.TodoWrite.result.safeParse(tool.result);
+    const parsed = knownTools.TodoWrite.result.safeParse(tool.result);
     if (parsed.success && parsed.data.newTodos) {
         todosList = parsed.data.newTodos;
     }

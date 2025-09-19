@@ -11,9 +11,9 @@ export const Shaker = React.memo(React.forwardRef<ShakeInstance, ViewProps>((pro
     const shakeValue = useAnimatedValue(0, { useNativeDriver: true });
     React.useImperativeHandle(ref, () => ({
         shake: () => {
-            let offsets = shakeKeyframes();
-            let duration = 300;
-            let animations: Animated.CompositeAnimation[] = [];
+            const offsets = shakeKeyframes();
+            const duration = 300;
+            const animations: Animated.CompositeAnimation[] = [];
             for (let i = 0; i < offsets.length; i++) {
                 animations.push(Animated.timing(shakeValue, {
                     toValue: offsets[i],
@@ -30,11 +30,11 @@ export const Shaker = React.memo(React.forwardRef<ShakeInstance, ViewProps>((pro
 }));
 
 function shakeKeyframes(amplitude: number = 3.0, count: number = 4, decay: boolean = false) {
-    let keyframes: number[] = [];
+    const keyframes: number[] = [];
     keyframes.push(0);
     for (let i = 0; i < count; i++) {
-        let sign = (i % 2 == 0) ? 1.0 : -1.0;
-        let multiplier = decay ? (1.0 / (i + 1)) : 1.0;
+        const sign = (i % 2 == 0) ? 1.0 : -1.0;
+        const multiplier = decay ? (1.0 / (i + 1)) : 1.0;
         keyframes.push(amplitude * sign * multiplier);
     }
     keyframes.push(0);

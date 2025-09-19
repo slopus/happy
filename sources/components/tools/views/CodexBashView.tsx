@@ -1,14 +1,16 @@
+import { Octicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Text } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Ionicons, Octicons } from '@expo/vector-icons';
-import { ToolCall } from '@/sync/typesMessage';
+
+
 import { ToolSectionView } from '../ToolSectionView';
+
 import { CommandView } from '@/components/CommandView';
-import { CodeView } from '@/components/CodeView';
 import { Metadata } from '@/sync/storageTypes';
-import { resolvePath } from '@/utils/pathUtils';
+import { ToolCall } from '@/sync/typesMessage';
 import { t } from '@/text';
+import { resolvePath } from '@/utils/pathUtils';
 
 interface CodexBashViewProps {
     tool: ToolCall;
@@ -21,7 +23,6 @@ export const CodexBashView = React.memo<CodexBashViewProps>(({ tool, metadata })
 
     // Parse the input structure
     const command = input?.command;
-    const cwd = input?.cwd;
     const parsedCmd = input?.parsed_cmd;
 
     // Determine the type of operation from parsed_cmd

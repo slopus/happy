@@ -4,8 +4,8 @@
  */
 
 import { apiSocket } from './apiSocket';
-import { storage } from './storage';
 import { connectionStateMachine, ConnectionState, type StateTransitionEvent } from './connectionStateMachine';
+
 import { log } from '@/log';
 
 export type ConnectionQuality = 'excellent' | 'good' | 'poor' | 'failed' | 'unknown';

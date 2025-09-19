@@ -1,5 +1,6 @@
 import * as React from 'react';
 import { ScrollView } from 'react-native';
+
 import { DiffView } from '@/components/diff/DiffView';
 
 interface ToolDiffViewProps {

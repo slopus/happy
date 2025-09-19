@@ -15,6 +15,8 @@
     "ota": "APP_ENV=preview NODE_ENV=preview tsx sources/scripts/parseChangelog.ts && yarn typecheck && eas update --branch preview",
     "ota:production": "npx eas-cli@latest workflow:run ota.yaml",
     "typecheck": "tsc --noEmit",
+    "lint": "eslint . --ext .ts,.tsx,.js",
+    "lint:fix": "eslint . --ext .ts,.tsx,.js --fix",
     "postinstall": "patch-package",
     "generate-theme": "tsx sources/theme.gen.ts"
   },
@@ -49,7 +51,7 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/resolve-path": "^1.4.3",
     "@types/uuid": "^10.0.0",
-    "axios": "^1.10.0",
+    "axios": "^1.12.0",
     "color": "^5.0.0",
     "diff": "^8.0.2",
     "expo": "~53.0.17",
@@ -140,7 +142,7 @@
     "react-native-web": "~0.20.0",
     "react-native-webview": "13.13.5",
     "react-native-worklets": "0.5.1",
-    "react-syntax-highlighter": "^15.6.1",
+    "react-syntax-highlighter": "^15.6.6",
     "react-textarea-autosize": "^8.5.9",
     "resolve-path": "^1.4.0",
     "rn-encryption": "^2.5.0",
@@ -158,12 +160,24 @@
     "@material/material-color-utilities": "^0.3.0",
     "@stablelib/hex": "^2.0.1",
     "@types/react": "~19.0.10",
+    "@typescript-eslint/eslint-plugin": "^8.9.0",
+    "@typescript-eslint/parser": "^8.9.0",
     "babel-plugin-transform-remove-console": "^6.9.4",
+    "eslint": "^9.13.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
     "patch-package": "^8.0.0",
+    "prettier": "^3.3.3",
     "react-test-renderer": "19.0.0",
     "tsx": "^4.20.4",
-    "typescript": "~5.8.3"
+    "typescript": "~5.8.3",
+    "typescript-eslint": "^8.9.0"
   },
   "private": true,
-  "packageManager": "yarn@1.22.22"
+  "packageManager": "yarn@1.22.22",
+  "resolutions": {
+    "prismjs": ">=1.30.0"
+  }
 }

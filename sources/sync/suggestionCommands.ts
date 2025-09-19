@@ -4,6 +4,7 @@
  */
 
 import Fuse from 'fuse.js';
+
 import { storage } from './storage';
 
 export interface CommandItem {

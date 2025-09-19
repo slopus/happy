@@ -1,6 +1,8 @@
-import { describe, it, expect } from '@/dev/testRunner';
-import { encodeBase64, decodeBase64 } from './base64';
 import { getRandomBytes } from 'expo-crypto';
+
+import { encodeBase64, decodeBase64 } from './base64';
+
+import { describe, it, expect } from '@/dev/testRunner';
 
 describe('Base64 Tests', () => {
     describe('Standard Base64 Encoding/Decoding', () => {

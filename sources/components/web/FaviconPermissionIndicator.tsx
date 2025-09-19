@@ -1,5 +1,6 @@
 import React from 'react';
 import { Platform } from 'react-native';
+
 import { storage } from '@/sync/storage';
 import { updateFaviconWithNotification, resetFavicon } from '@/utils/web/faviconGenerator';
 

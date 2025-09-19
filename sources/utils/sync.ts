@@ -54,7 +54,7 @@ export class InvalidateSync {
     }
 
     private _notifyPendings = () => {
-        for (let pending of this._pendings) {
+        for (const pending of this._pendings) {
             pending();
         }
         this._pendings = [];
@@ -134,7 +134,7 @@ export class ValueSync<T> {
     }
 
     private _notifyPendings = () => {
-        for (let pending of this._pendings) {
+        for (const pending of this._pendings) {
             pending();
         }
         this._pendings = [];

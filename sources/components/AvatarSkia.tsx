@@ -1,5 +1,5 @@
-import * as React from "react";
 import { Canvas, Rect, Group, Skia } from "@shopify/react-native-skia";
+import * as React from "react";
 
 const ELEMENTS = 64;
 const GRID_SIZE = 8; // 8x8 grid
