@@ -194,7 +194,8 @@ export class EnhancedSessionRecovery {
     }
   }
 
-  private async processMessage(): Promise<OperationResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async processMessage(_operation: QueuedOperation): Promise<OperationResult> {
     try {
       // Simulate message processing logic
       // In a real implementation, this would send the message to the server
@@ -207,7 +208,8 @@ export class EnhancedSessionRecovery {
     }
   }
 
-  private async processStateUpdate(): Promise<OperationResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async processStateUpdate(_operation: QueuedOperation): Promise<OperationResult> {
     try {
       // Simulate state update processing
       // Check for conflicts with current state
@@ -230,7 +232,8 @@ export class EnhancedSessionRecovery {
     }
   }
 
-  private async processUserAction(): Promise<OperationResult> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async processUserAction(_operation: QueuedOperation): Promise<OperationResult> {
     try {
       // Simulate user action processing
       return { success: true };
@@ -290,7 +293,8 @@ export class EnhancedSessionRecovery {
     // In a real implementation, this would force the update on the server
   }
 
-  private async presentConflictToUser(operation: QueuedOperation): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private async presentConflictToUser(operation: QueuedOperation, _conflictData: any): Promise<void> {
     // In a real implementation, this would show a UI for user to resolve conflict
     // For now, we'll default to local wins
     await this.forceLocalUpdate(operation);

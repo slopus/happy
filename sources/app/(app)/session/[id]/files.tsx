@@ -13,11 +13,11 @@ import { layout } from '@/components/layout';
 import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { getGitStatusFiles, GitFileStatus, GitStatusFiles } from '@/sync/gitStatusFiles';
-import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
 import { t } from '@/text';
 
 export default function FilesScreen() {
+    const { theme } = useUnistyles();
     const route = useRoute();
     const router = useRouter();
     const sessionId = (route.params! as any).id as string;
@@ -28,8 +28,6 @@ export default function FilesScreen() {
     const [searchResults, setSearchResults] = React.useState<FileItem[]>([]);
     const [isSearching, setIsSearching] = React.useState(false);
     // Use project git status first, fallback to session git status for backward compatibility
-    const projectGitStatus = useSessionProjectGitStatus(sessionId);
-    const sessionGitStatus = useSessionGitStatus(sessionId);
     
     // Load git status files
     const loadGitStatusFiles = React.useCallback(async () => {
@@ -415,7 +413,8 @@ export default function FilesScreen() {
     );
 }
 
-const styles = StyleSheet.create((theme) => ({
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const styles = StyleSheet.create((_theme) => ({
     container: {
         flex: 1,
         maxWidth: layout.maxWidth,

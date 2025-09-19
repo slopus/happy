@@ -19,7 +19,6 @@ export const PlusPlus: React.FC<PlusPlusProps> = ({ fontSize, style }) => {
                         fontWeight: 'bold',
                         color: 'transparent',
                     },
-                    // @ts-expect-error - Web-specific gradient styles
                     {
                         backgroundImage: 'linear-gradient(to right, #8B5CF6, #EC4899, #F59E0B, #10B981)',
                         backgroundClip: 'text',

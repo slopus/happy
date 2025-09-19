@@ -20,7 +20,6 @@ import { Modal } from '@/modal';
 import { getGitHubOAuthParams, disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
 import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
-import { isUsingCustomServer } from '@/sync/serverConfig';
 import { useEntitlement, useLocalSettingMutable } from '@/sync/storage';
 import { useAllMachines } from '@/sync/storage';
 import { useProfile } from '@/sync/storage';

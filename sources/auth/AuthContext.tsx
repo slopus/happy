@@ -1,5 +1,5 @@
 import * as Updates from 'expo-updates';
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, ReactNode } from 'react';
 import { Platform } from 'react-native';
 
 import { TokenStorage, AuthCredentials } from '@/auth/tokenStorage';

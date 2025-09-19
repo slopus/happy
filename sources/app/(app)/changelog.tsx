@@ -1,7 +1,7 @@
 import React, { useEffect } from 'react';
 import { ScrollView, View, Text } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { StyleSheet } from 'react-native-unistyles';
 
 import { getChangelogEntries, getLatestVersion, setLastViewedVersion } from '@/changelog';
 import { layout } from '@/components/layout';

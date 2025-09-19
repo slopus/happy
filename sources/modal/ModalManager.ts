@@ -157,8 +157,7 @@ class ModalManagerClass {
         if (Platform.OS === 'ios' && !options?.inputType) {
             // Use native Alert.prompt on iOS (only supports basic text input)
             return new Promise<string | null>((resolve) => {
-                // @ts-expect-error - Alert.prompt is iOS only
-                Alert.prompt(
+                (Alert as any).prompt(
                     title,
                     message,
                     [

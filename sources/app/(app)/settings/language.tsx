@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Localization from 'expo-localization';
 import React from 'react';
-import { useUnistyles } from 'react-native-unistyles';
 
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';

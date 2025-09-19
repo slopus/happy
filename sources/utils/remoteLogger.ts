@@ -51,7 +51,8 @@ export function monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyIn
           platform: 'ios', // or android
         })
       })
-    } catch (e) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_e) {
       // console.error('[RemoteLogger] Failed to send log:', e)
       // Fail silently
     }

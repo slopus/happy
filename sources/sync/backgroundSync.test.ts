@@ -1,6 +1,9 @@
+import * as BackgroundFetch from 'expo-background-fetch';
+import * as TaskManager from 'expo-task-manager';
 import { AppState, Platform } from 'react-native';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
+import { apiSocket } from './apiSocket';
 import { BackgroundSyncManager, DEFAULT_BACKGROUND_CONFIG } from './backgroundSync';
 
 // Mock dependencies
@@ -29,12 +32,6 @@ vi.mock('expo-background-fetch', () => ({
   registerTaskAsync: vi.fn().mockResolvedValue(undefined),
   unregisterTaskAsync: vi.fn().mockResolvedValue(undefined),
 }));
-
-// Import modules that tests need to reference
-import * as TaskManager from 'expo-task-manager';
-import * as BackgroundFetch from 'expo-background-fetch';
-
-import { apiSocket } from './apiSocket';
 
 vi.mock('expo-battery', () => ({
   getBatteryLevelAsync: vi.fn(() => Promise.resolve(0.8)),

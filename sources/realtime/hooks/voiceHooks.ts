@@ -1,9 +1,8 @@
-import { getCurrentRealtimeSessionId, getVoiceSession, isVoiceSessionStarted } from '../RealtimeSession';
+import { getVoiceSession, isVoiceSessionStarted } from '../RealtimeSession';
 import { VOICE_CONFIG } from '../voiceConfig';
 
 import {
     formatNewMessages,
-    formatNewSingleMessage,
     formatPermissionRequest,
     formatReadyEvent,
     formatSessionFocus,

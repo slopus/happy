@@ -34,7 +34,8 @@ export function useDemoMessages(messages: Message[]) {
         // Cleanup function to remove the demo session
         return () => {
             storage.setState((state) => {
-                const { [DEMO_SESSION_ID]: _, ...restSessions } = state.sessionMessages;
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { [DEMO_SESSION_ID]: _removedSession, ...restSessions } = state.sessionMessages;
                 return {
                     ...state,
                     sessionMessages: restSessions

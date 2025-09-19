@@ -1,6 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
-import { useUnistyles } from 'react-native-unistyles';
 
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';

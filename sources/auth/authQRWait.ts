@@ -42,7 +42,8 @@ export async function authQRWait(keypair: QRAuthKeyPair, onProgress?: (dots: num
                     return null;
                 }
             }
-        } catch (error) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (_error) {
             console.log('\n\nFailed to check authentication status. Please try again.');
             return null;
         }

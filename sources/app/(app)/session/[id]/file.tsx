@@ -1,4 +1,3 @@
-import { useRoute } from '@react-navigation/native';
 import { useLocalSearchParams } from 'expo-router';
 import * as React from 'react';
 import { View, ScrollView, ActivityIndicator, Platform, Pressable } from 'react-native';
@@ -70,7 +69,6 @@ const DiffDisplay: React.FC<{ diffContent: string }> = ({ diffContent }) => {
 };
 
 export default function FileScreen() {
-    const route = useRoute();
     const { theme } = useUnistyles();
     const { id: sessionId } = useLocalSearchParams<{ id: string }>();
     const searchParams = useLocalSearchParams();
@@ -486,7 +484,8 @@ export default function FileScreen() {
     );
 }
 
-const styles = StyleSheet.create((theme) => ({
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const styles = StyleSheet.create((_theme) => ({
     container: {
         flex: 1,
         maxWidth: layout.maxWidth,

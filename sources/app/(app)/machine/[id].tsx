@@ -1,6 +1,6 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
-import React, { useState, useMemo, useCallback, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { View, Text, ActivityIndicator, RefreshControl, Platform, Pressable } from 'react-native';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 

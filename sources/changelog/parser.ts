@@ -8,7 +8,8 @@ export function getChangelogData(): ChangelogData {
         // Fallback to require the generated JSON file
         try {
             changelogData = require('./changelog.json') as ChangelogData;
-        } catch (error) {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        } catch (_error) {
             console.warn('Changelog data not found, returning empty changelog');
             changelogData = { entries: [], latestVersion: 0 };
         }

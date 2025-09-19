@@ -1,9 +1,9 @@
-import { decodeBase64 } from "@/encryption/base64";
-import { decodeUTF8, encodeUTF8 } from "@/encryption/text";
+import { decodeBase64 } from '@/encryption/base64';
 
 export function parseToken(token: string) {
-    const [header, payload, signature] = token.split('.');
-    const sub = JSON.parse(decodeUTF8(decodeBase64(payload))).sub;
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [_header, payload, _signature] = token.split('.');
+    const sub = JSON.parse(new TextDecoder().decode(decodeBase64(payload, 'base64url'))).sub;
     if (typeof sub !== 'string') {
         throw new Error('Invalid token');
     }

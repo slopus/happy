@@ -12,6 +12,7 @@ import { Typography } from '@/constants/Typography';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useAllMachines } from '@/sync/storage';
 import { Session, Machine } from '@/sync/storageTypes';
+import { t } from '@/text';
 import { useIsTablet } from '@/utils/responsive';
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
 

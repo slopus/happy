@@ -28,7 +28,8 @@ export function decryptBox(encryptedBundle: Uint8Array, recipientSecretKey: Uint
     try {
         const decrypted = sodium.crypto_box_open_easy(encrypted, nonce, ephemeralPublicKey, recipientSecretKey);
         return decrypted;
-    } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_error) {
         return null;
     }
 }
@@ -52,7 +53,8 @@ export function decryptSecretBox(data: Uint8Array, secret: Uint8Array): any | nu
             return null;
         }
         return JSON.parse(new TextDecoder().decode(decrypted));
-    } catch (error) {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    } catch (_error) {
         return null;
     }
 }

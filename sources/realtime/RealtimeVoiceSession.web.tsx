@@ -104,20 +104,25 @@ export const RealtimeVoiceSession: React.FC = () => {
             // console.log('Realtime session disconnected');
             storage.getState().setRealtimeStatus('disconnected');
         },
-        onMessage: (data) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        onMessage: (_data) => {
             // console.log('Realtime message:', data);
         },
-        onError: (error) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        onError: (_error) => {
             // console.error('Realtime error:', error);
             storage.getState().setRealtimeStatus('error');
         },
-        onStatusChange: (data) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        onStatusChange: (_data) => {
             // console.log('Realtime status change:', data);
         },
-        onModeChange: (data) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        onModeChange: (_data) => {
             // console.log('Realtime mode change:', data);
         },
-        onDebug: (message) => {
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        onDebug: (_message) => {
             // console.debug('Realtime debug:', message);
         }
     });

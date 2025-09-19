@@ -4,7 +4,8 @@ import { Platform } from 'react-native';
 const AUTH_KEY = 'auth_credentials';
 
 // Cache for synchronous access
-let credentialsCache: string | null = null;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+let credentialsCache: AuthCredentials | null = null;
 
 export interface AuthCredentials {
     token: string;
@@ -19,7 +20,7 @@ export const TokenStorage = {
         try {
             const stored = await SecureStore.getItemAsync(AUTH_KEY);
             if (!stored) return null;
-            credentialsCache = stored; // Update cache
+            credentialsCache = JSON.parse(stored) as AuthCredentials; // Update cache
             return JSON.parse(stored) as AuthCredentials;
         } catch (error) {
             console.error('Error getting credentials:', error);
@@ -35,7 +36,7 @@ export const TokenStorage = {
         try {
             const json = JSON.stringify(credentials);
             await SecureStore.setItemAsync(AUTH_KEY, json);
-            credentialsCache = json; // Update cache
+            credentialsCache = credentials; // Update cache
             return true;
         } catch (error) {
             console.error('Error setting credentials:', error);

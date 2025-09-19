@@ -68,9 +68,11 @@ export default function Restore() {
     const styles = stylesheet;
     const auth = useAuth();
     const router = useRouter();
-    const [isWaitingForAuth, setIsWaitingForAuth] = useState(false);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [_isWaitingForAuth, setIsWaitingForAuth] = useState(false);
     const [authReady, setAuthReady] = useState(false);
-    const [waitingDots, setWaitingDots] = useState(0);
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [_waitingDots, setWaitingDots] = useState(0);
     const isCancelledRef = useRef(false);
 
     // Memoize keypair generation to prevent re-creating on re-renders

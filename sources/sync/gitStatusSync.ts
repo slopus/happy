@@ -45,7 +45,7 @@ export class GitStatusSync {
 
         let sync = this.projectSyncMap.get(projectKey);
         if (!sync) {
-            sync = new InvalidateSync(() => this.fetchGitStatusForProject(sessionId, projectKey));
+            sync = new InvalidateSync(() => this.fetchGitStatusForProject(sessionId));
             this.projectSyncMap.set(projectKey, sync);
         }
         return sync;

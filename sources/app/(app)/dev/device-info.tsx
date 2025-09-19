@@ -66,8 +66,7 @@ export default function DeviceInfo() {
                     />
                     <Item
                         title="Detection Method"
-                        // @ts-expect-error - isPad is not in the type definitions but exists at runtime on iOS
-                        detail={Platform.OS === 'ios' && Platform.isPad ? 'iOS isPad' : `${diagonalInches.toFixed(1)}" diagonal`}
+                        detail={Platform.OS === 'ios' && (Platform as any).isPad ? 'iOS isPad' : `${diagonalInches.toFixed(1)}" diagonal`}
                     />
                     <Item
                         title="Mac Catalyst"
@@ -147,8 +146,7 @@ export default function DeviceInfo() {
                         <>
                             <Item
                                 title="iOS Interface"
-                                // @ts-expect-error - isPad is not in the type definitions but exists at runtime on iOS
-                                detail={Platform.isPad ? 'iPad' : 'iPhone'}
+                                detail={(Platform as any).isPad ? 'iPad' : 'iPhone'}
                             />
                             <Item
                                 title="iOS Version"

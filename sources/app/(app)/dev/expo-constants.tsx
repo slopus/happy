@@ -156,8 +156,7 @@ export default function ExpoConstantsScreen() {
     // Get Updates manifest if available
     let updatesManifest = null;
     try {
-        // @ts-expect-error - manifest might not be typed
-        updatesManifest = Updates.manifest;
+        updatesManifest = (Updates as any).manifest;
     } catch (e) {
         // expo-updates might not be available
     }
@@ -168,14 +167,10 @@ export default function ExpoConstantsScreen() {
     let channel = null;
     let isEmbeddedLaunch = null;
     try {
-        // @ts-expect-error Updates properties are not typed in expo-updates but exist at runtime
-        updateId = Updates.updateId;
-        // @ts-expect-error Updates properties are not typed in expo-updates but exist at runtime
-        releaseChannel = Updates.releaseChannel;
-        // @ts-expect-error Updates properties are not typed in expo-updates but exist at runtime
-        channel = Updates.channel;
-        // @ts-expect-error Updates properties are not typed in expo-updates but exist at runtime
-        isEmbeddedLaunch = Updates.isEmbeddedLaunch;
+        updateId = (Updates as any).updateId;
+        releaseChannel = (Updates as any).releaseChannel;
+        channel = (Updates as any).channel;
+        isEmbeddedLaunch = (Updates as any).isEmbeddedLaunch;
     } catch (e) {
         // Properties might not be available
     }

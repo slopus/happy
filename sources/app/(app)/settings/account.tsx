@@ -1,7 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { View, Text, Pressable, Platform } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
