@@ -293,7 +293,7 @@ describe('Background Sync Integration Tests', () => {
       const sessionData = { id: 'session1', lastModified: Date.now() };
 
       // Network interruption
-      mockApiSocket.isConnected.mockReturnValue(false);
+      (apiSocket.isConnected as any).mockReturnValue(false);
       await vi.advanceTimersByTimeAsync(15000);
 
       // Data should be preserved in queue
@@ -301,11 +301,11 @@ describe('Background Sync Integration Tests', () => {
       expect(status.queuedOperations).toBeGreaterThan(0);
 
       // Network recovery
-      mockApiSocket.isConnected.mockReturnValue(true);
+      (apiSocket.isConnected as any).mockReturnValue(true);
       await appStateChangeHandler('active');
 
       // Data should be synced on return to foreground
-      expect(mockApiSocket.reconnect).toHaveBeenCalled();
+      expect(apiSocket.reconnect).toHaveBeenCalled();
     });
   });
 
@@ -362,7 +362,7 @@ describe('Background Sync Integration Tests', () => {
       await appStateChangeHandler('background');
 
       // Simulate API socket failure
-      mockApiSocket.send.mockImplementation(() => {
+      (apiSocket.send as any).mockImplementation(() => {
         throw new Error('Socket send failed');
       });
 
@@ -371,7 +371,7 @@ describe('Background Sync Integration Tests', () => {
       expect(backgroundSyncManager.getStatus().isActive).toBe(true);
 
       // Recovery
-      mockApiSocket.send.mockImplementation(vi.fn());
+      (apiSocket.send as any).mockImplementation(vi.fn());
       await vi.advanceTimersByTimeAsync(15000);
 
       // Should continue operating
@@ -481,7 +481,7 @@ describe('Background Sync Integration Tests', () => {
       await appStateChangeHandler('active');
 
       // Should trigger existing sync methods
-      expect(mockApiSocket.reconnect).toHaveBeenCalled();
+      expect(apiSocket.reconnect).toHaveBeenCalled();
     });
 
     it('should work with global background sync initialization', () => {
@@ -502,7 +502,7 @@ describe('Background Sync Integration Tests', () => {
       expect(backgroundSyncManager.getStatus().connectionHealthMonitoring).toBe(true);
 
       // Should use existing API socket methods
-      expect(mockApiSocket.isConnected).toHaveBeenCalled();
+      expect(apiSocket.isConnected).toHaveBeenCalled();
     });
   });
 });
@@ -551,7 +551,7 @@ describe('Real-world Scenario Tests', () => {
     await appStateChangeHandler('active');
 
     // Should refresh all services
-    expect(mockApiSocket.reconnect).toHaveBeenCalled();
+    expect(apiSocket.reconnect).toHaveBeenCalled();
   });
 
   it('should handle multitasking scenario', async () => {
@@ -583,6 +583,6 @@ describe('Real-world Scenario Tests', () => {
 
     // Should recover properly
     expect(backgroundSyncManager.getStatus().isActive).toBe(false);
-    expect(mockApiSocket.reconnect).toHaveBeenCalled();
+    expect(apiSocket.reconnect).toHaveBeenCalled();
   });
 });

@@ -246,7 +246,7 @@ describe('Android Platform Specific Tests', () => {
       expect(backgroundSyncManager.getStatus().isActive).toBe(true);
 
       // Should adapt to reduced network access
-      expect(mockApiSocket.isConnected).toHaveBeenCalled();
+      expect(apiSocket.isConnected).toHaveBeenCalled();
     });
 
     it('should respect Android battery optimization settings', async () => {
@@ -304,14 +304,14 @@ describe('Android Platform Specific Tests', () => {
       await appStateChangeHandler('background');
 
       // Simulate Android network state changes
-      mockApiSocket.isConnected.mockReturnValue(false);
+      (apiSocket.isConnected as any).mockReturnValue(false);
       await vi.advanceTimersByTimeAsync(30000);
 
       // Should attempt reconnection
-      expect(mockApiSocket.reconnect).toHaveBeenCalled();
+      expect(apiSocket.reconnect).toHaveBeenCalled();
 
       // Network restored
-      mockApiSocket.isConnected.mockReturnValue(true);
+      (apiSocket.isConnected as any).mockReturnValue(true);
       await vi.advanceTimersByTimeAsync(10000);
 
       expect(backgroundSyncManager.getStatus().isActive).toBe(true);
@@ -347,14 +347,14 @@ describe('Android Platform Specific Tests', () => {
       await appStateChangeHandler('background');
 
       // Should use efficient intervals for Android
-      const heartbeatCalls = mockApiSocket.send.mock.calls.filter(
+      const heartbeatCalls = (apiSocket.send as any).mock.calls.filter(
         (call: any[]) => call[0] === 'ping'
       );
 
       await vi.advanceTimersByTimeAsync(60000); // 1 minute
 
       // Should balance connectivity with battery usage
-      expect(mockApiSocket.send).toHaveBeenCalled();
+      expect(apiSocket.send).toHaveBeenCalled();
     });
 
     it('should adapt to Android device capabilities', async () => {
@@ -491,7 +491,7 @@ describe('Web Platform Specific Tests', () => {
       await vi.advanceTimersByTimeAsync(30000); // 30 seconds
 
       // Should minimize network activity when page is not visible
-      expect(mockApiSocket.send).toHaveBeenCalled();
+      expect(apiSocket.send).toHaveBeenCalled();
     });
 
     it('should handle browser sleep/wake cycles', async () => {
@@ -504,7 +504,7 @@ describe('Web Platform Specific Tests', () => {
       await appStateChangeHandler('active');
 
       // Should reconnect properly
-      expect(mockApiSocket.reconnect).toHaveBeenCalled();
+      expect(apiSocket.reconnect).toHaveBeenCalled();
     });
   });
 
