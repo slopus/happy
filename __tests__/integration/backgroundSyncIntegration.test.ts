@@ -210,10 +210,11 @@ describe('Background Sync Integration Tests', () => {
       let connectionSuccessCount = 0;
       let totalChecks = 0;
 
-      // Mock connection checks
+      // Mock connection checks with deterministic pattern for CI stability
       (apiSocket.isConnected as any).mockImplementation(() => {
         totalChecks++;
-        const shouldSucceed = Math.random() > 0.1; // 90% success rate
+        // Deterministic pattern: 9 successes, 1 failure = 90% success rate
+        const shouldSucceed = (totalChecks - 1) % 10 !== 9; // Fail every 10th call
         if (shouldSucceed) connectionSuccessCount++;
         return shouldSucceed;
       });
@@ -225,7 +226,7 @@ describe('Background Sync Integration Tests', () => {
         await vi.advanceTimersByTimeAsync(10000); // 10 second intervals
       }
 
-      // Calculate survival rate
+      // Calculate survival rate - should be exactly 90% now
       const survivalRate = connectionSuccessCount / totalChecks;
       expect(survivalRate).toBeGreaterThan(0.8); // 80% survival rate requirement
     });
