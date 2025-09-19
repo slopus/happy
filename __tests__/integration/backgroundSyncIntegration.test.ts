@@ -54,38 +54,32 @@ vi.mock('@/sync/apiSocket', () => ({
   },
 }));
 
-// Realistic storage mock
-const mockStorage = {
-  getState: vi.fn(() => ({
-    getActiveSessions: vi.fn(() => [
-      { id: 'session1', active: true, metadata: { title: 'Test Session 1' } },
-      { id: 'session2', active: true, metadata: { title: 'Test Session 2' } },
-    ]),
-    sessions: {
-      session1: { id: 'session1', active: true },
-      session2: { id: 'session2', active: true },
-    },
-    machines: {
-      machine1: { id: 'machine1', active: true },
-    },
-    setSocketStatus: vi.fn(),
-    applyReady: vi.fn(),
-  })),
-};
-
 vi.mock('@/sync/storage', () => ({
-  storage: mockStorage,
+  storage: {
+    getState: vi.fn(() => ({
+      getActiveSessions: vi.fn(() => [
+        { id: 'session1', active: true, metadata: { title: 'Test Session 1' } },
+        { id: 'session2', active: true, metadata: { title: 'Test Session 2' } },
+      ]),
+      sessions: {
+        session1: { id: 'session1', active: true },
+        session2: { id: 'session2', active: true },
+      },
+      machines: {
+        machine1: { id: 'machine1', active: true },
+      },
+      setSocketStatus: vi.fn(),
+      applyReady: vi.fn(),
+    })),
+  },
 }));
 
-// Realistic sync mock
-const mockSync = {
-  refreshSessions: vi.fn(() => Promise.resolve()),
-  refreshMachines: vi.fn(() => Promise.resolve()),
-  onSessionVisible: vi.fn(),
-};
-
 vi.mock('@/sync/sync', () => ({
-  sync: mockSync,
+  sync: {
+    refreshSessions: vi.fn(() => Promise.resolve()),
+    refreshMachines: vi.fn(() => Promise.resolve()),
+    onSessionVisible: vi.fn(),
+  },
 }));
 
 describe('Background Sync Integration Tests', () => {
