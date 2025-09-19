@@ -20,13 +20,6 @@ import { sessionReadFile } from '@/sync/ops';
 import { searchFiles, FileItem } from '@/sync/suggestionFile';
 
 
-interface FolderStructure {
-    [key: string]: {
-        files: FileItem[];
-        folders: FolderStructure;
-    };
-}
-
 // File extensions that support syntax highlighting
 const SUPPORTED_FILE_EXTENSIONS = new Set([
   'js', 'jsx', 'ts', 'tsx', 'py', 'java', 'c', 'cpp', 'h', 'hpp',

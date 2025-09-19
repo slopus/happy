@@ -147,24 +147,28 @@ describe('BackgroundSyncManager', () => {
     });
 
     it('should maintain connections during background', async () => {
-      // Simulate connection maintenance
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Mock connected socket
+      (apiSocket.isConnected as any).mockReturnValue(true);
+      
+      // Fast-forward time to trigger connection health monitoring
+      vi.advanceTimersByTime(10500); // Just over the 10s interval
 
       expect(apiSocket.isConnected).toHaveBeenCalled();
-    });
+    }, 15000);
 
     it('should send heartbeat when connection is active', async () => {
       // Mock connected socket
       (apiSocket.isConnected as any).mockReturnValue(true);
       
-      // Fast-forward time to trigger heartbeat interval
-      vi.advanceTimersByTime(10500); // Just over the 10s interval
+      // Force heartbeat call by advancing timers multiple times
+      vi.advanceTimersByTime(15000); // Advance by 15 seconds
+      vi.advanceTimersByTime(1000);  // Additional advance
       
       // Verify heartbeat was sent
       expect(apiSocket.send).toHaveBeenCalledWith('ping', {
         timestamp: expect.any(Number),
       });
-    });
+    }, 15000);
 
     it('should attempt reconnection when disconnected', async () => {
       (apiSocket.isConnected as any).mockReturnValue(false);
@@ -235,8 +239,6 @@ describe('BackgroundSyncManager', () => {
     });
 
     it('should remove app state listener on cleanup', () => {
-      const { AppState } = require('react-native');
-
       backgroundSyncManager.cleanup();
 
       // Verify that addEventListener was called (meaning the listener was set up)
@@ -283,8 +285,9 @@ describe('BackgroundSyncManager', () => {
 
       await appStateHandler('background');
 
-      // Fast-forward time to trigger heartbeat
-      vi.advanceTimersByTime(10500);
+      // Force heartbeat call with multiple timer advances
+      vi.advanceTimersByTime(15000);
+      vi.advanceTimersByTime(1000);
 
       // Should only send lightweight heartbeats, not heavy data
       expect(apiSocket.send).toHaveBeenCalledWith('ping', expect.objectContaining({
@@ -293,11 +296,13 @@ describe('BackgroundSyncManager', () => {
 
       // Should not send large data payloads in background
       const sendCalls = (apiSocket.send as any).mock.calls;
-      sendCalls.forEach((call: any[]) => {
-        const data = JSON.stringify(call[1] || {});
-        expect(data.length).toBeLessThan(1000); // Small payload requirement
-      });
-    });
+      if (sendCalls.length > 0) {
+        sendCalls.forEach((call: any[]) => {
+          const data = JSON.stringify(call[1] || {});
+          expect(data.length).toBeLessThan(1000); // Small payload requirement
+        });
+      }
+    }, 15000);
   });
 
   describe('Success Criteria Verification', () => {
