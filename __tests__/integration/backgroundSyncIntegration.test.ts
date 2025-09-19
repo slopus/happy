@@ -38,23 +38,20 @@ vi.mock('@/log', () => ({
   },
 }));
 
-// Realistic API socket mock
-const mockApiSocket = {
-  isConnected: vi.fn(() => true),
-  isConnecting: vi.fn(() => false),
-  send: vi.fn(),
-  reconnect: vi.fn(() => Promise.resolve()),
-  getLastPingTime: vi.fn(() => Date.now() - 10000),
-  getLastActivityTime: vi.fn(() => Date.now() - 5000),
-  initialize: vi.fn(),
-  onStatusChange: vi.fn(),
-  onMessage: vi.fn(),
-  onReconnected: vi.fn(),
-  request: vi.fn(() => Promise.resolve({ json: () => Promise.resolve({ messages: [] }) })),
-};
-
 vi.mock('@/sync/apiSocket', () => ({
-  apiSocket: mockApiSocket,
+  apiSocket: {
+    isConnected: vi.fn(() => true),
+    isConnecting: vi.fn(() => false),
+    send: vi.fn(),
+    reconnect: vi.fn(() => Promise.resolve()),
+    getLastPingTime: vi.fn(() => Date.now() - 10000),
+    getLastActivityTime: vi.fn(() => Date.now() - 5000),
+    initialize: vi.fn(),
+    onStatusChange: vi.fn(),
+    onMessage: vi.fn(),
+    onReconnected: vi.fn(),
+    request: vi.fn(() => Promise.resolve({ json: () => Promise.resolve({ messages: [] }) })),
+  },
 }));
 
 // Realistic storage mock
@@ -135,7 +132,7 @@ describe('Background Sync Integration Tests', () => {
       expect(backgroundSyncManager.getStatus().isActive).toBe(false);
 
       // Verify sync services were refreshed
-      expect(mockApiSocket.reconnect).toHaveBeenCalled();
+      expect(apiSocket.reconnect).toHaveBeenCalled();
     });
 
     it('should handle rapid state transitions', async () => {
@@ -160,17 +157,17 @@ describe('Background Sync Integration Tests', () => {
         await vi.advanceTimersByTimeAsync(15000); // 15 second intervals
 
         // Connection should still be maintained
-        expect(mockApiSocket.isConnected).toHaveBeenCalled();
+        expect(apiSocket.isConnected).toHaveBeenCalled();
 
         if (i % 4 === 0) {
           // Simulate occasional heartbeat
-          expect(mockApiSocket.send).toHaveBeenCalledWith('ping', expect.any(Object));
+          expect(apiSocket.send).toHaveBeenCalledWith('ping', expect.any(Object));
         }
       }
 
       // Return to foreground
       await appStateChangeHandler('active');
-      expect(mockApiSocket.reconnect).toHaveBeenCalled();
+      expect(apiSocket.reconnect).toHaveBeenCalled();
     });
 
     it('should handle network disconnection during background', async () => {
@@ -179,16 +176,16 @@ describe('Background Sync Integration Tests', () => {
       expect(backgroundSyncManager.getStatus().isActive).toBe(true);
 
       // Simulate network disconnection
-      mockApiSocket.isConnected.mockReturnValue(false);
+      (apiSocket.isConnected as any).mockReturnValue(false);
 
       // Advance timers to trigger connection check
       await vi.advanceTimersByTimeAsync(10000);
 
       // Should attempt reconnection
-      expect(mockApiSocket.reconnect).toHaveBeenCalled();
+      expect(apiSocket.reconnect).toHaveBeenCalled();
 
       // Simulate connection restored
-      mockApiSocket.isConnected.mockReturnValue(true);
+      (apiSocket.isConnected as any).mockReturnValue(true);
 
       // Return to foreground
       await appStateChangeHandler('active');
@@ -202,7 +199,7 @@ describe('Background Sync Integration Tests', () => {
       let totalChecks = 0;
 
       // Mock connection checks
-      mockApiSocket.isConnected.mockImplementation(() => {
+      (apiSocket.isConnected as any).mockImplementation(() => {
         totalChecks++;
         const shouldSucceed = Math.random() > 0.1; // 90% success rate
         if (shouldSucceed) connectionSuccessCount++;
@@ -225,14 +222,14 @@ describe('Background Sync Integration Tests', () => {
       await appStateChangeHandler('background');
 
       // Simulate temporary network outage
-      mockApiSocket.isConnected.mockReturnValue(false);
+      (apiSocket.isConnected as any).mockReturnValue(false);
       await vi.advanceTimersByTimeAsync(30000); // 30 seconds offline
 
       // Connection should attempt reconnection
-      expect(mockApiSocket.reconnect).toHaveBeenCalled();
+      expect(apiSocket.reconnect).toHaveBeenCalled();
 
       // Simulate connection recovery
-      mockApiSocket.isConnected.mockReturnValue(true);
+      (apiSocket.isConnected as any).mockReturnValue(true);
       await vi.advanceTimersByTimeAsync(10000);
 
       // Should be stable again
@@ -243,8 +240,8 @@ describe('Background Sync Integration Tests', () => {
       await appStateChangeHandler('background');
 
       // Simulate server maintenance (extended outage)
-      mockApiSocket.isConnected.mockReturnValue(false);
-      mockApiSocket.reconnect.mockRejectedValue(new Error('Server unavailable'));
+      (apiSocket.isConnected as any).mockReturnValue(false);
+      (apiSocket.reconnect as any).mockRejectedValue(new Error('Server unavailable'));
 
       // Should not crash during extended outage
       for (let i = 0; i < 5; i++) {

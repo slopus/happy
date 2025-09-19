@@ -2,6 +2,7 @@ import { AppState, Platform } from 'react-native';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 import { BackgroundSyncManager, DEFAULT_BACKGROUND_CONFIG } from '@/sync/backgroundSync';
+import { apiSocket } from '@/sync/apiSocket';
 
 // Mock timers
 vi.useFakeTimers();
@@ -39,17 +40,15 @@ vi.mock('@/log', () => ({
   },
 }));
 
-const mockApiSocket = {
-  isConnected: vi.fn(() => true),
-  isConnecting: vi.fn(() => false),
-  send: vi.fn(),
-  reconnect: vi.fn(() => Promise.resolve()),
-  getLastPingTime: vi.fn(() => Date.now() - 10000),
-  getLastActivityTime: vi.fn(() => Date.now() - 5000),
-};
-
 vi.mock('@/sync/apiSocket', () => ({
-  apiSocket: mockApiSocket,
+  apiSocket: {
+    isConnected: vi.fn(() => true),
+    isConnecting: vi.fn(() => false),
+    send: vi.fn(),
+    reconnect: vi.fn(() => Promise.resolve()),
+    getLastPingTime: vi.fn(() => Date.now() - 10000),
+    getLastActivityTime: vi.fn(() => Date.now() - 5000),
+  },
 }));
 
 vi.mock('@/sync/storage', () => ({
@@ -141,7 +140,7 @@ describe('iOS Platform Specific Tests', () => {
       await appStateChangeHandler('background');
 
       // Should perform minimal operations on iOS
-      const heartbeatCalls = mockApiSocket.send.mock.calls.filter(
+      const heartbeatCalls = (apiSocket.send as any).mock.calls.filter(
         (call: any[]) => call[0] === 'ping'
       );
 
@@ -149,7 +148,7 @@ describe('iOS Platform Specific Tests', () => {
       await vi.advanceTimersByTimeAsync(120000); // 2 minutes
 
       // Should have minimal heartbeat activity
-      expect(mockApiSocket.send).toHaveBeenCalledWith('ping', expect.any(Object));
+      expect(apiSocket.send).toHaveBeenCalledWith('ping', expect.any(Object));
     });
 
     it('should handle iOS app termination gracefully', async () => {
@@ -188,7 +187,7 @@ describe('iOS Platform Specific Tests', () => {
 
       // Should be able to sync data quickly before iOS suspends
       await vi.advanceTimersByTimeAsync(5000); // 5 seconds
-      expect(mockApiSocket.isConnected).toHaveBeenCalled();
+      expect(apiSocket.isConnected).toHaveBeenCalled();
     });
 
     it('should integrate with iOS Background Processing', async () => {
