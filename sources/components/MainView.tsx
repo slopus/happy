@@ -1,7 +1,8 @@
 import * as React from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useSessionListViewData, useRealtimeStatus } from '@/sync/storage';
+import { useRealtimeStatus } from '@/sync/storage';
+import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { useIsTablet } from '@/utils/responsive';
 import { useRouter } from 'expo-router';
 import { EmptyMainScreen } from './EmptyMainScreen';
@@ -63,7 +64,7 @@ const styles = StyleSheet.create((theme) => ({
 
 export const MainView = React.memo(({ variant }: MainViewProps) => {
     const { theme } = useUnistyles();
-    const sessionListViewData = useSessionListViewData();
+    const sessionListViewData = useVisibleSessionListViewData();
     const isTablet = useIsTablet();
     const realtimeStatus = useRealtimeStatus();
     const router = useRouter();

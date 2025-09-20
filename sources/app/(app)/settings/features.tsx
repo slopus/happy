@@ -11,7 +11,7 @@ export default function FeaturesSettingsScreen() {
     const [experiments, setExperiments] = useSettingMutable('experiments');
     const [commandPaletteEnabled, setCommandPaletteEnabled] = useLocalSettingMutable('commandPaletteEnabled');
     const [markdownCopyV2, setMarkdownCopyV2] = useLocalSettingMutable('markdownCopyV2');
-    const [hideInactiveSessions, setHideInactiveSessions] = useLocalSettingMutable('hideInactiveSessions');
+    const [hideInactiveSessions, setHideInactiveSessions] = useSettingMutable('hideInactiveSessions');
     
     return (
         <ItemList style={{ paddingTop: 0 }}>
