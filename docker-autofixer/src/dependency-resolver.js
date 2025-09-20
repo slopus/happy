@@ -135,12 +135,15 @@ class DependencyResolver {
               });
             } else {
               // Try to infer version for unknown packages
-              missing.push({
-                package: importPath,
-                version: 'latest',
-                foundIn: file,
-                type: 'missing',
-              });
+              // Skip built-in Node.js modules
+              if (!this.isBuiltInModule(importPath)) {
+                missing.push({
+                  package: importPath,
+                  version: 'latest',
+                  foundIn: file,
+                  type: 'missing',
+                });
+              }
             }
           }
         }
@@ -554,15 +557,37 @@ class DependencyResolver {
   sanitizePackageName(name) {
     if (!name || typeof name !== 'string') return null;
 
-    // Remove invalid characters and normalize
-    const sanitized = name
-      .toLowerCase()
-      .replace(/[^a-z0-9\-_.@/]/g, '')
+    // Handle template literals and undefined values first
+    if (name.includes('${') || name.includes('undefined') || name === 'modulename') {
+      return null;
+    }
+
+    // Fix common package name issues
+    let sanitized = name.trim();
+
+    // Fix scoped package names that lost the @ prefix
+    if (sanitized.includes('/') && !sanitized.startsWith('@')) {
+      // Handle cases like "expo/metro-config" -> "@expo/metro-config"
+      const parts = sanitized.split('/');
+      if (parts.length === 2) {
+        sanitized = `@${parts[0]}/${parts[1]}`;
+      }
+    }
+
+    // Remove invalid characters but preserve valid npm package characters
+    sanitized = sanitized
+      .replace(/[^a-zA-Z0-9\-_.@/]/g, '')
       .replace(/^[._]/, '')
       .replace(/[._]$/, '');
 
+    // Filter out built-in Node.js modules that don't need to be installed
+    const builtInModules = ['fs', 'path', 'crypto', 'util', 'child_process', 'http', 'https', 'os', 'stream'];
+    if (builtInModules.includes(sanitized)) {
+      return null;
+    }
+
     // Check if it's a valid package name
-    if (sanitized.length === 0 || sanitized.includes('${') || sanitized.includes('undefined')) {
+    if (sanitized.length === 0) {
       return null;
     }
 
@@ -834,6 +859,186 @@ class DependencyResolver {
   parseSimpleVersion(version) {
     const parts = version.split('.').map(part => parseInt(part) || 0);
     return { major: parts[0] || 0, minor: parts[1] || 0, patch: parts[2] || 0 };
+  }
+
+  isBuiltInModule(name) {
+    const builtInModules = [
+      'fs',
+      'path',
+      'crypto',
+      'util',
+      'child_process',
+      'http',
+      'https',
+      'os',
+      'stream',
+      'events',
+      'url',
+      'querystring',
+      'buffer',
+      'timers',
+      'assert',
+      'net',
+      'tls',
+      'dns',
+      'dgram',
+      'cluster',
+      'readline',
+      'repl',
+      'vm',
+      'constants',
+      'zlib',
+      'string_decoder',
+      'punycode',
+    ];
+    return builtInModules.includes(name);
+  }
+
+  async fixConfigurationIssues(repoPath) {
+    try {
+      logger.info('Fixing common configuration issues...');
+
+      // Fix ESLint module import issues
+      await this.fixESLintConfig(repoPath);
+
+      // Fix TypeScript config issues
+      await this.fixTypeScriptConfig(repoPath);
+
+      // Fix package.json module issues
+      await this.fixPackageJsonModuleType(repoPath);
+
+      logger.info('Configuration fixes completed');
+      return true;
+    } catch (error) {
+      logger.error(`Configuration fix failed: ${error.message}`);
+      return false;
+    }
+  }
+
+  async fixESLintConfig(repoPath) {
+    try {
+      const eslintConfigPath = path.join(repoPath, 'eslint.config.js');
+
+      if (await fs.pathExists(eslintConfigPath)) {
+        const packageJsonPath = path.join(repoPath, 'package.json');
+        const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
+
+        // If using ES modules in eslint.config.js but package.json doesn't specify module type
+        if (!packageJson.type) {
+          // Create a legacy .eslintrc.js instead
+          const eslintContent = await fs.readFile(eslintConfigPath, 'utf8');
+
+          if (eslintContent.includes('import ') && eslintContent.includes('from ')) {
+            // Convert to CommonJS format
+            const commonjsConfig = `module.exports = {
+  root: true,
+  env: {
+    browser: true,
+    es2021: true,
+    node: true,
+  },
+  extends: [
+    'eslint:recommended',
+    '@typescript-eslint/recommended',
+    'plugin:react/recommended',
+    'plugin:react-hooks/recommended',
+    'plugin:react-native/all',
+    'prettier',
+  ],
+  parser: '@typescript-eslint/parser',
+  parserOptions: {
+    ecmaFeatures: {
+      jsx: true,
+    },
+    ecmaVersion: 'latest',
+    sourceType: 'module',
+  },
+  plugins: [
+    'react',
+    'react-hooks',
+    'react-native',
+    '@typescript-eslint',
+    'unused-imports',
+    'import',
+    'prettier',
+  ],
+  rules: {
+    'prettier/prettier': 'error',
+    'react/react-in-jsx-scope': 'off',
+    'react/prop-types': 'off',
+    '@typescript-eslint/no-unused-vars': 'off',
+    'unused-imports/no-unused-imports': 'error',
+    'react-native/no-inline-styles': 'off',
+    'react-native/no-color-literals': 'off',
+  },
+  settings: {
+    react: {
+      version: 'detect',
+    },
+  },
+};`;
+
+            await fs.writeFile(path.join(repoPath, '.eslintrc.js'), commonjsConfig);
+            logger.info('Created .eslintrc.js with CommonJS format');
+          }
+        }
+      }
+    } catch (error) {
+      logger.warn(`ESLint config fix failed: ${error.message}`);
+    }
+  }
+
+  async fixTypeScriptConfig(repoPath) {
+    try {
+      const tsConfigPath = path.join(repoPath, 'tsconfig.json');
+
+      if (await fs.pathExists(tsConfigPath)) {
+        const tsConfig = JSON.parse(await fs.readFile(tsConfigPath, 'utf8'));
+
+        // Add skipLibCheck for faster compilation
+        if (!tsConfig.compilerOptions) {
+          tsConfig.compilerOptions = {};
+        }
+
+        if (!tsConfig.compilerOptions.skipLibCheck) {
+          tsConfig.compilerOptions.skipLibCheck = true;
+          logger.info('Added skipLibCheck to TypeScript config');
+        }
+
+        // Exclude problematic directories
+        if (!tsConfig.exclude) {
+          tsConfig.exclude = [];
+        }
+
+        const excludeDirs = ['node_modules', 'dist', 'build', '.expo', 'sources/trash'];
+        for (const dir of excludeDirs) {
+          if (!tsConfig.exclude.includes(dir)) {
+            tsConfig.exclude.push(dir);
+          }
+        }
+
+        await fs.writeFile(tsConfigPath, JSON.stringify(tsConfig, null, 2));
+        logger.info('Updated TypeScript configuration');
+      }
+    } catch (error) {
+      logger.warn(`TypeScript config fix failed: ${error.message}`);
+    }
+  }
+
+  async fixPackageJsonModuleType(repoPath) {
+    try {
+      const packageJsonPath = path.join(repoPath, 'package.json');
+      const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
+
+      // If no type specified, set to commonjs for compatibility
+      if (!packageJson.type) {
+        packageJson.type = 'commonjs';
+        await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+        logger.info('Set package.json type to commonjs');
+      }
+    } catch (error) {
+      logger.warn(`Package.json module type fix failed: ${error.message}`);
+    }
   }
 
   // Intelligent version resolution based on ecosystem compatibility

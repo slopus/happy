@@ -138,6 +138,9 @@ class AutoFixer {
       const compilationIssues = await this.dependencyResolver.detectCompilationIssues(repoPath);
       issues.push(...compilationIssues);
       logger.info(`Found ${compilationIssues.length} compilation/dependency issues`);
+
+      // Fix configuration issues early to prevent cascading errors
+      await this.dependencyResolver.fixConfigurationIssues(repoPath);
     } catch (error) {
       logger.warn(`Compilation check failed: ${error.message}`);
     }
@@ -380,7 +383,13 @@ Apply fixes systematically and ensure all changes maintain code functionality.
 
     // Android prebuild
     try {
-      await this.runCommand('npx expo prebuild --platform android --no-install --clear', repoPath);
+      // Try modern Expo CLI first, fallback to legacy if needed
+      try {
+        await this.runCommand('npx @expo/cli prebuild --platform android --no-install --clear', repoPath);
+      } catch (modernError) {
+        logger.warn('Modern Expo CLI failed, trying legacy format...');
+        await this.runCommand('npx expo prebuild --platform android --no-install', repoPath);
+      }
       results.android = true;
       logger.info('Android prebuild: PASS');
     } catch (error) {
