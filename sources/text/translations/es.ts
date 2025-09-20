@@ -145,6 +145,8 @@ export const es: TranslationStructure = {
         showLineNumbersInDiffsDescription: 'Mostrar números de línea en diferencias de código',
         showLineNumbersInToolViews: 'Mostrar números de línea en vistas de herramientas',
         showLineNumbersInToolViewsDescription: 'Mostrar números de línea en diferencias de vistas de herramientas',
+        wrapLinesInDiffs: 'Ajustar líneas en diferencias',
+        wrapLinesInDiffsDescription: 'Ajustar líneas largas en lugar de desplazamiento horizontal en vistas de diferencias',
         alwaysShowContextSize: 'Mostrar siempre tamaño del contexto',
         alwaysShowContextSizeDescription: 'Mostrar uso del contexto incluso cuando no esté cerca del límite',
         avatarStyle: 'Estilo de avatar',
@@ -237,7 +239,19 @@ export const es: TranslationStructure = {
         startingSession: 'Iniciando sesión...',
         startNewSessionInFolder: 'Nueva sesión aquí',
         noMachineSelected: 'Por favor, selecciona una máquina para iniciar la sesión',
-        noPathSelected: 'Por favor, selecciona un directorio para iniciar la sesión'
+        noPathSelected: 'Por favor, selecciona un directorio para iniciar la sesión',
+        sessionType: {
+            title: 'Tipo de sesión',
+            simple: 'Simple',
+            worktree: 'Worktree',
+            comingSoon: 'Próximamente',
+        },
+        worktree: {
+            creating: ({ name }: { name: string }) => `Creando worktree '${name}'...`,
+            notGitRepo: 'Los worktrees requieren un repositorio git',
+            failed: ({ error }: { error: string }) => `Error al crear worktree: ${error}`,
+            success: 'Worktree creado exitosamente',
+        }
     },
 
     sessionHistory: {

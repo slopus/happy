@@ -147,6 +147,8 @@ export const zhHans: TranslationStructure = {
         showLineNumbersInDiffsDescription: '在代码差异中显示行号',
         showLineNumbersInToolViews: '在工具视图中显示行号',
         showLineNumbersInToolViewsDescription: '在工具视图差异中显示行号',
+        wrapLinesInDiffs: '在差异中换行',
+        wrapLinesInDiffsDescription: '在差异视图中换行显示长行而不是水平滚动',
         alwaysShowContextSize: '始终显示上下文大小',
         alwaysShowContextSizeDescription: '即使未接近限制时也显示上下文使用情况',
         avatarStyle: '头像风格',
@@ -228,8 +230,6 @@ export const zhHans: TranslationStructure = {
         noMachinesFound: '未找到设备。请先在您的计算机上启动 Happy 会话。',
         allMachinesOffline: '所有设备似乎都已离线',
         machineDetails: '查看设备详情 →',
-        noMachineSelected: '未选择设备',
-        noPathSelected: '未选择路径',
         directoryDoesNotExist: '目录不存在',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `目录 ${directory} 不存在。您要创建它吗？`,
         sessionStarted: '会话已启动',
@@ -239,7 +239,21 @@ export const zhHans: TranslationStructure = {
         startNewSessionInFolder: '在此文件夹中启动新会话',
         failedToStart: '启动会话失败。确保守护进程在目标设备上运行。',
         sessionTimeout: '会话启动超时。设备可能运行缓慢或守护进程可能无响应。',
-        notConnectedToServer: '未连接到服务器。请检查您的网络连接。'
+        notConnectedToServer: '未连接到服务器。请检查您的网络连接。',
+        noMachineSelected: '请选择一台设备以启动会话',
+        noPathSelected: '请选择一个目录以启动会话',
+        sessionType: {
+            title: '会话类型',
+            simple: '简单',
+            worktree: 'Worktree',
+            comingSoon: '即将推出',
+        },
+        worktree: {
+            creating: ({ name }: { name: string }) => `正在创建 worktree '${name}'...`,
+            notGitRepo: 'Worktree 需要 git 仓库',
+            failed: ({ error }: { error: string }) => `创建 worktree 失败：${error}`,
+            success: 'Worktree 创建成功',
+        }
     },
 
     sessionHistory: {

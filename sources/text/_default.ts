@@ -145,6 +145,8 @@ export const en = {
         showLineNumbersInDiffsDescription: 'Display line numbers in code diffs',
         showLineNumbersInToolViews: 'Show Line Numbers in Tool Views',
         showLineNumbersInToolViewsDescription: 'Display line numbers in tool view diffs',
+        wrapLinesInDiffs: 'Wrap Lines in Diffs',
+        wrapLinesInDiffsDescription: 'Wrap long lines instead of horizontal scrolling in diff views',
         alwaysShowContextSize: 'Always Show Context Size',
         alwaysShowContextSizeDescription: 'Display context usage even when not near limit',
         avatarStyle: 'Avatar Style',
@@ -237,7 +239,19 @@ export const en = {
         sessionTimeout: 'Session startup timed out. The machine may be slow or the daemon may not be responding.',
         notConnectedToServer: 'Not connected to server. Check your internet connection.',
         noMachineSelected: 'Please select a machine to start the session',
-        noPathSelected: 'Please select a directory to start the session in'
+        noPathSelected: 'Please select a directory to start the session in',
+        sessionType: {
+            title: 'Session Type',
+            simple: 'Simple',
+            worktree: 'Worktree',
+            comingSoon: 'Coming soon',
+        },
+        worktree: {
+            creating: ({ name }: { name: string }) => `Creating worktree '${name}'...`,
+            notGitRepo: 'Worktrees require a git repository',
+            failed: ({ error }: { error: string }) => `Failed to create worktree: ${error}`,
+            success: 'Worktree created successfully',
+        }
     },
 
     sessionHistory: {

@@ -185,6 +185,44 @@ export async function machineStopDaemon(machineId: string): Promise<{ message: s
 }
 
 /**
+ * Execute a bash command on a specific machine
+ */
+export async function machineBash(
+    machineId: string,
+    command: string,
+    cwd: string
+): Promise<{
+    success: boolean;
+    stdout: string;
+    stderr: string;
+    exitCode: number;
+}> {
+    try {
+        const result = await apiSocket.machineRPC<{
+            success: boolean;
+            stdout: string;
+            stderr: string;
+            exitCode: number;
+        }, {
+            command: string;
+            cwd: string;
+        }>(
+            machineId,
+            'bash',
+            { command, cwd }
+        );
+        return result;
+    } catch (error) {
+        return {
+            success: false,
+            stdout: '',
+            stderr: error instanceof Error ? error.message : 'Unknown error',
+            exitCode: -1
+        };
+    }
+}
+
+/**
  * Update machine metadata with optimistic concurrency control and automatic retry
  */
 export async function machineUpdateMetadata(

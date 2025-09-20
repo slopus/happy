@@ -26,6 +26,7 @@ export default function AppearanceSettingsScreen() {
     const [expandTodos, setExpandTodos] = useSettingMutable('expandTodos');
     const [showLineNumbers, setShowLineNumbers] = useSettingMutable('showLineNumbers');
     const [showLineNumbersInToolViews, setShowLineNumbersInToolViews] = useSettingMutable('showLineNumbersInToolViews');
+    const [wrapLinesInDiffs, setWrapLinesInDiffs] = useSettingMutable('wrapLinesInDiffs');
     const [alwaysShowContextSize, setAlwaysShowContextSize] = useSettingMutable('alwaysShowContextSize');
     const [avatarStyle, setAvatarStyle] = useSettingMutable('avatarStyle');
     const [showFlavorIcons, setShowFlavorIcons] = useSettingMutable('showFlavorIcons');
@@ -172,6 +173,17 @@ export default function AppearanceSettingsScreen() {
                         <Switch
                             value={showLineNumbersInToolViews}
                             onValueChange={setShowLineNumbersInToolViews}
+                        />
+                    }
+                />
+                <Item
+                    title={t('settingsAppearance.wrapLinesInDiffs')}
+                    subtitle={t('settingsAppearance.wrapLinesInDiffsDescription')}
+                    icon={<Ionicons name="return-down-forward-outline" size={29} color="#5856D6" />}
+                    rightElement={
+                        <Switch
+                            value={wrapLinesInDiffs}
+                            onValueChange={setWrapLinesInDiffs}
                         />
                     }
                 />

@@ -145,6 +145,8 @@ export const pt: TranslationStructure = {
         showLineNumbersInDiffsDescription: 'Exibir números de linha nos diffs de código',
         showLineNumbersInToolViews: 'Mostrar números de linha nas visualizações de ferramentas',
         showLineNumbersInToolViewsDescription: 'Exibir números de linha nos diffs das visualizações de ferramentas',
+        wrapLinesInDiffs: 'Quebrar linhas nos diffs',
+        wrapLinesInDiffsDescription: 'Quebrar linhas longas ao invés de rolagem horizontal nas visualizações de diffs',
         alwaysShowContextSize: 'Sempre mostrar tamanho do contexto',
         alwaysShowContextSizeDescription: 'Exibir uso do contexto mesmo quando não estiver próximo do limite',
         avatarStyle: 'Estilo do avatar',
@@ -226,8 +228,6 @@ export const pt: TranslationStructure = {
         noMachinesFound: 'Nenhuma máquina encontrada. Inicie uma sessão Happy no seu computador primeiro.',
         allMachinesOffline: 'Todas as máquinas estão offline',
         machineDetails: 'Ver detalhes da máquina →',
-        noMachineSelected: 'Nenhuma máquina selecionada',
-        noPathSelected: 'Nenhum caminho selecionado',
         directoryDoesNotExist: 'Diretório não encontrado',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `O diretório ${directory} não existe. Deseja criá-lo?`,
         sessionStarted: 'Sessão iniciada',
@@ -237,7 +237,21 @@ export const pt: TranslationStructure = {
         sessionTimeout: 'Tempo limite de inicialização da sessão esgotado. A máquina pode estar lenta ou o daemon pode não estar respondendo.',
         notConnectedToServer: 'Não conectado ao servidor. Verifique sua conexão com a internet.',
         startingSession: 'Iniciando sessão...',
-        startNewSessionInFolder: 'Nova sessão aqui'
+        startNewSessionInFolder: 'Nova sessão aqui',
+        noMachineSelected: 'Por favor, selecione uma máquina para iniciar a sessão',
+        noPathSelected: 'Por favor, selecione um diretório para iniciar a sessão',
+        sessionType: {
+            title: 'Tipo de sessão',
+            simple: 'Simples',
+            worktree: 'Worktree',
+            comingSoon: 'Em breve',
+        },
+        worktree: {
+            creating: ({ name }: { name: string }) => `Criando worktree '${name}'...`,
+            notGitRepo: 'Worktrees requerem um repositório git',
+            failed: ({ error }: { error: string }) => `Falha ao criar worktree: ${error}`,
+            success: 'Worktree criado com sucesso',
+        }
     },
 
     sessionHistory: {

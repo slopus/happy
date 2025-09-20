@@ -145,6 +145,8 @@ export const ca: TranslationStructure = {
         showLineNumbersInDiffsDescription: 'Mostra els números de línia a les diferències de codi',
         showLineNumbersInToolViews: 'Mostra els números de línia a les vistes d\'eines',
         showLineNumbersInToolViewsDescription: 'Mostra els números de línia a les diferències de vistes d\'eines',
+        wrapLinesInDiffs: 'Ajusta les línies a les diferències',
+        wrapLinesInDiffsDescription: 'Ajusta les línies llargues en lloc de desplaçament horitzontal a les vistes de diferències',
         alwaysShowContextSize: 'Mostra sempre la mida del context',
         alwaysShowContextSizeDescription: 'Mostra l\'ús del context fins i tot quan no estigui prop del límit',
         avatarStyle: 'Estil d\'avatar',
@@ -226,8 +228,6 @@ export const ca: TranslationStructure = {
         noMachinesFound: 'No s\'han trobat màquines. Inicia una sessió de Happy al teu ordinador primer.',
         allMachinesOffline: 'Totes les màquines estan fora de línia',
         machineDetails: 'Veure detalls de la màquina →',
-        noMachineSelected: 'Cap màquina seleccionada',
-        noPathSelected: 'Cap camí seleccionat',
         directoryDoesNotExist: 'Directori no trobat',
         createDirectoryConfirm: ({ directory }: { directory: string }) => `El directori ${directory} no existeix. Vols crear-lo?`,
         sessionStarted: 'Sessió iniciada',
@@ -237,7 +237,21 @@ export const ca: TranslationStructure = {
         sessionTimeout: 'L\'inici de la sessió ha esgotat el temps d\'espera. La màquina pot ser lenta o el dimoni pot no estar responent.',
         notConnectedToServer: 'No connectat al servidor. Comprova la teva connexió a internet.',
         startingSession: 'Iniciant la sessió...',
-        startNewSessionInFolder: 'Nova sessió aquí'
+        startNewSessionInFolder: 'Nova sessió aquí',
+        noMachineSelected: 'Si us plau, selecciona una màquina per iniciar la sessió',
+        noPathSelected: 'Si us plau, selecciona un directori per iniciar la sessió',
+        sessionType: {
+            title: 'Tipus de sessió',
+            simple: 'Simple',
+            worktree: 'Worktree',
+            comingSoon: 'Properament',
+        },
+        worktree: {
+            creating: ({ name }: { name: string }) => `Creant worktree '${name}'...`,
+            notGitRepo: 'Els worktrees requereixen un repositori git',
+            failed: ({ error }: { error: string }) => `Error en crear el worktree: ${error}`,
+            success: 'Worktree creat amb èxit',
+        }
     },
 
     sessionHistory: {

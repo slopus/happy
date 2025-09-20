@@ -128,6 +128,8 @@ export const ru: TranslationStructure = {
         showLineNumbersInDiffsDescription: 'Отображать номера строк в различиях кода',
         showLineNumbersInToolViews: 'Показывать номера строк в представлениях инструментов',
         showLineNumbersInToolViewsDescription: 'Отображать номера строк в различиях представлений инструментов',
+        wrapLinesInDiffs: 'Перенос строк в различиях',
+        wrapLinesInDiffsDescription: 'Переносить длинные строки вместо горизонтальной прокрутки в представлениях различий',
         alwaysShowContextSize: 'Всегда показывать размер контекста',
         alwaysShowContextSizeDescription: 'Отображать использование контекста даже когда не близко к лимиту',
         avatarStyle: 'Стиль аватара',
@@ -220,7 +222,19 @@ export const ru: TranslationStructure = {
         startingSession: 'Запуск сессии...',
         startNewSessionInFolder: 'Новая сессия здесь',
         noMachineSelected: 'Пожалуйста, выберите машину для запуска сессии',
-        noPathSelected: 'Пожалуйста, выберите директорию для запуска сессии'
+        noPathSelected: 'Пожалуйста, выберите директорию для запуска сессии',
+        sessionType: {
+            title: 'Тип сессии',
+            simple: 'Простая',
+            worktree: 'Worktree',
+            comingSoon: 'Скоро будет доступно',
+        },
+        worktree: {
+            creating: ({ name }: { name: string }) => `Создание worktree '${name}'...`,
+            notGitRepo: 'Worktree требует наличия git репозитория',
+            failed: ({ error }: { error: string }) => `Не удалось создать worktree: ${error}`,
+            success: 'Worktree успешно создан',
+        }
     },
 
     sessionHistory: {

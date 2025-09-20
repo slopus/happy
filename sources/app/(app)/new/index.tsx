@@ -16,6 +16,8 @@ import Constants from 'expo-constants';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
+import { SessionTypeSelector } from '@/components/SessionTypeSelector';
+import { createWorktree } from '@/utils/createWorktree';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -86,6 +88,7 @@ export default function NewSessionScreen() {
 
     const [input, setInput] = React.useState('');
     const [isSending, setIsSending] = React.useState(false);
+    const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
     const ref = React.useRef<MultiTextInputHandle>(null);
     const headerHeight = useHeaderHeight();
     const safeArea = useSafeAreaInsets();
@@ -94,6 +97,7 @@ export default function NewSessionScreen() {
     // Load recent machine paths and last used agent from settings
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
+    const experimentsEnabled = useSetting('experiments');
 
     //
     // Machines state
@@ -248,15 +252,41 @@ export default function NewSessionScreen() {
             return;
         }
 
-        // Save the machine-path combination to settings before sending
-        const updatedPaths = updateRecentMachinePaths(recentMachinePaths, selectedMachineId, selectedPath);
-        sync.applySettings({ recentMachinePaths: updatedPaths });
-
         setIsSending(true);
         try {
+            let actualPath = selectedPath;
+            
+            // Handle worktree creation if selected and experiments are enabled
+            if (sessionType === 'worktree' && experimentsEnabled) {
+                const worktreeResult = await createWorktree(selectedMachineId, selectedPath);
+                
+                if (!worktreeResult.success) {
+                    if (worktreeResult.error === 'Not a Git repository') {
+                        Modal.alert(
+                            t('common.error'), 
+                            t('newSession.worktree.notGitRepo')
+                        );
+                    } else {
+                        Modal.alert(
+                            t('common.error'), 
+                            t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' })
+                        );
+                    }
+                    setIsSending(false);
+                    return;
+                }
+                
+                // Update the path to the new worktree location
+                actualPath = worktreeResult.worktreePath;
+            }
+
+            // Save the machine-path combination to settings before sending
+            const updatedPaths = updateRecentMachinePaths(recentMachinePaths, selectedMachineId, selectedPath);
+            sync.applySettings({ recentMachinePaths: updatedPaths });
+
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
-                directory: selectedPath,
+                directory: actualPath,
                 // For now we assume you already have a path to start in
                 approvedNewDirectoryCreation: true,
                 agent: agentType
@@ -264,6 +294,11 @@ export default function NewSessionScreen() {
 
             // Use sessionId to check for success for backwards compatibility
             if ('sessionId' in result && result.sessionId) {
+                // Store worktree metadata if applicable
+                if (sessionType === 'worktree') {
+                    // The metadata will be stored by the session itself once created
+                }
+                
                 // Load sessions
                 await sync.refreshSessions();
                 // Send message
@@ -293,7 +328,7 @@ export default function NewSessionScreen() {
         } finally {
             setIsSending(false);
         }
-    }, [agentType, selectedMachineId, selectedPath, input, recentMachinePaths]);
+    }, [agentType, selectedMachineId, selectedPath, input, recentMachinePaths, sessionType, experimentsEnabled]);
 
     return (
         <KeyboardAvoidingView
@@ -311,8 +346,21 @@ export default function NewSessionScreen() {
                 alignSelf: 'center',
                 paddingTop: safeArea.top,
             }}>
-                {/* Path selector above input */}
-
+                {/* Session type selector - only show when experiments are enabled */}
+                {experimentsEnabled && (
+                    <View style={[
+                        { paddingHorizontal: screenWidth > 700 ? 16 : 8, flexDirection: 'row', justifyContent: 'center' }
+                    ]}>
+                        <View style={[
+                            { maxWidth: layout.maxWidth, flex: 1 }
+                        ]}>
+                            <SessionTypeSelector 
+                                value={sessionType}
+                                onChange={setSessionType}
+                            />
+                        </View>
+                    </View>
+                )}
 
                 {/* Agent input */}
                 <AgentInput

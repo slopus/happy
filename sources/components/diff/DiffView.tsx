@@ -26,6 +26,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
     contextLines = 3,
     showLineNumbers = true,
     showPlusMinusSymbols = true,
+    wrapLines = false,
     style,
     fontScaleX = 1,
 }) => {
@@ -133,7 +134,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
                 lines.push(
                     <Text 
                         key={`hunk-header-${hunkIndex}`} 
-                        numberOfLines={1}
+                        numberOfLines={wrapLines ? undefined : 1}
                         style={{
                             ...Typography.mono(),
                             fontSize: 12,
@@ -159,7 +160,7 @@ export const DiffView: React.FC<DiffViewProps> = ({
                 lines.push(
                     <Text
                         key={`line-${hunkIndex}-${lineIndex}`}
-                        numberOfLines={1}
+                        numberOfLines={wrapLines ? undefined : 1}
                         style={{
                             ...Typography.mono(),
                             fontSize: 13,

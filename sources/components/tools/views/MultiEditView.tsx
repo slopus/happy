@@ -9,6 +9,7 @@ import { useSetting } from '@/sync/storage';
 
 export const MultiEditView = React.memo<ToolViewProps>(({ tool }) => {
     const showLineNumbersInToolViews = useSetting('showLineNumbersInToolViews');
+    const wrapLinesInDiffs = useSetting('wrapLinesInDiffs');
     
     let edits: Array<{ old_string: string; new_string: string; replace_all?: boolean }> = [];
     
@@ -21,6 +22,38 @@ export const MultiEditView = React.memo<ToolViewProps>(({ tool }) => {
         return null;
     }
 
+    const content = (
+        <View style={{ flex: 1 }}>
+            {edits.map((edit, index) => {
+                const oldString = trimIdent(edit.old_string || '');
+                const newString = trimIdent(edit.new_string || '');
+                
+                return (
+                    <View key={index}>
+                        <DiffView 
+                            oldText={oldString} 
+                            newText={newString} 
+                            wrapLines={wrapLinesInDiffs}
+                            showLineNumbers={showLineNumbersInToolViews}
+                            showPlusMinusSymbols={showLineNumbersInToolViews}
+                        />
+                        {index < edits.length - 1 && <View style={styles.separator} />}
+                    </View>
+                );
+            })}
+        </View>
+    );
+
+    if (wrapLinesInDiffs) {
+        // When wrapping lines, no horizontal scroll needed
+        return (
+            <ToolSectionView fullWidth>
+                {content}
+            </ToolSectionView>
+        );
+    }
+
+    // When not wrapping, use horizontal scroll
     return (
         <ToolSectionView fullWidth>
             <ScrollView 
@@ -30,25 +63,7 @@ export const MultiEditView = React.memo<ToolViewProps>(({ tool }) => {
                 nestedScrollEnabled={true}
                 contentContainerStyle={{ flexGrow: 1 }}
             >
-                <View style={{ flex: 1 }}>
-                    {edits.map((edit, index) => {
-                        const oldString = trimIdent(edit.old_string || '');
-                        const newString = trimIdent(edit.new_string || '');
-                        
-                        return (
-                            <View key={index}>
-                                <DiffView 
-                                    oldText={oldString} 
-                                    newText={newString} 
-                                    wrapLines={false}
-                                    showLineNumbers={showLineNumbersInToolViews}
-                                    showPlusMinusSymbols={showLineNumbersInToolViews}
-                                />
-                                {index < edits.length - 1 && <View style={styles.separator} />}
-                            </View>
-                        );
-                    })}
-                </View>
+                {content}
             </ScrollView>
         </ToolSectionView>
     );
