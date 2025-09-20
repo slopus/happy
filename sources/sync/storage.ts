@@ -122,7 +122,8 @@ interface StorageState {
 
 // Helper function to build unified list view data from sessions and machines
 function buildSessionListViewData(
-    sessions: Record<string, Session>
+    sessions: Record<string, Session>,
+    hideInactiveSessions: boolean = false
 ): SessionListViewItem[] {
     // Separate active and inactive sessions
     const activeSessions: Session[] = [];
@@ -146,6 +147,10 @@ function buildSessionListViewData(
     // Add active sessions as a single item at the top (if any)
     if (activeSessions.length > 0) {
         listData.push({ type: 'active-sessions', sessions: activeSessions });
+    }
+
+    if (hideInactiveSessions) {
+        return listData;
     }
 
     // Group inactive sessions by date
@@ -406,7 +411,8 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Build new unified list view data
             const sessionListViewData = buildSessionListViewData(
-                mergedSessions
+                mergedSessions,
+                state.localSettings.hideInactiveSessions
             );
 
             // Update project manager with current sessions and machines
@@ -606,9 +612,14 @@ export const storage = create<StorageState>()((set, get) => {
         applyLocalSettings: (delta: Partial<LocalSettings>) => set((state) => {
             const updatedLocalSettings = applyLocalSettings(state.localSettings, delta);
             saveLocalSettings(updatedLocalSettings);
+            const sessionListViewData = buildSessionListViewData(
+                state.sessions,
+                updatedLocalSettings.hideInactiveSessions
+            );
             return {
                 ...state,
-                localSettings: updatedLocalSettings
+                localSettings: updatedLocalSettings,
+                sessionListViewData
             };
         }),
         applyPurchases: (customerInfo: CustomerInfo) => set((state) => {
@@ -700,7 +711,8 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Rebuild sessionListViewData to update the UI immediately
             const sessionListViewData = buildSessionListViewData(
-                updatedSessions
+                updatedSessions,
+                state.localSettings.hideInactiveSessions
             );
 
             return {
@@ -791,7 +803,8 @@ export const storage = create<StorageState>()((set, get) => {
 
             // Rebuild sessionListViewData to reflect machine changes
             const sessionListViewData = buildSessionListViewData(
-                state.sessions
+                state.sessions,
+                state.localSettings.hideInactiveSessions
             );
 
             return {

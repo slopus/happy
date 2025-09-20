@@ -174,6 +174,8 @@ export const en = {
         commandPaletteDisabled: 'Quick command access disabled',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Long press opens copy modal',
+        hideInactiveSessions: 'Hide inactive sessions',
+        hideInactiveSessionsSubtitle: 'Show only active chats in your list',
     },
 
     errors: {
