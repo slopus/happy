@@ -38,7 +38,8 @@ describe('versionUtils', () => {
 
     it('should use default minimum version', () => {
       expect(isVersionSupported('0.10.0')).toBe(true);
-      expect(isVersionSupported('0.9.0')).toBe(false);
+      expect(isVersionSupported('0.1.0')).toBe(true);
+      expect(isVersionSupported('0.0.9')).toBe(false);
     });
   });
 

@@ -158,8 +158,12 @@ class ApiSocket {
   }
 
   send(event: string, data: any) {
-        this.socket!.emit(event, data);
-        return true;
+    if (!this.socket || !this.isConnected()) {
+      log.error(`Cannot send ${event}: socket not connected`);
+      return false;
+    }
+    this.socket.emit(event, data);
+    return true;
   }
 
   async emitWithAck<T = any>(event: string, data: any, timeout?: number): Promise<T> {

@@ -3,8 +3,12 @@
  */
 
 // Minimum required CLI version for full compatibility
-// Updated to 0.11.0 for Happy 1.5.3 features (git status sync, file browser)
-export const MINIMUM_CLI_VERSION = '0.11.0';
+// Set to 0.1.0 to maintain backwards compatibility with older CLI versions
+// Note: Some features (git status sync, file browser) require 0.11.0+ but will gracefully degrade
+export const MINIMUM_CLI_VERSION = '0.1.0';
+
+// Version for advanced features
+export const ADVANCED_FEATURES_CLI_VERSION = '0.11.0';
 
 /**
  * Compare two semantic version strings
@@ -47,6 +51,15 @@ export function isVersionSupported(version: string | undefined, minimumVersion: 
     // If version comparison fails, assume it's not supported
     return false;
   }
+}
+
+/**
+ * Check if a version supports advanced features (git status sync, file browser)
+ * @param version Version to check
+ * @returns true if version >= ADVANCED_FEATURES_CLI_VERSION
+ */
+export function supportsAdvancedFeatures(version: string | undefined): boolean {
+  return isVersionSupported(version, ADVANCED_FEATURES_CLI_VERSION);
 }
 
 /**

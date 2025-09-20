@@ -267,21 +267,25 @@ class Sync {
     };
     const encryptedRawRecord = await encryption.encryptRawRecord(content);
 
-    // Add to messages - normalize the raw record
-    const createdAt = Date.now();
-    const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
-    if (normalizedMessage) {
-      this.applyMessages(sessionId, [normalizedMessage]);
-    }
-
     // Send message with optional permission mode and source identifier
-    apiSocket.send('message', {
+    const sendSuccess = apiSocket.send('message', {
       sid: sessionId,
       message: encryptedRawRecord,
       localId,
       sentFrom,
       permissionMode: permissionMode || 'default',
     });
+
+    // Only add to local messages if send was successful
+    if (sendSuccess) {
+      const createdAt = Date.now();
+      const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
+      if (normalizedMessage) {
+        this.applyMessages(sessionId, [normalizedMessage]);
+      }
+    } else {
+      log.error(`Failed to send message for session ${sessionId}, message not added to local UI`);
+    }
   }
 
   applySettings = (delta: Partial<Settings>) => {
