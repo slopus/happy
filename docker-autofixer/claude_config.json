@@ -1,0 +1,35 @@
+{
+  "mcpServers": {
+    "exa": {
+      "command": "npx",
+      "args": ["-y", "exa-mcp-server"],
+      "env": {
+        "EXA_API_KEY": "b65999c0-db14-4241-9a53-f58b4656ae4b"
+      }
+    },
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/workspace"],
+      "env": {}
+    },
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "REPLACE_WITH_ACTUAL_TOKEN"
+      }
+    },
+    "sequential-thinking": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+      "env": {}
+    }
+  },
+  "globalShortcut": "Ctrl+Shift+K",
+  "allowedHTTPSHosts": [
+    "api.anthropic.com",
+    "exa.ai",
+    "github.com",
+    "api.github.com"
+  ]
+}
