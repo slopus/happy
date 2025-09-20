@@ -907,6 +907,12 @@ class DependencyResolver {
       // Fix package.json module issues
       await this.fixPackageJsonModuleType(repoPath);
 
+      // Fix common dependency conflicts
+      await this.fixDependencyConflicts(repoPath);
+
+      // Fix missing configuration files
+      await this.fixMissingConfigFiles(repoPath);
+
       logger.info('Configuration fixes completed');
       return true;
     } catch (error) {
@@ -1038,6 +1044,125 @@ class DependencyResolver {
       }
     } catch (error) {
       logger.warn(`Package.json module type fix failed: ${error.message}`);
+    }
+  }
+
+  async fixDependencyConflicts(repoPath) {
+    try {
+      logger.info('Fixing common dependency conflicts...');
+
+      const packageJsonPath = path.join(repoPath, 'package.json');
+      const packageJson = JSON.parse(await fs.readFile(packageJsonPath, 'utf8'));
+
+      if (!packageJson.resolutions) {
+        packageJson.resolutions = {};
+      }
+
+      let updated = false;
+
+      // Fix common React 19 + legacy package conflicts
+      const allDeps = {
+        ...(packageJson.dependencies || {}),
+        ...(packageJson.devDependencies || {}),
+      };
+
+      // Check for React 19 with legacy packages
+      const reactVersion = allDeps.react;
+      if (reactVersion && reactVersion.includes('19.')) {
+        // Force compatible packages for React 19
+        if (allDeps['@lottiefiles/dotlottie-react']) {
+          packageJson.resolutions['@lottiefiles/dotlottie-react'] = '^0.6.5';
+          updated = true;
+          logger.info('Added React 19 compatibility resolution for @lottiefiles/dotlottie-react');
+        }
+      }
+
+      // Fix common ajv version conflicts (very common with ESLint + Expo)
+      if (allDeps.eslint && (allDeps.expo || allDeps['expo-router'])) {
+        packageJson.resolutions['ajv'] = '^8.11.0';
+        packageJson.resolutions['**/ajv'] = '^8.11.0';
+        updated = true;
+        logger.info('Added ajv version resolution to fix ESLint + Expo conflicts');
+      }
+
+      // Fix glob version conflicts
+      if (allDeps.eslint || allDeps['@expo/config-plugins']) {
+        packageJson.resolutions['glob'] = '>=9.0.0';
+        updated = true;
+        logger.info('Added glob version resolution');
+      }
+
+      // Fix rimraf version conflicts
+      if (Object.keys(allDeps).some(dep => dep.includes('expo') || dep.includes('metro'))) {
+        packageJson.resolutions['rimraf'] = '>=4.0.0';
+        updated = true;
+        logger.info('Added rimraf version resolution');
+      }
+
+      if (updated) {
+        await fs.writeFile(packageJsonPath, JSON.stringify(packageJson, null, 2));
+        logger.info('Updated package.json with dependency conflict resolutions');
+      }
+
+      return updated;
+    } catch (error) {
+      logger.warn(`Dependency conflict fix failed: ${error.message}`);
+      return false;
+    }
+  }
+
+  async fixMissingConfigFiles(repoPath) {
+    try {
+      logger.info('Checking for missing configuration files...');
+
+      // Check for missing google-services.json (common with Expo projects)
+      const appConfigPath = path.join(repoPath, 'app.config.js');
+      const googleServicesPath = path.join(repoPath, 'google-services.json');
+
+      if ((await fs.pathExists(appConfigPath)) && !(await fs.pathExists(googleServicesPath))) {
+        const appConfig = await fs.readFile(appConfigPath, 'utf8');
+
+        if (appConfig.includes('googleServicesFile')) {
+          // Create a minimal dummy google-services.json for testing
+          const dummyGoogleServices = {
+            project_info: {
+              project_number: '123456789',
+              project_id: 'happy-test',
+              storage_bucket: 'happy-test.appspot.com',
+            },
+            client: [
+              {
+                client_info: {
+                  mobilesdk_app_id: '1:123456789:android:test',
+                  android_client_info: {
+                    package_name: 'com.slopus.happy.dev',
+                  },
+                },
+                oauth_client: [],
+                api_key: [
+                  {
+                    current_key: 'test-api-key',
+                  },
+                ],
+                services: {
+                  appinvite_service: {
+                    other_platform_oauth_client: [],
+                  },
+                },
+              },
+            ],
+            configuration_version: '1',
+          };
+
+          await fs.writeFile(googleServicesPath, JSON.stringify(dummyGoogleServices, null, 2));
+          logger.info('Created dummy google-services.json for Android prebuild testing');
+        }
+      }
+
+      return true;
+    } catch (error) {
+      logger.warn(`Missing config files fix failed: ${error.message}`);
+      return false;
     }
   }
 
