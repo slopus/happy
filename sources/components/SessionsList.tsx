@@ -391,6 +391,13 @@ const ArtifactsCard = React.memo(() => {
                 title={t('artifacts.title')}
                 icon={<Ionicons name="document-text-outline" size={24} color={theme.colors.text} />}
                 onPress={() => router.push('/artifacts')}
+                showDivider={true}
+                showChevron={false}
+            />
+            <Item
+                title={t('friends.title')}
+                icon={<Ionicons name="people-outline" size={24} color={theme.colors.text} />}
+                onPress={() => router.push('/friends')}
                 showDivider={false}
                 showChevron={false}
             />

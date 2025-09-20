@@ -438,3 +438,13 @@ const MyComponent = () => {
 - Web is considered a secondary platform
 - Avoid web-specific implementations unless explicitly requested
 - Keep dev pages without i18n, always use t(...) function to translate all strings, when adding new string add it to all languages, think about context before translating.
+- Core principles: never show loading error, always just retry. Always sync main data in "sync" class. Always use invalidate sync for it. Always use Item component first and only then you should use anything else or custom ones for content. Do not ever do backward compatibility if not explicitly stated.
+- Never use custom headers in navigation, almost never use Stack.Page options in individual pages. Only when you need to show something dynamic. Always show header on all screens.
+- store app pages in @sources/app/(app)/
+- use ItemList for most containers for UI, if it is not custom like chat one.
+- Always use expo-router api, not react-navigation one.
+- Always try to use "useHappyAction" from @sources/hooks/useHappyAction.ts if you need to run some async operation, do not handle errors, etc - it is handled automatically.
+- Never use unistyles for expo-image, use classical one
+- Always use "Avatar" for avatars
+- No backward compatibliity ever
+- When non-trivial hook is needed - create a dedicated one in hooks folder, add a comment explaining it's logic

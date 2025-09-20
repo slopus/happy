@@ -193,18 +193,12 @@ export default React.memo(function SettingsScreen() {
                         // Profile view: Avatar + name + version
                         <>
                             <View style={{ marginBottom: 12 }}>
-                                {avatarUrl ? (
-                                    <Image
-                                        source={{ uri: avatarUrl, thumbhash: profile.avatar?.thumbhash }}
-                                        contentFit="cover"
-                                        style={{ width: 90, height: 90, borderRadius: 45 }}
-                                    />
-                                ) : (
-                                    <Avatar
-                                        id={profile.id}
-                                        size={90}
-                                    />
-                                )}
+                                <Avatar
+                                    id={profile.id}
+                                    size={90}
+                                    imageUrl={avatarUrl}
+                                    thumbhash={profile.avatar?.thumbhash}
+                                />
                             </View>
                             <Text style={{ fontSize: 20, fontWeight: '600', color: theme.colors.text, marginBottom: bio ? 4 : 8 }}>
                                 {displayName}

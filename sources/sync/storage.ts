@@ -9,6 +9,7 @@ import { applySettings, Settings } from "./settings";
 import { LocalSettings, applyLocalSettings } from "./localSettings";
 import { Purchases, customerInfoToPurchases } from "./purchases";
 import { Profile } from "./profile";
+import { UserProfile, RelationshipUpdatedEvent } from "./friendTypes";
 import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from "./persistence";
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 import type { CustomerInfo } from './revenueCat/types';
@@ -71,6 +72,7 @@ interface StorageState {
     sessionGitStatus: Record<string, GitStatus | null>;
     machines: Record<string, Machine>;
     artifacts: Record<string, DecryptedArtifact>;  // New artifacts storage
+    friends: Record<string, UserProfile>;  // All relationships (friends, pending, requested, etc.)
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
@@ -111,6 +113,11 @@ interface StorageState {
     getProjectGitStatus: (projectId: string) => import('./storageTypes').GitStatus | null;
     getSessionProjectGitStatus: (sessionId: string) => import('./storageTypes').GitStatus | null;
     updateSessionProjectGitStatus: (sessionId: string, status: import('./storageTypes').GitStatus | null) => void;
+    // Friend management methods
+    applyFriends: (friends: UserProfile[]) => void;
+    applyRelationshipUpdate: (event: RelationshipUpdatedEvent) => void;
+    getFriend: (userId: string) => UserProfile | undefined;
+    getAcceptedFriends: () => UserProfile[];
 }
 
 // Helper function to build unified list view data from sessions and machines
@@ -225,6 +232,7 @@ export const storage = create<StorageState>()((set, get) => {
         sessions: {},
         machines: {},
         artifacts: {},  // Initialize artifacts
+        friends: {},  // Initialize relationships cache
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
         sessionMessages: {},
@@ -836,6 +844,48 @@ export const storage = create<StorageState>()((set, get) => {
                 artifacts: remainingArtifacts
             };
         }),
+        // Friend management methods
+        applyFriends: (friends: UserProfile[]) => set((state) => {
+            const mergedFriends = { ...state.friends };
+            friends.forEach(friend => {
+                mergedFriends[friend.id] = friend;
+            });
+            return {
+                ...state,
+                friends: mergedFriends
+            };
+        }),
+        applyRelationshipUpdate: (event: RelationshipUpdatedEvent) => set((state) => {
+            const { fromUserId, toUserId, status, action, fromUser, toUser } = event;
+            const currentUserId = state.profile.id;
+            
+            // Update friends cache
+            const updatedFriends = { ...state.friends };
+            
+            // Determine which user profile to update based on perspective
+            const otherUserId = fromUserId === currentUserId ? toUserId : fromUserId;
+            const otherUser = fromUserId === currentUserId ? toUser : fromUser;
+            
+            if (action === 'deleted' || status === 'none') {
+                // Remove from friends if deleted or status is none
+                delete updatedFriends[otherUserId];
+            } else if (otherUser) {
+                // Update or add the user profile with current status
+                updatedFriends[otherUserId] = otherUser;
+            }
+            
+            return {
+                ...state,
+                friends: updatedFriends
+            };
+        }),
+        getFriend: (userId: string) => {
+            return get().friends[userId];
+        },
+        getAcceptedFriends: () => {
+            const friends = get().friends;
+            return Object.values(friends).filter(friend => friend.status === 'friend');
+        },
     }
 });
 
@@ -1018,4 +1068,27 @@ export function useIsDataReady(): boolean {
 
 export function useProfile() {
     return storage(useShallow((state) => state.profile));
+}
+
+export function useFriends() {
+    return storage(useShallow((state) => state.friends));
+}
+
+export function useFriendRequests() {
+    return storage(useShallow((state) => {
+        // Filter friends to get pending requests (where status is 'pending')
+        return Object.values(state.friends).filter(friend => friend.status === 'pending');
+    }));
+}
+
+export function useAcceptedFriends() {
+    return storage(useShallow((state) => {
+        return Object.values(state.friends).filter(friend => friend.status === 'friend');
+    }));
+}
+export function useRequestedFriends() {
+    return storage(useShallow((state) => {
+        // Filter friends to get sent requests (where status is 'requested')
+        return Object.values(state.friends).filter(friend => friend.status === 'requested');
+    }));
 }

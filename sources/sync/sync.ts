@@ -33,6 +33,7 @@ import { systemPrompt } from './prompt/systemPrompt';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
 import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
 import { ArtifactEncryption } from './encryption/artifactEncryption';
+import { getFriendsList } from './apiFriends';
 
 class Sync {
 
@@ -54,6 +55,8 @@ class Sync {
     private pushTokenSync: InvalidateSync;
     private nativeUpdateSync: InvalidateSync;
     private artifactsSync: InvalidateSync;
+    private friendsSync: InvalidateSync;
+    private friendRequestsSync: InvalidateSync;
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
@@ -70,7 +73,8 @@ class Sync {
         this.machinesSync = new InvalidateSync(this.fetchMachines);
         this.nativeUpdateSync = new InvalidateSync(this.fetchNativeUpdate);
         this.artifactsSync = new InvalidateSync(this.fetchArtifactsList);
-
+        this.friendsSync = new InvalidateSync(this.fetchFriends);
+        this.friendRequestsSync = new InvalidateSync(this.fetchFriendRequests);
 
         const registerPushToken = async () => {
             if (__DEV__) {
@@ -93,6 +97,8 @@ class Sync {
                 this.nativeUpdateSync.invalidate();
                 log.log('📱 App became active: Invalidating artifacts sync');
                 this.artifactsSync.invalidate();
+                this.friendsSync.invalidate();
+                this.friendRequestsSync.invalidate();
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
             }
@@ -149,6 +155,8 @@ class Sync {
         this.machinesSync.invalidate();
         this.pushTokenSync.invalidate();
         this.nativeUpdateSync.invalidate();
+        this.friendsSync.invalidate();
+        this.friendRequestsSync.invalidate();
         this.artifactsSync.invalidate();
         log.log('🔄 #init: All syncs invalidated, including artifacts');
 
@@ -901,6 +909,26 @@ class Sync {
         log.log(`🖥️ fetchMachines completed - processed ${decryptedMachines.length} machines`);
     }
 
+    private fetchFriends = async () => {
+        if (!this.credentials) return;
+        
+        try {
+            log.log('👥 Fetching friends list...');
+            const friendsList = await getFriendsList(this.credentials);
+            storage.getState().applyFriends(friendsList);
+            log.log(`👥 fetchFriends completed - processed ${friendsList.length} friends`);
+        } catch (error) {
+            console.error('Failed to fetch friends:', error);
+            // Silently handle error - UI will show appropriate state
+        }
+    }
+
+    private fetchFriendRequests = async () => {
+        // Friend requests are now included in the friends list with status='pending'
+        // This method is kept for backward compatibility but does nothing
+        log.log('👥 fetchFriendRequests called - now handled by fetchFriends');
+    }
+
     private syncSettings = async () => {
         if (!this.credentials) return;
 
@@ -1261,6 +1289,8 @@ class Sync {
             this.machinesSync.invalidate();
             log.log('🔌 Socket reconnected: Invalidating artifacts sync');
             this.artifactsSync.invalidate();
+            this.friendsSync.invalidate();
+            this.friendRequestsSync.invalidate();
             const sessionsData = storage.getState().sessionsData;
             if (sessionsData) {
                 for (const item of sessionsData) {
@@ -1448,6 +1478,24 @@ class Sync {
 
             // Update storage using applyMachines which rebuilds sessionListViewData
             storage.getState().applyMachines([updatedMachine]);
+        } else if (updateData.body.t === 'relationship-updated') {
+            log.log('👥 Received relationship-updated update');
+            const relationshipUpdate = updateData.body;
+            
+            // Apply the relationship update to storage
+            storage.getState().applyRelationshipUpdate({
+                fromUserId: relationshipUpdate.fromUserId,
+                toUserId: relationshipUpdate.toUserId,
+                status: relationshipUpdate.status,
+                action: relationshipUpdate.action,
+                fromUser: relationshipUpdate.fromUser,
+                toUser: relationshipUpdate.toUser,
+                timestamp: relationshipUpdate.timestamp
+            });
+            
+            // Invalidate friends data to refresh with latest changes
+            this.friendsSync.invalidate();
+            this.friendRequestsSync.invalidate();
         } else if (updateData.body.t === 'new-artifact') {
             log.log('📦 Received new-artifact update');
             const artifactUpdate = updateData.body;

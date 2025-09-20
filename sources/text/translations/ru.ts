@@ -179,6 +179,8 @@ export const ru: TranslationStructure = {
         tokenExchangeFailed: 'Не удалось обменять код авторизации',
         oauthAuthorizationDenied: 'В авторизации отказано',
         webViewLoadFailed: 'Не удалось загрузить страницу аутентификации',
+        failedToLoadProfile: 'Не удалось загрузить профиль пользователя',
+        userNotFound: 'Пользователь не найден',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
@@ -193,6 +195,12 @@ export const ru: TranslationStructure = {
             `Не удалось отключить ${service}`,
         connectServiceFailed: ({ service }: { service: string }) =>
             `Не удалось подключить ${service}. Пожалуйста, попробуйте снова.`,
+        failedToLoadFriends: 'Не удалось загрузить список друзей',
+        failedToAcceptRequest: 'Не удалось принять запрос в друзья',
+        failedToRejectRequest: 'Не удалось отклонить запрос в друзья',
+        failedToRemoveFriend: 'Не удалось удалить друга',
+        searchFailed: 'Поиск не удался. Пожалуйста, попробуйте снова.',
+        failedToSendRequest: 'Не удалось отправить запрос в друзья',
     },
 
     newSession: {
@@ -298,6 +306,15 @@ export const ru: TranslationStructure = {
             scanQrCode: 'Отсканируйте QR-код',
             openCamera: 'Открыть камеру',
         },
+    },
+
+    profile: {
+        userProfile: 'Профиль пользователя',
+        details: 'Детали',
+        firstName: 'Имя',
+        lastName: 'Фамилия',
+        username: 'Имя пользователя',
+        status: 'Статус',
     },
 
     status: {
@@ -598,6 +615,7 @@ export const ru: TranslationStructure = {
         linkNewDevice: 'Связать новое устройство',
         restoreWithSecretKey: 'Восстановить секретным ключом',
         whatsNew: 'Что нового',
+        friends: 'Друзья',
     },
 
     welcome: {
@@ -734,6 +752,56 @@ export const ru: TranslationStructure = {
         saving: 'Сохранение...',
         loading: 'Загрузка артефактов...',
         error: 'Не удалось загрузить артефакт',
+    },
+
+    friends: {
+        // Friends feature
+        title: 'Друзья',
+        searchTitle: 'Найти друзей',
+        pendingRequests: 'Запросы в друзья',
+        myFriends: 'Мои друзья',
+        noFriendsYet: 'У вас пока нет друзей',
+        findFriends: 'Найти друзей',
+        remove: 'Удалить',
+        pendingRequest: 'Ожидается',
+        sentOn: ({ date }: { date: string }) => `Отправлено ${date}`,
+        accept: 'Принять',
+        reject: 'Отклонить',
+        addFriend: 'Добавить в друзья',
+        alreadyFriends: 'Уже в друзьях',
+        requestPending: 'Запрос отправлен',
+        searchInstructions: 'Введите имя пользователя для поиска друзей',
+        searchPlaceholder: 'Введите имя пользователя...',
+        searching: 'Поиск...',
+        userNotFound: 'Пользователь не найден',
+        noUserFound: 'Пользователь с таким именем не найден',
+        checkUsername: 'Пожалуйста, проверьте имя пользователя и попробуйте снова',
+        howToFind: 'Как найти друзей',
+        findInstructions: 'Ищите друзей по имени пользователя. И вы, и ваш друг должны подключить GitHub для отправки запросов в друзья.',
+        requestSent: 'Запрос в друзья отправлен!',
+        requestAccepted: 'Запрос в друзья принят!',
+        requestRejected: 'Запрос в друзья отклонён',
+        friendRemoved: 'Друг удалён',
+        confirmRemove: 'Удалить из друзей',
+        confirmRemoveMessage: 'Вы уверены, что хотите удалить этого друга?',
+        cannotAddYourself: 'Вы не можете отправить запрос в друзья самому себе',
+        bothMustHaveGithub: 'Оба пользователя должны подключить GitHub, чтобы стать друзьями',
+        status: {
+            none: 'Не подключен',
+            requested: 'Запрос отправлен',
+            pending: 'Запрос ожидается',
+            friend: 'Друзья',
+            rejected: 'Отклонено',
+        },
+        acceptRequest: 'Принять запрос',
+        removeFriend: 'Удалить из друзей',
+        removeFriendConfirm: ({ name }: { name: string }) => `Вы уверены, что хотите удалить ${name} из друзей?`,
+        requestSentDescription: ({ name }: { name: string }) => `Ваш запрос в друзья отправлен пользователю ${name}`,
+        requestFriendship: 'Отправить запрос в друзья',
+        cancelRequest: 'Отменить запрос в друзья',
+        cancelRequestConfirm: ({ name }: { name: string }) => `Отменить ваш запрос в друзья к ${name}?`,
+        denyRequest: 'Отклонить запрос',
+        nowFriendsWith: ({ name }: { name: string }) => `Теперь вы друзья с ${name}`,
     }
 } as const;
 

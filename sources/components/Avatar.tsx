@@ -14,6 +14,8 @@ interface AvatarProps {
     size?: number;
     monochrome?: boolean;
     flavor?: string | null;
+    imageUrl?: string | null;
+    thumbhash?: string | null;
 }
 
 const flavorIcons = {
@@ -42,11 +44,60 @@ const styles = StyleSheet.create((theme) => ({
 }));
 
 export const Avatar = React.memo((props: AvatarProps) => {
-    const { flavor, size = 48, ...avatarProps } = props;
+    const { flavor, size = 48, imageUrl, thumbhash, ...avatarProps } = props;
     const avatarStyle = useSetting('avatarStyle');
     const showFlavorIcons = useSetting('showFlavorIcons');
     const { theme } = useUnistyles();
     
+    // Render custom image if provided
+    if (imageUrl) {
+        const imageElement = (
+            <Image
+                source={{ uri: imageUrl, thumbhash: thumbhash || undefined }}
+                contentFit="cover"
+                style={{
+                    width: size,
+                    height: size,
+                    borderRadius: avatarProps.square ? 0 : size / 2
+                }}
+            />
+        );
+        
+        // Add flavor icon overlay if enabled
+        if (showFlavorIcons && flavor) {
+            const effectiveFlavor = flavor || 'claude';
+            const flavorIcon = flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
+            const circleSize = Math.round(size * 0.35);
+            const iconSize = effectiveFlavor === 'codex'
+                ? Math.round(size * 0.25)
+                : effectiveFlavor === 'claude'
+                ? Math.round(size * 0.28)
+                : Math.round(size * 0.35);
+                
+            return (
+                <View style={[styles.container, { width: size, height: size }]}>
+                    {imageElement}
+                    <View style={[styles.flavorIcon, { 
+                        width: circleSize, 
+                        height: circleSize,
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                    }]}>
+                        <Image
+                            source={flavorIcon}
+                            style={{ width: iconSize, height: iconSize }}
+                            contentFit="contain"
+                            tintColor={effectiveFlavor === 'codex' ? theme.colors.text : undefined}
+                        />
+                    </View>
+                </View>
+            );
+        }
+        
+        return imageElement;
+    }
+    
+    // Original generated avatar logic
     // Determine which avatar variant to render
     let AvatarComponent: React.ComponentType<any>;
     if (avatarStyle === 'pixelated') {
@@ -57,7 +108,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
         AvatarComponent = AvatarGradient;
     }
     
-    // Determine flavor icon
+    // Determine flavor icon for generated avatars
     const effectiveFlavor = flavor || 'claude';
     const flavorIcon = flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
     // Make icons smaller while keeping same circle size
@@ -82,7 +133,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
                 }]}>
                     <Image
                         source={flavorIcon}
-                        style={{ width: iconSize, height: iconSize, tintColor: effectiveFlavor === 'codex' ? theme.colors.text : undefined }}
+                        style={{ width: iconSize, height: iconSize }}
                         contentFit="contain"
                         tintColor={effectiveFlavor === 'codex' ? theme.colors.text : undefined}
                     />

@@ -1,10 +1,9 @@
 import { Stack } from 'expo-router';
 import 'react-native-reanimated';
 import * as React from 'react';
-import { Text } from '@/components/StyledText';
 import { Typography } from '@/constants/Typography';
 import { createHeader } from '@/components/navigation/Header';
-import { Platform } from 'react-native';
+import { Platform, TouchableOpacity, Text } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
@@ -181,6 +180,40 @@ export default function RootLayout() {
                 options={{
                     headerShown: true,
                     headerTitle: t('textSelection.title'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="friends/index"
+                options={({ navigation }) => ({
+                    headerShown: true,
+                    headerTitle: t('navigation.friends'),
+                    headerBackTitle: t('common.back'),
+                    headerRight: () => (
+                        <TouchableOpacity
+                            onPress={() => navigation.navigate('friends/search' as never)}
+                            style={{ paddingHorizontal: 16 }}
+                        >
+                            <Text style={{ color: theme.colors.button.primary.tint, fontSize: 16 }}>
+                                {t('friends.addFriend')}
+                            </Text>
+                        </TouchableOpacity>
+                    ),
+                })}
+            />
+            <Stack.Screen
+                name="friends/search"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('friends.addFriend'),
+                    headerBackTitle: t('common.back'),
+                }}
+            />
+            <Stack.Screen
+                name="user/[id]"
+                options={{
+                    headerShown: true,
+                    headerTitle: t('profile.userProfile'),
                     headerBackTitle: t('common.back'),
                 }}
             />

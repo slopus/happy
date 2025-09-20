@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { GitHubProfileSchema, ImageRefSchema } from './profile';
+import { RelationshipStatusSchema, UserProfileSchema } from './friendTypes';
 
 //
 // Encrypted message
@@ -108,6 +109,18 @@ export const ApiDeleteArtifactSchema = z.object({
     artifactId: z.string()
 });
 
+// Relationship update schema
+export const ApiRelationshipUpdatedSchema = z.object({
+    t: z.literal('relationship-updated'),
+    fromUserId: z.string(),
+    toUserId: z.string(),
+    status: RelationshipStatusSchema,
+    action: z.enum(['created', 'updated', 'deleted']),
+    fromUser: UserProfileSchema.optional(),
+    toUser: UserProfileSchema.optional(),
+    timestamp: z.number()
+});
+
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
@@ -116,10 +129,12 @@ export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateMachineStateSchema,
     ApiNewArtifactSchema,
     ApiUpdateArtifactSchema,
-    ApiDeleteArtifactSchema
+    ApiDeleteArtifactSchema,
+    ApiRelationshipUpdatedSchema
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;
+export type ApiRelationshipUpdated = z.infer<typeof ApiRelationshipUpdatedSchema>;
 export type ApiUpdate = z.infer<typeof ApiUpdateSchema>;
 
 //

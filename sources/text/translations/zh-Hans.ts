@@ -46,6 +46,15 @@ export const zhHans: TranslationStructure = {
         retry: '重试',
     },
 
+    profile: {
+        userProfile: '用户资料',
+        details: '详情',
+        firstName: '名',
+        lastName: '姓',
+        username: '用户名',
+        status: '状态',
+    },
+
     status: {
         connected: '已连接',
         connecting: '连接中',
@@ -189,6 +198,8 @@ export const zhHans: TranslationStructure = {
         tokenExchangeFailed: '交换授权码失败',
         oauthAuthorizationDenied: '授权被拒绝',
         webViewLoadFailed: '加载认证页面失败',
+        failedToLoadProfile: '无法加载用户资料',
+        userNotFound: '未找到用户',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
@@ -203,6 +214,12 @@ export const zhHans: TranslationStructure = {
             `断开连接 ${service} 失败`,
         connectServiceFailed: ({ service }: { service: string }) =>
             `连接 ${service} 失败。请重试。`,
+        failedToLoadFriends: '加载好友列表失败',
+        failedToAcceptRequest: '接受好友请求失败',
+        failedToRejectRequest: '拒绝好友请求失败',
+        failedToRemoveFriend: '删除好友失败',
+        searchFailed: '搜索失败。请重试。',
+        failedToSendRequest: '发送好友请求失败',
     },
 
     newSession: {
@@ -602,6 +619,7 @@ export const zhHans: TranslationStructure = {
         linkNewDevice: '链接新设备', 
         restoreWithSecretKey: '通过密钥恢复',
         whatsNew: "更新日志",
+        friends: '好友',
     },
 
     welcome: {
@@ -713,5 +731,55 @@ export const zhHans: TranslationStructure = {
         bodyLabel: '内容',
         emptyFieldsError: '请输入标题或内容',
         createError: '创建工件失败。请重试。',
+    },
+
+    friends: {
+        // Friends feature
+        title: '好友',
+        searchTitle: '查找好友',
+        pendingRequests: '好友请求',
+        myFriends: '我的好友',
+        noFriendsYet: '您还没有好友',
+        findFriends: '查找好友',
+        remove: '删除',
+        pendingRequest: '待处理',
+        sentOn: ({ date }: { date: string }) => `发送于 ${date}`,
+        accept: '接受',
+        reject: '拒绝',
+        addFriend: '添加好友',
+        alreadyFriends: '已是好友',
+        requestPending: '请求待处理',
+        searchInstructions: '输入用户名搜索好友',
+        searchPlaceholder: '输入用户名...',
+        searching: '搜索中...',
+        userNotFound: '未找到用户',
+        noUserFound: '未找到该用户名的用户',
+        checkUsername: '请检查用户名后重试',
+        howToFind: '如何查找好友',
+        findInstructions: '通过用户名搜索好友。您和您的好友都需要连接 GitHub 才能发送好友请求。',
+        requestSent: '好友请求已发送！',
+        requestAccepted: '好友请求已接受！',
+        requestRejected: '好友请求已拒绝',
+        friendRemoved: '好友已删除',
+        confirmRemove: '删除好友',
+        confirmRemoveMessage: '确定要删除这位好友吗？',
+        cannotAddYourself: '您不能向自己发送好友请求',
+        bothMustHaveGithub: '双方都必须连接 GitHub 才能成为好友',
+        status: {
+            none: '未连接',
+            requested: '请求已发送',
+            pending: '请求待处理',
+            friend: '好友',
+            rejected: '已拒绝',
+        },
+        acceptRequest: '接受请求',
+        removeFriend: '移除好友',
+        removeFriendConfirm: ({ name }: { name: string }) => `确定要将 ${name} 从好友列表中移除吗？`,
+        requestSentDescription: ({ name }: { name: string }) => `您的好友请求已发送给 ${name}`,
+        requestFriendship: '请求加为好友',
+        cancelRequest: '取消好友请求',
+        cancelRequestConfirm: ({ name }: { name: string }) => `取消发送给 ${name} 的好友请求？`,
+        denyRequest: '拒绝请求',
+        nowFriendsWith: ({ name }: { name: string }) => `您现在与 ${name} 是好友了`,
     }
 } as const;

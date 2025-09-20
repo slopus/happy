@@ -44,6 +44,15 @@ export const ca: TranslationStructure = {
         retry: 'Torna-ho a provar',
     },
 
+    profile: {
+        userProfile: 'Perfil d\'usuari',
+        details: 'Detalls',
+        firstName: 'Nom',
+        lastName: 'Cognoms',
+        username: 'Nom d\'usuari',
+        status: 'Estat',
+    },
+
     status: {
         connected: 'connectat',
         connecting: 'connectant',
@@ -187,6 +196,8 @@ export const ca: TranslationStructure = {
         tokenExchangeFailed: 'Ha fallat l\'intercanvi del codi d\'autorització',
         oauthAuthorizationDenied: 'L\'autorització ha estat denegada',
         webViewLoadFailed: 'Ha fallat la càrrega de la pàgina d\'autenticació',
+        failedToLoadProfile: 'No s\'ha pogut carregar el perfil d\'usuari',
+        userNotFound: 'Usuari no trobat',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
@@ -201,6 +212,12 @@ export const ca: TranslationStructure = {
             `Ha fallat la desconnexió de ${service}`,
         connectServiceFailed: ({ service }: { service: string }) =>
             `No s'ha pogut connectar ${service}. Si us plau, torna-ho a provar.`,
+        failedToLoadFriends: 'No s\'ha pogut carregar la llista d\'amics',
+        failedToAcceptRequest: 'No s\'ha pogut acceptar la sol·licitud d\'amistat',
+        failedToRejectRequest: 'No s\'ha pogut rebutjar la sol·licitud d\'amistat',
+        failedToRemoveFriend: 'No s\'ha pogut eliminar l\'amic',
+        searchFailed: 'La cerca ha fallat. Si us plau, torna-ho a provar.',
+        failedToSendRequest: 'No s\'ha pogut enviar la sol·licitud d\'amistat',
     },
 
     newSession: {
@@ -600,6 +617,7 @@ export const ca: TranslationStructure = {
         linkNewDevice: 'Enllaça un nou dispositiu', 
         restoreWithSecretKey: 'Restaura amb clau secreta',
         whatsNew: 'Novetats',
+        friends: 'Amics',
     },
 
     welcome: {
@@ -711,6 +729,56 @@ export const ca: TranslationStructure = {
         bodyLabel: 'CONTINGUT',
         emptyFieldsError: 'Si us plau, introdueix un títol o contingut',
         createError: 'No s\'ha pogut crear l\'artefacte. Si us plau, torna-ho a provar.',
+    },
+
+    friends: {
+        // Friends feature
+        title: 'Amics',
+        searchTitle: 'Buscar amics',
+        pendingRequests: 'Sol·licituds d\'amistat',
+        myFriends: 'Els meus amics',
+        noFriendsYet: 'Encara no tens amics',
+        findFriends: 'Buscar amics',
+        remove: 'Eliminar',
+        pendingRequest: 'Pendent',
+        sentOn: ({ date }: { date: string }) => `Enviat el ${date}`,
+        accept: 'Acceptar',
+        reject: 'Rebutjar',
+        addFriend: 'Afegir amic',
+        alreadyFriends: 'Ja sou amics',
+        requestPending: 'Sol·licitud pendent',
+        searchInstructions: 'Introdueix un nom d\'usuari per buscar amics',
+        searchPlaceholder: 'Introdueix nom d\'usuari...',
+        searching: 'Buscant...',
+        userNotFound: 'Usuari no trobat',
+        noUserFound: 'No s\'ha trobat cap usuari amb aquest nom',
+        checkUsername: 'Si us plau, verifica el nom d\'usuari i torna-ho a provar',
+        howToFind: 'Com trobar amics',
+        findInstructions: 'Cerca amics pel seu nom d\'usuari. Tant tu com el teu amic heu de tenir GitHub connectat per enviar sol·licituds d\'amistat.',
+        requestSent: 'Sol·licitud d\'amistat enviada!',
+        requestAccepted: 'Sol·licitud d\'amistat acceptada!',
+        requestRejected: 'Sol·licitud d\'amistat rebutjada',
+        friendRemoved: 'Amic eliminat',
+        confirmRemove: 'Eliminar amic',
+        confirmRemoveMessage: 'Estàs segur que vols eliminar aquest amic?',
+        cannotAddYourself: 'No pots enviar-te una sol·licitud d\'amistat a tu mateix',
+        bothMustHaveGithub: 'Ambdós usuaris han de tenir GitHub connectat per ser amics',
+        status: {
+            none: 'No connectat',
+            requested: 'Sol·licitud enviada',
+            pending: 'Sol·licitud pendent',
+            friend: 'Amics',
+            rejected: 'Rebutjada',
+        },
+        acceptRequest: 'Acceptar sol·licitud',
+        removeFriend: 'Eliminar dels amics',
+        removeFriendConfirm: ({ name }: { name: string }) => `Estàs segur que vols eliminar ${name} dels teus amics?`,
+        requestSentDescription: ({ name }: { name: string }) => `La teva sol·licitud d\'amistat ha estat enviada a ${name}`,
+        requestFriendship: 'Sol·licitar amistat',
+        cancelRequest: 'Cancel·lar sol·licitud d\'amistat',
+        cancelRequestConfirm: ({ name }: { name: string }) => `Cancel·lar la teva sol·licitud d\'amistat a ${name}?`,
+        denyRequest: 'Rebutjar sol·licitud',
+        nowFriendsWith: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
     }
 } as const;
 

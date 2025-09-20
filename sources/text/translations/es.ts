@@ -44,6 +44,15 @@ export const es: TranslationStructure = {
         retry: 'Reintentar',
     },
 
+    profile: {
+        userProfile: 'Perfil de usuario',
+        details: 'Detalles',
+        firstName: 'Nombre',
+        lastName: 'Apellido',
+        username: 'Nombre de usuario',
+        status: 'Estado',
+    },
+
     status: {
         connected: 'conectado',
         connecting: 'conectando',
@@ -187,6 +196,8 @@ export const es: TranslationStructure = {
         tokenExchangeFailed: 'Falló al intercambiar el código de autorización',
         oauthAuthorizationDenied: 'La autorización fue denegada',
         webViewLoadFailed: 'Falló al cargar la página de autenticación',
+        failedToLoadProfile: 'No se pudo cargar el perfil de usuario',
+        userNotFound: 'Usuario no encontrado',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
@@ -201,6 +212,12 @@ export const es: TranslationStructure = {
             `Falló al desconectar ${service}`,
         connectServiceFailed: ({ service }: { service: string }) =>
             `No se pudo conectar ${service}. Por favor, inténtalo de nuevo.`,
+        failedToLoadFriends: 'No se pudo cargar la lista de amigos',
+        failedToAcceptRequest: 'No se pudo aceptar la solicitud de amistad',
+        failedToRejectRequest: 'No se pudo rechazar la solicitud de amistad',
+        failedToRemoveFriend: 'No se pudo eliminar al amigo',
+        searchFailed: 'La búsqueda falló. Por favor, intenta de nuevo.',
+        failedToSendRequest: 'No se pudo enviar la solicitud de amistad',
     },
 
     newSession: {
@@ -600,6 +617,7 @@ export const es: TranslationStructure = {
         linkNewDevice: 'Vincular nuevo dispositivo', 
         restoreWithSecretKey: 'Restaurar con clave secreta',
         whatsNew: 'Novedades',
+        friends: 'Amigos',
     },
 
     welcome: {
@@ -712,6 +730,56 @@ export const es: TranslationStructure = {
         saving: 'Guardando...',
         loading: 'Cargando artefactos...',
         error: 'Error al cargar el artefacto',
+    },
+
+    friends: {
+        // Friends feature
+        title: 'Amigos',
+        searchTitle: 'Buscar amigos',
+        pendingRequests: 'Solicitudes de amistad',
+        myFriends: 'Mis amigos',
+        noFriendsYet: 'Aún no tienes amigos',
+        findFriends: 'Buscar amigos',
+        remove: 'Eliminar',
+        pendingRequest: 'Pendiente',
+        sentOn: ({ date }: { date: string }) => `Enviado el ${date}`,
+        accept: 'Aceptar',
+        reject: 'Rechazar',
+        addFriend: 'Agregar amigo',
+        alreadyFriends: 'Ya son amigos',
+        requestPending: 'Solicitud pendiente',
+        searchInstructions: 'Ingresa un nombre de usuario para buscar amigos',
+        searchPlaceholder: 'Ingresa nombre de usuario...',
+        searching: 'Buscando...',
+        userNotFound: 'Usuario no encontrado',
+        noUserFound: 'No se encontró ningún usuario con ese nombre',
+        checkUsername: 'Por favor, verifica el nombre de usuario e intenta de nuevo',
+        howToFind: 'Cómo encontrar amigos',
+        findInstructions: 'Busca amigos por su nombre de usuario. Tanto tú como tu amigo deben tener GitHub conectado para enviar solicitudes de amistad.',
+        requestSent: '¡Solicitud de amistad enviada!',
+        requestAccepted: '¡Solicitud de amistad aceptada!',
+        requestRejected: 'Solicitud de amistad rechazada',
+        friendRemoved: 'Amigo eliminado',
+        confirmRemove: 'Eliminar amigo',
+        confirmRemoveMessage: '¿Estás seguro de que quieres eliminar a este amigo?',
+        cannotAddYourself: 'No puedes enviarte una solicitud de amistad a ti mismo',
+        bothMustHaveGithub: 'Ambos usuarios deben tener GitHub conectado para ser amigos',
+        status: {
+            none: 'No conectado',
+            requested: 'Solicitud enviada',
+            pending: 'Solicitud pendiente',
+            friend: 'Amigos',
+            rejected: 'Rechazada',
+        },
+        acceptRequest: 'Aceptar solicitud',
+        removeFriend: 'Eliminar de amigos',
+        removeFriendConfirm: ({ name }: { name: string }) => `¿Estás seguro de que quieres eliminar a ${name} de tus amigos?`,
+        requestSentDescription: ({ name }: { name: string }) => `Tu solicitud de amistad ha sido enviada a ${name}`,
+        requestFriendship: 'Solicitar amistad',
+        cancelRequest: 'Cancelar solicitud de amistad',
+        cancelRequestConfirm: ({ name }: { name: string }) => `¿Cancelar tu solicitud de amistad a ${name}?`,
+        denyRequest: 'Rechazar solicitud',
+        nowFriendsWith: ({ name }: { name: string }) => `Ahora eres amigo de ${name}`,
     }
 } as const;
 
