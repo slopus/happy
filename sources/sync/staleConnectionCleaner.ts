@@ -3,9 +3,10 @@
  * Automatically detects and cleans up orphaned connections and zombie sessions
  */
 
-import { storage } from './storage';
 import { sessionKill } from './ops';
+import { storage } from './storage';
 import { sync } from './sync';
+
 import type { Session } from './storageTypes';
 
 export interface StaleConnectionConfig {

@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { resolveAbsolutePath, resolvePath } from './pathUtils';
 
 describe('pathUtils', () => {

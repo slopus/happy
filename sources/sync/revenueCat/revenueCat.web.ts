@@ -7,6 +7,7 @@ import {
   Offering as WebOffering,
   Price as WebPrice,
 } from '@revenuecat/purchases-js';
+
 import {
   RevenueCatInterface,
   CustomerInfo,

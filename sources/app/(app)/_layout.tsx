@@ -1,13 +1,14 @@
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import 'react-native-reanimated';
 import * as React from 'react';
-import { Text } from '@/components/StyledText';
-import { Typography } from '@/constants/Typography';
-import { createHeader } from '@/components/navigation/Header';
 import { Platform, Pressable } from 'react-native';
-import { isRunningOnMac } from '@/utils/platform';
 import { useUnistyles } from 'react-native-unistyles';
+
+import { createHeader } from '@/components/navigation/Header';
+import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { isRunningOnMac } from '@/utils/platform';
+
 import { Ionicons } from '@expo/vector-icons';
 
 export const unstable_settings = {

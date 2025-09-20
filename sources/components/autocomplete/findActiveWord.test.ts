@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { findActiveWord, findActiveWordString, getActiveWordQuery } from './findActiveWord';
 
 describe('findActiveWord', () => {

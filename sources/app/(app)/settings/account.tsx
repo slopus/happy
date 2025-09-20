@@ -1,29 +1,30 @@
-import React, { useState } from 'react';
-import { View, Text, Pressable, Platform } from 'react-native';
-import { useRouter } from 'expo-router';
-import { useAuth } from '@/auth/AuthContext';
 import { Ionicons } from '@expo/vector-icons';
 import * as Clipboard from 'expo-clipboard';
-import { Typography } from '@/constants/Typography';
+import { Image } from 'expo-image';
+import { useRouter } from 'expo-router';
+import React, { useState } from 'react';
+import { View, Text, Pressable, Platform } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
+
+import { useAuth } from '@/auth/AuthContext';
+import { isPasswordProtectionEnabled, setPasswordProtection, clearPasswordData } from '@/auth/passwordSecurity';
 import { formatSecretKeyForBackup } from '@/auth/secretKeyBackup';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { Modal } from '@/modal';
-import { t } from '@/text';
 import { layout } from '@/components/layout';
-import { useSettingMutable, useProfile } from '@/sync/storage';
-import { sync } from '@/sync/sync';
-import { getServerInfo } from '@/sync/serverConfig';
-import { useUnistyles } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
+import { Typography } from '@/constants/Typography';
 import { useConnectAccount } from '@/hooks/useConnectAccount';
-import { getDisplayName, getAvatarUrl } from '@/sync/profile';
-import { Image } from 'expo-image';
 import { useHappyAction } from '@/hooks/useHappyAction';
+import { Modal } from '@/modal';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
-import { isPasswordProtectionEnabled, setPasswordProtection, clearPasswordData } from '@/auth/passwordSecurity';
+import { getDisplayName, getAvatarUrl } from '@/sync/profile';
+import { getServerInfo } from '@/sync/serverConfig';
+import { useSettingMutable, useProfile } from '@/sync/storage';
+import { sync } from '@/sync/sync';
+import { t } from '@/text';
 
 export default React.memo(() => {
   const { theme } = useUnistyles();

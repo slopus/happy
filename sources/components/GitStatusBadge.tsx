@@ -1,9 +1,11 @@
+import { Octicons } from '@expo/vector-icons';
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Octicons } from '@expo/vector-icons';
+import { useUnistyles } from 'react-native-unistyles';
+
 import { useSessionGitStatus, useSessionProjectGitStatus } from '@/sync/storage';
 import { GitStatus } from '@/sync/storageTypes';
-import { useUnistyles } from 'react-native-unistyles';
+
 
 // Custom hook to check if git status should be shown (always true if git repo exists)
 export function useHasMeaningfulGitStatus(sessionId: string): boolean {

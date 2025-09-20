@@ -1,15 +1,19 @@
+import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { View, ScrollView, TextInput, Pressable, ActivityIndicator, Platform, KeyboardAvoidingView as RNKeyboardAvoidingView } from 'react-native';
-import { Text } from '@/components/StyledText';
-import { useRouter, Stack, useLocalSearchParams } from 'expo-router';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { t } from '@/text';
-import { layout } from '@/components/layout';
-import { Modal } from '@/modal';
-import { sync } from '@/sync/sync';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useArtifact } from '@/sync/storage';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+import { layout } from '@/components/layout';
+import { Text } from '@/components/StyledText';
+import { Modal } from '@/modal';
+import { useArtifact } from '@/sync/storage';
+import { sync } from '@/sync/sync';
+import { t } from '@/text';
+
+
+
 
 const stylesheet = StyleSheet.create((theme) => ({
   container: {

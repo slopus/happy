@@ -1,6 +1,8 @@
 import { Platform, Alert } from 'react-native';
-import { t } from '@/text';
+
 import { AlertButton, ModalConfig, CustomModalConfig } from './types';
+
+import { t } from '@/text';
 
 class ModalManagerClass {
   private showModalFn: ((config: Omit<ModalConfig, 'id'>) => string) | null = null;

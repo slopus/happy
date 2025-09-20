@@ -1,9 +1,13 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, KeyboardTypeOptions, Platform } from 'react-native';
-import { BaseModal } from './BaseModal';
-import { PromptModalConfig } from '../types';
-import { Typography } from '@/constants/Typography';
 import { useUnistyles } from 'react-native-unistyles';
+
+import { PromptModalConfig } from '../types';
+
+import { BaseModal } from './BaseModal';
+
+import { Typography } from '@/constants/Typography';
+
 
 interface WebPromptModalProps {
     config: PromptModalConfig;

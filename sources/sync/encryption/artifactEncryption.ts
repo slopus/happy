@@ -1,7 +1,11 @@
-import { decodeBase64, encodeBase64 } from '@/encryption/base64';
-import { ArtifactHeader, ArtifactBody } from '../artifactTypes';
-import { AES256Encryption } from './encryptor';
 import * as Random from 'expo-crypto';
+
+import { ArtifactHeader, ArtifactBody } from '../artifactTypes';
+
+import { AES256Encryption } from './encryptor';
+
+import { decodeBase64, encodeBase64 } from '@/encryption/base64';
+
 
 export class ArtifactEncryption {
   private encryptor: AES256Encryption;

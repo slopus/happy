@@ -1,6 +1,7 @@
+import { getServerUrl } from './serverConfig';
+
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { backoff } from '@/utils/time';
-import { getServerUrl } from './serverConfig';
 
 export async function registerPushToken(credentials: AuthCredentials, token: string): Promise<void> {
   const API_ENDPOINT = getServerUrl();

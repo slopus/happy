@@ -1,8 +1,9 @@
-import { decryptBox, decryptSecretBox, encryptBox, encryptSecretBox } from '@/encryption/libsodium';
-import { encodeBase64, decodeBase64 } from '@/encryption/base64';
 import sodium from 'react-native-libsodium';
-import { decodeUTF8, encodeUTF8 } from '@/encryption/text';
+
 import { decryptAESGCMString, encryptAESGCMString } from '@/encryption/aes';
+import { encodeBase64, decodeBase64 } from '@/encryption/base64';
+import { decryptBox, decryptSecretBox, encryptBox, encryptSecretBox } from '@/encryption/libsodium';
+import { decodeUTF8, encodeUTF8 } from '@/encryption/text';
 
 //
 // IMPORTANT: Right now there is a bug in the AES implementation and it works only with a normal strings converted to Uint8Array. 

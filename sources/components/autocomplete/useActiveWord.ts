@@ -1,4 +1,5 @@
 import * as React from 'react';
+
 import { findActiveWord } from './findActiveWord';
 
 export function useActiveWord(text: string, selection: { start: number; end: number }, prefixes: string[] = ['@', '/', ':']) {

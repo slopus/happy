@@ -1,7 +1,8 @@
+import { Ionicons } from '@expo/vector-icons';
 import React, { useState, useEffect } from 'react';
 import { View, Text, Platform } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
-import { Ionicons } from '@expo/vector-icons';
+
 import { Typography } from '@/constants/Typography';
 import { connectionHealthMonitor, type ConnectionHealthStatus } from '@/sync/connectionHealth';
 

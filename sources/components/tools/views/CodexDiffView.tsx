@@ -1,11 +1,13 @@
 import * as React from 'react';
 import { View, Text } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { ToolCall } from '@/sync/typesMessage';
+
 import { ToolSectionView } from '../ToolSectionView';
+
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
-import { Metadata } from '@/sync/storageTypes';
 import { useSetting } from '@/sync/storage';
+import { Metadata } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 import { t } from '@/text';
 
 interface CodexDiffViewProps {

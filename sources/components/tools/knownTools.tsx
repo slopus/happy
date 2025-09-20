@@ -1,10 +1,12 @@
-import { Metadata } from '@/sync/storageTypes';
-import { ToolCall, Message } from '@/sync/typesMessage';
-import { resolvePath } from '@/utils/pathUtils';
-import * as z from 'zod';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import React from 'react';
+import * as z from 'zod';
+
+import { Metadata } from '@/sync/storageTypes';
+import { ToolCall, Message } from '@/sync/typesMessage';
 import { t } from '@/text';
+import { resolvePath } from '@/utils/pathUtils';
+
 
 // Icon factory functions
 const ICON_TASK = (size: number = 24, color: string = '#000') => <Octicons name="rocket" size={size} color={color} />;

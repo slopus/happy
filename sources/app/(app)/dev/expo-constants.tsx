@@ -1,17 +1,19 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import Constants from 'expo-constants';
+import { requireOptionalNativeModule } from 'expo-modules-core';
+import { Stack } from 'expo-router';
+import * as Updates from 'expo-updates';
 import React, { useState } from 'react';
 import { View, Text, ScrollView, Pressable, Platform, NativeModules } from 'react-native';
-import { Stack } from 'expo-router';
-import Constants from 'expo-constants';
-import * as Updates from 'expo-updates';
-import { Ionicons } from '@expo/vector-icons';
+
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { Typography } from '@/constants/Typography';
-import * as Clipboard from 'expo-clipboard';
-import { Modal } from '@/modal';
-import { requireOptionalNativeModule } from 'expo-modules-core';
 import { config } from '@/config';
+import { Typography } from '@/constants/Typography';
+import { Modal } from '@/modal';
+
 
 interface JsonViewerProps {
     title: string;
@@ -154,8 +156,7 @@ export default function ExpoConstantsScreen() {
   // Get Updates manifest if available
   let updatesManifest = null;
   try {
-    // @ts-ignore - manifest might not be typed
-    updatesManifest = Updates.manifest;
+    updatesManifest = (Updates as any).manifest;
   } catch (e) {
     // expo-updates might not be available
   }
@@ -166,14 +167,10 @@ export default function ExpoConstantsScreen() {
   let channel = null;
   let isEmbeddedLaunch = null;
   try {
-    // @ts-ignore
-    updateId = Updates.updateId;
-    // @ts-ignore
-    releaseChannel = Updates.releaseChannel;
-    // @ts-ignore
-    channel = Updates.channel;
-    // @ts-ignore
-    isEmbeddedLaunch = Updates.isEmbeddedLaunch;
+    updateId = (Updates as any).updateId;
+    releaseChannel = (Updates as any).releaseChannel;
+    channel = (Updates as any).channel;
+    isEmbeddedLaunch = (Updates as any).isEmbeddedLaunch;
   } catch (e) {
     // Properties might not be available
   }

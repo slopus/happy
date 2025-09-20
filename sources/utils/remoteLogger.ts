@@ -51,7 +51,7 @@ export function monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyIn
           platform: 'ios', // or android
         }),
       });
-    } catch (e) {
+    } catch {
       // console.error('[RemoteLogger] Failed to send log:', e)
       // Fail silently
     }

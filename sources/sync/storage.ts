@@ -1,23 +1,30 @@
+import React from 'react';
 import { create } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { Session, Machine, GitStatus } from './storageTypes';
+
+import { DecryptedArtifact } from './artifactTypes';
+import { LocalSettings, applyLocalSettings } from './localSettings';
+import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from './persistence';
+import { Profile } from './profile';
+import { projectManager } from './projectManager';
+import { Purchases, customerInfoToPurchases } from './purchases';
 import { createReducer, reducer, ReducerState } from './reducer/reducer';
+import { applySettings, Settings } from './settings';
+import { Session, Machine, GitStatus } from './storageTypes';
+import { sync } from './sync';
 import { Message } from './typesMessage';
 import { NormalizedMessage } from './typesRaw';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { applySettings, Settings } from './settings';
-import { LocalSettings, applyLocalSettings } from './localSettings';
-import { Purchases, customerInfoToPurchases } from './purchases';
-import { Profile } from './profile';
-import { DecryptedArtifact } from './artifactTypes';
-import { loadSettings, loadLocalSettings, saveLocalSettings, saveSettings, loadPurchases, savePurchases, loadProfile, saveProfile, loadSessionDrafts, saveSessionDrafts, loadSessionPermissionModes, saveSessionPermissionModes } from './persistence';
-import type { PermissionMode } from '@/components/PermissionModeSelector';
+
 import type { CustomerInfo } from './revenueCat/types';
-import React from 'react';
-import { sync } from './sync';
-import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
+import type { PermissionMode } from '@/components/PermissionModeSelector';
+
 import { isMutableTool } from '@/components/tools/knownTools';
-import { projectManager } from './projectManager';
+import { getCurrentRealtimeSessionId, getVoiceSession } from '@/realtime/RealtimeSession';
+import { isMachineOnline } from '@/utils/machineUtils';
+
+
+
+
 
 /**
  * Centralized session online state resolver

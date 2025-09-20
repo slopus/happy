@@ -1,6 +1,7 @@
 import React from 'react';
 import { Text, View } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
 import { Typography } from '@/constants/Typography';
 
 interface SimpleSyntaxHighlighterProps {

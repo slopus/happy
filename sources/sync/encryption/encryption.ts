@@ -1,11 +1,13 @@
-import { deriveKey } from '@/encryption/deriveKey';
-import { AES256Encryption, BoxEncryption, SecretBoxEncryption, Encryptor, Decryptor } from './encryptor';
-import { encodeHex } from '@/encryption/hex';
-import { EncryptionCache } from './encryptionCache';
-import { SessionEncryption } from './sessionEncryption';
-import { MachineEncryption } from './machineEncryption';
-import { encodeBase64, decodeBase64 } from '@/encryption/base64';
 import sodium from 'react-native-libsodium';
+
+import { EncryptionCache } from './encryptionCache';
+import { AES256Encryption, BoxEncryption, SecretBoxEncryption, Encryptor, Decryptor } from './encryptor';
+import { MachineEncryption } from './machineEncryption';
+import { SessionEncryption } from './sessionEncryption';
+
+import { encodeBase64, decodeBase64 } from '@/encryption/base64';
+import { deriveKey } from '@/encryption/deriveKey';
+import { encodeHex } from '@/encryption/hex';
 import { decryptBox, encryptBox } from '@/encryption/libsodium';
 
 export class Encryption {

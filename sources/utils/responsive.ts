@@ -1,6 +1,7 @@
+import { useMemo } from 'react';
 import { Dimensions, Platform } from 'react-native';
 import { useWindowDimensions } from 'react-native';
-import { useMemo } from 'react';
+
 import { calculateDeviceDimensions, determineDeviceType, calculateHeaderHeight } from './deviceCalculations';
 import { isRunningOnMac } from './platform';
 
@@ -12,8 +13,7 @@ export function getHeaderHeight(isLandscape: boolean, deviceType: 'phone' | 'tab
   return calculateHeaderHeight({
     platform: Platform.OS,
     isLandscape,
-    // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
-    isPad: Platform.OS === 'ios' ? Platform.isPad : undefined,
+    isPad: Platform.OS === 'ios' ? (Platform as any).isPad : undefined,
     deviceType: Platform.OS === 'android' ? deviceType : undefined,
     isMacCatalyst: isRunningOnMac(),
   });
@@ -32,8 +32,7 @@ export function getDeviceType(): 'phone' | 'tablet' {
   return determineDeviceType({
     diagonalInches: dimensions.diagonalInches,
     platform: Platform.OS,
-    // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
-    isPad: Platform.OS === 'ios' ? Platform.isPad : false,
+    isPad: Platform.OS === 'ios' ? (Platform as any).isPad : false,
   });
 }
 
@@ -51,8 +50,7 @@ export function useDeviceType(): 'phone' | 'tablet' {
     return determineDeviceType({
       diagonalInches: dimensions.diagonalInches,
       platform: Platform.OS,
-      // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
-      isPad: Platform.OS === 'ios' ? Platform.isPad : false,
+      isPad: Platform.OS === 'ios' ? (Platform as any).isPad : false,
     });
   }, [width, height]);
 }
@@ -78,8 +76,7 @@ export function useHeaderHeight(): number {
     return calculateHeaderHeight({
       platform: Platform.OS,
       isLandscape,
-      // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
-      isPad: Platform.OS === 'ios' ? Platform.isPad : undefined,
+      isPad: Platform.OS === 'ios' ? (Platform as any).isPad : undefined,
       deviceType: Platform.OS === 'android' ? deviceType : undefined,
       isMacCatalyst: isRunningOnMac(),
     });

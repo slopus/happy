@@ -1,6 +1,8 @@
 
 import axios from 'axios';
+
 import { encodeBase64 } from '../encryption/base64';
+
 import { getServerUrl } from '@/sync/serverConfig';
 
 interface AuthRequestStatus {

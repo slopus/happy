@@ -1,12 +1,13 @@
-import * as React from 'react';
-import { Session } from '@/sync/storageTypes';
-import { t } from '@/text';
-import { Modal } from '@/modal';
-import { storage } from '@/sync/storage';
 import * as Clipboard from 'expo-clipboard';
 import * as FileSystem from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import * as React from 'react';
 import { Platform } from 'react-native';
+
+import { Modal } from '@/modal';
+import { storage } from '@/sync/storage';
+import { Session } from '@/sync/storageTypes';
+import { t } from '@/text';
 
 export type SessionState = 'disconnected' | 'thinking' | 'waiting' | 'permission_required';
 

@@ -7,9 +7,11 @@ import {
   TextStyle,
   Platform,
 } from 'react-native';
-import { Typography } from '@/constants/Typography';
-import { layout } from './layout';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+import { layout } from './layout';
+
+import { Typography } from '@/constants/Typography';
 
 interface ItemChildProps {
     showDivider?: boolean;

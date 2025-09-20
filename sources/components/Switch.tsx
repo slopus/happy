@@ -1,5 +1,6 @@
 import { Platform, Switch as RNSwitch, SwitchProps } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+
 import { Deferred } from './Deferred';
 
 export const Switch = (props: SwitchProps) => {

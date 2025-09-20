@@ -1,16 +1,18 @@
+import { Stack, useRouter } from 'expo-router';
 import React, { useState } from 'react';
 import { View, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
-import { Stack, useRouter } from 'expo-router';
-import { Text } from '@/components/StyledText';
-import { Typography } from '@/constants/Typography';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { RoundButton } from '@/components/RoundButton';
-import { Modal } from '@/modal';
 import { layout } from '@/components/layout';
-import { t } from '@/text';
+import { RoundButton } from '@/components/RoundButton';
+import { Text } from '@/components/StyledText';
+import { Typography } from '@/constants/Typography';
+import { Modal } from '@/modal';
 import { getServerUrl, setServerUrl, validateServerUrl, getServerInfo } from '@/sync/serverConfig';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+import { t } from '@/text';
+
 
 const stylesheet = StyleSheet.create((theme) => ({
   keyboardAvoidingView: {

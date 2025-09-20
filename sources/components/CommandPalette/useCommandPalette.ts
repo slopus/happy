@@ -1,5 +1,6 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { TextInput } from 'react-native';
+
 import { Command, CommandCategory } from './types';
 
 export function useCommandPalette(commands: Command[], onClose: () => void) {

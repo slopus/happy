@@ -1,6 +1,8 @@
-import { describe, it, expect } from '@/dev/testRunner';
-import { hmac_sha512 } from './hmac_sha512';
 import { decode as decodeHex } from '@stablelib/hex';
+
+import { hmac_sha512 } from './hmac_sha512';
+
+import { describe, it, expect } from '@/dev/testRunner';
 
 function decodeHexString(hexString: string, format: 'normal' | 'mac' = 'normal'): Uint8Array {
   if (format === 'mac') {

@@ -1,10 +1,12 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, TextInput, Text, TouchableOpacity } from 'react-native';
+
 import { RoundButton } from './RoundButton';
+
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
-import { trackConnectAttempt } from '@/track';
-import { Ionicons } from '@expo/vector-icons';
 import { t } from '@/text';
+import { trackConnectAttempt } from '@/track';
 
 export const ConnectButton = React.memo(() => {
   const { connectTerminal, connectWithUrl, isLoading } = useConnectTerminal();

@@ -1,27 +1,29 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
+import { Image } from 'expo-image';
 import * as React from 'react';
 import { View, Platform, useWindowDimensions, ViewStyle, Text, ActivityIndicator, TouchableWithoutFeedback, Image as RNImage } from 'react-native';
-import { Image } from 'expo-image';
 import { Pressable } from 'react-native-gesture-handler';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+import { AgentInputAutocomplete } from './AgentInputAutocomplete';
+import { applySuggestion } from './autocomplete/applySuggestion';
+import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
+import { useActiveWord } from './autocomplete/useActiveWord';
+import { FloatingOverlay } from './FloatingOverlay';
+import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
+import { hapticsLight, hapticsError } from './haptics';
 import { layout } from './layout';
 import { MultiTextInput, KeyPressEvent } from './MultiTextInput';
-import { Typography } from '@/constants/Typography';
+import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
 import { PermissionMode, ModelMode } from './PermissionModeSelector';
-import { hapticsLight, hapticsError } from './haptics';
 import { Shaker, ShakeInstance } from './Shaker';
 import { StatusDot } from './StatusDot';
-import { useActiveWord } from './autocomplete/useActiveWord';
-import { useActiveSuggestions } from './autocomplete/useActiveSuggestions';
-import { AgentInputAutocomplete } from './AgentInputAutocomplete';
-import { FloatingOverlay } from './FloatingOverlay';
-import { TextInputState, MultiTextInputHandle } from './MultiTextInput';
-import { applySuggestion } from './autocomplete/applySuggestion';
-import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+import { Typography } from '@/constants/Typography';
 import { useSetting } from '@/sync/storage';
-import { Theme } from '@/theme';
-import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
+import { t } from '@/text';
+import { Theme } from '@/theme';
 
 interface AgentInputProps {
     value: string;

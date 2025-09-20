@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, Text, Platform } from 'react-native';
-import { Typography } from '@/constants/Typography';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { RoundButton } from '@/components/RoundButton';
+import { Typography } from '@/constants/Typography';
 import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { Modal } from '@/modal';
 import { t } from '@/text';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 
 const stylesheet = StyleSheet.create((theme) => ({
   container: {

@@ -1,14 +1,16 @@
-import * as React from 'react';
-import { Header } from './navigation/Header';
-import { useSocketStatus } from '@/sync/storage';
-import { Pressable, Text, View } from 'react-native';
-import { Typography } from '@/constants/Typography';
-import { StatusDot } from './StatusDot';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useSegments } from 'expo-router';
-import { getServerInfo } from '@/sync/serverConfig';
 import { Image } from 'expo-image';
+import { useRouter, useSegments } from 'expo-router';
+import * as React from 'react';
+import { Pressable, Text, View } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+import { Header } from './navigation/Header';
+import { StatusDot } from './StatusDot';
+
+import { Typography } from '@/constants/Typography';
+import { getServerInfo } from '@/sync/serverConfig';
+import { useSocketStatus } from '@/sync/storage';
 import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({

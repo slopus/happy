@@ -13,7 +13,7 @@ export function isRunningOnMac(): boolean {
   }
     
   // Check if running on Mac Catalyst
-  // @ts-ignore - isPad is not in the type definitions but exists at runtime
+  // @ts-expect-error - isPad is not in the type definitions but exists at runtime
   return Platform.isPad && Platform.Version && typeof Platform.Version === 'string' && 
            Platform.Version.includes('Mac');
 }

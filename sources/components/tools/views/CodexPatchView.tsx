@@ -1,12 +1,15 @@
+import { Octicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Text } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Octicons } from '@expo/vector-icons';
-import { ToolCall } from '@/sync/typesMessage';
+
+
 import { ToolSectionView } from '../ToolSectionView';
+
 import { Metadata } from '@/sync/storageTypes';
-import { resolvePath } from '@/utils/pathUtils';
+import { ToolCall } from '@/sync/typesMessage';
 import { t } from '@/text';
+import { resolvePath } from '@/utils/pathUtils';
 
 interface CodexPatchViewProps {
     tool: ToolCall;

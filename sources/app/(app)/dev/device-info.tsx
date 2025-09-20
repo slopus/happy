@@ -1,15 +1,16 @@
+import Constants from 'expo-constants';
+import { Stack } from 'expo-router';
 import React from 'react';
 import { View, Text, ScrollView, Dimensions, Platform, PixelRatio } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Stack } from 'expo-router';
-import { Typography } from '@/constants/Typography';
-import { ItemGroup } from '@/components/ItemGroup';
+
 import { Item } from '@/components/Item';
+import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import Constants from 'expo-constants';
-import { useIsTablet, getDeviceType, calculateDeviceDimensions, useHeaderHeight } from '@/utils/responsive';
 import { layout } from '@/components/layout';
+import { Typography } from '@/constants/Typography';
 import { isRunningOnMac } from '@/utils/platform';
+import { useIsTablet, getDeviceType, calculateDeviceDimensions, useHeaderHeight } from '@/utils/responsive';
 
 export default function DeviceInfo() {
   const insets = useSafeAreaInsets();
@@ -65,8 +66,7 @@ export default function DeviceInfo() {
           />
           <Item
             title="Detection Method"
-            // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
-            detail={Platform.OS === 'ios' && Platform.isPad ? 'iOS isPad' : `${diagonalInches.toFixed(1)}" diagonal`}
+            detail={Platform.OS === 'ios' && (Platform as any).isPad ? 'iOS isPad' : `${diagonalInches.toFixed(1)}" diagonal`}
           />
           <Item
             title="Mac Catalyst"
@@ -146,8 +146,7 @@ export default function DeviceInfo() {
             <>
               <Item
                 title="iOS Interface"
-                // @ts-ignore - isPad is not in the type definitions but exists at runtime on iOS
-                detail={Platform.isPad ? 'iPad' : 'iPhone'}
+                detail={(Platform as any).isPad ? 'iPad' : 'iPhone'}
               />
               <Item
                 title="iOS Version"

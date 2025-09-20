@@ -3,9 +3,11 @@
  */
 
 import { machineStopDaemon, sessionKill } from './ops';
-import { sync } from './sync';
 import { storage } from './storage';
+import { sync } from './sync';
+
 import type { Session } from './storageTypes';
+
 import { log } from '@/log';
 
 export interface DaemonControlResult {

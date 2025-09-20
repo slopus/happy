@@ -5,7 +5,9 @@
 
 import { apiSocket } from './apiSocket';
 import { sync } from './sync';
+
 import type { MachineMetadata } from './storageTypes';
+
 import { log } from '@/log';
 
 // Strict type definitions for all operations

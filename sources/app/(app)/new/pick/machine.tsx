@@ -1,17 +1,23 @@
+import { Ionicons } from '@expo/vector-icons';
+import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { View, Text, ScrollView, ActivityIndicator } from 'react-native';
-import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
-import { ItemGroup } from '@/components/ItemGroup';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
+import { callbacks } from '../index';
+
 import { Item } from '@/components/Item';
+import { ItemGroup } from '@/components/ItemGroup';
+import { ItemList } from '@/components/ItemList';
+import { layout } from '@/components/layout';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines } from '@/sync/storage';
-import { Ionicons } from '@expo/vector-icons';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { layout } from '@/components/layout';
 import { t } from '@/text';
-import { callbacks } from '../index';
-import { ItemList } from '@/components/ItemList';
+import { isMachineOnline } from '@/utils/machineUtils';
+
+
+
+
 
 const stylesheet = StyleSheet.create((theme) => ({
   container: {

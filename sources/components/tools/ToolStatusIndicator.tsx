@@ -1,6 +1,7 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, StyleSheet, ActivityIndicator } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+
 import { ToolCall } from '@/sync/typesMessage';
 interface ToolStatusIndicatorProps {
     tool: ToolCall;

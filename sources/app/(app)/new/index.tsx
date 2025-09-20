@@ -1,21 +1,22 @@
+import { Ionicons } from '@expo/vector-icons';
+import Constants from 'expo-constants';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions } from 'react-native';
-import { Typography } from '@/constants/Typography';
-import { useAllMachines, storage, useSetting } from '@/sync/storage';
-import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
-import { useUnistyles } from 'react-native-unistyles';
-import { layout } from '@/components/layout';
-import { t } from '@/text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { AgentInput } from '@/components/AgentInput';
-import { MultiTextInputHandle } from '@/components/MultiTextInput';
-import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Constants from 'expo-constants';
-import { machineSpawnNewSession } from '@/sync/ops';
+import { useUnistyles } from 'react-native-unistyles';
+
+import { AgentInput } from '@/components/AgentInput';
+import { layout } from '@/components/layout';
+import { MultiTextInputHandle } from '@/components/MultiTextInput';
+import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { useAllMachines, storage, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
+import { t } from '@/text';
+import { useHeaderHeight } from '@/utils/responsive';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };

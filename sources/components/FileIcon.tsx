@@ -1,7 +1,7 @@
+import { themeIcons, type SetiTheme } from '@peoplesgrocers/seti-ui-file-icons';
 import React from 'react';
 import { View } from 'react-native';
 import { SvgXml } from 'react-native-svg';
-import { themeIcons, type SetiTheme } from '@peoplesgrocers/seti-ui-file-icons';
 import { useUnistyles } from 'react-native-unistyles';
 
 interface FileIconProps {

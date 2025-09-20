@@ -3,8 +3,9 @@
  * Provides continuous backup and recovery of session state during network interruptions
  */
 
-import { storage } from './storage';
 import { apiSocket } from './apiSocket';
+import { storage } from './storage';
+
 import type { Session } from './storageTypes';
 // Platform-agnostic storage - falls back to localStorage on web
 let platformStorage: any;

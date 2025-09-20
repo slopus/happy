@@ -1,7 +1,8 @@
+import MaskedView from '@react-native-masked-view/masked-view';
+import { LinearGradient } from 'expo-linear-gradient';
 import React from 'react';
 import { Text, ViewStyle } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
-import MaskedView from '@react-native-masked-view/masked-view';
+
 import { Typography } from '@/constants/Typography';
 
 interface PlusPlusProps {

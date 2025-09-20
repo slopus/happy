@@ -1,9 +1,11 @@
+import { Octicons } from '@expo/vector-icons';
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Octicons } from '@expo/vector-icons';
+import { StyleSheet } from 'react-native-unistyles';
+
 import { useSessionProjectGitStatus } from '@/sync/storage';
 import { GitStatus } from '@/sync/storageTypes';
-import { StyleSheet } from 'react-native-unistyles';
+
 
 const stylesheet = StyleSheet.create((theme) => ({
   container: {

@@ -1,12 +1,16 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Text, Platform, StatusBar, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
-import { Ionicons } from '@expo/vector-icons';
-import { layout } from '../layout';
-import { useHeaderHeight } from '@/utils/responsive';
-import { Typography } from '@/constants/Typography';
 import { StyleSheet } from 'react-native-unistyles';
+
+import { layout } from '../layout';
+
+import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
+
+import { Typography } from '@/constants/Typography';
+import { useHeaderHeight } from '@/utils/responsive';
+
 
 interface HeaderProps {
     title?: React.ReactNode;

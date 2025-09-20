@@ -1,13 +1,15 @@
 import { AppState, AppStateStatus, Platform } from 'react-native';
-import { log } from '@/log';
+
 import { apiSocket } from './apiSocket';
-import { storage } from './storage';
 import {
   getTaskManager,
   getBackgroundFetch,
   EXPO_MODULES_AVAILABILITY,
   type TaskManagerTaskExecutor,
 } from './expoModuleMocks';
+import { storage } from './storage';
+
+import { log } from '@/log';
 
 // Get conditional imports
 const TaskManager = getTaskManager();

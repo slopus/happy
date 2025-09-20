@@ -1,5 +1,6 @@
-import type { MarkdownBlock } from './parseMarkdown';
 import { parseMarkdownSpans } from './parseMarkdownSpans';
+
+import type { MarkdownBlock } from './parseMarkdown';
 
 export function parseMarkdownBlock(markdown: string) {
   const blocks: MarkdownBlock[] = [];

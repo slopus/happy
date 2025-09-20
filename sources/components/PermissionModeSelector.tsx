@@ -1,8 +1,11 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { Text, Pressable, Platform } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Typography } from '@/constants/Typography';
+
 import { hapticsLight } from './haptics';
+
+import { Typography } from '@/constants/Typography';
+
 
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo';
 

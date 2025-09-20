@@ -1,23 +1,25 @@
+import { Octicons, Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useRoute } from '@react-navigation/native';
+import { useFocusEffect } from '@react-navigation/native';
+import * as Clipboard from 'expo-clipboard';
+import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { View, ActivityIndicator, Platform, TextInput, Modal, ScrollView, Pressable, FlatList, Dimensions } from 'react-native';
-import { t } from '@/text';
-import { useRoute } from '@react-navigation/native';
-import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
-import { Octicons, Ionicons } from '@expo/vector-icons';
-import { Text } from '@/components/StyledText';
+import { useUnistyles, StyleSheet } from 'react-native-unistyles';
+
+import { ContextMenu, ContextMenuAction, useContextMenu } from '@/components/ContextMenu';
+import { FileIcon } from '@/components/FileIcon';
 import { Item } from '@/components/Item';
 import { ItemList } from '@/components/ItemList';
-import { Typography } from '@/constants/Typography';
-import { searchFiles, FileItem } from '@/sync/suggestionFile';
-import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
-import { FileIcon } from '@/components/FileIcon';
 import { SimpleSyntaxHighlighter } from '@/components/SimpleSyntaxHighlighter';
+import { Text } from '@/components/StyledText';
+import { Typography } from '@/constants/Typography';
 import { sessionReadFile } from '@/sync/ops';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { ContextMenu, ContextMenuAction, useContextMenu } from '@/components/ContextMenu';
-import * as Clipboard from 'expo-clipboard';
+import { searchFiles, FileItem } from '@/sync/suggestionFile';
+import { t } from '@/text';
+
 
 interface FolderStructure {
     [key: string]: {

@@ -1,35 +1,39 @@
 import Constants from 'expo-constants';
-import { apiSocket } from '@/sync/apiSocket';
-import { AuthCredentials } from '@/auth/tokenStorage';
-import { Encryption } from '@/sync/encryption/encryption';
-import { decodeBase64, encodeBase64 } from '@/encryption/base64';
-import { storage } from './storage';
-import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
-import type { ApiEphemeralActivityUpdate } from './apiTypes';
-import { Session, Machine } from './storageTypes';
-import { InvalidateSync } from '@/utils/sync';
-import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
 import { randomUUID } from 'expo-crypto';
 import * as Notifications from 'expo-notifications';
-import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
-import { isRunningOnMac } from '@/utils/platform';
-import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
-import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
-import { Profile, profileParse } from './profile';
-import { loadPendingSettings, savePendingSettings } from './persistence';
-import { initializeTracking, tracking } from '@/track';
-import { parseToken } from '@/utils/parseToken';
-import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
-import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, trackPaywallRestored, trackPaywallError } from '@/track';
-import { getServerUrl } from './serverConfig';
-import { config } from '@/config';
+
+import { registerPushToken } from './apiPush';
+import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
+
 import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
+import { loadPendingSettings, savePendingSettings } from './persistence';
+import { Profile, profileParse } from './profile';
 import { systemPrompt } from './prompt/systemPrompt';
+import { ActivityUpdateAccumulator } from './reducer/activityUpdateAccumulator';
+import { RevenueCat, LogLevel, PaywallResult } from './revenueCat';
+import { getServerUrl } from './serverConfig';
+import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
+import { storage } from './storage';
+import { Session, Machine } from './storageTypes';
+import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
+
+import type { ApiEphemeralActivityUpdate } from './apiTypes';
+
+import { AuthCredentials } from '@/auth/tokenStorage';
+import { config } from '@/config';
+import { decodeBase64 } from '@/encryption/base64';
+import { apiSocket } from '@/sync/apiSocket';
+import { Encryption } from '@/sync/encryption/encryption';
+import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, trackPaywallRestored, trackPaywallError } from '@/track';
+import { initializeTracking, tracking } from '@/track';
+import { parseToken } from '@/utils/parseToken';
+import { isRunningOnMac } from '@/utils/platform';
+import { InvalidateSync } from '@/utils/sync';
 // Enhanced connection management - imported but not auto-started for backwards compatibility
 // import { startConnectionHealthMonitoring, stopConnectionHealthMonitoring } from './connectionHealth';
 // import { startStaleConnectionCleanup, stopStaleConnectionCleanup } from './staleConnectionCleaner';
@@ -406,10 +410,11 @@ class Sync {
           // Don't track error for NOT_PRESENTED as it's a platform limitation
           return { success: false, error: 'Paywall not available on this platform' };
         case PaywallResult.ERROR:
-        default:
+        default: {
           const errorMsg = 'Failed to present paywall';
           trackPaywallError(errorMsg);
           return { success: false, error: errorMsg };
+        }
       }
     } catch (error: any) {
       const errorMessage = error.message || 'Failed to present paywall';
@@ -807,8 +812,8 @@ class Sync {
 
       // Get platform and app identifiers
       const platform = Platform.OS;
-      const version = Constants.expoConfig?.version!;
-      const appId = (Platform.OS === 'ios' ? Constants.expoConfig?.ios?.bundleIdentifier! : Constants.expoConfig?.android?.package!);
+      const version = Constants.expoConfig?.version || 'unknown';
+      const appId = (Platform.OS === 'ios' ? Constants.expoConfig?.ios?.bundleIdentifier : Constants.expoConfig?.android?.package) || 'unknown';
 
       const response = await fetch(`${serverUrl}/v1/version`, {
         method: 'POST',

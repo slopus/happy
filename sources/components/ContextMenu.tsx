@@ -1,3 +1,4 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import {
   View,
@@ -10,10 +11,11 @@ import {
   AccessibilityInfo,
   findNodeHandle,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { Typography } from '@/constants/Typography';
-import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUnistyles, StyleSheet } from 'react-native-unistyles';
+
+import { Typography } from '@/constants/Typography';
+
 
 export interface ContextMenuAction {
   id: string;

@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { View, ScrollView, StyleSheet } from 'react-native';
-import { ToolCall } from '@/sync/typesMessage';
-import { Metadata } from '@/sync/storageTypes';
-import { knownTools } from '@/components/tools/knownTools';
+
 import { toolFullViewStyles } from '../ToolFullView';
+
 import { CommandView } from '@/components/CommandView';
+import { knownTools } from '@/components/tools/knownTools';
+import { Metadata } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 
 interface BashViewFullProps {
     tool: ToolCall;

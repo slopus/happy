@@ -1,10 +1,13 @@
-import React, { useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react-native';
-import { registerVoiceSession } from './RealtimeSession';
-import { storage } from '@/sync/storage';
+import React, { useEffect, useRef } from 'react';
+
 import { realtimeClientTools } from './realtimeClientTools';
-import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
+import { registerVoiceSession } from './RealtimeSession';
+
 import type { VoiceSession, VoiceSessionConfig } from './types';
+
+import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
+import { storage } from '@/sync/storage';
 
 // Static reference to the conversation hook instance
 let conversationInstance: ReturnType<typeof useConversation> | null = null;

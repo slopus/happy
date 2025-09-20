@@ -1,17 +1,18 @@
-import React from 'react';
 import { useRouter } from 'expo-router';
-import { OAuthView } from '@/components/OAuthView';
-import { buildAuthorizationUrl, ClaudeAuthTokens, exchangeCodeForTokens } from '@/utils/oauth';
-import { Modal } from '@/modal';
-import { t } from '@/text';
 import { StatusBar } from 'expo-status-bar';
+import React from 'react';
+import { View } from 'react-native';
+import { Platform } from 'react-native';
+import { StyleSheet } from 'react-native-unistyles';
+
 import { useAuth } from '@/auth/AuthContext';
+import { OAuthView } from '@/components/OAuthView';
+import { Text } from '@/components/StyledText';
+import { Modal } from '@/modal';
 import { connectService } from '@/sync/apiServices';
 import { sync } from '@/sync/sync';
-import { View } from 'react-native';
-import { Text } from '@/components/StyledText';
-import { StyleSheet } from 'react-native-unistyles';
-import { Platform } from 'react-native';
+import { t } from '@/text';
+import { buildAuthorizationUrl, ClaudeAuthTokens, exchangeCodeForTokens } from '@/utils/oauth';
 
 export default function ClaudeOAuth() {
   // const router = useRouter();

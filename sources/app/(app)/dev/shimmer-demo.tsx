@@ -1,9 +1,11 @@
+import { Ionicons } from '@expo/vector-icons';
+import { Stack } from 'expo-router';
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
-import { Stack } from 'expo-router';
-import { ShimmerView } from '@/components/ShimmerView';
+
 import { ItemGroup } from '@/components/ItemGroup';
-import { Ionicons } from '@expo/vector-icons';
+import { ShimmerView } from '@/components/ShimmerView';
+
 
 export default function ShimmerDemoScreen() {
   return (

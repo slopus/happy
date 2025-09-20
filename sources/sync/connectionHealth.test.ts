@@ -4,13 +4,14 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi, Mock } from 'vitest';
+
+import { apiSocket } from './apiSocket';
 import {
   ConnectionHealthMonitor,
   HEARTBEAT_PROFILES,
   HeartbeatProfile,
   ConnectionHealthConfig,
 } from './connectionHealth';
-import { apiSocket } from './apiSocket';
 import { connectionStateMachine } from './connectionStateMachine';
 
 // Mock the dependencies

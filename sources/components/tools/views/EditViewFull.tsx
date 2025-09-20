@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { View } from 'react-native';
-import { ToolCall } from '@/sync/typesMessage';
-import { Metadata } from '@/sync/storageTypes';
-import { knownTools } from '@/components/tools/knownTools';
+
 import { toolFullViewStyles } from '../ToolFullView';
+
+import { knownTools } from '@/components/tools/knownTools';
 import { ToolDiffView } from '@/components/tools/ToolDiffView';
+import { Metadata } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 import { trimIdent } from '@/utils/trimIdent';
 
 interface EditViewFullProps {

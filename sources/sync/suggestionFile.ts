@@ -4,7 +4,9 @@
  */
 
 import Fuse from 'fuse.js';
+
 import { sessionRipgrep } from './ops';
+
 import { AsyncLock } from '@/utils/lock';
 
 export interface FileItem {

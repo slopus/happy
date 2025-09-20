@@ -1,4 +1,6 @@
 import { getCurrentRealtimeSessionId, getVoiceSession, isVoiceSessionStarted } from '../RealtimeSession';
+import { VOICE_CONFIG } from '../voiceConfig';
+
 import {
   formatNewMessages,
   formatNewSingleMessage,
@@ -9,9 +11,9 @@ import {
   formatSessionOffline,
   formatSessionOnline,
 } from './contextFormatters';
+
 import { storage } from '@/sync/storage';
 import { Message } from '@/sync/typesMessage';
-import { VOICE_CONFIG } from '../voiceConfig';
 
 /**
  * Centralized voice assistant hooks for multi-session context updates.

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text as RNText, TextProps as RNTextProps, StyleProp, TextStyle } from 'react-native';
+
 import { Typography } from '@/constants/Typography';
 
 interface StyledTextProps extends RNTextProps {

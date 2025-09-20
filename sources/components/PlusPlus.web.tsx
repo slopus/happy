@@ -1,5 +1,6 @@
 import React from 'react';
 import { Text, View, ViewStyle } from 'react-native';
+
 import { Typography } from '@/constants/Typography';
 
 interface PlusPlusProps {

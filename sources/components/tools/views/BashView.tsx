@@ -1,9 +1,11 @@
 import * as React from 'react';
-import { ToolCall } from '@/sync/typesMessage';
+
 import { ToolSectionView } from '../../tools/ToolSectionView';
+
 import { CommandView } from '@/components/CommandView';
 import { knownTools } from '@/components/tools/knownTools';
 import { Metadata } from '@/sync/storageTypes';
+import { ToolCall } from '@/sync/typesMessage';
 
 export const BashView = React.memo((props: { tool: ToolCall, metadata: Metadata | null }) => {
   const { input, result, state } = props.tool;

@@ -3,15 +3,16 @@
  * Provides real-time git repository status tracking using remote bash commands
  */
 
-import { InvalidateSync } from '@/utils/sync';
-import { sessionBash } from './ops';
-import { GitStatus } from './storageTypes';
-import { storage } from './storage';
-import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/parseStatus';
-import { parseStatusSummaryV2, getStatusCountsV2, isDirtyV2, getCurrentBranchV2, getTrackingInfoV2 } from './git-parsers/parseStatusV2';
 import { parseCurrentBranch } from './git-parsers/parseBranch';
 import { parseNumStat, mergeDiffSummaries } from './git-parsers/parseDiff';
+import { parseStatusSummary, getStatusCounts, isDirty } from './git-parsers/parseStatus';
+import { parseStatusSummaryV2, getStatusCountsV2, isDirtyV2, getCurrentBranchV2, getTrackingInfoV2 } from './git-parsers/parseStatusV2';
+import { sessionBash } from './ops';
 import { projectManager, createProjectKey } from './projectManager';
+import { storage } from './storage';
+import { GitStatus } from './storageTypes';
+
+import { InvalidateSync } from '@/utils/sync';
 
 export class GitStatusSync {
   // Map project keys to sync instances

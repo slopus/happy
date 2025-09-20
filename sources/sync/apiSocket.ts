@@ -1,7 +1,9 @@
 import { io, Socket } from 'socket.io-client';
-import { TokenStorage } from '@/auth/tokenStorage';
-import { Encryption } from './encryption/encryption';
+
 import { connectionTimeoutHandler, type RequestOptions } from './connectionTimeoutHandler';
+import { Encryption } from './encryption/encryption';
+
+import { TokenStorage } from '@/auth/tokenStorage';
 import { log } from '@/log';
 
 //

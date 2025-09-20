@@ -1,14 +1,16 @@
-import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import * as Localization from 'expo-localization';
+import React from 'react';
+import { useUnistyles } from 'react-native-unistyles';
+
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useSettingMutable } from '@/sync/storage';
-import { useUnistyles } from 'react-native-unistyles';
-import { t, getLanguageNativeName, SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, type SupportedLanguage } from '@/text';
-import { Modal } from '@/modal';
 import { useUpdates } from '@/hooks/useUpdates';
-import * as Localization from 'expo-localization';
+import { Modal } from '@/modal';
+import { useSettingMutable } from '@/sync/storage';
+import { t, getLanguageNativeName, SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, type SupportedLanguage } from '@/text';
+
 
 type LanguageOption = 'auto' | SupportedLanguage;
 

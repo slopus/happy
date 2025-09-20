@@ -1,7 +1,8 @@
+import { VOICE_CONFIG } from '../voiceConfig';
+
 import { Session } from '@/sync/storageTypes';
 import { Message } from '@/sync/typesMessage';
 import { trimIdent } from '@/utils/trimIdent';
-import { VOICE_CONFIG } from '../voiceConfig';
 
 interface SessionMetadata {
     summary?: { text?: string };

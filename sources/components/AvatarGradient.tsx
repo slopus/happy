@@ -1,5 +1,5 @@
-import * as React from 'react';
 import { Image } from 'expo-image';
+import * as React from 'react';
 
 // Copy hashCode function for consistency with Avatar.tsx
 function hashCode(str: string): number {

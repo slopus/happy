@@ -1,15 +1,17 @@
-import { Platform, ActivityIndicator, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import * as React from 'react';
+import { Platform, ActivityIndicator, View } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
+
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
 import { Switch } from '@/components/Switch';
-import { t } from '@/text';
 import { mcpService, MCPModel } from '@/services/mcpService';
-import * as React from 'react';
-import { useUnistyles } from 'react-native-unistyles';
-import { useRouter } from 'expo-router';
+import { useSettingMutable, useLocalSettingMutable } from '@/sync/storage';
+import { t } from '@/text';
+
 
 export default function FeaturesSettingsScreen() {
   const { theme } = useUnistyles();

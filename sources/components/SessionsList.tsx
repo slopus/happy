@@ -1,28 +1,30 @@
+import { Ionicons } from '@expo/vector-icons';
+import { usePathname } from 'expo-router';
 import React from 'react';
 import { View, Pressable, FlatList, Platform } from 'react-native';
-import { Text } from '@/components/StyledText';
-import { usePathname } from 'expo-router';
-import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
-import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId, deleteSession, duplicateSession, renameSession, copySessionId, exportSessionHistory } from '@/utils/sessionUtils';
-import { Avatar } from './Avatar';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { StyleSheet } from 'react-native-unistyles';
+
 import { ActiveSessionsGroup } from './ActiveSessionsGroup';
 import { ActiveSessionsGroupCompact } from './ActiveSessionsGroupCompact';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useSetting } from '@/sync/storage';
-import { Typography } from '@/constants/Typography';
-import { Session } from '@/sync/storageTypes';
-import { StatusDot } from './StatusDot';
-import { StyleSheet } from 'react-native-unistyles';
-import { useIsTablet } from '@/utils/responsive';
-import { requestReview } from '@/utils/requestReview';
-import { UpdateBanner } from './UpdateBanner';
+import { Avatar } from './Avatar';
 import { layout } from './layout';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { t } from '@/text';
+import { StatusDot } from './StatusDot';
+import { UpdateBanner } from './UpdateBanner';
+
 import { ContextMenu, ContextMenuAction, useContextMenu } from '@/components/ContextMenu';
+import { Text } from '@/components/StyledText';
+import { Typography } from '@/constants/Typography';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
+import { useSetting } from '@/sync/storage';
+import { SessionListViewItem, useSessionListViewData } from '@/sync/storage';
 import { storage } from '@/sync/storage';
+import { Session } from '@/sync/storageTypes';
+import { t } from '@/text';
+import { requestReview } from '@/utils/requestReview';
+import { useIsTablet } from '@/utils/responsive';
+import { getSessionName, useSessionStatus, getSessionSubtitle, getSessionAvatarId, deleteSession, duplicateSession, renameSession, copySessionId, exportSessionHistory } from '@/utils/sessionUtils';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
   container: {

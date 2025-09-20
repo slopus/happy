@@ -1,30 +1,32 @@
 import 'react-native-quick-base64';
 import '../theme.css';
-import * as React from 'react';
-import * as SplashScreen from 'expo-splash-screen';
-import * as Fonts from 'expo-font';
 import { FontAwesome } from '@expo/vector-icons';
-import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
-import { AuthProvider } from '@/auth/AuthContext';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
-import { SidebarNavigator } from '@/components/SidebarNavigator';
-import sodium from 'react-native-libsodium';
-import { View, Platform } from 'react-native';
-import { ModalProvider } from '@/modal';
+import * as Fonts from 'expo-font';
+import * as SplashScreen from 'expo-splash-screen';
 import { PostHogProvider } from 'posthog-react-native';
-import { tracking } from '@/track/tracking';
-import { syncRestore } from '@/sync/sync';
-import { useTrackScreens } from '@/track/useTrackScreens';
-import { RealtimeProvider } from '@/realtime/RealtimeProvider';
-import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
+import * as React from 'react';
+import { View, Platform } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
+import { KeyboardProvider } from 'react-native-keyboard-controller';
+import sodium from 'react-native-libsodium';
+import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useUnistyles } from 'react-native-unistyles';
+
+import { AuthProvider } from '@/auth/AuthContext';
+import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { CommandPaletteProvider } from '@/components/CommandPalette/CommandPaletteProvider';
+import { SidebarNavigator } from '@/components/SidebarNavigator';
 import { StatusBarProvider } from '@/components/StatusBarProvider';
+import { FaviconPermissionIndicator } from '@/components/web/FaviconPermissionIndicator';
+import { ModalProvider } from '@/modal';
+import { RealtimeProvider } from '@/realtime/RealtimeProvider';
+import { syncRestore } from '@/sync/sync';
+import { tracking } from '@/track/tracking';
+import { useTrackScreens } from '@/track/useTrackScreens';
 // import * as SystemUI from 'expo-system-ui';
 import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
-import { useUnistyles } from 'react-native-unistyles';
+
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -44,7 +46,7 @@ SplashScreen.preventAutoHideAsync();
 // NEVER ENABLE REMOTE LOGGING IN PRODUCTION
 // This is for local debugging with AI only
 // So AI will have all the logs easily accessible in one file for analysis
-if (!!process.env.PUBLIC_EXPO_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
+if (process.env.PUBLIC_EXPO_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING) {
   monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds();
 }
 

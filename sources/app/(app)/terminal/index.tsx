@@ -1,15 +1,16 @@
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import React from 'react';
 import { View } from 'react-native';
-import { Text } from '@/components/StyledText';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Typography } from '@/constants/Typography';
-import { RoundButton } from '@/components/RoundButton';
-import { useConnectTerminal } from '@/hooks/useConnectTerminal';
-import { Ionicons } from '@expo/vector-icons';
-import { ItemList } from '@/components/ItemList';
-import { ItemGroup } from '@/components/ItemGroup';
-import { Item } from '@/components/Item';
 import { useUnistyles } from 'react-native-unistyles';
+
+import { Item } from '@/components/Item';
+import { ItemGroup } from '@/components/ItemGroup';
+import { ItemList } from '@/components/ItemList';
+import { RoundButton } from '@/components/RoundButton';
+import { Text } from '@/components/StyledText';
+import { Typography } from '@/constants/Typography';
+import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { t } from '@/text';
 
 export default function TerminalScreen() {

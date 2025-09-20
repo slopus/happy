@@ -1,26 +1,28 @@
+import { Ionicons, Octicons } from '@expo/vector-icons';
+import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import React, { useState, useMemo, useCallback, useRef } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput } from 'react-native';
-import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
+import { useUnistyles, StyleSheet } from 'react-native-unistyles';
+
+import type { Session } from '@/sync/storageTypes';
+
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { Typography } from '@/constants/Typography';
-import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
-import { Ionicons, Octicons } from '@expo/vector-icons';
-import type { Session } from '@/sync/storageTypes';
-import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
 import { showDaemonCleanupModal } from '@/components/modals/DaemonCleanupModal';
-import { stopDaemon, forceStopDaemon, removeSessionLocally, getDaemonStatus } from '@/sync/daemonControl';
-import { Modal } from '@/modal';
-import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { sync } from '@/sync/sync';
-import { useUnistyles, StyleSheet } from 'react-native-unistyles';
-import { t } from '@/text';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { machineSpawnNewSession } from '@/sync/ops';
-import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput, type MultiTextInputHandle } from '@/components/MultiTextInput';
+import { Typography } from '@/constants/Typography';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { Modal } from '@/modal';
+import { stopDaemon, forceStopDaemon, removeSessionLocally, getDaemonStatus } from '@/sync/daemonControl';
+import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
+import { sync } from '@/sync/sync';
+import { t } from '@/text';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { formatPathRelativeToHome, getSessionName, getSessionSubtitle } from '@/utils/sessionUtils';
 
 const styles = StyleSheet.create((theme) => ({
   pathInputContainer: {

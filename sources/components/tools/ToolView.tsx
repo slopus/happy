@@ -1,20 +1,24 @@
+import { Ionicons, Octicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import * as React from 'react';
 import { Text, View, TouchableOpacity, ActivityIndicator, Platform } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { Ionicons, Octicons } from '@expo/vector-icons';
-import { getToolViewComponent } from './views/_all';
-import { Message, ToolCall } from '@/sync/typesMessage';
+
 import { CodeView } from '../CodeView';
-import { ToolSectionView } from './ToolSectionView';
-import { useElapsedTime } from '@/hooks/useElapsedTime';
-import { ToolError } from './ToolError';
-import { knownTools } from '@/components/tools/knownTools';
-import { Metadata } from '@/sync/storageTypes';
-import { useRouter } from 'expo-router';
+
 import { PermissionFooter } from './PermissionFooter';
-import { parseToolUseError } from '@/utils/toolErrorParser';
+import { ToolError } from './ToolError';
+import { ToolSectionView } from './ToolSectionView';
+import { getToolViewComponent } from './views/_all';
 import { formatMCPTitle } from './views/MCPToolView';
+
+import { knownTools } from '@/components/tools/knownTools';
+import { useElapsedTime } from '@/hooks/useElapsedTime';
+import { Metadata } from '@/sync/storageTypes';
+import { Message, ToolCall } from '@/sync/typesMessage';
 import { t } from '@/text';
+import { parseToolUseError } from '@/utils/toolErrorParser';
+
 
 interface ToolViewProps {
     metadata: Metadata | null;

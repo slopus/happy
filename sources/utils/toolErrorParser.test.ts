@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { parseToolUseError, parseAllToolUseErrors, hasToolUseError, isCancelError } from './toolErrorParser';
 
 describe('toolErrorParser', () => {

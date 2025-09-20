@@ -1,5 +1,6 @@
 import React from 'react';
 import { View } from 'react-native';
+
 import { createQRMatrix } from './qrMatrix';
 
 // Check if point is in a locator pattern area

@@ -1,11 +1,12 @@
 import React, { useEffect } from 'react';
 import { ScrollView, View, Text } from 'react-native';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { MarkdownView } from '@/components/markdown/MarkdownView';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { getChangelogEntries, getLatestVersion, setLastViewedVersion } from '@/changelog';
-import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
+import { MarkdownView } from '@/components/markdown/MarkdownView';
+import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
 const styles = StyleSheet.create((theme, runtime) => ({

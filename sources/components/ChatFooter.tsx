@@ -1,8 +1,9 @@
+import { Ionicons } from '@expo/vector-icons';
 import * as React from 'react';
 import { View, Text, ViewStyle, TextStyle } from 'react-native';
-import { Typography } from '@/constants/Typography';
-import { Ionicons } from '@expo/vector-icons';
 import { useUnistyles } from 'react-native-unistyles';
+
+import { Typography } from '@/constants/Typography';
 
 interface ChatFooterProps {
     controlledByUser?: boolean;

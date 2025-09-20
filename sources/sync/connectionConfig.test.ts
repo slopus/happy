@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+
 import {
   CONNECTION_CONFIG,
   LEGACY_CONNECTION_CONFIG,

@@ -1,11 +1,12 @@
+import { Ionicons } from '@expo/vector-icons';
 import React from 'react';
 import { View, Text } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { Typography } from '@/constants/Typography';
 import { Session } from '@/sync/storageTypes';
-import { useSessionStatus, formatPathRelativeToHome } from '@/utils/sessionUtils';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { useSessionStatus, formatPathRelativeToHome } from '@/utils/sessionUtils';
 
 const stylesheet = StyleSheet.create((theme) => ({
   container: {

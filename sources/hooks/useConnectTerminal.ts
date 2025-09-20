@@ -1,14 +1,15 @@
+import { CameraView } from 'expo-camera';
 import * as React from 'react';
 import { Platform } from 'react-native';
-import { CameraView } from 'expo-camera';
+
+import { authApprove } from '@/auth/authApprove';
 import { useAuth } from '@/auth/AuthContext';
 import { decodeBase64 } from '@/encryption/base64';
 import { encryptBox } from '@/encryption/libsodium';
-import { authApprove } from '@/auth/authApprove';
 import { useCheckScannerPermissions } from '@/hooks/useCheckCameraPermissions';
 import { Modal } from '@/modal';
-import { t } from '@/text';
 import { sync } from '@/sync/sync';
+import { t } from '@/text';
 
 interface UseConnectTerminalOptions {
     onSuccess?: () => void;

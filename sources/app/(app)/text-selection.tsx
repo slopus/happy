@@ -1,14 +1,18 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import React from 'react';
 import { View, Text, ScrollView, TextInput, Alert, Pressable } from 'react-native';
-import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
-import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { retrieveTempText } from '@/sync/persistence';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
+
 import { Typography } from '@/constants/Typography';
-import { t } from '@/text';
-import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { Ionicons } from '@expo/vector-icons';
+import { retrieveTempText } from '@/sync/persistence';
+import { t } from '@/text';
+
+
+
 
 export default function TextSelectionScreen() {
   const router = useRouter();

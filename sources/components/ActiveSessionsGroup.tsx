@@ -1,26 +1,31 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import { useRouter } from 'expo-router';
 import React from 'react';
 import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
-import { Text } from '@/components/StyledText';
-import { useRouter } from 'expo-router';
-import { Session, Machine } from '@/sync/storageTypes';
-import { Ionicons } from '@expo/vector-icons';
-import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
-import { Avatar } from './Avatar';
-import { Typography } from '@/constants/Typography';
-import { StatusDot } from './StatusDot';
-import { useAllMachines, useSetting } from '@/sync/storage';
 import { StyleSheet } from 'react-native-unistyles';
-import { isMachineOnline } from '@/utils/machineUtils';
-import { machineSpawnNewSession } from '@/sync/ops';
-import { storage } from '@/sync/storage';
-import { Modal } from '@/modal';
+
+import { Avatar } from './Avatar';
 import { CompactGitStatus } from './CompactGitStatus';
 import { ProjectGitStatus } from './ProjectGitStatus';
-import { t } from '@/text';
-import { useNavigateToSession } from '@/hooks/useNavigateToSession';
-import { useIsTablet } from '@/utils/responsive';
+import { StatusDot } from './StatusDot';
+
 import { ContextMenu, ContextMenuAction, useContextMenu } from '@/components/ContextMenu';
-import * as Clipboard from 'expo-clipboard';
+import { Text } from '@/components/StyledText';
+import { Typography } from '@/constants/Typography';
+import { useNavigateToSession } from '@/hooks/useNavigateToSession';
+import { Modal } from '@/modal';
+import { machineSpawnNewSession } from '@/sync/ops';
+import { useAllMachines, useSetting } from '@/sync/storage';
+import { storage } from '@/sync/storage';
+import { Session, Machine } from '@/sync/storageTypes';
+import { t } from '@/text';
+import { isMachineOnline } from '@/utils/machineUtils';
+import { useIsTablet } from '@/utils/responsive';
+import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from '@/utils/sessionUtils';
+
+
+
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
   container: {

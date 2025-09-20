@@ -1,8 +1,9 @@
 import React from 'react';
 import { View, Text, Platform, Pressable } from 'react-native';
-import { Modal } from '@/modal';
 import { StyleSheet } from 'react-native-unistyles';
+
 import { Typography } from '@/constants/Typography';
+import { Modal } from '@/modal';
 import { t } from '@/text';
 
 export interface DaemonCleanupModalProps {

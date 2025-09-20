@@ -1,13 +1,16 @@
-import React from 'react';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import React from 'react';
+import { Linking, Platform } from 'react-native';
+import { useUnistyles } from 'react-native-unistyles';
+
 import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
-import { useUnistyles } from 'react-native-unistyles';
-import { useUpdates } from '@/hooks/useUpdates';
+
+
 import { useChangelog } from '@/hooks/useChangelog';
 import { useNativeUpdate } from '@/hooks/useNativeUpdate';
-import { useRouter } from 'expo-router';
-import { Linking, Platform } from 'react-native';
+import { useUpdates } from '@/hooks/useUpdates';
 import { t } from '@/text';
 
 export const UpdateBanner = React.memo(() => {

@@ -1,24 +1,26 @@
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import React, { useCallback } from 'react';
 import { View, Text, Animated } from 'react-native';
-import { useRouter, useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
-import { Typography } from '@/constants/Typography';
+import { useUnistyles } from 'react-native-unistyles';
+
+import type { Session } from '@/sync/storageTypes';
+
+import { Avatar } from '@/components/Avatar';
+import { CliManagement } from '@/components/CliManagement';
+import { CodeView } from '@/components/CodeView';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
-import { Avatar } from '@/components/Avatar';
-import { useSession } from '@/sync/storage';
-import type { Session } from '@/sync/storageTypes';
-import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
-import * as Clipboard from 'expo-clipboard';
+import { layout } from '@/components/layout';
+import { Typography } from '@/constants/Typography';
 import { Modal } from '@/modal';
 import { sessionKill } from '@/sync/ops';
-import { useUnistyles } from 'react-native-unistyles';
-import { layout } from '@/components/layout';
+import { useSession } from '@/sync/storage';
 import { t } from '@/text';
+import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
-import { CodeView } from '@/components/CodeView';
-import { CliManagement } from '@/components/CliManagement';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {

@@ -110,12 +110,14 @@
  * - Updated internal state for future processing
  */
 
-import { Message, ToolCall } from '../typesMessage';
-import { AgentEvent, NormalizedMessage, UsageData } from '../typesRaw';
-import { createTracer, traceMessages, TracerState } from './reducerTracer';
 import { AgentState } from '../storageTypes';
+import { Message, ToolCall } from '../typesMessage';
 import { MessageMeta } from '../typesMessageMeta';
+import { AgentEvent, NormalizedMessage, UsageData } from '../typesRaw';
+
 import { parseMessageAsEvent } from './messageToEvent';
+import { createTracer, traceMessages, TracerState } from './reducerTracer';
+
 
 type ReducerMessage = {
     id: string;

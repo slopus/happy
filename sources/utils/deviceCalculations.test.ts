@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+
 import { calculateDeviceDimensions, determineDeviceType, calculateHeaderHeight } from './deviceCalculations';
 
 describe('responsive utilities', () => {
