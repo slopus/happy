@@ -265,7 +265,7 @@ export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
                     accountId: userId,
                     tag: tag,
                     metadata: metadata,
-                    dataEncryptionKey: dataEncryptionKey ? Buffer.from(dataEncryptionKey, 'base64') : undefined
+                    dataEncryptionKey: dataEncryptionKey ? new Uint8Array(Buffer.from(dataEncryptionKey, 'base64')) : undefined
                 }
             });
             log({ module: 'session-create', sessionId: session.id, userId }, `Session created: ${session.id}`);

@@ -297,10 +297,11 @@ model AccessKey {
 //
 
 enum RelationshipStatus {
+    none
+    requested
     pending
-    accepted
+    friend
     rejected
-    removed
 }
 
 model UserRelationship {

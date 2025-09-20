@@ -132,24 +132,8 @@ export type UpdateEvent = {
     artifactId: string;
 } | {
     type: 'relationship-updated';
-    fromUserId: string;
-    toUserId: string;
-    status: 'pending' | 'accepted' | 'rejected' | 'removed';
-    action: 'created' | 'updated' | 'deleted';
-    fromUser?: {
-        id: string;
-        firstName: string;
-        lastName: string | null;
-        avatar: any | null;
-        username: string;
-    };
-    toUser?: {
-        id: string;
-        firstName: string;
-        lastName: string | null;
-        avatar: any | null;
-        username: string;
-    };
+    uid: string;
+    status: 'none' | 'requested' | 'pending' | 'friend' | 'rejected';
     timestamp: number;
 };
 
@@ -553,24 +537,8 @@ export function buildDeleteArtifactUpdate(artifactId: string, updateSeq: number,
 
 export function buildRelationshipUpdatedEvent(
     data: {
-        fromUserId: string;
-        toUserId: string;
-        status: 'pending' | 'accepted' | 'rejected' | 'removed';
-        action: 'created' | 'updated' | 'deleted';
-        fromUser?: {
-            id: string;
-            firstName: string;
-            lastName: string | null;
-            avatar: any | null;
-            username: string;
-        };
-        toUser?: {
-            id: string;
-            firstName: string;
-            lastName: string | null;
-            avatar: any | null;
-            username: string;
-        };
+        uid: string;
+        status: 'none' | 'requested' | 'pending' | 'friend' | 'rejected';
         timestamp: number;
     },
     updateSeq: number,
