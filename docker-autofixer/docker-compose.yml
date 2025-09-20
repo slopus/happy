@@ -6,7 +6,7 @@ services:
       dockerfile: Dockerfile
     container_name: github-autofixer
     ports:
-      - "3000:3000"
+      - "9001:3000"
     environment:
       - NODE_ENV=production
       - PORT=3000
@@ -72,7 +72,7 @@ services:
     image: redis:7-alpine
     container_name: autofixer-redis
     ports:
-      - "6380:6379"
+      - "9002:6379"
     volumes:
       - redis_data:/data
     networks:
@@ -85,8 +85,8 @@ services:
     image: nginx:alpine
     container_name: autofixer-nginx
     ports:
-      - "80:80"
-      - "443:443"
+      - "9003:80"
+      - "9004:443"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf:ro
       - ./ssl:/etc/nginx/ssl:ro
@@ -101,7 +101,7 @@ services:
     image: prom/prometheus:latest
     container_name: autofixer-prometheus
     ports:
-      - "9090:9090"
+      - "9005:9090"
     volumes:
       - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
@@ -119,7 +119,7 @@ services:
     image: grafana/grafana:latest
     container_name: autofixer-grafana
     ports:
-      - "3001:3000"
+      - "9006:3000"
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=admin
     volumes:

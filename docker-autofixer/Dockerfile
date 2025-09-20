@@ -17,6 +17,10 @@ RUN apk add --no-cache \
 # Install Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
 
+# Configure git user for AutoFixer commits
+RUN git config --global user.email "autofixer@happy.engineering" && \
+    git config --global user.name "Happy AutoFixer"
+
 # Stage 2: Setup MCP servers and tools
 FROM base AS tools
 
