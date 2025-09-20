@@ -371,19 +371,33 @@ class DependencyResolver {
   extractImports(content) {
     const imports = [];
 
+    // Remove comments and string literals first to avoid false matches
+    const cleanContent = content
+      .replace(/\/\*[\s\S]*?\*\//g, '') // Remove block comments
+      .replace(/\/\/.*$/gm, '') // Remove line comments
+      .replace(/`[\s\S]*?`/g, '""') // Replace template literals with empty strings
+      .replace(/'[^'\\]*(?:\\.[^'\\]*)*'/g, '""') // Replace single-quoted strings
+      .replace(/"[^"\\]*(?:\\.[^"\\]*)*"/g, '""'); // Replace double-quoted strings except import/require
+
     // Match ES6 imports
     const es6ImportRegex = /import\s+.*?from\s+['"]([^'"]+)['"]/g;
     let match;
 
     while ((match = es6ImportRegex.exec(content)) !== null) {
-      imports.push(match[1]);
+      const importPath = match[1].trim();
+      if (importPath && !importPath.includes(' ') && !importPath.includes('\n')) {
+        imports.push(importPath);
+      }
     }
 
     // Match require statements
     const requireRegex = /require\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
 
     while ((match = requireRegex.exec(content)) !== null) {
-      imports.push(match[1]);
+      const importPath = match[1].trim();
+      if (importPath && !importPath.includes(' ') && !importPath.includes('\n')) {
+        imports.push(importPath);
+      }
     }
 
     return imports;
@@ -557,20 +571,40 @@ class DependencyResolver {
   sanitizePackageName(name) {
     if (!name || typeof name !== 'string') return null;
 
-    // Handle template literals and undefined values first
-    if (name.includes('${') || name.includes('undefined') || name === 'modulename') {
+    // Handle template literals, undefined values, and other invalid patterns
+    if (
+      name.includes('${') ||
+      name.includes('undefined') ||
+      name === 'modulename' ||
+      name.includes('//') ||
+      name.includes('/*') ||
+      name.includes('Convert') ||
+      name.includes('CommonJS') ||
+      name.includes('module.exports') ||
+      name.length > 100 ||
+      name.includes(' ') ||
+      name.includes('\n') ||
+      name.includes('\t')
+    ) {
       return null;
     }
 
     // Fix common package name issues
     let sanitized = name.trim();
 
+    // Early exit for invalid patterns
+    if (!sanitized || sanitized.length < 1 || sanitized.length > 50) {
+      return null;
+    }
+
     // Fix scoped package names that lost the @ prefix
     if (sanitized.includes('/') && !sanitized.startsWith('@')) {
       // Handle cases like "expo/metro-config" -> "@expo/metro-config"
       const parts = sanitized.split('/');
-      if (parts.length === 2) {
+      if (parts.length === 2 && parts[0].length > 0 && parts[1].length > 0) {
         sanitized = `@${parts[0]}/${parts[1]}`;
+      } else {
+        return null; // Invalid scoped package format
       }
     }
 
@@ -580,6 +614,11 @@ class DependencyResolver {
       .replace(/^[._]/, '')
       .replace(/[._]$/, '');
 
+    // Validate final package name format
+    if (!sanitized || !/^(@?[a-z0-9-~][a-z0-9-._~]*\/)?[a-z0-9-~][a-z0-9-._~]*$/.test(sanitized)) {
+      return null;
+    }
+
     // Filter out built-in Node.js modules that don't need to be installed
     const builtInModules = ['fs', 'path', 'crypto', 'util', 'child_process', 'http', 'https', 'os', 'stream'];
     if (builtInModules.includes(sanitized)) {
@@ -587,7 +626,7 @@ class DependencyResolver {
     }
 
     // Check if it's a valid package name
-    if (sanitized.length === 0) {
+    if (sanitized.length === 0 || sanitized.length > 50) {
       return null;
     }
 
