@@ -1,7 +1,17 @@
 import { Prisma } from "@prisma/client";
 import { RelationshipStatus } from "@prisma/client";
 
-export async function relationshipSet(tx: Prisma.TransactionClient, from: string, to: string, status: RelationshipStatus) {
+export async function relationshipSet(tx: Prisma.TransactionClient, from: string, to: string, status: RelationshipStatus, lastNotifiedAt?: Date) {
+    // Get existing relationship to preserve lastNotifiedAt
+    const existing = await tx.userRelationship.findUnique({
+        where: {
+            fromUserId_toUserId: {
+                fromUserId: from,
+                toUserId: to
+            }
+        }
+    });
+    
     if (status === RelationshipStatus.friend) {
         await tx.userRelationship.upsert({
             where: {
@@ -14,11 +24,14 @@ export async function relationshipSet(tx: Prisma.TransactionClient, from: string
                 fromUserId: from,
                 toUserId: to,
                 status,
-                acceptedAt: new Date()
+                acceptedAt: new Date(),
+                lastNotifiedAt: lastNotifiedAt || null
             },
             update: {
                 status,
-                acceptedAt: new Date()
+                acceptedAt: new Date(),
+                // Preserve existing lastNotifiedAt, only update if explicitly provided
+                lastNotifiedAt: lastNotifiedAt || existing?.lastNotifiedAt || undefined
             }
         });
     } else {
@@ -33,11 +46,14 @@ export async function relationshipSet(tx: Prisma.TransactionClient, from: string
                 fromUserId: from,
                 toUserId: to,
                 status,
-                acceptedAt: null
+                acceptedAt: null,
+                lastNotifiedAt: lastNotifiedAt || null
             },
             update: {
                 status,
-                acceptedAt: null
+                acceptedAt: null,
+                // Preserve existing lastNotifiedAt, only update if explicitly provided
+                lastNotifiedAt: lastNotifiedAt || existing?.lastNotifiedAt || undefined
             }
         });
     }

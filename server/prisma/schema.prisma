@@ -308,14 +308,15 @@ enum RelationshipStatus {
 }
 
 model UserRelationship {
-    fromUserId String
-    fromUser   Account            @relation("RelationshipsFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
-    toUserId   String
-    toUser     Account            @relation("RelationshipsTo", fields: [toUserId], references: [id], onDelete: Cascade)
-    status     RelationshipStatus @default(pending)
-    createdAt  DateTime           @default(now())
-    updatedAt  DateTime           @updatedAt
-    acceptedAt DateTime?
+    fromUserId     String
+    fromUser       Account            @relation("RelationshipsFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+    toUserId       String
+    toUser         Account            @relation("RelationshipsTo", fields: [toUserId], references: [id], onDelete: Cascade)
+    status         RelationshipStatus @default(pending)
+    createdAt      DateTime           @default(now())
+    updatedAt      DateTime           @updatedAt
+    acceptedAt     DateTime?
+    lastNotifiedAt DateTime?
 
     @@id([fromUserId, toUserId])
     @@index([toUserId, status])

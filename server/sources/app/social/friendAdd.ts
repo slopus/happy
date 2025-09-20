@@ -4,7 +4,15 @@ import { db } from "@/storage/db";
 import { RelationshipStatus } from "@prisma/client";
 import { relationshipSet } from "./relationshipSet";
 import { relationshipGet } from "./relationshipGet";
+import { sendFriendRequestNotification, sendFriendshipEstablishedNotification } from "./friendNotification";
 
+/**
+ * Add a friend or accept a friend request.
+ * Handles:
+ * - Accepting incoming friend requests (both users become friends)
+ * - Sending new friend requests
+ * - Sending appropriate notifications with 24-hour cooldown
+ */
 export async function friendAdd(ctx: Context, uid: string): Promise<UserProfile | null> {
     // Prevent self-friendship
     if (ctx.uid === uid) {
@@ -40,6 +48,9 @@ export async function friendAdd(ctx: Context, uid: string): Promise<UserProfile 
             await relationshipSet(tx, targetUser.id, currentUser.id, RelationshipStatus.friend);
             await relationshipSet(tx, currentUser.id, targetUser.id, RelationshipStatus.friend);
 
+            // Send friendship established notifications to both users
+            await sendFriendshipEstablishedNotification(tx, currentUser.id, targetUser.id);
+
             // Return the target user profile
             return buildUserProfile(targetUser, RelationshipStatus.friend);
         }
@@ -53,6 +64,9 @@ export async function friendAdd(ctx: Context, uid: string): Promise<UserProfile 
             if (targetUserRelationship === RelationshipStatus.none) {
                 await relationshipSet(tx, targetUser.id, currentUser.id, RelationshipStatus.pending);
             }
+
+            // Send friend request notification to the receiver
+            await sendFriendRequestNotification(tx, targetUser.id, currentUser.id);
 
             // Return the target user profile
             return buildUserProfile(targetUser, RelationshipStatus.requested);
