@@ -93,3 +93,12 @@ export function getAvatarUrl(profile: Profile): string | null {
 export function getBio(profile: Profile): string | null {
   return profile.github?.bio || null;
 }
+
+export function getDisplayNameWithAnonymous(profile: Profile, isAnonymous: boolean): string {
+  if (isAnonymous) {
+    return 'Anonymous';
+  }
+
+  const displayName = getDisplayName(profile);
+  return displayName || 'Anonymous';
+}

@@ -25,6 +25,8 @@ export const SettingsSchema = z.object({
     path: z.string(),
   })).describe('Last 10 machine-path combinations, ordered by most recent first'),
   lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
+  defaultCoder: z.enum(['claude', 'codex', 'ask']).describe('Default coder/AI provider for new sessions: claude, codex, or ask each time'),
+  anonymousMode: z.boolean().describe('Whether to use anonymous mode to hide user identity and personal information'),
 });
 
 //
@@ -64,6 +66,8 @@ export const settingsDefaults: Settings = {
   preferredLanguage: null,
   recentMachinePaths: [],
   lastUsedAgent: null,
+  defaultCoder: 'claude',
+  anonymousMode: false,
 };
 Object.freeze(settingsDefaults);
 

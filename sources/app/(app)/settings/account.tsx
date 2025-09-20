@@ -23,6 +23,7 @@ import { Image } from 'expo-image';
 import { useHappyAction } from '@/hooks/useHappyAction';
 import { disconnectGitHub } from '@/sync/apiGithub';
 import { disconnectService } from '@/sync/apiServices';
+import { isPasswordProtectionEnabled, setPasswordProtection, clearPasswordData } from '@/auth/passwordSecurity';
 
 export default React.memo(() => {
   const { theme } = useUnistyles();
@@ -44,6 +45,24 @@ export default React.memo(() => {
   // Profile display values
   const displayName = getDisplayName(profile);
   const githubUsername = profile.github?.login;
+
+  // Password protection state
+  const [passwordProtectionEnabled, setPasswordProtectionEnabled] = React.useState(false);
+
+  // Check password protection status on mount
+  React.useEffect(() => {
+    const checkPasswordProtection = async () => {
+      try {
+        const isEnabled = await isPasswordProtectionEnabled();
+        setPasswordProtectionEnabled(isEnabled);
+      } catch (error) {
+        console.error('Failed to check password protection:', error);
+        setPasswordProtectionEnabled(false);
+      }
+    };
+
+    checkPasswordProtection();
+  }, []);
 
   // GitHub disconnection
   const [disconnecting, handleDisconnectGitHub] = useHappyAction(async () => {
@@ -91,6 +110,36 @@ export default React.memo(() => {
       Modal.alert(t('common.success'), t('settingsAccount.secretKeyCopied'));
     } catch (error) {
       Modal.alert(t('common.error'), t('settingsAccount.secretKeyCopyFailed'));
+    }
+  };
+
+  // Password management handlers
+  const handleSetupPassword = () => {
+    router.push('/password/setup');
+  };
+
+  const handleChangePassword = () => {
+    router.push('/password/change');
+  };
+
+  const handleDisablePassword = async () => {
+    const confirmed = await Modal.confirm(
+      t('password.disablePassword'),
+      t('password.disablePasswordMessage'),
+      { confirmText: t('password.disablePassword'), destructive: true },
+    );
+
+    if (confirmed) {
+      try {
+        await setPasswordProtection(false);
+        await clearPasswordData();
+        setPasswordProtectionEnabled(false);
+        await auth.checkPasswordProtection();
+        Modal.alert(t('common.success'), t('password.passwordDisabled'));
+      } catch (error) {
+        console.error('Failed to disable password protection:', error);
+        Modal.alert(t('password.error'), t('errors.operationFailed'));
+      }
     }
   };
 
@@ -308,6 +357,37 @@ export default React.memo(() => {
             }
             showChevron={false}
           />
+        </ItemGroup>
+
+        {/* Password Security */}
+        <ItemGroup
+          title={t('settingsAccount.passwordSecurity')}
+          footer={t('settingsAccount.passwordSecurityDescription')}
+        >
+          {passwordProtectionEnabled ? (
+            <>
+              <Item
+                title={t('password.changePassword')}
+                subtitle={t('settingsAccount.changePasswordSubtitle')}
+                icon={<Ionicons name="key-outline" size={29} color="#007AFF" />}
+                onPress={handleChangePassword}
+              />
+              <Item
+                title={t('password.disablePassword')}
+                subtitle={t('settingsAccount.disablePasswordSubtitle')}
+                icon={<Ionicons name="shield-outline" size={29} color="#FF9500" />}
+                onPress={handleDisablePassword}
+                destructive
+              />
+            </>
+          ) : (
+            <Item
+              title={t('password.setupPassword')}
+              subtitle={t('settingsAccount.setupPasswordSubtitle')}
+              icon={<Ionicons name="shield-checkmark-outline" size={29} color="#34C759" />}
+              onPress={handleSetupPassword}
+            />
+          )}
         </ItemGroup>
 
         {/* Danger Zone */}

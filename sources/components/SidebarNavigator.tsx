@@ -3,13 +3,22 @@ import * as React from 'react';
 import { Drawer } from 'expo-router/drawer';
 import { useIsTablet } from '@/utils/responsive';
 import { SidebarView } from './SidebarView';
-import { Slot } from 'expo-router';
+import { Slot, useRouter } from 'expo-router';
 import { useWindowDimensions } from 'react-native';
 
 export const SidebarNavigator = React.memo(() => {
   const auth = useAuth();
   const isTablet = useIsTablet();
-  const showPermanentDrawer = auth.isAuthenticated && isTablet;
+  const router = useRouter();
+  const showPermanentDrawer = auth.isAuthenticated && auth.isSessionUnlocked && isTablet;
+
+  // Handle password unlock flow
+  React.useEffect(() => {
+    if (auth.isAuthenticated && auth.isPasswordProtected && !auth.isSessionUnlocked) {
+      // User is authenticated but session is locked, redirect to password unlock
+      router.replace('/password/unlock');
+    }
+  }, [auth.isAuthenticated, auth.isPasswordProtected, auth.isSessionUnlocked, router]);
   const { width: windowWidth } = useWindowDimensions();
 
   // Calculate drawer width only when needed

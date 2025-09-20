@@ -288,6 +288,36 @@ export default function RootLayout() {
           headerBackTitle: t('common.back'),
         }}
       />
+      <Stack.Screen
+        name="password/unlock"
+        options={{
+          headerShown: false,
+        }}
+      />
+      <Stack.Screen
+        name="password/setup"
+        options={{
+          headerShown: true,
+          headerTitle: t('password.setupPassword'),
+          headerBackTitle: t('common.back'),
+        }}
+      />
+      <Stack.Screen
+        name="password/change"
+        options={{
+          headerShown: true,
+          headerTitle: t('password.changePassword'),
+          headerBackTitle: t('common.back'),
+        }}
+      />
+      <Stack.Screen
+        name="password/recovery"
+        options={{
+          headerShown: true,
+          headerTitle: t('password.recoveryTitle'),
+          headerBackTitle: t('common.back'),
+        }}
+      />
     </Stack>
   );
 }

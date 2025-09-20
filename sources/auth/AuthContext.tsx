@@ -5,12 +5,17 @@ import * as Updates from 'expo-updates';
 import { clearPersistence } from '@/sync/persistence';
 import { Platform } from 'react-native';
 import { trackLogout } from '@/track';
+import { isPasswordProtectionEnabled, clearPasswordData } from '@/auth/passwordSecurity';
 
 interface AuthContextType {
     isAuthenticated: boolean;
     credentials: AuthCredentials | null;
+    isPasswordProtected: boolean;
+    isSessionUnlocked: boolean;
     login: (token: string, secret: string) => Promise<void>;
     logout: () => Promise<void>;
+    unlockSession: () => void;
+    checkPasswordProtection: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -18,6 +23,29 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children, initialCredentials }: { children: ReactNode; initialCredentials: AuthCredentials | null }) {
   const [isAuthenticated, setIsAuthenticated] = useState(!!initialCredentials);
   const [credentials, setCredentials] = useState<AuthCredentials | null>(initialCredentials);
+  const [isPasswordProtected, setIsPasswordProtected] = useState(false);
+  const [isSessionUnlocked, setIsSessionUnlocked] = useState(false);
+
+  // Check password protection status on mount
+  useEffect(() => {
+    checkPasswordProtection();
+  }, []);
+
+  const checkPasswordProtection = async () => {
+    try {
+      const hasPassword = await isPasswordProtectionEnabled();
+      setIsPasswordProtected(hasPassword);
+
+      // If no password protection, session is automatically unlocked
+      if (!hasPassword) {
+        setIsSessionUnlocked(true);
+      }
+    } catch (error) {
+      console.error('Failed to check password protection:', error);
+      setIsPasswordProtected(false);
+      setIsSessionUnlocked(true);
+    }
+  };
 
   const login = async (token: string, secret: string) => {
     const newCredentials: AuthCredentials = { token, secret };
@@ -31,15 +59,24 @@ export function AuthProvider({ children, initialCredentials }: { children: React
     }
   };
 
+  const unlockSession = () => {
+    setIsSessionUnlocked(true);
+  };
+
   const logout = async () => {
     trackLogout();
     clearPersistence();
     await TokenStorage.removeCredentials();
-        
+
+    // Clear password data as well
+    await clearPasswordData();
+
     // Update React state to ensure UI consistency
     setCredentials(null);
     setIsAuthenticated(false);
-        
+    setIsPasswordProtected(false);
+    setIsSessionUnlocked(false);
+
     if (Platform.OS === 'web') {
       window.location.reload();
     } else {
@@ -57,8 +94,12 @@ export function AuthProvider({ children, initialCredentials }: { children: React
       value={{
         isAuthenticated,
         credentials,
+        isPasswordProtected,
+        isSessionUnlocked,
         login,
         logout,
+        unlockSession,
+        checkPasswordProtection,
       }}
     >
       {children}

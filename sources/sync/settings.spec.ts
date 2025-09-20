@@ -110,6 +110,8 @@ describe('settings', () => {
         preferredLanguage: null,
         recentMachinePaths: [],
         lastUsedAgent: null,
+        defaultCoder: 'claude',
+        anonymousMode: false,
       };
       const delta: Partial<Settings> = {
         viewInline: true,
@@ -132,6 +134,7 @@ describe('settings', () => {
         preferredLanguage: null,
         recentMachinePaths: [],
         lastUsedAgent: null,
+        defaultCoder: 'claude',
       });
     });
 
@@ -154,6 +157,8 @@ describe('settings', () => {
         preferredLanguage: null,
         recentMachinePaths: [],
         lastUsedAgent: null,
+        defaultCoder: 'claude',
+        anonymousMode: false,
       };
       const delta: Partial<Settings> = {};
       expect(applySettings(currentSettings, delta)).toEqual({
@@ -162,6 +167,7 @@ describe('settings', () => {
         avatarStyle: 'gradient',
         recentMachinePaths: [],
         lastUsedAgent: null,
+        defaultCoder: 'claude',
       });
     });
 
@@ -184,6 +190,8 @@ describe('settings', () => {
         preferredLanguage: null,
         recentMachinePaths: [],
         lastUsedAgent: null,
+        defaultCoder: 'claude',
+        anonymousMode: false,
       };
       const delta: Partial<Settings> = {
         viewInline: false,
@@ -206,6 +214,7 @@ describe('settings', () => {
         preferredLanguage: null,
         recentMachinePaths: [],
         lastUsedAgent: null,
+        defaultCoder: 'claude',
       });
     });
 
@@ -228,6 +237,8 @@ describe('settings', () => {
         preferredLanguage: null,
         recentMachinePaths: [],
         lastUsedAgent: null,
+        defaultCoder: 'claude',
+        anonymousMode: false,
       };
       expect(applySettings(currentSettings, {})).toEqual({
         ...settingsDefaults,
@@ -269,6 +280,8 @@ describe('settings', () => {
         preferredLanguage: null,
         recentMachinePaths: [],
         lastUsedAgent: null,
+        defaultCoder: 'claude',
+        anonymousMode: false,
       };
       const delta: any = {
         viewInline: false,

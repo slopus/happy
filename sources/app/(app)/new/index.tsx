@@ -91,9 +91,10 @@ export default function NewSessionScreen() {
   const safeArea = useSafeAreaInsets();
   const screenWidth = useWindowDimensions().width;
 
-  // Load recent machine paths and last used agent from settings
+  // Load recent machine paths and default coder from settings
   const recentMachinePaths = useSetting('recentMachinePaths');
   const lastUsedAgent = useSetting('lastUsedAgent');
+  const defaultCoder = useSetting('defaultCoder');
 
   //
   // Machines state
@@ -190,21 +191,63 @@ export default function NewSessionScreen() {
   //
 
   const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
-    // Initialize with last used agent if valid, otherwise default to 'claude'
+    // Initialize based on defaultCoder setting
+    if (defaultCoder === 'claude' || defaultCoder === 'codex') {
+      return defaultCoder;
+    }
+    // If defaultCoder is 'ask', fall back to lastUsedAgent or 'claude'
     if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
       return lastUsedAgent;
     }
     return 'claude';
   });
 
+  // Track whether we need to show coder selection (when defaultCoder is 'ask')
+  const [showCoderSelection, setShowCoderSelection] = React.useState(defaultCoder === 'ask');
+
   const handleAgentClick = React.useCallback(() => {
+    // If defaultCoder is 'ask', show the selection modal instead of toggling
+    if (defaultCoder === 'ask') {
+      setShowCoderSelection(true);
+      return;
+    }
+
+    // Otherwise, toggle between claude and codex as usual
     setAgentType(prev => {
       const newAgent = prev === 'claude' ? 'codex' : 'claude';
-      // Save the new selection immediately
+      // Save the new selection immediately (but don't override defaultCoder)
       sync.applySettings({ lastUsedAgent: newAgent });
       return newAgent;
     });
+  }, [defaultCoder]);
+
+  // Handle coder selection from modal
+  const handleCoderSelection = React.useCallback((selectedCoder: 'claude' | 'codex') => {
+    setAgentType(selectedCoder);
+    setShowCoderSelection(false);
+    // Save as lastUsedAgent for future fallback
+    sync.applySettings({ lastUsedAgent: selectedCoder });
   }, []);
+
+  // Show coder selection modal when needed
+  React.useEffect(() => {
+    if (showCoderSelection) {
+      Modal.alert(
+        t('settingsFeatures.defaultCoder'),
+        t('settingsFeatures.defaultCoderDescription'),
+        [
+          {
+            text: t('settingsFeatures.defaultCoderClaude'),
+            onPress: () => handleCoderSelection('claude'),
+          },
+          {
+            text: t('settingsFeatures.defaultCoderCodex'),
+            onPress: () => handleCoderSelection('codex'),
+          },
+        ],
+      );
+    }
+  }, [showCoderSelection, handleCoderSelection]);
 
   //
   // Path selection
@@ -367,6 +410,7 @@ export default function NewSessionScreen() {
           </View>
         </View>
       </View>
+
     </KeyboardAvoidingView>
   );
 }

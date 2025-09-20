@@ -20,6 +20,7 @@ import { HomeHeader, HomeHeaderNotAuth } from '@/components/HomeHeader';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 import { t } from '@/text';
+import { PasswordMigrationBanner } from '@/components/PasswordMigrationBanner';
 
 export default function Home() {
   const auth = useAuth();
@@ -67,6 +68,7 @@ function Authenticated() {
         )}
         <View style={styles.loadingContainerWrapper}>
           <UpdateBanner />
+          <PasswordMigrationBanner />
           <View style={styles.loadingContainer}>
             <ActivityIndicator size="small" color={theme.colors.textSecondary} />
           </View>
@@ -79,6 +81,7 @@ function Authenticated() {
   const emptyState = (
     <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, flexDirection: 'column', backgroundColor: theme.colors.groupped.background }}>
       <UpdateBanner />
+      <PasswordMigrationBanner />
       <View style={{ flex: 1, flexBasis: 0, flexGrow: 1 }}>
         <EmptyMainScreen />
       </View>
@@ -94,7 +97,10 @@ function Authenticated() {
       )}
       <View style={styles.container}>
         {!sessionListViewData || sessionListViewData.length === 0 ? emptyState : (
-          <SessionsList />
+          <>
+            <PasswordMigrationBanner />
+            <SessionsList />
+          </>
         )}
       </View>
       <FABWide onPress={handleNewSession} />
