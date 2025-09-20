@@ -2,17 +2,17 @@
 # Stage 1: Base with Node.js and system dependencies
 FROM node:20-alpine AS base
 
-# Install system dependencies
+# Install essential system dependencies
 RUN apk add --no-cache \
     git \
     curl \
     bash \
     python3 \
     py3-pip \
-    openjdk11-jre \
-    docker-cli \
     build-base \
-    linux-headers
+    linux-headers \
+    zip \
+    unzip
 
 # Install Claude Code CLI
 RUN npm install -g @anthropic-ai/claude-code
@@ -26,14 +26,20 @@ WORKDIR /app
 COPY package.json ./
 RUN npm install
 
-# Install global tools
+# Install global tools for React Native development
 RUN npm install -g \
     @biomejs/biome \
     eslint \
     typescript \
     expo-cli \
     @expo/cli \
-    exa-mcp-server
+    react-native-cli \
+    eas-cli \
+    @react-native-community/cli
+
+# Skip Android SDK for faster builds - can be added later if needed
+# ENV ANDROID_HOME=/opt/android-sdk
+# ENV PATH=${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools
 
 # Stage 3: Final container
 FROM tools AS final

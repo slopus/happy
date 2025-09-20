@@ -1,2 +1,0 @@
-# Exclude Docker AutoFixer (separate Node.js service)
-docker-autofixer/
