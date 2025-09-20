@@ -174,6 +174,8 @@ export const es: TranslationStructure = {
         commandPaletteDisabled: 'Acceso rápido a comandos deshabilitado',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pulsación larga abre modal de copiado',
+        hideInactiveSessions: 'Ocultar sesiones inactivas',
+        hideInactiveSessionsSubtitle: 'Muestra solo los chats activos en tu lista',
     },
 
     errors: {
