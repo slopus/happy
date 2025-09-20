@@ -23,6 +23,7 @@ model Account {
     id              String      @id @default(cuid())
     publicKey       String      @unique
     seq             Int         @default(0)
+    feedSeq         BigInt      @default(0)
     createdAt       DateTime    @default(now())
     updatedAt       DateTime    @updatedAt
     settings        String?
@@ -49,6 +50,7 @@ model Account {
     RelationshipsTo     UserRelationship[]    @relation("RelationshipsTo")
     Artifact            Artifact[]
     AccessKey           AccessKey[]
+    UserFeedItem        UserFeedItem[]
 }
 
 model TerminalAuthRequest {
@@ -318,4 +320,24 @@ model UserRelationship {
     @@id([fromUserId, toUserId])
     @@index([toUserId, status])
     @@index([fromUserId, status])
+}
+
+//
+// Feed
+//
+
+model UserFeedItem {
+    id        String   @id @default(cuid())
+    userId    String
+    user      Account  @relation(fields: [userId], references: [id], onDelete: Cascade)
+    counter   BigInt
+    repeatKey String?
+    /// [FeedBody]
+    body      Json
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([userId, counter])
+    @@unique([userId, repeatKey])
+    @@index([userId, counter(sort: Desc)])
 }

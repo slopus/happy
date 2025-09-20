@@ -12,5 +12,3 @@ export class Context {
         this.uid = uid;
     }
 }
-
-export type Tx = Prisma.TransactionClient | PrismaClient;
