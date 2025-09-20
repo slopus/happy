@@ -26,6 +26,7 @@ import { tracking } from '@/track/tracking';
 import { useTrackScreens } from '@/track/useTrackScreens';
 // import * as SystemUI from 'expo-system-ui';
 import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
+import { applyDesktopWindowSizing, initializeWindowSizeMonitoring } from '@/utils/desktopWindow';
 
 
 export {
@@ -148,6 +149,10 @@ export default function RootLayout() {
           })();
         }
         await sodium.ready;
+
+        // Initialize desktop window sizing
+        applyDesktopWindowSizing();
+
         const credentials = await TokenStorage.getCredentials();
         console.log('credentials', credentials);
         if (credentials) {
@@ -160,6 +165,14 @@ export default function RootLayout() {
       }
     })();
   }, []);
+
+  // Initialize window resize monitoring for desktop
+  React.useEffect(() => {
+    if (initState) {
+      const cleanup = initializeWindowSizeMonitoring();
+      return cleanup;
+    }
+  }, [initState]);
 
   React.useEffect(() => {
     if (initState) {

@@ -27,6 +27,9 @@ export const SettingsSchema = z.object({
   lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
   defaultCoder: z.enum(['claude', 'codex', 'ask']).describe('Default coder/AI provider for new sessions: claude, codex, or ask each time'),
   anonymousMode: z.boolean().describe('Whether to use anonymous mode to hide user identity and personal information'),
+  desktopWindowWidth: z.number().nullable().describe('Preferred desktop window width (null for auto-sizing)'),
+  desktopWindowHeight: z.number().nullable().describe('Preferred desktop window height (null for auto-sizing)'),
+  desktopWindowMaximized: z.boolean().describe('Whether desktop window should be maximized'),
 });
 
 //
@@ -68,6 +71,9 @@ export const settingsDefaults: Settings = {
   lastUsedAgent: null,
   defaultCoder: 'claude',
   anonymousMode: false,
+  desktopWindowWidth: null,
+  desktopWindowHeight: null,
+  desktopWindowMaximized: false,
 };
 Object.freeze(settingsDefaults);
 

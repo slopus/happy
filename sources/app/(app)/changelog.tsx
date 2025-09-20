@@ -5,11 +5,10 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 import { getChangelogEntries, getLatestVersion, setLastViewedVersion } from '@/changelog';
 import { layout } from '@/components/layout';
-import { MarkdownView } from '@/components/markdown/MarkdownView';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 
-const styles = StyleSheet.create((theme, runtime) => ({
+const styles = StyleSheet.create((theme) => ({
   container: {
     flex: 1,
     backgroundColor: theme.colors.surface,

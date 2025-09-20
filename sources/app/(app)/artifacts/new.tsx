@@ -1,9 +1,7 @@
-import { Ionicons } from '@expo/vector-icons';
 import { useRouter, Stack } from 'expo-router';
 import React from 'react';
-import { View, ScrollView, TextInput, Pressable, ActivityIndicator, Platform, KeyboardAvoidingView as RNKeyboardAvoidingView } from 'react-native';
+import { View, ScrollView, TextInput, Pressable, ActivityIndicator, Platform } from 'react-native';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 
 import { layout } from '@/components/layout';
@@ -73,7 +71,6 @@ export default function NewArtifactScreen() {
   const { theme } = useUnistyles();
   const styles = stylesheet;
   const router = useRouter();
-  const safeArea = useSafeAreaInsets();
     
   const [title, setTitle] = React.useState('');
   const [body, setBody] = React.useState('');

@@ -5,12 +5,8 @@ import { Platform, AppState } from 'react-native';
 
 import { registerPushToken } from './apiPush';
 import { ApiEphemeralUpdateSchema, ApiMessage, ApiUpdateContainerSchema } from './apiTypes';
-
-import { log } from '@/log';
-import { gitStatusSync } from './gitStatusSync';
-import { voiceHooks } from '@/realtime/hooks/voiceHooks';
-import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
+import { gitStatusSync } from './gitStatusSync';
 import { loadPendingSettings, savePendingSettings } from './persistence';
 import { Profile, profileParse } from './profile';
 import { systemPrompt } from './prompt/systemPrompt';
@@ -20,6 +16,7 @@ import { getServerUrl } from './serverConfig';
 import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
 import { storage } from './storage';
 import { Session, Machine } from './storageTypes';
+import { Message } from './typesMessage';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
 
 import type { ApiEphemeralActivityUpdate } from './apiTypes';
@@ -27,6 +24,8 @@ import type { ApiEphemeralActivityUpdate } from './apiTypes';
 import { AuthCredentials } from '@/auth/tokenStorage';
 import { config } from '@/config';
 import { decodeBase64 } from '@/encryption/base64';
+import { log } from '@/log';
+import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { apiSocket } from '@/sync/apiSocket';
 import { Encryption } from '@/sync/encryption/encryption';
 import { trackPaywallPresented, trackPaywallPurchased, trackPaywallCancelled, trackPaywallRestored, trackPaywallError } from '@/track';

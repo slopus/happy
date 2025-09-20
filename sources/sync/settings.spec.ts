@@ -113,6 +113,9 @@ describe('settings', () => {
         lastUsedAgent: null,
         defaultCoder: 'claude',
         anonymousMode: false,
+        desktopWindowWidth: null,
+        desktopWindowHeight: null,
+        desktopWindowMaximized: false,
       };
       const delta: Partial<Settings> = {
         viewInline: true,
@@ -160,6 +163,9 @@ describe('settings', () => {
         lastUsedAgent: null,
         defaultCoder: 'claude',
         anonymousMode: false,
+        desktopWindowWidth: null,
+        desktopWindowHeight: null,
+        desktopWindowMaximized: false,
       };
       const delta: Partial<Settings> = {};
       expect(applySettings(currentSettings, delta)).toEqual({
@@ -193,6 +199,9 @@ describe('settings', () => {
         lastUsedAgent: null,
         defaultCoder: 'claude',
         anonymousMode: false,
+        desktopWindowWidth: null,
+        desktopWindowHeight: null,
+        desktopWindowMaximized: false,
       };
       const delta: Partial<Settings> = {
         viewInline: false,
@@ -240,6 +249,9 @@ describe('settings', () => {
         lastUsedAgent: null,
         defaultCoder: 'claude',
         anonymousMode: false,
+        desktopWindowWidth: null,
+        desktopWindowHeight: null,
+        desktopWindowMaximized: false,
       };
       expect(applySettings(currentSettings, {})).toEqual({
         ...settingsDefaults,
@@ -283,6 +295,9 @@ describe('settings', () => {
         lastUsedAgent: null,
         defaultCoder: 'claude',
         anonymousMode: false,
+        desktopWindowWidth: null,
+        desktopWindowHeight: null,
+        desktopWindowMaximized: false,
       };
       const delta: any = {
         viewInline: false,

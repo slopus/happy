@@ -1,6 +1,6 @@
 import * as Localization from 'expo-localization';
 
-import { type SupportedLanguage, SUPPORTED_LANGUAGES, SUPPORTED_LANGUAGE_CODES, DEFAULT_LANGUAGE } from './_all';
+import { type SupportedLanguage, DEFAULT_LANGUAGE } from './_all';
 import { en, type Translations, type TranslationStructure } from './_default';
 import { ca } from './translations/ca';
 import { es } from './translations/es';
@@ -83,6 +83,7 @@ const translations: Record<SupportedLanguage, TranslationStructure> = {
 };
 
 // Compile-time check: ensure all supported languages have translations
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _typeCheck: Record<SupportedLanguage, TranslationStructure> = translations;
 
 //

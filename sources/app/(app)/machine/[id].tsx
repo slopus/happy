@@ -1,7 +1,7 @@
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { useLocalSearchParams, useRouter, Stack } from 'expo-router';
 import React, { useState, useMemo, useCallback, useRef } from 'react';
-import { View, Text, ScrollView, ActivityIndicator, RefreshControl, Platform, Pressable, TextInput } from 'react-native';
+import { View, Text, ActivityIndicator, RefreshControl, Platform, Pressable } from 'react-native';
 import { useUnistyles, StyleSheet } from 'react-native-unistyles';
 
 import type { Session } from '@/sync/storageTypes';
@@ -15,9 +15,8 @@ import { Typography } from '@/constants/Typography';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { Modal } from '@/modal';
 import { stopDaemon, forceStopDaemon, removeSessionLocally, getDaemonStatus } from '@/sync/daemonControl';
-import { machineStopDaemon, machineUpdateMetadata } from '@/sync/ops';
-import { machineSpawnNewSession } from '@/sync/ops';
-import { useSessions, useAllMachines, useMachine } from '@/sync/storage';
+import { machineUpdateMetadata, machineSpawnNewSession } from '@/sync/ops';
+import { useSessions, useMachine } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { t } from '@/text';
 import { isMachineOnline } from '@/utils/machineUtils';
