@@ -1,7 +1,7 @@
 export function hapticsError() {
-  // No implementation
+	// No implementation
 }
 
 export function hapticsLight() {
-  // No implementation
+	// No implementation
 }

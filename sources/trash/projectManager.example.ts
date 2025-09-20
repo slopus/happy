@@ -3,8 +3,8 @@
  * This shows how to use the project management functionality
  */
 
-import { useProjects, useProjectForSession, useProjectSessions } from './storage';
 import { getProjectDisplayName, getProjectFullPath } from './projectManager';
+import { useProjectForSession, useProjectSessions, useProjects } from './storage';
 
 // Example React component showing how to use projects
 export function ProjectsListExample() {

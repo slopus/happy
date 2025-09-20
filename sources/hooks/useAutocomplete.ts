@@ -1,70 +1,74 @@
-import * as React from 'react';
+import * as React from "react";
 
-import { InvalidateSync } from '@/utils/sync';
+import { InvalidateSync } from "@/utils/sync";
 
 // Types
 export interface AutocompleteResult {
-    text: string;
+	text: string;
 }
 
 export interface UseAutocompleteOptions {
-    text: string;
-    cursorPosition: number;
-    autocompleteFunction: (text: string, cursorPosition: number) => Promise<AutocompleteResult[]>;
-    debounceMs?: number;
+	text: string;
+	cursorPosition: number;
+	autocompleteFunction: (
+		text: string,
+		cursorPosition: number,
+	) => Promise<AutocompleteResult[]>;
+	debounceMs?: number;
 }
 
 export interface UseAutocompleteReturn {
-    results: AutocompleteResult[];
-    isLoading: boolean;
+	results: AutocompleteResult[];
+	isLoading: boolean;
 }
 
 const emptyArray: AutocompleteResult[] = [];
 
-export function useAutocomplete(query: string | null, resolver: (text: string) => Promise<AutocompleteResult[]>) {
+export function useAutocomplete(
+	query: string | null,
+	resolver: (text: string) => Promise<AutocompleteResult[]>,
+) {
+	const [results, setResults] = React.useState<AutocompleteResult[]>([]);
 
-  const [results, setResults] = React.useState<AutocompleteResult[]>([]);
+	const sync = React.useMemo(() => {
+		const state = { query };
+		const cache = new Map<string, AutocompleteResult[]>();
 
-  const sync = React.useMemo(() => {
+		const sync = new InvalidateSync(async () => {
+			const t = state.query;
+			if (t === null) {
+				setResults(emptyArray);
+				return;
+			}
+			let results = cache.get(t);
+			if (results === undefined) {
+				results = await resolver(t);
+				cache.set(t, results);
+			}
+			if (state.query === t) {
+				setResults(results);
+			}
+		});
 
-    const state = { query };
-    const cache = new Map<string, AutocompleteResult[]>();
+		return {
+			sync,
+			state,
+			onSearchQueryChange: (text: string | null) => {
+				state.query = text;
+				sync.invalidate();
+			},
+		};
+	}, []);
 
-    const sync = new InvalidateSync(async () => {
-      const t = state.query;
-      if (t === null) {
-        setResults(emptyArray);
-        return;
-      }
-      let results = cache.get(t);
-      if (results === undefined) {
-        results = await resolver(t);
-        cache.set(t, results);
-      }
-      if (state.query === t) {
-        setResults(results);
-      }
-    });
+	// Trigger sync
+	React.useEffect(() => {
+		sync.onSearchQueryChange(query);
+	}, [query]);
 
-    return {
-      sync,
-      state,
-      onSearchQueryChange: (text: string | null) => {
-        state.query = text;
-        sync.invalidate();
-      },
-    };
-  }, []);
-
-  // Trigger sync
-  React.useEffect(() => {
-    sync.onSearchQueryChange(query);
-  }, [query]);
-
-  // Return empty array if no query
-  if (query === null) {
-    return emptyArray;
-  } else {
-    return results;
-  }
+	// Return empty array if no query
+	if (query === null) {
+		return emptyArray;
+	} else {
+		return results;
+	}
 }

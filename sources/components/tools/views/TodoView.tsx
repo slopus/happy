@@ -1,92 +1,92 @@
-import * as React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import * as React from "react";
+import { StyleSheet, Text, View } from "react-native";
 
-import { knownTools } from '../../tools/knownTools';
-import { ToolSectionView } from '../../tools/ToolSectionView';
+import { knownTools } from "../../tools/knownTools";
+import { ToolSectionView } from "../../tools/ToolSectionView";
 
-import { ToolViewProps } from './_all';
+import { ToolViewProps } from "./_all";
 
 export interface Todo {
-    content: string;
-    status: 'pending' | 'in_progress' | 'completed';
-    priority?: 'high' | 'medium' | 'low';
-    id?: string;
+	content: string;
+	status: "pending" | "in_progress" | "completed";
+	priority?: "high" | "medium" | "low";
+	id?: string;
 }
 
 export const TodoView = React.memo<ToolViewProps>(({ tool }) => {
-  let todosList: Todo[] = [];
-    
-  // Try to get todos from input first
-  const parsedArguments = knownTools.TodoWrite.input.safeParse(tool.input);
-  if (parsedArguments.success && parsedArguments.data.todos) {
-    todosList = parsedArguments.data.todos;
-  }
-    
-  // If we have a properly structured result, use newTodos from there
-  const parsed = knownTools.TodoWrite.result.safeParse(tool.result);
-  if (parsed.success && parsed.data.newTodos) {
-    todosList = parsed.data.newTodos;
-  }
-    
-  // If we have todos to display, show them
-  if (todosList.length > 0) {
-    return (
-      <ToolSectionView>
-        <View style={styles.container}>
-          {todosList.map((todo, index) => {
-            const isCompleted = todo.status === 'completed';
-            const isInProgress = todo.status === 'in_progress';
-            const isPending = todo.status === 'pending';
+	let todosList: Todo[] = [];
 
-            let textStyle: any = styles.todoText;
-            let icon = '☐';
+	// Try to get todos from input first
+	const parsedArguments = knownTools.TodoWrite.input.safeParse(tool.input);
+	if (parsedArguments.success && parsedArguments.data.todos) {
+		todosList = parsedArguments.data.todos;
+	}
 
-            if (isCompleted) {
-              textStyle = [styles.todoText, styles.completedText];
-              icon = '☑';
-            } else if (isInProgress) {
-              textStyle = [styles.todoText, styles.inProgressText];
-              icon = '☐';
-            } else if (isPending) {
-              textStyle = [styles.todoText, styles.pendingText];
-            }
+	// If we have a properly structured result, use newTodos from there
+	const parsed = knownTools.TodoWrite.result.safeParse(tool.result);
+	if (parsed.success && parsed.data.newTodos) {
+		todosList = parsed.data.newTodos;
+	}
 
-            return (
-              <View key={todo.id || `todo-${index}`} style={styles.todoItem}>
-                <Text style={textStyle}>
-                  {icon} {todo.content}
-                </Text>
-              </View>
-            );
-          })}
-        </View>
-      </ToolSectionView>
-    );
-  }
+	// If we have todos to display, show them
+	if (todosList.length > 0) {
+		return (
+			<ToolSectionView>
+				<View style={styles.container}>
+					{todosList.map((todo, index) => {
+						const isCompleted = todo.status === "completed";
+						const isInProgress = todo.status === "in_progress";
+						const isPending = todo.status === "pending";
 
-  return null;
+						let textStyle: any = styles.todoText;
+						let icon = "☐";
+
+						if (isCompleted) {
+							textStyle = [styles.todoText, styles.completedText];
+							icon = "☑";
+						} else if (isInProgress) {
+							textStyle = [styles.todoText, styles.inProgressText];
+							icon = "☐";
+						} else if (isPending) {
+							textStyle = [styles.todoText, styles.pendingText];
+						}
+
+						return (
+							<View key={todo.id || `todo-${index}`} style={styles.todoItem}>
+								<Text style={textStyle}>
+									{icon} {todo.content}
+								</Text>
+							</View>
+						);
+					})}
+				</View>
+			</ToolSectionView>
+		);
+	}
+
+	return null;
 });
 
 const styles = StyleSheet.create({
-  container: {
-    gap: 4,
-  },
-  todoItem: {
-    paddingVertical: 2,
-  },
-  todoText: {
-    fontSize: 14,
-    color: '#000',
-    flex: 1,
-  },
-  completedText: {
-    color: '#34C759',
-    textDecorationLine: 'line-through',
-  },
-  inProgressText: {
-    color: '#007AFF',
-  },
-  pendingText: {
-    color: '#666',
-  },
+	container: {
+		gap: 4,
+	},
+	todoItem: {
+		paddingVertical: 2,
+	},
+	todoText: {
+		fontSize: 14,
+		color: "#000",
+		flex: 1,
+	},
+	completedText: {
+		color: "#34C759",
+		textDecorationLine: "line-through",
+	},
+	inProgressText: {
+		color: "#007AFF",
+	},
+	pendingText: {
+		color: "#666",
+	},
 });

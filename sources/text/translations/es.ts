@@ -1,4 +1,4 @@
-import type { TranslationStructure } from '../_default';
+import type { TranslationStructure } from "../_default";
 
 /**
  * Spanish plural helper function
@@ -6,8 +6,16 @@ import type { TranslationStructure } from '../_default';
  * @param options - Object containing count, singular, and plural forms
  * @returns The appropriate form based on Spanish plural rules
  */
-function plural({ count, singular, plural }: { count: number; singular: string; plural: string }): string {
-  return count === 1 ? singular : plural;
+function plural({
+	count,
+	singular,
+	plural,
+}: {
+	count: number;
+	singular: string;
+	plural: string;
+}): string {
+	return count === 1 ? singular : plural;
 }
 
 /**
@@ -15,860 +23,995 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const es: TranslationStructure = {
-  common: {
-    // Simple string constants
-    cancel: 'Cancelar',
-    authenticate: 'Autenticar',
-    save: 'Guardar',
-    error: 'Error',
-    success: 'Éxito',
-    ok: 'OK',
-    continue: 'Continuar',
-    back: 'Atrás',
-    create: 'Crear',
-    rename: 'Renombrar',
-    reset: 'Restablecer',
-    logout: 'Cerrar sesión',
-    yes: 'Sí',
-    no: 'No',
-    discard: 'Descartar',
-    version: 'Versión',
-    copied: 'Copiado',
-    scanning: 'Escaneando...',
-    urlPlaceholder: 'https://ejemplo.com',
-    home: 'Inicio',
-    message: 'Mensaje',
-    files: 'Archivos',
-    fileViewer: 'Visor de archivos',
-    loading: 'Cargando...',
-    retry: 'Reintentar',
-    comingSoon: 'Próximamente',
-    saving: 'Guardando...',
-  },
+	common: {
+		// Simple string constants
+		cancel: "Cancelar",
+		authenticate: "Autenticar",
+		save: "Guardar",
+		error: "Error",
+		success: "Éxito",
+		ok: "OK",
+		continue: "Continuar",
+		back: "Atrás",
+		create: "Crear",
+		rename: "Renombrar",
+		reset: "Restablecer",
+		logout: "Cerrar sesión",
+		yes: "Sí",
+		no: "No",
+		discard: "Descartar",
+		version: "Versión",
+		copied: "Copiado",
+		scanning: "Escaneando...",
+		urlPlaceholder: "https://ejemplo.com",
+		home: "Inicio",
+		message: "Mensaje",
+		files: "Archivos",
+		fileViewer: "Visor de archivos",
+		loading: "Cargando...",
+		retry: "Reintentar",
+		comingSoon: "Próximamente",
+		saving: "Guardando...",
+	},
 
-  status: {
-    connected: 'conectado',
-    connecting: 'conectando',
-    disconnected: 'desconectado',
-    error: 'error',
-    online: 'en línea',
-    offline: 'desconectado',
-    lastSeen: ({ time }: { time: string }) => `visto por última vez ${time}`,
-    permissionRequired: 'permiso requerido',
-    activeNow: 'Activo ahora',
-    unknown: 'desconocido',
-  },
+	status: {
+		connected: "conectado",
+		connecting: "conectando",
+		disconnected: "desconectado",
+		error: "error",
+		online: "en línea",
+		offline: "desconectado",
+		lastSeen: ({ time }: { time: string }) => `visto por última vez ${time}`,
+		permissionRequired: "permiso requerido",
+		activeNow: "Activo ahora",
+		unknown: "desconocido",
+	},
 
-  time: {
-    justNow: 'ahora mismo',
-    minutesAgo: ({ count }: { count: number }) => `hace ${count} minuto${count !== 1 ? 's' : ''}`,
-    hoursAgo: ({ count }: { count: number }) => `hace ${count} hora${count !== 1 ? 's' : ''}`,
-  },
+	time: {
+		justNow: "ahora mismo",
+		minutesAgo: ({ count }: { count: number }) =>
+			`hace ${count} minuto${count !== 1 ? "s" : ""}`,
+		hoursAgo: ({ count }: { count: number }) =>
+			`hace ${count} hora${count !== 1 ? "s" : ""}`,
+	},
 
-  connect: {
-    restoreAccount: 'Restaurar cuenta',
-    enterSecretKey: 'Ingresa tu clave secreta',
-    invalidSecretKey: 'Clave secreta inválida. Verifica e intenta de nuevo.',
-    enterUrlManually: 'Ingresar URL manualmente',
-  },
+	connect: {
+		restoreAccount: "Restaurar cuenta",
+		enterSecretKey: "Ingresa tu clave secreta",
+		invalidSecretKey: "Clave secreta inválida. Verifica e intenta de nuevo.",
+		enterUrlManually: "Ingresar URL manualmente",
+	},
 
-  settings: {
-    title: 'Configuración',
-    connectedAccounts: 'Cuentas conectadas',
-    connectAccount: 'Conectar cuenta',
-    github: 'GitHub',
-    machines: 'Máquinas',
-    features: 'Características',
-    account: 'Cuenta',
-    accountSubtitle: 'Gestiona los detalles de tu cuenta',
-    appearance: 'Apariencia',
-    appearanceSubtitle: 'Personaliza como se ve la app',
-    voiceAssistant: 'Asistente de voz',
-    voiceAssistantSubtitle: 'Configura las preferencias de voz',
-    featuresTitle: 'Características',
-    featuresSubtitle: 'Habilitar o deshabilitar funciones de la aplicación',
-    developer: 'Desarrollador',
-    developerTools: 'Herramientas de desarrollador',
-    about: 'Acerca de',
-    aboutFooter: 'Happy Coder es un cliente móvil para Codex y Claude Code. Todo está cifrado de extremo a extremo y tu cuenta se guarda solo en tu dispositivo. No está afiliado con Anthropic.',
-    happyAttribution: 'Cliente móvil y web para Claude Code y Codex',
-    whatsNew: 'Novedades',
-    whatsNewSubtitle: 'Ve las últimas actualizaciones y mejoras',
-    help: 'Ayuda',
-    helpAndSupport: 'Ayuda y soporte',
-    helpSubtitle: 'Obtén ayuda, reporta problemas y encuentra recursos',
-    reportIssue: 'Reportar un problema',
-    reportIssueSubtitle: '¿Encontraste un error? Avísanos en GitHub',
-    githubRepository: 'Repositorio de GitHub',
-    githubRepositorySubtitle: 'Consulta el código fuente y contribuye',
-    privacyPolicy: 'Política de privacidad',
-    termsOfService: 'Términos de servicio',
-    eula: 'EULA',
-    supportUs: 'Apóyanos',
-    supportUsSubtitlePro: '¡Gracias por su apoyo!',
-    supportUsSubtitle: 'Apoya el desarrollo del proyecto',
-    scanQrCodeToAuthenticate: 'Escanea el código QR para autenticarte',
-    githubConnected: ({ login }: { login: string }) => `Conectado como @${login}`,
-    connectGithubAccount: 'Conecta tu cuenta de GitHub',
-    claudeAuthSuccess: 'Conectado exitosamente con Claude',
-    exchangingTokens: 'Intercambiando tokens...',
+	settings: {
+		title: "Configuración",
+		connectedAccounts: "Cuentas conectadas",
+		connectAccount: "Conectar cuenta",
+		github: "GitHub",
+		machines: "Máquinas",
+		features: "Características",
+		account: "Cuenta",
+		accountSubtitle: "Gestiona los detalles de tu cuenta",
+		appearance: "Apariencia",
+		appearanceSubtitle: "Personaliza como se ve la app",
+		voiceAssistant: "Asistente de voz",
+		voiceAssistantSubtitle: "Configura las preferencias de voz",
+		featuresTitle: "Características",
+		featuresSubtitle: "Habilitar o deshabilitar funciones de la aplicación",
+		developer: "Desarrollador",
+		developerTools: "Herramientas de desarrollador",
+		about: "Acerca de",
+		aboutFooter:
+			"Happy Coder es un cliente móvil para Codex y Claude Code. Todo está cifrado de extremo a extremo y tu cuenta se guarda solo en tu dispositivo. No está afiliado con Anthropic.",
+		happyAttribution: "Cliente móvil y web para Claude Code y Codex",
+		whatsNew: "Novedades",
+		whatsNewSubtitle: "Ve las últimas actualizaciones y mejoras",
+		help: "Ayuda",
+		helpAndSupport: "Ayuda y soporte",
+		helpSubtitle: "Obtén ayuda, reporta problemas y encuentra recursos",
+		reportIssue: "Reportar un problema",
+		reportIssueSubtitle: "¿Encontraste un error? Avísanos en GitHub",
+		githubRepository: "Repositorio de GitHub",
+		githubRepositorySubtitle: "Consulta el código fuente y contribuye",
+		privacyPolicy: "Política de privacidad",
+		termsOfService: "Términos de servicio",
+		eula: "EULA",
+		supportUs: "Apóyanos",
+		supportUsSubtitlePro: "¡Gracias por su apoyo!",
+		supportUsSubtitle: "Apoya el desarrollo del proyecto",
+		scanQrCodeToAuthenticate: "Escanea el código QR para autenticarte",
+		githubConnected: ({ login }: { login: string }) =>
+			`Conectado como @${login}`,
+		connectGithubAccount: "Conecta tu cuenta de GitHub",
+		claudeAuthSuccess: "Conectado exitosamente con Claude",
+		exchangingTokens: "Intercambiando tokens...",
 
-    // Dynamic settings messages
-    accountConnected: ({ service }: { service: string }) => `Cuenta de ${service} conectada`,
-    machineStatus: ({ name, status }: { name: string; status: 'online' | 'offline' }) =>
-      `${name} está ${status === 'online' ? 'en línea' : 'desconectado'}`,
-    featureToggled: ({ feature, enabled }: { feature: string; enabled: boolean }) =>
-      `${feature} ${enabled ? 'habilitada' : 'deshabilitada'}`,
-  },
+		// Dynamic settings messages
+		accountConnected: ({ service }: { service: string }) =>
+			`Cuenta de ${service} conectada`,
+		machineStatus: ({
+			name,
+			status,
+		}: {
+			name: string;
+			status: "online" | "offline";
+		}) => `${name} está ${status === "online" ? "en línea" : "desconectado"}`,
+		featureToggled: ({
+			feature,
+			enabled,
+		}: {
+			feature: string;
+			enabled: boolean;
+		}) => `${feature} ${enabled ? "habilitada" : "deshabilitada"}`,
+	},
 
-  settingsAppearance: {
-    // Appearance settings screen
-    theme: 'Tema',
-    themeDescription: 'Elige tu esquema de colores preferido',
-    themeOptions: {
-      adaptive: 'Adaptativo',
-      light: 'Claro', 
-      dark: 'Oscuro',
-    },
-    themeDescriptions: {
-      adaptive: 'Seguir configuración del sistema',
-      light: 'Usar siempre tema claro',
-      dark: 'Usar siempre tema oscuro',
-    },
-    display: 'Pantalla',
-    displayDescription: 'Controla diseño y espaciado',
-    inlineToolCalls: 'Llamadas a herramientas en línea',
-    inlineToolCallsDescription: 'Mostrar llamadas a herramientas directamente en mensajes de chat',
-    expandTodoLists: 'Expandir listas de tareas',
-    expandTodoListsDescription: 'Mostrar todas las tareas en lugar de solo cambios',
-    showLineNumbersInDiffs: 'Mostrar números de línea en diferencias',
-    showLineNumbersInDiffsDescription: 'Mostrar números de línea en diferencias de código',
-    showLineNumbersInToolViews: 'Mostrar números de línea en vistas de herramientas',
-    showLineNumbersInToolViewsDescription: 'Mostrar números de línea en diferencias de vistas de herramientas',
-    alwaysShowContextSize: 'Mostrar siempre tamaño del contexto',
-    alwaysShowContextSizeDescription: 'Mostrar uso del contexto incluso cuando no esté cerca del límite',
-    avatarStyle: 'Estilo de avatar',
-    avatarStyleDescription: 'Elige la apariencia del avatar de sesión',
-    avatarOptions: {
-      pixelated: 'Pixelado',
-      gradient: 'Gradiente',
-      brutalist: 'Brutalista',
-    },
-    showFlavorIcons: 'Mostrar íconos de proveedor de IA',
-    showFlavorIconsDescription: 'Mostrar íconos del proveedor de IA en los avatares de sesión',
-    compactSessionView: 'Vista compacta de sesiones',
-    compactSessionViewDescription: 'Mostrar sesiones activas en un diseño más compacto',
-  },
+	settingsAppearance: {
+		// Appearance settings screen
+		theme: "Tema",
+		themeDescription: "Elige tu esquema de colores preferido",
+		themeOptions: {
+			adaptive: "Adaptativo",
+			light: "Claro",
+			dark: "Oscuro",
+		},
+		themeDescriptions: {
+			adaptive: "Seguir configuración del sistema",
+			light: "Usar siempre tema claro",
+			dark: "Usar siempre tema oscuro",
+		},
+		display: "Pantalla",
+		displayDescription: "Controla diseño y espaciado",
+		inlineToolCalls: "Llamadas a herramientas en línea",
+		inlineToolCallsDescription:
+			"Mostrar llamadas a herramientas directamente en mensajes de chat",
+		expandTodoLists: "Expandir listas de tareas",
+		expandTodoListsDescription:
+			"Mostrar todas las tareas en lugar de solo cambios",
+		showLineNumbersInDiffs: "Mostrar números de línea en diferencias",
+		showLineNumbersInDiffsDescription:
+			"Mostrar números de línea en diferencias de código",
+		showLineNumbersInToolViews:
+			"Mostrar números de línea en vistas de herramientas",
+		showLineNumbersInToolViewsDescription:
+			"Mostrar números de línea en diferencias de vistas de herramientas",
+		alwaysShowContextSize: "Mostrar siempre tamaño del contexto",
+		alwaysShowContextSizeDescription:
+			"Mostrar uso del contexto incluso cuando no esté cerca del límite",
+		avatarStyle: "Estilo de avatar",
+		avatarStyleDescription: "Elige la apariencia del avatar de sesión",
+		avatarOptions: {
+			pixelated: "Pixelado",
+			gradient: "Gradiente",
+			brutalist: "Brutalista",
+		},
+		showFlavorIcons: "Mostrar íconos de proveedor de IA",
+		showFlavorIconsDescription:
+			"Mostrar íconos del proveedor de IA en los avatares de sesión",
+		compactSessionView: "Vista compacta de sesiones",
+		compactSessionViewDescription:
+			"Mostrar sesiones activas en un diseño más compacto",
+	},
 
-  settingsFeatures: {
-    // Features settings screen
-    experiments: 'Experimentos',
-    experimentsDescription: 'Habilitar características experimentales que aún están en desarrollo. Estas características pueden ser inestables o cambiar sin aviso.',
-    experimentalFeatures: 'Características experimentales',
-    experimentalFeaturesEnabled: 'Características experimentales habilitadas',
-    experimentalFeaturesDisabled: 'Usando solo características estables',
-    webFeatures: 'Características web',
-    webFeaturesDescription: 'Características disponibles solo en la versión web de la aplicación.',
-    commandPalette: 'Paleta de comandos',
-    commandPaletteEnabled: 'Presione ⌘K para abrir',
-    commandPaletteDisabled: 'Acceso rápido a comandos deshabilitado',
-    markdownCopyV2: 'Markdown Copy v2',
-    markdownCopyV2Subtitle: 'Pulsación larga abre modal de copiado',
-    defaultCoder: 'Codificador predeterminado',
-    defaultCoderDescription: 'Elige qué asistente de IA usar para nuevas sesiones por defecto.',
-    defaultCoderClaude: 'Claude Code',
-    defaultCoderCodex: 'Codex',
-    defaultCoderAsk: 'Preguntar cada vez',
-    privacy: 'Privacidad',
-    privacyDescription: 'Controla cómo se muestra y comparte tu información personal.',
-    anonymousModeDisabled: 'Mostrar nombre real y perfil',
-    aiModels: 'Modelos de IA',
-    aiModelsDescription: 'Modelos de IA descubiertos automáticamente y sus capacidades. Toca para actualizar la lista de modelos.',
-    discoveringModels: 'Descubriendo modelos de IA disponibles...',
-    noModelsFound: 'No se encontraron modelos',
-    noModelsFoundDescription: 'Toca para buscar modelos de IA disponibles',
-    showMoreModels: (count: number) => `Mostrar todos los ${count} modelos`,
-    showLessModels: 'Mostrar menos modelos',
-    refreshModels: 'Actualizar lista de modelos',
-    refreshModelsDescription: 'Descubrir modelos de IA nuevos o actualizados',
-  },
+	settingsFeatures: {
+		// Features settings screen
+		experiments: "Experimentos",
+		experimentsDescription:
+			"Habilitar características experimentales que aún están en desarrollo. Estas características pueden ser inestables o cambiar sin aviso.",
+		experimentalFeatures: "Características experimentales",
+		experimentalFeaturesEnabled: "Características experimentales habilitadas",
+		experimentalFeaturesDisabled: "Usando solo características estables",
+		webFeatures: "Características web",
+		webFeaturesDescription:
+			"Características disponibles solo en la versión web de la aplicación.",
+		commandPalette: "Paleta de comandos",
+		commandPaletteEnabled: "Presione ⌘K para abrir",
+		commandPaletteDisabled: "Acceso rápido a comandos deshabilitado",
+		markdownCopyV2: "Markdown Copy v2",
+		markdownCopyV2Subtitle: "Pulsación larga abre modal de copiado",
+		defaultCoder: "Codificador predeterminado",
+		defaultCoderDescription:
+			"Elige qué asistente de IA usar para nuevas sesiones por defecto.",
+		defaultCoderClaude: "Claude Code",
+		defaultCoderCodex: "Codex",
+		defaultCoderAsk: "Preguntar cada vez",
+		privacy: "Privacidad",
+		privacyDescription:
+			"Controla cómo se muestra y comparte tu información personal.",
+		anonymousModeDisabled: "Mostrar nombre real y perfil",
+		aiModels: "Modelos de IA",
+		aiModelsDescription:
+			"Modelos de IA descubiertos automáticamente y sus capacidades. Toca para actualizar la lista de modelos.",
+		discoveringModels: "Descubriendo modelos de IA disponibles...",
+		noModelsFound: "No se encontraron modelos",
+		noModelsFoundDescription: "Toca para buscar modelos de IA disponibles",
+		showMoreModels: (count: number) => `Mostrar todos los ${count} modelos`,
+		showLessModels: "Mostrar menos modelos",
+		refreshModels: "Actualizar lista de modelos",
+		refreshModelsDescription: "Descubrir modelos de IA nuevos o actualizados",
+	},
 
-  errors: {
-    networkError: 'Error de conexión',
-    serverError: 'Error del servidor',
-    unknownError: 'Error desconocido',
-    connectionTimeout: 'Se agotó el tiempo de conexión',
-    authenticationFailed: 'Falló la autenticación',
-    permissionDenied: 'Permiso denegado',
-    fileNotFound: 'Archivo no encontrado',
-    invalidFormat: 'Formato inválido',
-    operationFailed: 'Operación falló',
-    tryAgain: 'Intenta de nuevo',
-    contactSupport: 'Contacta soporte si el problema persiste',
-    sessionNotFound: 'Sesión no encontrada',
-    voiceSessionFailed: 'Falló al iniciar sesión de voz',
-    oauthInitializationFailed: 'Falló al inicializar el flujo OAuth',
-    tokenStorageFailed: 'Falló al almacenar los tokens de autenticación',
-    oauthStateMismatch: 'Falló la validación de seguridad. Inténtalo de nuevo',
-    tokenExchangeFailed: 'Falló al intercambiar el código de autorización',
-    oauthAuthorizationDenied: 'La autorización fue denegada',
-    webViewLoadFailed: 'Falló al cargar la página de autenticación',
+	errors: {
+		networkError: "Error de conexión",
+		serverError: "Error del servidor",
+		unknownError: "Error desconocido",
+		connectionTimeout: "Se agotó el tiempo de conexión",
+		authenticationFailed: "Falló la autenticación",
+		permissionDenied: "Permiso denegado",
+		fileNotFound: "Archivo no encontrado",
+		invalidFormat: "Formato inválido",
+		operationFailed: "Operación falló",
+		tryAgain: "Intenta de nuevo",
+		contactSupport: "Contacta soporte si el problema persiste",
+		sessionNotFound: "Sesión no encontrada",
+		voiceSessionFailed: "Falló al iniciar sesión de voz",
+		oauthInitializationFailed: "Falló al inicializar el flujo OAuth",
+		tokenStorageFailed: "Falló al almacenar los tokens de autenticación",
+		oauthStateMismatch: "Falló la validación de seguridad. Inténtalo de nuevo",
+		tokenExchangeFailed: "Falló al intercambiar el código de autorización",
+		oauthAuthorizationDenied: "La autorización fue denegada",
+		webViewLoadFailed: "Falló al cargar la página de autenticación",
 
-    // Error functions with context
-    fieldError: ({ field, reason }: { field: string; reason: string }) =>
-      `${field}: ${reason}`,
-    validationError: ({ field, min, max }: { field: string; min: number; max: number }) =>
-      `${field} debe estar entre ${min} y ${max}`,
-    retryIn: ({ seconds }: { seconds: number }) =>
-      `Intenta en ${seconds} ${seconds === 1 ? 'segundo' : 'segundos'}`,
-    errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
-      `${message} (Error ${code})`,
-    disconnectServiceFailed: ({ service }: { service: string }) => 
-      `Falló al desconectar ${service}`,
-    connectServiceFailed: ({ service }: { service: string }) =>
-      `No se pudo conectar ${service}. Por favor, inténtalo de nuevo.`,
-  },
+		// Error functions with context
+		fieldError: ({ field, reason }: { field: string; reason: string }) =>
+			`${field}: ${reason}`,
+		validationError: ({
+			field,
+			min,
+			max,
+		}: {
+			field: string;
+			min: number;
+			max: number;
+		}) => `${field} debe estar entre ${min} y ${max}`,
+		retryIn: ({ seconds }: { seconds: number }) =>
+			`Intenta en ${seconds} ${seconds === 1 ? "segundo" : "segundos"}`,
+		errorWithCode: ({
+			message,
+			code,
+		}: {
+			message: string;
+			code: number | string;
+		}) => `${message} (Error ${code})`,
+		disconnectServiceFailed: ({ service }: { service: string }) =>
+			`Falló al desconectar ${service}`,
+		connectServiceFailed: ({ service }: { service: string }) =>
+			`No se pudo conectar ${service}. Por favor, inténtalo de nuevo.`,
+	},
 
-  newSession: {
-    // Used by new-session screen and launch flows
-    title: 'Iniciar nueva sesión',
-    noMachinesFound: 'No se encontraron máquinas. Inicia una sesión de Happy en tu computadora primero.',
-    allMachinesOffline: 'Todas las máquinas están desconectadas',
-    machineDetails: 'Ver detalles de la máquina →',
-    directoryDoesNotExist: 'Directorio no encontrado',
-    createDirectoryConfirm: ({ directory }: { directory: string }) => `El directorio ${directory} no existe. ¿Deseas crearlo?`,
-    sessionStarted: 'Sesión iniciada',
-    sessionStartedMessage: 'La sesión se ha iniciado correctamente.',
-    sessionSpawningFailed: 'Falló la creación de sesión - no se devolvió ID de sesión.',
-    failedToStart: 'Falló al iniciar sesión. Asegúrate de que el daemon esté ejecutándose en la máquina objetivo.',
-    sessionTimeout: 'El inicio de sesión expiró. La máquina puede ser lenta o el daemon puede no estar respondiendo.',
-    notConnectedToServer: 'No conectado al servidor. Verifica tu conexión a internet.',
-    startingSession: 'Iniciando sesión...',
-    startNewSessionInFolder: 'Nueva sesión aquí',
-    noMachineSelected: 'Por favor, selecciona una máquina para iniciar la sesión',
-    noPathSelected: 'Por favor, selecciona un directorio para iniciar la sesión',
-  },
+	newSession: {
+		// Used by new-session screen and launch flows
+		title: "Iniciar nueva sesión",
+		noMachinesFound:
+			"No se encontraron máquinas. Inicia una sesión de Happy en tu computadora primero.",
+		allMachinesOffline: "Todas las máquinas están desconectadas",
+		machineDetails: "Ver detalles de la máquina →",
+		directoryDoesNotExist: "Directorio no encontrado",
+		createDirectoryConfirm: ({ directory }: { directory: string }) =>
+			`El directorio ${directory} no existe. ¿Deseas crearlo?`,
+		sessionStarted: "Sesión iniciada",
+		sessionStartedMessage: "La sesión se ha iniciado correctamente.",
+		sessionSpawningFailed:
+			"Falló la creación de sesión - no se devolvió ID de sesión.",
+		failedToStart:
+			"Falló al iniciar sesión. Asegúrate de que el daemon esté ejecutándose en la máquina objetivo.",
+		sessionTimeout:
+			"El inicio de sesión expiró. La máquina puede ser lenta o el daemon puede no estar respondiendo.",
+		notConnectedToServer:
+			"No conectado al servidor. Verifica tu conexión a internet.",
+		startingSession: "Iniciando sesión...",
+		startNewSessionInFolder: "Nueva sesión aquí",
+		noMachineSelected:
+			"Por favor, selecciona una máquina para iniciar la sesión",
+		noPathSelected:
+			"Por favor, selecciona un directorio para iniciar la sesión",
+	},
 
-  sessionHistory: {
-    // Used by session history screen
-    title: 'Historial de sesiones',
-    empty: 'No se encontraron sesiones',
-    today: 'Hoy',
-    yesterday: 'Ayer',
-    daysAgo: ({ count }: { count: number }) => `hace ${count} ${count === 1 ? 'día' : 'días'}`,
-    viewAll: 'Ver todas las sesiones',
-  },
+	sessionHistory: {
+		// Used by session history screen
+		title: "Historial de sesiones",
+		empty: "No se encontraron sesiones",
+		today: "Hoy",
+		yesterday: "Ayer",
+		daysAgo: ({ count }: { count: number }) =>
+			`hace ${count} ${count === 1 ? "día" : "días"}`,
+		viewAll: "Ver todas las sesiones",
+	},
 
-  session: {
-    inputPlaceholder: 'Escriba un mensaje ...',
-  },
+	session: {
+		inputPlaceholder: "Escriba un mensaje ...",
+	},
 
-  commandPalette: {
-    placeholder: 'Escriba un comando o busque...',
-  },
+	commandPalette: {
+		placeholder: "Escriba un comando o busque...",
+	},
 
-  server: {
-    // Used by Server Configuration screen (app/(app)/server.tsx)
-    serverConfiguration: 'Configuración del servidor',
-    enterServerUrl: 'Ingresa una URL de servidor',
-    notValidHappyServer: 'No es un servidor Happy válido',
-    changeServer: 'Cambiar servidor',
-    continueWithServer: '¿Continuar con este servidor?',
-    resetToDefault: 'Restablecer por defecto',
-    resetServerDefault: '¿Restablecer servidor por defecto?',
-    validating: 'Validando...',
-    validatingServer: 'Validando servidor...',
-    serverReturnedError: 'El servidor devolvió un error',
-    failedToConnectToServer: 'Falló al conectar con el servidor',
-    currentlyUsingCustomServer: 'Actualmente usando servidor personalizado',
-    customServerUrlLabel: 'URL del servidor personalizado',
-    advancedFeatureFooter: 'Esta es una característica avanzada. Solo cambia el servidor si sabes lo que haces. Necesitarás cerrar sesión e iniciarla nuevamente después de cambiar servidores.',
-  },
+	server: {
+		// Used by Server Configuration screen (app/(app)/server.tsx)
+		serverConfiguration: "Configuración del servidor",
+		enterServerUrl: "Ingresa una URL de servidor",
+		notValidHappyServer: "No es un servidor Happy válido",
+		changeServer: "Cambiar servidor",
+		continueWithServer: "¿Continuar con este servidor?",
+		resetToDefault: "Restablecer por defecto",
+		resetServerDefault: "¿Restablecer servidor por defecto?",
+		validating: "Validando...",
+		validatingServer: "Validando servidor...",
+		serverReturnedError: "El servidor devolvió un error",
+		failedToConnectToServer: "Falló al conectar con el servidor",
+		currentlyUsingCustomServer: "Actualmente usando servidor personalizado",
+		customServerUrlLabel: "URL del servidor personalizado",
+		advancedFeatureFooter:
+			"Esta es una característica avanzada. Solo cambia el servidor si sabes lo que haces. Necesitarás cerrar sesión e iniciarla nuevamente después de cambiar servidores.",
+	},
 
-  sessionInfo: {
-    // Used by Session Info screen (app/(app)/session/[id]/info.tsx)
-    killSession: 'Terminar sesión',
-    killSessionConfirm: '¿Seguro que quieres terminar esta sesión?',
-    archiveSession: 'Archivar sesión',
-    archiveSessionConfirm: '¿Seguro que quieres archivar esta sesión?',
-    happySessionIdCopied: 'ID de sesión de Happy copiado al portapapeles',
-    failedToCopySessionId: 'Falló al copiar ID de sesión de Happy',
-    happySessionId: 'ID de sesión de Happy',
-    claudeCodeSessionId: 'ID de sesión de Claude Code',
-    claudeCodeSessionIdCopied: 'ID de sesión de Claude Code copiado al portapapeles',
-    aiProvider: 'Proveedor de IA',
-    failedToCopyClaudeCodeSessionId: 'Falló al copiar ID de sesión de Claude Code',
-    metadataCopied: 'Metadatos copiados al portapapeles',
-    failedToCopyMetadata: 'Falló al copiar metadatos',
-    failedToKillSession: 'Falló al terminar sesión',
-    failedToArchiveSession: 'Falló al archivar sesión',
-    connectionStatus: 'Estado de conexión',
-    created: 'Creado',
-    lastUpdated: 'Última actualización',
-    sequence: 'Secuencia',
-    quickActions: 'Acciones rápidas',
-    viewMachine: 'Ver máquina',
-    viewMachineSubtitle: 'Ver detalles de máquina y sesiones',
-    killSessionSubtitle: 'Terminar inmediatamente la sesión',
-    archiveSessionSubtitle: 'Archivar esta sesión y detenerla',
-    metadata: 'Metadatos',
-    host: 'Host',
-    path: 'Ruta',
-    operatingSystem: 'Sistema operativo',
-    processId: 'ID del proceso',
-    happyHome: 'Directorio de Happy',
-    copyMetadata: 'Copiar metadatos',
-    agentState: 'Estado del agente',
-    controlledByUser: 'Controlado por el usuario',
-    pendingRequests: 'Solicitudes pendientes',
-    activity: 'Actividad',
-    thinking: 'Pensando',
-    thinkingSince: 'Pensando desde',
-    cliVersion: 'Versión del CLI',
-    cliVersionOutdated: 'Actualización de CLI requerida',
-    cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
-      `Versión ${currentVersion} instalada. Actualice a ${requiredVersion} o posterior`,
-    updateCliInstructions: 'Por favor ejecute npm install -g happy-coder@latest',
-    updateCliAutomatic: 'Actualizar CLI automáticamente',
-    updateCliUpdating: 'Actualizando CLI...',
-    updateCliSuccess: 'CLI actualizado exitosamente! La sesión se refrescará automáticamente.',
-    updateCliError: 'Error al actualizar CLI. Por favor intente la actualización manual.',
-    updateCliDev: 'Cambiar a rama de desarrollo',
-    updateCliDevDescription: 'Obtener las últimas funciones de desarrollo de jeffersonwarrior/happy-fork',
-    updateCliDevUpdating: 'Cambiando a rama de desarrollo...',
-    updateCliDevSuccess: '¡Cambiado exitosamente a la rama de desarrollo! La sesión se refrescará.',
-    updateCliStable: 'Cambiar a versión estable',
-    updateCliStableDescription: 'Volver a la versión estable de npm',
-  },
+	sessionInfo: {
+		// Used by Session Info screen (app/(app)/session/[id]/info.tsx)
+		killSession: "Terminar sesión",
+		killSessionConfirm: "¿Seguro que quieres terminar esta sesión?",
+		archiveSession: "Archivar sesión",
+		archiveSessionConfirm: "¿Seguro que quieres archivar esta sesión?",
+		happySessionIdCopied: "ID de sesión de Happy copiado al portapapeles",
+		failedToCopySessionId: "Falló al copiar ID de sesión de Happy",
+		happySessionId: "ID de sesión de Happy",
+		claudeCodeSessionId: "ID de sesión de Claude Code",
+		claudeCodeSessionIdCopied:
+			"ID de sesión de Claude Code copiado al portapapeles",
+		aiProvider: "Proveedor de IA",
+		failedToCopyClaudeCodeSessionId:
+			"Falló al copiar ID de sesión de Claude Code",
+		metadataCopied: "Metadatos copiados al portapapeles",
+		failedToCopyMetadata: "Falló al copiar metadatos",
+		failedToKillSession: "Falló al terminar sesión",
+		failedToArchiveSession: "Falló al archivar sesión",
+		connectionStatus: "Estado de conexión",
+		created: "Creado",
+		lastUpdated: "Última actualización",
+		sequence: "Secuencia",
+		quickActions: "Acciones rápidas",
+		viewMachine: "Ver máquina",
+		viewMachineSubtitle: "Ver detalles de máquina y sesiones",
+		killSessionSubtitle: "Terminar inmediatamente la sesión",
+		archiveSessionSubtitle: "Archivar esta sesión y detenerla",
+		metadata: "Metadatos",
+		host: "Host",
+		path: "Ruta",
+		operatingSystem: "Sistema operativo",
+		processId: "ID del proceso",
+		happyHome: "Directorio de Happy",
+		copyMetadata: "Copiar metadatos",
+		agentState: "Estado del agente",
+		controlledByUser: "Controlado por el usuario",
+		pendingRequests: "Solicitudes pendientes",
+		activity: "Actividad",
+		thinking: "Pensando",
+		thinkingSince: "Pensando desde",
+		cliVersion: "Versión del CLI",
+		cliVersionOutdated: "Actualización de CLI requerida",
+		cliVersionOutdatedMessage: ({
+			currentVersion,
+			requiredVersion,
+		}: {
+			currentVersion: string;
+			requiredVersion: string;
+		}) =>
+			`Versión ${currentVersion} instalada. Actualice a ${requiredVersion} o posterior`,
+		updateCliInstructions:
+			"Por favor ejecute npm install -g happy-coder@latest",
+		updateCliAutomatic: "Actualizar CLI automáticamente",
+		updateCliUpdating: "Actualizando CLI...",
+		updateCliSuccess:
+			"CLI actualizado exitosamente! La sesión se refrescará automáticamente.",
+		updateCliError:
+			"Error al actualizar CLI. Por favor intente la actualización manual.",
+		updateCliDev: "Cambiar a rama de desarrollo",
+		updateCliDevDescription:
+			"Obtener las últimas funciones de desarrollo de jeffersonwarrior/happy-fork",
+		updateCliDevUpdating: "Cambiando a rama de desarrollo...",
+		updateCliDevSuccess:
+			"¡Cambiado exitosamente a la rama de desarrollo! La sesión se refrescará.",
+		updateCliStable: "Cambiar a versión estable",
+		updateCliStableDescription: "Volver a la versión estable de npm",
+	},
 
-  components: {
-    emptyMainScreen: {
-      // Used by EmptyMainScreen component
-      readyToCode: '¿Listo para programar?',
-      installCli: 'Instale el Happy CLI',
-      runIt: 'Ejecútelo',
-      scanQrCode: 'Escanee el código QR',
-      openCamera: 'Abrir cámara',
-    },
-  },
+	components: {
+		emptyMainScreen: {
+			// Used by EmptyMainScreen component
+			readyToCode: "¿Listo para programar?",
+			installCli: "Instale el Happy CLI",
+			runIt: "Ejecútelo",
+			scanQrCode: "Escanee el código QR",
+			openCamera: "Abrir cámara",
+		},
+	},
 
-  agentInput: {
-    permissionMode: {
-      title: 'MODO DE PERMISOS',
-      default: 'Por defecto',
-      acceptEdits: 'Aceptar ediciones',
-      plan: 'Modo de planificación',
-      bypassPermissions: 'Modo Yolo',
-      badgeAcceptAllEdits: 'Aceptar todas las ediciones',
-      badgeBypassAllPermissions: 'Omitir todos los permisos',
-      badgePlanMode: 'Modo de planificación',
-    },
-    agent: {
-      claude: 'Claude',
-      codex: 'Codex',
-    },
-    model: {
-      title: 'MODELO',
-      default: 'Usar configuración del CLI',
-      adaptiveUsage: 'Opus hasta 50% de uso, luego Sonnet',
-      sonnet: 'Sonnet',
-      opus: 'Opus',
-    },
-    codexPermissionMode: {
-      title: 'MODO DE PERMISOS CODEX',
-      default: 'Configuración del CLI',
-      readOnly: 'Read Only Mode',
-      safeYolo: 'Safe YOLO',
-      yolo: 'YOLO',
-      badgeReadOnly: 'Read Only Mode',
-      badgeSafeYolo: 'Safe YOLO',
-      badgeYolo: 'YOLO',
-    },
-    codexModel: {
-      title: 'MODELO CODEX',
-      gpt5Minimal: 'GPT-5 Mínimo',
-      gpt5Low: 'GPT-5 Bajo',
-      gpt5Medium: 'GPT-5 Medio',
-      gpt5High: 'GPT-5 Alto',
-    },
-    context: {
-      remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
-    },
-    suggestion: {
-      fileLabel: 'ARCHIVO',
-      folderLabel: 'CARPETA',
-    },
-    noMachinesAvailable: 'Sin máquinas',
-  },
+	agentInput: {
+		permissionMode: {
+			title: "MODO DE PERMISOS",
+			default: "Por defecto",
+			acceptEdits: "Aceptar ediciones",
+			plan: "Modo de planificación",
+			bypassPermissions: "Modo Yolo",
+			badgeAcceptAllEdits: "Aceptar todas las ediciones",
+			badgeBypassAllPermissions: "Omitir todos los permisos",
+			badgePlanMode: "Modo de planificación",
+		},
+		agent: {
+			claude: "Claude",
+			codex: "Codex",
+		},
+		model: {
+			title: "MODELO",
+			default: "Usar configuración del CLI",
+			adaptiveUsage: "Opus hasta 50% de uso, luego Sonnet",
+			sonnet: "Sonnet",
+			opus: "Opus",
+		},
+		codexPermissionMode: {
+			title: "MODO DE PERMISOS CODEX",
+			default: "Configuración del CLI",
+			readOnly: "Read Only Mode",
+			safeYolo: "Safe YOLO",
+			yolo: "YOLO",
+			badgeReadOnly: "Read Only Mode",
+			badgeSafeYolo: "Safe YOLO",
+			badgeYolo: "YOLO",
+		},
+		codexModel: {
+			title: "MODELO CODEX",
+			gpt5Minimal: "GPT-5 Mínimo",
+			gpt5Low: "GPT-5 Bajo",
+			gpt5Medium: "GPT-5 Medio",
+			gpt5High: "GPT-5 Alto",
+		},
+		context: {
+			remaining: ({ percent }: { percent: number }) => `${percent}% restante`,
+		},
+		suggestion: {
+			fileLabel: "ARCHIVO",
+			folderLabel: "CARPETA",
+		},
+		noMachinesAvailable: "Sin máquinas",
+	},
 
-  machineLauncher: {
-    showLess: 'Mostrar menos',
-    showAll: ({ count }: { count: number }) => `Mostrar todos (${count} rutas)`,
-    enterCustomPath: 'Ingresar ruta personalizada',
-    offlineUnableToSpawn: 'No se puede crear nueva sesión, desconectado',
-  },
+	machineLauncher: {
+		showLess: "Mostrar menos",
+		showAll: ({ count }: { count: number }) => `Mostrar todos (${count} rutas)`,
+		enterCustomPath: "Ingresar ruta personalizada",
+		offlineUnableToSpawn: "No se puede crear nueva sesión, desconectado",
+	},
 
-  sidebar: {
-    sessionsTitle: 'Sesiones',
-  },
+	sidebar: {
+		sessionsTitle: "Sesiones",
+	},
 
-  toolView: {
-    input: 'Entrada',
-    output: 'Salida',
-  },
+	toolView: {
+		input: "Entrada",
+		output: "Salida",
+	},
 
-  tools: {
-    fullView: {
-      description: 'Descripción',
-      inputParams: 'Parámetros de entrada',
-      output: 'Salida',
-      error: 'Error',
-      completed: 'Herramienta completada exitosamente',
-      noOutput: 'No se produjo salida',
-      running: 'La herramienta está ejecutándose...',
-      rawJsonDevMode: 'JSON crudo (modo desarrollador)',
-    },
-    taskView: {
-      initializing: 'Inicializando agente...',
-      moreTools: ({ count }: { count: number }) => `+${count} más ${plural({ count, singular: 'herramienta', plural: 'herramientas' })}`,
-    },
-    multiEdit: {
-      editNumber: ({ index, total }: { index: number; total: number }) => `Edición ${index} de ${total}`,
-      replaceAll: 'Reemplazar todo',
-    },
-    names: {
-      task: 'Tarea',
-      terminal: 'Terminal',
-      searchFiles: 'Buscar archivos',
-      search: 'Buscar',
-      searchContent: 'Buscar contenido',
-      listFiles: 'Listar archivos',
-      planProposal: 'Propuesta de plan',
-      readFile: 'Leer archivo',
-      editFile: 'Editar archivo',
-      writeFile: 'Escribir archivo',
-      fetchUrl: 'Obtener URL',
-      readNotebook: 'Leer cuaderno',
-      editNotebook: 'Editar cuaderno',
-      todoList: 'Lista de tareas',
-      webSearch: 'Búsqueda web',
-      reasoning: 'Razonamiento',
-      applyChanges: 'Actualizar archivo',
-      viewDiff: 'Cambios del archivo actual',
-    },
-    desc: {
-      terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
-      searchPattern: ({ pattern }: { pattern: string }) => `Buscar(patrón: ${pattern})`,
-      searchPath: ({ basename }: { basename: string }) => `Buscar(ruta: ${basename})`,
-      fetchUrlHost: ({ host }: { host: string }) => `Obtener URL(url: ${host})`,
-      editNotebookMode: ({ path, mode }: { path: string; mode: string }) => `Editar cuaderno(archivo: ${path}, modo: ${mode})`,
-      todoListCount: ({ count }: { count: number }) => `Lista de tareas(cantidad: ${count})`,
-      webSearchQuery: ({ query }: { query: string }) => `Búsqueda web(consulta: ${query})`,
-      grepPattern: ({ pattern }: { pattern: string }) => `grep(patrón: ${pattern})`,
-      multiEditEdits: ({ path, count }: { path: string; count: number }) => `${path} (${count} ediciones)`,
-      readingFile: ({ file }: { file: string }) => `Leyendo ${file}`,
-      writingFile: ({ file }: { file: string }) => `Escribiendo ${file}`,
-      modifyingFile: ({ file }: { file: string }) => `Modificando ${file}`,
-      modifyingFiles: ({ count }: { count: number }) => `Modificando ${count} archivos`,
-      modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} y ${count} más`,
-      showingDiff: 'Mostrando cambios',
-    },
-  },
+	tools: {
+		fullView: {
+			description: "Descripción",
+			inputParams: "Parámetros de entrada",
+			output: "Salida",
+			error: "Error",
+			completed: "Herramienta completada exitosamente",
+			noOutput: "No se produjo salida",
+			running: "La herramienta está ejecutándose...",
+			rawJsonDevMode: "JSON crudo (modo desarrollador)",
+		},
+		taskView: {
+			initializing: "Inicializando agente...",
+			moreTools: ({ count }: { count: number }) =>
+				`+${count} más ${plural({ count, singular: "herramienta", plural: "herramientas" })}`,
+		},
+		multiEdit: {
+			editNumber: ({ index, total }: { index: number; total: number }) =>
+				`Edición ${index} de ${total}`,
+			replaceAll: "Reemplazar todo",
+		},
+		names: {
+			task: "Tarea",
+			terminal: "Terminal",
+			searchFiles: "Buscar archivos",
+			search: "Buscar",
+			searchContent: "Buscar contenido",
+			listFiles: "Listar archivos",
+			planProposal: "Propuesta de plan",
+			readFile: "Leer archivo",
+			editFile: "Editar archivo",
+			writeFile: "Escribir archivo",
+			fetchUrl: "Obtener URL",
+			readNotebook: "Leer cuaderno",
+			editNotebook: "Editar cuaderno",
+			todoList: "Lista de tareas",
+			webSearch: "Búsqueda web",
+			reasoning: "Razonamiento",
+			applyChanges: "Actualizar archivo",
+			viewDiff: "Cambios del archivo actual",
+		},
+		desc: {
+			terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
+			searchPattern: ({ pattern }: { pattern: string }) =>
+				`Buscar(patrón: ${pattern})`,
+			searchPath: ({ basename }: { basename: string }) =>
+				`Buscar(ruta: ${basename})`,
+			fetchUrlHost: ({ host }: { host: string }) => `Obtener URL(url: ${host})`,
+			editNotebookMode: ({ path, mode }: { path: string; mode: string }) =>
+				`Editar cuaderno(archivo: ${path}, modo: ${mode})`,
+			todoListCount: ({ count }: { count: number }) =>
+				`Lista de tareas(cantidad: ${count})`,
+			webSearchQuery: ({ query }: { query: string }) =>
+				`Búsqueda web(consulta: ${query})`,
+			grepPattern: ({ pattern }: { pattern: string }) =>
+				`grep(patrón: ${pattern})`,
+			multiEditEdits: ({ path, count }: { path: string; count: number }) =>
+				`${path} (${count} ediciones)`,
+			readingFile: ({ file }: { file: string }) => `Leyendo ${file}`,
+			writingFile: ({ file }: { file: string }) => `Escribiendo ${file}`,
+			modifyingFile: ({ file }: { file: string }) => `Modificando ${file}`,
+			modifyingFiles: ({ count }: { count: number }) =>
+				`Modificando ${count} archivos`,
+			modifyingMultipleFiles: ({
+				file,
+				count,
+			}: {
+				file: string;
+				count: number;
+			}) => `${file} y ${count} más`,
+			showingDiff: "Mostrando cambios",
+		},
+	},
 
-  files: {
-    searchPlaceholder: 'Buscar archivos...',
-    detachedHead: 'HEAD separado',
-    summary: ({ staged, unstaged }: { staged: number; unstaged: number }) => `${staged} preparados • ${unstaged} sin preparar`,
-    notRepo: 'No es un repositorio git',
-    notUnderGit: 'Este directorio no está bajo control de versiones git',
-    searching: 'Buscando archivos...',
-    noFilesFound: 'No se encontraron archivos',
-    noFilesInProject: 'No hay archivos en el proyecto',
-    tryDifferentTerm: 'Intente un término de búsqueda diferente',
-    searchResults: ({ count }: { count: number }) => `Resultados de búsqueda (${count})`,
-    projectRoot: 'Raíz del proyecto',
-    stagedChanges: ({ count }: { count: number }) => `Cambios preparados (${count})`,
-    unstagedChanges: ({ count }: { count: number }) => `Cambios sin preparar (${count})`,
-    // File viewer strings
-    loadingFile: ({ fileName }: { fileName: string }) => `Cargando ${fileName}...`,
-    binaryFile: 'Archivo binario',
-    cannotDisplayBinary: 'No se puede mostrar el contenido del archivo binario',
-    diff: 'Diferencias',
-    file: 'Archivo',
-    fileEmpty: 'El archivo está vacío',
-    noChanges: 'No hay cambios que mostrar',
-  },
+	files: {
+		searchPlaceholder: "Buscar archivos...",
+		detachedHead: "HEAD separado",
+		summary: ({ staged, unstaged }: { staged: number; unstaged: number }) =>
+			`${staged} preparados • ${unstaged} sin preparar`,
+		notRepo: "No es un repositorio git",
+		notUnderGit: "Este directorio no está bajo control de versiones git",
+		searching: "Buscando archivos...",
+		noFilesFound: "No se encontraron archivos",
+		noFilesInProject: "No hay archivos en el proyecto",
+		tryDifferentTerm: "Intente un término de búsqueda diferente",
+		searchResults: ({ count }: { count: number }) =>
+			`Resultados de búsqueda (${count})`,
+		projectRoot: "Raíz del proyecto",
+		stagedChanges: ({ count }: { count: number }) =>
+			`Cambios preparados (${count})`,
+		unstagedChanges: ({ count }: { count: number }) =>
+			`Cambios sin preparar (${count})`,
+		// File viewer strings
+		loadingFile: ({ fileName }: { fileName: string }) =>
+			`Cargando ${fileName}...`,
+		binaryFile: "Archivo binario",
+		cannotDisplayBinary: "No se puede mostrar el contenido del archivo binario",
+		diff: "Diferencias",
+		file: "Archivo",
+		fileEmpty: "El archivo está vacío",
+		noChanges: "No hay cambios que mostrar",
+	},
 
-  settingsVoice: {
-    // Voice settings screen
-    languageTitle: 'Idioma',
-    languageDescription: 'Elige tu idioma preferido para las interacciones con el asistente de voz. Esta configuración se sincroniza en todos tus dispositivos.',
-    preferredLanguage: 'Idioma preferido',
-    preferredLanguageSubtitle: 'Idioma usado para respuestas del asistente de voz',
-    language: {
-      searchPlaceholder: 'Buscar idiomas...',
-      title: 'Idiomas',
-      footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomas' })} disponibles`,
-      autoDetect: 'Detectar automáticamente',
-    },
-  },
+	settingsVoice: {
+		// Voice settings screen
+		languageTitle: "Idioma",
+		languageDescription:
+			"Elige tu idioma preferido para las interacciones con el asistente de voz. Esta configuración se sincroniza en todos tus dispositivos.",
+		preferredLanguage: "Idioma preferido",
+		preferredLanguageSubtitle:
+			"Idioma usado para respuestas del asistente de voz",
+		language: {
+			searchPlaceholder: "Buscar idiomas...",
+			title: "Idiomas",
+			footer: ({ count }: { count: number }) =>
+				`${count} ${plural({ count, singular: "idioma", plural: "idiomas" })} disponibles`,
+			autoDetect: "Detectar automáticamente",
+		},
+	},
 
-  settingsAccount: {
-    // Account settings screen
-    accountInformation: 'Información de la cuenta',
-    status: 'Estado',
-    statusActive: 'Activo',
-    statusNotAuthenticated: 'No autenticado',
-    anonymousId: 'ID anónimo',
-    publicId: 'ID público',
-    notAvailable: 'No disponible',
-    linkNewDevice: 'Vincular nuevo dispositivo',
-    linkNewDeviceSubtitle: 'Escanear código QR para vincular dispositivo',
-    profile: 'Perfil',
-    name: 'Nombre',
-    github: 'GitHub',
-    tapToDisconnect: 'Toque para desconectar',
-    server: 'Servidor',
-    backup: 'Copia de seguridad',
-    backupDescription: 'Tu clave secreta es la única forma de recuperar tu cuenta. Guárdala en un lugar seguro como un administrador de contraseñas.',
-    secretKey: 'Clave secreta',
-    tapToReveal: 'Toca para revelar',
-    tapToHide: 'Toca para ocultar',
-    secretKeyLabel: 'CLAVE SECRETA (TOCA PARA COPIAR)',
-    secretKeyCopied: 'Clave secreta copiada al portapapeles. ¡Guárdala en un lugar seguro!',
-    secretKeyCopyFailed: 'Falló al copiar la clave secreta',
-    privacy: 'Privacidad',
-    privacyDescription: 'Ayude a mejorar la aplicación compartiendo datos de uso anónimos. No se recopila información personal.',
-    analytics: 'Analíticas',
-    analyticsDisabled: 'No se comparten datos',
-    analyticsEnabled: 'Se comparten datos de uso anónimos',
-    dangerZone: 'Zona peligrosa',
-    logout: 'Cerrar sesión',
-    logoutSubtitle: 'Cerrar sesión y limpiar datos locales',
-    logoutConfirm: '¿Seguro que quieres cerrar sesión? ¡Asegúrate de haber guardado tu clave secreta!',
-    passwordSecurity: 'Seguridad de contraseña',
-    passwordSecurityDescription: 'Protege tus sesiones con una contraseña para prevenir el acceso no autorizado.',
-    setupPasswordSubtitle: 'Añadir protección con contraseña a tus sesiones',
-    changePasswordSubtitle: 'Actualizar tu contraseña actual',
-    disablePasswordSubtitle: 'Eliminar protección con contraseña',
-  },
+	settingsAccount: {
+		// Account settings screen
+		accountInformation: "Información de la cuenta",
+		status: "Estado",
+		statusActive: "Activo",
+		statusNotAuthenticated: "No autenticado",
+		anonymousId: "ID anónimo",
+		publicId: "ID público",
+		notAvailable: "No disponible",
+		linkNewDevice: "Vincular nuevo dispositivo",
+		linkNewDeviceSubtitle: "Escanear código QR para vincular dispositivo",
+		profile: "Perfil",
+		name: "Nombre",
+		github: "GitHub",
+		tapToDisconnect: "Toque para desconectar",
+		server: "Servidor",
+		backup: "Copia de seguridad",
+		backupDescription:
+			"Tu clave secreta es la única forma de recuperar tu cuenta. Guárdala en un lugar seguro como un administrador de contraseñas.",
+		secretKey: "Clave secreta",
+		tapToReveal: "Toca para revelar",
+		tapToHide: "Toca para ocultar",
+		secretKeyLabel: "CLAVE SECRETA (TOCA PARA COPIAR)",
+		secretKeyCopied:
+			"Clave secreta copiada al portapapeles. ¡Guárdala en un lugar seguro!",
+		secretKeyCopyFailed: "Falló al copiar la clave secreta",
+		privacy: "Privacidad",
+		privacyDescription:
+			"Ayude a mejorar la aplicación compartiendo datos de uso anónimos. No se recopila información personal.",
+		analytics: "Analíticas",
+		analyticsDisabled: "No se comparten datos",
+		analyticsEnabled: "Se comparten datos de uso anónimos",
+		dangerZone: "Zona peligrosa",
+		logout: "Cerrar sesión",
+		logoutSubtitle: "Cerrar sesión y limpiar datos locales",
+		logoutConfirm:
+			"¿Seguro que quieres cerrar sesión? ¡Asegúrate de haber guardado tu clave secreta!",
+		passwordSecurity: "Seguridad de contraseña",
+		passwordSecurityDescription:
+			"Protege tus sesiones con una contraseña para prevenir el acceso no autorizado.",
+		setupPasswordSubtitle: "Añadir protección con contraseña a tus sesiones",
+		changePasswordSubtitle: "Actualizar tu contraseña actual",
+		disablePasswordSubtitle: "Eliminar protección con contraseña",
+	},
 
-  settingsLanguage: {
-    // Language settings screen
-    title: 'Idioma',
-    description: 'Elige tu idioma preferido para la interfaz de la aplicación. Esto se sincronizará en todos tus dispositivos.',
-    currentLanguage: 'Idioma actual',
-    automatic: 'Automático',
-    automaticSubtitle: 'Detectar desde configuración del dispositivo',
-    needsRestart: 'Idioma cambiado',
-    needsRestartMessage: 'La aplicación necesita reiniciarse para aplicar la nueva configuración de idioma.',
-    restartNow: 'Reiniciar ahora',
-  },
+	settingsLanguage: {
+		// Language settings screen
+		title: "Idioma",
+		description:
+			"Elige tu idioma preferido para la interfaz de la aplicación. Esto se sincronizará en todos tus dispositivos.",
+		currentLanguage: "Idioma actual",
+		automatic: "Automático",
+		automaticSubtitle: "Detectar desde configuración del dispositivo",
+		needsRestart: "Idioma cambiado",
+		needsRestartMessage:
+			"La aplicación necesita reiniciarse para aplicar la nueva configuración de idioma.",
+		restartNow: "Reiniciar ahora",
+	},
 
-  connectButton: {
-    authenticate: 'Autenticar terminal',
-    authenticateWithUrlPaste: 'Autenticar terminal con pegado de URL',
-    pasteAuthUrl: 'Pega la URL de autenticación de tu terminal',
-  },
+	connectButton: {
+		authenticate: "Autenticar terminal",
+		authenticateWithUrlPaste: "Autenticar terminal con pegado de URL",
+		pasteAuthUrl: "Pega la URL de autenticación de tu terminal",
+	},
 
-  updateBanner: {
-    updateAvailable: 'Actualización disponible',
-    pressToApply: 'Presione para aplicar la actualización',
-    whatsNew: 'Novedades',
-    seeLatest: 'Ver las últimas actualizaciones y mejoras',
-    nativeUpdateAvailable: 'Actualización de la aplicación disponible',
-    tapToUpdateAppStore: 'Toque para actualizar en App Store',
-    tapToUpdatePlayStore: 'Toque para actualizar en Play Store',
-  },
+	updateBanner: {
+		updateAvailable: "Actualización disponible",
+		pressToApply: "Presione para aplicar la actualización",
+		whatsNew: "Novedades",
+		seeLatest: "Ver las últimas actualizaciones y mejoras",
+		nativeUpdateAvailable: "Actualización de la aplicación disponible",
+		tapToUpdateAppStore: "Toque para actualizar en App Store",
+		tapToUpdatePlayStore: "Toque para actualizar en Play Store",
+	},
 
-  changelog: {
-    // Used by the changelog screen
-    version: ({ version }: { version: number }) => `Versión ${version}`,
-    noEntriesAvailable: 'No hay entradas de registro de cambios disponibles.',
-  },
+	changelog: {
+		// Used by the changelog screen
+		version: ({ version }: { version: number }) => `Versión ${version}`,
+		noEntriesAvailable: "No hay entradas de registro de cambios disponibles.",
+	},
 
-  terminal: {
-    // Used by terminal connection screens
-    webBrowserRequired: 'Se requiere navegador web',
-    webBrowserRequiredDescription: 'Los enlaces de conexión de terminal solo pueden abrirse en un navegador web por razones de seguridad. Usa el escáner de código QR o abre este enlace en una computadora.',
-    processingConnection: 'Procesando conexión...',
-    invalidConnectionLink: 'Enlace de conexión inválido',
-    invalidConnectionLinkDescription: 'El enlace de conexión falta o es inválido. Verifica la URL e intenta nuevamente.',
-    connectTerminal: 'Conectar terminal',
-    terminalRequestDescription: 'Un terminal está solicitando conectarse a tu cuenta de Happy Coder. Esto permitirá al terminal enviar y recibir mensajes de forma segura.',
-    connectionDetails: 'Detalles de conexión',
-    publicKey: 'Clave pública',
-    encryption: 'Cifrado',
-    endToEndEncrypted: 'Cifrado de extremo a extremo',
-    acceptConnection: 'Aceptar conexión',
-    connecting: 'Conectando...',
-    reject: 'Rechazar',
-    security: 'Seguridad',
-    securityFooter: 'Este enlace de conexión fue procesado de forma segura en tu navegador y nunca fue enviado a ningún servidor. Tus datos privados permanecerán seguros y solo tú puedes descifrar los mensajes.',
-    securityFooterDevice: 'Esta conexión fue procesada de forma segura en tu dispositivo y nunca fue enviada a ningún servidor. Tus datos privados permanecerán seguros y solo tú puedes descifrar los mensajes.',
-    clientSideProcessing: 'Procesamiento del lado del cliente',
-    linkProcessedLocally: 'Enlace procesado localmente en el navegador',
-    linkProcessedOnDevice: 'Enlace procesado localmente en el dispositivo',
-  },
+	terminal: {
+		// Used by terminal connection screens
+		webBrowserRequired: "Se requiere navegador web",
+		webBrowserRequiredDescription:
+			"Los enlaces de conexión de terminal solo pueden abrirse en un navegador web por razones de seguridad. Usa el escáner de código QR o abre este enlace en una computadora.",
+		processingConnection: "Procesando conexión...",
+		invalidConnectionLink: "Enlace de conexión inválido",
+		invalidConnectionLinkDescription:
+			"El enlace de conexión falta o es inválido. Verifica la URL e intenta nuevamente.",
+		connectTerminal: "Conectar terminal",
+		terminalRequestDescription:
+			"Un terminal está solicitando conectarse a tu cuenta de Happy Coder. Esto permitirá al terminal enviar y recibir mensajes de forma segura.",
+		connectionDetails: "Detalles de conexión",
+		publicKey: "Clave pública",
+		encryption: "Cifrado",
+		endToEndEncrypted: "Cifrado de extremo a extremo",
+		acceptConnection: "Aceptar conexión",
+		connecting: "Conectando...",
+		reject: "Rechazar",
+		security: "Seguridad",
+		securityFooter:
+			"Este enlace de conexión fue procesado de forma segura en tu navegador y nunca fue enviado a ningún servidor. Tus datos privados permanecerán seguros y solo tú puedes descifrar los mensajes.",
+		securityFooterDevice:
+			"Esta conexión fue procesada de forma segura en tu dispositivo y nunca fue enviada a ningún servidor. Tus datos privados permanecerán seguros y solo tú puedes descifrar los mensajes.",
+		clientSideProcessing: "Procesamiento del lado del cliente",
+		linkProcessedLocally: "Enlace procesado localmente en el navegador",
+		linkProcessedOnDevice: "Enlace procesado localmente en el dispositivo",
+	},
 
-  modals: {
-    // Used across connect flows and settings
-    authenticateTerminal: 'Autenticar terminal',
-    pasteUrlFromTerminal: 'Pega la URL de autenticación de tu terminal',
-    deviceLinkedSuccessfully: 'Dispositivo vinculado exitosamente',
-    terminalConnectedSuccessfully: 'Terminal conectado exitosamente',
-    invalidAuthUrl: 'URL de autenticación inválida',
-    developerMode: 'Modo desarrollador',
-    developerModeEnabled: 'Modo desarrollador habilitado',
-    developerModeDisabled: 'Modo desarrollador deshabilitado',
-    disconnectGithub: 'Desconectar GitHub',
-    disconnectGithubConfirm: '¿Seguro que quieres desconectar tu cuenta de GitHub?',
-    disconnectService: ({ service }: { service: string }) => 
-      `Desconectar ${service}`,
-    disconnectServiceConfirm: ({ service }: { service: string }) => 
-      `¿Seguro que quieres desconectar ${service} de tu cuenta?`,
-    disconnect: 'Desconectar',
-    failedToConnectTerminal: 'Falló al conectar terminal',
-    cameraPermissionsRequiredToConnectTerminal: 'Se requieren permisos de cámara para conectar terminal',
-    failedToLinkDevice: 'Falló al vincular dispositivo',
-    cameraPermissionsRequiredToScanQr: 'Se requieren permisos de cámara para escanear códigos QR',
-  },
+	modals: {
+		// Used across connect flows and settings
+		authenticateTerminal: "Autenticar terminal",
+		pasteUrlFromTerminal: "Pega la URL de autenticación de tu terminal",
+		deviceLinkedSuccessfully: "Dispositivo vinculado exitosamente",
+		terminalConnectedSuccessfully: "Terminal conectado exitosamente",
+		invalidAuthUrl: "URL de autenticación inválida",
+		developerMode: "Modo desarrollador",
+		developerModeEnabled: "Modo desarrollador habilitado",
+		developerModeDisabled: "Modo desarrollador deshabilitado",
+		disconnectGithub: "Desconectar GitHub",
+		disconnectGithubConfirm:
+			"¿Seguro que quieres desconectar tu cuenta de GitHub?",
+		disconnectService: ({ service }: { service: string }) =>
+			`Desconectar ${service}`,
+		disconnectServiceConfirm: ({ service }: { service: string }) =>
+			`¿Seguro que quieres desconectar ${service} de tu cuenta?`,
+		disconnect: "Desconectar",
+		failedToConnectTerminal: "Falló al conectar terminal",
+		cameraPermissionsRequiredToConnectTerminal:
+			"Se requieren permisos de cámara para conectar terminal",
+		failedToLinkDevice: "Falló al vincular dispositivo",
+		cameraPermissionsRequiredToScanQr:
+			"Se requieren permisos de cámara para escanear códigos QR",
+	},
 
-  navigation: {
-    // Navigation titles and screen headers
-    connectTerminal: 'Conectar terminal',
-    linkNewDevice: 'Vincular nuevo dispositivo', 
-    restoreWithSecretKey: 'Restaurar con clave secreta',
-    whatsNew: 'Novedades',
-  },
+	navigation: {
+		// Navigation titles and screen headers
+		connectTerminal: "Conectar terminal",
+		linkNewDevice: "Vincular nuevo dispositivo",
+		restoreWithSecretKey: "Restaurar con clave secreta",
+		whatsNew: "Novedades",
+	},
 
-  welcome: {
-    // Main welcome screen for unauthenticated users
-    title: 'Cliente móvil de Codex y Claude Code',
-    subtitle: 'Cifrado de extremo a extremo y tu cuenta se guarda solo en tu dispositivo.',
-    createAccount: 'Crear cuenta',
-    linkOrRestoreAccount: 'Vincular o restaurar cuenta',
-    loginWithMobileApp: 'Iniciar sesión con aplicación móvil',
-  },
+	welcome: {
+		// Main welcome screen for unauthenticated users
+		title: "Cliente móvil de Codex y Claude Code",
+		subtitle:
+			"Cifrado de extremo a extremo y tu cuenta se guarda solo en tu dispositivo.",
+		createAccount: "Crear cuenta",
+		linkOrRestoreAccount: "Vincular o restaurar cuenta",
+		loginWithMobileApp: "Iniciar sesión con aplicación móvil",
+	},
 
-  review: {
-    // Used by utils/requestReview.ts
-    enjoyingApp: '¿Disfrutando la aplicación?',
-    feedbackPrompt: '¡Nos encantaría escuchar tus comentarios!',
-    yesILoveIt: '¡Sí, me encanta!',
-    notReally: 'No realmente',
-  },
+	review: {
+		// Used by utils/requestReview.ts
+		enjoyingApp: "¿Disfrutando la aplicación?",
+		feedbackPrompt: "¡Nos encantaría escuchar tus comentarios!",
+		yesILoveIt: "¡Sí, me encanta!",
+		notReally: "No realmente",
+	},
 
-  items: {
-    // Used by Item component for copy toast
-    copiedToClipboard: ({ label }: { label: string }) => `${label} copiado al portapapeles`,
-  },
+	items: {
+		// Used by Item component for copy toast
+		copiedToClipboard: ({ label }: { label: string }) =>
+			`${label} copiado al portapapeles`,
+	},
 
-  machine: {
-    offlineUnableToSpawn: 'El lanzador está deshabilitado mientras la máquina está desconectada',
-    offlineHelp: '• Asegúrate de que tu computadora esté en línea\n• Ejecuta `happy daemon status` para diagnosticar\n• ¿Estás usando la última versión del CLI? Actualiza con `npm install -g happy-coder@latest`',
-    launchNewSessionInDirectory: 'Iniciar nueva sesión en directorio',
-    daemon: 'Daemon',
-    status: 'Estado',
-    stopDaemon: 'Detener daemon',
-    lastKnownPid: 'Último PID conocido',
-    lastKnownHttpPort: 'Último puerto HTTP conocido',
-    startedAt: 'Iniciado en',
-    cliVersion: 'Versión del CLI',
-    daemonStateVersion: 'Versión del estado del daemon',
-    activeSessions: ({ count }: { count: number }) => `Sesiones activas (${count})`,
-    machineGroup: 'Máquina',
-    host: 'Host',
-    machineId: 'ID de máquina',
-    username: 'Nombre de usuario',
-    homeDirectory: 'Directorio principal',
-    platform: 'Plataforma',
-    architecture: 'Arquitectura',
-    lastSeen: 'Visto por última vez',
-    never: 'Nunca',
-    metadataVersion: 'Versión de metadatos',
-    untitledSession: 'Sesión sin título',
-    back: 'Atrás',
-  },
+	machine: {
+		offlineUnableToSpawn:
+			"El lanzador está deshabilitado mientras la máquina está desconectada",
+		offlineHelp:
+			"• Asegúrate de que tu computadora esté en línea\n• Ejecuta `happy daemon status` para diagnosticar\n• ¿Estás usando la última versión del CLI? Actualiza con `npm install -g happy-coder@latest`",
+		launchNewSessionInDirectory: "Iniciar nueva sesión en directorio",
+		daemon: "Daemon",
+		status: "Estado",
+		stopDaemon: "Detener daemon",
+		lastKnownPid: "Último PID conocido",
+		lastKnownHttpPort: "Último puerto HTTP conocido",
+		startedAt: "Iniciado en",
+		cliVersion: "Versión del CLI",
+		daemonStateVersion: "Versión del estado del daemon",
+		activeSessions: ({ count }: { count: number }) =>
+			`Sesiones activas (${count})`,
+		machineGroup: "Máquina",
+		host: "Host",
+		machineId: "ID de máquina",
+		username: "Nombre de usuario",
+		homeDirectory: "Directorio principal",
+		platform: "Plataforma",
+		architecture: "Arquitectura",
+		lastSeen: "Visto por última vez",
+		never: "Nunca",
+		metadataVersion: "Versión de metadatos",
+		untitledSession: "Sesión sin título",
+		back: "Atrás",
+	},
 
-  message: {
-    switchedToMode: ({ mode }: { mode: string }) => `Cambiado al modo ${mode}`,
-    unknownEvent: 'Evento desconocido',
-    usageLimitUntil: ({ time }: { time: string }) => `Límite de uso alcanzado hasta ${time}`,
-    unknownTime: 'tiempo desconocido',
-  },
+	message: {
+		switchedToMode: ({ mode }: { mode: string }) => `Cambiado al modo ${mode}`,
+		unknownEvent: "Evento desconocido",
+		usageLimitUntil: ({ time }: { time: string }) =>
+			`Límite de uso alcanzado hasta ${time}`,
+		unknownTime: "tiempo desconocido",
+	},
 
-  codex: {
-    // Codex permission dialog buttons
-    permissions: {
-      yesForSession: 'Sí, y no preguntar por esta sesión',
-      stopAndExplain: 'Detener, y explicar qué hacer',
-    },
-  },
+	codex: {
+		// Codex permission dialog buttons
+		permissions: {
+			yesForSession: "Sí, y no preguntar por esta sesión",
+			stopAndExplain: "Detener, y explicar qué hacer",
+		},
+	},
 
-  claude: {
-    // Claude permission dialog buttons
-    permissions: {
-      yesAllowAllEdits: 'Sí, permitir todas las ediciones durante esta sesión',
-      yesForTool: 'Sí, no volver a preguntar para esta herramienta',
-      noTellClaude: 'No, y decirle a Claude qué hacer diferente',
-    },
-  },
+	claude: {
+		// Claude permission dialog buttons
+		permissions: {
+			yesAllowAllEdits: "Sí, permitir todas las ediciones durante esta sesión",
+			yesForTool: "Sí, no volver a preguntar para esta herramienta",
+			noTellClaude: "No, y decirle a Claude qué hacer diferente",
+		},
+	},
 
-  textSelection: {
-    // Text selection screen
-    selectText: 'Seleccionar rango de texto',
-    title: 'Seleccionar texto',
-    noTextProvided: 'No se proporcionó texto',
-    textNotFound: 'Texto no encontrado o expirado',
-    textCopied: 'Texto copiado al portapapeles',
-    failedToCopy: 'Error al copiar el texto al portapapeles',
-    noTextToCopy: 'No hay texto disponible para copiar',
-  },
+	textSelection: {
+		// Text selection screen
+		selectText: "Seleccionar rango de texto",
+		title: "Seleccionar texto",
+		noTextProvided: "No se proporcionó texto",
+		textNotFound: "Texto no encontrado o expirado",
+		textCopied: "Texto copiado al portapapeles",
+		failedToCopy: "Error al copiar el texto al portapapeles",
+		noTextToCopy: "No hay texto disponible para copiar",
+	},
 
-  daemonCleanup: {
-    // Daemon cleanup modal
-    unableToStop: 'No se pudo detener el daemon',
-    couldNotStop: ({ machineName }: { machineName: string }) => `El daemon en "${machineName}" no pudo ser detenido.`,
-    whatToDo: '¿Qué le gustaría hacer?',
-    forceStop: 'Forzar detención',
-    forceStopDescription: 'Intentar métodos alternativos para terminar el daemon',
-    removeSession: 'Eliminar sesión',
-    removeSessionDescription: 'Limpiar el estado de la sesión localmente (el daemon puede permanecer en ejecución)',
-    cancelDescription: 'Mantener la sesión sin cambios e intentar más tarde',
-    error: ({ error }: { error: string }) => `Error: ${error}`,
-  },
+	daemonCleanup: {
+		// Daemon cleanup modal
+		unableToStop: "No se pudo detener el daemon",
+		couldNotStop: ({ machineName }: { machineName: string }) =>
+			`El daemon en "${machineName}" no pudo ser detenido.`,
+		whatToDo: "¿Qué le gustaría hacer?",
+		forceStop: "Forzar detención",
+		forceStopDescription:
+			"Intentar métodos alternativos para terminar el daemon",
+		removeSession: "Eliminar sesión",
+		removeSessionDescription:
+			"Limpiar el estado de la sesión localmente (el daemon puede permanecer en ejecución)",
+		cancelDescription: "Mantener la sesión sin cambios e intentar más tarde",
+		error: ({ error }: { error: string }) => `Error: ${error}`,
+	},
 
-  sessions: {
-    // Session management actions
-    rename: 'Renombrar sesión',
-    duplicate: 'Duplicar sesión',
-    delete: 'Eliminar sesión',
-    copyId: 'Copiar ID de sesión',
-    exportHistory: 'Exportar historial',
-    deleteSessionTitle: 'Eliminar sesión',
-    deleteSessionMessage: ({ sessionName }: { sessionName: string }) => `¿Está seguro de que desea eliminar "${sessionName}"? Esta acción no se puede deshacer.`,
-    renameSessionTitle: 'Renombrar sesión',
-    renameSessionMessage: 'Introduzca un nuevo nombre para esta sesión:',
-    sessionNamePlaceholder: 'Introduzca el nombre de la sesión...',
-    duplicatePrefix: ({ originalName }: { originalName: string }) => `Copia de ${originalName}`,
-    sessionIdCopied: 'ID de sesión copiado al portapapeles',
-    failedToCopySessionId: 'Error al copiar el ID de sesión',
-    exportSaved: ({ fileName }: { fileName: string }) => `Historial de sesión guardado como ${fileName}`,
-    exportFailed: 'Error al exportar el historial de sesión',
-    exportHistoryComingSoon: 'La función de exportar el historial de sesión estará disponible próximamente.',
-  },
+	sessions: {
+		// Session management actions
+		rename: "Renombrar sesión",
+		duplicate: "Duplicar sesión",
+		delete: "Eliminar sesión",
+		copyId: "Copiar ID de sesión",
+		exportHistory: "Exportar historial",
+		deleteSessionTitle: "Eliminar sesión",
+		deleteSessionMessage: ({ sessionName }: { sessionName: string }) =>
+			`¿Está seguro de que desea eliminar "${sessionName}"? Esta acción no se puede deshacer.`,
+		renameSessionTitle: "Renombrar sesión",
+		renameSessionMessage: "Introduzca un nuevo nombre para esta sesión:",
+		sessionNamePlaceholder: "Introduzca el nombre de la sesión...",
+		duplicatePrefix: ({ originalName }: { originalName: string }) =>
+			`Copia de ${originalName}`,
+		sessionIdCopied: "ID de sesión copiado al portapapeles",
+		failedToCopySessionId: "Error al copiar el ID de sesión",
+		exportSaved: ({ fileName }: { fileName: string }) =>
+			`Historial de sesión guardado como ${fileName}`,
+		exportFailed: "Error al exportar el historial de sesión",
+		exportHistoryComingSoon:
+			"La función de exportar el historial de sesión estará disponible próximamente.",
+	},
 
-  password: {
-    // Password-based session unlocking
-    unlockSession: 'Desbloquear sesión',
-    unlockSessionDescription: 'Ingresa tu contraseña para acceder a tus sesiones',
-    enterPassword: 'Ingresa tu contraseña',
-    unlock: 'Desbloquear',
-    verifying: 'Verificando...',
-    error: 'Error de contraseña',
-    incorrectPassword: 'Contraseña incorrecta',
-    incorrectPasswordMessage: ({ attempts }: { attempts: number }) => `Contraseña incorrecta. ${attempts === 1 ? 'Queda 1 intento' : `Quedan ${attempts} intentos`}.`,
-    tooManyAttempts: 'Demasiados intentos',
-    tooManyAttemptsMessage: 'Demasiados intentos fallidos de contraseña. Prueba con autenticación biométrica o restablece la aplicación.',
-    attemptsRemaining: ({ attempts }: { attempts: number }) => attempts === 1 ? 'Queda 1 intento' : `Quedan ${attempts} intentos`,
-    verificationError: 'No se pudo verificar la contraseña. Por favor, intenta de nuevo.',
-    useBiometric: 'Usar autenticación biométrica',
-    biometricPrompt: 'Usa tu biometría para desbloquear Happy Coder',
-    biometricUnavailable: 'Biometría no disponible',
-    biometricUnavailableMessage: 'La autenticación biométrica no está disponible en este dispositivo.',
-    biometricError: 'La autenticación biométrica falló. Por favor, intenta de nuevo.',
-    tryBiometric: 'Probar biometría',
-    usePassword: 'Usar contraseña',
-    forgotPassword: '¿Olvidaste tu contraseña?',
-    forgotPasswordMessage: 'Olvidar tu contraseña restablecerá la aplicación y necesitarás restaurar tu cuenta usando tu clave secreta.',
-    resetApp: 'Restablecer aplicación',
-    setupPassword: 'Configurar contraseña',
-    setupPasswordDescription: 'Protege tus sesiones con una contraseña',
-    createPassword: 'Crear contraseña',
-    confirmPassword: 'Confirmar contraseña',
-    passwordMismatch: 'Las contraseñas no coinciden',
-    passwordTooWeak: 'La contraseña es muy débil',
-    passwordCreated: 'Protección con contraseña habilitada exitosamente',
-    changePassword: 'Cambiar contraseña',
-    currentPassword: 'Contraseña actual',
-    newPassword: 'Nueva contraseña',
-    passwordChanged: 'Contraseña cambiada exitosamente',
-    disablePassword: 'Desactivar protección con contraseña',
-    disablePasswordMessage: '¿Estás seguro de que quieres desactivar la protección con contraseña? Tus sesiones serán accesibles sin contraseña.',
-    passwordDisabled: 'Protección con contraseña desactivada',
-    anonymousMode: 'Modo anónimo',
-    anonymousModeDescription: 'Usar credenciales temporales sin guardar información de la cuenta',
-    enableAnonymousMode: 'Habilitar modo anónimo',
-    anonymousModeEnabled: 'Modo anónimo habilitado. Los datos de tu sesión no se guardarán.',
-    passwordStrengthWeak: 'Débil',
-    passwordStrengthMedium: 'Media',
-    passwordStrengthStrong: 'Fuerte',
-    passwordsMatch: 'Las contraseñas coinciden',
-    setup: 'Configurando',
-    skipForNow: 'Omitir por ahora',
-    // Password recovery
-    recoveryTitle: 'Recuperación de contraseña',
-    recoveryDescription: 'Elige cómo deseas recuperar el acceso a tu cuenta',
-    biometricResetPrompt: 'Autentícate para restablecer tu contraseña',
-    useOtherMethod: 'Usar otro método',
-    resetPasswordTitle: 'Restablecer contraseña',
-    resetPasswordBiometric: 'Tu identidad ha sido verificada. Esto eliminará la protección por contraseña manteniendo tus datos de sesión seguros.',
-    resetPassword: 'Restablecer contraseña',
-    resetAppTitle: 'Restablecer aplicación',
-    resetAppWarning: 'Esto eliminará TODOS tus datos incluyendo sesiones, configuración e información de cuenta. Esta acción no se puede deshacer.',
-    resetAppDescription: 'Eliminar todos los datos y comenzar de nuevo',
-    confirmReset: '¿Estás absolutamente seguro?',
-    confirmResetMessage: 'Esto eliminará todo permanentemente. Necesitarás restaurar tu cuenta usando tu clave secreta.',
-    yesResetEverything: 'Sí, restablecer todo',
-    passwordResetSuccess: 'La protección por contraseña ha sido eliminada. Puedes configurar una nueva contraseña en Configuración.',
-    useFaceID: 'Usar Face ID',
-    useTouchID: 'Usar Touch ID',
-    biometricRecoveryDescription: 'Restablecer contraseña usando autenticación biométrica',
-    useSecretKey: 'Usar clave secreta',
-    secretKeyRecoveryDescription: 'Restaurar tu cuenta usando tu clave secreta de respaldo',
-    recoveryFooter: 'Si necesitas ayuda recuperando tu cuenta, estas opciones te guiarán a través del proceso.',
-    backToUnlock: 'Volver a la pantalla de desbloqueo',
-    processing: 'Procesando...',
-  },
+	password: {
+		// Password-based session unlocking
+		unlockSession: "Desbloquear sesión",
+		unlockSessionDescription:
+			"Ingresa tu contraseña para acceder a tus sesiones",
+		enterPassword: "Ingresa tu contraseña",
+		unlock: "Desbloquear",
+		verifying: "Verificando...",
+		error: "Error de contraseña",
+		incorrectPassword: "Contraseña incorrecta",
+		incorrectPasswordMessage: ({ attempts }: { attempts: number }) =>
+			`Contraseña incorrecta. ${attempts === 1 ? "Queda 1 intento" : `Quedan ${attempts} intentos`}.`,
+		tooManyAttempts: "Demasiados intentos",
+		tooManyAttemptsMessage:
+			"Demasiados intentos fallidos de contraseña. Prueba con autenticación biométrica o restablece la aplicación.",
+		attemptsRemaining: ({ attempts }: { attempts: number }) =>
+			attempts === 1 ? "Queda 1 intento" : `Quedan ${attempts} intentos`,
+		verificationError:
+			"No se pudo verificar la contraseña. Por favor, intenta de nuevo.",
+		useBiometric: "Usar autenticación biométrica",
+		biometricPrompt: "Usa tu biometría para desbloquear Happy Coder",
+		biometricUnavailable: "Biometría no disponible",
+		biometricUnavailableMessage:
+			"La autenticación biométrica no está disponible en este dispositivo.",
+		biometricError:
+			"La autenticación biométrica falló. Por favor, intenta de nuevo.",
+		tryBiometric: "Probar biometría",
+		usePassword: "Usar contraseña",
+		forgotPassword: "¿Olvidaste tu contraseña?",
+		forgotPasswordMessage:
+			"Olvidar tu contraseña restablecerá la aplicación y necesitarás restaurar tu cuenta usando tu clave secreta.",
+		resetApp: "Restablecer aplicación",
+		setupPassword: "Configurar contraseña",
+		setupPasswordDescription: "Protege tus sesiones con una contraseña",
+		createPassword: "Crear contraseña",
+		confirmPassword: "Confirmar contraseña",
+		passwordMismatch: "Las contraseñas no coinciden",
+		passwordTooWeak: "La contraseña es muy débil",
+		passwordCreated: "Protección con contraseña habilitada exitosamente",
+		changePassword: "Cambiar contraseña",
+		currentPassword: "Contraseña actual",
+		newPassword: "Nueva contraseña",
+		passwordChanged: "Contraseña cambiada exitosamente",
+		disablePassword: "Desactivar protección con contraseña",
+		disablePasswordMessage:
+			"¿Estás seguro de que quieres desactivar la protección con contraseña? Tus sesiones serán accesibles sin contraseña.",
+		passwordDisabled: "Protección con contraseña desactivada",
+		anonymousMode: "Modo anónimo",
+		anonymousModeDescription:
+			"Usar credenciales temporales sin guardar información de la cuenta",
+		enableAnonymousMode: "Habilitar modo anónimo",
+		anonymousModeEnabled:
+			"Modo anónimo habilitado. Los datos de tu sesión no se guardarán.",
+		passwordStrengthWeak: "Débil",
+		passwordStrengthMedium: "Media",
+		passwordStrengthStrong: "Fuerte",
+		passwordsMatch: "Las contraseñas coinciden",
+		setup: "Configurando",
+		skipForNow: "Omitir por ahora",
+		// Password recovery
+		recoveryTitle: "Recuperación de contraseña",
+		recoveryDescription: "Elige cómo deseas recuperar el acceso a tu cuenta",
+		biometricResetPrompt: "Autentícate para restablecer tu contraseña",
+		useOtherMethod: "Usar otro método",
+		resetPasswordTitle: "Restablecer contraseña",
+		resetPasswordBiometric:
+			"Tu identidad ha sido verificada. Esto eliminará la protección por contraseña manteniendo tus datos de sesión seguros.",
+		resetPassword: "Restablecer contraseña",
+		resetAppTitle: "Restablecer aplicación",
+		resetAppWarning:
+			"Esto eliminará TODOS tus datos incluyendo sesiones, configuración e información de cuenta. Esta acción no se puede deshacer.",
+		resetAppDescription: "Eliminar todos los datos y comenzar de nuevo",
+		confirmReset: "¿Estás absolutamente seguro?",
+		confirmResetMessage:
+			"Esto eliminará todo permanentemente. Necesitarás restaurar tu cuenta usando tu clave secreta.",
+		yesResetEverything: "Sí, restablecer todo",
+		passwordResetSuccess:
+			"La protección por contraseña ha sido eliminada. Puedes configurar una nueva contraseña en Configuración.",
+		useFaceID: "Usar Face ID",
+		useTouchID: "Usar Touch ID",
+		biometricRecoveryDescription:
+			"Restablecer contraseña usando autenticación biométrica",
+		useSecretKey: "Usar clave secreta",
+		secretKeyRecoveryDescription:
+			"Restaurar tu cuenta usando tu clave secreta de respaldo",
+		recoveryFooter:
+			"Si necesitas ayuda recuperando tu cuenta, estas opciones te guiarán a través del proceso.",
+		backToUnlock: "Volver a la pantalla de desbloqueo",
+		processing: "Procesando...",
+	},
 
-  passwordMigration: {
-    // Password migration banner for existing users
-    title: 'Protege tus sesiones',
-    description: 'Añade protección con contraseña para mantener seguras tus sesiones de programación. Tus datos permanecerán privados con desbloqueo biométrico opcional.',
-    setupNow: 'Configurar ahora',
-    learnMore: 'Saber más',
-    compactTitle: 'Activar protección con contraseña',
-  },
+	passwordMigration: {
+		// Password migration banner for existing users
+		title: "Protege tus sesiones",
+		description:
+			"Añade protección con contraseña para mantener seguras tus sesiones de programación. Tus datos permanecerán privados con desbloqueo biométrico opcional.",
+		setupNow: "Configurar ahora",
+		learnMore: "Saber más",
+		compactTitle: "Activar protección con contraseña",
+	},
 
-  artifacts: {
-    // Artifacts feature
-    title: 'Artefactos',
-    countSingular: '1 artefacto',
-    countPlural: ({ count }: { count: number }) => `${count} artefactos`,
-    empty: 'No hay artefactos aún',
-    emptyDescription: 'Crea tu primer artefacto para comenzar',
-    new: 'Nuevo artefacto',
-    edit: 'Editar artefacto',
-    delete: 'Eliminar',
-    updateError: 'No se pudo actualizar el artefacto. Por favor, intenta de nuevo.',
-    notFound: 'Artefacto no encontrado',
-    discardChanges: '¿Descartar cambios?',
-    discardChangesDescription: 'Tienes cambios sin guardar. ¿Estás seguro de que quieres descartarlos?',
-    deleteConfirm: '¿Eliminar artefacto?',
-    deleteConfirmDescription: 'Esta acción no se puede deshacer',
-    titleLabel: 'TÍTULO',
-    titlePlaceholder: 'Ingresa un título para tu artefacto',
-    bodyLabel: 'CONTENIDO',
-    bodyPlaceholder: 'Escribe tu contenido aquí...',
-    emptyFieldsError: 'Por favor, ingresa un título o contenido',
-    createError: 'No se pudo crear el artefacto. Por favor, intenta de nuevo.',
-    save: 'Guardar',
-    saving: 'Guardando...',
-    loading: 'Cargando artefactos...',
-    error: 'Error al cargar el artefacto',
-  },
-
+	artifacts: {
+		// Artifacts feature
+		title: "Artefactos",
+		countSingular: "1 artefacto",
+		countPlural: ({ count }: { count: number }) => `${count} artefactos`,
+		empty: "No hay artefactos aún",
+		emptyDescription: "Crea tu primer artefacto para comenzar",
+		new: "Nuevo artefacto",
+		edit: "Editar artefacto",
+		delete: "Eliminar",
+		updateError:
+			"No se pudo actualizar el artefacto. Por favor, intenta de nuevo.",
+		notFound: "Artefacto no encontrado",
+		discardChanges: "¿Descartar cambios?",
+		discardChangesDescription:
+			"Tienes cambios sin guardar. ¿Estás seguro de que quieres descartarlos?",
+		deleteConfirm: "¿Eliminar artefacto?",
+		deleteConfirmDescription: "Esta acción no se puede deshacer",
+		titleLabel: "TÍTULO",
+		titlePlaceholder: "Ingresa un título para tu artefacto",
+		bodyLabel: "CONTENIDO",
+		bodyPlaceholder: "Escribe tu contenido aquí...",
+		emptyFieldsError: "Por favor, ingresa un título o contenido",
+		createError: "No se pudo crear el artefacto. Por favor, intenta de nuevo.",
+		save: "Guardar",
+		saving: "Guardando...",
+		loading: "Cargando artefactos...",
+		error: "Error al cargar el artefacto",
+	},
 } as const;
 
 export type TranslationsEs = typeof es;

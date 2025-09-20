@@ -1,2 +1,2 @@
-export { QRCode } from './QRCode';
-export { QRMatrix, createQRMatrix } from './qrMatrix';
+export { QRCode } from "./QRCode";
+export { createQRMatrix, QRMatrix } from "./qrMatrix";

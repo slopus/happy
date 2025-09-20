@@ -1,0 +1,192 @@
+{
+	"$schema": "https://biomejs.dev/schemas/2.2.4/schema.json",
+	"vcs": { "enabled": false, "clientKind": "git", "useIgnoreFile": false },
+	"files": { "ignoreUnknown": false },
+	"formatter": { "enabled": true, "indentStyle": "tab" },
+	"linter": {
+		"enabled": true,
+		"rules": {
+			"recommended": false,
+			"complexity": {
+				"noAdjacentSpacesInRegex": "error",
+				"noExtraBooleanCast": "error",
+				"noUselessCatch": "error",
+				"noUselessEscapeInRegex": "error",
+				"noUselessTypeConstraint": "error"
+			},
+			"correctness": {
+				"noConstAssign": "error",
+				"noConstantCondition": "error",
+				"noEmptyCharacterClassInRegex": "error",
+				"noEmptyPattern": "error",
+				"noGlobalObjectCalls": "error",
+				"noInvalidBuiltinInstantiation": "error",
+				"noInvalidConstructorSuper": "error",
+				"noNonoctalDecimalEscape": "error",
+				"noPrecisionLoss": "error",
+				"noSelfAssign": "error",
+				"noSetterReturn": "error",
+				"noSwitchDeclarations": "error",
+				"noUndeclaredVariables": "error",
+				"noUnreachable": "error",
+				"noUnreachableSuper": "error",
+				"noUnsafeFinally": "error",
+				"noUnsafeOptionalChaining": "error",
+				"noUnusedLabels": "error",
+				"noUnusedPrivateClassMembers": "error",
+				"noUnusedVariables": "error",
+				"useIsNan": "error",
+				"useValidForDirection": "error",
+				"useValidTypeof": "error",
+				"useYield": "error"
+			},
+			"style": {
+				"noCommonJs": "error",
+				"noNamespace": "error",
+				"useArrayLiterals": "error",
+				"useAsConstAssertion": "error"
+			},
+			"suspicious": {
+				"noAsyncPromiseExecutor": "error",
+				"noCatchAssign": "error",
+				"noClassAssign": "error",
+				"noCompareNegZero": "error",
+				"noConstantBinaryExpressions": "error",
+				"noControlCharactersInRegex": "error",
+				"noDebugger": "error",
+				"noDuplicateCase": "error",
+				"noDuplicateClassMembers": "error",
+				"noDuplicateElseIf": "error",
+				"noDuplicateObjectKeys": "error",
+				"noDuplicateParameters": "error",
+				"noEmptyBlockStatements": "error",
+				"noExplicitAny": "error",
+				"noExtraNonNullAssertion": "error",
+				"noFallthroughSwitchClause": "error",
+				"noFunctionAssign": "error",
+				"noGlobalAssign": "error",
+				"noImportAssign": "error",
+				"noIrregularWhitespace": "error",
+				"noMisleadingCharacterClass": "error",
+				"noMisleadingInstantiator": "error",
+				"noPrototypeBuiltins": "error",
+				"noRedeclare": "error",
+				"noShadowRestrictedNames": "error",
+				"noSparseArray": "error",
+				"noUnsafeDeclarationMerging": "error",
+				"noUnsafeNegation": "error",
+				"noUselessRegexBackrefs": "error",
+				"noWith": "error",
+				"useGetterReturn": "error",
+				"useNamespaceKeyword": "error"
+			}
+		},
+		"includes": [
+			"**",
+			"!node_modules/**",
+			"!android/**",
+			"!ios/**",
+			"!dist/**",
+			"!build/**",
+			"!coverage/**",
+			"!src-tauri/target/**",
+			"!.eslintrc.cjs",
+			"!.eslintrc.js",
+			"!sources/trash/**",
+			"!.github/scripts/**"
+		]
+	},
+	"javascript": { "formatter": { "quoteStyle": "double" }, "globals": [] },
+	"overrides": [
+		{
+			"includes": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"],
+			"linter": {
+				"rules": {
+					"complexity": { "noArguments": "error" },
+					"correctness": {
+						"noConstAssign": "off",
+						"noGlobalObjectCalls": "off",
+						"noInvalidBuiltinInstantiation": "off",
+						"noInvalidConstructorSuper": "off",
+						"noSetterReturn": "off",
+						"noUndeclaredVariables": "off",
+						"noUnreachable": "off",
+						"noUnreachableSuper": "off"
+					},
+					"style": { "useConst": "error" },
+					"suspicious": {
+						"noClassAssign": "off",
+						"noDuplicateClassMembers": "off",
+						"noDuplicateObjectKeys": "off",
+						"noDuplicateParameters": "off",
+						"noFunctionAssign": "off",
+						"noImportAssign": "off",
+						"noRedeclare": "off",
+						"noUnsafeNegation": "off",
+						"noVar": "error",
+						"noWith": "off",
+						"useGetterReturn": "off"
+					}
+				}
+			}
+		},
+		{
+			"includes": ["**/*.{ts,tsx,js}"],
+			"javascript": { "globals": ["__DEV__"] },
+			"linter": {
+				"rules": {
+					"correctness": {
+						"noSwitchDeclarations": "warn",
+						"noUnusedImports": "error",
+						"noUnusedVariables": "warn"
+					},
+					"style": { "noCommonJs": "off" },
+					"suspicious": { "noExplicitAny": "off" }
+				}
+			}
+		},
+		{
+			"includes": ["sources/components/**", "sources/sync/**"],
+			"linter": {
+				"rules": {
+					"correctness": {
+						"noSwitchDeclarations": "error",
+						"noUnusedVariables": "error"
+					}
+				}
+			}
+		},
+		{
+			"includes": [
+				"**/*.{test,spec}.ts",
+				"**/*.{test,spec}.tsx",
+				"**/*.integration.test.ts",
+				"__tests__/**",
+				"sources/app/(app)/dev/**"
+			],
+			"linter": { "rules": { "correctness": { "noUnusedVariables": "off" } } }
+		},
+		{
+			"includes": [
+				"eslint.config.js",
+				"babel.config.js",
+				"metro.config.js",
+				"app.config.js",
+				"plugins/**/*.js"
+			],
+			"javascript": {
+				"globals": ["require", "console", "module", "process", "__dirname"]
+			},
+			"linter": {
+				"rules": {
+					"correctness": { "noUndeclaredVariables": "off" },
+					"style": { "noCommonJs": "off" }
+				}
+			}
+		}
+	],
+	"assist": {
+		"enabled": true,
+		"actions": { "source": { "organizeImports": "on" } }
+	}
+}

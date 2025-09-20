@@ -1,209 +1,223 @@
-import { ApiMessage } from '../apiTypes';
-import { DecryptedMessage, Metadata, MetadataSchema, AgentState, AgentStateSchema } from '../storageTypes';
-import { RawRecord } from '../typesRaw';
-
-import { EncryptionCache } from './encryptionCache';
-import { Decryptor, Encryptor } from './encryptor';
-
-import { decodeBase64, encodeBase64 } from '@/encryption/base64';
+import { decodeBase64, encodeBase64 } from "@/encryption/base64";
+import { ApiMessage } from "../apiTypes";
+import {
+	AgentState,
+	AgentStateSchema,
+	DecryptedMessage,
+	Metadata,
+	MetadataSchema,
+} from "../storageTypes";
+import { RawRecord } from "../typesRaw";
+import { EncryptionCache } from "./encryptionCache";
+import { Decryptor, Encryptor } from "./encryptor";
 
 export class SessionEncryption {
-  private sessionId: string;
-  private encryptor: Encryptor & Decryptor;
-  private cache: EncryptionCache;
+	private sessionId: string;
+	private encryptor: Encryptor & Decryptor;
+	private cache: EncryptionCache;
 
-  constructor(
-    sessionId: string,
-    encryptor: Encryptor & Decryptor,
-    cache: EncryptionCache,
-  ) {
-    this.sessionId = sessionId;
-    this.encryptor = encryptor;
-    this.cache = cache;
-  }
+	constructor(
+		sessionId: string,
+		encryptor: Encryptor & Decryptor,
+		cache: EncryptionCache,
+	) {
+		this.sessionId = sessionId;
+		this.encryptor = encryptor;
+		this.cache = cache;
+	}
 
-  /**
-     * Batch-first API for decrypting messages
-     */
-  async decryptMessages(messages: ApiMessage[]): Promise<(DecryptedMessage | null)[]> {
-    // Check cache for all messages first
-    const results: (DecryptedMessage | null)[] = new Array(messages.length);
-    const toDecrypt: { index: number; message: ApiMessage }[] = [];
+	/**
+	 * Batch-first API for decrypting messages
+	 */
+	async decryptMessages(
+		messages: ApiMessage[],
+	): Promise<(DecryptedMessage | null)[]> {
+		// Check cache for all messages first
+		const results: (DecryptedMessage | null)[] = new Array(messages.length);
+		const toDecrypt: { index: number; message: ApiMessage }[] = [];
 
-    for (let i = 0; i < messages.length; i++) {
-      const message = messages[i];
-      if (!message) {
-        results[i] = null;
-        continue;
-      }
+		for (let i = 0; i < messages.length; i++) {
+			const message = messages[i];
+			if (!message) {
+				results[i] = null;
+				continue;
+			}
 
-      // Check cache first
-      const cached = this.cache.getCachedMessage(message.id);
-      if (cached) {
-        results[i] = cached;
-      } else if (message.content.t === 'encrypted') {
-        toDecrypt.push({ index: i, message });
-      } else {
-        // Not encrypted or invalid
-        results[i] = {
-          id: message.id,
-          seq: message.seq,
-          localId: message.localId ?? null,
-          content: null,
-          createdAt: message.createdAt,
-        };
-        this.cache.setCachedMessage(message.id, results[i]!);
-      }
-    }
+			// Check cache first
+			const cached = this.cache.getCachedMessage(message.id);
+			if (cached) {
+				results[i] = cached;
+			} else if (message.content.t === "encrypted") {
+				toDecrypt.push({ index: i, message });
+			} else {
+				// Not encrypted or invalid
+				results[i] = {
+					id: message.id,
+					seq: message.seq,
+					localId: message.localId ?? null,
+					content: null,
+					createdAt: message.createdAt,
+				};
+				this.cache.setCachedMessage(message.id, results[i]!);
+			}
+		}
 
-    // Batch decrypt uncached messages
-    if (toDecrypt.length > 0) {
-      const encrypted = toDecrypt.map(item =>
-        decodeBase64(item.message.content.c, 'base64'),
-      );
-            
-      const decrypted = await this.encryptor.decrypt(encrypted);
+		// Batch decrypt uncached messages
+		if (toDecrypt.length > 0) {
+			const encrypted = toDecrypt.map((item) =>
+				decodeBase64(item.message.content.c, "base64"),
+			);
 
-      for (let i = 0; i < toDecrypt.length; i++) {
-        const decryptedData = decrypted[i];
-        const { message, index } = toDecrypt[i];
+			const decrypted = await this.encryptor.decrypt(encrypted);
 
-        if (decryptedData) {
-          const result: DecryptedMessage = {
-            id: message.id,
-            seq: message.seq,
-            localId: message.localId ?? null,
-            content: decryptedData,
-            createdAt: message.createdAt,
-          };
-          this.cache.setCachedMessage(message.id, result);
-          results[index] = result;
-        } else {
-          const result: DecryptedMessage = {
-            id: message.id,
-            seq: message.seq,
-            localId: message.localId ?? null,
-            content: null,
-            createdAt: message.createdAt,
-          };
-          this.cache.setCachedMessage(message.id, result);
-          results[index] = result;
-        }
-      }
-    }
+			for (let i = 0; i < toDecrypt.length; i++) {
+				const decryptedData = decrypted[i];
+				const { message, index } = toDecrypt[i];
 
-    return results;
-  }
+				if (decryptedData) {
+					const result: DecryptedMessage = {
+						id: message.id,
+						seq: message.seq,
+						localId: message.localId ?? null,
+						content: decryptedData,
+						createdAt: message.createdAt,
+					};
+					this.cache.setCachedMessage(message.id, result);
+					results[index] = result;
+				} else {
+					const result: DecryptedMessage = {
+						id: message.id,
+						seq: message.seq,
+						localId: message.localId ?? null,
+						content: null,
+						createdAt: message.createdAt,
+					};
+					this.cache.setCachedMessage(message.id, result);
+					results[index] = result;
+				}
+			}
+		}
 
-  /**
-     * Single message convenience method
-     */
-  async decryptMessage(message: ApiMessage | null | undefined): Promise<DecryptedMessage | null> {
-    if (!message) {
-      return null;
-    }
-    const results = await this.decryptMessages([message]);
-    return results[0];
-  }
+		return results;
+	}
 
-  /**
-     * Encrypt a raw record
-     */
-  async encryptRawRecord(record: RawRecord): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([record]);
-    return encodeBase64(encrypted[0], 'base64');
-  }
+	/**
+	 * Single message convenience method
+	 */
+	async decryptMessage(
+		message: ApiMessage | null | undefined,
+	): Promise<DecryptedMessage | null> {
+		if (!message) {
+			return null;
+		}
+		const results = await this.decryptMessages([message]);
+		return results[0];
+	}
 
-  /**
-     * Encrypt raw data using session-specific encryption
-     */
-  async encryptRaw(data: any): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([data]);
-    return encodeBase64(encrypted[0], 'base64');
-  }
+	/**
+	 * Encrypt a raw record
+	 */
+	async encryptRawRecord(record: RawRecord): Promise<string> {
+		const encrypted = await this.encryptor.encrypt([record]);
+		return encodeBase64(encrypted[0], "base64");
+	}
 
-  /**
-     * Decrypt raw data using session-specific encryption
-     */
-  async decryptRaw(encrypted: string): Promise<any | null> {
-    try {
-      const encryptedData = decodeBase64(encrypted, 'base64');
-      const decrypted = await this.encryptor.decrypt([encryptedData]);
-      return decrypted[0] || null;
-    } catch (error) {
-      return null;
-    }
-  }
+	/**
+	 * Encrypt raw data using session-specific encryption
+	 */
+	async encryptRaw(data: any): Promise<string> {
+		const encrypted = await this.encryptor.encrypt([data]);
+		return encodeBase64(encrypted[0], "base64");
+	}
 
-  /**
-     * Encrypt metadata using session-specific encryption
-     */
-  async encryptMetadata(metadata: Metadata): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([metadata]);
-    return encodeBase64(encrypted[0], 'base64');
-  }
+	/**
+	 * Decrypt raw data using session-specific encryption
+	 */
+	async decryptRaw(encrypted: string): Promise<any | null> {
+		try {
+			const encryptedData = decodeBase64(encrypted, "base64");
+			const decrypted = await this.encryptor.decrypt([encryptedData]);
+			return decrypted[0] || null;
+		} catch (error) {
+			return null;
+		}
+	}
 
-  /**
-     * Decrypt metadata using session-specific encryption
-     */
-  async decryptMetadata(version: number, encrypted: string): Promise<Metadata | null> {
-    // Check cache first
-    const cached = this.cache.getCachedMetadata(this.sessionId, version);
-    if (cached) {
-      return cached;
-    }
+	/**
+	 * Encrypt metadata using session-specific encryption
+	 */
+	async encryptMetadata(metadata: Metadata): Promise<string> {
+		const encrypted = await this.encryptor.encrypt([metadata]);
+		return encodeBase64(encrypted[0], "base64");
+	}
 
-    // Decrypt if not cached
-    const encryptedData = decodeBase64(encrypted, 'base64');
-    const decrypted = await this.encryptor.decrypt([encryptedData]);
-    if (!decrypted[0]) {
-      return null;
-    }
-    const parsed = MetadataSchema.safeParse(decrypted[0]);
-    if (!parsed.success) {
-      return null;
-    }
+	/**
+	 * Decrypt metadata using session-specific encryption
+	 */
+	async decryptMetadata(
+		version: number,
+		encrypted: string,
+	): Promise<Metadata | null> {
+		// Check cache first
+		const cached = this.cache.getCachedMetadata(this.sessionId, version);
+		if (cached) {
+			return cached;
+		}
 
-    // Cache the result
-    this.cache.setCachedMetadata(this.sessionId, version, parsed.data);
-    return parsed.data;
-  }
+		// Decrypt if not cached
+		const encryptedData = decodeBase64(encrypted, "base64");
+		const decrypted = await this.encryptor.decrypt([encryptedData]);
+		if (!decrypted[0]) {
+			return null;
+		}
+		const parsed = MetadataSchema.safeParse(decrypted[0]);
+		if (!parsed.success) {
+			return null;
+		}
 
-  /**
-     * Encrypt agent state using session-specific encryption
-     */
-  async encryptAgentState(state: AgentState): Promise<string> {
-    const encrypted = await this.encryptor.encrypt([state]);
-    return encodeBase64(encrypted[0], 'base64');
-  }
+		// Cache the result
+		this.cache.setCachedMetadata(this.sessionId, version, parsed.data);
+		return parsed.data;
+	}
 
-  /**
-     * Decrypt agent state using session-specific encryption
-     */
-  async decryptAgentState(version: number, encrypted: string | null | undefined): Promise<AgentState> {
-    if (!encrypted) {
-      return {};
-    }
+	/**
+	 * Encrypt agent state using session-specific encryption
+	 */
+	async encryptAgentState(state: AgentState): Promise<string> {
+		const encrypted = await this.encryptor.encrypt([state]);
+		return encodeBase64(encrypted[0], "base64");
+	}
 
-    // Check cache first
-    const cached = this.cache.getCachedAgentState(this.sessionId, version);
-    if (cached) {
-      return cached;
-    }
+	/**
+	 * Decrypt agent state using session-specific encryption
+	 */
+	async decryptAgentState(
+		version: number,
+		encrypted: string | null | undefined,
+	): Promise<AgentState> {
+		if (!encrypted) {
+			return {};
+		}
 
-    // Decrypt if not cached
-    const encryptedData = decodeBase64(encrypted, 'base64');
-    const decrypted = await this.encryptor.decrypt([encryptedData]);
-    if (!decrypted[0]) {
-      return {};
-    }
-    const parsed = AgentStateSchema.safeParse(decrypted[0]);
-    if (!parsed.success) {
-      return {};
-    }
+		// Check cache first
+		const cached = this.cache.getCachedAgentState(this.sessionId, version);
+		if (cached) {
+			return cached;
+		}
 
-    // Cache the result
-    this.cache.setCachedAgentState(this.sessionId, version, parsed.data);
-    return parsed.data;
-  }
+		// Decrypt if not cached
+		const encryptedData = decodeBase64(encrypted, "base64");
+		const decrypted = await this.encryptor.decrypt([encryptedData]);
+		if (!decrypted[0]) {
+			return {};
+		}
+		const parsed = AgentStateSchema.safeParse(decrypted[0]);
+		if (!parsed.success) {
+			return {};
+		}
+
+		// Cache the result
+		this.cache.setCachedAgentState(this.sessionId, version, parsed.data);
+		return parsed.data;
+	}
 }

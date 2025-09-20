@@ -60,3 +60,44 @@ GoogleService-Info.plist
 SECURITY-INCIDENT.md
 *security-report*
 *incident-report*
+
+# Rust/Tauri build artifacts
+src-tauri/target/
+Cargo.lock
+
+# IDE and editor files
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Log files
+*.log
+logs/
+
+# Cache directories
+.cache/
+.parcel-cache/
+.eslintcache
+
+# Coverage reports
+coverage/
+*.lcov
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# Archive files
+*.zip
+*.tar.gz
+*.rar
+*.7z
+
+# Backup files
+*.bak
+*.backup
+*~

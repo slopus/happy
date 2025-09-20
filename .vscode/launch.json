@@ -1,10 +1,10 @@
 {
-    "configurations": [
-        {
-            "name": "Attach to Expo",
-            "request": "attach",
-            "type": "reactnativedirect",
-            "cwd": "${workspaceFolder}"
-        }
-    ]
+	"configurations": [
+		{
+			"name": "Attach to Expo",
+			"request": "attach",
+			"type": "reactnativedirect",
+			"cwd": "${workspaceFolder}"
+		}
+	]
 }

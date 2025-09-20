@@ -1,14 +1,18 @@
-import * as z from 'zod';
+import * as z from "zod";
 
-import type { CustomerInfo } from './revenueCat/types';
+import type { CustomerInfo } from "./revenueCat/types";
 
 //
 // Schema
 //
 
 export const PurchasesSchema = z.object({
-  activeSubscriptions: z.array(z.string()).describe('Active subscription product IDs'),
-  entitlements: z.record(z.string(), z.boolean()).describe('Map of entitlement IDs to their active status'),
+	activeSubscriptions: z
+		.array(z.string())
+		.describe("Active subscription product IDs"),
+	entitlements: z
+		.record(z.string(), z.boolean())
+		.describe("Map of entitlement IDs to their active status"),
 });
 
 //
@@ -28,8 +32,8 @@ export type Purchases = z.infer<typeof PurchasesSchema>;
 //
 
 export const purchasesDefaults: Purchases = {
-  activeSubscriptions: [],
-  entitlements: {},
+	activeSubscriptions: [],
+	entitlements: {},
 };
 Object.freeze(purchasesDefaults);
 
@@ -38,11 +42,11 @@ Object.freeze(purchasesDefaults);
 //
 
 export function purchasesParse(purchases: unknown): Purchases {
-  const parsed = PurchasesSchemaPartial.safeParse(purchases);
-  if (!parsed.success) {
-    return { ...purchasesDefaults };
-  }
-  return { ...purchasesDefaults, ...parsed.data };
+	const parsed = PurchasesSchemaPartial.safeParse(purchases);
+	if (!parsed.success) {
+		return { ...purchasesDefaults };
+	}
+	return { ...purchasesDefaults, ...parsed.data };
 }
 
 //
@@ -50,19 +54,21 @@ export function purchasesParse(purchases: unknown): Purchases {
 //
 
 export function customerInfoToPurchases(customerInfo: CustomerInfo): Purchases {
-  // Extract active subscription product IDs
-  // activeSubscriptions is a record of product ID to subscription info
-  const activeSubscriptions = Object.keys(customerInfo.activeSubscriptions || {});
+	// Extract active subscription product IDs
+	// activeSubscriptions is a record of product ID to subscription info
+	const activeSubscriptions = Object.keys(
+		customerInfo.activeSubscriptions || {},
+	);
 
-  // Extract entitlements (entitlement_id -> isActive)
-  const entitlements: Record<string, boolean> = {};
-  const allEntitlements = customerInfo.entitlements?.all || {};
-  Object.entries(allEntitlements).forEach(([id, entitlement]) => {
-    entitlements[id] = entitlement.isActive;
-  });
+	// Extract entitlements (entitlement_id -> isActive)
+	const entitlements: Record<string, boolean> = {};
+	const allEntitlements = customerInfo.entitlements?.all || {};
+	Object.entries(allEntitlements).forEach(([id, entitlement]) => {
+		entitlements[id] = entitlement.isActive;
+	});
 
-  return {
-    activeSubscriptions,
-    entitlements,
-  };
+	return {
+		activeSubscriptions,
+		entitlements,
+	};
 }

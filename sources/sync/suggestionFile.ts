@@ -3,196 +3,206 @@
  * Provides fuzzy search capabilities with in-memory caching for autocomplete suggestions
  */
 
-import Fuse from 'fuse.js';
-
-import { sessionRipgrep } from './ops';
-
-import { AsyncLock } from '@/utils/lock';
+import Fuse from "fuse.js";
+import { AsyncLock } from "@/utils/lock";
+import { sessionRipgrep } from "./ops";
 
 export interface FileItem {
-    fileName: string;
-    filePath: string;
-    fullPath: string;
-    fileType: 'file' | 'folder';
+	fileName: string;
+	filePath: string;
+	fullPath: string;
+	fileType: "file" | "folder";
 }
 
 interface SearchOptions {
-    limit?: number;
-    threshold?: number;
+	limit?: number;
+	threshold?: number;
 }
 
 interface SessionCache {
-    files: FileItem[];
-    fuse: Fuse<FileItem> | null;
-    lastRefresh: number;
-    refreshLock: AsyncLock;
+	files: FileItem[];
+	fuse: Fuse<FileItem> | null;
+	lastRefresh: number;
+	refreshLock: AsyncLock;
 }
 
 class FileSearchCache {
-  private sessions = new Map<string, SessionCache>();
-  private cacheTimeout = 5 * 60 * 1000; // 5 minutes
+	private sessions = new Map<string, SessionCache>();
+	private cacheTimeout = 5 * 60 * 1000; // 5 minutes
 
-  private getOrCreateSessionCache(sessionId: string): SessionCache {
-    let cache = this.sessions.get(sessionId);
-    if (!cache) {
-      cache = {
-        files: [],
-        fuse: null,
-        lastRefresh: 0,
-        refreshLock: new AsyncLock(),
-      };
-      this.sessions.set(sessionId, cache);
-    }
-    return cache;
-  }
+	private getOrCreateSessionCache(sessionId: string): SessionCache {
+		let cache = this.sessions.get(sessionId);
+		if (!cache) {
+			cache = {
+				files: [],
+				fuse: null,
+				lastRefresh: 0,
+				refreshLock: new AsyncLock(),
+			};
+			this.sessions.set(sessionId, cache);
+		}
+		return cache;
+	}
 
-  private initializeFuse(cache: SessionCache) {
-    if (cache.files.length === 0) {
-      cache.fuse = null;
-      return;
-    }
+	private initializeFuse(cache: SessionCache) {
+		if (cache.files.length === 0) {
+			cache.fuse = null;
+			return;
+		}
 
-    const fuseOptions = {
-      keys: [
-        { name: 'fileName', weight: 0.7 },  // Higher weight for file/directory name
-        { name: 'fullPath', weight: 0.3 },   // Lower weight for full path
-      ],
-      threshold: 0.3,
-      includeScore: true,
-      shouldSort: true,
-      minMatchCharLength: 1,
-      ignoreLocation: true,
-      useExtendedSearch: true,
-      // Allow fuzzy matching on slashes for directories
-      distance: 100,
-    };
+		const fuseOptions = {
+			keys: [
+				{ name: "fileName", weight: 0.7 }, // Higher weight for file/directory name
+				{ name: "fullPath", weight: 0.3 }, // Lower weight for full path
+			],
+			threshold: 0.3,
+			includeScore: true,
+			shouldSort: true,
+			minMatchCharLength: 1,
+			ignoreLocation: true,
+			useExtendedSearch: true,
+			// Allow fuzzy matching on slashes for directories
+			distance: 100,
+		};
 
-    cache.fuse = new Fuse(cache.files, fuseOptions);
-  }
+		cache.fuse = new Fuse(cache.files, fuseOptions);
+	}
 
-  private async ensureCacheValid(sessionId: string): Promise<void> {
-    const cache = this.getOrCreateSessionCache(sessionId);
-    const now = Date.now();
-        
-    // Check if cache needs refresh
-    if (now - cache.lastRefresh <= this.cacheTimeout && cache.files.length > 0) {
-      return; // Cache is still valid
-    }
+	private async ensureCacheValid(sessionId: string): Promise<void> {
+		const cache = this.getOrCreateSessionCache(sessionId);
+		const now = Date.now();
 
-    // Use lock to prevent concurrent refreshes for this session
-    await cache.refreshLock.inLock(async () => {
-      // Double-check after acquiring lock
-      const currentTime = Date.now();
-      if (currentTime - cache.lastRefresh < 1000) { // Skip if refreshed within last second
-        return;
-      }
+		// Check if cache needs refresh
+		if (
+			now - cache.lastRefresh <= this.cacheTimeout &&
+			cache.files.length > 0
+		) {
+			return; // Cache is still valid
+		}
 
-      console.log(`FileSearchCache: Refreshing file cache for session ${sessionId}...`);
+		// Use lock to prevent concurrent refreshes for this session
+		await cache.refreshLock.inLock(async () => {
+			// Double-check after acquiring lock
+			const currentTime = Date.now();
+			if (currentTime - cache.lastRefresh < 1000) {
+				// Skip if refreshed within last second
+				return;
+			}
 
-      // Use ripgrep to get all files in the project
-      const response = await sessionRipgrep(
-        sessionId,
-        ['--files', '--follow'],
-        undefined,
-      );
+			console.log(
+				`FileSearchCache: Refreshing file cache for session ${sessionId}...`,
+			);
 
-      if (!response.success || !response.stdout) {
-        console.error('FileSearchCache: Failed to fetch files', response.error);
-        console.log(response);
-        return;
-      }
+			// Use ripgrep to get all files in the project
+			const response = await sessionRipgrep(
+				sessionId,
+				["--files", "--follow"],
+				undefined,
+			);
 
-      // Parse the output into file items
-      const filePaths = response.stdout
-        .split('\n')
-        .filter(path => path.trim().length > 0);
+			if (!response.success || !response.stdout) {
+				console.error("FileSearchCache: Failed to fetch files", response.error);
+				console.log(response);
+				return;
+			}
 
-      // Clear existing files
-      cache.files = [];
+			// Parse the output into file items
+			const filePaths = response.stdout
+				.split("\n")
+				.filter((path) => path.trim().length > 0);
 
-      // Add all files
-      filePaths.forEach(path => {
-        const parts = path.split('/');
-        const fileName = parts[parts.length - 1] || path;
-        const filePath = parts.slice(0, -1).join('/') || '';
+			// Clear existing files
+			cache.files = [];
 
-        cache.files.push({
-          fileName,
-          filePath: filePath ? `${filePath  }/` : '',
-          fullPath: path,
-          fileType: 'file' as const,
-        });
-      });
+			// Add all files
+			filePaths.forEach((path) => {
+				const parts = path.split("/");
+				const fileName = parts[parts.length - 1] || path;
+				const filePath = parts.slice(0, -1).join("/") || "";
 
-      // Add unique directories with trailing slash
-      const directories = new Set<string>();
-      filePaths.forEach(path => {
-        const parts = path.split('/');
-        for (let i = 1; i <= parts.length - 1; i++) {
-          const dirPath = parts.slice(0, i).join('/');
-          if (dirPath) {
-            directories.add(dirPath);
-          }
-        }
-      });
+				cache.files.push({
+					fileName,
+					filePath: filePath ? `${filePath}/` : "",
+					fullPath: path,
+					fileType: "file" as const,
+				});
+			});
 
-      directories.forEach(dirPath => {
-        const parts = dirPath.split('/');
-        const dirName = `${parts[parts.length - 1]  }/`;  // Add trailing slash to directory name
-        const parentPath = parts.slice(0, -1).join('/');
+			// Add unique directories with trailing slash
+			const directories = new Set<string>();
+			filePaths.forEach((path) => {
+				const parts = path.split("/");
+				for (let i = 1; i <= parts.length - 1; i++) {
+					const dirPath = parts.slice(0, i).join("/");
+					if (dirPath) {
+						directories.add(dirPath);
+					}
+				}
+			});
 
-        cache.files.push({
-          fileName: dirName,
-          filePath: parentPath ? `${parentPath  }/` : '',
-          fullPath: `${dirPath  }/`,  // Add trailing slash to full path
-          fileType: 'folder',
-        });
-      });
+			directories.forEach((dirPath) => {
+				const parts = dirPath.split("/");
+				const dirName = `${parts[parts.length - 1]}/`; // Add trailing slash to directory name
+				const parentPath = parts.slice(0, -1).join("/");
 
-      cache.lastRefresh = Date.now();
-      this.initializeFuse(cache);
+				cache.files.push({
+					fileName: dirName,
+					filePath: parentPath ? `${parentPath}/` : "",
+					fullPath: `${dirPath}/`, // Add trailing slash to full path
+					fileType: "folder",
+				});
+			});
 
-      console.log(`FileSearchCache: Cached ${cache.files.length} files and directories for session ${sessionId}`);
-    });
-  }
+			cache.lastRefresh = Date.now();
+			this.initializeFuse(cache);
 
-  async search(sessionId: string, query: string, options: SearchOptions = {}): Promise<FileItem[]> {
-    await this.ensureCacheValid(sessionId);
-    const cache = this.getOrCreateSessionCache(sessionId);
+			console.log(
+				`FileSearchCache: Cached ${cache.files.length} files and directories for session ${sessionId}`,
+			);
+		});
+	}
 
-    if (!cache.fuse || cache.files.length === 0) {
-      return [];
-    }
+	async search(
+		sessionId: string,
+		query: string,
+		options: SearchOptions = {},
+	): Promise<FileItem[]> {
+		await this.ensureCacheValid(sessionId);
+		const cache = this.getOrCreateSessionCache(sessionId);
 
-    const { limit = 10, threshold = 0.3 } = options;
+		if (!cache.fuse || cache.files.length === 0) {
+			return [];
+		}
 
-    // If query is empty, return most recently modified files
-    if (!query || query.trim().length === 0) {
-      return cache.files.slice(0, limit);
-    }
+		const { limit = 10, threshold = 0.3 } = options;
 
-    // Perform fuzzy search
-    const searchOptions = {
-      limit,
-      threshold,
-    };
+		// If query is empty, return most recently modified files
+		if (!query || query.trim().length === 0) {
+			return cache.files.slice(0, limit);
+		}
 
-    const results = cache.fuse.search(query, searchOptions);
-    return results.map(result => result.item);
-  }
+		// Perform fuzzy search
+		const searchOptions = {
+			limit,
+			threshold,
+		};
 
-  getAllFiles(sessionId: string): FileItem[] {
-    const cache = this.sessions.get(sessionId);
-    return cache ? [...cache.files] : [];
-  }
+		const results = cache.fuse.search(query, searchOptions);
+		return results.map((result) => result.item);
+	}
 
-  clearCache(sessionId?: string): void {
-    if (sessionId) {
-      this.sessions.delete(sessionId);
-    } else {
-      this.sessions.clear();
-    }
-  }
+	getAllFiles(sessionId: string): FileItem[] {
+		const cache = this.sessions.get(sessionId);
+		return cache ? [...cache.files] : [];
+	}
+
+	clearCache(sessionId?: string): void {
+		if (sessionId) {
+			this.sessions.delete(sessionId);
+		} else {
+			this.sessions.clear();
+		}
+	}
 }
 
 // Export singleton instance
@@ -200,9 +210,9 @@ export const fileSearchCache = new FileSearchCache();
 
 // Main export: search files with fuzzy matching
 export async function searchFiles(
-  sessionId: string,
-  query: string,
-  options: SearchOptions = {},
+	sessionId: string,
+	query: string,
+	options: SearchOptions = {},
 ): Promise<FileItem[]> {
-  return fileSearchCache.search(sessionId, query, options);
+	return fileSearchCache.search(sessionId, query, options);
 }
