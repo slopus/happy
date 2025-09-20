@@ -1,24 +1,18 @@
 import { RoundButton } from "@/components/RoundButton";
 import { useAuth } from "@/auth/AuthContext";
-import { ActivityIndicator, Text, View, Image, Platform } from "react-native";
+import { Text, View, Image, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import * as React from 'react';
 import { encodeBase64 } from "@/encryption/base64";
 import { authGetToken } from "@/auth/authGetToken";
-import { UpdateBanner } from "@/components/UpdateBanner";
-import { SessionsList } from "@/components/SessionsList";
 import { router, useRouter } from "expo-router";
-import { useSessionListViewData } from "@/sync/storage";
 import { StyleSheet, useUnistyles } from "react-native-unistyles";
 import { getRandomBytesAsync } from "expo-crypto";
-import { useIsTablet, useIsLandscape } from "@/utils/responsive";
+import { useIsLandscape } from "@/utils/responsive";
 import { Typography } from "@/constants/Typography";
-import { EmptyMainScreen } from "@/components/EmptyMainScreen";
 import { trackAccountCreated, trackAccountRestored } from '@/track';
-import { FABWide } from "@/components/FABWide";
-import { HomeHeader, HomeHeaderNotAuth } from "@/components/HomeHeader";
-import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
-import { useRealtimeStatus } from '@/sync/storage';
+import { HomeHeaderNotAuth } from "@/components/HomeHeader";
+import { MainView } from "@/components/MainView";
 import { t } from '@/text';
 
 export default function Home() {
@@ -32,74 +26,7 @@ export default function Home() {
 }
 
 function Authenticated() {
-    const { theme } = useUnistyles();
-    let sessionListViewData = useSessionListViewData();
-    const isTablet = useIsTablet();
-    const realtimeStatus = useRealtimeStatus();
-
-    const handleNewSession = () => {
-        router.push('/new');
-    }
-
-    // Empty state in tabled view
-    if (isTablet) {
-        return (
-            <>
-                <View style={{ flex: 1, flexBasis: 0, flexGrow: 1 }}>
-                    {sessionListViewData === null && (
-                        <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, justifyContent: 'center', alignItems: 'center' }}>
-                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                        </View>
-                    )}
-                    {sessionListViewData !== null && sessionListViewData.length === 0 && (
-                        <EmptyMainScreen />
-                    )}
-                </View>
-            </>
-        )
-    }
-    if (sessionListViewData === null) {
-        return (
-            <>
-                <HomeHeader />
-                {!isTablet && realtimeStatus !== 'disconnected' && (
-                    <VoiceAssistantStatusBar variant="full" />
-                )}
-                <View style={styles.loadingContainerWrapper}>
-                    <UpdateBanner />
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                    </View>
-                </View>
-                <FABWide onPress={handleNewSession} />
-            </>
-        )
-    }
-
-    const emptyState = (
-        <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, flexDirection: 'column', backgroundColor: theme.colors.groupped.background }}>
-            <UpdateBanner />
-            <View style={{ flex: 1, flexBasis: 0, flexGrow: 1 }}>
-                <EmptyMainScreen />
-            </View>
-        </View>
-    );
-
-    // On phones, use the existing navigation pattern
-    return (
-        <>
-            <HomeHeader />
-            {!isTablet && realtimeStatus !== 'disconnected' && (
-                <VoiceAssistantStatusBar variant="full" />
-            )}
-            <View style={styles.container}>
-                {!sessionListViewData || sessionListViewData.length === 0 ? emptyState : (
-                    <SessionsList />
-                )}
-            </View>
-            <FABWide onPress={handleNewSession} />
-        </>
-    );
+    return <MainView variant="phone" />;
 }
 
 function NotAuthenticated() {
@@ -250,21 +177,6 @@ function NotAuthenticated() {
 }
 
 const styles = StyleSheet.create((theme) => ({
-    container: {
-        flex: 1
-    },
-    loadingContainerWrapper: {
-        flex: 1,
-        flexBasis: 0,
-        flexGrow: 1,
-        backgroundColor: theme.colors.groupped.background,
-    },
-    loadingContainer: {
-        flex: 1,
-        alignItems: 'center',
-        justifyContent: 'center',
-        paddingBottom: 32,
-    },
     // NotAuthenticated styles
     portraitContainer: {
         flex: 1,

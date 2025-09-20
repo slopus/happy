@@ -1,20 +1,17 @@
-import { useSessionListViewData, useEntitlement, useSocketStatus, useSetting } from '@/sync/storage';
+import { useSocketStatus } from '@/sync/storage';
 import * as React from 'react';
-import { Text, View, Pressable, ActivityIndicator, Platform } from 'react-native';
+import { Text, View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { SessionsList } from './SessionsList';
-import { Ionicons } from '@expo/vector-icons';
-import { usePathname, useRouter, useSegments } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { useHeaderHeight } from '@/utils/responsive';
-import { EmptySessionsTablet } from './EmptySessionsTablet';
 import { Typography } from '@/constants/Typography';
 import { StatusDot } from './StatusDot';
 import { FABWide } from './FABWide';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
+import { MainView } from './MainView';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { UpdateBanner } from './UpdateBanner';
 import { t } from '@/text';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
@@ -70,18 +67,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     settingsButton: {
         color: theme.colors.header.tint,
     },
-    contentContainer: {
-        flex: 1,
-        flexBasis: 0,
-        flexGrow: 1,
-    },
-    loadingContainer: {
-        flex: 1,
-        flexBasis: 0,
-        flexGrow: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
     // Status colors
     statusConnected: {
         color: theme.colors.status.connected,
@@ -103,7 +88,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 export const SidebarView = React.memo(() => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
-    const sessionListViewData = useSessionListViewData();
     const safeArea = useSafeAreaInsets();
     const router = useRouter();
     const headerHeight = useHeaderHeight();
@@ -152,9 +136,9 @@ export const SidebarView = React.memo(() => {
         }
     };
 
-    const handleNewSession = () => {
+    const handleNewSession = React.useCallback(() => {
         router.push('/new');
-    }
+    }, [router]);
 
     return (
         <>
@@ -203,22 +187,7 @@ export const SidebarView = React.memo(() => {
                 {realtimeStatus !== 'disconnected' && (
                     <VoiceAssistantStatusBar variant="sidebar" />
                 )}
-                <View style={styles.contentContainer}>
-                    {sessionListViewData === null && (
-                        <View style={styles.loadingContainer}>
-                            <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                        </View>
-                    )}
-                    {sessionListViewData !== null && sessionListViewData.length === 0 && (
-                        <View style={{ flex: 1, flexBasis: 0, flexGrow: 1, flexDirection: 'column', backgroundColor: theme.colors.groupped.background }}>
-                            <UpdateBanner />
-                            <EmptySessionsTablet />
-                        </View>
-                    )}
-                    {sessionListViewData !== null && sessionListViewData.length > 0 && (
-                        <SessionsList />
-                    )}
-                </View>
+                <MainView variant="sidebar" />
             </View>
             <FABWide onPress={handleNewSession} />
         </>
