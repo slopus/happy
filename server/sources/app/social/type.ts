@@ -14,6 +14,7 @@ export type UserProfile = {
         thumbhash?: string;
     } | null;
     username: string;
+    bio: string | null;
     status: RelationshipStatus;
 }
 
@@ -49,6 +50,7 @@ export function buildUserProfile(
         lastName: account.lastName,
         avatar,
         username: account.username || githubProfile?.login || '',
+        bio: githubProfile?.bio || null,
         status
     };
 }

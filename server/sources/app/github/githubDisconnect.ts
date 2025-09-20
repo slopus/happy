@@ -4,14 +4,13 @@ import { log } from "@/utils/log";
 import { allocateUserSeq } from "@/storage/seq";
 import { buildUpdateAccountUpdate, eventRouter } from "@/app/events/eventRouter";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
-import { Prisma } from "@prisma/client";
 
 /**
  * Disconnects a GitHub account from a user profile.
  * 
  * Flow:
  * 1. Check if user has GitHub connected - early exit if not
- * 2. In transaction: clear GitHub link, username, avatar from account and delete GitHub user record
+ * 2. In transaction: clear GitHub link and username from account (keeps avatar) and delete GitHub user record
  * 3. Send socket update after transaction completes
  * 
  * @param ctx - Request context containing user ID
@@ -36,13 +35,12 @@ export async function githubDisconnect(ctx: Context): Promise<void> {
 
     // Step 2: Transaction for atomic database operations
     await db.$transaction(async (tx) => {
-        // Clear GitHub connection, username, and avatar from account
+        // Clear GitHub connection and username from account (keep avatar)
         await tx.account.update({
             where: { id: userId },
             data: {
                 githubUserId: null,
-                username: null,
-                avatar: Prisma.JsonNull
+                username: null
             }
         });
 
@@ -56,8 +54,7 @@ export async function githubDisconnect(ctx: Context): Promise<void> {
     const updSeq = await allocateUserSeq(userId);
     const updatePayload = buildUpdateAccountUpdate(userId, {
         github: null,
-        username: null,
-        avatar: null
+        username: null
     }, updSeq, randomKeyNaked(12));
 
     eventRouter.emitUpdate({
