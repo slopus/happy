@@ -14,17 +14,14 @@ const cron = require('node-cron');
 // Configure logger
 const logger = winston.createLogger({
   level: 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.json()
-  ),
+  format: winston.format.combine(winston.format.timestamp(), winston.format.json()),
   transports: [
     new winston.transports.File({ filename: 'error.log', level: 'error' }),
     new winston.transports.File({ filename: 'combined.log' }),
     new winston.transports.Console({
-      format: winston.format.simple()
-    })
-  ]
+      format: winston.format.simple(),
+    }),
+  ],
 });
 
 const app = express();
@@ -42,12 +39,12 @@ const config = {
   exaApiKey: process.env.EXA_API_KEY || 'b65999c0-db14-4241-9a53-f58b4656ae4b',
   webhookSecret: process.env.WEBHOOK_SECRET,
   workspaceDir: '/workspace',
-  sonarUrl: process.env.SONAR_HOST_URL || 'http://localhost:9000'
+  sonarUrl: process.env.SONAR_HOST_URL || 'http://localhost:9000',
 };
 
 // Initialize GitHub client
 const octokit = new Octokit({
-  auth: config.githubToken
+  auth: config.githubToken,
 });
 
 class AutoFixer {
@@ -91,7 +88,6 @@ class AutoFixer {
         logger.error(`Auto-fix job ${jobId} failed validation`);
         return { success: false, reason: 'Validation failed', details: { compileResults, fixResults } };
       }
-
     } catch (error) {
       logger.error(`Auto-fix job ${jobId} failed:`, error);
       return { success: false, error: error.message };
@@ -130,11 +126,13 @@ class AutoFixer {
     try {
       const eslintResult = await this.runCommand('npx eslint . --format json', repoPath);
       const eslintIssues = JSON.parse(eslintResult.stdout || '[]');
-      issues.push(...eslintIssues.map(file => ({
-        tool: 'eslint',
-        file: file.filePath,
-        issues: file.messages
-      })));
+      issues.push(
+        ...eslintIssues.map(file => ({
+          tool: 'eslint',
+          file: file.filePath,
+          issues: file.messages,
+        }))
+      );
     } catch (error) {
       logger.warn(`ESLint failed: ${error.message}`);
     }
@@ -145,7 +143,7 @@ class AutoFixer {
       // Parse Biome output (custom parsing needed)
       issues.push({
         tool: 'biome',
-        output: biomeResult.stdout
+        output: biomeResult.stdout,
       });
     } catch (error) {
       logger.warn(`Biome failed: ${error.message}`);
@@ -157,7 +155,7 @@ class AutoFixer {
       if (tscResult.stderr) {
         issues.push({
           tool: 'typescript',
-          output: tscResult.stderr
+          output: tscResult.stderr,
         });
       }
     } catch (error) {
@@ -199,7 +197,6 @@ class AutoFixer {
           logger.info(`All issues fixed in attempt ${attempts}`);
           break;
         }
-
       } catch (error) {
         logger.error(`Fix attempt ${attempts} failed:`, error);
       }
@@ -247,7 +244,7 @@ Apply fixes systematically and ensure all changes maintain code functionality.
       typescript: false,
       android: false,
       linux: false,
-      web: false
+      web: false,
     };
 
     // TypeScript compilation
@@ -349,12 +346,11 @@ All platforms have been tested and verified to compile successfully.
 via [Happy](https://happy.engineering)
 
 Co-Authored-By: Claude <noreply@anthropic.com>
-Co-Authored-By: Happy <yesreply@happy.engineering>`
+Co-Authored-By: Happy <yesreply@happy.engineering>`,
       });
 
       logger.info(`Created PR #${prResponse.data.number} for ${owner}/${repo}`);
       return prResponse.data;
-
     } catch (error) {
       logger.error(`Failed to create PR: ${error.message}`);
       throw error;
@@ -411,10 +407,7 @@ app.post('/webhook', async (req, res) => {
     const body = JSON.stringify(req.body);
 
     if (config.webhookSecret) {
-      const expectedSignature = crypto
-        .createHmac('sha256', config.webhookSecret)
-        .update(body)
-        .digest('hex');
+      const expectedSignature = crypto.createHmac('sha256', config.webhookSecret).update(body).digest('hex');
 
       if (`sha256=${expectedSignature}` !== signature) {
         return res.status(401).json({ error: 'Invalid signature' });
@@ -424,12 +417,15 @@ app.post('/webhook', async (req, res) => {
     const event = req.headers['x-github-event'];
     const payload = req.body;
 
-    // Handle push events
+    // Handle all GitHub events
+    logger.info(`Received ${event} event from GitHub`);
+
+    // Handle push events (main workflow)
     if (event === 'push') {
       const repoUrl = payload.repository.clone_url;
       const branch = payload.ref.replace('refs/heads/', '');
 
-      logger.info(`Received push event for ${repoUrl}:${branch}`);
+      logger.info(`Push event for ${repoUrl}:${branch}`);
 
       // Process asynchronously
       setImmediate(async () => {
@@ -442,8 +438,37 @@ app.post('/webhook', async (req, res) => {
       });
     }
 
-    res.status(200).json({ received: true });
+    // Handle pull request events
+    else if (event === 'pull_request') {
+      const action = payload.action;
+      const prNumber = payload.number;
+      const repoUrl = payload.repository.clone_url;
+      const branch = payload.pull_request.head.ref;
 
+      logger.info(`Pull request ${action} event for ${repoUrl}:${branch} (PR #${prNumber})`);
+
+      // Only process opened/synchronize PR events
+      if (action === 'opened' || action === 'synchronize') {
+        setImmediate(async () => {
+          try {
+            const result = await autoFixer.processRepository(repoUrl, branch);
+            logger.info(`Auto-fix result for PR #${prNumber}: ${JSON.stringify(result)}`);
+          } catch (error) {
+            logger.error(`Auto-fix failed for PR #${prNumber}:`, error);
+          }
+        });
+      }
+    }
+
+    // Handle other events (log only)
+    else {
+      logger.info(`Received ${event} event - no action taken`);
+      if (payload.repository) {
+        logger.info(`Repository: ${payload.repository.full_name}`);
+      }
+    }
+
+    res.status(200).json({ received: true });
   } catch (error) {
     logger.error('Webhook processing error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -461,7 +486,6 @@ app.post('/trigger', async (req, res) => {
 
     const result = await autoFixer.processRepository(repoUrl, branch);
     res.json(result);
-
   } catch (error) {
     logger.error('Manual trigger error:', error);
     res.status(500).json({ error: error.message });
@@ -477,8 +501,8 @@ app.get('/health', (req, res) => {
     config: {
       claudeApiKey: config.claudeApiKey ? 'configured' : 'missing',
       exaApiKey: config.exaApiKey ? 'configured' : 'missing',
-      githubToken: config.githubToken ? 'configured' : 'missing'
-    }
+      githubToken: config.githubToken ? 'configured' : 'missing',
+    },
   });
 });
 
@@ -489,7 +513,7 @@ app.get('/status', (req, res) => {
     version: '1.0.0',
     uptime: process.uptime(),
     memory: process.memoryUsage(),
-    activeJobs: Array.from(autoFixer.activeJobs.keys())
+    activeJobs: Array.from(autoFixer.activeJobs.keys()),
   });
 });
 
