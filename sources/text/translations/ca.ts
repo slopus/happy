@@ -176,6 +176,8 @@ export const ca: TranslationStructure = {
         commandPaletteDisabled: 'Accés ràpid a comandes desactivat',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Pulsació llarga obre modal de còpia',
+        hideInactiveSessions: 'Amaga les sessions inactives',
+        hideInactiveSessionsSubtitle: 'Mostra només els xats actius a la llista',
     },
 
     errors: {

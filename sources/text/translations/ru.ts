@@ -159,6 +159,8 @@ export const ru: TranslationStructure = {
         commandPaletteDisabled: 'Быстрый доступ к командам отключён',
         markdownCopyV2: 'Markdown Copy v2',
         markdownCopyV2Subtitle: 'Долгое нажатие открывает модальное окно копирования',
+        hideInactiveSessions: 'Скрывать неактивные сессии',
+        hideInactiveSessionsSubtitle: 'Показывать в списке только активные чаты',
     },
 
     errors: {
