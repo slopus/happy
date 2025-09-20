@@ -1,6 +1,6 @@
 import { onShutdown } from "@/utils/shutdown";
 import { Fastify } from "./types";
-import { buildMachineActivityEphemeral, ClientConnection, EventRouter } from "@/app/events/eventRouter";
+import { buildMachineActivityEphemeral, ClientConnection, eventRouter } from "@/app/events/eventRouter";
 import { Server, Socket } from "socket.io";
 import { log } from "@/utils/log";
 import { auth } from "@/app/auth/auth";
@@ -13,7 +13,7 @@ import { machineUpdateHandler } from "./socket/machineUpdateHandler";
 import { artifactUpdateHandler } from "./socket/artifactUpdateHandler";
 import { accessKeyHandler } from "./socket/accessKeyHandler";
 
-export function startSocket(app: Fastify, eventRouter: EventRouter) {
+export function startSocket(app: Fastify) {
     const io = new Server(app.server, {
         cors: {
             origin: "*",
@@ -137,13 +137,13 @@ export function startSocket(app: Fastify, eventRouter: EventRouter) {
             userRpcListeners = new Map<string, Socket>();
             rpcListeners.set(userId, userRpcListeners);
         }
-        rpcHandler(userId, socket, eventRouter, userRpcListeners);
-        usageHandler(userId, socket, eventRouter);
-        sessionUpdateHandler(userId, socket, connection, eventRouter);
+        rpcHandler(userId, socket, userRpcListeners);
+        usageHandler(userId, socket);
+        sessionUpdateHandler(userId, socket, connection);
         pingHandler(socket);
-        machineUpdateHandler(userId, socket, eventRouter);
-        artifactUpdateHandler(userId, socket, eventRouter);
-        accessKeyHandler(userId, socket, eventRouter);
+        machineUpdateHandler(userId, socket);
+        artifactUpdateHandler(userId, socket);
+        accessKeyHandler(userId, socket);
 
         // Ready
         log({ module: 'websocket' }, `User connected: ${userId}`);

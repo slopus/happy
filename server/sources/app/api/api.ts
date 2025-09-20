@@ -2,7 +2,6 @@ import fastify from "fastify";
 import { log, logger } from "@/utils/log";
 import { serializerCompiler, validatorCompiler, ZodTypeProvider } from "fastify-type-provider-zod";
 import { onShutdown } from "@/utils/shutdown";
-import { EventRouter } from "@/app/events/eventRouter";
 import { Fastify } from "./types";
 import { authRoutes } from "./routes/authRoutes";
 import { pushRoutes } from "./routes/pushRoutes";
@@ -21,7 +20,7 @@ import { enableErrorHandlers } from "./utils/enableErrorHandlers";
 import { enableAuthentication } from "./utils/enableAuthentication";
 import { userRoutes } from "./routes/userRoutes";
 
-export async function startApi(eventRouter: EventRouter) {
+export async function startApi() {
 
     // Configure
     log('Starting API...');
@@ -53,12 +52,12 @@ export async function startApi(eventRouter: EventRouter) {
     // Routes
     authRoutes(typed);
     pushRoutes(typed);
-    sessionRoutes(typed, eventRouter);
-    accountRoutes(typed, eventRouter);
-    connectRoutes(typed, eventRouter);
-    machinesRoutes(typed, eventRouter);
-    artifactsRoutes(typed, eventRouter);
-    accessKeysRoutes(typed, eventRouter);
+    sessionRoutes(typed);
+    accountRoutes(typed);
+    connectRoutes(typed);
+    machinesRoutes(typed);
+    artifactsRoutes(typed);
+    accessKeysRoutes(typed);
     devRoutes(typed);
     versionRoutes(typed);
     voiceRoutes(typed);
@@ -72,7 +71,7 @@ export async function startApi(eventRouter: EventRouter) {
     });
 
     // Start Socket
-    startSocket(typed, eventRouter);
+    startSocket(typed);
 
     // End
     log('API ready on port http://localhost:' + port);

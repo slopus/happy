@@ -11,7 +11,6 @@ import { startDatabaseMetricsUpdater } from "@/app/monitoring/metrics2";
 import { initEncrypt } from "./modules/encrypt";
 import { initGithub } from "./modules/github";
 import { loadFiles } from "./storage/files";
-import { EventRouter } from "./app/events/eventRouter";
 
 async function main() {
 
@@ -26,7 +25,6 @@ async function main() {
     await redis.ping();
 
     // Initialize auth module
-    const eventRouter = new EventRouter();
     await initEncrypt();
     await initGithub();
     await loadFiles();
@@ -36,10 +34,10 @@ async function main() {
     // Start
     //
 
-    await startApi(eventRouter);
+    await startApi();
     await startMetricsServer();
     startDatabaseMetricsUpdater();
-    startTimeout(eventRouter);
+    startTimeout();
 
     //
     // Ready

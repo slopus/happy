@@ -1,10 +1,10 @@
 import { Socket } from "socket.io";
 import { AsyncLock } from "@/utils/lock";
 import { db } from "@/storage/db";
-import { buildUsageEphemeral, EventRouter } from "@/app/events/eventRouter";
+import { buildUsageEphemeral, eventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
 
-export function usageHandler(userId: string, socket: Socket, eventRouter: EventRouter) {
+export function usageHandler(userId: string, socket: Socket) {
     const receiveUsageLock = new AsyncLock();
     socket.on('usage-report', async (data: any, callback?: (response: any) => void) => {
         await receiveUsageLock.inLock(async () => {

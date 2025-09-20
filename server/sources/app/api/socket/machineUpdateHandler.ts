@@ -1,13 +1,13 @@
 import { machineAliveEventsCounter, websocketEventsCounter } from "@/app/monitoring/metrics2";
 import { activityCache } from "@/app/presence/sessionCache";
-import { buildMachineActivityEphemeral, buildUpdateMachineUpdate, EventRouter } from "@/app/events/eventRouter";
+import { buildMachineActivityEphemeral, buildUpdateMachineUpdate, eventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
 import { db } from "@/storage/db";
 import { Socket } from "socket.io";
 import { allocateUserSeq } from "@/storage/seq";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 
-export function machineUpdateHandler(userId: string, socket: Socket, eventRouter: EventRouter) {
+export function machineUpdateHandler(userId: string, socket: Socket) {
     socket.on('machine-alive', async (data: {
         machineId: string;
         time: number;

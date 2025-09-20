@@ -4,6 +4,7 @@ import { ImageRef } from "./storage/files";
 export type AccountProfile = {
     firstName: string | null;
     lastName: string | null;
+    username: string | null;
     avatar: ImageRef | null;
     github: GitHubProfile | null;
     settings: {

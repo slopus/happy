@@ -2,9 +2,9 @@ import { db } from "@/storage/db";
 import { delay } from "@/utils/delay";
 import { forever } from "@/utils/forever";
 import { shutdownSignal } from "@/utils/shutdown";
-import { buildMachineActivityEphemeral, buildSessionActivityEphemeral, EventRouter } from "@/app/events/eventRouter";
+import { buildMachineActivityEphemeral, buildSessionActivityEphemeral, eventRouter } from "@/app/events/eventRouter";
 
-export function startTimeout(eventRouter: EventRouter) {
+export function startTimeout() {
     forever('session-timeout', async () => {
         while (true) {
             // Find timed out sessions

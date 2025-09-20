@@ -17,7 +17,7 @@ export async function friendRemove(ctx: Context, uid: string): Promise<UserProfi
             where: { id: uid },
             include: { githubUser: true }
         });
-        if (!currentUser || !currentUser.githubUser || !targetUser || !targetUser.githubUser) {
+        if (!currentUser || !targetUser) {
             return null;
         }
 

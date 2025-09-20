@@ -1,4 +1,4 @@
-import { EventRouter, buildNewArtifactUpdate, buildUpdateArtifactUpdate, buildDeleteArtifactUpdate } from "@/app/events/eventRouter";
+import { eventRouter, buildNewArtifactUpdate, buildUpdateArtifactUpdate, buildDeleteArtifactUpdate } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
 import { Fastify } from "../types";
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { allocateUserSeq } from "@/storage/seq";
 import { log } from "@/utils/log";
 import * as privacyKit from "privacy-kit";
 
-export function artifactsRoutes(app: Fastify, eventRouter: EventRouter) {
+export function artifactsRoutes(app: Fastify) {
     // GET /v1/artifacts - List all artifacts for the account
     app.get('/v1/artifacts', {
         preHandler: app.authenticate,

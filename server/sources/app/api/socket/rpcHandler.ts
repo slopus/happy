@@ -1,8 +1,8 @@
-import { EventRouter } from "@/app/events/eventRouter";
+import { eventRouter } from "@/app/events/eventRouter";
 import { log } from "@/utils/log";
 import { Socket } from "socket.io";
 
-export function rpcHandler(userId: string, socket: Socket, eventRouter: EventRouter, rpcListeners: Map<string, Socket>) {
+export function rpcHandler(userId: string, socket: Socket, rpcListeners: Map<string, Socket>) {
     
     // RPC register - Register this socket as a listener for an RPC method
     socket.on('rpc-register', async (data: any) => {

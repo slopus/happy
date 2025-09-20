@@ -33,6 +33,7 @@ model Account {
     // Profile
     firstName String?
     lastName  String?
+    username  String?     @unique
     /// [ImageRef]
     avatar    Json?
 

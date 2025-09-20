@@ -1,4 +1,4 @@
-import { EventRouter, buildNewSessionUpdate } from "@/app/events/eventRouter";
+import { eventRouter, buildNewSessionUpdate } from "@/app/events/eventRouter";
 import { type Fastify } from "../types";
 import { db } from "@/storage/db";
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
 
-export function sessionRoutes(app: Fastify, eventRouter: EventRouter) {
+export function sessionRoutes(app: Fastify) {
 
     // Sessions API
     app.get('/v1/sessions', {

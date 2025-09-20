@@ -1,19 +1,15 @@
 import { z } from "zod";
-import { type Fastify } from "../types";
+import { type Fastify, GitHubProfile } from "../types";
 import { auth } from "@/app/auth/auth";
 import { log } from "@/utils/log";
-import { db } from "@/storage/db";
-import { Prisma } from "@prisma/client";
-import { allocateUserSeq } from "@/storage/seq";
-import { randomKeyNaked } from "@/utils/randomKeyNaked";
-import { buildUpdateAccountUpdate } from "@/app/events/eventRouter";
-import { GitHubProfile } from "../types";
-import { separateName } from "@/utils/separateName";
-import { uploadImage } from "@/storage/uploadImage";
-import { EventRouter } from "@/app/events/eventRouter";
+import { eventRouter } from "@/app/events/eventRouter";
 import { decryptString, encryptString } from "@/modules/encrypt";
+import { githubConnect } from "@/app/github/githubConnect";
+import { githubDisconnect } from "@/app/github/githubDisconnect";
+import { Context } from "@/context";
+import { db } from "@/storage/db";
 
-export function connectRoutes(app: Fastify, eventRouter: EventRouter) {
+export function connectRoutes(app: Fastify) {
 
     // Add content type parser for webhook endpoints to preserve raw body
     app.addContentTypeParser(
@@ -155,53 +151,9 @@ export function connectRoutes(app: Fastify, eventRouter: EventRouter) {
                 return reply.redirect('https://app.happy.engineering?error=github_user_fetch_failed');
             }
 
-            // Store GitHub user and connect to account
-            const githubUser = await db.githubUser.upsert({
-                where: { id: userData.id.toString() },
-                update: {
-                    profile: userData,
-                    token: encryptString(['user', userId, 'github', 'token'], accessToken!)
-                },
-                create: {
-                    id: userData.id.toString(),
-                    profile: userData,
-                    token: encryptString(['user', userId, 'github', 'token'], accessToken!)
-                }
-            });
-
-            // Avatar
-            log({ module: 'github-oauth' }, `Uploading avatar for user ${userId}: ${userData.avatar_url}`);
-            const image = await fetch(userData.avatar_url);
-            const imageBuffer = await image.arrayBuffer();
-            log({ module: 'github-oauth' }, `Uploading avatar for user ${userId}: ${userData.avatar_url}`);
-            const avatar = await uploadImage(userId, 'avatars', 'github', userData.avatar_url, Buffer.from(imageBuffer));
-            log({ module: 'github-oauth' }, `Uploaded avatar for user ${userId}: ${userData.avatar_url}`);
-
-            // Name
-            const name = separateName(userData.name);
-            log({ module: 'github-oauth' }, `Separated name for user ${userId}: ${userData.name} -> ${name.firstName} ${name.lastName}`);
-
-            // Link GitHub user to account
-            await db.account.update({
-                where: { id: userId },
-                data: { githubUserId: githubUser.id, avatar, firstName: name.firstName, lastName: name.lastName }
-            });
-
-            // Send account update to all user connections
-            const updSeq = await allocateUserSeq(userId);
-            const updatePayload = buildUpdateAccountUpdate(userId, {
-                github: userData,
-                firstName: name.firstName,
-                lastName: name.lastName,
-                avatar: avatar
-            }, updSeq, randomKeyNaked(12));
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
-                recipientFilter: { type: 'all-user-authenticated-connections' }
-            });
-
-            log({ module: 'github-oauth' }, `GitHub account connected successfully for user ${userId}: ${userData.login}`);
+            // Use the new githubConnect operation
+            const ctx = Context.create(userId);
+            await githubConnect(ctx, userData, accessToken!);
 
             // Redirect to app with success
             return reply.redirect(`https://app.happy.engineering?github=connected&user=${encodeURIComponent(userData.login)}`);
@@ -248,42 +200,16 @@ export function connectRoutes(app: Fastify, eventRouter: EventRouter) {
             return reply.code(500).send({ error: 'Webhooks not configured' });
         }
 
+        // Verify and handle the webhook with type safety
         try {
-            // Verify and handle the webhook with type safety
             await webhooks.verifyAndReceive({
                 id: deliveryId || 'unknown',
                 name: eventName,
                 payload: typeof rawBody === 'string' ? rawBody : JSON.stringify(request.body),
                 signature: signature
             });
-
-            // Log successful processing
-            log({
-                module: 'github-webhook',
-                event: eventName,
-                delivery: deliveryId
-            }, `Successfully processed ${eventName} webhook`);
-
             return reply.send({ received: true });
-
         } catch (error: any) {
-            if (error.message?.includes('signature does not match')) {
-                log({
-                    module: 'github-webhook',
-                    level: 'warn',
-                    event: eventName,
-                    delivery: deliveryId
-                }, 'Invalid webhook signature');
-                return reply.code(401).send({ error: 'Invalid signature' });
-            }
-
-            log({
-                module: 'github-webhook',
-                level: 'error',
-                event: eventName,
-                delivery: deliveryId
-            }, `Error processing webhook: ${error.message}`);
-
             return reply.code(500).send({ error: 'Internal server error' });
         }
     });
@@ -306,56 +232,11 @@ export function connectRoutes(app: Fastify, eventRouter: EventRouter) {
         }
     }, async (request, reply) => {
         const userId = request.userId;
-
+        const ctx = Context.create(userId);
         try {
-            // Get current user's GitHub connection
-            const user = await db.account.findUnique({
-                where: { id: userId },
-                select: { githubUserId: true }
-            });
-
-            if (!user || !user.githubUserId) {
-                return reply.code(404).send({ error: 'GitHub account not connected' });
-            }
-
-            const githubUserId = user.githubUserId;
-            log({ module: 'github-disconnect' }, `Disconnecting GitHub account for user ${userId}: ${githubUserId}`);
-
-            // Remove GitHub connection from account and delete GitHub user record
-            await db.$transaction(async (tx) => {
-                // Remove link from account and clear avatar
-                await tx.account.update({
-                    where: { id: userId },
-                    data: {
-                        githubUserId: null,
-                        avatar: Prisma.JsonNull
-                    }
-                });
-
-                // Delete GitHub user record (this also deletes the token)
-                await tx.githubUser.delete({
-                    where: { id: githubUserId }
-                });
-            });
-
-            // Send account update to all user connections
-            const updSeq = await allocateUserSeq(userId);
-            const updatePayload = buildUpdateAccountUpdate(userId, {
-                github: null,
-                avatar: null
-            }, updSeq, randomKeyNaked(12));
-            eventRouter.emitUpdate({
-                userId,
-                payload: updatePayload,
-                recipientFilter: { type: 'all-user-authenticated-connections' }
-            });
-
-            log({ module: 'github-disconnect' }, `GitHub account and avatar disconnected successfully for user ${userId}`);
-
+            await githubDisconnect(ctx);
             return reply.send({ success: true });
-
-        } catch (error) {
-            log({ module: 'github-disconnect', level: 'error' }, `Error disconnecting GitHub account: ${error}`);
+        } catch (error: any) {
             return reply.code(500).send({ error: 'Failed to disconnect GitHub account' });
         }
     });

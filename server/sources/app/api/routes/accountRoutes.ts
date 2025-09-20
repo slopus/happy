@@ -1,4 +1,4 @@
-import { EventRouter, buildUpdateAccountUpdate } from "@/app/events/eventRouter";
+import { eventRouter, buildUpdateAccountUpdate } from "@/app/events/eventRouter";
 import { db } from "@/storage/db";
 import { Fastify } from "../types";
 import { getPublicUrl } from "@/storage/files";
@@ -8,7 +8,7 @@ import { allocateUserSeq } from "@/storage/seq";
 import { log } from "@/utils/log";
 import { AccountProfile } from "@/types";
 
-export function accountRoutes(app: Fastify, eventRouter: EventRouter) {
+export function accountRoutes(app: Fastify) {
     app.get('/v1/account/profile', {
         preHandler: app.authenticate,
     }, async (request, reply) => {
@@ -18,6 +18,7 @@ export function accountRoutes(app: Fastify, eventRouter: EventRouter) {
             select: {
                 firstName: true,
                 lastName: true,
+                username: true,
                 avatar: true,
                 githubUser: true
             }
@@ -28,6 +29,7 @@ export function accountRoutes(app: Fastify, eventRouter: EventRouter) {
             timestamp: Date.now(),
             firstName: user.firstName,
             lastName: user.lastName,
+            username: user.username,
             avatar: user.avatar ? { ...user.avatar, url: getPublicUrl(user.avatar.path) } : null,
             github: user.githubUser ? user.githubUser.profile : null,
             connectedServices: Array.from(connectedVendors)

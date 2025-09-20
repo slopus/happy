@@ -183,7 +183,7 @@ export interface EphemeralPayload {
 
 // === EVENT ROUTER CLASS ===
 
-export class EventRouter {
+class EventRouter {
     private userConnections = new Map<string, Set<ClientConnection>>();
 
     // === CONNECTION MANAGEMENT ===
@@ -300,6 +300,8 @@ export class EventRouter {
         }
     }
 }
+
+export const eventRouter = new EventRouter();
 
 // === EVENT BUILDER FUNCTIONS ===
 

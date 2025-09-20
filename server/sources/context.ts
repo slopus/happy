@@ -1,3 +1,5 @@
+import { Prisma, PrismaClient } from "@prisma/client";
+
 export class Context {
 
     static create(uid: string) {
@@ -10,3 +12,5 @@ export class Context {
         this.uid = uid;
     }
 }
+
+export type Tx = Prisma.TransactionClient | PrismaClient;

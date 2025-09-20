@@ -270,3 +270,10 @@ tail -500 .logs/*.log | grep "applySessions.*active" | tail -10
 - **Server logs**: Include both `time` (Unix ms) and `localTime` (HH:MM:ss.mmm)
 - **Mobile logs**: Sent with `timestamp` in UTC, converted to `localTime` on server
 - **All consolidated logs**: Have `localTime` field for easy correlation
+- When writing a some operations on db, like adding friend, sending a notification - always create a dedicated file in relevant subfolder of the @sources/app/ folder. Good example is "friendAdd", always prefix with an entity type, then action that should be performed.
+- Never create migrations yourself, it is can be done only by human
+- Do not return stuff from action functions "just in case", only essential
+- Do not add logging when not asked
+- do not run non-transactional things (like uploadign files) in transactions
+- After writing an action - add a documentation comment that explains logic, also keep it in sync.
+- always use github usernames

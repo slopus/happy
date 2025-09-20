@@ -21,12 +21,10 @@ export async function friendList(ctx: Context): Promise<UserProfile[]> {
         }
     });
 
-    // Filter out users without GitHub profiles and build UserProfile objects
+    // Build UserProfile objects
     const profiles: UserProfile[] = [];
     for (const relationship of relationships) {
-        if (relationship.toUser.githubUser) {
-            profiles.push(buildUserProfile(relationship.toUser, relationship.status));
-        }
+        profiles.push(buildUserProfile(relationship.toUser, relationship.status));
     }
 
     return profiles;

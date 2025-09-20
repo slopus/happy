@@ -1,5 +1,5 @@
 import { getPublicUrl, ImageRef } from "@/storage/files";
-import { Prisma, RelationshipStatus } from "@prisma/client";
+import { RelationshipStatus } from "@prisma/client";
 import { GitHubProfile } from "../api/types";
 
 export type UserProfile = {
@@ -17,19 +17,12 @@ export type UserProfile = {
     status: RelationshipStatus;
 }
 
-// Avatar type definition matching the database JSON structure
-type AvatarData = {
-    path: string;
-    width?: number;
-    height?: number;
-    thumbhash?: string;
-};
-
 export function buildUserProfile(
     account: {
         id: string;
         firstName: string | null;
         lastName: string | null;
+        username: string | null;
         avatar: ImageRef | null;
         githubUser: { profile: GitHubProfile } | null;
     },
@@ -55,7 +48,7 @@ export function buildUserProfile(
         firstName: account.firstName || '',
         lastName: account.lastName,
         avatar,
-        username: githubProfile?.login || '',
+        username: account.username || githubProfile?.login || '',
         status
     };
 }

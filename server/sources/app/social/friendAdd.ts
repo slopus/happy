@@ -23,7 +23,7 @@ export async function friendAdd(ctx: Context, uid: string): Promise<UserProfile 
             where: { id: uid },
             include: { githubUser: true }
         });
-        if (!currentUser || !currentUser.githubUser || !targetUser || !targetUser.githubUser) {
+        if (!currentUser || !targetUser) {
             return null;
         }
 

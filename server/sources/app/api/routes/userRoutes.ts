@@ -39,7 +39,7 @@ export async function userRoutes(app: Fastify) {
             }
         });
 
-        if (!user || !user.githubUser) {
+        if (!user) {
             return reply.code(404).send({ error: 'User not found' });
         }
 
@@ -65,7 +65,7 @@ export async function userRoutes(app: Fastify) {
                     height: user.avatar.height,
                     thumbhash: user.avatar.thumbhash
                 } : null,
-                username: user.githubUser.profile.login,
+                username: user.username || (user.githubUser?.profile?.login || ''),
                 status: status
             }
         });
@@ -90,22 +90,27 @@ export async function userRoutes(app: Fastify) {
     }, async (request, reply) => {
         const { query } = request.query;
 
-        // Search for user
+        // Search for user by username or GitHub login
         const user = await db.account.findFirst({
             where: {
-                githubUser: {
-                    profile: {
-                        path: ['login'],
-                        equals: query
+                OR: [
+                    { username: query },
+                    {
+                        githubUser: {
+                            profile: {
+                                path: ['login'],
+                                equals: query
+                            }
+                        }
                     }
-                }
+                ]
             },
             include: {
                 githubUser: true
             }
         });
 
-        if (!user || !user.githubUser) {
+        if (!user) {
             return reply.code(404).send({ error: 'User not found' });
         }
 
@@ -130,7 +135,7 @@ export async function userRoutes(app: Fastify) {
                     height: user.avatar.height,
                     thumbhash: user.avatar.thumbhash
                 } : null,
-                username: user.githubUser.profile.login,
+                username: user.username || (user.githubUser?.profile?.login || ''),
                 status: status
             }
         });
@@ -144,7 +149,7 @@ export async function userRoutes(app: Fastify) {
             }),
             response: {
                 200: z.object({
-                    user: UserProfileSchema
+                    user: UserProfileSchema.nullable()
                 }),
                 404: z.object({
                     error: z.literal('User not found')
@@ -154,9 +159,6 @@ export async function userRoutes(app: Fastify) {
         preHandler: app.authenticate
     }, async (request, reply) => {
         const user = await friendAdd(Context.create(request.userId), request.body.uid);
-        if (!user) {
-            return reply.code(404).send({ error: 'User not found' });
-        }
         return reply.send({ user });
     });
 
@@ -167,7 +169,7 @@ export async function userRoutes(app: Fastify) {
             }),
             response: {
                 200: z.object({
-                    user: UserProfileSchema
+                    user: UserProfileSchema.nullable()
                 }),
                 404: z.object({
                     error: z.literal('User not found')
@@ -177,9 +179,6 @@ export async function userRoutes(app: Fastify) {
         preHandler: app.authenticate
     }, async (request, reply) => {
         const user = await friendRemove(Context.create(request.userId), request.body.uid);
-        if (!user) {
-            return reply.code(404).send({ error: 'User not found' });
-        }
         return reply.send({ user });
     });
 

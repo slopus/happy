@@ -2,9 +2,8 @@ import { Fastify } from "../types";
 import { z } from "zod";
 import { db } from "@/storage/db";
 import { log } from "@/utils/log";
-import { EventRouter } from "@/app/events/eventRouter";
 
-export function accessKeysRoutes(app: Fastify, eventRouter: EventRouter) {
+export function accessKeysRoutes(app: Fastify) {
     // Get Access Key API
     app.get('/v1/access-keys/:sessionId/:machineId', {
         preHandler: app.authenticate,
