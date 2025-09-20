@@ -93,17 +93,10 @@ export async function userRoutes(app: Fastify) {
         // Search for user by username or GitHub login
         const user = await db.account.findFirst({
             where: {
-                OR: [
-                    { username: query },
-                    {
-                        githubUser: {
-                            profile: {
-                                path: ['login'],
-                                equals: query
-                            }
-                        }
-                    }
-                ]
+                username: {
+                    startsWith: query,
+                    mode: 'insensitive'
+                }
             },
             include: {
                 githubUser: true
