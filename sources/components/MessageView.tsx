@@ -13,9 +13,6 @@ import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from '@/s
 import { AgentEvent } from '@/sync/typesRaw';
 import { t } from '@/text';
 
-
-
-
 export const MessageView = (props: {
   message: Message;
   metadata: Metadata | null;
@@ -51,31 +48,33 @@ function RenderBlock(props: {
       return <AgentTextBlock message={props.message} sessionId={props.sessionId} />;
 
     case 'tool-call':
-      return <ToolCallBlock
-        message={props.message}
-        metadata={props.metadata}
-        sessionId={props.sessionId}
-        getMessageById={props.getMessageById}
-      />;
+      return (
+        <ToolCallBlock
+          message={props.message}
+          metadata={props.metadata}
+          sessionId={props.sessionId}
+          getMessageById={props.getMessageById}
+        />
+      );
 
     case 'agent-event':
       return <AgentEventBlock event={props.message.event} metadata={props.metadata} />;
 
-
-    default:
+    default: {
       // Exhaustive check - TypeScript will error if we miss a case
       const _exhaustive: never = props.message;
       throw new Error(`Unknown message kind: ${_exhaustive}`);
+    }
   }
 }
 
-function UserTextBlock(props: {
-  message: UserTextMessage;
-  sessionId: string;
-}) {
-  const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title);
-  }, [props.sessionId]);
+function UserTextBlock(props: { message: UserTextMessage; sessionId: string }) {
+  const handleOptionPress = React.useCallback(
+    (option: Option) => {
+      sync.sendMessage(props.sessionId, option.title);
+    },
+    [props.sessionId]
+  );
 
   return (
     <View style={styles.userMessageContainer}>
@@ -89,13 +88,13 @@ function UserTextBlock(props: {
   );
 }
 
-function AgentTextBlock(props: {
-  message: AgentTextMessage;
-  sessionId: string;
-}) {
-  const handleOptionPress = React.useCallback((option: Option) => {
-    sync.sendMessage(props.sessionId, option.title);
-  }, [props.sessionId]);
+function AgentTextBlock(props: { message: AgentTextMessage; sessionId: string }) {
+  const handleOptionPress = React.useCallback(
+    (option: Option) => {
+      sync.sendMessage(props.sessionId, option.title);
+    },
+    [props.sessionId]
+  );
 
   return (
     <View style={styles.agentMessageContainer}>
@@ -104,10 +103,7 @@ function AgentTextBlock(props: {
   );
 }
 
-function AgentEventBlock(props: {
-  event: AgentEvent;
-  metadata: Metadata | null;
-}) {
+function AgentEventBlock(props: { event: AgentEvent; metadata: Metadata | null }) {
   if (props.event.type === 'switch') {
     return (
       <View style={styles.agentEventContainer}>
@@ -169,7 +165,7 @@ function ToolCallBlock(props: {
   );
 }
 
-const styles = StyleSheet.create((theme) => ({
+const styles = StyleSheet.create(theme => ({
   messageContainer: {
     flexDirection: 'row',
     justifyContent: 'center',

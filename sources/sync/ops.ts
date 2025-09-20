@@ -14,134 +14,130 @@ import { log } from '@/log';
 
 // Permission operation types
 interface SessionPermissionRequest {
-    id: string;
-    approved: boolean;
-    reason?: string;
-    mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
-    allowTools?: string[];
-    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+  id: string;
+  approved: boolean;
+  reason?: string;
+  mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+  allowTools?: string[];
+  decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
 }
 
 // Mode change operation types
 interface SessionModeChangeRequest {
-    to: 'remote' | 'local';
+  to: 'remote' | 'local';
 }
 
 // Bash operation types
 interface SessionBashRequest {
-    command: string;
-    cwd?: string;
-    timeout?: number;
+  command: string;
+  cwd?: string;
+  timeout?: number;
 }
 
 interface SessionBashResponse {
-    success: boolean;
-    stdout: string;
-    stderr: string;
-    exitCode: number;
-    error?: string;
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  error?: string;
 }
 
 // Read file operation types
 interface SessionReadFileRequest {
-    path: string;
+  path: string;
 }
 
 interface SessionReadFileResponse {
-    success: boolean;
-    content?: string; // base64 encoded
-    error?: string;
+  success: boolean;
+  content?: string; // base64 encoded
+  error?: string;
 }
 
 // Write file operation types
 interface SessionWriteFileRequest {
-    path: string;
-    content: string; // base64 encoded
-    expectedHash?: string | null;
+  path: string;
+  content: string; // base64 encoded
+  expectedHash?: string | null;
 }
 
 interface SessionWriteFileResponse {
-    success: boolean;
-    hash?: string;
-    error?: string;
+  success: boolean;
+  hash?: string;
+  error?: string;
 }
 
 // List directory operation types
 interface SessionListDirectoryRequest {
-    path: string;
+  path: string;
 }
 
 interface DirectoryEntry {
-    name: string;
-    type: 'file' | 'directory' | 'other';
-    size?: number;
-    modified?: number;
+  name: string;
+  type: 'file' | 'directory' | 'other';
+  size?: number;
+  modified?: number;
 }
 
 interface SessionListDirectoryResponse {
-    success: boolean;
-    entries?: DirectoryEntry[];
-    error?: string;
+  success: boolean;
+  entries?: DirectoryEntry[];
+  error?: string;
 }
 
 // Directory tree operation types
 interface SessionGetDirectoryTreeRequest {
-    path: string;
-    maxDepth: number;
+  path: string;
+  maxDepth: number;
 }
 
 interface TreeNode {
-    name: string;
-    path: string;
-    type: 'file' | 'directory';
-    size?: number;
-    modified?: number;
-    children?: TreeNode[];
+  name: string;
+  path: string;
+  type: 'file' | 'directory';
+  size?: number;
+  modified?: number;
+  children?: TreeNode[];
 }
 
 interface SessionGetDirectoryTreeResponse {
-    success: boolean;
-    tree?: TreeNode;
-    error?: string;
+  success: boolean;
+  tree?: TreeNode;
+  error?: string;
 }
 
 // Ripgrep operation types
 interface SessionRipgrepRequest {
-    args: string[];
-    cwd?: string;
+  args: string[];
+  cwd?: string;
 }
 
 interface SessionRipgrepResponse {
-    success: boolean;
-    exitCode?: number;
-    stdout?: string;
-    stderr?: string;
-    error?: string;
+  success: boolean;
+  exitCode?: number;
+  stdout?: string;
+  stderr?: string;
+  error?: string;
 }
 
 // Kill session operation types
-interface SessionKillRequest {
-    // No parameters needed
-}
-
 interface SessionKillResponse {
-    success: boolean;
-    message: string;
+  success: boolean;
+  message: string;
 }
 
 // Response types for spawn session
 export type SpawnSessionResult =
-    | { type: 'success'; sessionId: string }
-    | { type: 'requestToApproveDirectoryCreation'; directory: string }
-    | { type: 'error'; errorMessage: string };
+  | { type: 'success'; sessionId: string }
+  | { type: 'requestToApproveDirectoryCreation'; directory: string }
+  | { type: 'error'; errorMessage: string };
 
 // Options for spawning a session
 export interface SpawnSessionOptions {
-    machineId: string;
-    directory: string;
-    approvedNewDirectoryCreation?: boolean;
-    token?: string;
-    agent?: 'codex' | 'claude';
+  machineId: string;
+  directory: string;
+  approvedNewDirectoryCreation?: boolean;
+  token?: string;
+  agent?: 'codex' | 'claude';
 }
 
 // Exported session operation functions
@@ -150,21 +146,25 @@ export interface SpawnSessionOptions {
  * Spawn a new remote session on a specific machine
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
-    
   const { machineId, directory, approvedNewDirectoryCreation = false, token, agent } = options;
 
   try {
-    const result = await apiSocket.machineRPC<SpawnSessionResult, {
-            type: 'spawn-in-directory'
-            directory: string
-            approvedNewDirectoryCreation?: boolean,
-            token?: string,
-            agent?: 'codex' | 'claude'
-        }>(
-          machineId,
-          'spawn-happy-session',
-          { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent },
-        );
+    const result = await apiSocket.machineRPC<
+      SpawnSessionResult,
+      {
+        type: 'spawn-in-directory';
+        directory: string;
+        approvedNewDirectoryCreation?: boolean;
+        token?: string;
+        agent?: 'codex' | 'claude';
+      }
+    >(machineId, 'spawn-happy-session', {
+      type: 'spawn-in-directory',
+      directory,
+      approvedNewDirectoryCreation,
+      token,
+      agent,
+    });
     return result;
   } catch (error) {
     // Handle RPC errors
@@ -181,11 +181,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
 export async function machineStopDaemon(machineId: string): Promise<{ message: string }> {
   try {
     log.log(`🛑 machineStopDaemon: Sending stop-daemon command to machine ${machineId}`);
-    const result = await apiSocket.machineRPC<{ message: string }, {}>(
-      machineId,
-      'stop-daemon',
-      {},
-    );
+    const result = await apiSocket.machineRPC<{ message: string }, Record<string, never>>(machineId, 'stop-daemon', {});
     log.log(`✅ machineStopDaemon: Received response from machine ${machineId}: ${result.message}`);
     return result;
   } catch (error) {
@@ -202,7 +198,7 @@ export async function machineUpdateMetadata(
   machineId: string,
   metadata: MachineMetadata,
   expectedVersion: number,
-  maxRetries: number = 3,
+  maxRetries: number = 3
 ): Promise<{ version: number; metadata: string }> {
   let currentVersion = expectedVersion;
   let currentMetadata = { ...metadata };
@@ -217,15 +213,15 @@ export async function machineUpdateMetadata(
     const encryptedMetadata = await machineEncryption.encryptRaw(currentMetadata);
 
     const result = await apiSocket.emitWithAck<{
-            result: 'success' | 'version-mismatch' | 'error';
-            version?: number;
-            metadata?: string;
-            message?: string;
-        }>('machine-update-metadata', {
-          machineId,
-          metadata: encryptedMetadata,
-          expectedVersion: currentVersion,
-        });
+      result: 'success' | 'version-mismatch' | 'error';
+      version?: number;
+      metadata?: string;
+      message?: string;
+    }>('machine-update-metadata', {
+      machineId,
+      metadata: encryptedMetadata,
+      expectedVersion: currentVersion,
+    });
 
     if (result.result === 'success') {
       return {
@@ -235,7 +231,7 @@ export async function machineUpdateMetadata(
     } else if (result.result === 'version-mismatch') {
       // Get the latest version and metadata from the response
       currentVersion = result.version!;
-      const latestMetadata = await machineEncryption.decryptRaw(result.metadata!) as MachineMetadata;
+      const latestMetadata = (await machineEncryption.decryptRaw(result.metadata!)) as MachineMetadata;
 
       // Merge our changes with the latest metadata
       // Preserve the displayName we're trying to set, but use latest values for other fields
@@ -272,7 +268,13 @@ export async function sessionAbort(sessionId: string): Promise<void> {
 /**
  * Allow a permission request
  */
-export async function sessionAllow(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'approved' | 'approved_for_session'): Promise<void> {
+export async function sessionAllow(
+  sessionId: string,
+  id: string,
+  mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
+  allowedTools?: string[],
+  decision?: 'approved' | 'approved_for_session'
+): Promise<void> {
   const request: SessionPermissionRequest = { id, approved: true, mode, allowTools: allowedTools, decision };
   await apiSocket.sessionRPC(sessionId, 'permission', request);
 }
@@ -280,7 +282,13 @@ export async function sessionAllow(sessionId: string, id: string, mode?: 'defaul
 /**
  * Deny a permission request
  */
-export async function sessionDeny(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'denied' | 'abort'): Promise<void> {
+export async function sessionDeny(
+  sessionId: string,
+  id: string,
+  mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
+  allowedTools?: string[],
+  decision?: 'denied' | 'abort'
+): Promise<void> {
   const request: SessionPermissionRequest = { id, approved: false, mode, allowTools: allowedTools, decision };
   await apiSocket.sessionRPC(sessionId, 'permission', request);
 }
@@ -290,11 +298,7 @@ export async function sessionDeny(sessionId: string, id: string, mode?: 'default
  */
 export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): Promise<boolean> {
   const request: SessionModeChangeRequest = { to };
-  const response = await apiSocket.sessionRPC<boolean, SessionModeChangeRequest>(
-    sessionId,
-    'switch',
-    request,
-  );
+  const response = await apiSocket.sessionRPC<boolean, SessionModeChangeRequest>(sessionId, 'switch', request);
   return response;
 }
 
@@ -303,11 +307,7 @@ export async function sessionSwitch(sessionId: string, to: 'remote' | 'local'): 
  */
 export async function sessionBash(sessionId: string, request: SessionBashRequest): Promise<SessionBashResponse> {
   try {
-    const response = await apiSocket.sessionRPC<SessionBashResponse, SessionBashRequest>(
-      sessionId,
-      'bash',
-      request,
-    );
+    const response = await apiSocket.sessionRPC<SessionBashResponse, SessionBashRequest>(sessionId, 'bash', request);
     return response;
   } catch (error) {
     return {
@@ -329,7 +329,7 @@ export async function sessionReadFile(sessionId: string, path: string): Promise<
     const response = await apiSocket.sessionRPC<SessionReadFileResponse, SessionReadFileRequest>(
       sessionId,
       'readFile',
-      request,
+      request
     );
     return response;
   } catch (error) {
@@ -347,14 +347,14 @@ export async function sessionWriteFile(
   sessionId: string,
   path: string,
   content: string,
-  expectedHash?: string | null,
+  expectedHash?: string | null
 ): Promise<SessionWriteFileResponse> {
   try {
     const request: SessionWriteFileRequest = { path, content, expectedHash };
     const response = await apiSocket.sessionRPC<SessionWriteFileResponse, SessionWriteFileRequest>(
       sessionId,
       'writeFile',
-      request,
+      request
     );
     return response;
   } catch (error) {
@@ -374,7 +374,7 @@ export async function sessionListDirectory(sessionId: string, path: string): Pro
     const response = await apiSocket.sessionRPC<SessionListDirectoryResponse, SessionListDirectoryRequest>(
       sessionId,
       'listDirectory',
-      request,
+      request
     );
     return response;
   } catch (error) {
@@ -391,14 +391,14 @@ export async function sessionListDirectory(sessionId: string, path: string): Pro
 export async function sessionGetDirectoryTree(
   sessionId: string,
   path: string,
-  maxDepth: number,
+  maxDepth: number
 ): Promise<SessionGetDirectoryTreeResponse> {
   try {
     const request: SessionGetDirectoryTreeRequest = { path, maxDepth };
     const response = await apiSocket.sessionRPC<SessionGetDirectoryTreeResponse, SessionGetDirectoryTreeRequest>(
       sessionId,
       'getDirectoryTree',
-      request,
+      request
     );
     return response;
   } catch (error) {
@@ -412,17 +412,13 @@ export async function sessionGetDirectoryTree(
 /**
  * Run ripgrep in the session
  */
-export async function sessionRipgrep(
-  sessionId: string,
-  args: string[],
-  cwd?: string,
-): Promise<SessionRipgrepResponse> {
+export async function sessionRipgrep(sessionId: string, args: string[], cwd?: string): Promise<SessionRipgrepResponse> {
   try {
     const request: SessionRipgrepRequest = { args, cwd };
     const response = await apiSocket.sessionRPC<SessionRipgrepResponse, SessionRipgrepRequest>(
       sessionId,
       'ripgrep',
-      request,
+      request
     );
     return response;
   } catch (error) {
@@ -439,10 +435,10 @@ export async function sessionRipgrep(
 export async function sessionKill(sessionId: string): Promise<SessionKillResponse> {
   try {
     log.log(`🔪 sessionKill: Attempting to kill session ${sessionId}`);
-    const response = await apiSocket.sessionRPC<SessionKillResponse, {}>(
+    const response = await apiSocket.sessionRPC<SessionKillResponse, Record<string, never>>(
       sessionId,
       'killSession',
-      {},
+      {}
     );
     if (response.success) {
       log.log(`✅ sessionKill: Successfully killed session ${sessionId}`);

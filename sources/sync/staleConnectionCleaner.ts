@@ -10,15 +10,15 @@ import { sync } from './sync';
 import type { Session } from './storageTypes';
 
 export interface StaleConnectionConfig {
-  checkInterval: number;          // How often to check (ms)
-  staleThreshold: number;         // How old before considered stale (ms)
-  inactiveThreshold: number;      // How long inactive before cleanup (ms)
-  maxRetries: number;             // Max cleanup attempts per session
+  checkInterval: number; // How often to check (ms)
+  staleThreshold: number; // How old before considered stale (ms)
+  inactiveThreshold: number; // How long inactive before cleanup (ms)
+  maxRetries: number; // Max cleanup attempts per session
 }
 
 const DEFAULT_CONFIG: StaleConnectionConfig = {
-  checkInterval: 60000,           // Check every minute
-  staleThreshold: 5 * 60 * 1000,  // 5 minutes
+  checkInterval: 60000, // Check every minute
+  staleThreshold: 5 * 60 * 1000, // 5 minutes
   inactiveThreshold: 30 * 60 * 1000, // 30 minutes
   maxRetries: 3,
 };
@@ -149,7 +149,9 @@ export class StaleConnectionCleaner {
     await this.compactStorage();
 
     const duration = Date.now() - startTime;
-    console.log(`🧹 StaleConnectionCleaner: Cleanup completed in ${duration}ms - cleaned ${result.cleanedSessions}/${result.staleSessions} stale sessions`);
+    console.log(
+      `🧹 StaleConnectionCleaner: Cleanup completed in ${duration}ms - cleaned ${result.cleanedSessions}/${result.staleSessions} stale sessions`
+    );
 
     return result;
   }
@@ -169,11 +171,7 @@ export class StaleConnectionCleaner {
       }
 
       // Check if session has been active recently
-      const lastActivity = Math.max(
-        session.activeAt || 0,
-        session.updatedAt || 0,
-        session.thinkingAt || 0,
-      );
+      const lastActivity = Math.max(session.activeAt || 0, session.updatedAt || 0, session.thinkingAt || 0);
 
       const timeSinceActivity = now - lastActivity;
 
@@ -184,7 +182,9 @@ export class StaleConnectionCleaner {
       const isInactive = timeSinceActivity > inactiveThreshold;
 
       if (isStale || isInactive) {
-        console.log(`🧹 StaleConnectionCleaner: Session ${session.id} is stale (${timeSinceActivity}ms since activity)`);
+        console.log(
+          `🧹 StaleConnectionCleaner: Session ${session.id} is stale (${timeSinceActivity}ms since activity)`
+        );
         return true;
       }
 
@@ -229,12 +229,14 @@ export class StaleConnectionCleaner {
       this.retryCount.delete(sessionId);
 
       return true;
-
     } catch (error) {
       // Increment retry count
       this.retryCount.set(sessionId, retryCount + 1);
 
-      console.error(`🧹 StaleConnectionCleaner: Failed to cleanup session ${sessionId} (attempt ${retryCount + 1}):`, error);
+      console.error(
+        `🧹 StaleConnectionCleaner: Failed to cleanup session ${sessionId} (attempt ${retryCount + 1}):`,
+        error
+      );
       throw error;
     }
   }
@@ -245,14 +247,14 @@ export class StaleConnectionCleaner {
   private async verifySessionAlive(sessionId: string): Promise<boolean> {
     try {
       // Try to ping the session with a short timeout
-      const result = await Promise.race([
+      await Promise.race([
         sessionKill(sessionId), // This will fail if session is alive
         new Promise((_, reject) => setTimeout(() => reject(new Error('Verification timeout')), 5000)),
       ]);
 
       // If sessionKill succeeded, the session was alive and has been killed
       return true;
-    } catch (error) {
+    } catch {
       // If sessionKill failed, the session was already dead or there's a network issue
       // For now, assume it's dead to be safe (since we're cleaning up stale connections)
       return false;
@@ -323,7 +325,7 @@ export class StaleConnectionCleaner {
     lastCleanupTime: number;
     retryCount: number;
     config: StaleConnectionConfig;
-    } {
+  } {
     return {
       isRunning: this.isRunning,
       lastCleanupTime: this.lastCleanupTime,

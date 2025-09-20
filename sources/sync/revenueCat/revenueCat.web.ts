@@ -4,8 +4,6 @@ import {
   CustomerInfo as WebCustomerInfo,
   Product as WebProduct,
   Offerings as WebOfferings,
-  Offering as WebOffering,
-  Price as WebPrice,
 } from '@revenuecat/purchases-js';
 
 import {
@@ -132,7 +130,7 @@ class RevenueCatWeb implements RevenueCatInterface {
       // Get the offering to use (provided or current)
       const offerings = await this.getOfferings();
       const offering = options?.offering || offerings.current;
-            
+
       if (!offering || offering.availablePackages.length === 0) {
         console.error('No offerings available');
         return PaywallResult.ERROR;
@@ -140,10 +138,10 @@ class RevenueCatWeb implements RevenueCatInterface {
 
       // Get the first available package
       const firstPackage = offering.availablePackages[0];
-            
+
       try {
         // Attempt to purchase
-        const result = await this.purchaseStoreProduct(firstPackage.product);
+        await this.purchaseStoreProduct(firstPackage.product);
         return PaywallResult.PURCHASED;
       } catch (purchaseError: any) {
         // Check if user cancelled
@@ -159,17 +157,19 @@ class RevenueCatWeb implements RevenueCatInterface {
     }
   }
 
-  async presentPaywallIfNeeded(options?: PaywallOptions & { requiredEntitlementIdentifier: string }): Promise<PaywallResult> {
+  async presentPaywallIfNeeded(
+    options?: PaywallOptions & { requiredEntitlementIdentifier: string }
+  ): Promise<PaywallResult> {
     // Check if user has the required entitlement
     try {
       const customerInfo = await this.getCustomerInfo();
       const hasEntitlement = customerInfo.entitlements.all[options?.requiredEntitlementIdentifier || 'pro']?.isActive;
-            
+
       if (hasEntitlement) {
         // User already has the entitlement, no need to show paywall
         return PaywallResult.NOT_PRESENTED;
       }
-            
+
       // User doesn't have entitlement, present paywall
       return this.presentPaywall(options);
     } catch (error) {
@@ -229,17 +229,22 @@ class RevenueCatWeb implements RevenueCatInterface {
     };
 
     return {
-      current: webOfferings.current ? {
-        identifier: webOfferings.current.identifier,
-        availablePackages: transformPackages(webOfferings.current.availablePackages),
-      } : null,
-      all: Object.entries(webOfferings.all || {}).reduce((acc, [key, offering]) => {
-        acc[key] = {
-          identifier: offering.identifier,
-          availablePackages: transformPackages(offering.availablePackages),
-        };
-        return acc;
-      }, {} as Record<string, any>),
+      current: webOfferings.current
+        ? {
+            identifier: webOfferings.current.identifier,
+            availablePackages: transformPackages(webOfferings.current.availablePackages),
+          }
+        : null,
+      all: Object.entries(webOfferings.all || {}).reduce(
+        (acc, [key, offering]) => {
+          acc[key] = {
+            identifier: offering.identifier,
+            availablePackages: transformPackages(offering.availablePackages),
+          };
+          return acc;
+        },
+        {} as Record<string, any>
+      ),
     };
   }
 }

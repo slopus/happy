@@ -68,14 +68,14 @@ export interface SessionStateBackup {
 }
 
 export interface SessionStatePersistenceConfig {
-  backupInterval: number;         // How often to backup (ms)
-  maxBackups: number;            // Max backups per session
-  maxBackupAge: number;          // Max age of backups (ms)
+  backupInterval: number; // How often to backup (ms)
+  maxBackups: number; // Max backups per session
+  maxBackupAge: number; // Max age of backups (ms)
   conflictResolution: 'local' | 'remote' | 'merge'; // How to resolve conflicts
 }
 
 const DEFAULT_CONFIG: SessionStatePersistenceConfig = {
-  backupInterval: 10000,          // 10 seconds
+  backupInterval: 10000, // 10 seconds
   maxBackups: 10,
   maxBackupAge: 24 * 60 * 60 * 1000, // 24 hours
   conflictResolution: 'merge',
@@ -203,11 +203,7 @@ export class SessionStatePersistence {
 
       for (const [sessionId, session] of Object.entries(sessions)) {
         // Only backup active sessions or recently active ones
-        const lastActivity = Math.max(
-          session.activeAt || 0,
-          session.updatedAt || 0,
-          session.thinkingAt || 0,
-        );
+        const lastActivity = Math.max(session.activeAt || 0, session.updatedAt || 0, session.thinkingAt || 0);
 
         const timeSinceActivity = now - lastActivity;
         if (timeSinceActivity > this.config.maxBackupAge) {
@@ -241,7 +237,6 @@ export class SessionStatePersistence {
       await this.cleanupOldBackups();
 
       console.log(`💾 SessionStatePersistence: Backed up ${backupsToSave.length} sessions`);
-
     } catch (error) {
       console.error('💾 SessionStatePersistence: Failed to backup state:', error);
     }
@@ -287,7 +282,6 @@ export class SessionStatePersistence {
       }
 
       console.log(`💾 SessionStatePersistence: Loaded ${loadedCount} backups from storage`);
-
     } catch (error) {
       console.error('💾 SessionStatePersistence: Failed to load backups:', error);
     }
@@ -339,11 +333,7 @@ export class SessionStatePersistence {
         }
 
         // Reconcile based on configuration
-        const reconciledSession = await this.resolveSessionConflict(
-          cachedBackup.state,
-          currentSession,
-          sessionId,
-        );
+        const reconciledSession = await this.resolveSessionConflict(cachedBackup.state, currentSession, sessionId);
 
         if (reconciledSession) {
           reconciledSessions.push(reconciledSession);
@@ -355,7 +345,6 @@ export class SessionStatePersistence {
         storage.getState().applySessions(reconciledSessions);
         console.log(`💾 SessionStatePersistence: Reconciled ${reconciledSessions.length} sessions`);
       }
-
     } catch (error) {
       console.error('💾 SessionStatePersistence: Failed to reconcile state:', error);
     }
@@ -367,7 +356,7 @@ export class SessionStatePersistence {
   private async resolveSessionConflict(
     localSession: Session,
     remoteSession: Session,
-    sessionId: string,
+    sessionId: string
   ): Promise<Session | null> {
     try {
       switch (this.config.conflictResolution) {
@@ -380,7 +369,7 @@ export class SessionStatePersistence {
           return remoteSession;
 
         case 'merge':
-        default:
+        default: {
           // Merge strategy: prefer more recent data per field
           const merged: Session = {
             ...remoteSession, // Start with remote as base
@@ -391,18 +380,22 @@ export class SessionStatePersistence {
             thinkingAt: Math.max(localSession.thinkingAt || 0, remoteSession.thinkingAt || 0),
 
             // Merge metadata if local is newer
-            metadata: localSession.metadataVersion && remoteSession.metadataVersion &&
-                     localSession.metadataVersion > remoteSession.metadataVersion
-              ? localSession.metadata
-              : remoteSession.metadata,
+            metadata:
+              localSession.metadataVersion &&
+              remoteSession.metadataVersion &&
+              localSession.metadataVersion > remoteSession.metadataVersion
+                ? localSession.metadata
+                : remoteSession.metadata,
 
             metadataVersion: Math.max(localSession.metadataVersion || 0, remoteSession.metadataVersion || 0),
 
             // Merge agent state if local is newer
-            agentState: localSession.agentStateVersion && remoteSession.agentStateVersion &&
-                       localSession.agentStateVersion > remoteSession.agentStateVersion
-              ? localSession.agentState
-              : remoteSession.agentState,
+            agentState:
+              localSession.agentStateVersion &&
+              remoteSession.agentStateVersion &&
+              localSession.agentStateVersion > remoteSession.agentStateVersion
+                ? localSession.agentState
+                : remoteSession.agentState,
 
             agentStateVersion: Math.max(localSession.agentStateVersion || 0, remoteSession.agentStateVersion || 0),
 
@@ -411,14 +404,15 @@ export class SessionStatePersistence {
             modelMode: localSession.modelMode || remoteSession.modelMode,
 
             // Prefer local thinking state if more recent
-            thinking: localSession.thinkingAt && remoteSession.thinkingAt &&
-                     localSession.thinkingAt > remoteSession.thinkingAt
-              ? localSession.thinking
-              : remoteSession.thinking,
+            thinking:
+              localSession.thinkingAt && remoteSession.thinkingAt && localSession.thinkingAt > remoteSession.thinkingAt
+                ? localSession.thinking
+                : remoteSession.thinking,
           };
 
           console.log(`💾 SessionStatePersistence: Merged local and remote state for session ${sessionId}`);
           return merged;
+        }
       }
     } catch (error) {
       console.error(`💾 SessionStatePersistence: Failed to resolve conflict for session ${sessionId}:`, error);
@@ -449,7 +443,7 @@ export class SessionStatePersistence {
     lastBackupTime: number;
     backupCount: number;
     config: SessionStatePersistenceConfig;
-    } {
+  } {
     return {
       isRunning: this.isRunning,
       lastBackupTime: this.lastBackupTime,
