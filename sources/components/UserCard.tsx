@@ -1,5 +1,4 @@
 import React from 'react';
-import { StyleSheet } from 'react-native-unistyles';
 import { UserProfile, getDisplayName } from '@/sync/friendTypes';
 import { Item } from '@/components/Item';
 import { Avatar } from '@/components/Avatar';
@@ -37,16 +36,6 @@ export function UserCard({
             leftElement={avatarElement}
             onPress={onPress}
             showChevron={!!onPress}
-            style={styles.itemStyle}
         />
     );
 }
-
-const styles = StyleSheet.create((theme) => ({
-    itemStyle: {
-        marginHorizontal: 16,
-        marginVertical: 2,
-        backgroundColor: theme.colors.surface,
-        borderRadius: 12,
-    },
-}));

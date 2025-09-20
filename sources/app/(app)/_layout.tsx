@@ -213,7 +213,7 @@ export default function RootLayout() {
                 name="user/[id]"
                 options={{
                     headerShown: true,
-                    headerTitle: t('profile.userProfile'),
+                    headerTitle: '',
                     headerBackTitle: t('common.back'),
                 }}
             />

@@ -24,6 +24,7 @@ export const UserProfileSchema = z.object({
         thumbhash: z.string().optional()
     }).nullable(),
     username: z.string(),
+    bio: z.string().nullable(),
     status: RelationshipStatusSchema
 });
 

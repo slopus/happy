@@ -176,6 +176,11 @@ export default function UserProfileScreen() {
 
                     <Text style={styles.username}>@{userProfile.username}</Text>
 
+                    {/* Bio */}
+                    {userProfile.bio && (
+                        <Text style={styles.bio}>{userProfile.bio}</Text>
+                    )}
+
                     {/* Friend Status Badge */}
                     {userProfile.status === 'friend' && (
                         <View style={styles.statusBadge}>

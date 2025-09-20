@@ -128,13 +128,7 @@ export default function FriendsScreen() {
 
             {/* Friends List Section */}
             <ItemGroup
-                title={
-                    <View style={styles.sectionHeader}>
-                        <Text style={styles.sectionTitle}>
-                            {t('friends.myFriends')} ({friends.length})
-                        </Text>
-                    </View>
-                }
+                title={t('friends.myFriends')}
                 style={styles.groupStyle}
             >
                 {friends.length === 0 ? (
@@ -160,18 +154,6 @@ export default function FriendsScreen() {
 const styles = StyleSheet.create((theme) => ({
     groupStyle: {
         marginBottom: 16,
-    },
-    sectionHeader: {
-        flex: 1,
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-    },
-    sectionTitle: {
-        fontSize: 18,
-        fontWeight: '600',
-        color: theme.colors.text,
     },
     emptyState: {
         alignItems: 'center',
