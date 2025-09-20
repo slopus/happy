@@ -149,7 +149,7 @@ class AutoFixer {
     try {
       logger.info('Running preliminary build check...');
       const buildResult = await this.runCommand(
-        'yarn typecheck || npm run typecheck || npx tsc --noEmit --skipLibCheck',
+        'NODE_OPTIONS="--max-old-space-size=8192" yarn typecheck || NODE_OPTIONS="--max-old-space-size=8192" npm run typecheck || NODE_OPTIONS="--max-old-space-size=8192" npx tsc --noEmit --skipLibCheck',
         repoPath
       );
     } catch (buildError) {
@@ -191,7 +191,10 @@ class AutoFixer {
 
     // Run TypeScript check
     try {
-      const tscResult = await this.runCommand('npx tsc --noEmit', repoPath);
+      const tscResult = await this.runCommand(
+        'NODE_OPTIONS="--max-old-space-size=8192" npx tsc --noEmit --skipLibCheck',
+        repoPath
+      );
       if (tscResult.stderr) {
         issues.push({
           tool: 'typescript',
@@ -351,13 +354,13 @@ Apply fixes systematically and ensure all changes maintain code functionality.
 
     // TypeScript compilation
     try {
-      await this.runCommand('yarn typecheck', repoPath);
+      await this.runCommand('NODE_OPTIONS="--max-old-space-size=8192" yarn typecheck', repoPath);
       results.typescript = true;
       logger.info('TypeScript compilation: PASS');
     } catch (error) {
       logger.warn(`TypeScript compilation failed: ${error.message}`);
       try {
-        await this.runCommand('npx tsc --noEmit', repoPath);
+        await this.runCommand('NODE_OPTIONS="--max-old-space-size=8192" npx tsc --noEmit --skipLibCheck', repoPath);
         results.typescript = true;
         logger.info('TypeScript compilation (fallback): PASS');
       } catch (fallbackError) {
@@ -383,15 +386,28 @@ Apply fixes systematically and ensure all changes maintain code functionality.
 
     // Android prebuild
     try {
-      // Try modern Expo CLI first, fallback to legacy if needed
+      // Use the modern Expo CLI with correct syntax
       try {
-        await this.runCommand('npx @expo/cli prebuild --platform android --no-install --clear', repoPath);
+        // First try with @expo/cli (modern)
+        await this.runCommand('npx @expo/cli prebuild --platform android --no-install', repoPath);
+        results.android = true;
+        logger.info('Android prebuild: PASS (modern CLI)');
       } catch (modernError) {
-        logger.warn('Modern Expo CLI failed, trying legacy format...');
-        await this.runCommand('npx expo prebuild --platform android --no-install', repoPath);
+        logger.warn('Modern @expo/cli failed, trying npx expo...');
+        try {
+          // Try with npx expo (also modern but different)
+          await this.runCommand('npx expo prebuild --platform android --no-install', repoPath);
+          results.android = true;
+          logger.info('Android prebuild: PASS (npx expo)');
+        } catch (expoError) {
+          logger.warn('npx expo failed, trying legacy expo-cli...');
+          // Final fallback to legacy expo-cli with explicit install
+          await this.runCommand('npm install -g expo-cli@latest', repoPath);
+          await this.runCommand('expo prebuild --platform android --npm', repoPath);
+          results.android = true;
+          logger.info('Android prebuild: PASS (legacy expo-cli)');
+        }
       }
-      results.android = true;
-      logger.info('Android prebuild: PASS');
     } catch (error) {
       logger.warn(`Android prebuild failed: ${error.message}`);
     }

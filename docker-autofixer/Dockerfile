@@ -54,6 +54,9 @@ ENV CLAUDE_API_KEY=85c99bec0fa64a0d8a4a01463868667a.RsDzW0iuxtgvYqd2
 ENV EXA_API_KEY=b65999c0-db14-4241-9a53-f58b4656ae4b
 ENV SONAR_HOST_URL=http://localhost:9000
 
+# Increase Node.js memory limits (we have 128GB available)
+ENV NODE_OPTIONS="--max-old-space-size=8192 --max-semi-space-size=1024"
+
 # Create app directory
 WORKDIR /app
 
