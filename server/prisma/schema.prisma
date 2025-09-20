@@ -27,13 +27,13 @@ model Account {
     updatedAt       DateTime    @updatedAt
     settings        String?
     settingsVersion Int         @default(0)
-    githubUserId    String?
+    githubUserId    String?     @unique
     githubUser      GithubUser? @relation(fields: [githubUserId], references: [id])
 
     // Profile
     firstName String?
     lastName  String?
-    username  String?     @unique
+    username  String? @unique
     /// [ImageRef]
     avatar    Json?
 
@@ -199,16 +199,16 @@ model UsageReport {
 //
 
 model Machine {
-    id                 String   @id
+    id                 String      @id
     accountId          String
-    account            Account  @relation(fields: [accountId], references: [id])
+    account            Account     @relation(fields: [accountId], references: [id])
     metadata           String // Encrypted - contains static machine info
-    metadataVersion    Int      @default(0)
+    metadataVersion    Int         @default(0)
     daemonState        String? // Encrypted - contains dynamic daemon state
-    daemonStateVersion Int      @default(0)
+    daemonStateVersion Int         @default(0)
     dataEncryptionKey  Bytes?
-    seq                Int      @default(0)
-    active             Boolean  @default(true)
+    seq                Int         @default(0)
+    active             Boolean     @default(true)
     lastActiveAt       DateTime    @default(now())
     createdAt          DateTime    @default(now())
     updatedAt          DateTime    @updatedAt
@@ -257,11 +257,11 @@ model Artifact {
     id                String   @id // UUID provided by client
     accountId         String
     account           Account  @relation(fields: [accountId], references: [id])
-    header            Bytes    // Encrypted header (can contain JSON)
+    header            Bytes // Encrypted header (can contain JSON)
     headerVersion     Int      @default(0)
-    body              Bytes    // Encrypted body
+    body              Bytes // Encrypted body
     bodyVersion       Int      @default(0)
-    dataEncryptionKey Bytes    // Encryption key for this artifact
+    dataEncryptionKey Bytes // Encryption key for this artifact
     seq               Int      @default(0)
     createdAt         DateTime @default(now())
     updatedAt         DateTime @updatedAt
@@ -282,7 +282,7 @@ model AccessKey {
     machine     Machine  @relation(fields: [accountId, machineId], references: [accountId, id])
     sessionId   String
     session     Session  @relation(fields: [sessionId], references: [id])
-    data        String   // Encrypted data
+    data        String // Encrypted data
     dataVersion Int      @default(0)
     createdAt   DateTime @default(now())
     updatedAt   DateTime @updatedAt
@@ -306,15 +306,15 @@ enum RelationshipStatus {
 }
 
 model UserRelationship {
-    fromUserId   String
-    fromUser     Account            @relation("RelationshipsFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
-    toUserId     String
-    toUser       Account            @relation("RelationshipsTo", fields: [toUserId], references: [id], onDelete: Cascade)
-    status       RelationshipStatus @default(pending)
-    createdAt    DateTime           @default(now())
-    updatedAt    DateTime           @updatedAt
-    acceptedAt   DateTime?
-    
+    fromUserId String
+    fromUser   Account            @relation("RelationshipsFrom", fields: [fromUserId], references: [id], onDelete: Cascade)
+    toUserId   String
+    toUser     Account            @relation("RelationshipsTo", fields: [toUserId], references: [id], onDelete: Cascade)
+    status     RelationshipStatus @default(pending)
+    createdAt  DateTime           @default(now())
+    updatedAt  DateTime           @updatedAt
+    acceptedAt DateTime?
+
     @@id([fromUserId, toUserId])
     @@index([toUserId, status])
     @@index([fromUserId, status])
