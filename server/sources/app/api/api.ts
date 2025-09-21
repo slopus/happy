@@ -19,6 +19,7 @@ import { enableMonitoring } from "./utils/enableMonitoring";
 import { enableErrorHandlers } from "./utils/enableErrorHandlers";
 import { enableAuthentication } from "./utils/enableAuthentication";
 import { userRoutes } from "./routes/userRoutes";
+import { feedRoutes } from "./routes/feedRoutes";
 
 export async function startApi() {
 
@@ -62,6 +63,7 @@ export async function startApi() {
     versionRoutes(typed);
     voiceRoutes(typed);
     userRoutes(typed);
+    feedRoutes(typed);
 
     // Start HTTP 
     const port = process.env.PORT ? parseInt(process.env.PORT, 10) : 3005;
