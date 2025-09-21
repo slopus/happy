@@ -26,6 +26,7 @@ export const ca: TranslationStructure = {
         // Inbox screen
         emptyTitle: 'Safata buida',
         emptyDescription: 'Connecta\'t amb amics per començar a compartir sessions',
+        updates: 'Actualitzacions',
     },
 
     common: {
@@ -834,6 +835,14 @@ export const ca: TranslationStructure = {
         usageOverTime: 'Ús al llarg del temps',
         byModel: 'Per model',
         noData: "No hi ha dades d'ús disponibles",
+    },
+
+    feed: {
+        // Feed notifications for friend requests and acceptances
+        friendRequestFrom: ({ name }: { name: string }) => `${name} t'ha enviat una sol·licitud d'amistat`,
+        friendRequestGeneric: 'Nova sol·licitud d\'amistat',
+        friendAccepted: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
+        friendAcceptedGeneric: 'Sol·licitud d\'amistat acceptada',
     }
 } as const;
 

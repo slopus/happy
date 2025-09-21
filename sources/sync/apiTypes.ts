@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { GitHubProfileSchema, ImageRefSchema } from './profile';
 import { RelationshipStatusSchema, UserProfileSchema } from './friendTypes';
+import { FeedBodySchema } from './feedTypes';
 
 //
 // Encrypted message
@@ -126,6 +127,16 @@ export const ApiRelationshipUpdatedSchema = z.object({
     timestamp: z.number()
 });
 
+// Feed update schema
+export const ApiNewFeedPostSchema = z.object({
+    t: z.literal('new-feed-post'),
+    id: z.string(),
+    body: FeedBodySchema,
+    cursor: z.string(),
+    createdAt: z.number(),
+    repeatKey: z.string().nullable()
+});
+
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
@@ -136,7 +147,8 @@ export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiNewArtifactSchema,
     ApiUpdateArtifactSchema,
     ApiDeleteArtifactSchema,
-    ApiRelationshipUpdatedSchema
+    ApiRelationshipUpdatedSchema,
+    ApiNewFeedPostSchema
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;

@@ -37,6 +37,7 @@ export const ru: TranslationStructure = {
         // Inbox screen
         emptyTitle: 'Входящие пусты',
         emptyDescription: 'Подключитесь к друзьям, чтобы начать делиться сессиями',
+        updates: 'Обновления',
     },
 
     common: {
@@ -857,6 +858,14 @@ export const ru: TranslationStructure = {
         usageOverTime: 'Использование во времени',
         byModel: 'По модели',
         noData: 'Данные об использовании недоступны',
+    },
+
+    feed: {
+        // Feed notifications for friend requests and acceptances
+        friendRequestFrom: ({ name }: { name: string }) => `${name} отправил вам запрос в друзья`,
+        friendRequestGeneric: 'Новый запрос в друзья',
+        friendAccepted: ({ name }: { name: string }) => `Вы теперь друзья с ${name}`,
+        friendAcceptedGeneric: 'Запрос в друзья принят',
     }
 } as const;
 

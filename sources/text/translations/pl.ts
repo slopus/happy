@@ -37,6 +37,7 @@ export const pl: TranslationStructure = {
         // Inbox screen
         emptyTitle: 'Pusta skrzynka',
         emptyDescription: 'Połącz się z przyjaciółmi, aby zacząć udostępniać sesje',
+        updates: 'Aktualizacje',
     },
 
     common: {
@@ -858,6 +859,14 @@ export const pl: TranslationStructure = {
         usageOverTime: 'Użycie w czasie',
         byModel: 'Według modelu',
         noData: 'Brak danych o użyciu',
+    },
+
+    feed: {
+        // Feed notifications for friend requests and acceptances
+        friendRequestFrom: ({ name }: { name: string }) => `${name} wysłał Ci zaproszenie do znajomych`,
+        friendRequestGeneric: 'Nowe zaproszenie do znajomych',
+        friendAccepted: ({ name }: { name: string }) => `Jesteś teraz znajomym z ${name}`,
+        friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
     }
 } as const;
 

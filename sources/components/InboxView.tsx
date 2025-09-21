@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { View, Text, ScrollView, Pressable } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useAcceptedFriends, useFriendRequests, useRequestedFriends, useSocketStatus } from '@/sync/storage';
+import { useAcceptedFriends, useFriendRequests, useRequestedFriends, useSocketStatus, useFeedItems } from '@/sync/storage';
 import { StatusDot } from './StatusDot';
 import { UserCard } from '@/components/UserCard';
 import { t } from '@/text';
@@ -14,6 +14,7 @@ import { useIsTablet } from '@/utils/responsive';
 import { Header } from './navigation/Header';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
+import { FeedItemCard } from './FeedItemCard';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -199,10 +200,11 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
     const friends = useAcceptedFriends();
     const friendRequests = useFriendRequests();
     const requestedFriends = useRequestedFriends();
+    const feedItems = useFeedItems();
     const { theme } = useUnistyles();
     const isTablet = useIsTablet();
 
-    const isEmpty = friendRequests.length === 0 && requestedFriends.length === 0 && friends.length === 0;
+    const isEmpty = friendRequests.length === 0 && requestedFriends.length === 0 && friends.length === 0 && feedItems.length === 0;
 
     if (isEmpty) {
         return (
@@ -248,6 +250,19 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                 width: '100%'
             }}>
                 <UpdateBanner />
+                
+                {feedItems.length > 0 && (
+                    <>
+                        <ItemGroup title={t('inbox.updates')}>
+                            {feedItems.map((item) => (
+                                <FeedItemCard
+                                    key={item.id}
+                                    item={item}
+                                />
+                            ))}
+                        </ItemGroup>
+                    </>
+                )}
                 
                 {friendRequests.length > 0 && (
                     <>

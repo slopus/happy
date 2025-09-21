@@ -28,6 +28,7 @@ export const zhHans: TranslationStructure = {
         // Inbox screen
         emptyTitle: '收件箱为空',
         emptyDescription: '与好友建立连接，开始共享会话',
+        updates: '更新',
     },
 
     common: {
@@ -836,5 +837,13 @@ export const zhHans: TranslationStructure = {
         usageOverTime: '使用趋势',
         byModel: '按模型',
         noData: '暂无使用数据',
+    },
+
+    feed: {
+        // Feed notifications for friend requests and acceptances
+        friendRequestFrom: ({ name }: { name: string }) => `${name} 向您发送了好友请求`,
+        friendRequestGeneric: '新的好友请求',
+        friendAccepted: ({ name }: { name: string }) => `您现在与 ${name} 成为了好友`,
+        friendAcceptedGeneric: '好友请求已接受',
     }
 } as const;

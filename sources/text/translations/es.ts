@@ -26,6 +26,7 @@ export const es: TranslationStructure = {
         // Inbox screen
         emptyTitle: 'Bandeja vacía',
         emptyDescription: 'Conéctate con amigos para empezar a compartir sesiones',
+        updates: 'Actualizaciones',
     },
 
     common: {
@@ -835,6 +836,14 @@ export const es: TranslationStructure = {
         usageOverTime: 'Uso a lo largo del tiempo',
         byModel: 'Por modelo',
         noData: 'No hay datos de uso disponibles',
+    },
+
+    feed: {
+        // Feed notifications for friend requests and acceptances
+        friendRequestFrom: ({ name }: { name: string }) => `${name} te envió una solicitud de amistad`,
+        friendRequestGeneric: 'Nueva solicitud de amistad',
+        friendAccepted: ({ name }: { name: string }) => `Ahora eres amigo de ${name}`,
+        friendAcceptedGeneric: 'Solicitud de amistad aceptada',
     }
 } as const;
 

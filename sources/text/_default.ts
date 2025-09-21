@@ -26,6 +26,7 @@ export const en = {
         // Inbox screen
         emptyTitle: 'Empty Inbox',
         emptyDescription: 'Connect with friends to start sharing sessions',
+        updates: 'Updates',
     },
 
     common: {
@@ -835,6 +836,14 @@ export const en = {
         usageOverTime: 'Usage over time',
         byModel: 'By Model',
         noData: 'No usage data available',
+    },
+
+    feed: {
+        // Feed notifications for friend requests and acceptances
+        friendRequestFrom: ({ name }: { name: string }) => `${name} sent you a friend request`,
+        friendRequestGeneric: 'New friend request',
+        friendAccepted: ({ name }: { name: string }) => `You are now friends with ${name}`,
+        friendAcceptedGeneric: 'Friend request accepted',
     }
 } as const;
 
