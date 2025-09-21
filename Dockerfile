@@ -44,6 +44,21 @@ RUN rm /etc/nginx/conf.d/default.conf
 RUN echo 'server { \
     listen 80; \
     \
+    location /_expo/ { \
+        root   /usr/share/nginx/html; \
+        try_files $uri =404; \
+    } \
+    \
+    location /assets/ { \
+        root   /usr/share/nginx/html; \
+        try_files $uri =404; \
+    } \
+    \
+    location /.well-known/ { \
+        root   /usr/share/nginx/html; \
+        try_files $uri =404; \
+    } \
+    \
     location / { \
         root   /usr/share/nginx/html; \
         index  index.html index.htm; \

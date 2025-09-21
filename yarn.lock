@@ -4618,6 +4618,11 @@ expo-gl@~16.0.7:
   dependencies:
     invariant "^2.2.4"
 
+expo-glass-effect@~0.1.4:
+  version "0.1.4"
+  resolved "https://registry.yarnpkg.com/expo-glass-effect/-/expo-glass-effect-0.1.4.tgz#c7a7278ab06dee2488b2239e185a8b56158adbc6"
+  integrity sha512-RW7lf2SWNVSvpJqBxQUlC/VVzeeHFrJeoKoIlNIFfKTFj3HyF7xQKq6/h/bpO8M0ssy0v5KEKw4GggkjTwx7Fw==
+
 expo-haptics@~15.0.7:
   version "15.0.7"
   resolved "https://registry.yarnpkg.com/expo-haptics/-/expo-haptics-15.0.7.tgz#384bb873d7eca7b141f85e4f300b75eab68ebfe9"
