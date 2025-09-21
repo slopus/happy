@@ -79,6 +79,8 @@ interface StorageState {
     feedHead: string | null;  // Newest cursor
     feedTail: string | null;  // Oldest cursor
     feedHasMore: boolean;
+    feedLoaded: boolean;  // True after initial feed fetch
+    friendsLoaded: boolean;  // True after initial friends fetch
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
@@ -252,6 +254,8 @@ export const storage = create<StorageState>()((set, get) => {
         feedHead: null,
         feedTail: null,
         feedHasMore: false,
+        feedLoaded: false,  // Initialize as false
+        friendsLoaded: false,  // Initialize as false
         sessionsData: null,  // Legacy - to be removed
         sessionListViewData: null,
         sessionMessages: {},
@@ -901,7 +905,8 @@ export const storage = create<StorageState>()((set, get) => {
             });
             return {
                 ...state,
-                friends: mergedFriends
+                friends: mergedFriends,
+                friendsLoaded: true  // Mark as loaded after first fetch
             };
         }),
         applyRelationshipUpdate: (event: RelationshipUpdatedEvent) => set((state) => {
@@ -996,7 +1001,8 @@ export const storage = create<StorageState>()((set, get) => {
                 ...state,
                 feedItems: updatedItems,
                 feedHead: head,
-                feedTail: tail
+                feedTail: tail,
+                feedLoaded: true  // Mark as loaded after first fetch
             };
         }),
         clearFeed: () => set((state) => ({
@@ -1004,7 +1010,9 @@ export const storage = create<StorageState>()((set, get) => {
             feedItems: [],
             feedHead: null,
             feedTail: null,
-            feedHasMore: false
+            feedHasMore: false,
+            feedLoaded: false,  // Reset loading flag
+            friendsLoaded: false  // Reset loading flag
         })),
     }
 });
@@ -1209,6 +1217,12 @@ export function useAcceptedFriends() {
 
 export function useFeedItems() {
     return storage(useShallow((state) => state.feedItems));
+}
+export function useFeedLoaded() {
+    return storage((state) => state.feedLoaded);
+}
+export function useFriendsLoaded() {
+    return storage((state) => state.friendsLoaded);
 }
 
 export function useFriend(userId: string | undefined) {

@@ -1,7 +1,7 @@
 import * as React from 'react';
-import { View, Text, ScrollView, Pressable } from 'react-native';
+import { View, Text, ScrollView, Pressable, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useAcceptedFriends, useFriendRequests, useRequestedFriends, useSocketStatus, useFeedItems } from '@/sync/storage';
+import { useAcceptedFriends, useFriendRequests, useRequestedFriends, useSocketStatus, useFeedItems, useFeedLoaded, useFriendsLoaded } from '@/sync/storage';
 import { StatusDot } from './StatusDot';
 import { UserCard } from '@/components/UserCard';
 import { t } from '@/text';
@@ -201,10 +201,33 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
     const friendRequests = useFriendRequests();
     const requestedFriends = useRequestedFriends();
     const feedItems = useFeedItems();
+    const feedLoaded = useFeedLoaded();
+    const friendsLoaded = useFriendsLoaded();
     const { theme } = useUnistyles();
     const isTablet = useIsTablet();
 
-    const isEmpty = friendRequests.length === 0 && requestedFriends.length === 0 && friends.length === 0 && feedItems.length === 0;
+    const isLoading = !feedLoaded || !friendsLoaded;
+    const isEmpty = !isLoading && friendRequests.length === 0 && requestedFriends.length === 0 && friends.length === 0 && feedItems.length === 0;
+
+    if (isLoading) {
+        return (
+            <View style={styles.container}>
+                <View style={{ backgroundColor: theme.colors.groupped.background }}>
+                    <Header
+                        title={isTablet ? <HeaderTitleTablet /> : <HeaderTitle />}
+                        headerRight={() => <HeaderRight />}
+                        headerLeft={isTablet ? () => null : () => <HeaderLeft />}
+                        headerShadowVisible={false}
+                        headerTransparent={true}
+                    />
+                </View>
+                <UpdateBanner />
+                <View style={styles.emptyContainer}>
+                    <ActivityIndicator size="large" color={theme.colors.textSecondary} />
+                </View>
+            </View>
+        );
+    }
 
     if (isEmpty) {
         return (
