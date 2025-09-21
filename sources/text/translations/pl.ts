@@ -26,6 +26,19 @@ function plural({ count, one, few, many }: { count: number; one: string; few: st
  * Must match the exact structure of the English translations
  */
 export const pl: TranslationStructure = {
+    tabs: {
+        // Tab navigation labels
+        inbox: 'Skrzynka',
+        sessions: 'Terminale',
+        settings: 'Ustawienia',
+    },
+
+    inbox: {
+        // Inbox screen
+        emptyTitle: 'Pusta skrzynka',
+        emptyDescription: 'Połącz się z przyjaciółmi, aby zacząć udostępniać sesje',
+    },
+
     common: {
         // Simple string constants
         cancel: 'Anuluj',
@@ -97,6 +110,7 @@ export const pl: TranslationStructure = {
         github: 'GitHub',
         machines: 'Maszyny',
         features: 'Funkcje',
+        social: 'Społeczność',
         account: 'Konto',
         accountSubtitle: 'Zarządzaj szczegółami konta',
         appearance: 'Wygląd',
@@ -417,7 +431,7 @@ export const pl: TranslationStructure = {
     },
 
     sidebar: {
-        sessionsTitle: 'Sesje',
+        sessionsTitle: 'Happy',
     },
 
     toolView: {
@@ -774,6 +788,7 @@ export const pl: TranslationStructure = {
     friends: {
         // Friends feature
         title: 'Przyjaciele',
+        manageFriends: 'Zarządzaj swoimi przyjaciółmi i połączeniami',
         searchTitle: 'Znajdź przyjaciół',
         pendingRequests: 'Zaproszenia do znajomych',
         myFriends: 'Moi przyjaciele',

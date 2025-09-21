@@ -1,17 +1,18 @@
 import * as React from 'react';
 import { View, ActivityIndicator } from 'react-native';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
-import { useRealtimeStatus } from '@/sync/storage';
+import { useRealtimeStatus, useFriendRequests } from '@/sync/storage';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { useIsTablet } from '@/utils/responsive';
 import { useRouter } from 'expo-router';
-import { EmptyMainScreen } from './EmptyMainScreen';
 import { EmptySessionsTablet } from './EmptySessionsTablet';
-import { UpdateBanner } from './UpdateBanner';
 import { SessionsList } from './SessionsList';
 import { FABWide } from './FABWide';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
-import { HomeHeader } from './HomeHeader';
+import { TabBar, TabType } from './TabBar';
+import { InboxView } from './InboxView';
+import { SettingsViewWrapper } from './SettingsViewWrapper';
+import { SessionsListWrapper } from './SessionsListWrapper';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -62,36 +63,43 @@ const styles = StyleSheet.create((theme) => ({
     },
 }));
 
+
 export const MainView = React.memo(({ variant }: MainViewProps) => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
     const isTablet = useIsTablet();
     const realtimeStatus = useRealtimeStatus();
     const router = useRouter();
+    const friendRequests = useFriendRequests();
+
+    // Tab state management - always call hooks even if not used
+    const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
 
     const handleNewSession = React.useCallback(() => {
         router.push('/new');
     }, [router]);
 
-    // Empty state for tablets (when on tablet phone layout)
-    if (variant === 'phone' && isTablet) {
-        return (
-            <View style={styles.emptyStateContentContainer}>
-                {sessionListViewData === null && (
-                    <View style={styles.tabletLoadingContainer}>
-                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                    </View>
-                )}
-                {sessionListViewData !== null && sessionListViewData.length === 0 && (
-                    <EmptyMainScreen />
-                )}
-            </View>
-        );
-    }
+    const handleTabPress = React.useCallback((tab: TabType) => {
+        setActiveTab(tab);
+    }, []);
 
-    // Loading state
-    if (sessionListViewData === null) {
-        if (variant === 'sidebar') {
+    // Regular phone mode with tabs - define this before any conditional returns
+    const renderTabContent = React.useCallback(() => {
+        switch (activeTab) {
+            case 'inbox':
+                return <InboxView />;
+            case 'settings':
+                return <SettingsViewWrapper />;
+            case 'sessions':
+            default:
+                return <SessionsListWrapper />;
+        }
+    }, [activeTab]);
+
+    // Sidebar variant
+    if (variant === 'sidebar') {
+        // Loading state
+        if (sessionListViewData === null) {
             return (
                 <View style={styles.sidebarContentContainer}>
                     <View style={styles.tabletLoadingContainer}>
@@ -100,64 +108,19 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
                 </View>
             );
         }
-        
-        // Phone variant loading
-        return (
-            <>
-                <HomeHeader />
-                {!isTablet && realtimeStatus !== 'disconnected' && (
-                    <VoiceAssistantStatusBar variant="full" />
-                )}
-                <View style={styles.loadingContainerWrapper}>
-                    <UpdateBanner />
-                    <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-                    </View>
-                </View>
-                <FABWide onPress={handleNewSession} />
-            </>
-        );
-    }
 
-    // Empty state
-    if (sessionListViewData.length === 0) {
-        if (variant === 'sidebar') {
+        // Empty state
+        if (sessionListViewData.length === 0) {
             return (
                 <View style={styles.sidebarContentContainer}>
                     <View style={styles.emptyStateContainer}>
-                        <UpdateBanner />
                         <EmptySessionsTablet />
                     </View>
                 </View>
             );
         }
 
-        // Phone variant empty state
-        const emptyState = (
-            <View style={styles.emptyStateContainer}>
-                <UpdateBanner />
-                <View style={styles.emptyStateContentContainer}>
-                    <EmptyMainScreen />
-                </View>
-            </View>
-        );
-
-        return (
-            <>
-                <HomeHeader />
-                {!isTablet && realtimeStatus !== 'disconnected' && (
-                    <VoiceAssistantStatusBar variant="full" />
-                )}
-                <View style={styles.phoneContainer}>
-                    {emptyState}
-                </View>
-                <FABWide onPress={handleNewSession} />
-            </>
-        );
-    }
-
-    // Sessions list view
-    if (variant === 'sidebar') {
+        // Sessions list
         return (
             <View style={styles.sidebarContentContainer}>
                 <SessionsList />
@@ -165,17 +128,28 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
         );
     }
 
-    // Phone variant with sessions
+    // Phone variant
+    // Tablet in phone mode - special case (when showing index view on tablets, show empty view)
+    if (isTablet) {
+        // Just show an empty view on tablets for the index view
+        // The sessions list is shown in the sidebar, so the main area should be blank
+        return <View style={styles.emptyStateContentContainer} />;
+    }
+
+    // Regular phone mode with tabs
     return (
         <>
-            <HomeHeader />
-            {!isTablet && realtimeStatus !== 'disconnected' && (
+            {realtimeStatus !== 'disconnected' && (
                 <VoiceAssistantStatusBar variant="full" />
             )}
             <View style={styles.phoneContainer}>
-                <SessionsList />
+                {renderTabContent()}
             </View>
-            <FABWide onPress={handleNewSession} />
+            <TabBar
+                activeTab={activeTab}
+                onTabPress={handleTabPress}
+                inboxBadgeCount={friendRequests.length}
+            />
         </>
     );
 });

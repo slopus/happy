@@ -4,15 +4,15 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackHeaderProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
 import { layout } from '../layout';
-import { useHeaderHeight } from '@/utils/responsive';
+import { useHeaderHeight, useIsTablet } from '@/utils/responsive';
 import { Typography } from '@/constants/Typography';
 import { StyleSheet } from 'react-native-unistyles';
 
 interface HeaderProps {
     title?: React.ReactNode;
     subtitle?: string;
-    headerLeft?: () => React.ReactNode;
-    headerRight?: () => React.ReactNode;
+    headerLeft?: (() => React.ReactNode) | null;
+    headerRight?: (() => React.ReactNode) | null;
     headerStyle?: any;
     headerTitleStyle?: any;
     headerSubtitleStyle?: any;
@@ -55,7 +55,6 @@ export const Header = React.memo((props: HeaderProps) => {
         headerShadowVisible && styles.shadow,
         headerStyle,
     ];
-    console.log('headerTransparent', headerTransparent);
 
     const subtitleStyle = [
         styles.subtitle,
@@ -107,6 +106,20 @@ const DefaultBackButton: React.FC<{ tintColor?: string; onPress: () => void }> =
 const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((props) => {
     const { options, route, back, navigation } = props;
     const extendedOptions = options as ExtendedNavigationOptions;
+    const isTablet = useIsTablet();
+
+    // Check if we should hide back button on tablet
+    const shouldHideBackButton = React.useMemo(() => {
+        if (!isTablet) return false;
+
+        // Get navigation state to check stack depth
+        const state = navigation.getState();
+        const currentIndex = state?.index ?? 0;
+
+        // Hide back button if we're at the first or second screen in the stack
+        // In tablet mode, index 0 is the empty screen, index 1 is the first real screen
+        return currentIndex <= 1;
+    }, [isTablet, navigation]);
 
     // Extract title - handle both string and function types
     let title: React.ReactNode | null = null;
@@ -138,13 +151,13 @@ const NavigationHeaderComponent: React.FC<NativeStackHeaderProps> = React.memo((
     }
 
     // Determine header left content
-    let headerLeftContent: (() => React.ReactNode) | undefined;
-
+    let headerLeftContent: (() => React.ReactNode) | undefined | null = null;
     if (options.headerLeft) {
         // Use custom headerLeft if provided
         headerLeftContent = () => options.headerLeft!({ canGoBack: !!back, tintColor: options.headerTintColor });
-    } else if (back && options.headerBackVisible !== false) {
+    } else if (back && options.headerBackVisible !== false && !shouldHideBackButton) {
         // Show default back button if can go back and not explicitly hidden
+        // Also hide on tablet when at first or second screen
         headerLeftContent = () => (
             <DefaultBackButton
                 tintColor={options.headerTintColor}
@@ -213,7 +226,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: Platform.OS === 'ios' ? 'center' : 'flex-start',
-        paddingLeft: Platform.OS === 'ios' ? 0 : 12,
+        paddingHorizontal: 12,
     },
     rightContainer: {
         flexGrow: 0,

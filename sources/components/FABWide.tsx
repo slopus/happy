@@ -36,7 +36,6 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
 }));
 
 export const FABWide = React.memo(({ onPress }: { onPress: () => void }) => {
-    const { theme } = useUnistyles();
     const styles = stylesheet;
     const safeArea = useSafeAreaInsets();
     return (

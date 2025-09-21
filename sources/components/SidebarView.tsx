@@ -1,4 +1,4 @@
-import { useSocketStatus } from '@/sync/storage';
+import { useSocketStatus, useFriendRequests } from '@/sync/storage';
 import * as React from 'react';
 import { Text, View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -13,6 +13,7 @@ import { MainView } from './MainView';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
+import { useInboxHasContent } from '@/hooks/useInboxHasContent';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -27,6 +28,7 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         alignItems: 'center',
         paddingHorizontal: 16,
         backgroundColor: theme.colors.groupped.background,
+        position: 'relative',
     },
     logoContainer: {
         width: 32,
@@ -36,9 +38,12 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         width: 24,
     },
     titleContainer: {
-        flex: 1,
+        position: 'absolute',
+        left: 0,
+        right: 0,
         flexDirection: 'column',
         alignItems: 'center',
+        pointerEvents: 'none',
     },
     titleText: {
         fontSize: 17,
@@ -61,11 +66,33 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         ...Typography.default(),
     },
     rightContainer: {
-        width: 32,
+        marginLeft: 'auto',
         alignItems: 'flex-end',
+        flexDirection: 'row',
+        gap: 8,
     },
     settingsButton: {
         color: theme.colors.header.tint,
+    },
+    notificationButton: {
+        position: 'relative',
+    },
+    badge: {
+        position: 'absolute',
+        top: -4,
+        right: -4,
+        backgroundColor: theme.colors.status.error,
+        borderRadius: 8,
+        minWidth: 16,
+        height: 16,
+        paddingHorizontal: 4,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    badgeText: {
+        color: '#FFFFFF',
+        fontSize: 10,
+        ...Typography.default('semiBold'),
     },
     // Status colors
     statusConnected: {
@@ -83,6 +110,15 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     statusDefault: {
         color: theme.colors.status.default,
     },
+    indicatorDot: {
+        position: 'absolute',
+        top: 0,
+        right: -2,
+        width: 6,
+        height: 6,
+        borderRadius: 3,
+        backgroundColor: theme.colors.text,
+    },
 }));
 
 export const SidebarView = React.memo(() => {
@@ -93,6 +129,8 @@ export const SidebarView = React.memo(() => {
     const headerHeight = useHeaderHeight();
     const socketStatus = useSocketStatus();
     const realtimeStatus = useRealtimeStatus();
+    const friendRequests = useFriendRequests();
+    const inboxHasContent = useInboxHasContent();
 
     // Get connection status styling (matching sessionUtils.ts pattern)
     const getConnectionStatus = () => {
@@ -151,6 +189,41 @@ export const SidebarView = React.memo(() => {
                             style={[styles.logo, { height: 24, width: 24 }]}
                         />
                     </View>
+                    <View style={styles.rightContainer}>
+                        <Pressable
+                            onPress={() => router.push('/(app)/inbox')}
+                            hitSlop={15}
+                            style={styles.notificationButton}
+                        >
+                            <Image
+                                source={require('@/assets/images/brutalist/Brutalism 27.png')}
+                                contentFit="contain"
+                                style={[{ width: 32, height: 32 }]}
+                                tintColor={theme.colors.header.tint}
+                            />
+                            {friendRequests.length > 0 && (
+                                <View style={styles.badge}>
+                                    <Text style={styles.badgeText}>
+                                        {friendRequests.length > 99 ? '99+' : friendRequests.length}
+                                    </Text>
+                                </View>
+                            )}
+                            {inboxHasContent && friendRequests.length === 0 && (
+                                <View style={styles.indicatorDot} />
+                            )}
+                        </Pressable>
+                        <Pressable
+                            onPress={() => router.push('/settings')}
+                            hitSlop={15}
+                        >
+                            <Image
+                                source={require('@/assets/images/brutalist/Brutalism 9.png')}
+                                contentFit="contain"
+                                style={[{ width: 32, height: 32 }]}
+                                tintColor={theme.colors.header.tint}
+                            />
+                        </Pressable>
+                    </View>
                     <View style={styles.titleContainer}>
                         <Text style={styles.titleText}>{t('sidebar.sessionsTitle')}</Text>
                         {getConnectionStatus().text && (
@@ -169,19 +242,6 @@ export const SidebarView = React.memo(() => {
                                 </Text>
                             </View>
                         )}
-                    </View>
-                    <View style={styles.rightContainer}>
-                        <Pressable
-                            onPress={() => router.push('/settings')}
-                            hitSlop={15}
-                        >
-                            <Image
-                                source={require('@/assets/images/brutalist/Brutalism 9.png')}
-                                contentFit="contain"
-                                style={[{ width: 32, height: 32 }]}
-                                tintColor={theme.colors.header.tint}
-                            />
-                        </Pressable>
                     </View>
                 </View>
                 {realtimeStatus !== 'disconnected' && (

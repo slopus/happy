@@ -15,6 +15,19 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const en = {
+    tabs: {
+        // Tab navigation labels
+        inbox: 'Inbox',
+        sessions: 'Terminals',
+        settings: 'Settings',
+    },
+
+    inbox: {
+        // Inbox screen
+        emptyTitle: 'Empty Inbox',
+        emptyDescription: 'Connect with friends to start sharing sessions',
+    },
+
     common: {
         // Simple string constants
         cancel: 'Cancel',
@@ -86,6 +99,7 @@ export const en = {
         github: 'GitHub',
         machines: 'Machines',
         features: 'Features',
+        social: 'Social',
         account: 'Account',
         accountSubtitle: 'Manage your account details',
         appearance: 'Appearance',
@@ -407,7 +421,7 @@ export const en = {
     },
 
     sidebar: {
-        sessionsTitle: 'Sessions',
+        sessionsTitle: 'Happy',
     },
 
     toolView: {
@@ -751,6 +765,7 @@ export const en = {
     friends: {
         // Friends feature
         title: 'Friends',
+        manageFriends: 'Manage your friends and connections',
         searchTitle: 'Find Friends',
         pendingRequests: 'Friend Requests',
         myFriends: 'My Friends',

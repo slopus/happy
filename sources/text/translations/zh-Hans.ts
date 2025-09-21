@@ -17,6 +17,19 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 export const zhHans: TranslationStructure = {
+    tabs: {
+        // Tab navigation labels
+        inbox: '收件箱',
+        sessions: '终端',
+        settings: '设置',
+    },
+
+    inbox: {
+        // Inbox screen
+        emptyTitle: '收件箱为空',
+        emptyDescription: '与好友建立连接，开始共享会话',
+    },
+
     common: {
         // Simple string constants
         cancel: '取消',
@@ -88,6 +101,7 @@ export const zhHans: TranslationStructure = {
         github: 'GitHub',
         machines: '设备',
         features: '功能',
+        social: '社交',
         account: '账户',
         accountSubtitle: '管理您的账户详情',
         appearance: '外观',
@@ -409,7 +423,7 @@ export const zhHans: TranslationStructure = {
     },
 
     sidebar: {
-        sessionsTitle: '会话',
+        sessionsTitle: 'Happy',
     },
 
     toolView: {
@@ -752,6 +766,7 @@ export const zhHans: TranslationStructure = {
     friends: {
         // Friends feature
         title: '好友',
+        manageFriends: '管理您的好友和连接',
         searchTitle: '查找好友',
         pendingRequests: '好友请求',
         myFriends: '我的好友',

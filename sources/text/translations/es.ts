@@ -15,6 +15,19 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
  * Must match the exact structure of the English translations
  */
 export const es: TranslationStructure = {
+    tabs: {
+        // Tab navigation labels
+        inbox: 'Bandeja',
+        sessions: 'Terminales',
+        settings: 'Configuración',
+    },
+
+    inbox: {
+        // Inbox screen
+        emptyTitle: 'Bandeja vacía',
+        emptyDescription: 'Conéctate con amigos para empezar a compartir sesiones',
+    },
+
     common: {
         // Simple string constants
         cancel: 'Cancelar',
@@ -86,6 +99,7 @@ export const es: TranslationStructure = {
         github: 'GitHub',
         machines: 'Máquinas',
         features: 'Características',
+        social: 'Social',
         account: 'Cuenta',
         accountSubtitle: 'Gestiona los detalles de tu cuenta',
         appearance: 'Apariencia',
@@ -407,7 +421,7 @@ export const es: TranslationStructure = {
     },
 
     sidebar: {
-        sessionsTitle: 'Sesiones',
+        sessionsTitle: 'Happy',
     },
 
     toolView: {
@@ -751,6 +765,7 @@ export const es: TranslationStructure = {
     friends: {
         // Friends feature
         title: 'Amigos',
+        manageFriends: 'Administra tus amigos y conexiones',
         searchTitle: 'Buscar amigos',
         pendingRequests: 'Solicitudes de amistad',
         myFriends: 'Mis amigos',

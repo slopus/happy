@@ -269,15 +269,12 @@ export function SessionsList() {
     const HeaderComponent = React.useCallback(() => {
         return (
             <View>
-                <View style={{ marginHorizontal: -4 }}>
+                {/* <View style={{ marginHorizontal: -4 }}>
                     <UpdateBanner />
-                </View>
-                {experiments && (
-                    <ArtifactsCard />
-                )}
+                </View> */}
             </View>
         );
-    }, [experiments]);
+    }, []);
 
     // Footer removed - all sessions now shown inline
 
@@ -380,28 +377,3 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     );
 });
 
-// Artifacts Card Component
-const ArtifactsCard = React.memo(() => {
-    const styles = stylesheet;
-    const router = useRouter();
-    const { theme } = useUnistyles();
-
-    return (
-        <ItemGroup>
-            <Item
-                title={t('artifacts.title')}
-                icon={<Ionicons name="document-text-outline" size={24} color={theme.colors.text} />}
-                onPress={() => router.push('/artifacts')}
-                showDivider={true}
-                showChevron={false}
-            />
-            <Item
-                title={t('friends.title')}
-                icon={<Ionicons name="people-outline" size={24} color={theme.colors.text} />}
-                onPress={() => router.push('/friends')}
-                showDivider={false}
-                showChevron={false}
-            />
-        </ItemGroup>
-    );
-});

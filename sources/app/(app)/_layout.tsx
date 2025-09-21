@@ -46,6 +46,14 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
+                name="inbox/index"
+                options={{
+                    headerShown: false,
+                    headerTitle: t('tabs.inbox'),
+                    headerBackTitle: t('common.home')
+                }}
+            />
+            <Stack.Screen
                 name="settings/index"
                 options={{
                     headerShown: true,
