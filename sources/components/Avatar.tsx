@@ -48,12 +48,13 @@ export const Avatar = React.memo((props: AvatarProps) => {
     const avatarStyle = useSetting('avatarStyle');
     const showFlavorIcons = useSetting('showFlavorIcons');
     const { theme } = useUnistyles();
-    
+
     // Render custom image if provided
     if (imageUrl) {
         const imageElement = (
             <Image
                 source={{ uri: imageUrl, thumbhash: thumbhash || undefined }}
+                placeholder={thumbhash ? { thumbhash: thumbhash } : undefined}
                 contentFit="cover"
                 style={{
                     width: size,
@@ -62,7 +63,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
                 }}
             />
         );
-        
+
         // Add flavor icon overlay if enabled
         if (showFlavorIcons && flavor) {
             const effectiveFlavor = flavor || 'claude';
@@ -71,14 +72,14 @@ export const Avatar = React.memo((props: AvatarProps) => {
             const iconSize = effectiveFlavor === 'codex'
                 ? Math.round(size * 0.25)
                 : effectiveFlavor === 'claude'
-                ? Math.round(size * 0.28)
-                : Math.round(size * 0.35);
-                
+                    ? Math.round(size * 0.28)
+                    : Math.round(size * 0.35);
+
             return (
                 <View style={[styles.container, { width: size, height: size }]}>
                     {imageElement}
-                    <View style={[styles.flavorIcon, { 
-                        width: circleSize, 
+                    <View style={[styles.flavorIcon, {
+                        width: circleSize,
                         height: circleSize,
                         alignItems: 'center',
                         justifyContent: 'center'
@@ -93,10 +94,10 @@ export const Avatar = React.memo((props: AvatarProps) => {
                 </View>
             );
         }
-        
+
         return imageElement;
     }
-    
+
     // Original generated avatar logic
     // Determine which avatar variant to render
     let AvatarComponent: React.ComponentType<any>;
@@ -107,7 +108,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
     } else {
         AvatarComponent = AvatarGradient;
     }
-    
+
     // Determine flavor icon for generated avatars
     const effectiveFlavor = flavor || 'claude';
     const flavorIcon = flavorIcons[effectiveFlavor as keyof typeof flavorIcons] || flavorIcons.claude;
@@ -117,16 +118,16 @@ export const Avatar = React.memo((props: AvatarProps) => {
     const iconSize = effectiveFlavor === 'codex'
         ? Math.round(size * 0.25)
         : effectiveFlavor === 'claude'
-        ? Math.round(size * 0.28)
-        : Math.round(size * 0.35);
-    
+            ? Math.round(size * 0.28)
+            : Math.round(size * 0.35);
+
     // Only wrap in container if showing flavor icons
     if (showFlavorIcons) {
         return (
             <View style={[styles.container, { width: size, height: size }]}>
                 <AvatarComponent {...avatarProps} size={size} />
-                <View style={[styles.flavorIcon, { 
-                    width: circleSize, 
+                <View style={[styles.flavorIcon, {
+                    width: circleSize,
                     height: circleSize,
                     alignItems: 'center',
                     justifyContent: 'center'
@@ -141,7 +142,7 @@ export const Avatar = React.memo((props: AvatarProps) => {
             </View>
         );
     }
-    
+
     // Return avatar without wrapper when not showing flavor icons
     return <AvatarComponent {...avatarProps} size={size} />;
 });
