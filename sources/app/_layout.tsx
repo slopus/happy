@@ -11,7 +11,7 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { initialWindowMetrics, SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SidebarNavigator } from '@/components/SidebarNavigator';
-import sodium from '@more-tech/react-native-libsodium';
+import sodium from '@/encryption/libsodium.lib';
 import { View, Platform } from 'react-native';
 import { ModalProvider } from '@/modal';
 import { PostHogProvider } from 'posthog-react-native';
@@ -25,6 +25,7 @@ import { StatusBarProvider } from '@/components/StatusBarProvider';
 // import * as SystemUI from 'expo-system-ui';
 import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
 import { useUnistyles } from 'react-native-unistyles';
+import { AsyncLock } from '@/utils/lock';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -62,6 +63,72 @@ function HorizontalSafeAreaWrapper({ children }: { children: React.ReactNode }) 
     );
 }
 
+let lock = new AsyncLock();
+let loaded = false;
+async function loadFonts() {
+    await lock.inLock(async () => {
+        if (loaded) {
+            return;
+        }
+        loaded = true;
+        // Check if running in Tauri
+        const isTauri = Platform.OS === 'web' &&
+            typeof window !== 'undefined' &&
+            (window as any).__TAURI_INTERNALS__ !== undefined;
+
+        if (!isTauri) {
+            // Normal font loading for non-Tauri environments (native and regular web)
+            await Fonts.loadAsync({
+                // Keep existing font
+                SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
+
+                // IBM Plex Sans family
+                'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
+                'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
+                'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
+
+                // IBM Plex Mono family  
+                'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
+                'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
+                'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
+
+                // Bricolage Grotesque  
+                'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
+
+                ...FontAwesome.font,
+            });
+        } else {
+            // For Tauri, skip Font Face Observer as fonts are loaded via CSS
+            console.log('Do not wait for fonts to load');
+            (async () => {
+                try {
+                    await Fonts.loadAsync({
+                        // Keep existing font
+                        SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
+
+                        // IBM Plex Sans family
+                        'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
+                        'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
+                        'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
+
+                        // IBM Plex Mono family  
+                        'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
+                        'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
+                        'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
+
+                        // Bricolage Grotesque  
+                        'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
+
+                        ...FontAwesome.font,
+                    });
+                } catch (e) {
+                    // Ignore
+                }
+            })();
+        }
+    });
+}
+
 export default function RootLayout() {
     const { theme } = useUnistyles();
     const navigationTheme = React.useMemo(() => {
@@ -90,61 +157,7 @@ export default function RootLayout() {
     React.useEffect(() => {
         (async () => {
             try {
-                // Check if running in Tauri
-                const isTauri = Platform.OS === 'web' &&
-                    typeof window !== 'undefined' &&
-                    (window as any).__TAURI_INTERNALS__ !== undefined;
-
-                if (!isTauri) {
-                    // Normal font loading for non-Tauri environments (native and regular web)
-                    await Fonts.loadAsync({
-                        // Keep existing font
-                        SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
-
-                        // IBM Plex Sans family
-                        'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
-                        'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
-                        'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
-
-                        // IBM Plex Mono family  
-                        'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
-                        'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
-                        'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
-
-                        // Bricolage Grotesque  
-                        'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
-
-                        ...FontAwesome.font,
-                    });
-                } else {
-                    // For Tauri, skip Font Face Observer as fonts are loaded via CSS
-                    console.log('Do not wait for fonts to load');
-                    (async () => {
-                        try {
-                            await Fonts.loadAsync({
-                                // Keep existing font
-                                SpaceMono: require('@/assets/fonts/SpaceMono-Regular.ttf'),
-
-                                // IBM Plex Sans family
-                                'IBMPlexSans-Regular': require('@/assets/fonts/IBMPlexSans-Regular.ttf'),
-                                'IBMPlexSans-Italic': require('@/assets/fonts/IBMPlexSans-Italic.ttf'),
-                                'IBMPlexSans-SemiBold': require('@/assets/fonts/IBMPlexSans-SemiBold.ttf'),
-
-                                // IBM Plex Mono family  
-                                'IBMPlexMono-Regular': require('@/assets/fonts/IBMPlexMono-Regular.ttf'),
-                                'IBMPlexMono-Italic': require('@/assets/fonts/IBMPlexMono-Italic.ttf'),
-                                'IBMPlexMono-SemiBold': require('@/assets/fonts/IBMPlexMono-SemiBold.ttf'),
-
-                                // Bricolage Grotesque  
-                                'BricolageGrotesque-Bold': require('@/assets/fonts/BricolageGrotesque-Bold.ttf'),
-
-                                ...FontAwesome.font,
-                            });
-                        } catch (e) {
-                            // Ignore
-                        }
-                    })();
-                }
+                await loadFonts();
                 await sodium.ready;
                 const credentials = await TokenStorage.getCredentials();
                 console.log('credentials', credentials);

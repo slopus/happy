@@ -1,6 +1,6 @@
 import { decryptBox, decryptSecretBox, encryptBox, encryptSecretBox } from "@/encryption/libsodium";
 import { encodeBase64, decodeBase64 } from "@/encryption/base64";
-import sodium from '@more-tech/react-native-libsodium';
+import sodium from '@/encryption/libsodium.lib';
 import { decodeUTF8, encodeUTF8 } from "@/encryption/text";
 import { decryptAESGCMString, encryptAESGCMString } from "@/encryption/aes";
 

@@ -1,5 +1,5 @@
 import { getRandomBytes } from 'expo-crypto';
-import sodium from '@more-tech/react-native-libsodium';
+import sodium from '@/encryption/libsodium.lib';
 
 export function authChallenge(secret: Uint8Array) {
     const keypair = sodium.crypto_sign_seed_keypair(secret);

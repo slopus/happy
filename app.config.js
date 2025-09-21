@@ -90,7 +90,7 @@ export default {
             "expo-secure-store",
             "expo-web-browser",
             "react-native-vision-camera",
-            "react-native-libsodium",
+            "@more-tech/react-native-libsodium",
             "react-native-audio-api",
             "@livekit/react-native-expo-plugin",
             "@config-plugins/react-native-webrtc",
