@@ -139,7 +139,8 @@ function HeaderRight() {
     const isCustomServer = isUsingCustomServer();
 
     if (!isCustomServer) {
-        return null;
+        // Return empty view to maintain header centering
+        return <View style={styles.headerButton} />;
     }
 
     return (
