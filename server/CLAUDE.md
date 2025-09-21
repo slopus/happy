@@ -160,6 +160,7 @@ The project has pending Prisma migrations that need to be applied:
 - Routes are in `/sources/apps/api/routes`
 - Use Fastify with Zod for type-safe route definitions
 - Always validate inputs using Zod
+- **Idempotency**: Design all operations to be idempotent - clients may retry requests automatically and the backend must handle multiple invocations of the same operation gracefully, producing the same result as a single invocation
 
 ## Docker Deployment
 

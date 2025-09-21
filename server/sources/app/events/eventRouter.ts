@@ -131,6 +131,9 @@ export type UpdateEvent = {
     type: 'delete-artifact';
     artifactId: string;
 } | {
+    type: 'delete-session';
+    sessionId: string;
+} | {
     type: 'relationship-updated';
     uid: string;
     status: 'none' | 'requested' | 'pending' | 'friend' | 'rejected';
@@ -381,6 +384,18 @@ export function buildUpdateSessionUpdate(sessionId: string, updateSeq: number, u
             id: sessionId,
             metadata,
             agentState
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildDeleteSessionUpdate(sessionId: string, updateSeq: number, updateId: string): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'delete-session',
+            sid: sessionId
         },
         createdAt: Date.now()
     };

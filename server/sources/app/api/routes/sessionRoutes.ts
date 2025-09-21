@@ -6,6 +6,7 @@ import { Prisma } from "@prisma/client";
 import { log } from "@/utils/log";
 import { randomKeyNaked } from "@/utils/randomKeyNaked";
 import { allocateUserSeq } from "@/storage/seq";
+import { sessionDelete } from "@/app/session/sessionDelete";
 
 export function sessionRoutes(app: Fastify) {
 
@@ -351,5 +352,26 @@ export function sessionRoutes(app: Fastify) {
                 updatedAt: v.updatedAt.getTime()
             }))
         });
+    });
+
+    // Delete session
+    app.delete('/v1/sessions/:sessionId', {
+        schema: {
+            params: z.object({
+                sessionId: z.string()
+            })
+        },
+        preHandler: app.authenticate
+    }, async (request, reply) => {
+        const userId = request.userId;
+        const { sessionId } = request.params;
+
+        const deleted = await sessionDelete({ uid: userId }, sessionId);
+
+        if (!deleted) {
+            return reply.code(404).send({ error: 'Session not found or not owned by user' });
+        }
+
+        return reply.send({ success: true });
     });
 }
