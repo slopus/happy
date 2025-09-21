@@ -171,20 +171,40 @@ export async function runCodex(opts: {
 
     //
     // Abort handling
+    // IMPORTANT: There are two different operations:
+    // 1. Abort (handleAbort): Stops the current inference/task but keeps the session alive
+    //    - Used by the 'abort' RPC from mobile app
+    //    - Similar to Claude Code's abort behavior
+    //    - Allows continuing with new prompts after aborting
+    // 2. Kill (handleKillSession): Terminates the entire process
+    //    - Used by the 'killSession' RPC
+    //    - Completely exits the CLI process
     //
 
     let abortController = new AbortController();
     let shouldExit = false;
+    let storedSessionIdForResume: string | null = null;
 
+    /**
+     * Handles aborting the current task/inference without exiting the process.
+     * This is the equivalent of Claude Code's abort - it stops what's currently
+     * happening but keeps the session alive for new prompts.
+     */
     async function handleAbort() {
-        logger.debug('[Codex] Abort requested');
+        logger.debug('[Codex] Abort requested - stopping current task');
         try {
+            // Store the current session ID before aborting for potential resume
+            if (client.hasActiveSession()) {
+                storedSessionIdForResume = client.storeSessionForResume();
+                logger.debug('[Codex] Stored session for resume:', storedSessionIdForResume);
+            }
+            
             abortController.abort();
             messageQueue.reset();
             permissionHandler.reset();
             reasoningProcessor.abort();
             diffProcessor.reset();
-            logger.debug('[Codex] Abort completed');
+            logger.debug('[Codex] Abort completed - session remains active');
         } catch (error) {
             logger.debug('[Codex] Error during abort:', error);
         } finally {
@@ -192,10 +212,16 @@ export async function runCodex(opts: {
         }
     }
 
-    const cleanup = async () => {
-        logger.debug('[Codex] Cleanup start');
+    /**
+     * Handles session termination and process exit.
+     * This is called when the session needs to be completely killed (not just aborted).
+     * Abort stops the current inference but keeps the session alive.
+     * Kill terminates the entire process.
+     */
+    const handleKillSession = async () => {
+        logger.debug('[Codex] Kill session requested - terminating process');
         await handleAbort();
-        logger.debug('[Codex] Cleanup completed');
+        logger.debug('[Codex] Abort completed, proceeding with termination');
 
         try {
             // Update lifecycle state to archived before closing
@@ -220,10 +246,10 @@ export async function runCodex(opts: {
             // Stop Happy MCP server
             happyServer.stop();
 
-            logger.debug('[Codex] Cleanup complete, exiting');
+            logger.debug('[Codex] Session termination complete, exiting');
             process.exit(0);
         } catch (error) {
-            logger.debug('[Codex] Error during cleanup:', error);
+            logger.debug('[Codex] Error during session termination:', error);
             process.exit(1);
         }
     };
@@ -231,7 +257,7 @@ export async function runCodex(opts: {
     // Register abort handler
     session.rpcHandlerManager.registerHandler('abort', handleAbort);
 
-    registerKillSessionHandler(session.rpcHandlerManager, cleanup);
+    registerKillSessionHandler(session.rpcHandlerManager, handleKillSession);
 
     //
     // Initialize Ink UI
@@ -491,8 +517,15 @@ export async function runCodex(opts: {
             let message: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = pending;
             pending = null;
             if (!message) {
-                const batch = await messageQueue.waitForMessagesAndGetAsString(abortController.signal);
-                if (!batch || shouldExit) {
+                // Capture the current signal to distinguish idle-abort from queue close
+                const waitSignal = abortController.signal;
+                const batch = await messageQueue.waitForMessagesAndGetAsString(waitSignal);
+                if (!batch) {
+                    // If wait was aborted (e.g., remote abort with no active inference), ignore and continue
+                    if (waitSignal.aborted && !shouldExit) {
+                        logger.debug('[codex]: Wait aborted while idle; ignoring and continuing');
+                        continue;
+                    }
                     logger.debug(`[codex]: batch=${!!batch}, shouldExit=${shouldExit}`);
                     break;
                 }
@@ -568,11 +601,32 @@ export async function runCodex(opts: {
                     if (message.mode.model) {
                         startConfig.model = message.mode.model;
                     }
-                    // If we have a resume file from the previous session, pass it through
+                    
+                    // Check for resume file from multiple sources
+                    let resumeFile: string | null = null;
+                    
+                    // Priority 1: Explicit resume file from mode change
                     if (nextExperimentalResume) {
-                        (startConfig.config as any).experimental_resume = nextExperimentalResume;
+                        resumeFile = nextExperimentalResume;
                         nextExperimentalResume = null; // consume once
+                        logger.debug('[Codex] Using resume file from mode change:', resumeFile);
                     }
+                    // Priority 2: Resume from stored abort session
+                    else if (storedSessionIdForResume) {
+                        const abortResumeFile = findCodexResumeFile(storedSessionIdForResume);
+                        if (abortResumeFile) {
+                            resumeFile = abortResumeFile;
+                            logger.debug('[Codex] Using resume file from aborted session:', resumeFile);
+                            messageBuffer.addMessage('Resuming from aborted session...', 'status');
+                        }
+                        storedSessionIdForResume = null; // consume once
+                    }
+                    
+                    // Apply resume file if found
+                    if (resumeFile) {
+                        (startConfig.config as any).experimental_resume = resumeFile;
+                    }
+                    
                     await client.startSession(
                         startConfig,
                         { signal: abortController.signal }
@@ -587,12 +641,24 @@ export async function runCodex(opts: {
                 }
             } catch (error) {
                 logger.warn('Error in codex session:', error);
-                if (error instanceof Error && error.name === 'AbortError') {
+                const isAbortError = error instanceof Error && error.name === 'AbortError';
+                
+                if (isAbortError) {
                     messageBuffer.addMessage('Aborted by user', 'status');
                     session.sendSessionEvent({ type: 'message', message: 'Aborted by user' });
+                    // Session was already stored in handleAbort(), no need to store again
+                    // Mark session as not created to force proper resume on next message
+                    wasCreated = false;
+                    currentModeHash = null;
+                    logger.debug('[Codex] Marked session as not created after abort for proper resume');
                 } else {
                     messageBuffer.addMessage('Process exited unexpectedly', 'status');
                     session.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                    // For unexpected exits, try to store session for potential recovery
+                    if (client.hasActiveSession()) {
+                        storedSessionIdForResume = client.storeSessionForResume();
+                        logger.debug('[Codex] Stored session after unexpected error:', storedSessionIdForResume);
+                    }
                 }
             } finally {
                 // Reset permission handler, reasoning processor, and diff processor
@@ -606,8 +672,8 @@ export async function runCodex(opts: {
         }
 
     } finally {
-        // Clean up
-        logger.debug('[codex]: Cleanup start');
+        // Clean up resources when main loop exits
+        logger.debug('[codex]: Final cleanup start');
         logActiveHandles('cleanup-start');
         try {
             logger.debug('[codex]: sendSessionDeath');
@@ -648,6 +714,6 @@ export async function runCodex(opts: {
         messageBuffer.clear();
 
         logActiveHandles('cleanup-end');
-        logger.debug('[codex]: Cleanup completed');
+        logger.debug('[codex]: Final cleanup completed');
     }
 }

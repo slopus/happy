@@ -201,8 +201,18 @@ export class CodexMcpClient {
     }
 
     clearSession(): void {
+        // Store the previous session ID before clearing for potential resume
+        const previousSessionId = this.sessionId;
         this.sessionId = null;
-        logger.debug('[CodexMCP] Session cleared');
+        logger.debug('[CodexMCP] Session cleared, previous sessionId:', previousSessionId);
+    }
+
+    /**
+     * Store the current session ID without clearing it, useful for abort handling
+     */
+    storeSessionForResume(): string | null {
+        logger.debug('[CodexMCP] Storing session for potential resume:', this.sessionId);
+        return this.sessionId;
     }
 
     async disconnect(): Promise<void> {
