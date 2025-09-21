@@ -7526,20 +7526,15 @@ react-is@^19.0.0, react-is@^19.1.0:
   resolved "https://registry.npmjs.org/react-is/-/react-is-19.1.0.tgz"
   integrity sha512-Oe56aUPnkHyyDxxkvqtd7KkdQP5uIUfHxd5XTb3wE9d/kRnZLmKbDB0GWk919tdQ+mxxPtG6EAs6RMT6i1qtHg==
 
-react-native-audio-api@^0.7.0:
-  version "0.7.0"
-  resolved "https://registry.yarnpkg.com/react-native-audio-api/-/react-native-audio-api-0.7.0.tgz#cd70c1e9e79316aeb48d761b3e534be7d4d3f6c9"
-  integrity sha512-jUO6TOLWVS5leuOQ4BZzZUmJw4Idv7SJb0kKBcAntyHn/GrsaEMF4VDDCx8M0pyH1xHJ8MlbhOzjgaP4BsO/2g==
+react-native-audio-api@^0.8.2:
+  version "0.8.2"
+  resolved "https://registry.yarnpkg.com/react-native-audio-api/-/react-native-audio-api-0.8.2.tgz#5deb4ffe07538b8d1c747af3903025632a23f6a2"
+  integrity sha512-p+a7gL1wy09yXoqUTYdO+tAQe/G7DpWFrFUDULu4dFUsyPaVd0T10Y7Nf5P391Ldg5A6F/aIfoUtKf150RyKmw==
 
-react-native-blurhash@^2.1.1:
-  version "2.1.1"
-  resolved "https://registry.yarnpkg.com/react-native-blurhash/-/react-native-blurhash-2.1.1.tgz#c8079881422664691b387e43b020b846dfd196e6"
-  integrity sha512-b1aA5Tn31pPbqmaWnhJv7zSuN6o9M1t4yHciPunfP89LDkH2dvDIynvkE00Hen4Vmt6SnyXViSYH34MyvTvRiA==
-
-react-native-device-info@^14.0.4:
-  version "14.0.4"
-  resolved "https://registry.yarnpkg.com/react-native-device-info/-/react-native-device-info-14.0.4.tgz#56b24ace9ff29a66bdfc667209086421ed6cfdce"
-  integrity sha512-NX0wMAknSDBeFnEnSFQ8kkAcQrFHrG4Cl0mVjoD+0++iaKrOupiGpBXqs8xR0SeJyPC5zpdPl4h/SaBGly6UxA==
+react-native-device-info@^14.1.1:
+  version "14.1.1"
+  resolved "https://registry.yarnpkg.com/react-native-device-info/-/react-native-device-info-14.1.1.tgz#f50c03902f87e4a99b1c51ed85163b795f02b3ea"
+  integrity sha512-lXFpe6DJmzbQXNLWxlMHP2xuTU5gwrKAvI8dCAZuERhW9eOXSubOQIesk9lIBnsi9pI19GMrcpJEvs4ARPRYmw==
 
 react-native-diff-view@^1.1.2:
   version "1.1.2"
@@ -7558,15 +7553,10 @@ react-native-drawer-layout@^4.1.13:
   dependencies:
     use-latest-callback "^0.2.4"
 
-react-native-edge-to-edge@^1.6.2:
-  version "1.6.2"
-  resolved "https://registry.yarnpkg.com/react-native-edge-to-edge/-/react-native-edge-to-edge-1.6.2.tgz#5b93632b9afa8e7afaca1c0508807664820465fe"
-  integrity sha512-koEF6WRAfdGNelXlP7NtHrQhFGtplwciYNWLHOCTCk0Thc7dlxtqxHRYSA5vPJgWOEkVBFqxcoOqKwAtqOmLNw==
-
-react-native-enriched@^0.1.1:
-  version "0.1.1"
-  resolved "https://registry.yarnpkg.com/react-native-enriched/-/react-native-enriched-0.1.1.tgz#dff6397908d45e1dc8389d3250ec18db4e75b266"
-  integrity sha512-od2PCnD/+MljgZUfbapwzrhNFaHPOEvn8TvKVYZlDmfEdS3T9kyl1LSK7VuJ1BLmsgccS73y03/UcysFVEbocw==
+react-native-enriched@^0.1.2:
+  version "0.1.2"
+  resolved "https://registry.yarnpkg.com/react-native-enriched/-/react-native-enriched-0.1.2.tgz#5f0ea33dcd552849e66ff9f44505ab1622dd7165"
+  integrity sha512-VRoc0iXMRePxn4FPfMm3+K/GLt8YDqpqRNraP3F3vBMh3L5ku4o/Nv+WOLcd58QYdE2Kksz/BVL25qT7rVLTtQ==
 
 react-native-gesture-handler@~2.28.0:
   version "2.28.0"

@@ -7,8 +7,9 @@ import { useIsTablet } from '@/utils/responsive';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as React from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Pressable } from 'react-native';
 import { useUnistyles } from 'react-native-unistyles';
+import Ionicons from '@expo/vector-icons/Ionicons';
 
 export const ZenHeader = React.memo(() => {
     const isTablet = useIsTablet();
@@ -143,19 +144,18 @@ function HeaderLeft() {
 function HeaderRight() {
     const router = useRouter();
     const { theme } = useUnistyles();
-    // return (
-    //     <Pressable
-    //         onPress={() => router.push('/zen/add')}
-    //         hitSlop={15}
-    //         style={{
-    //             width: 32,
-    //             height: 32,
-    //             alignItems: 'center',
-    //             justifyContent: 'center',
-    //         }}
-    //     >
-    //         <Ionicons name="add-outline" size={24} color={theme.colors.header.tint} />
-    //     </Pressable>
-    // );
-    return <View style={{ width: 32, height: 32, alignItems: 'center', justifyContent: 'center' }} />;
+    return (
+        <Pressable
+            onPress={() => router.push('/zen/new')}
+            hitSlop={15}
+            style={{
+                width: 32,
+                height: 32,
+                alignItems: 'center',
+                justifyContent: 'center',
+            }}
+        >
+            <Ionicons name="add-outline" size={28} color={theme.colors.header.tint} />
+        </Pressable>
+    );
 }   
