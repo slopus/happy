@@ -28,6 +28,7 @@ export type UserTextMessage = {
     localId: string | null;
     createdAt: number;
     text: string;
+    displayText?: string; // Optional text to display in UI instead of actual text
     meta?: MessageMeta;
 }
 

@@ -121,7 +121,7 @@
     "react-native-gesture-handler": "2.27.2",
     "react-native-incall-manager": "^4.2.1",
     "react-native-keyboard-controller": "1.18.6",
-    "react-native-libsodium": "^1.4.0",
+    "@more-tech/react-native-libsodium": "^1.5.5",
     "react-native-localize": "^3.5.1",
     "react-native-mmkv": "^3.3.0",
     "react-native-nitro-modules": "0.28.0",

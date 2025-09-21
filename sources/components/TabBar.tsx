@@ -7,8 +7,9 @@ import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
+import { useSettings } from '@/sync/storage';
 
-export type TabType = 'inbox' | 'sessions' | 'settings';
+export type TabType = 'zen' | 'inbox' | 'sessions' | 'settings';
 
 interface TabBarProps {
     activeTab: TabType;
@@ -84,12 +85,25 @@ export const TabBar = React.memo(({ activeTab, onTabPress, inboxBadgeCount = 0 }
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
     const inboxHasContent = useInboxHasContent();
+    const settings = useSettings();
 
-    const tabs: { key: TabType; icon: any; label: string }[] = [
-        { key: 'inbox', icon: require('@/assets/images/brutalist/Brutalism 27.png'), label: t('tabs.inbox') },
-        { key: 'sessions', icon: require('@/assets/images/brutalist/Brutalism 15.png'), label: t('tabs.sessions') },
-        { key: 'settings', icon: require('@/assets/images/brutalist/Brutalism 9.png'), label: t('tabs.settings') },
-    ];
+    const tabs: { key: TabType; icon: any; label: string }[] = React.useMemo(() => {
+        const baseTabs: { key: TabType; icon: any; label: string }[] = [];
+        
+        // Add Zen tab first if experiments are enabled
+        if (settings.experiments) {
+            baseTabs.push({ key: 'zen', icon: require('@/assets/images/brutalist/Brutalism 3.png'), label: 'Zen' });
+        }
+        
+        // Add regular tabs
+        baseTabs.push(
+            { key: 'inbox', icon: require('@/assets/images/brutalist/Brutalism 27.png'), label: t('tabs.inbox') },
+            { key: 'sessions', icon: require('@/assets/images/brutalist/Brutalism 15.png'), label: t('tabs.sessions') },
+            { key: 'settings', icon: require('@/assets/images/brutalist/Brutalism 9.png'), label: t('tabs.settings') },
+        );
+        
+        return baseTabs;
+    }, [settings.experiments]);
 
     return (
         <View style={[styles.outerContainer, { paddingBottom: insets.bottom }]}>

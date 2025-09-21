@@ -1721,6 +1721,17 @@
   resolved "https://registry.yarnpkg.com/@material/material-color-utilities/-/material-color-utilities-0.3.0.tgz#681b0ecd0820ac012d50d371912227f6b2dc7817"
   integrity sha512-ztmtTd6xwnuh2/xu+Vb01btgV8SQWYCaK56CkRK8gEkWe5TuDyBcYJ0wgkMRn+2VcE9KUmhvkz+N9GHrqw/C0g==
 
+"@more-tech/react-native-libsodium@^1.5.5":
+  version "1.5.5"
+  resolved "https://registry.yarnpkg.com/@more-tech/react-native-libsodium/-/react-native-libsodium-1.5.5.tgz#a25ea1194e6ed77d1108a5238d346d3ce9ece2ba"
+  integrity sha512-+vz7S06QAaiHpuSxjHW9n2Q3GtWro66kcdbRAxtK+osWBYaWbT73TxJTOxRpbwBQ4vuVMHh4MZnJ0Jvyo5oMEg==
+  dependencies:
+    "@noble/hashes" "^1.3.2"
+    "@types/libsodium-wrappers" "^0.7.13"
+    "@types/libsodium-wrappers-sumo" "^0.7.8"
+    libsodium-wrappers "^0.7.13"
+    libsodium-wrappers-sumo "^0.7.13"
+
 "@noble/hashes@^1.3.2":
   version "1.8.0"
   resolved "https://registry.yarnpkg.com/@noble/hashes/-/hashes-1.8.0.tgz#cee43d801fcef9644b11b8194857695acd5f815a"
@@ -7083,17 +7094,6 @@ react-native-keyboard-controller@1.18.6:
   integrity sha512-K/RMw3MdtuykkACFN5d9RTapAcO0v4T34gmSyHkEraU5UsX+fxEHd6j4MvL7KUihvmLLod0NV/mQC0nL4cOurw==
   dependencies:
     react-native-is-edge-to-edge "^1.2.1"
-
-react-native-libsodium@^1.4.0:
-  version "1.4.0"
-  resolved "https://registry.yarnpkg.com/react-native-libsodium/-/react-native-libsodium-1.4.0.tgz#dfd55b24536edbc4c10d4b909eb1893a78c28b89"
-  integrity sha512-1OHrKjv1nM8wYHn116fnhA8SORGNlSoq1vHhYq/PddHg4Iy3vPiQXA2r1w5GJiKYBzyA8AZfHyq5zo/xfA/oKg==
-  dependencies:
-    "@noble/hashes" "^1.3.2"
-    "@types/libsodium-wrappers" "^0.7.13"
-    "@types/libsodium-wrappers-sumo" "^0.7.8"
-    libsodium-wrappers "^0.7.13"
-    libsodium-wrappers-sumo "^0.7.13"
 
 react-native-localize@^3.5.1:
   version "3.5.1"

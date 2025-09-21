@@ -199,7 +199,7 @@ class Sync {
     }
 
 
-    async sendMessage(sessionId: string, text: string) {
+    async sendMessage(sessionId: string, text: string, displayText?: string) {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -279,7 +279,8 @@ class Sync {
                 permissionMode: permissionMode || 'default',
                 model,
                 fallbackModel,
-                appendSystemPrompt: systemPrompt
+                appendSystemPrompt: systemPrompt,
+                ...(displayText && { displayText }) // Add displayText if provided
             }
         };
         const encryptedRawRecord = await encryption.encryptRawRecord(content);

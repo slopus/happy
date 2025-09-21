@@ -593,10 +593,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         {isCodex ? t('agentInput.codexModel.title') : t('agentInput.model.title')}
                                     </Text>
                                     {(isCodex 
-                                        ? (['default', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'] as const)
+                                        ? (['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'default', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'] as const)
                                         : (['default', 'adaptiveUsage', 'sonnet', 'opus'] as const)
                                     ).map((model) => {
                                         const modelConfig = isCodex ? {
+                                            'gpt-5-codex-high': { label: t('agentInput.codexModel.gpt5CodexHigh') },
+                                            'gpt-5-codex-medium': { label: t('agentInput.codexModel.gpt5CodexMedium') },
+                                            'gpt-5-codex-low': { label: t('agentInput.codexModel.gpt5CodexLow') },
                                             'default': { label: t('agentInput.model.default') },
                                             'gpt-5-minimal': { label: t('agentInput.codexModel.gpt5Minimal') },
                                             'gpt-5-low': { label: t('agentInput.codexModel.gpt5Low') },
@@ -610,7 +613,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         };
                                         const config = modelConfig[model as keyof typeof modelConfig];
                                         if (!config) return null;
-                                        const isSelected = props.modelMode === model || (model === 'default' && !props.modelMode);
+                                        const isSelected = props.modelMode === model || (isCodex && model === 'gpt-5-codex-high' && !props.modelMode) || (!isCodex && model === 'default' && !props.modelMode);
 
                                         return (
                                             <Pressable

@@ -419,6 +419,9 @@ export const pl: TranslationStructure = {
         },
         codexModel: {
             title: 'MODEL CODEX',
+            gpt5CodexLow: 'gpt-5-codex low',
+            gpt5CodexMedium: 'gpt-5-codex medium',
+            gpt5CodexHigh: 'gpt-5-codex high',
             gpt5Minimal: 'GPT-5 Minimalny',
             gpt5Low: 'GPT-5 Niski',
             gpt5Medium: 'GPT-5 Średni',

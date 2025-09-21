@@ -318,6 +318,12 @@ export default function RootLayout() {
                     headerBackTitle: t('common.back'),
                 }}
             />
+            <Stack.Screen
+                name="zen/index"
+                options={{
+                    headerShown: false
+                }}
+            />
         </Stack>
     );
 }

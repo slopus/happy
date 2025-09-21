@@ -13,6 +13,8 @@ import { TabBar, TabType } from './TabBar';
 import { InboxView } from './InboxView';
 import { SettingsViewWrapper } from './SettingsViewWrapper';
 import { SessionsListWrapper } from './SessionsListWrapper';
+import { useSettings } from '@/sync/storage';
+import { ZenHome } from '@/-zen/ZenHome';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -71,9 +73,13 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     const realtimeStatus = useRealtimeStatus();
     const router = useRouter();
     const friendRequests = useFriendRequests();
+    const settings = useSettings();
 
     // Tab state management - always call hooks even if not used
-    const [activeTab, setActiveTab] = React.useState<TabType>('sessions');
+    // Default to zen tab if experiments enabled, otherwise sessions
+    const [activeTab, setActiveTab] = React.useState<TabType>(
+        settings.experiments ? 'zen' : 'sessions'
+    );
 
     const handleNewSession = React.useCallback(() => {
         router.push('/new');
@@ -86,6 +92,8 @@ export const MainView = React.memo(({ variant }: MainViewProps) => {
     // Regular phone mode with tabs - define this before any conditional returns
     const renderTabContent = React.useCallback(() => {
         switch (activeTab) {
+            case 'zen':
+                return <ZenHome />;
             case 'inbox':
                 return <InboxView />;
             case 'settings':

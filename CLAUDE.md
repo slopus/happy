@@ -448,3 +448,5 @@ const MyComponent = () => {
 - Always use "Avatar" for avatars
 - No backward compatibliity ever
 - When non-trivial hook is needed - create a dedicated one in hooks folder, add a comment explaining it's logic
+- Always put styles in the very end of the component or page file
+- Always wrap pages in memo

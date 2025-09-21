@@ -1,4 +1,4 @@
-import { useSocketStatus, useFriendRequests } from '@/sync/storage';
+import { useSocketStatus, useFriendRequests, useSettings } from '@/sync/storage';
 import * as React from 'react';
 import { Text, View, Pressable } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -131,6 +131,7 @@ export const SidebarView = React.memo(() => {
     const realtimeStatus = useRealtimeStatus();
     const friendRequests = useFriendRequests();
     const inboxHasContent = useInboxHasContent();
+    const settings = useSettings();
 
     // Get connection status styling (matching sessionUtils.ts pattern)
     const getConnectionStatus = () => {
@@ -190,6 +191,19 @@ export const SidebarView = React.memo(() => {
                         />
                     </View>
                     <View style={styles.rightContainer}>
+                        {settings.experiments && (
+                            <Pressable
+                                onPress={() => router.push('/(app)/zen')}
+                                hitSlop={15}
+                            >
+                                <Image
+                                    source={require('@/assets/images/brutalist/Brutalism 3.png')}
+                                    contentFit="contain"
+                                    style={[{ width: 32, height: 32 }]}
+                                    tintColor={theme.colors.header.tint}
+                                />
+                            </Pressable>
+                        )}
                         <Pressable
                             onPress={() => router.push('/(app)/inbox')}
                             hitSlop={15}
