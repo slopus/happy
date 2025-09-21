@@ -126,6 +126,8 @@ export const pt: TranslationStructure = {
         connectGithubAccount: 'Conecte sua conta GitHub',
         claudeAuthSuccess: 'Conectado ao Claude com sucesso',
         exchangingTokens: 'Trocando tokens...',
+        usage: 'Uso',
+        usageSubtitle: 'Visualizar uso da API e custos',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Conta ${service} conectada`,
@@ -216,6 +218,8 @@ export const pt: TranslationStructure = {
         webViewLoadFailed: 'Falha ao carregar a página de autenticação',
         failedToLoadProfile: 'Falha ao carregar o perfil do usuário',
         userNotFound: 'Usuário não encontrado',
+        sessionDeleted: 'A sessão foi excluída',
+        sessionDeletedDescription: 'Esta sessão foi removida permanentemente',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
@@ -350,6 +354,12 @@ export const pt: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versão ${currentVersion} instalada. Atualize para ${requiredVersion} ou posterior`,
         updateCliInstructions: 'Por favor execute npm install -g happy-coder@latest',
+        deleteSession: 'Excluir sessão',
+        deleteSessionSubtitle: 'Remover permanentemente esta sessão',
+        deleteSessionConfirm: 'Excluir sessão permanentemente?',
+        deleteSessionWarning: 'Esta ação não pode ser desfeita. Todas as mensagens e dados associados a esta sessão serão excluídos permanentemente.',
+        failedToDeleteSession: 'Falha ao excluir sessão',
+        sessionDeleted: 'Sessão excluída com sucesso',
         
     },
 
@@ -810,6 +820,20 @@ export const pt: TranslationStructure = {
         cancelRequestConfirm: ({ name }: { name: string }) => `Cancelar sua solicitação de amizade para ${name}?`,
         denyRequest: 'Recusar solicitação',
         nowFriendsWith: ({ name }: { name: string }) => `Agora você é amigo de ${name}`,
+    },
+
+    usage: {
+        // Usage panel strings
+        today: 'Hoje',
+        last7Days: 'Últimos 7 dias',
+        last30Days: 'Últimos 30 dias',
+        totalTokens: 'Tokens totais',
+        totalCost: 'Custo total',
+        tokens: 'Tokens',
+        cost: 'Custo',
+        usageOverTime: 'Uso ao longo do tempo',
+        byModel: 'Por modelo',
+        noData: 'Nenhum dado de uso disponível',
     }
 } as const;
 

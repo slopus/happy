@@ -36,6 +36,11 @@ export const ApiUpdateNewSessionSchema = z.object({
     updatedAt: z.number(),
 });
 
+export const ApiDeleteSessionSchema = z.object({
+    t: z.literal('delete-session'),
+    sid: z.string(), // Session ID
+});
+
 export const ApiUpdateSessionStateSchema = z.object({
     t: z.literal('update-session'),
     id: z.string(),
@@ -124,6 +129,7 @@ export const ApiRelationshipUpdatedSchema = z.object({
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
+    ApiDeleteSessionSchema,
     ApiUpdateSessionStateSchema,
     ApiUpdateAccountSchema,
     ApiUpdateMachineStateSchema,

@@ -109,6 +109,8 @@ export const ru: TranslationStructure = {
         connectGithubAccount: 'Подключить аккаунт GitHub',
         claudeAuthSuccess: 'Успешно подключено к Claude',
         exchangingTokens: 'Обмен токенов...',
+        usage: 'Использование',
+        usageSubtitle: 'Просмотр использования API и затрат',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
@@ -199,6 +201,8 @@ export const ru: TranslationStructure = {
         webViewLoadFailed: 'Не удалось загрузить страницу аутентификации',
         failedToLoadProfile: 'Не удалось загрузить профиль пользователя',
         userNotFound: 'Пользователь не найден',
+        sessionDeleted: 'Сессия была удалена',
+        sessionDeletedDescription: 'Эта сессия была окончательно удалена',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
@@ -325,6 +329,12 @@ export const ru: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Установлена версия ${currentVersion}. Обновите до ${requiredVersion} или новее`,
         updateCliInstructions: 'Пожалуйста, выполните npm install -g happy-coder@latest',
+        deleteSession: 'Удалить сессию',
+        deleteSessionSubtitle: 'Удалить эту сессию навсегда',
+        deleteSessionConfirm: 'Удалить сессию навсегда?',
+        deleteSessionWarning: 'Это действие нельзя отменить. Все сообщения и данные, связанные с этой сессией, будут удалены навсегда.',
+        failedToDeleteSession: 'Не удалось удалить сессию',
+        sessionDeleted: 'Сессия успешно удалена',
     },
 
     components: {
@@ -833,6 +843,20 @@ export const ru: TranslationStructure = {
         cancelRequestConfirm: ({ name }: { name: string }) => `Отменить ваш запрос в друзья к ${name}?`,
         denyRequest: 'Отклонить запрос',
         nowFriendsWith: ({ name }: { name: string }) => `Теперь вы друзья с ${name}`,
+    },
+
+    usage: {
+        // Usage panel strings
+        today: 'Сегодня',
+        last7Days: 'Последние 7 дней',
+        last30Days: 'Последние 30 дней',
+        totalTokens: 'Всего токенов',
+        totalCost: 'Общая стоимость',
+        tokens: 'Токены',
+        cost: 'Стоимость',
+        usageOverTime: 'Использование во времени',
+        byModel: 'По модели',
+        noData: 'Данные об использовании недоступны',
     }
 } as const;
 

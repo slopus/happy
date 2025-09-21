@@ -87,6 +87,18 @@ export class GitStatusSync {
     }
 
     /**
+     * Clear git status for a session when it's deleted
+     * Similar to stop() but also clears any stored git status
+     */
+    clearForSession(sessionId: string): void {
+        // First stop any active syncs
+        this.stop(sessionId);
+        
+        // Clear git status from storage
+        storage.getState().applyGitStatus(sessionId, null);
+    }
+
+    /**
      * Fetch git status for a project using any session in that project
      */
     private async fetchGitStatusForProject(sessionId: string, projectKey: string): Promise<void> {

@@ -26,6 +26,7 @@ import { getServerUrl } from './serverConfig';
 import { config } from '@/config';
 import { log } from '@/log';
 import { gitStatusSync } from './gitStatusSync';
+import { projectManager } from './projectManager';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
@@ -1366,6 +1367,23 @@ class Sync {
         } else if (updateData.body.t === 'new-session') {
             log.log('🆕 New session update received');
             this.sessionsSync.invalidate();
+        } else if (updateData.body.t === 'delete-session') {
+            log.log('🗑️ Delete session update received');
+            const sessionId = updateData.body.sid;
+            
+            // Remove session from storage
+            storage.getState().deleteSession(sessionId);
+            
+            // Remove encryption keys from memory
+            this.encryption.removeSessionEncryption(sessionId);
+            
+            // Remove from project manager
+            projectManager.removeSession(sessionId);
+            
+            // Clear any cached git status
+            gitStatusSync.clearForSession(sessionId);
+            
+            log.log(`🗑️ Session ${sessionId} deleted from local storage`);
         } else if (updateData.body.t === 'update-session') {
             const session = storage.getState().sessions[updateData.body.id];
             if (session) {

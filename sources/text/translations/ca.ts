@@ -126,6 +126,8 @@ export const ca: TranslationStructure = {
         connectGithubAccount: 'Connecta el teu compte de GitHub',
         claudeAuthSuccess: 'Connexió amb Claude realitzada amb èxit',
         exchangingTokens: 'Intercanviant tokens...',
+        usage: 'Ús',
+        usageSubtitle: "Veure l'ús de l'API i costos",
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Compte de ${service} connectat`,
@@ -216,6 +218,8 @@ export const ca: TranslationStructure = {
         webViewLoadFailed: 'Ha fallat la càrrega de la pàgina d\'autenticació',
         failedToLoadProfile: 'No s\'ha pogut carregar el perfil d\'usuari',
         userNotFound: 'Usuari no trobat',
+        sessionDeleted: 'La sessió s\'ha eliminat',
+        sessionDeletedDescription: 'Aquesta sessió s\'ha eliminat permanentment',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
@@ -350,6 +354,12 @@ export const ca: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Versió ${currentVersion} instal·lada. Actualitzeu a ${requiredVersion} o posterior`,
         updateCliInstructions: 'Si us plau executeu npm install -g happy-coder@latest',
+        deleteSession: 'Elimina la sessió',
+        deleteSessionSubtitle: 'Elimina permanentment aquesta sessió',
+        deleteSessionConfirm: 'Eliminar la sessió permanentment?',
+        deleteSessionWarning: 'Aquesta acció no es pot desfer. Tots els missatges i dades associats amb aquesta sessió s\'eliminaran permanentment.',
+        failedToDeleteSession: 'Error en eliminar la sessió',
+        sessionDeleted: 'Sessió eliminada amb èxit',
         
     },
 
@@ -810,6 +820,20 @@ export const ca: TranslationStructure = {
         cancelRequestConfirm: ({ name }: { name: string }) => `Cancel·lar la teva sol·licitud d\'amistat a ${name}?`,
         denyRequest: 'Rebutjar sol·licitud',
         nowFriendsWith: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
+    },
+
+    usage: {
+        // Usage panel strings
+        today: 'Avui',
+        last7Days: 'Últims 7 dies',
+        last30Days: 'Últims 30 dies',
+        totalTokens: 'Tokens totals',
+        totalCost: 'Cost total',
+        tokens: 'Tokens',
+        cost: 'Cost',
+        usageOverTime: 'Ús al llarg del temps',
+        byModel: 'Per model',
+        noData: "No hi ha dades d'ús disponibles",
     }
 } as const;
 

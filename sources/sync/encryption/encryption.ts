@@ -91,6 +91,15 @@ export class Encryption {
         return this.sessionEncryptions.get(sessionId) || null;
     }
 
+    /**
+     * Remove session encryption from memory when session is deleted
+     */
+    removeSessionEncryption(sessionId: string): void {
+        this.sessionEncryptions.delete(sessionId);
+        // Also clear any cached data for this session
+        this.cache.clearSessionCache(sessionId);
+    }
+
     //
     // Machine operations
     //

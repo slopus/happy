@@ -5,7 +5,7 @@ import { View, ActivityIndicator, Platform, Text } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useNavigation, useRouter } from "expo-router";
 import { getSessionName, useSessionStatus, getSessionAvatarId, formatPathRelativeToHome } from "@/utils/sessionUtils";
-import { useSession, useSessionMessages, useSessionUsage, useSetting, useRealtimeStatus, storage, useLocalSetting } from '@/sync/storage';
+import { useSession, useSessionMessages, useSessionUsage, useSetting, useRealtimeStatus, storage, useLocalSetting, useIsDataReady } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { sessionAbort } from '@/sync/ops';
 import { EmptyMessages } from '@/components/EmptyMessages';
@@ -36,19 +36,114 @@ import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 
 export default React.memo(() => {
     const route = useRoute();
+    const router = useRouter();
     const sessionId = (route.params! as any).id as string;
     const session = useSession(sessionId);
+    const isDataReady = useIsDataReady();
     const { theme } = useUnistyles();
+    const safeArea = useSafeAreaInsets();
+    const isLandscape = useIsLandscape();
+    const deviceType = useDeviceType();
+    const headerHeight = useHeaderHeight();
+    
+    // Compute header props based on session state
+    const headerProps = useMemo(() => {
+        if (!isDataReady) {
+            // Loading state - show empty header
+            return {
+                title: '',
+                subtitle: undefined,
+                avatarId: undefined,
+                onAvatarPress: undefined,
+                isConnected: false,
+                flavor: null
+            };
+        }
+        
+        if (!session) {
+            // Deleted state - show deleted message in header
+            return {
+                title: t('errors.sessionDeleted'),
+                subtitle: undefined,
+                avatarId: undefined,
+                onAvatarPress: undefined,
+                isConnected: false,
+                flavor: null
+            };
+        }
+        
+        // Normal state - show session info
+        const isConnected = session.presence === 'online';
+        return {
+            title: getSessionName(session),
+            subtitle: session.metadata?.path ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir) : undefined,
+            avatarId: getSessionAvatarId(session),
+            onAvatarPress: () => router.push(`/session/${sessionId}/info`),
+            isConnected: isConnected,
+            flavor: session.metadata?.flavor || null,
+            tintColor: isConnected ? '#000' : '#8E8E93'
+        };
+    }, [session, isDataReady, sessionId, router]);
 
-    if (!session) {
-        return (
-            <View style={{ flexGrow: 1, flexBasis: 0, justifyContent: 'center', alignItems: 'center' }}>
-                <ActivityIndicator size="small" color={theme.colors.textSecondary} />
-            </View>
-        )
-    }
     return (
-        <SessionView key={sessionId} sessionId={sessionId} session={session} />
+        <>
+            {/* Status bar shadow for landscape mode */}
+            {isLandscape && deviceType === 'phone' && (
+                <View style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: safeArea.top,
+                    backgroundColor: theme.colors.surface,
+                    zIndex: 1000,
+                    shadowColor: theme.colors.shadow.color,
+                    shadowOffset: {
+                        width: 0,
+                        height: 2,
+                    },
+                    shadowOpacity: theme.colors.shadow.opacity,
+                    shadowRadius: 3,
+                    elevation: 5,
+                }} />
+            )}
+
+            {/* Header - always shown, hidden in landscape mode on phone */}
+            {!(isLandscape && deviceType === 'phone') && (
+                <View style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    zIndex: 1000
+                }}>
+                    <ChatHeaderView
+                        {...headerProps}
+                        onBackPress={() => router.back()}
+                    />
+                </View>
+            )}
+
+            {/* Content based on state */}
+            <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone') ? safeArea.top + headerHeight : 0 }}>
+                {!isDataReady ? (
+                    // Loading state
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <ActivityIndicator size="small" color={theme.colors.textSecondary} />
+                    </View>
+                ) : !session ? (
+                    // Deleted state
+                    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+                        <Ionicons name="trash-outline" size={48} color={theme.colors.textSecondary} />
+                        <Text style={{ color: theme.colors.text, fontSize: 20, marginTop: 16, fontWeight: '600' }}>{t('errors.sessionDeleted')}</Text>
+                        <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32 }}>{t('errors.sessionDeletedDescription')}</Text>
+                    </View>
+                ) : (
+                    // Normal session view
+                    <SessionView key={sessionId} sessionId={sessionId} session={session} />
+                )}
+            </View>
+        </>
     );
 });
 
@@ -112,9 +207,9 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
             flex: 1
         },
         flatListStyle: {
-            marginTop: Platform.OS === 'web' ? headerHeight + safeArea.top : 0
+            marginTop: 0 // No marginTop needed since header is handled by parent
         },
-    }), [headerHeight, safeArea.top]);
+    }), []);
 
 
     // Handle microphone button press - memoized to prevent button flashing
@@ -234,54 +329,11 @@ function SessionView({ sessionId, session }: { sessionId: string, session: Sessi
 
     return (
         <>
-            {/* Status bar shadow for landscape mode */}
-            {isLandscape && deviceType === 'phone' && (
-                <View style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: safeArea.top,
-                    backgroundColor: theme.colors.surface,
-                    zIndex: 1000,
-                    shadowColor: theme.colors.shadow.color,
-                    shadowOffset: {
-                        width: 0,
-                        height: 2,
-                    },
-                    shadowOpacity: theme.colors.shadow.opacity,
-                    shadowRadius: 3,
-                    elevation: 5,
-                }} />
-            )}
-
-            {/* Header - hidden in landscape mode on phone */}
-            {!(isLandscape && deviceType === 'phone') && (
-                <View style={{
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    zIndex: 1000
-                }}>
-                    <ChatHeaderView
-                        title={getSessionName(session)}
-                        subtitle={session.metadata?.path ? formatPathRelativeToHome(session.metadata.path, session.metadata?.homeDir) : undefined}
-                        onBackPress={() => router.back()}
-                        onAvatarPress={() => router.push(`/session/${sessionId}/info`)}
-                        avatarId={getSessionAvatarId(session)}
-                        tintColor={sessionStatus.isConnected ? '#000' : '#8E8E93'}
-                        isConnected={sessionStatus.isConnected}
-                        flavor={session.metadata?.flavor}
-                    />
-                </View>
-            )}
-
-            {/* Voice Assistant Status Bar - positioned as overlay below header */}
+            {/* Voice Assistant Status Bar - positioned as overlay at top */}
             {!isTablet && !(isLandscape && deviceType === 'phone') && realtimeStatus !== 'disconnected' && (
                 <View style={{
                     position: 'absolute',
-                    top: safeArea.top + headerHeight, // Position below header
+                    top: 0, // Position at top since header is handled by parent
                     left: 0,
                     right: 0,
                     zIndex: 999 // Below header but above content

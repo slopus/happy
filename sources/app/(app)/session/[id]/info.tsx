@@ -7,16 +7,19 @@ import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
 import { ItemList } from '@/components/ItemList';
 import { Avatar } from '@/components/Avatar';
-import { useSession } from '@/sync/storage';
+import { useSession, useIsDataReady } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionKill } from '@/sync/ops';
+import { sessionKill, sessionDelete } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { isVersionSupported, MINIMUM_CLI_VERSION } from '@/utils/versionUtils';
 import { CodeView } from '@/components/CodeView';
+import { Session } from '@/sync/storageTypes';
+import { useHappyAction } from '@/hooks/useHappyAction';
+import { HappyError } from '@/utils/errors';
 
 // Animated status dot component
 function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: boolean; size?: number }) {
@@ -57,12 +60,15 @@ function StatusDot({ color, isPulsing, size = 8 }: { color: string; isPulsing?: 
     );
 }
 
-export default React.memo(() => {
+function SessionInfoContent({ session }: { session: Session }) {
     const { theme } = useUnistyles();
     const router = useRouter();
-    const { id } = useLocalSearchParams<{ id: string }>();
-    const session = useSession(id);
     const devModeEnabled = __DEV__;
+    const sessionName = getSessionName(session);
+    const sessionStatus = useSessionStatus(session);
+    
+    // Check if CLI version is outdated
+    const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
 
     const handleCopySessionId = useCallback(async () => {
         if (!session) return;
@@ -84,9 +90,18 @@ export default React.memo(() => {
         }
     }, [session]);
 
-    const handleArchiveSession = useCallback(async () => {
-        if (!session) return;
+    // Use HappyAction for archiving - it handles errors automatically
+    const [archivingSession, performArchive] = useHappyAction(async () => {
+        const result = await sessionKill(session.id);
+        if (!result.success) {
+            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+        }
+        // Success - navigate back
+        router.back();
+        router.back();
+    });
 
+    const handleArchiveSession = useCallback(() => {
         Modal.alert(
             t('sessionInfo.archiveSession'),
             t('sessionInfo.archiveSessionConfirm'),
@@ -95,41 +110,39 @@ export default React.memo(() => {
                 {
                     text: t('sessionInfo.archiveSession'),
                     style: 'destructive',
-                    onPress: async () => {
-                        try {
-                            const result = await sessionKill(session.id);
-                            if (result.success) {
-                                router.back();
-                                router.back()
-                            } else {
-                                Modal.alert(t('common.error'), result.message || t('sessionInfo.failedToArchiveSession'));
-                            }
-                        } catch (error) {
-                            Modal.alert(t('common.error'), error instanceof Error ? error.message : t('sessionInfo.failedToArchiveSession'));
-                        }
-                    }
+                    onPress: performArchive
                 }
             ]
         );
-    }, [session, router]);
+    }, [performArchive]);
+
+    // Use HappyAction for deletion - it handles errors automatically
+    const [deletingSession, performDelete] = useHappyAction(async () => {
+        const result = await sessionDelete(session.id);
+        if (!result.success) {
+            throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
+        }
+        // Success - no alert needed, UI will update to show deleted state
+    });
+
+    const handleDeleteSession = useCallback(() => {
+        Modal.alert(
+            t('sessionInfo.deleteSession'),
+            t('sessionInfo.deleteSessionWarning'),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: t('sessionInfo.deleteSession'),
+                    style: 'destructive',
+                    onPress: performDelete
+                }
+            ]
+        );
+    }, [performDelete]);
 
     const formatDate = useCallback((timestamp: number) => {
         return new Date(timestamp).toLocaleString();
     }, []);
-
-    if (!session) {
-        return (
-            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-                <Text style={{ color: theme.colors.textSecondary, fontSize: 17, ...Typography.default('semiBold') }}>{t('errors.sessionNotFound')}</Text>
-            </View>
-        );
-    }
-
-    const sessionName = getSessionName(session);
-    const sessionStatus = useSessionStatus(session);
-
-    // Check if CLI version is outdated
-    const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
 
     const handleCopyUpdateCommand = useCallback(async () => {
         const updateCommand = 'npm install -g happy-coder@latest';
@@ -250,6 +263,14 @@ export default React.memo(() => {
                             subtitle={t('sessionInfo.archiveSessionSubtitle')}
                             icon={<Ionicons name="archive-outline" size={29} color="#FF3B30" />}
                             onPress={handleArchiveSession}
+                        />
+                    )}
+                    {!sessionStatus.isConnected && !session.active && (
+                        <Item
+                            title={t('sessionInfo.deleteSession')}
+                            subtitle={t('sessionInfo.deleteSessionSubtitle')}
+                            icon={<Ionicons name="trash-outline" size={29} color="#FF3B30" />}
+                            onPress={handleDeleteSession}
                         />
                     )}
                 </ItemGroup>
@@ -431,4 +452,35 @@ export default React.memo(() => {
             </ItemList>
         </>
     );
+}
+
+export default React.memo(() => {
+    const { theme } = useUnistyles();
+    const { id } = useLocalSearchParams<{ id: string }>();
+    const session = useSession(id);
+    const isDataReady = useIsDataReady();
+
+    // Handle three states: loading, deleted, and exists
+    if (!isDataReady) {
+        // Still loading data
+        return (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="hourglass-outline" size={48} color={theme.colors.textSecondary} />
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 17, marginTop: 16, ...Typography.default('semiBold') }}>{t('common.loading')}</Text>
+            </View>
+        );
+    }
+
+    if (!session) {
+        // Session has been deleted or doesn't exist
+        return (
+            <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+                <Ionicons name="trash-outline" size={48} color={theme.colors.textSecondary} />
+                <Text style={{ color: theme.colors.text, fontSize: 20, marginTop: 16, ...Typography.default('semiBold') }}>{t('errors.sessionDeleted')}</Text>
+                <Text style={{ color: theme.colors.textSecondary, fontSize: 15, marginTop: 8, textAlign: 'center', paddingHorizontal: 32, ...Typography.default() }}>{t('errors.sessionDeletedDescription')}</Text>
+            </View>
+        );
+    }
+
+    return <SessionInfoContent session={session} />;
 });

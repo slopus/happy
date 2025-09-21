@@ -126,6 +126,8 @@ export const en = {
         connectGithubAccount: 'Connect your GitHub account',
         claudeAuthSuccess: 'Successfully connected to Claude',
         exchangingTokens: 'Exchanging tokens...',
+        usage: 'Usage',
+        usageSubtitle: 'View your API usage and costs',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `${service} account connected`,
@@ -216,6 +218,8 @@ export const en = {
         webViewLoadFailed: 'Failed to load authentication page',
         failedToLoadProfile: 'Failed to load user profile',
         userNotFound: 'User not found',
+        sessionDeleted: 'Session has been deleted',
+        sessionDeletedDescription: 'This session has been permanently removed',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
@@ -350,6 +354,12 @@ export const en = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `Version ${currentVersion} installed. Update to ${requiredVersion} or later`,
         updateCliInstructions: 'Please run npm install -g happy-coder@latest',
+        deleteSession: 'Delete Session',
+        deleteSessionSubtitle: 'Permanently remove this session',
+        deleteSessionConfirm: 'Delete Session Permanently?',
+        deleteSessionWarning: 'This action cannot be undone. All messages and data associated with this session will be permanently deleted.',
+        failedToDeleteSession: 'Failed to delete session',
+        sessionDeleted: 'Session deleted successfully',
         
     },
 
@@ -811,6 +821,20 @@ export const en = {
         cancelRequestConfirm: ({ name }: { name: string }) => `Cancel your friendship request to ${name}?`,
         denyRequest: 'Deny friendship',
         nowFriendsWith: ({ name }: { name: string }) => `You are now friends with ${name}`,
+    },
+
+    usage: {
+        // Usage panel strings
+        today: 'Today',
+        last7Days: 'Last 7 days',
+        last30Days: 'Last 30 days',
+        totalTokens: 'Total Tokens',
+        totalCost: 'Total Cost',
+        tokens: 'Tokens',
+        cost: 'Cost',
+        usageOverTime: 'Usage over time',
+        byModel: 'By Model',
+        noData: 'No usage data available',
     }
 } as const;
 

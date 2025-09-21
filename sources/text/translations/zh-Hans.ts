@@ -128,6 +128,8 @@ export const zhHans: TranslationStructure = {
         connectGithubAccount: '连接您的 GitHub 账户',
         claudeAuthSuccess: '成功连接到 Claude',
         exchangingTokens: '正在交换令牌...',
+        usage: '使用情况',
+        usageSubtitle: '查看 API 使用情况和费用',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
@@ -218,6 +220,8 @@ export const zhHans: TranslationStructure = {
         webViewLoadFailed: '加载认证页面失败',
         failedToLoadProfile: '无法加载用户资料',
         userNotFound: '未找到用户',
+        sessionDeleted: '会话已被删除',
+        sessionDeletedDescription: '此会话已被永久删除',
 
         // Error functions with context
         fieldError: ({ field, reason }: { field: string; reason: string }) =>
@@ -352,6 +356,12 @@ export const zhHans: TranslationStructure = {
         cliVersionOutdatedMessage: ({ currentVersion, requiredVersion }: { currentVersion: string; requiredVersion: string }) =>
             `已安装版本 ${currentVersion}。请更新到 ${requiredVersion} 或更高版本`,
         updateCliInstructions: '请运行 npm install -g happy-coder@latest',
+        deleteSession: '删除会话',
+        deleteSessionSubtitle: '永久删除此会话',
+        deleteSessionConfirm: '永久删除会话？',
+        deleteSessionWarning: '此操作无法撤销。与此会话相关的所有消息和数据将被永久删除。',
+        failedToDeleteSession: '删除会话失败',
+        sessionDeleted: '会话删除成功',
         
     },
 
@@ -812,5 +822,19 @@ export const zhHans: TranslationStructure = {
         cancelRequestConfirm: ({ name }: { name: string }) => `取消发送给 ${name} 的好友请求？`,
         denyRequest: '拒绝请求',
         nowFriendsWith: ({ name }: { name: string }) => `您现在与 ${name} 是好友了`,
+    },
+
+    usage: {
+        // Usage panel strings
+        today: '今天',
+        last7Days: '过去 7 天',
+        last30Days: '过去 30 天',
+        totalTokens: '总令牌数',
+        totalCost: '总费用',
+        tokens: '令牌',
+        cost: '费用',
+        usageOverTime: '使用趋势',
+        byModel: '按模型',
+        noData: '暂无使用数据',
     }
 } as const;

@@ -104,6 +104,7 @@ interface StorageState {
     addArtifact: (artifact: DecryptedArtifact) => void;
     updateArtifact: (artifact: DecryptedArtifact) => void;
     deleteArtifact: (artifactId: string) => void;
+    deleteSession: (sessionId: string) => void;
     // Project management methods
     getProjects: () => import('./projectManager').Project[];
     getProject: (projectId: string) => import('./projectManager').Project | null;
@@ -842,6 +843,36 @@ export const storage = create<StorageState>()((set, get) => {
             return {
                 ...state,
                 artifacts: remainingArtifacts
+            };
+        }),
+        deleteSession: (sessionId: string) => set((state) => {
+            // Remove session from sessions
+            const { [sessionId]: deletedSession, ...remainingSessions } = state.sessions;
+            
+            // Remove session messages if they exist
+            const { [sessionId]: deletedMessages, ...remainingSessionMessages } = state.sessionMessages;
+            
+            // Remove session git status if it exists
+            const { [sessionId]: deletedGitStatus, ...remainingGitStatus } = state.sessionGitStatus;
+            
+            // Clear drafts and permission modes from persistent storage
+            const drafts = loadSessionDrafts();
+            delete drafts[sessionId];
+            saveSessionDrafts(drafts);
+            
+            const modes = loadSessionPermissionModes();
+            delete modes[sessionId];
+            saveSessionPermissionModes(modes);
+            
+            // Rebuild sessionListViewData without the deleted session
+            const sessionListViewData = buildSessionListViewData(remainingSessions);
+            
+            return {
+                ...state,
+                sessions: remainingSessions,
+                sessionMessages: remainingSessionMessages,
+                sessionGitStatus: remainingGitStatus,
+                sessionListViewData
             };
         }),
         // Friend management methods

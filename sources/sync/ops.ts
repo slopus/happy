@@ -479,6 +479,35 @@ export async function sessionKill(sessionId: string): Promise<SessionKillRespons
     }
 }
 
+/**
+ * Permanently delete a session from the server
+ * This will remove the session and all its associated data (messages, usage reports, access keys)
+ * The session should be inactive/archived before deletion
+ */
+export async function sessionDelete(sessionId: string): Promise<{ success: boolean; message?: string }> {
+    try {
+        const response = await apiSocket.request(`/v1/sessions/${sessionId}`, {
+            method: 'DELETE'
+        });
+        
+        if (response.ok) {
+            const result = await response.json();
+            return { success: true };
+        } else {
+            const error = await response.text();
+            return {
+                success: false,
+                message: error || 'Failed to delete session'
+            };
+        }
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
 // Export types for external use
 export type {
     SessionBashRequest,
