@@ -31,6 +31,12 @@ export interface TodoItem {
     createdAt: number;
     updatedAt: number;
     completedAt?: number;  // Timestamp when marked as done
+    linkedSessions?: {
+        [sessionId: string]: {
+            title: string;      // Display title (e.g., "Clarify: Task Name")
+            linkedAt: number;   // Unix timestamp when linked
+        }
+    };
 }
 
 export interface TodoIndex {
@@ -171,7 +177,8 @@ export async function addTodo(
         title,
         done: false,
         createdAt: now,
-        updatedAt: now
+        updatedAt: now,
+        linkedSessions: {}  // Initialize with empty map
     };
 
     // Get current state
@@ -518,6 +525,96 @@ export async function toggleTodo(
             }
         } catch (error) {
             console.error('Failed to toggle todo:', error);
+            // Keep optimistic update even on error
+        }
+    });
+}
+
+/**
+ * Update a todo's linked sessions
+ */
+export async function updateTodoLinkedSessions(
+    taskId: string,
+    linkedSessions: TodoItem['linkedSessions']
+): Promise<void> {
+    const auth = (await import('@/auth/AuthContext')).getCurrentAuth();
+    if (!auth?.credentials) {
+        console.error('No auth credentials available');
+        return;
+    }
+
+    const currentState = storage.getState();
+    const { todos, undoneOrder, doneOrder, versions } = currentState.todoState || {
+        todos: {},
+        undoneOrder: [],
+        doneOrder: [],
+        versions: {}
+    };
+
+    const todo = todos[taskId];
+    if (!todo) {
+        console.error(`Todo ${taskId} not found`);
+        return;
+    }
+
+    const updatedTodo: TodoItem = {
+        ...todo,
+        linkedSessions,
+        updatedAt: Date.now()
+    };
+
+    // Apply optimistic update immediately
+    storage.getState().applyTodos({
+        todos: { ...todos, [taskId]: updatedTodo },
+        undoneOrder,
+        doneOrder,
+        versions
+    });
+
+    // Sync to server inside lock
+    await todoLock.inLock(async () => {
+        try {
+            if (!auth.credentials) {
+                console.error('No credentials available for sync');
+                return;
+            }
+
+            const todoKey = getTodoKey(taskId);
+            const todoResponse = await kvGet(auth.credentials, todoKey);
+
+            if (todoResponse) {
+                // Update existing todo
+                const encrypted = await encryptTodoData(updatedTodo);
+                const newVersion = await kvSet(auth.credentials, todoKey, encrypted, todoResponse.version);
+
+                // Update version
+                const newVersions = { ...versions };
+                newVersions[todoKey] = newVersion;
+
+                storage.getState().applyTodos({
+                    todos: { ...todos, [taskId]: updatedTodo },
+                    undoneOrder,
+                    doneOrder,
+                    versions: newVersions
+                });
+            } else {
+                // Todo doesn't exist on backend, create it
+                const encrypted = await encryptTodoData(updatedTodo);
+                const newVersion = await kvSet(auth.credentials, todoKey, encrypted, -1);
+
+                // Update version
+                const newVersions = { ...versions };
+                newVersions[todoKey] = newVersion;
+
+                storage.getState().applyTodos({
+                    todos: { ...todos, [taskId]: updatedTodo },
+                    undoneOrder,
+                    doneOrder,
+                    versions: newVersions
+                });
+            }
+        } catch (error) {
+            console.error('Failed to sync linked sessions update:', error);
             // Keep optimistic update even on error
         }
     });

@@ -57,6 +57,7 @@ export const ZenView = React.memo(() => {
         const handleKeyPress = (event: KeyboardEvent) => {
             // Navigate to new todo when any key is pressed (except when editing)
             if (!isEditing && event.key && event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+                router.dismissAll();
                 router.push('/zen/new');
             }
         };
@@ -245,12 +246,12 @@ export const ZenView = React.memo(() => {
                             {linkedSessions.map((link, index) => (
                                 <Pressable
                                     key={link.sessionId}
-                                    onPress={() => router.push(`/session/${link.sessionId}`)}
+                                    onPress={() => { router.dismissAll(); router.push(`/session/${link.sessionId}`); }}
                                     style={[styles.linkedSession, { backgroundColor: theme.colors.surfaceHighest }]}
                                 >
                                     <Ionicons name="chatbubble-outline" size={16} color={theme.colors.textSecondary} />
                                     <Text style={[styles.linkedSessionText, { color: theme.colors.text }]}>
-                                        {link.promptDisplayTitle}
+                                        {link.title}
                                     </Text>
                                     <Ionicons name="chevron-forward" size={16} color={theme.colors.textSecondary} />
                                 </Pressable>

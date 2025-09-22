@@ -12,29 +12,29 @@ export type TodoViewProps = {
     done: boolean;
     value: string;
     onToggle?: () => void;
-    hasDragged?: SharedValue<boolean>;
+    // hasDragged?: SharedValue<boolean>;
 }
 
 export const TodoView = React.memo<TodoViewProps>((props) => {
     const { theme } = useUnistyles();
     const router = useRouter();
-    const [blockPress, setBlockPress] = React.useState(false);
+    // const [blockPress, setBlockPress] = React.useState(false);
 
-    // Monitor hasDragged to block press events after drag
-    useAnimatedReaction(
-        () => props.hasDragged?.value ?? false,
-        (hasDragged) => {
-            runOnJS(setBlockPress)(hasDragged);
-        },
-        [props.hasDragged]
-    );
+    // // Monitor hasDragged to block press events after drag
+    // useAnimatedReaction(
+    //     () => props.hasDragged?.value ?? false,
+    //     (hasDragged) => {
+    //         runOnJS(setBlockPress)(hasDragged);
+    //     },
+    //     [props.hasDragged]
+    // );
 
     const handlePress = () => {
-        // Don't open modal if we just finished dragging
-        if (blockPress) {
-            setBlockPress(false);
-            return;
-        }
+        // // Don't open modal if we just finished dragging
+        // if (blockPress) {
+        //     setBlockPress(false);
+        //     return;
+        // }
 
         router.push({
             pathname: '/zen/view',

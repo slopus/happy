@@ -383,8 +383,10 @@ function NewSessionScreen() {
 
                 // Link task to session if task ID is provided
                 if (tempSessionData?.taskId && tempSessionData?.taskTitle) {
-                    const promptDisplayTitle = `Clarify: ${tempSessionData.taskTitle}`;
-                    linkTaskToSession(
+                    const promptDisplayTitle = tempSessionData.prompt?.startsWith('Work on this task:')
+                        ? `Work on: ${tempSessionData.taskTitle}`
+                        : `Clarify: ${tempSessionData.taskTitle}`;
+                    await linkTaskToSession(
                         tempSessionData.taskId,
                         result.sessionId,
                         tempSessionData.taskTitle,

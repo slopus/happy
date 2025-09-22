@@ -19,6 +19,11 @@ export function AuthProvider({ children, initialCredentials }: { children: React
     const [isAuthenticated, setIsAuthenticated] = useState(!!initialCredentials);
     const [credentials, setCredentials] = useState<AuthCredentials | null>(initialCredentials);
 
+    // Update global auth state when local state changes
+    useEffect(() => {
+        setCurrentAuth(credentials ? { isAuthenticated, credentials, login, logout } : null);
+    }, [isAuthenticated, credentials]);
+
     const login = async (token: string, secret: string) => {
         const newCredentials: AuthCredentials = { token, secret };
         const success = await TokenStorage.setCredentials(newCredentials);
@@ -72,4 +77,15 @@ export function useAuth() {
         throw new Error('useAuth must be used within an AuthProvider');
     }
     return context;
+}
+
+// Helper to get current auth state for non-React contexts
+let currentAuthState: AuthContextType | null = null;
+
+export function setCurrentAuth(auth: AuthContextType | null) {
+    currentAuthState = auth;
+}
+
+export function getCurrentAuth(): AuthContextType | null {
+    return currentAuthState;
 }

@@ -6,9 +6,8 @@ import Animated, {
     withSpring,
     useDerivedValue,
     SharedValue,
-    runOnJS,
-    runOnUI,
 } from 'react-native-reanimated';
+import { runOnJS, runOnUI, scheduleOnRN } from 'react-native-worklets';
 import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { TODO_HEIGHT, TodoView } from './TodoView';
 
@@ -86,18 +85,18 @@ const AnimatedTodoItem = React.memo<AnimatedTodoItemProps>(({
             'worklet';
             // Move based on translation from where we started
             dragY.value = startDragY.value + e.translationY;
-            
+
             // Calculate which position we're over based on current drag position
             const newOrder = getOrder(dragY.value);
             const currentOrder = position.value;
-            
+
             // Get the total number of items
             const totalItems = Object.keys(positions.value).length;
-            
+
             // If we've moved to a new position, update all positions
             if (newOrder !== currentOrder && newOrder >= 0 && newOrder < totalItems) {
                 const newPositions = Object.assign({}, positions.value);
-                
+
                 // Shift all items between old and new position
                 for (const key in newPositions) {
                     const pos = newPositions[key];
@@ -113,7 +112,7 @@ const AnimatedTodoItem = React.memo<AnimatedTodoItemProps>(({
                         }
                     }
                 }
-                
+
                 // Set the dragged item to new position
                 newPositions[todo.id] = newOrder;
                 positions.value = newPositions;
@@ -129,7 +128,7 @@ const AnimatedTodoItem = React.memo<AnimatedTodoItemProps>(({
 
             // Call the reorder callback with the final position
             if (onReorder && finalPosition !== index) {
-                runOnJS(onReorder)(todo.id, finalPosition);
+                scheduleOnRN(onReorder, todo.id, finalPosition);
             }
         })
         .onFinalize(() => {
@@ -139,16 +138,9 @@ const AnimatedTodoItem = React.memo<AnimatedTodoItemProps>(({
             opacity.value = withSpring(1);
             zIndex.value = withSpring(0);
             // Keep the hasDragged flag true for a moment to block the press
-            if (hasDragged.value) {
-                runOnJS(() => {
-                    setTimeout(() => {
-                        'worklet';
-                        runOnUI(() => {
-                            hasDragged.value = false;
-                        })();
-                    }, 200);
-                })();
-            }
+            // if (hasDragged.value) {
+            //     scheduleOnRN(() => { setTimeout(() => { hasDragged.value = false; }, 200); });
+            // }
         });
 
     const animatedStyle = useAnimatedStyle(() => {
@@ -180,7 +172,7 @@ const AnimatedTodoItem = React.memo<AnimatedTodoItemProps>(({
                     done={todo.done}
                     value={todo.title}
                     onToggle={onToggle}
-                    hasDragged={hasDragged}
+                    // hasDragged={hasDragged}
                 />
             </Animated.View>
         </GestureDetector>
@@ -201,9 +193,9 @@ export const TodoList = React.memo<TodoListProps>((props) => {
     }, [props.todos]);
 
     return (
-        <View style={{ 
-            height: TODO_HEIGHT * props.todos.length + ITEM_SPACING * (props.todos.length - 1), 
-            position: 'relative' 
+        <View style={{
+            height: TODO_HEIGHT * props.todos.length + ITEM_SPACING * (props.todos.length - 1),
+            position: 'relative'
         }}>
             {props.todos.map((todo, index) => (
                 <AnimatedTodoItem

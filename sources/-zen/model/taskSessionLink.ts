@@ -3,79 +3,93 @@
  * Manages the relationship between tasks and their clarification sessions
  */
 
+import { storage } from '@/sync/storage';
+import { updateTodoLinkedSessions } from './ops';
+
 export interface TaskSessionLink {
     sessionId: string;
-    taskId: string;
-    taskTitle: string;
-    promptDisplayTitle: string;
-    createdAt: number;
+    title: string;
+    linkedAt: number;
 }
-
-// In-memory storage for task-session relationships
-// Map from taskId to session links
-const taskSessionMap = new Map<string, TaskSessionLink[]>();
-
-// Map from sessionId to task link
-const sessionTaskMap = new Map<string, TaskSessionLink>();
 
 /**
  * Link a task to a session
  */
-export function linkTaskToSession(
+export async function linkTaskToSession(
     taskId: string,
     sessionId: string,
     taskTitle: string,
     promptDisplayTitle: string
-): void {
-    const link: TaskSessionLink = {
-        sessionId,
-        taskId,
-        taskTitle,
-        promptDisplayTitle,
-        createdAt: Date.now()
+): Promise<void> {
+    const todo = storage.getState().todoState?.todos[taskId];
+    if (!todo) {
+        console.error(`Todo ${taskId} not found`);
+        return;
+    }
+
+    // Add session link to todo's linkedSessions map
+    const linkedSessions = {
+        ...todo.linkedSessions,
+        [sessionId]: {
+            title: promptDisplayTitle,
+            linkedAt: Date.now()
+        }
     };
 
-    // Add to task -> sessions map
-    const existingLinks = taskSessionMap.get(taskId) || [];
-    existingLinks.push(link);
-    taskSessionMap.set(taskId, existingLinks);
-
-    // Add to session -> task map
-    sessionTaskMap.set(sessionId, link);
+    // Update the todo with the new linked session
+    await updateTodoLinkedSessions(taskId, linkedSessions);
 }
 
 /**
  * Get all sessions linked to a task
  */
 export function getSessionsForTask(taskId: string): TaskSessionLink[] {
-    return taskSessionMap.get(taskId) || [];
+    const todo = storage.getState().todoState?.todos[taskId];
+    if (!todo?.linkedSessions) return [];
+
+    // Convert map to array and sort by linkedAt (newest first)
+    return Object.entries(todo.linkedSessions)
+        .map(([sessionId, data]) => ({
+            sessionId,
+            title: data.title,
+            linkedAt: data.linkedAt
+        }))
+        .sort((a, b) => b.linkedAt - a.linkedAt);
 }
 
 /**
  * Get the task linked to a session
  */
-export function getTaskForSession(sessionId: string): TaskSessionLink | null {
-    return sessionTaskMap.get(sessionId) || null;
+export function getTaskForSession(sessionId: string): { taskId: string; title: string; linkedAt: number } | null {
+    const todos = storage.getState().todoState?.todos || {};
+
+    for (const [taskId, todo] of Object.entries(todos)) {
+        if (todo.linkedSessions?.[sessionId]) {
+            return {
+                taskId,
+                title: todo.linkedSessions[sessionId].title,
+                linkedAt: todo.linkedSessions[sessionId].linkedAt
+            };
+        }
+    }
+
+    return null;
 }
 
 /**
  * Remove a session link (when session is deleted)
  */
-export function removeSessionLink(sessionId: string): void {
-    const link = sessionTaskMap.get(sessionId);
-    if (link) {
-        // Remove from session map
-        sessionTaskMap.delete(sessionId);
+export async function removeSessionLink(sessionId: string): Promise<void> {
+    const todos = storage.getState().todoState?.todos || {};
 
-        // Remove from task map
-        const taskLinks = taskSessionMap.get(link.taskId);
-        if (taskLinks) {
-            const filtered = taskLinks.filter(l => l.sessionId !== sessionId);
-            if (filtered.length > 0) {
-                taskSessionMap.set(link.taskId, filtered);
-            } else {
-                taskSessionMap.delete(link.taskId);
-            }
+    for (const [taskId, todo] of Object.entries(todos)) {
+        if (todo.linkedSessions?.[sessionId]) {
+            // Remove the session link from the map
+            const { [sessionId]: removed, ...remaining } = todo.linkedSessions;
+
+            // Update the todo with the remaining linked sessions
+            await updateTodoLinkedSessions(taskId, remaining);
+            break;
         }
     }
 }
@@ -84,26 +98,28 @@ export function removeSessionLink(sessionId: string): void {
  * Remove all links for a task (when task is deleted)
  */
 export function removeTaskLinks(taskId: string): void {
-    const links = taskSessionMap.get(taskId);
-    if (links) {
-        // Remove all session links
-        links.forEach(link => {
-            sessionTaskMap.delete(link.sessionId);
-        });
-        // Remove task entry
-        taskSessionMap.delete(taskId);
-    }
+    // No action needed - links are stored in the task itself
+    // When task is deleted, its linkedSessions are deleted with it
 }
 
 /**
  * Get all task-session links (for debugging)
  */
 export function getAllTaskSessionLinks(): {
-    taskMap: Map<string, TaskSessionLink[]>;
-    sessionMap: Map<string, TaskSessionLink>;
+    [taskId: string]: TaskSessionLink[];
 } {
-    return {
-        taskMap: taskSessionMap,
-        sessionMap: sessionTaskMap
-    };
+    const todos = storage.getState().todoState?.todos || {};
+    const result: { [taskId: string]: TaskSessionLink[] } = {};
+
+    for (const [taskId, todo] of Object.entries(todos)) {
+        if (todo.linkedSessions) {
+            result[taskId] = Object.entries(todo.linkedSessions).map(([sessionId, data]) => ({
+                sessionId,
+                title: data.title,
+                linkedAt: data.linkedAt
+            }));
+        }
+    }
+
+    return result;
 }
