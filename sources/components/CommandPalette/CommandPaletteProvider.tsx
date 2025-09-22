@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { Modal } from '@/modal';
 import { CommandPalette } from './CommandPalette';
 import { Command } from './types';
-import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard.web';
+import { useGlobalKeyboard } from '@/hooks/useGlobalKeyboard';
 import { useAuth } from '@/auth/AuthContext';
 import { storage } from '@/sync/storage';
 import { useShallow } from 'zustand/react/shallow';

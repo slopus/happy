@@ -6,47 +6,81 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
 import { Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { storage } from '@/sync/storage';
+import { toggleTodo, updateTodoTitle, deleteTodo } from '@/sync/todoSync';
+import { useAuth } from '@/auth/AuthContext';
+import { useShallow } from 'zustand/react/shallow';
 
 export const ZenView = React.memo(() => {
     const router = useRouter();
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
     const params = useLocalSearchParams();
+    const auth = useAuth();
 
-    // Get todo data from params
     const todoId = params.id as string;
-    const todoValue = params.value as string;
-    const todoDone = params.done === 'true';
+
+    // Get todo from storage
+    const todo = storage(useShallow(state => {
+        const todoState = state.todoState;
+        if (!todoState) return null;
+        const todoItem = todoState.todos[todoId];
+        if (!todoItem) return null;
+        return {
+            id: todoItem.id,
+            title: todoItem.title,
+            done: todoItem.done
+        };
+    }));
 
     const [isEditing, setIsEditing] = React.useState(false);
-    const [editedText, setEditedText] = React.useState(todoValue);
-    const [isDone, setIsDone] = React.useState(todoDone);
+    const [editedText, setEditedText] = React.useState(todo?.title || '');
 
-    const handleSave = () => {
-        if (editedText.trim() && editedText !== todoValue) {
-            // Update todo via global function
-            if ((global as any).updateZenTodo) {
-                (global as any).updateZenTodo(todoId, editedText.trim());
+    // Update local state when todo changes
+    React.useEffect(() => {
+        if (todo) {
+            setEditedText(todo.title);
+        }
+    }, [todo]);
+
+    // Handle keyboard shortcut
+    React.useEffect(() => {
+        const handleKeyPress = (event: KeyboardEvent) => {
+            // Navigate to new todo when any key is pressed (except when editing)
+            if (!isEditing && event.key && event.key.length === 1 && !event.metaKey && !event.ctrlKey && !event.altKey) {
+                router.push('/zen/new');
             }
+        };
+
+        if (Platform.OS === 'web') {
+            window.addEventListener('keypress', handleKeyPress);
+            return () => window.removeEventListener('keypress', handleKeyPress);
+        }
+    }, [isEditing, router]);
+
+    if (!todo) {
+        // Todo was deleted or doesn't exist
+        return null;
+    }
+
+    const handleSave = async () => {
+        if (editedText.trim() && editedText !== todo.title && auth?.credentials) {
+            await updateTodoTitle(auth.credentials, todoId, editedText.trim());
         }
         setIsEditing(false);
     };
 
-    const toggleDone = () => {
-        const newDoneState = !isDone;
-        setIsDone(newDoneState);
-        // Update todo done status via global function
-        if ((global as any).toggleZenTodo) {
-            (global as any).toggleZenTodo(todoId);
+    const handleToggleDone = async () => {
+        if (auth?.credentials) {
+            await toggleTodo(auth.credentials, todoId);
         }
     };
 
-    const handleDelete = () => {
-        // Delete todo via global function
-        if ((global as any).deleteZenTodo) {
-            (global as any).deleteZenTodo(todoId);
+    const handleDelete = async () => {
+        if (auth?.credentials) {
+            await deleteTodo(auth.credentials, todoId);
+            router.back();
         }
-        router.back();
     };
 
     return (
@@ -66,16 +100,16 @@ export const ZenView = React.memo(() => {
                     {/* Checkbox and Main Content */}
                     <View style={styles.mainSection}>
                         <Pressable
-                            onPress={toggleDone}
+                            onPress={handleToggleDone}
                             style={[
                                 styles.checkbox,
                                 {
-                                    borderColor: isDone ? theme.colors.success : theme.colors.textSecondary,
-                                    backgroundColor: isDone ? theme.colors.success : 'transparent',
+                                    borderColor: todo.done ? theme.colors.success : theme.colors.textSecondary,
+                                    backgroundColor: todo.done ? theme.colors.success : 'transparent',
                                 }
                             ]}
                         >
-                            {isDone && (
+                            {todo.done && (
                                 <Ionicons name="checkmark" size={20} color="#FFFFFF" />
                             )}
                         </Pressable>
@@ -103,9 +137,9 @@ export const ZenView = React.memo(() => {
                                     <Text style={[
                                         styles.taskText,
                                         {
-                                            color: isDone ? theme.colors.textSecondary : theme.colors.text,
-                                            textDecorationLine: isDone ? 'line-through' : 'none',
-                                            opacity: isDone ? 0.6 : 1,
+                                            color: todo.done ? theme.colors.textSecondary : theme.colors.text,
+                                            textDecorationLine: todo.done ? 'line-through' : 'none',
+                                            opacity: todo.done ? 0.6 : 1,
                                         }
                                     ]}>
                                         {editedText}

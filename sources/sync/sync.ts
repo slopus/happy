@@ -38,6 +38,7 @@ import { getFriendsList, getUserProfile } from './apiFriends';
 import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
+import { initializeTodoSync } from './todoSync';
 
 class Sync {
 
@@ -62,6 +63,7 @@ class Sync {
     private friendsSync: InvalidateSync;
     private friendRequestsSync: InvalidateSync;
     private feedSync: InvalidateSync;
+    private todosSync: InvalidateSync;
     private activityAccumulator: ActivityUpdateAccumulator;
     private pendingSettings: Partial<Settings> = loadPendingSettings();
     revenueCatInitialized = false;
@@ -81,6 +83,7 @@ class Sync {
         this.friendsSync = new InvalidateSync(this.fetchFriends);
         this.friendRequestsSync = new InvalidateSync(this.fetchFriendRequests);
         this.feedSync = new InvalidateSync(this.fetchFeed);
+        this.todosSync = new InvalidateSync(this.fetchTodos);
 
         const registerPushToken = async () => {
             if (__DEV__) {
@@ -106,6 +109,7 @@ class Sync {
                 this.friendsSync.invalidate();
                 this.friendRequestsSync.invalidate();
                 this.feedSync.invalidate();
+                this.todosSync.invalidate();
             } else {
                 log.log(`📱 App state changed to: ${nextAppState}`);
             }
@@ -166,7 +170,8 @@ class Sync {
         this.friendRequestsSync.invalidate();
         this.artifactsSync.invalidate();
         this.feedSync.invalidate();
-        log.log('🔄 #init: All syncs invalidated, including artifacts');
+        this.todosSync.invalidate();
+        log.log('🔄 #init: All syncs invalidated, including artifacts and todos');
 
         // Wait for both sessions and machines to load, then mark as ready
         Promise.all([
@@ -972,9 +977,21 @@ class Sync {
         log.log('👥 fetchFriendRequests called - now handled by fetchFriends');
     }
 
+    private fetchTodos = async () => {
+        if (!this.credentials) return;
+
+        try {
+            log.log('📝 Fetching todos...');
+            await initializeTodoSync(this.credentials);
+            log.log('📝 Todos loaded');
+        } catch (error) {
+            log.log('📝 Failed to fetch todos:');
+        }
+    }
+
     private fetchFeed = async () => {
         if (!this.credentials) return;
-        
+
         try {
             log.log('📰 Fetching feed...');
             const state = storage.getState();
@@ -1783,6 +1800,24 @@ class Sync {
             
             // Apply to storage (will handle repeatKey replacement)
             storage.getState().applyFeedItems([feedItem]);
+        } else if ((updateData.body as any).t === 'kv-batch-update') {
+            log.log('📝 Received kv-batch-update');
+            const kvUpdate = updateData.body as any;
+
+            // Process KV changes for todos
+            if (kvUpdate.changes && Array.isArray(kvUpdate.changes)) {
+                const todoChanges = kvUpdate.changes.filter((change: any) =>
+                    change.key && change.key.startsWith('todo.')
+                );
+
+                if (todoChanges.length > 0) {
+                    log.log(`📝 Processing ${todoChanges.length} todo KV changes`);
+
+                    // Refetch all todos to ensure consistency
+                    // This is simpler than trying to decrypt and merge individual changes
+                    this.todosSync.invalidate();
+                }
+            }
         }
     }
 

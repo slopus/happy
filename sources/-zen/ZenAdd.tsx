@@ -4,19 +4,19 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
+import { addTodo } from '@/sync/todoSync';
+import { useAuth } from '@/auth/AuthContext';
 
 export const ZenAdd = React.memo(() => {
     const router = useRouter();
     const { theme } = useUnistyles();
     const insets = useSafeAreaInsets();
     const [text, setText] = React.useState('');
+    const auth = useAuth();
 
-    const handleSubmit = () => {
-        if (text.trim()) {
-            // Call the global addTodo function from ZenHome
-            if ((global as any).addZenTodo) {
-                (global as any).addZenTodo(text.trim());
-            }
+    const handleSubmit = async () => {
+        if (text.trim() && auth?.credentials) {
+            await addTodo(auth.credentials, text.trim());
             router.back();
         }
     };

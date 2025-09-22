@@ -39,9 +39,7 @@ export const TodoView = React.memo<TodoViewProps>((props) => {
         router.push({
             pathname: '/zen/view',
             params: {
-                id: props.id,
-                value: props.value,
-                done: props.done.toString()
+                id: props.id
             }
         });
     };

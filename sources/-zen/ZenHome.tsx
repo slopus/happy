@@ -1,87 +1,86 @@
 import * as React from 'react';
-import { View, ScrollView } from 'react-native';
+import { View, ScrollView, Text, Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { layout } from '@/components/layout';
 import { ZenHeader } from './components/ZenHeader';
 import { TodoList } from './components/TodoList';
-import { useFocusEffect } from '@react-navigation/native';
+import { useUnistyles } from 'react-native-unistyles';
+import { router } from 'expo-router';
+import { storage } from '@/sync/storage';
+import { toggleTodo as toggleTodoSync } from '@/sync/todoSync';
+import { useAuth } from '@/auth/AuthContext';
+import { useShallow } from 'zustand/react/shallow';
 
 export const ZenHome = () => {
     const insets = useSafeAreaInsets();
-    const [todos, setTodos] = React.useState<{ id: string, value: string, done: boolean }[]>([
-        { id: '1', value: 'Sample todo item', done: false },
-        { id: '2', value: 'Another task to complete', done: true },
-        { id: '3', value: 'Third item in the list', done: false }
-    ]);
+    const { theme } = useUnistyles();
+    const auth = useAuth();
 
-    // Check for new todos passed via params when screen focuses
-    useFocusEffect(
-        React.useCallback(() => {
-            // This will be called when returning from the new todo modal
-            return () => {};
-        }, [])
-    );
+    // Get todos from storage
+    const todoState = storage(useShallow(state => state.todoState));
+    const todosLoaded = storage(state => state.todosLoaded);
 
-    // Add method to add new todos (will be called from navigation params)
+    // Process todos
+    const { undoneTodos, doneTodos } = React.useMemo(() => {
+        if (!todoState) {
+            return { undoneTodos: [], doneTodos: [] };
+        }
+
+        const undone = todoState.undoneOrder
+            .map(id => todoState.todos[id])
+            .filter(Boolean)
+            .map(t => ({ id: t.id, title: t.title, done: t.done }));
+
+        const done = todoState.doneOrder
+            .map(id => todoState.todos[id])
+            .filter(Boolean)
+            .map(t => ({ id: t.id, title: t.title, done: t.done }));
+
+        return { undoneTodos: undone, doneTodos: done };
+    }, [todoState]);
+
+    // Handle toggle action
+    const handleToggle = React.useCallback(async (id: string) => {
+        if (auth?.credentials) {
+            await toggleTodoSync(auth.credentials, id);
+        }
+    }, [auth?.credentials]);
+
+    // Add keyboard shortcut for "T" to open new task (Web only)
     React.useEffect(() => {
-        // Store the addTodo function globally so it can be accessed from the modal
-        (global as any).addZenTodo = (text: string) => {
-            const newTodo = {
-                id: Date.now().toString(),
-                value: text,
-                done: false
-            };
-            setTodos(prev => [newTodo, ...prev]);
+        if (Platform.OS !== 'web') {
+            return;
+        }
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Check if no input is focused (to avoid triggering when typing)
+            const activeElement = document.activeElement as HTMLElement;
+            const isInputFocused = activeElement?.tagName === 'INPUT' ||
+                                   activeElement?.tagName === 'TEXTAREA' ||
+                                   activeElement?.contentEditable === 'true';
+
+            // Trigger on simple "T" key press when no modifier keys are pressed and no input is focused
+            if (e.key === 't' && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && !isInputFocused) {
+                e.preventDefault();
+                router.push('/zen/new');
+            }
         };
+
+        window.addEventListener('keydown', handleKeyDown);
 
         return () => {
-            delete (global as any).addZenTodo;
+            window.removeEventListener('keydown', handleKeyDown);
         };
     }, []);
 
-    // Toggle todo done status
-    const toggleTodo = React.useCallback((id: string) => {
-        setTodos(prev => prev.map(todo =>
-            todo.id === id ? { ...todo, done: !todo.done } : todo
-        ));
-    }, []);
-
-    // Update todo text
-    React.useEffect(() => {
-        (global as any).updateZenTodo = (id: string, newValue: string) => {
-            setTodos(prev => prev.map(todo =>
-                todo.id === id ? { ...todo, value: newValue } : todo
-            ));
-        };
-
-        return () => {
-            delete (global as any).updateZenTodo;
-        };
-    }, []);
-
-    // Delete todo
-    React.useEffect(() => {
-        (global as any).deleteZenTodo = (id: string) => {
-            setTodos(prev => prev.filter(todo => todo.id !== id));
-        };
-
-        return () => {
-            delete (global as any).deleteZenTodo;
-        };
-    }, []);
-
-    // Toggle todo from view modal
-    React.useEffect(() => {
-        (global as any).toggleZenTodo = (id: string) => {
-            setTodos(prev => prev.map(todo =>
-                todo.id === id ? { ...todo, done: !todo.done } : todo
-            ));
-        };
-
-        return () => {
-            delete (global as any).toggleZenTodo;
-        };
-    }, []);
+    // Combine todos for display (undone first, then done)
+    const allTodos = React.useMemo(() => {
+        const todos = [
+            ...undoneTodos.map(t => ({ id: t.id, value: t.title, done: t.done })),
+            ...doneTodos.map(t => ({ id: t.id, value: t.title, done: t.done }))
+        ];
+        return todos;
+    }, [undoneTodos, doneTodos]);
 
     return (
         <>
@@ -98,7 +97,15 @@ export const ZenHome = () => {
                         alignSelf: 'stretch',
                         paddingTop: 20,
                     }}>
-                        <TodoList todos={todos} onToggleTodo={toggleTodo} />
+                        {allTodos.length === 0 ? (
+                            <View style={{ padding: 20, alignItems: 'center' }}>
+                                <Text style={{ color: theme.colors.textSecondary, fontSize: 16 }}>
+                                    No tasks yet. Tap + to add one.
+                                </Text>
+                            </View>
+                        ) : (
+                            <TodoList todos={allTodos} onToggleTodo={handleToggle} />
+                        )}
                     </View>
                 </View>
             </ScrollView>

@@ -35,7 +35,7 @@ export default function DevScreen() {
                 },
                 {
                     text: 'Save',
-                    onPress: (newUrl) => {
+                    onPress: (newUrl?: string) => {
                         if (newUrl && newUrl !== currentUrl) {
                             const validation = validateServerUrl(newUrl);
                             if (validation.valid) {

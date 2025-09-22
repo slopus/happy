@@ -1,4 +1,4 @@
-import { ZenAdd } from '@/-zen/components/ZenAdd';
+import { ZenAdd } from '@/-zen/ZenAdd';
 
 export default function NewZenTodoScreen() {
     return <ZenAdd />;
