@@ -7,7 +7,7 @@ import { TodoList } from './components/TodoList';
 import { useUnistyles } from 'react-native-unistyles';
 import { router } from 'expo-router';
 import { storage } from '@/sync/storage';
-import { toggleTodo as toggleTodoSync } from '@/sync/todoSync';
+import { toggleTodo as toggleTodoSync, reorderTodos as reorderTodosSync } from '@/-zen/model/ops';
 import { useAuth } from '@/auth/AuthContext';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -46,6 +46,13 @@ export const ZenHome = () => {
         }
     }, [auth?.credentials]);
 
+    // Handle reorder action
+    const handleReorder = React.useCallback(async (id: string, newIndex: number) => {
+        if (auth?.credentials) {
+            await reorderTodosSync(auth.credentials, id, newIndex, 'undone');
+        }
+    }, [auth?.credentials]);
+
     // Add keyboard shortcut for "T" to open new task (Web only)
     React.useEffect(() => {
         if (Platform.OS !== 'web') {
@@ -73,15 +80,6 @@ export const ZenHome = () => {
         };
     }, []);
 
-    // Combine todos for display (undone first, then done)
-    const allTodos = React.useMemo(() => {
-        const todos = [
-            ...undoneTodos.map(t => ({ id: t.id, value: t.title, done: t.done })),
-            ...doneTodos.map(t => ({ id: t.id, value: t.title, done: t.done }))
-        ];
-        return todos;
-    }, [undoneTodos, doneTodos]);
-
     return (
         <>
             <ZenHeader />
@@ -97,14 +95,14 @@ export const ZenHome = () => {
                         alignSelf: 'stretch',
                         paddingTop: 20,
                     }}>
-                        {allTodos.length === 0 ? (
+                        {undoneTodos.length === 0 ? (
                             <View style={{ padding: 20, alignItems: 'center' }}>
                                 <Text style={{ color: theme.colors.textSecondary, fontSize: 16 }}>
                                     No tasks yet. Tap + to add one.
                                 </Text>
                             </View>
                         ) : (
-                            <TodoList todos={allTodos} onToggleTodo={handleToggle} />
+                            <TodoList todos={undoneTodos} onToggleTodo={handleToggle} onReorderTodo={handleReorder} />
                         )}
                     </View>
                 </View>

@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Typography } from '@/constants/Typography';
-import { addTodo } from '@/sync/todoSync';
+import { addTodo } from '@/-zen/model/ops';
 import { useAuth } from '@/auth/AuthContext';
 
 export const ZenAdd = React.memo(() => {

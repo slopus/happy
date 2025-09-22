@@ -451,3 +451,4 @@ const MyComponent = () => {
 - Always put styles in the very end of the component or page file
 - Always wrap pages in memo
 - For hotkeys use "useGlobalKeyboard", do not change it, it works only on Web
+- Use "AsyncLock" class for exclusive async locks

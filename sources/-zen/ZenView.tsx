@@ -7,7 +7,7 @@ import { Typography } from '@/constants/Typography';
 import { Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { storage } from '@/sync/storage';
-import { toggleTodo, updateTodoTitle, deleteTodo } from '@/sync/todoSync';
+import { toggleTodo, updateTodoTitle, deleteTodo } from '@/-zen/model/ops';
 import { useAuth } from '@/auth/AuthContext';
 import { useShallow } from 'zustand/react/shallow';
 

@@ -13,16 +13,18 @@ import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { TODO_HEIGHT, TodoView } from './TodoView';
 
 export type TodoListProps = {
-    todos: { id: string, value: string, done: boolean }[];
+    todos: { id: string, title: string, done: boolean }[];
     onToggleTodo?: (id: string) => void;
+    onReorderTodo?: (id: string, newIndex: number) => void;
 }
 
 type AnimatedTodoItemProps = {
-    todo: { id: string, value: string, done: boolean };
+    todo: { id: string, title: string, done: boolean };
     index: number;
     positions: SharedValue<Record<string, number>>;
     scrollY: SharedValue<number>;
     onToggle?: () => void;
+    onReorder?: (id: string, newIndex: number) => void;
 }
 
 const ITEM_SPACING = 12;
@@ -42,7 +44,8 @@ const AnimatedTodoItem = React.memo<AnimatedTodoItemProps>(({
     index,
     positions,
     scrollY,
-    onToggle
+    onToggle,
+    onReorder
 }) => {
     const isDragging = useSharedValue(false);
     const dragY = useSharedValue(0);
@@ -118,10 +121,16 @@ const AnimatedTodoItem = React.memo<AnimatedTodoItemProps>(({
         })
         .onEnd(() => {
             'worklet';
+            const finalPosition = position.value;
             isDragging.value = false;
             scale.value = withSpring(1);
             opacity.value = withSpring(1);
             zIndex.value = withSpring(0);
+
+            // Call the reorder callback with the final position
+            if (onReorder && finalPosition !== index) {
+                runOnJS(onReorder)(todo.id, finalPosition);
+            }
         })
         .onFinalize(() => {
             'worklet';
@@ -169,7 +178,7 @@ const AnimatedTodoItem = React.memo<AnimatedTodoItemProps>(({
                 <TodoView
                     id={todo.id}
                     done={todo.done}
-                    value={todo.value}
+                    value={todo.title}
                     onToggle={onToggle}
                     hasDragged={hasDragged}
                 />
@@ -204,6 +213,7 @@ export const TodoList = React.memo<TodoListProps>((props) => {
                     positions={positions}
                     scrollY={scrollY}
                     onToggle={() => props.onToggleTodo?.(todo.id)}
+                    onReorder={props.onReorderTodo}
                 />
             ))}
         </View>

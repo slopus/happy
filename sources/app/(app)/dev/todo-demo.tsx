@@ -9,7 +9,7 @@ import { TodoList } from '@/-zen/components/TodoList';
 
 export default function TodoDemoScreen() {
 
-    const [model, setModel] = React.useState<{ id: string, value: string }[]>([]);
+    const [model, setModel] = React.useState<{ id: string, value: string, done: boolean }[]>([]);
     const [newTodo, setNewTodo] = React.useState('');
 
     const shuffleTodos = () => {
@@ -26,12 +26,12 @@ export default function TodoDemoScreen() {
     return (
         <View style={{ flex: 1 }}>
             <TextInput value={newTodo} onChangeText={setNewTodo} />
-            <Button title="Add" onPress={() => setModel([{ id: randomUUID(), value: newTodo }, ...model])} />
+            <Button title="Add" onPress={() => setModel([{ id: randomUUID(), value: newTodo, done: false }, ...model])} />
             <Button title="Shuffle" onPress={shuffleTodos} />
             <ScrollView style={{ flex: 1 }}>
                 <View style={{ flexDirection: 'row', justifyContent: 'center' }}>
                     <View style={{ maxWidth: layout.maxWidth, flex: 1 }}>
-                        <TodoList todos={model} />
+                        <TodoList todos={model.map(m => ({ id: m.id, title: m.value, done: m.done }))} />
                     </View>
                 </View>
             </ScrollView>

@@ -137,6 +137,16 @@ export const ApiNewFeedPostSchema = z.object({
     repeatKey: z.string().nullable()
 });
 
+// KV batch update schema for real-time KV updates
+export const ApiKvBatchUpdateSchema = z.object({
+    t: z.literal('kv-batch-update'),
+    changes: z.array(z.object({
+        key: z.string(),
+        value: z.string().nullable(),
+        version: z.number()
+    }))
+});
+
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
@@ -148,11 +158,13 @@ export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateArtifactSchema,
     ApiDeleteArtifactSchema,
     ApiRelationshipUpdatedSchema,
-    ApiNewFeedPostSchema
+    ApiNewFeedPostSchema,
+    ApiKvBatchUpdateSchema
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;
 export type ApiRelationshipUpdated = z.infer<typeof ApiRelationshipUpdatedSchema>;
+export type ApiKvBatchUpdate = z.infer<typeof ApiKvBatchUpdateSchema>;
 export type ApiUpdate = z.infer<typeof ApiUpdateSchema>;
 
 //
