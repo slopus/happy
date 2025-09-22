@@ -450,9 +450,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                     return true; // Key was handled
                 }
             }
-            // Handle Shift+Tab for mode switching
+            // Handle Shift+Tab for permission mode switching
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
-                const modeOrder: PermissionMode[] = isCodex 
+                const modeOrder: PermissionMode[] = isCodex
                     ? ['default', 'read-only', 'safe-yolo', 'yolo']
                     : ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
                 const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
@@ -461,10 +461,34 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 hapticsLight();
                 return true; // Key was handled, prevent default tab behavior
             }
+
         }
         return false; // Key was not handled
     }, [props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, suggestions, selected, handleSuggestionSelect, moveUp, moveDown, props.showAbortButton, props.onAbort, isAborting, handleAbortPress]);
 
+    // Add global keyboard handler for model mode switching on web
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            // Handle Cmd/Ctrl+M for model mode switching
+            if (e.key === 'm' && (e.metaKey || e.ctrlKey) && props.onModelModeChange) {
+                e.preventDefault();
+                const modelOrder: ModelMode[] = isCodex
+                    ? ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'default']
+                    : ['default', 'adaptiveUsage', 'sonnet', 'opus'];
+                const currentIndex = modelOrder.indexOf(props.modelMode || (isCodex ? 'gpt-5-codex-high' : 'default'));
+                const nextIndex = (currentIndex + 1) % modelOrder.length;
+                props.onModelModeChange(modelOrder[nextIndex]);
+                hapticsLight();
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isCodex, props.modelMode, props.onModelModeChange]);
 
 
 
@@ -663,15 +687,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
 
                 {/* Connection status, context warning, and permission mode */}
-                {(props.connectionStatus || contextWarning || (props.permissionMode && props.permissionMode !== 'default')) && (
+                {(props.connectionStatus || contextWarning || props.permissionMode) && (
                     <View style={{
                         flexDirection: 'row',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         paddingHorizontal: 16,
                         paddingBottom: 4,
+                        minHeight: 20, // Fixed minimum height to prevent jumping
                     }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
                             {props.connectionStatus && (
                                 <>
                                     <StatusDot
@@ -700,8 +725,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 </Text>
                             )}
                         </View>
-                        <View style={{ flexDirection: 'column', alignItems: 'flex-end' }}>
-                            {props.permissionMode && props.permissionMode !== 'default' && (
+                        <View style={{
+                            flexDirection: 'column',
+                            alignItems: 'flex-end',
+                            minWidth: 150, // Fixed minimum width to prevent layout shift
+                        }}>
+                            {props.permissionMode && (
                                 <Text style={{
                                     fontSize: 11,
                                     color: props.permissionMode === 'acceptEdits' ? theme.colors.permission.acceptEdits :
@@ -710,17 +739,19 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 props.permissionMode === 'read-only' ? theme.colors.permission.readOnly :
                                                     props.permissionMode === 'safe-yolo' ? theme.colors.permission.safeYolo :
                                                         props.permissionMode === 'yolo' ? theme.colors.permission.yolo :
-                                                            theme.colors.permission.default,
+                                                            theme.colors.textSecondary, // Use secondary text color for default
                                     ...Typography.default()
                                 }}>
                                     {isCodex ? (
-                                        props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
-                                            props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
-                                                props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
+                                        props.permissionMode === 'default' ? t('agentInput.codexPermissionMode.default') :
+                                            props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
+                                                props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
+                                                    props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
                                     ) : (
-                                        props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
-                                            props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
-                                                props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
+                                        props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
+                                            props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
+                                                props.permissionMode === 'bypassPermissions' ? t('agentInput.permissionMode.badgeBypassAllPermissions') :
+                                                    props.permissionMode === 'plan' ? t('agentInput.permissionMode.badgePlanMode') : ''
                                     )}
                                 </Text>
                             )}

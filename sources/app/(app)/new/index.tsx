@@ -3,7 +3,7 @@ import { View, Text, Platform, Pressable, useWindowDimensions } from 'react-nati
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -18,6 +18,9 @@ import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
+import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
+import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
+import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -82,11 +85,25 @@ const updateRecentMachinePaths = (
     return updated.slice(0, 10);
 };
 
-export default function NewSessionScreen() {
+function NewSessionScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
+    const { prompt, dataId } = useLocalSearchParams<{ prompt?: string; dataId?: string }>();
 
-    const [input, setInput] = React.useState('');
+    // Try to get data from temporary store first, fallback to direct prompt parameter
+    const tempSessionData = React.useMemo(() => {
+        if (dataId) {
+            return getTempData<NewSessionData>(dataId);
+        }
+        return null;
+    }, [dataId]);
+
+    const [input, setInput] = React.useState(() => {
+        if (tempSessionData?.prompt) {
+            return tempSessionData.prompt;
+        }
+        return prompt || '';
+    });
     const [isSending, setIsSending] = React.useState(false);
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
     const ref = React.useRef<MultiTextInputHandle>(null);
@@ -97,6 +114,8 @@ export default function NewSessionScreen() {
     // Load recent machine paths and last used agent from settings
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
+    const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
+    const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
 
     //
@@ -194,6 +213,10 @@ export default function NewSessionScreen() {
     //
 
     const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
+        // Check if agent type was provided in temp data
+        if (tempSessionData?.agentType) {
+            return tempSessionData.agentType;
+        }
         // Initialize with last used agent if valid, otherwise default to 'claude'
         if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
             return lastUsedAgent;
@@ -208,6 +231,65 @@ export default function NewSessionScreen() {
             sync.applySettings({ lastUsedAgent: newAgent });
             return newAgent;
         });
+    }, []);
+
+    //
+    // Permission and Model Mode selection
+    //
+
+    const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
+        // Initialize with last used permission mode if valid, otherwise default to 'default'
+        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+        const validCodexModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+
+        if (lastUsedPermissionMode) {
+            if (agentType === 'codex' && validCodexModes.includes(lastUsedPermissionMode as PermissionMode)) {
+                return lastUsedPermissionMode as PermissionMode;
+            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
+                return lastUsedPermissionMode as PermissionMode;
+            }
+        }
+        return 'default';
+    });
+
+    const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
+        // Initialize with last used model mode if valid, otherwise default
+        const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
+        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'default', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
+
+        if (lastUsedModelMode) {
+            if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
+                return lastUsedModelMode as ModelMode;
+            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedModelMode as ModelMode)) {
+                return lastUsedModelMode as ModelMode;
+            }
+        }
+        return agentType === 'codex' ? 'gpt-5-codex-high' : 'default';
+    });
+
+    // Reset permission and model modes when agent type changes
+    React.useEffect(() => {
+        if (agentType === 'codex') {
+            // Switch to codex-compatible modes
+            setPermissionMode('default');
+            setModelMode('gpt-5-codex-high');
+        } else {
+            // Switch to claude-compatible modes
+            setPermissionMode('default');
+            setModelMode('default');
+        }
+    }, [agentType]);
+
+    const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
+        setPermissionMode(mode);
+        // Save the new selection immediately
+        sync.applySettings({ lastUsedPermissionMode: mode });
+    }, []);
+
+    const handleModelModeChange = React.useCallback((mode: ModelMode) => {
+        setModelMode(mode);
+        // Save the new selection immediately
+        sync.applySettings({ lastUsedModelMode: mode });
     }, []);
 
     //
@@ -298,9 +380,25 @@ export default function NewSessionScreen() {
                 if (sessionType === 'worktree') {
                     // The metadata will be stored by the session itself once created
                 }
-                
+
+                // Link task to session if task ID is provided
+                if (tempSessionData?.taskId && tempSessionData?.taskTitle) {
+                    const promptDisplayTitle = `Clarify: ${tempSessionData.taskTitle}`;
+                    linkTaskToSession(
+                        tempSessionData.taskId,
+                        result.sessionId,
+                        tempSessionData.taskTitle,
+                        promptDisplayTitle
+                    );
+                }
+
                 // Load sessions
                 await sync.refreshSessions();
+
+                // Set permission and model modes on the session
+                storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
+                storage.getState().updateSessionModelMode(result.sessionId, modelMode);
+
                 // Send message
                 await sync.sendMessage(result.sessionId, input);
                 // Navigate to session
@@ -328,7 +426,7 @@ export default function NewSessionScreen() {
         } finally {
             setIsSending(false);
         }
-    }, [agentType, selectedMachineId, selectedPath, input, recentMachinePaths, sessionType, experimentsEnabled]);
+    }, [agentType, selectedMachineId, selectedPath, input, recentMachinePaths, sessionType, experimentsEnabled, permissionMode, modelMode]);
 
     return (
         <KeyboardAvoidingView
@@ -374,6 +472,10 @@ export default function NewSessionScreen() {
                     onAgentClick={handleAgentClick}
                     machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || null}
                     onMachineClick={handleMachineClick}
+                    permissionMode={permissionMode}
+                    onPermissionModeChange={handlePermissionModeChange}
+                    modelMode={modelMode}
+                    onModelModeChange={handleModelModeChange}
                     autocompletePrefixes={[]}
                     autocompleteSuggestions={async () => []}
                 />
@@ -418,3 +520,5 @@ export default function NewSessionScreen() {
         </KeyboardAvoidingView>
     )
 }
+
+export default React.memo(NewSessionScreen);

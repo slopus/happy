@@ -9,7 +9,7 @@ export async function hmac_sha512(key: Uint8Array, data: Uint8Array): Promise<Ui
     let actualKey = key;
     if (key.length > blockSize) {
         // If key is longer than block size, hash it
-        const keyHash = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA512, key);
+        const keyHash = await Crypto.digest(Crypto.CryptoDigestAlgorithm.SHA512, new Uint8Array(key));
         actualKey = new Uint8Array(keyHash);
     }
     

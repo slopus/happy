@@ -112,6 +112,8 @@ describe('settings', () => {
                 preferredLanguage: null,
                 recentMachinePaths: [],
                 lastUsedAgent: null,
+                lastUsedPermissionMode: null,
+                lastUsedModelMode: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: true
@@ -158,6 +160,8 @@ describe('settings', () => {
                 preferredLanguage: null,
                 recentMachinePaths: [],
                 lastUsedAgent: null,
+                lastUsedPermissionMode: null,
+                lastUsedModelMode: null,
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual({
@@ -187,6 +191,8 @@ describe('settings', () => {
                 preferredLanguage: null,
                 recentMachinePaths: [],
                 lastUsedAgent: null,
+                lastUsedPermissionMode: null,
+                lastUsedModelMode: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: false
@@ -233,6 +239,8 @@ describe('settings', () => {
                 preferredLanguage: null,
                 recentMachinePaths: [],
                 lastUsedAgent: null,
+                lastUsedPermissionMode: null,
+                lastUsedModelMode: null,
             };
             expect(applySettings(currentSettings, {})).toEqual({
                 ...settingsDefaults,
@@ -276,6 +284,8 @@ describe('settings', () => {
                 preferredLanguage: null,
                 recentMachinePaths: [],
                 lastUsedAgent: null,
+                lastUsedPermissionMode: null,
+                lastUsedModelMode: null,
             };
             const delta: any = {
                 viewInline: false,
