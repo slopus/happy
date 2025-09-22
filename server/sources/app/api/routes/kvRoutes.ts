@@ -114,7 +114,7 @@ export function kvRoutes(app: Fastify) {
     });
 
     // PUT /v1/kv - Atomic batch mutation
-    app.put('/v1/kv', {
+    app.post('/v1/kv', {
         preHandler: app.authenticate,
         schema: {
             body: z.object({
