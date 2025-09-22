@@ -144,6 +144,13 @@ export type UpdateEvent = {
     body: any;
     cursor: string;
     createdAt: number;
+} | {
+    type: 'kv-batch-update';
+    changes: Array<{
+        key: string;
+        value: string | null; // null indicates deletion
+        version: number; // -1 for deleted keys
+    }>;
 };
 
 // === EPHEMERAL EVENT TYPES (Transient) ===
@@ -593,6 +600,22 @@ export function buildNewFeedPostUpdate(feedItem: {
             body: feedItem.body,
             cursor: feedItem.cursor,
             createdAt: feedItem.createdAt
+        },
+        createdAt: Date.now()
+    };
+}
+
+export function buildKVBatchUpdateUpdate(
+    changes: Array<{ key: string; value: string | null; version: number }>,
+    updateSeq: number,
+    updateId: string
+): UpdatePayload {
+    return {
+        id: updateId,
+        seq: updateSeq,
+        body: {
+            t: 'kv-batch-update',
+            changes
         },
         createdAt: Date.now()
     };

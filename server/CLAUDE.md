@@ -278,3 +278,4 @@ tail -500 .logs/*.log | grep "applySessions.*active" | tail -10
 - do not run non-transactional things (like uploadign files) in transactions
 - After writing an action - add a documentation comment that explains logic, also keep it in sync.
 - always use github usernames
+- Always use privacyKit.decodeBase64 and privacyKit.encodeBase64 from privacy-kit instead of using buffer

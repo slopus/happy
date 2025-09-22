@@ -51,6 +51,7 @@ model Account {
     Artifact            Artifact[]
     AccessKey           AccessKey[]
     UserFeedItem        UserFeedItem[]
+    UserKVStore         UserKVStore[]
 }
 
 model TerminalAuthRequest {
@@ -341,4 +342,22 @@ model UserFeedItem {
     @@unique([userId, counter])
     @@unique([userId, repeatKey])
     @@index([userId, counter(sort: Desc)])
+}
+
+//
+// Key-Value Storage
+//
+
+model UserKVStore {
+    id        String   @id @default(cuid())
+    accountId String
+    account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+    key       String   // Unencrypted for indexing
+    value     Bytes?   // Encrypted value, null when "deleted"
+    version   Int      @default(0)
+    createdAt DateTime @default(now())
+    updatedAt DateTime @updatedAt
+
+    @@unique([accountId, key])
+    @@index([accountId])
 }
