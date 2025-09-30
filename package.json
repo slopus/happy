@@ -1,7 +1,7 @@
 {
   "name": "happy",
   "main": "index.ts",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "scripts": {
     "start": "expo start",
     "start:local-server": "PUBLIC_EXPO_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=1 EXPO_PUBLIC_DEBUG=1 EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005  expo start -c",
