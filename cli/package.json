@@ -60,7 +60,7 @@
     "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
     "test": "yarn build && tsx --env-file .env.integration-test node_modules/.bin/vitest run",
     "start": "yarn build && ./bin/happy.mjs",
-    "dev": "tsx --env-file .env.dev src/index.ts",
+    "dev": "tsx src/index.ts",
     "dev:local-server": "yarn build && tsx --env-file .env.dev-local-server src/index.ts",
     "dev:integration-test-env": "yarn build && tsx --env-file .env.integration-test src/index.ts",
     "prepublishOnly": "yarn build && yarn test",
