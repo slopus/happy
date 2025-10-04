@@ -255,10 +255,10 @@ class Sync {
                 break;
             case 'adaptiveUsage':
                 model = 'claude-opus-4-1-20250805';
-                fallbackModel = 'claude-sonnet-4-20250514';
+                fallbackModel = 'claude-sonnet-4-5-20250929';
                 break;
             case 'sonnet':
-                model = 'claude-sonnet-4-20250514';
+                model = 'claude-sonnet-4-5-20250929';
                 fallbackModel = null;
                 break;
             case 'opus':
