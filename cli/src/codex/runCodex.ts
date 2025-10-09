@@ -28,6 +28,34 @@ import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler"
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
 
+type ReadyEventOptions = {
+    pending: unknown;
+    queueSize: () => number;
+    shouldExit: boolean;
+    sendReady: () => void;
+    notify?: () => void;
+};
+
+/**
+ * Notify connected clients when Codex finishes processing and the queue is idle.
+ * Returns true when a ready event was emitted.
+ */
+export function emitReadyIfIdle({ pending, queueSize, shouldExit, sendReady, notify }: ReadyEventOptions): boolean {
+    if (shouldExit) {
+        return false;
+    }
+    if (pending) {
+        return false;
+    }
+    if (queueSize() > 0) {
+        return false;
+    }
+
+    sendReady();
+    notify?.();
+    return true;
+}
+
 /**
  * Main entry point for the codex command with ink UI
  */
@@ -155,6 +183,19 @@ export async function runCodex(opts: {
     const keepAliveInterval = setInterval(() => {
         session.keepAlive(thinking, 'remote');
     }, 2000);
+
+    const sendReady = () => {
+        session.sendSessionEvent({ type: 'ready' });
+        try {
+            api.push().sendToAllDevices(
+                "It's ready!",
+                'Codex is waiting for your command',
+                { sessionId: session.sessionId }
+            );
+        } catch (pushError) {
+            logger.debug('[Codex] Failed to send ready push', pushError);
+        }
+    };
 
     // Debug helper: log active handles/requests if DEBUG is enabled
     function logActiveHandles(tag: string) {
@@ -372,8 +413,10 @@ export async function runCodex(opts: {
             messageBuffer.addMessage('Starting task...', 'status');
         } else if (msg.type === 'task_complete') {
             messageBuffer.addMessage('Task completed', 'status');
+            sendReady();
         } else if (msg.type === 'turn_aborted') {
             messageBuffer.addMessage('Turn aborted', 'status');
+            sendReady();
         }
 
         if (msg.type === 'task_started') {
@@ -634,10 +677,11 @@ export async function runCodex(opts: {
                     wasCreated = true;
                     first = false;
                 } else {
-                    await client.continueSession(
+                    const response = await client.continueSession(
                         message.message,
                         { signal: abortController.signal }
                     );
+                    logger.debug('[Codex] continueSession response:', response);
                 }
             } catch (error) {
                 logger.warn('Error in codex session:', error);
@@ -667,6 +711,12 @@ export async function runCodex(opts: {
                 diffProcessor.reset();
                 thinking = false;
                 session.keepAlive(thinking, 'remote');
+                emitReadyIfIdle({
+                    pending,
+                    queueSize: () => messageQueue.size(),
+                    shouldExit,
+                    sendReady,
+                });
                 logActiveHandles('after-turn');
             }
         }
