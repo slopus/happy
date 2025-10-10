@@ -25,6 +25,7 @@ class Configuration {
   public readonly currentCliVersion: string
 
   public readonly isExperimentalEnabled: boolean
+  public readonly disableCaffeinate: boolean
 
   constructor() {
     // Server configuration - priority: parameter > environment > default
@@ -51,6 +52,7 @@ class Configuration {
     this.daemonLockFile = join(this.happyHomeDir, 'daemon.state.json.lock')
 
     this.isExperimentalEnabled = ['true', '1', 'yes'].includes(process.env.HAPPY_EXPERIMENTAL?.toLowerCase() || '');
+    this.disableCaffeinate = ['true', '1', 'yes'].includes(process.env.HAPPY_DISABLE_CAFFEINATE?.toLowerCase() || '');
 
     this.currentCliVersion = packageJson.version
 
