@@ -9,8 +9,39 @@ import type { CodexSessionConfig, CodexToolResponse } from './types';
 import { z } from 'zod';
 import { ElicitRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { CodexPermissionHandler } from './utils/permissionHandler';
+import { execSync } from 'child_process';
 
 const DEFAULT_TIMEOUT = 14 * 24 * 60 * 60 * 1000; // 14 days, which is the half of the maximum possible timeout (~28 days for int32 value in NodeJS)
+
+/**
+ * Get the correct MCP subcommand based on installed codex version
+ * Versions >= 0.43.0-alpha.5 use 'mcp-server', older versions use 'mcp'
+ */
+function getCodexMcpCommand(): string {
+    try {
+        const version = execSync('codex --version', { encoding: 'utf8' }).trim();
+        const match = version.match(/codex-cli\s+(\d+\.\d+\.\d+(?:-alpha\.\d+)?)/);
+        if (!match) return 'mcp-server'; // Default to newer command if we can't parse
+
+        const versionStr = match[1];
+        const [major, minor, patch] = versionStr.split(/[-.]/).map(Number);
+
+        // Version >= 0.43.0-alpha.5 has mcp-server
+        if (major > 0 || minor > 43) return 'mcp-server';
+        if (minor === 43 && patch === 0) {
+            // Check for alpha version
+            if (versionStr.includes('-alpha.')) {
+                const alphaNum = parseInt(versionStr.split('-alpha.')[1]);
+                return alphaNum >= 5 ? 'mcp-server' : 'mcp';
+            }
+            return 'mcp-server'; // 0.43.0 stable has mcp-server
+        }
+        return 'mcp'; // Older versions use mcp
+    } catch (error) {
+        logger.debug('[CodexMCP] Error detecting codex version, defaulting to mcp-server:', error);
+        return 'mcp-server'; // Default to newer command
+    }
+}
 
 export class CodexMcpClient {
     private client: Client;
@@ -53,11 +84,12 @@ export class CodexMcpClient {
     async connect(): Promise<void> {
         if (this.connected) return;
 
-        logger.debug('[CodexMCP] Connecting to Codex MCP server...');
+        const mcpCommand = getCodexMcpCommand();
+        logger.debug(`[CodexMCP] Connecting to Codex MCP server using command: codex ${mcpCommand}`);
 
         this.transport = new StdioClientTransport({
             command: 'codex',
-            args: ['mcp']
+            args: [mcpCommand]
         });
 
         // Register request handlers for Codex permission methods
