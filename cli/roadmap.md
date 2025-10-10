@@ -9,6 +9,7 @@ logs  /Users/kirilldubovitskiy/.happy/logs/2025-07-20-20-48-12.log
 
 
 
+
 # July 20 
 
 3) permission cancelling 
