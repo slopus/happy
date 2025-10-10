@@ -294,15 +294,33 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
             message: string;
             mode: EnhancedMode;
         } | null = null;
+
+        // Track session ID to detect when it actually changes
+        // This prevents context loss when mode changes (permission mode, model, etc.)
+        // without starting a new session. Only reset parent chain when session ID
+        // actually changes (e.g., new session started or /clear command used).
+        // See: https://github.com/anthropics/happy-cli/issues/143
+        let previousSessionId: string | null = null;
         while (!exitReason) {
             logger.debug('[remote]: launch');
             messageBuffer.addMessage('═'.repeat(40), 'status');
-            messageBuffer.addMessage('Starting new Claude session...', 'status');
+
+            // Only reset parent chain and show "new session" message when session ID actually changes
+            const isNewSession = session.sessionId !== previousSessionId;
+            if (isNewSession) {
+                messageBuffer.addMessage('Starting new Claude session...', 'status');
+                permissionHandler.reset(); // Reset permissions before starting new session
+                sdkToLogConverter.resetParentChain(); // Reset parent chain for new conversation
+                logger.debug(`[remote]: New session detected (previous: ${previousSessionId}, current: ${session.sessionId})`);
+            } else {
+                messageBuffer.addMessage('Continuing Claude session...', 'status');
+                logger.debug(`[remote]: Continuing existing session: ${session.sessionId}`);
+            }
+
+            previousSessionId = session.sessionId;
             const controller = new AbortController();
             abortController = controller;
             abortFuture = new Future<void>();
-            permissionHandler.reset(); // Reset permissions before starting new session
-            sdkToLogConverter.resetParentChain(); // Reset parent chain for new conversation
             let modeHash: string | null = null;
             let mode: EnhancedMode | null = null;
             try {
