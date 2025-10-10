@@ -89,7 +89,12 @@ export class CodexMcpClient {
 
         this.transport = new StdioClientTransport({
             command: 'codex',
-            args: [mcpCommand]
+            args: [mcpCommand],
+            env: Object.keys(process.env).reduce((acc, key) => {
+                const value = process.env[key];
+                if (typeof value === 'string') acc[key] = value;
+                return acc;
+            }, {} as Record<string, string>)
         });
 
         // Register request handlers for Codex permission methods
