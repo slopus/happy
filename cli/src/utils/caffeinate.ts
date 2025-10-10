@@ -36,10 +36,9 @@ export function startCaffeinate(): boolean {
 
     try {
         // Spawn caffeinate with flags:
-        // -d: Prevent display from sleeping
         // -i: Prevent system from idle sleeping  
         // -m: Prevent disk from sleeping
-        caffeinateProcess = spawn('caffeinate', ['-dim'], {
+        caffeinateProcess = spawn('caffeinate', ['-im'], {
             stdio: 'ignore',
             detached: false
         })
