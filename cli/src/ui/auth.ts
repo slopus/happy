@@ -21,7 +21,7 @@ export async function doAuth(): Promise<Credentials | null> {
     const authMethod = await selectAuthenticationMethod();
     if (!authMethod) {
         console.log('\nAuthentication cancelled.\n');
-        return null;
+        process.exit(0);
     }
 
     // Generating ephemeral key
