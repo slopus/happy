@@ -100,7 +100,6 @@ export function voiceRoutes(app: Fastify) {
         }
 
         const data = await response.json() as any;
-        console.log(data);
         const token = data.token;
 
         log({ module: 'voice' }, `Voice token issued for user ${userId}`);
