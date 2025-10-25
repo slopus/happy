@@ -1,0 +1,24 @@
+[core]
+
+[color]
+	diff = auto
+	status = auto
+	branch = auto
+
+[alias]
+	br = branch
+	co = checkout
+	st = status
+	ci = commit
+	subup = submodule update --init --recursive
+        lol = log --graph --decorate --pretty=oneline --abbrev-commit
+        lola = log --graph --decorate --pretty=oneline --abbrev-commit --all
+
+[user]
+	name = Ryan Newton + Claude
+	email = rrnewton@gmail.com
+
+# [push]
+# 	default = matching # historical default
+[pull]
+	rebase = true
