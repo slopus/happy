@@ -54,7 +54,11 @@ The issue prefix may be customized (`foobar-1`, `foobar-2`), but here we will re
 
 #### Mark transient information
 
-We often record transient information, like benchmark results, that quickly gets out of date. We want to label such information so we can tell how old it is. Rather than a realtime timestamp, our convention is to use `./scripts/gitdepth.sh` which prints out the number of commits in the repo, and then the shorthand `commit#161(387498cecf)` becomes our timestamp for information that came from a particular commit. Sometimes this requires us to split our commits into (1) functionality and then (2) documentation-update.
+We often record transient information, like benchmark results, that quickly gets out of date. We want to label such information so we can tell how old it is. In addition to YYYY-MM-DD, our convention is to use:
+  `git rev-list --count HEAD`
+which prints out the number of commits in the repo (or equivalently the ./gitdepth.sh script), and then format the timestamp as `YYYY-MM-DD_#DEPTH(387498cecf)` e.g. `2025-10-22_#161(387498cecf)`. That's our full timestamp
+for any transient information that derives from a specific commit.
+Sometimes this requires us to split our commits into (1) functionality and then (2) documentation-update.
 
 #### Reference issues in code TODO
 

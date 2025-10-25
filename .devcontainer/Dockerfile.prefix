@@ -112,8 +112,6 @@ RUN chmod +x /usr/local/bin/init-firewall.sh && \
 ENV IS_SANDBOX=1
 # End claude-related dependencies and setup.
 
-RUN npm install -g happy-coder
-
 # [RRN] basic additiions I like everywhere.
 RUN apt-get install -y time parallel hyperfine bc
 # [RRN] Python is so universal for scripting...
@@ -121,6 +119,12 @@ RUN apt-get install -y python3 pip python3-venv
 RUN python3 -m venv /opt/venv
 RUN /opt/venv/bin/python3 -m pip install uv
 # End shared, non-project configuration.
+
+# RUN npm install -g happy-coder
+# [RRN] Run my version, but cannot do it in a one-liner because of build step:
+RUN git clone --depth=1 https://github.com/rrnewton/happy-cli.git /tmp/happy && \
+      cd /tmp/happy && npm install && npm run build && npm install -g . && \
+      rm -rf /tmp/happy
 
 USER $MYUSER
 ENV SHELL=/bin/bash
