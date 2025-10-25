@@ -10,22 +10,65 @@ if [ $# -lt 1 ]; then
     echo "  ITERS: Number of iterations to run"
     echo "  PROMPT1, PROMPT2, ...: Optional prompt files for first N iterations"
     echo ""
+    echo "Custom prompts are used first, then randomly selects from built-in prompts:"
+    echo "  - generic_forward_progress_task.md (50% probability)"
+    echo "  - optimization_task.md             (30% probability)"
+    echo "  - task_gardening.md                (20% probability)"
+    echo ""
     echo "Examples:"
-    echo "  $0 5                    # All 5 iterations use generic prompt"
-    echo "  $0 5 task1.txt          # Iteration 1 uses task1.txt, iterations 2-5 use generic"
-    echo "  $0 5 t1.txt t2.txt t3.txt  # Iterations 1-3 use custom prompts, 4-5 use generic"
+    echo "  $0 5                    # All 5 iterations randomly select from built-ins"
+    echo "  $0 5 task1.md           # Iteration 1 uses task1.md, 2-5 random built-ins"
+    echo "  $0 5 t1.md t2.md        # Iterations 1-2 use custom, 3-5 random built-ins"
     exit 1
 fi
 
 # Hmm, this can have different relationships to the top of repo...
 cd "$(dirname $0)"/
-PROMPT_DIR="./prompts"
+PROMPT_DIR="$(pwd)/prompts"
 
 ITERS=$1
 shift  # Remove first argument, leaving prompt files in $@
 
-# Store prompt files in an array
-PROMPT_FILES=("$@")
+# Built-in prompts with weights (probabilities out of 100)
+# Format: "weight:path"
+BUILTIN_PROMPTS=(
+    "50:$PROMPT_DIR/generic_forward_progress_task.md"     # 50% - generic forward progress
+    "30:$PROMPT_DIR/optimization_task.md"                 # 30% - optimization
+    "20:$PROMPT_DIR/task_gardening.md"                    # 20% - documentation/gardening
+)
+
+# Function to select a random prompt based on weights
+select_weighted_prompt() {
+    local total_weight=0
+    local weights=()
+    local paths=()
+
+    # Parse weights and paths
+    for entry in "${BUILTIN_PROMPTS[@]}"; do
+        local weight="${entry%%:*}"
+        local path="${entry#*:}"
+        weights+=("$weight")
+        paths+=("$path")
+        total_weight=$((total_weight + weight))
+    done
+
+    # Generate random number between 1 and total_weight
+    local rand=$((RANDOM % total_weight + 1))
+
+    # Select prompt based on cumulative weights
+    local cumulative=0
+    for i in "${!weights[@]}"; do
+        cumulative=$((cumulative + weights[i]))
+        if [ $rand -le $cumulative ]; then
+            echo "${paths[$i]}"
+            return
+        fi
+    done
+}
+
+# Custom prompts are used first, then we randomly select from built-ins
+CUSTOM_PROMPTS=("$@")
+NUM_CUSTOM=${#CUSTOM_PROMPTS[@]}
 
 # Ensure logs directory exists
 mkdir -p ./logs
@@ -45,20 +88,20 @@ for ((i=1; i<=ITERS; i++)); do
     echo "Using log file: $LOG"
     ln -sf "$LOG" "$LATEST"
 
-    # Determine which prompt file to use
-    # Array is 0-indexed, so iteration i uses index i-1
-    PROMPT_INDEX=$((i - 1))
-    if [ $PROMPT_INDEX -lt ${#PROMPT_FILES[@]} ] && [ -n "${PROMPT_FILES[$PROMPT_INDEX]}" ]; then
-        PROMPT_FILE="${PROMPT_FILES[$PROMPT_INDEX]}"
+    # Determine which prompt to use
+    if [ $i -le $NUM_CUSTOM ]; then
+        # Use custom prompt
+        PROMPT_FILE="${CUSTOM_PROMPTS[$((i - 1))]}"
         echo "Using custom prompt for iteration $i: $PROMPT_FILE"
     else
-        PROMPT_FILE="generic_forward_progress_task.txt"
-        echo "Using generic prompt for iteration $i"
+        # Randomly select from built-in prompts based on weights
+        PROMPT_FILE=$(select_weighted_prompt)
+        echo "Using built-in prompt for iteration $i: $(basename "$PROMPT_FILE")"
     fi
 
     # Run claude command, tee to log, and extract results
     # Remove control characters (except newline) before passing to jq to avoid parse errors
-    time claude --dangerously-skip-permissions --verbose --output-format stream-json -c -p "$(cat "$PROMPT_DIR/$PROMPT_FILE")" | \
+    time claude --dangerously-skip-permissions --verbose --output-format stream-json -c -p "$(cat "$PROMPT_FILE")" | \
         tee -a "$LOG" | \
         perl -pe 's/[\x00-\x09\x0b-\x1f]//g' | \
 	jq  -r 'select (.type == "assistant" or .type == "result") | [.message.content.[0].text, .result]'
