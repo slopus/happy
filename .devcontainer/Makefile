@@ -4,6 +4,10 @@ USER=node
 
 TAG := $(shell cat project_name.txt)
 
+ifeq ($(strip $(TAG)),)
+    $(error TAG must be set (from project_name.txt) and not empty!)
+endif
+
 OS := $(shell uname)
 
 ifeq ($(OS),Darwin)
