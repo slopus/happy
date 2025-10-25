@@ -41,9 +41,14 @@ Dockerfile: Dockerfile.prefix Dockerfile.project
 .session_title.txt:
 	echo $(TAG)-`hostname` > $@
 
+# Use my tweaked version of happy if it's available
 happy: .session_title.txt
 	TITLE=`cat $^` && cd .. && \
-	happy claude --dangerously-skip-permissions "Tell happy to change the title to $$TITLE"
+	hits=$$(happy -h | grep '\-\-uname'); \
+	if [ -z "$$hits" ]; then \
+	  happy --name "$$TITLE" claude --dangerously-skip-permissions; else \
+	  happy claude --dangerously-skip-permissions "Tell happy to change the title to $$TITLE"; \
+	fi
 
 # Usually from outside the container, to pass it in:
 install-pat: home/.github/PAT.txt
@@ -85,6 +90,9 @@ pull-main:
 	git pull origin main && \
 	git checkout $$BRANCH && \
 	git merge main
+
+move-to-main:
+	git stash && git checkout main && git stash pop
 
 .PHONY: claude-beads claude-github setup-claude happy run build root pull-main \
    inside-setup outside-setup install-pat install-ssh-deploy-key
