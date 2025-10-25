@@ -1,6 +1,6 @@
 
 SLOT=$(shell cat slot.txt)
-USER=node
+USER=ubuntu
 
 TAG := $(shell cat project_name.txt)
 
@@ -76,5 +76,15 @@ outside-setup: install-pat
 
 inside-setup: claude-github claude-beads install-ssh-deploy-key
 
-.PHONY: claude-beads claude-github setup-claude happy run build root \
+# Pull and rebase any upstream changes to the central config on the main branch.
+pull-main:
+	git diff --exit-code || \
+	(echo "Please commit or stash your changes before pulling." && exit 1) && \
+	BRANCH=`git branch --show-current` && \
+	git checkout main && \
+	git pull origin main && \
+	git checkout $$BRANCH && \
+	git merge main
+
+.PHONY: claude-beads claude-github setup-claude happy run build root pull-main \
    inside-setup outside-setup install-pat install-ssh-deploy-key
