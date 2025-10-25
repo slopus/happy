@@ -123,3 +123,4 @@ RUN /opt/venv/bin/python3 -m pip install uv
 # End shared, non-project configuration.
 
 USER $MYUSER
+ENV SHELL=/bin/bash
