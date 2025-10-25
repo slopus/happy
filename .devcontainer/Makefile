@@ -35,7 +35,7 @@ Dockerfile: Dockerfile.prefix Dockerfile.project
 # TODO: need a way to pass this into happy on the CLI.
 # It can take an MCP action to change it, but that's lame and wasteful.
 .session_title.txt:
-	echo mtg-container-`hostname` > $@
+	echo $(TAG)-`hostname` > $@
 
 happy: .session_title.txt
 	happy claude --dangerously-skip-permissions "Tell happy to change the title to "`cat .session_title.txt`
