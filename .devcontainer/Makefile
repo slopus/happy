@@ -42,7 +42,8 @@ Dockerfile: Dockerfile.prefix Dockerfile.project
 	echo $(TAG)-`hostname` > $@
 
 happy: .session_title.txt
-	happy claude --dangerously-skip-permissions "Tell happy to change the title to "`cat .session_title.txt`
+	TITLE=`cat $^` && cd .. && \
+	happy claude --dangerously-skip-permissions "Tell happy to change the title to $$TITLE"
 
 # Usually from outside the container, to pass it in:
 install-pat: home/.github/PAT.txt
