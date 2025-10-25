@@ -44,7 +44,29 @@ def find_next_log_number(logs_dir: Path) -> int:
     return num
 
 
-def run_iteration(iteration: int, total: int, prompt_file: Path, logs_dir: Path) -> bool:
+def get_session_title(script_dir: Path) -> str:
+    """Read session title from .session_title.txt"""
+    title_file = script_dir / '.session_title.txt'
+    if title_file.exists():
+        return title_file.read_text().strip()
+    return ""
+
+
+def check_happy_version() -> bool:
+    """Check if happy supports --name flag."""
+    try:
+        result = subprocess.run(
+            ['happy', '-h'],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+        return '--name' in result.stdout or '--uname' in result.stdout
+    except Exception:
+        return False
+
+
+def run_iteration(iteration: int, total: int, prompt_file: Path, logs_dir: Path, use_happy: bool, script_dir: Path) -> bool:
     """Run a single iteration with claude."""
     print(f"\n=== Iteration {iteration} of {total} ===")
 
@@ -68,14 +90,44 @@ def run_iteration(iteration: int, total: int, prompt_file: Path, logs_dir: Path)
         prompt_content = f.read()
 
     # Build claude command
-    cmd = [
-        'claude',
-        '--dangerously-skip-permissions',
-        '--verbose',
-        '--output-format', 'stream-json',
-        '-c',
-        '-p', prompt_content
-    ]
+    if use_happy:
+        # Use happy wrapper
+        session_title = get_session_title(script_dir)
+        
+        # Check if happy supports --name flag
+        if check_happy_version():
+            # Newer version with --name support
+            cmd = [
+                'happy',
+                '--name', session_title,
+                'claude',
+                '--dangerously-skip-permissions',
+                '--verbose',
+                '--output-format', 'stream-json',
+                '-c',
+                '-p', prompt_content
+            ]
+        else:
+            # Older version - use initial message to set title
+            cmd = [
+                'happy',
+                'claude',
+                '--dangerously-skip-permissions',
+                '--verbose',
+                '--output-format', 'stream-json',
+                '-c',
+                '-p', f'Tell happy to change the title to {session_title}\n\n{prompt_content}'
+            ]
+    else:
+        # Direct claude command
+        cmd = [
+            'claude',
+            '--dangerously-skip-permissions',
+            '--verbose',
+            '--output-format', 'stream-json',
+            '-c',
+            '-p', prompt_content
+        ]
 
     # Run claude command with tee-like behavior
     try:
@@ -143,11 +195,14 @@ Examples:
   %(prog)s 5                    # All 5 iterations randomly select from built-ins
   %(prog)s 5 task1.md           # Iteration 1 uses task1.md, 2-5 random built-ins
   %(prog)s 5 t1.md t2.md        # Iterations 1-2 use custom, 3-5 random built-ins
+  %(prog)s --happy 5            # Use happy wrapper with session title from .session_title.txt
         """
     )
 
     parser.add_argument('iterations', type=int, help='Number of iterations to run')
     parser.add_argument('prompts', nargs='*', help='Optional prompt files for first N iterations')
+    parser.add_argument('--happy', action='store_true', 
+                        help='Use happy wrapper (reads session title from .session_title.txt)')
 
     args = parser.parse_args()
 
@@ -181,7 +236,7 @@ Examples:
             print(f"Using built-in prompt for iteration {i}: {prompt_file.name}")
 
         # Run the iteration
-        success = run_iteration(i, args.iterations, prompt_file, logs_dir)
+        success = run_iteration(i, args.iterations, prompt_file, logs_dir, args.happy, script_dir)
         if not success:
             sys.exit(1)
 
