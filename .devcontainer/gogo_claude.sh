@@ -17,8 +17,9 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-# Switch to the top of the repo.
-cd $(dirname $0)/../
+# Hmm, this can have different relationships to the top of repo...
+cd "$(dirname $0)"/
+PROMPT_DIR="./prompts"
 
 ITERS=$1
 shift  # Remove first argument, leaving prompt files in $@
@@ -40,7 +41,9 @@ for ((i=1; i<=ITERS; i++)); do
     done
 
     LOG="./logs/claude_workstream$(printf '%02d' $XY).jsonl"
+    LATEST="./logs/claude_workstream_latest.jsonl"
     echo "Using log file: $LOG"
+    ln -sf "$LOG" "$LATEST"
 
     # Determine which prompt file to use
     # Array is 0-indexed, so iteration i uses index i-1
@@ -55,7 +58,7 @@ for ((i=1; i<=ITERS; i++)); do
 
     # Run claude command, tee to log, and extract results
     # Remove control characters (except newline) before passing to jq to avoid parse errors
-    time claude --dangerously-skip-permissions --verbose --output-format stream-json -c -p "$(cat "$PROMPT_FILE")" | \
+    time claude --dangerously-skip-permissions --verbose --output-format stream-json -c -p "$(cat "$PROMPT_DIR/$PROMPT_FILE")" | \
         tee -a "$LOG" | \
         perl -pe 's/[\x00-\x09\x0b-\x1f]//g' | \
 	jq  -r 'select (.type == "assistant" or .type == "result") | [.message.content.[0].text, .result]'
