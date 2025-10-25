@@ -31,3 +31,43 @@ root:
 
 Dockerfile: Dockerfile.prefix Dockerfile.project
 	cat Dockerfile.prefix Dockerfile.project > Dockerfile
+
+# TODO: need a way to pass this into happy on the CLI.
+# It can take an MCP action to change it, but that's lame and wasteful.
+.session_title.txt:
+	echo mtg-container-`hostname` > $@
+
+happy: .session_title.txt
+	happy claude --dangerously-skip-permissions "Tell happy to change the title to "`cat .session_title.txt`
+
+# Usually from outside the container, to pass it in:
+install-pat: home/.github/PAT.txt
+home/.github/PAT.txt:
+	@if ! [ -z "$(GITHUB_PERSONAL_ACCESS_TOKEN)" ]; then \
+		echo "$(GITHUB_PERSONAL_ACCESS_TOKEN)" > home/.github/PAT.txt; \
+	elif [ -f ~/.github/PAT.txt ]; then \
+		cp ~/.github/PAT.txt home/.github/PAT.txt; \
+	else \
+		echo "Error: GITHUB_PERSONAL_ACCESS_TOKEN not set and no ~/.github/PAT.txt file found." ; \
+		exit 1; \
+	fi
+
+# Still need to manually add this key to GitHub as a deploy key for the repo.
+install-ssh-deploy-key: home/.ssh/id_rsa.pub
+home/.ssh/id_rsa.pub:
+	ssh-keygen -t rsa -b 4096 -f home/.ssh/id_rsa -N "" -C "deploy-key-`hostname`"
+
+# From inside the container:
+claude-github:
+	claude mcp add --transport http github https://api.githubcopilot.com/mcp -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN"
+
+# From inside the container:
+claude-beads:
+	claude plugin marketplace add steveyegge/beads
+	claude plugin install beads
+
+outside-setup: install-pat
+
+inside-setup: claude-github claude-beads install-ssh-deploy-key
+
+.PHONY: claude-beads claude-github setup-claude happy run build root install-pat
