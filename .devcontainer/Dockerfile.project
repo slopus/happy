@@ -1,1 +1,3 @@
+USER root
 
+RUN npm install -g yarn
