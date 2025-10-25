@@ -1,6 +1,6 @@
 
 SLOT=$(shell cat slot.txt)
-USER=node
+USER=ubuntu
 
 TAG := $(shell cat project_name.txt)
 
