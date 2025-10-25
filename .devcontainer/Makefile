@@ -43,6 +43,7 @@ happy: .session_title.txt
 # Usually from outside the container, to pass it in:
 install-pat: home/.github/PAT.txt
 home/.github/PAT.txt:
+	mkdir home/.github
 	@if ! [ -z "$(GITHUB_PERSONAL_ACCESS_TOKEN)" ]; then \
 		echo "$(GITHUB_PERSONAL_ACCESS_TOKEN)" > home/.github/PAT.txt; \
 	elif [ -f ~/.github/PAT.txt ]; then \
@@ -70,4 +71,5 @@ outside-setup: install-pat
 
 inside-setup: claude-github claude-beads install-ssh-deploy-key
 
-.PHONY: claude-beads claude-github setup-claude happy run build root install-pat
+.PHONY: claude-beads claude-github setup-claude happy run build root \
+   inside-setup outside-setup install-pat install-ssh-deploy-key
