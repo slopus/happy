@@ -26,3 +26,11 @@ if [ -f /opt/venv/bin/activate ]; then
 fi
 
 # export PATH=$PATH:$HOME/.local/bin
+# Silently fail if we're not in a git repo:
+function print_git_branch() {
+    git rev-parse --quiet --abbrev-ref HEAD 2> /dev/null || :
+}
+
+function set_git_prompt() {
+    PS1="\[\033[0;34m\][\[\033[0;31m\]\u\[\033[0;31m\]@\[\033[0;31m\]\h \[\033[0;33m\]\w\[\033[0;34m\]] (\$(print_git_branch)) \[\033[1;36m\] \n\$ \[\033[0m\]"
+}
