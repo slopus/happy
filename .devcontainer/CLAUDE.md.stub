@@ -24,7 +24,7 @@ Commit to git with each unit of work.
 Task Tracking
 ----------------------------------------
 
-We use "beads" to track our issues locally. Review `bd quickstart` to learn how to use it. 
+We use "beads" to track our issues locally under version control. Review `bd quickstart` to learn how to use it. 
 
 Every time we do a git commit, update our beads issues to reflect:
 - What was just completed (check off items in lists, close completed task(s))
@@ -34,6 +34,8 @@ Every time we do a git commit, update our beads issues to reflect:
 The beads database is our primary tracking mechanism, so if we lose conversation history we can start again from there.  You should periodically do documentation work, usually before committing, to make sure information in the issues is up-to-date.
 
 ### Beads CONVENTIONS for this project
+
+Do NOT read or modify files inside the `./.beads/` private database, except when fixing merge conflicts in markdown files that you can read.
 
 Prefer the MCP client to the CLI tool. ALWAYS `bd update` existing issues, never introduce duplicates with spurious `bd create`.
 
