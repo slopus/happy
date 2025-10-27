@@ -56,6 +56,8 @@ export const es: TranslationStructure = {
         fileViewer: 'Visor de archivos',
         loading: 'Cargando...',
         retry: 'Reintentar',
+        delete: 'Eliminar',
+        optional: 'opcional',
     },
 
     profile: {
@@ -129,6 +131,8 @@ export const es: TranslationStructure = {
         exchangingTokens: 'Intercambiando tokens...',
         usage: 'Uso',
         usageSubtitle: 'Ver tu uso de API y costos',
+        profiles: 'Perfiles',
+        profilesSubtitle: 'Gestionar perfiles de variables de entorno para sesiones',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Cuenta de ${service} conectada`,
@@ -847,6 +851,28 @@ export const es: TranslationStructure = {
         friendRequestGeneric: 'Nueva solicitud de amistad',
         friendAccepted: ({ name }: { name: string }) => `Ahora eres amigo de ${name}`,
         friendAcceptedGeneric: 'Solicitud de amistad aceptada',
+    },
+
+    profiles: {
+        // Profile management feature
+        title: 'Perfiles',
+        subtitle: 'Gestionar perfiles de variables de entorno para sesiones',
+        noProfile: 'Sin Perfil',
+        noProfileDescription: 'Usar configuración de entorno predeterminada',
+        defaultModel: 'Modelo Predeterminado',
+        addProfile: 'Agregar Perfil',
+        profileName: 'Nombre del Perfil',
+        enterName: 'Ingrese el nombre del perfil',
+        baseURL: 'URL Base',
+        authToken: 'Token de Autenticación',
+        enterToken: 'Ingrese el token de autenticación',
+        model: 'Modelo',
+        tmuxSession: 'Sesión Tmux',
+        enterTmuxSession: 'Ingrese el nombre de la sesión tmux',
+        nameRequired: 'El nombre del perfil es requerido',
+        deleteConfirm: '¿Estás seguro de que quieres eliminar el perfil "{name}"?',
+        editProfile: 'Editar Perfil',
+        addProfileTitle: 'Agregar Nuevo Perfil',
     }
 } as const;
 

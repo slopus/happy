@@ -106,6 +106,13 @@ function NewSessionScreen() {
     });
     const [isSending, setIsSending] = React.useState(false);
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
+    const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(() => {
+        // Initialize with last used profile if it exists and is valid
+        if (lastUsedProfile && profiles.find(p => p.id === lastUsedProfile)) {
+            return lastUsedProfile;
+        }
+        return null;
+    });
     const ref = React.useRef<MultiTextInputHandle>(null);
     const headerHeight = useHeaderHeight();
     const safeArea = useSafeAreaInsets();
@@ -117,6 +124,8 @@ function NewSessionScreen() {
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
+    const profiles = useSetting('profiles');
+    const lastUsedProfile = useSetting('lastUsedProfile');
 
     //
     // Machines state
@@ -243,13 +252,29 @@ function NewSessionScreen() {
         const validCodexModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
 
         if (lastUsedPermissionMode) {
+            // Check if the saved mode is valid for the current agent type
             if (agentType === 'codex' && validCodexModes.includes(lastUsedPermissionMode as PermissionMode)) {
                 return lastUsedPermissionMode as PermissionMode;
             } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
                 return lastUsedPermissionMode as PermissionMode;
+            } else {
+                // If the saved mode is not valid for the current agent type,
+                // check if we can find a suitable equivalent
+                const savedMode = lastUsedPermissionMode as PermissionMode;
+
+                // Map YOLO modes between agent types
+                if (savedMode === 'yolo' && agentType === 'claude') {
+                    return 'bypassPermissions'; // Claude equivalent of YOLO
+                } else if (savedMode === 'bypassPermissions' && agentType === 'codex') {
+                    return 'yolo'; // Codex equivalent of bypass permissions
+                } else if (savedMode === 'safe-yolo' && agentType === 'claude') {
+                    return 'acceptEdits'; // Claude equivalent of safe YOLO
+                } else if (savedMode === 'acceptEdits' && agentType === 'codex') {
+                    return 'safe-yolo'; // Codex equivalent of accept edits
+                }
             }
         }
-        return 'default';
+        return agentType === 'codex' ? 'default' : 'default';
     });
 
     const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
@@ -290,6 +315,12 @@ function NewSessionScreen() {
         setModelMode(mode);
         // Save the new selection immediately
         sync.applySettings({ lastUsedModelMode: mode });
+    }, []);
+
+    const handleProfileChange = React.useCallback((profileId: string | null) => {
+        setSelectedProfileId(profileId);
+        // Save the new selection immediately
+        sync.applySettings({ lastUsedProfile: profileId });
     }, []);
 
     //
@@ -337,27 +368,27 @@ function NewSessionScreen() {
         setIsSending(true);
         try {
             let actualPath = selectedPath;
-            
+
             // Handle worktree creation if selected and experiments are enabled
             if (sessionType === 'worktree' && experimentsEnabled) {
                 const worktreeResult = await createWorktree(selectedMachineId, selectedPath);
-                
+
                 if (!worktreeResult.success) {
                     if (worktreeResult.error === 'Not a Git repository') {
                         Modal.alert(
-                            t('common.error'), 
+                            t('common.error'),
                             t('newSession.worktree.notGitRepo')
                         );
                     } else {
                         Modal.alert(
-                            t('common.error'), 
+                            t('common.error'),
                             t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' })
                         );
                     }
                     setIsSending(false);
                     return;
                 }
-                
+
                 // Update the path to the new worktree location
                 actualPath = worktreeResult.worktreePath;
             }
@@ -366,12 +397,27 @@ function NewSessionScreen() {
             const updatedPaths = updateRecentMachinePaths(recentMachinePaths, selectedMachineId, selectedPath);
             sync.applySettings({ recentMachinePaths: updatedPaths });
 
+            // Get environment variables from selected profile
+            let environmentVariables = undefined;
+            if (selectedProfileId) {
+                const selectedProfile = profiles.find(p => p.id === selectedProfileId);
+                if (selectedProfile) {
+                    environmentVariables = {
+                        ANTHROPIC_BASE_URL: selectedProfile.anthropicBaseUrl || undefined,
+                        ANTHROPIC_AUTH_TOKEN: selectedProfile.anthropicAuthToken || undefined,
+                        ANTHROPIC_MODEL: selectedProfile.anthropicModel || undefined,
+                        TMUX_SESSION_NAME: selectedProfile.tmuxSessionName || undefined,
+                    };
+                }
+            }
+
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
                 directory: actualPath,
                 // For now we assume you already have a path to start in
                 approvedNewDirectoryCreation: true,
-                agent: agentType
+                agent: agentType,
+                environmentVariables
             });
 
             // Use sessionId to check for success for backwards compatibility
@@ -428,7 +474,7 @@ function NewSessionScreen() {
         } finally {
             setIsSending(false);
         }
-    }, [agentType, selectedMachineId, selectedPath, input, recentMachinePaths, sessionType, experimentsEnabled, permissionMode, modelMode]);
+    }, [agentType, selectedMachineId, selectedPath, input, recentMachinePaths, sessionType, experimentsEnabled, permissionMode, modelMode, selectedProfileId, profiles]);
 
     return (
         <KeyboardAvoidingView

@@ -1,20 +1,20 @@
-/**
- * English translations for the Happy app
- * Values can be:
- * - String constants for static text
- * - Functions with typed object parameters for dynamic text
- */
+import type { TranslationStructure } from '../_default';
 
 /**
  * English plural helper function
+ * English has 2 plural forms: singular, plural
  * @param options - Object containing count, singular, and plural forms
- * @returns The appropriate form based on count
+ * @returns The appropriate form based on English plural rules
  */
 function plural({ count, singular, plural }: { count: number; singular: string; plural: string }): string {
     return count === 1 ? singular : plural;
 }
 
-export const en = {
+/**
+ * English translations for the Happy app
+ * Must match the exact structure of the English translations in _default.ts
+ */
+export const en: TranslationStructure = {
     tabs: {
         // Tab navigation labels
         inbox: 'Inbox',
@@ -148,7 +148,7 @@ export const en = {
         themeDescription: 'Choose your preferred color scheme',
         themeOptions: {
             adaptive: 'Adaptive',
-            light: 'Light', 
+            light: 'Light',
             dark: 'Dark',
         },
         themeDescriptions: {
@@ -235,7 +235,7 @@ export const en = {
             `Retry in ${seconds} ${seconds === 1 ? 'second' : 'seconds'}`,
         errorWithCode: ({ message, code }: { message: string; code: number | string }) =>
             `${message} (Error ${code})`,
-        disconnectServiceFailed: ({ service }: { service: string }) => 
+        disconnectServiceFailed: ({ service }: { service: string }) =>
             `Failed to disconnect ${service}`,
         connectServiceFailed: ({ service }: { service: string }) =>
             `Failed to connect ${service}. Please try again.`,
@@ -365,7 +365,7 @@ export const en = {
         deleteSessionWarning: 'This action cannot be undone. All messages and data associated with this session will be permanently deleted.',
         failedToDeleteSession: 'Failed to delete session',
         sessionDeleted: 'Session deleted successfully',
-        
+
     },
 
     components: {
@@ -648,9 +648,9 @@ export const en = {
         developerModeDisabled: 'Developer mode disabled',
         disconnectGithub: 'Disconnect GitHub',
         disconnectGithubConfirm: 'Are you sure you want to disconnect your GitHub account?',
-        disconnectService: ({ service }: { service: string }) => 
+        disconnectService: ({ service }: { service: string }) =>
             `Disconnect ${service}`,
-        disconnectServiceConfirm: ({ service }: { service: string }) => 
+        disconnectServiceConfirm: ({ service }: { service: string }) =>
             `Are you sure you want to disconnect ${service} from your account?`,
         disconnect: 'Disconnect',
         failedToConnectTerminal: 'Failed to connect terminal',
@@ -662,7 +662,7 @@ export const en = {
     navigation: {
         // Navigation titles and screen headers
         connectTerminal: 'Connect Terminal',
-        linkNewDevice: 'Link New Device', 
+        linkNewDevice: 'Link New Device',
         restoreWithSecretKey: 'Restore with Secret Key',
         whatsNew: "What's New",
         friends: 'Friends',
@@ -876,24 +876,4 @@ export const en = {
     }
 } as const;
 
-export type Translations = typeof en;
-
-/**
- * Generic translation type that matches the structure of Translations
- * but allows different string values (for other languages)
- */
-export type TranslationStructure = {
-    readonly [K in keyof Translations]: {
-        readonly [P in keyof Translations[K]]: Translations[K][P] extends string 
-            ? string 
-            : Translations[K][P] extends (...args: any[]) => string 
-                ? Translations[K][P] 
-                : Translations[K][P] extends object
-                    ? {
-                        readonly [Q in keyof Translations[K][P]]: Translations[K][P][Q] extends string
-                            ? string
-                            : Translations[K][P][Q]
-                      }
-                    : Translations[K][P]
-    }
-};
+export type TranslationsEn = typeof en;

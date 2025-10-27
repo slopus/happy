@@ -67,6 +67,8 @@ export const pl: TranslationStructure = {
         fileViewer: 'Przeglądarka plików',
         loading: 'Ładowanie...',
         retry: 'Ponów',
+        delete: 'Usuń',
+        optional: 'opcjonalnie',
     },
 
     profile: {
@@ -140,6 +142,8 @@ export const pl: TranslationStructure = {
         exchangingTokens: 'Wymiana tokenów...',
         usage: 'Użycie',
         usageSubtitle: 'Zobacz użycie API i koszty',
+        profiles: 'Profile',
+        profilesSubtitle: 'Zarządzaj profilami zmiennych środowiskowych dla sesji',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Konto ${service} połączone`,
@@ -870,6 +874,28 @@ export const pl: TranslationStructure = {
         friendRequestGeneric: 'Nowe zaproszenie do znajomych',
         friendAccepted: ({ name }: { name: string }) => `Jesteś teraz znajomym z ${name}`,
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
+    },
+
+    profiles: {
+        // Profile management feature
+        title: 'Profile',
+        subtitle: 'Zarządzaj profilami zmiennych środowiskowych dla sesji',
+        noProfile: 'Brak Profilu',
+        noProfileDescription: 'Użyj domyślnych ustawień środowiska',
+        defaultModel: 'Domyślny Model',
+        addProfile: 'Dodaj Profil',
+        profileName: 'Nazwa Profilu',
+        enterName: 'Wprowadź nazwę profilu',
+        baseURL: 'Adres URL',
+        authToken: 'Token Autentykacji',
+        enterToken: 'Wprowadź token autentykacji',
+        model: 'Model',
+        tmuxSession: 'Sesja Tmux',
+        enterTmuxSession: 'Wprowadź nazwę sesji tmux',
+        nameRequired: 'Nazwa profilu jest wymagana',
+        deleteConfirm: 'Czy na pewno chcesz usunąć profil "{name}"?',
+        editProfile: 'Edytuj Profil',
+        addProfileTitle: 'Dodaj Nowy Profil',
     }
 } as const;
 

@@ -139,6 +139,12 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean;
     token?: string;
     agent?: 'codex' | 'claude';
+    environmentVariables?: {
+        ANTHROPIC_BASE_URL?: string;
+        ANTHROPIC_AUTH_TOKEN?: string;
+        ANTHROPIC_MODEL?: string;
+        TMUX_SESSION_NAME?: string;
+    };
 }
 
 // Exported session operation functions
@@ -147,8 +153,8 @@ export interface SpawnSessionOptions {
  * Spawn a new remote session on a specific machine
  */
 export async function machineSpawnNewSession(options: SpawnSessionOptions): Promise<SpawnSessionResult> {
-    
-    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent } = options;
+
+    const { machineId, directory, approvedNewDirectoryCreation = false, token, agent, environmentVariables } = options;
 
     try {
         const result = await apiSocket.machineRPC<SpawnSessionResult, {
@@ -156,11 +162,17 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             directory: string
             approvedNewDirectoryCreation?: boolean,
             token?: string,
-            agent?: 'codex' | 'claude'
+            agent?: 'codex' | 'claude',
+            environmentVariables?: {
+                ANTHROPIC_BASE_URL?: string;
+                ANTHROPIC_AUTH_TOKEN?: string;
+                ANTHROPIC_MODEL?: string;
+                TMUX_SESSION_NAME?: string;
+            };
         }>(
             machineId,
             'spawn-happy-session',
-            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent }
+            { type: 'spawn-in-directory', directory, approvedNewDirectoryCreation, token, agent, environmentVariables }
         );
         return result;
     } catch (error) {

@@ -67,6 +67,8 @@ export const ru: TranslationStructure = {
         fileViewer: 'Просмотр файла',
         loading: 'Загрузка...',
         retry: 'Повторить',
+        delete: 'Удалить',
+        optional: 'необязательно',
     },
 
     connect: {
@@ -112,6 +114,8 @@ export const ru: TranslationStructure = {
         exchangingTokens: 'Обмен токенов...',
         usage: 'Использование',
         usageSubtitle: 'Просмотр использования API и затрат',
+        profiles: 'Профили',
+        profilesSubtitle: 'Управление профилями переменных окружения для сессий',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,
@@ -869,6 +873,28 @@ export const ru: TranslationStructure = {
         friendRequestGeneric: 'Новый запрос в друзья',
         friendAccepted: ({ name }: { name: string }) => `Вы теперь друзья с ${name}`,
         friendAcceptedGeneric: 'Запрос в друзья принят',
+    },
+
+    profiles: {
+        // Profile management feature
+        title: 'Профили',
+        subtitle: 'Управление профилями переменных окружения для сессий',
+        noProfile: 'Без Профиля',
+        noProfileDescription: 'Использовать настройки окружения по умолчанию',
+        defaultModel: 'Модель по Умолчанию',
+        addProfile: 'Добавить Профиль',
+        profileName: 'Имя Профиля',
+        enterName: 'Введите имя профиля',
+        baseURL: 'Базовый URL',
+        authToken: 'Токен Аутентификации',
+        enterToken: 'Введите токен аутентификации',
+        model: 'Модель',
+        tmuxSession: 'Сессия Tmux',
+        enterTmuxSession: 'Введите имя сессии tmux',
+        nameRequired: 'Имя профиля обязательно',
+        deleteConfirm: 'Вы уверены, что хотите удалить профиль "{name}"?',
+        editProfile: 'Редактировать Профиль',
+        addProfileTitle: 'Добавить Новый Профиль',
     }
 } as const;
 
