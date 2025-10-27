@@ -407,6 +407,7 @@ function NewSessionScreen() {
                         ANTHROPIC_AUTH_TOKEN: selectedProfile.anthropicAuthToken || undefined,
                         ANTHROPIC_MODEL: selectedProfile.anthropicModel || undefined,
                         TMUX_SESSION_NAME: selectedProfile.tmuxSessionName || undefined,
+                        TMUX_TMPDIR: selectedProfile.tmuxTmpDir || undefined,
                     };
                 }
             }

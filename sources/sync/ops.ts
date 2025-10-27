@@ -144,6 +144,7 @@ export interface SpawnSessionOptions {
         ANTHROPIC_AUTH_TOKEN?: string;
         ANTHROPIC_MODEL?: string;
         TMUX_SESSION_NAME?: string;
+        TMUX_TMPDIR?: string;
     };
 }
 
@@ -168,6 +169,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
                 ANTHROPIC_AUTH_TOKEN?: string;
                 ANTHROPIC_MODEL?: string;
                 TMUX_SESSION_NAME?: string;
+                TMUX_TMPDIR?: string;
             };
         }>(
             machineId,

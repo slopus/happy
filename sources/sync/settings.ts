@@ -37,6 +37,8 @@ export const SettingsSchema = z.object({
         anthropicAuthToken: z.string().nullish(),
         anthropicModel: z.string().nullish(),
         tmuxSessionName: z.string().nullish(),
+        tmuxTmpDir: z.string().nullish(),
+        tmuxUpdateEnvironment: z.boolean().nullish(),
     })).describe('User-defined profiles for environment variables and session settings'),
     lastUsedProfile: z.string().nullable().describe('Last selected profile for new sessions'),
 });
@@ -52,7 +54,7 @@ export const SettingsSchema = z.object({
 // only touch the fields it knows about.
 //
 
-const SettingsSchemaPartial = SettingsSchema.loose().partial();
+const SettingsSchemaPartial = SettingsSchema.partial();
 
 export type Settings = z.infer<typeof SettingsSchema>;
 

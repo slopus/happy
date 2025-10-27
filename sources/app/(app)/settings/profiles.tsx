@@ -17,6 +17,8 @@ interface Profile {
     anthropicAuthToken?: string | null;
     anthropicModel?: string | null;
     tmuxSessionName?: string | null;
+    tmuxTmpDir?: string | null;
+    tmuxUpdateEnvironment?: boolean | null;
 }
 
 interface ProfileManagerProps {
@@ -41,6 +43,8 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             anthropicAuthToken: '',
             anthropicModel: '',
             tmuxSessionName: '',
+            tmuxTmpDir: '',
+            tmuxUpdateEnvironment: false,
         });
         setShowAddForm(true);
     };
@@ -215,6 +219,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
                                 }}>
                                     {profile.anthropicModel || t('profiles.defaultModel')}
                                     {profile.tmuxSessionName && ` • tmux: ${profile.tmuxSessionName}`}
+                                    {profile.tmuxTmpDir && ` • dir: ${profile.tmuxTmpDir}`}
                                 </Text>
                             </View>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -295,6 +300,8 @@ function ProfileEditForm({
     const [authToken, setAuthToken] = React.useState(profile.anthropicAuthToken || '');
     const [model, setModel] = React.useState(profile.anthropicModel || '');
     const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxSessionName || '');
+    const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxTmpDir || '');
+    const [tmuxUpdateEnvironment, setTmuxUpdateEnvironment] = React.useState(profile.tmuxUpdateEnvironment || false);
 
     const handleSave = () => {
         if (!name.trim()) {
@@ -309,6 +316,8 @@ function ProfileEditForm({
             anthropicAuthToken: authToken.trim() || null,
             anthropicModel: model.trim() || null,
             tmuxSessionName: tmuxSession.trim() || null,
+            tmuxTmpDir: tmuxTmpDir.trim() || null,
+            tmuxUpdateEnvironment,
         });
     };
 
@@ -464,7 +473,7 @@ function ProfileEditForm({
                         padding: 12,
                         fontSize: 16,
                         color: theme.colors.typography,
-                        marginBottom: 24,
+                        marginBottom: 16,
                         borderWidth: 1,
                         borderColor: theme.colors.border,
                     }}
@@ -472,6 +481,70 @@ function ProfileEditForm({
                     value={tmuxSession}
                     onChangeText={setTmuxSession}
                 />
+
+                {/* Tmux Temp Directory */}
+                <Text style={{
+                    fontSize: 14,
+                    fontWeight: '600',
+                    color: theme.colors.typography,
+                    marginBottom: 8,
+                    ...Typography.default('semiBold')
+                }}>
+                    {t('profiles.tmuxTempDir')} ({t('common.optional')})
+                </Text>
+                <TextInput
+                    style={{
+                        backgroundColor: theme.colors.input.background,
+                        borderRadius: 8,
+                        padding: 12,
+                        fontSize: 16,
+                        color: theme.colors.typography,
+                        marginBottom: 16,
+                        borderWidth: 1,
+                        borderColor: theme.colors.border,
+                    }}
+                    placeholder={t('profiles.enterTmuxTempDir')}
+                    value={tmuxTmpDir}
+                    onChangeText={setTmuxTmpDir}
+                />
+
+                {/* Tmux Update Environment */}
+                <View style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginBottom: 24,
+                }}>
+                    <Pressable
+                        style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                        }}
+                        onPress={() => setTmuxUpdateEnvironment(!tmuxUpdateEnvironment)}
+                    >
+                        <View style={{
+                            width: 20,
+                            height: 20,
+                            borderRadius: 10,
+                            borderWidth: 2,
+                            borderColor: tmuxUpdateEnvironment ? theme.colors.primary : theme.colors.border,
+                            backgroundColor: tmuxUpdateEnvironment ? theme.colors.primary : 'transparent',
+                            justifyContent: 'center',
+                            alignItems: 'center',
+                            marginRight: 8,
+                        }}>
+                            {tmuxUpdateEnvironment && (
+                                <Ionicons name="checkmark" size={12} color="white" />
+                            )}
+                        </View>
+                        <Text style={{
+                            fontSize: 14,
+                            color: theme.colors.typography,
+                            ...Typography.default()
+                        }}>
+                            {t('profiles.tmuxUpdateEnvironment')}
+                        </Text>
+                    </Pressable>
+                </View>
 
                 {/* Action buttons */}
                 <View style={{ flexDirection: 'row', gap: 12 }}>
