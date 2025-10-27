@@ -42,7 +42,7 @@ export const SettingsSchema = z.object({
 // only touch the fields it knows about.
 //
 
-const SettingsSchemaPartial = SettingsSchema.loose().partial();
+const SettingsSchemaPartial = SettingsSchema.partial();
 
 export type Settings = z.infer<typeof SettingsSchema>;
 
