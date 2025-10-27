@@ -22,6 +22,7 @@ import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
+import { ModelIndicator } from './ModelIndicator';
 
 interface AgentInputProps {
     value: string;
@@ -801,6 +802,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         color={theme.colors.button.secondary.tint}
                                     />
                                 </Pressable>
+                            )}
+
+                            {/* Model indicator */}
+                            {props.onModelModeChange && (
+                                <ModelIndicator
+                                    modelMode={props.modelMode}
+                                    isCodex={isCodex}
+                                    onPress={handleSettingsPress}
+                                    compact={false}
+                                />
                             )}
 
                             {/* Agent selector button */}

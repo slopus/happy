@@ -115,6 +115,16 @@ export const lightTheme = {
             yolo: '#DC143C',
         },
 
+        // Model tier colors
+        model: {
+            flagship: '#7C3AED',
+            flagshipBg: 'rgba(124, 58, 237, 0.15)',
+            balanced: '#3B82F6',
+            balancedBg: 'rgba(59, 130, 246, 0.15)',
+            efficient: '#10B981',
+            efficientBg: 'rgba(16, 185, 129, 0.15)',
+        },
+
         // Permission button colors
         permissionButton: {
             allow: {
@@ -320,6 +330,16 @@ export const darkTheme = {
             readOnly: '#98989D',
             safeYolo: '#FF7A4C',
             yolo: '#FF453A',
+        },
+
+        // Model tier colors
+        model: {
+            flagship: '#A78BFA',
+            flagshipBg: 'rgba(167, 139, 250, 0.2)',
+            balanced: '#60A5FA',
+            balancedBg: 'rgba(96, 165, 250, 0.2)',
+            efficient: '#34D399',
+            efficientBg: 'rgba(52, 211, 153, 0.2)',
         },
 
         // Permission button colors
