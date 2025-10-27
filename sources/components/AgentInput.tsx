@@ -32,6 +32,12 @@ interface AgentInputProps {
     sendIcon?: React.ReactNode;
     onMicPress?: () => void;
     isMicActive?: boolean;
+    // Voice input mode
+    inputMode?: 'text' | 'voice';
+    onInputModeChange?: (mode: 'text' | 'voice') => void;
+    onRecordPress?: () => void;
+    isRecording?: boolean;
+    isSpeaking?: boolean; // VAD speaking state (when local VAD is enabled)
     permissionMode?: PermissionMode;
     onPermissionModeChange?: (mode: PermissionMode) => void;
     modelMode?: ModelMode;
@@ -267,6 +273,63 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
     sendButtonIcon: {
         color: theme.colors.button.primary.tint,
     },
+
+    // Mode toggle button styles
+    modeToggleButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        justifyContent: 'center',
+        alignItems: 'center',
+        flexShrink: 0,
+        marginLeft: 8,
+        backgroundColor: theme.colors.button.secondary.background,
+    },
+
+    // Large record button for voice mode
+    voiceModeContainer: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: 40,
+    },
+    recordButton: {
+        width: 120,
+        height: 120,
+        borderRadius: 60,
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: theme.colors.button.primary.background,
+    },
+    recordButtonRecording: {
+        backgroundColor: theme.colors.status.error,
+    },
+
+    // VAD status indicator styles
+    vadStatusContainer: {
+        marginTop: 16,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    vadStatusText: {
+        fontSize: 14,
+        ...Typography.default(),
+    },
+    vadSpeakingIndicator: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginTop: 8,
+    },
+    vadWaveform: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        height: 20,
+        gap: 2,
+    },
+    vadBar: {
+        width: 3,
+        backgroundColor: theme.colors.button.primary.background,
+        borderRadius: 2,
+    },
 }));
 
 const getContextWarning = (contextSize: number, alwaysShow: boolean = false, theme: Theme) => {
@@ -298,6 +361,27 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const contextWarning = props.usageData?.contextSize
         ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
         : null;
+
+    // Mock VAD waveform animation data
+    const [vadWaveform, setVadWaveform] = React.useState<number[]>(Array(8).fill(0));
+
+    // Animate waveform when speaking
+    React.useEffect(() => {
+        if (props.isRecording && props.isSpeaking) {
+            const interval = setInterval(() => {
+                setVadWaveform(prev =>
+                    prev.map(() => Math.random() * 20 + 5) // Random heights 5-25
+                );
+            }, 100);
+            return () => clearInterval(interval);
+        } else if (props.isRecording && !props.isSpeaking) {
+            // Flat line when recording but not speaking
+            setVadWaveform(Array(8).fill(3));
+        } else {
+            // No waveform when not recording
+            setVadWaveform(Array(8).fill(0));
+        }
+    }, [props.isRecording, props.isSpeaking]);
 
 
     // Abort button state
@@ -760,20 +844,121 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 )}
                 {/* Unified panel containing input and action buttons */}
                 <View style={styles.unifiedPanel}>
-                    {/* Input field */}
-                    <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
-                        <MultiTextInput
-                            ref={inputRef}
-                            value={props.value}
-                            paddingTop={Platform.OS === 'web' ? 10 : 8}
-                            paddingBottom={Platform.OS === 'web' ? 10 : 8}
-                            onChangeText={props.onChangeText}
-                            placeholder={props.placeholder}
-                            onKeyPress={handleKeyPress}
-                            onStateChange={handleInputStateChange}
-                            maxHeight={120}
-                        />
-                    </View>
+                    {/* Text mode: show input field */}
+                    {props.inputMode !== 'voice' && (
+                        <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
+                            <MultiTextInput
+                                ref={inputRef}
+                                value={props.value}
+                                paddingTop={Platform.OS === 'web' ? 10 : 8}
+                                paddingBottom={Platform.OS === 'web' ? 10 : 8}
+                                onChangeText={props.onChangeText}
+                                placeholder={props.placeholder}
+                                onKeyPress={handleKeyPress}
+                                onStateChange={handleInputStateChange}
+                                maxHeight={120}
+                            />
+                            {/* Send button inside input (text mode only) */}
+                            {hasText && (
+                                <View
+                                    style={[
+                                        styles.sendButton,
+                                        styles.sendButtonActive
+                                    ]}
+                                >
+                                    <Pressable
+                                        style={(p) => ({
+                                            width: '100%',
+                                            height: '100%',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            opacity: p.pressed ? 0.7 : 1,
+                                        })}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        onPress={() => {
+                                            hapticsLight();
+                                            props.onSend();
+                                        }}
+                                        disabled={props.isSendDisabled || props.isSending}
+                                    >
+                                        {props.isSending ? (
+                                            <ActivityIndicator
+                                                size="small"
+                                                color={theme.colors.button.primary.tint}
+                                            />
+                                        ) : (
+                                            <Octicons
+                                                name="arrow-up"
+                                                size={16}
+                                                color={theme.colors.button.primary.tint}
+                                                style={[
+                                                    styles.sendButtonIcon,
+                                                    { marginTop: Platform.OS === 'web' ? 2 : 0 }
+                                                ]}
+                                            />
+                                        )}
+                                    </Pressable>
+                                </View>
+                            )}
+                        </View>
+                    )}
+
+                    {/* Voice mode: show large record button */}
+                    {props.inputMode === 'voice' && (
+                        <View style={styles.voiceModeContainer}>
+                            <Pressable
+                                onPress={() => {
+                                    hapticsLight();
+                                    props.onRecordPress?.();
+                                }}
+                                style={(p) => ({
+                                    opacity: p.pressed ? 0.8 : 1,
+                                })}
+                            >
+                                <View style={[
+                                    styles.recordButton,
+                                    props.isRecording && styles.recordButtonRecording
+                                ]}>
+                                    <Ionicons
+                                        name={props.isRecording ? "stop" : "mic"}
+                                        size={48}
+                                        color={theme.colors.button.primary.tint}
+                                    />
+                                </View>
+                            </Pressable>
+                            {/* VAD Status Indicator */}
+                            {props.isRecording && (
+                                <View style={styles.vadStatusContainer}>
+                                    <Text style={[
+                                        styles.vadStatusText,
+                                        { color: theme.colors.text }
+                                    ]}>
+                                        {props.isSpeaking ? '🎤 Speaking detected...' : '🔇 Listening for speech...'}
+                                    </Text>
+
+                                    {/* Simple waveform visualization */}
+                                    <View style={styles.vadSpeakingIndicator}>
+                                        <View style={styles.vadWaveform}>
+                                            {vadWaveform.map((height, index) => (
+                                                <View
+                                                    key={index}
+                                                    style={[
+                                                        styles.vadBar,
+                                                        {
+                                                            height: height,
+                                                            backgroundColor: props.isSpeaking
+                                                                ? theme.colors.button.primary.background
+                                                                : theme.colors.textSecondary
+                                                        }
+                                                    ]}
+                                                />
+                                            ))}
+                                        </View>
+                                    </View>
+                                </View>
+                            )}
+                        </View>
+                    )}
 
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
@@ -949,71 +1134,40 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                             <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
                         </View>
 
-                        {/* Send/Voice button */}
-                        <View
-                            style={[
-                                styles.sendButton,
-                                (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
-                                    ? styles.sendButtonActive
-                                    : styles.sendButtonInactive
-                            ]}
-                        >
-                            <Pressable
-                                style={(p) => ({
-                                    width: '100%',
-                                    height: '100%',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    opacity: p.pressed ? 0.7 : 1,
-                                })}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                onPress={() => {
-                                    hapticsLight();
-                                    if (hasText) {
-                                        props.onSend();
-                                    } else {
-                                        props.onMicPress?.();
-                                    }
-                                }}
-                                disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
-                            >
-                                {props.isSending ? (
-                                    <ActivityIndicator
-                                        size="small"
-                                        color={theme.colors.button.primary.tint}
-                                    />
-                                ) : hasText ? (
-                                    <Octicons
-                                        name="arrow-up"
-                                        size={16}
-                                        color={theme.colors.button.primary.tint}
-                                        style={[
-                                            styles.sendButtonIcon,
-                                            { marginTop: Platform.OS === 'web' ? 2 : 0 }
-                                        ]}
-                                    />
-                                ) : props.onMicPress && !props.isMicActive ? (
-                                    <Image
-                                        source={require('@/assets/images/icon-voice-white.png')}
-                                        style={{
-                                            width: 24,
-                                            height: 24,
-                                        }}
-                                        tintColor={theme.colors.button.primary.tint}
-                                    />
-                                ) : (
-                                    <Octicons
-                                        name="arrow-up"
-                                        size={16}
-                                        color={theme.colors.button.primary.tint}
-                                        style={[
-                                            styles.sendButtonIcon,
-                                            { marginTop: Platform.OS === 'web' ? 2 : 0 }
-                                        ]}
-                                    />
-                                )}
-                            </Pressable>
-                        </View>
+                        {/* Mode toggle button (text/voice) */}
+                        {props.onInputModeChange && (
+                            <View style={styles.modeToggleButton}>
+                                <Pressable
+                                    style={(p) => ({
+                                        width: '100%',
+                                        height: '100%',
+                                        alignItems: 'center',
+                                        justifyContent: 'center',
+                                        opacity: p.pressed ? 0.7 : 1,
+                                    })}
+                                    hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                    onPress={() => {
+                                        hapticsLight();
+                                        const newMode = props.inputMode === 'voice' ? 'text' : 'voice';
+                                        props.onInputModeChange?.(newMode);
+                                    }}
+                                >
+                                    {props.inputMode === 'voice' ? (
+                                        <Ionicons
+                                            name="text"
+                                            size={18}
+                                            color={theme.colors.button.secondary.tint}
+                                        />
+                                    ) : (
+                                        <Ionicons
+                                            name="mic-outline"
+                                            size={18}
+                                            color={theme.colors.button.secondary.tint}
+                                        />
+                                    )}
+                                </Pressable>
+                            </View>
+                        )}
                     </View>
                 </View>
             </View>

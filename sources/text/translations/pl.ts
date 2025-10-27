@@ -252,6 +252,14 @@ export const pl: TranslationStructure = {
         failedToRemoveFriend: 'Nie udało się usunąć przyjaciela',
         searchFailed: 'Wyszukiwanie nie powiodło się. Spróbuj ponownie.',
         failedToSendRequest: 'Nie udało się wysłać zaproszenia do znajomych',
+
+        // Voice recording errors
+        recordingFailed: 'Nie udało się nagrać dźwięku',
+        recordingStartFailed: 'Nie udało się rozpocząć nagrywania',
+        recordingStopFailed: 'Nie udało się zatrzymać nagrywania',
+        microphonePermissionDenied: 'Odmowa dostępu do mikrofonu. Włącz go w Ustawieniach.',
+        asrFailed: 'Nie udało się rozpoznać dźwięku. Spróbuj ponownie.',
+        asrNoText: 'Nie wykryto mowy w nagraniu',
     },
 
     newSession: {
@@ -546,6 +554,15 @@ export const pl: TranslationStructure = {
             title: 'Języki',
             footer: ({ count }: { count: number }) => `Dostępnych ${count} ${plural({ count, one: 'język', few: 'języki', many: 'języków' })}`,
             autoDetect: 'Automatyczne wykrywanie',
+        },
+        experimental: {
+            title: 'Funkcje eksperymentalne',
+            localVAD: 'Lokalny VAD',
+            localVADDescription: 'Automatycznie wykrywaj moment zakończenia mówienia i zatrzymuj nagrywanie. Ta funkcja wykorzystuje lokalne wykrywanie aktywności głosowej zamiast polegać na usługach chmurowych.',
+            warning: 'Funkcja eksperymentalna',
+            warningDescription: 'Ta funkcja jest eksperymentalna i może nie działać idealnie we wszystkich środowiskach. Możesz ją wyłączyć w dowolnym momencie.',
+            silenceTimeout: 'Czas oczekiwania na ciszę',
+            silenceTimeoutDescription: 'Zatrzymaj nagrywanie po N milisekundach ciszy',
         }
     },
 
@@ -728,6 +745,12 @@ export const pl: TranslationStructure = {
         unknownEvent: 'Nieznane zdarzenie',
         usageLimitUntil: ({ time }: { time: string }) => `Osiągnięto limit użycia do ${time}`,
         unknownTime: 'nieznany czas',
+        // Message actions
+        copy: 'Kopiuj wiadomość',
+        copied: 'Wiadomość skopiowana do schowka',
+        copyFailed: 'Nie udało się skopiować wiadomości',
+        resend: 'Wyślij ponownie',
+        actions: 'Akcje wiadomości',
     },
 
     codex: {
@@ -870,6 +893,27 @@ export const pl: TranslationStructure = {
         friendRequestGeneric: 'Nowe zaproszenie do znajomych',
         friendAccepted: ({ name }: { name: string }) => `Jesteś teraz znajomym z ${name}`,
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
+    },
+
+    notifications: {
+        // System notifications (push notifications)
+        // Permission notifications
+        permissionTitle: ({ session }: { session: string }) => `"${session}" wymaga pozwolenia`,
+        permissionBody: ({ permission, reason }: { permission: string; reason: string }) =>
+            reason ? `Wymaga pozwolenia ${permission}: ${reason}` : `Wymaga pozwolenia ${permission}`,
+        unknownPermission: 'nieznane pozwolenie',
+
+        // Input required notifications
+        inputTitle: ({ session }: { session: string }) => `"${session}" czeka na dane`,
+        waitingForCommand: 'Oczekuje na następne polecenie',
+
+        // Task completed notifications
+        completionTitle: ({ session }: { session: string }) => `"${session}" zakończono`,
+        taskCompletedDefault: 'Zadanie zakończone, gotowy na następny krok',
+
+        // Error notifications
+        errorTitle: ({ session }: { session: string }) => `"${session}" napotkał błąd`,
+        unknownError: 'Wystąpił nieznany błąd',
     }
 } as const;
 

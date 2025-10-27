@@ -26,6 +26,7 @@ import { StatusBarProvider } from '@/components/StatusBarProvider';
 import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
 import { useUnistyles } from 'react-native-unistyles';
 import { AsyncLock } from '@/utils/lock';
+import { requestNotificationPermissions } from '@/services/notificationManager';
 
 export {
     // Catch any errors thrown by the Layout component.
@@ -163,6 +164,11 @@ export default function RootLayout() {
                 console.log('credentials', credentials);
                 if (credentials) {
                     await syncRestore(credentials);
+                }
+
+                // Request notification permissions (only on native platforms)
+                if (Platform.OS !== 'web') {
+                    await requestNotificationPermissions();
                 }
 
                 setInitState({ credentials });

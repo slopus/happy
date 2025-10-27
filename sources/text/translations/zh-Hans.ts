@@ -243,6 +243,14 @@ export const zhHans: TranslationStructure = {
         failedToRemoveFriend: '删除好友失败',
         searchFailed: '搜索失败。请重试。',
         failedToSendRequest: '发送好友请求失败',
+
+        // Voice recording errors
+        recordingFailed: '录音失败',
+        recordingStartFailed: '启动录音失败',
+        recordingStopFailed: '停止录音失败',
+        microphonePermissionDenied: '麦克风权限被拒绝。请在设置中启用。',
+        asrFailed: '音频转文字失败。请重试。',
+        asrNoText: '录音中未检测到语音',
     },
 
     newSession: {
@@ -538,6 +546,15 @@ export const zhHans: TranslationStructure = {
             title: '语言',
             footer: ({ count }: { count: number }) => `${count} 种可用语言`,
             autoDetect: '自动检测',
+        },
+        experimental: {
+            title: '实验功能',
+            localVAD: '本地 VAD',
+            localVADDescription: '自动检测您何时结束说话并停止录音。此功能使用本地语音活动检测，而不依赖云服务。',
+            warning: '实验功能',
+            warningDescription: '这是一个实验功能，可能在所有环境中无法完美工作。您可以随时禁用它。',
+            silenceTimeout: '静音超时',
+            silenceTimeoutDescription: '静音 N 毫秒后停止录音',
         }
     },
 
@@ -720,6 +737,12 @@ export const zhHans: TranslationStructure = {
         unknownEvent: '未知事件',
         usageLimitUntil: ({ time }: { time: string }) => `使用限制到 ${time}`,
         unknownTime: '未知时间',
+        // Message actions
+        copy: '复制消息',
+        copied: '消息已复制到剪贴板',
+        copyFailed: '复制消息失败',
+        resend: '重新发送消息',
+        actions: '消息操作',
     },
 
     codex: {
@@ -848,5 +871,26 @@ export const zhHans: TranslationStructure = {
         friendRequestGeneric: '新的好友请求',
         friendAccepted: ({ name }: { name: string }) => `您现在与 ${name} 成为了好友`,
         friendAcceptedGeneric: '好友请求已接受',
+    },
+
+    notifications: {
+        // System notifications (push notifications)
+        // Permission notifications
+        permissionTitle: ({ session }: { session: string }) => `"${session}" 需要权限`,
+        permissionBody: ({ permission, reason }: { permission: string; reason: string }) =>
+            reason ? `需要 ${permission} 权限：${reason}` : `需要 ${permission} 权限`,
+        unknownPermission: '未知权限',
+
+        // Input required notifications
+        inputTitle: ({ session }: { session: string }) => `"${session}" 等待输入`,
+        waitingForCommand: '等待您的下一个命令',
+
+        // Task completed notifications
+        completionTitle: ({ session }: { session: string }) => `"${session}" 已完成`,
+        taskCompletedDefault: '任务已完成，准备进行下一步',
+
+        // Error notifications
+        errorTitle: ({ session }: { session: string }) => `"${session}" 遇到错误`,
+        unknownError: '发生了未知错误',
     }
 } as const;

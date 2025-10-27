@@ -241,6 +241,14 @@ export const es: TranslationStructure = {
         failedToRemoveFriend: 'No se pudo eliminar al amigo',
         searchFailed: 'La búsqueda falló. Por favor, intenta de nuevo.',
         failedToSendRequest: 'No se pudo enviar la solicitud de amistad',
+
+        // Voice recording errors
+        recordingFailed: 'Error al grabar audio',
+        recordingStartFailed: 'Error al iniciar la grabación',
+        recordingStopFailed: 'Error al detener la grabación',
+        microphonePermissionDenied: 'Permiso de micrófono denegado. Por favor, habilítalo en Configuración.',
+        asrFailed: 'Error al transcribir el audio. Por favor, intenta de nuevo.',
+        asrNoText: 'No se detectó voz en la grabación',
     },
 
     newSession: {
@@ -536,6 +544,15 @@ export const es: TranslationStructure = {
             title: 'Idiomas',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomas' })} disponibles`,
             autoDetect: 'Detectar automáticamente',
+        },
+        experimental: {
+            title: 'Características experimentales',
+            localVAD: 'VAD local',
+            localVADDescription: 'Detecta automáticamente cuando terminas de hablar y detiene la grabación. Esta función utiliza detección de actividad de voz local en lugar de depender de servicios en la nube.',
+            warning: 'Característica experimental',
+            warningDescription: 'Esta característica es experimental y puede no funcionar perfectamente en todos los entornos. Puedes deshabilitarla en cualquier momento.',
+            silenceTimeout: 'Tiempo de espera de silencio',
+            silenceTimeoutDescription: 'Detener grabación después de N milisegundos de silencio',
         }
     },
 
@@ -718,6 +735,12 @@ export const es: TranslationStructure = {
         unknownEvent: 'Evento desconocido',
         usageLimitUntil: ({ time }: { time: string }) => `Límite de uso alcanzado hasta ${time}`,
         unknownTime: 'tiempo desconocido',
+        // Message actions
+        copy: 'Copiar mensaje',
+        copied: 'Mensaje copiado al portapapeles',
+        copyFailed: 'Error al copiar el mensaje',
+        resend: 'Reenviar mensaje',
+        actions: 'Acciones del mensaje',
     },
 
     codex: {
@@ -847,6 +870,27 @@ export const es: TranslationStructure = {
         friendRequestGeneric: 'Nueva solicitud de amistad',
         friendAccepted: ({ name }: { name: string }) => `Ahora eres amigo de ${name}`,
         friendAcceptedGeneric: 'Solicitud de amistad aceptada',
+    },
+
+    notifications: {
+        // System notifications (push notifications)
+        // Permission notifications
+        permissionTitle: ({ session }: { session: string }) => `"${session}" necesita permiso`,
+        permissionBody: ({ permission, reason }: { permission: string; reason: string }) =>
+            reason ? `Necesita permiso de ${permission}: ${reason}` : `Necesita permiso de ${permission}`,
+        unknownPermission: 'permiso desconocido',
+
+        // Input required notifications
+        inputTitle: ({ session }: { session: string }) => `"${session}" esperando entrada`,
+        waitingForCommand: 'Esperando tu siguiente comando',
+
+        // Task completed notifications
+        completionTitle: ({ session }: { session: string }) => `"${session}" completado`,
+        taskCompletedDefault: 'Tarea completada, listo para el siguiente paso',
+
+        // Error notifications
+        errorTitle: ({ session }: { session: string }) => `"${session}" encontró un error`,
+        unknownError: 'Ocurrió un error desconocido',
     }
 } as const;
 

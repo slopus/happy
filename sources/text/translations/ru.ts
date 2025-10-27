@@ -224,6 +224,14 @@ export const ru: TranslationStructure = {
         failedToRemoveFriend: 'Не удалось удалить друга',
         searchFailed: 'Поиск не удался. Пожалуйста, попробуйте снова.',
         failedToSendRequest: 'Не удалось отправить запрос в друзья',
+
+        // Voice recording errors
+        recordingFailed: 'Не удалось записать аудио',
+        recordingStartFailed: 'Не удалось начать запись',
+        recordingStopFailed: 'Не удалось остановить запись',
+        microphonePermissionDenied: 'Доступ к микрофону запрещён. Пожалуйста, разрешите его в Настройках.',
+        asrFailed: 'Не удалось распознать аудио. Пожалуйста, попробуйте снова.',
+        asrNoText: 'В записи не обнаружена речь',
     },
 
     newSession: {
@@ -546,6 +554,15 @@ export const ru: TranslationStructure = {
             title: 'Языки',
             footer: ({ count }: { count: number }) => `Доступно ${count} ${plural({ count, one: 'язык', few: 'языка', many: 'языков' })}`,
             autoDetect: 'Автоопределение',
+        },
+        experimental: {
+            title: 'Экспериментальные функции',
+            localVAD: 'Локальный VAD',
+            localVADDescription: 'Автоматически определять момент завершения речи и останавливать запись. Эта функция использует локальное определение голосовой активности вместо облачных сервисов.',
+            warning: 'Экспериментальная функция',
+            warningDescription: 'Эта функция экспериментальна и может работать неидеально во всех средах. Вы можете отключить её в любое время.',
+            silenceTimeout: 'Тайм-аут тишины',
+            silenceTimeoutDescription: 'Остановить запись через N миллисекунд тишины',
         }
     },
 
@@ -716,6 +733,12 @@ export const ru: TranslationStructure = {
         unknownEvent: 'Неизвестное событие',
         usageLimitUntil: ({ time }: { time: string }) => `Лимит использования достигнут до ${time}`,
         unknownTime: 'неизвестное время',
+        // Message actions
+        copy: 'Копировать сообщение',
+        copied: 'Сообщение скопировано в буфер обмена',
+        copyFailed: 'Не удалось скопировать сообщение',
+        resend: 'Отправить повторно',
+        actions: 'Действия с сообщением',
     },
 
     codex: {
@@ -869,6 +892,27 @@ export const ru: TranslationStructure = {
         friendRequestGeneric: 'Новый запрос в друзья',
         friendAccepted: ({ name }: { name: string }) => `Вы теперь друзья с ${name}`,
         friendAcceptedGeneric: 'Запрос в друзья принят',
+    },
+
+    notifications: {
+        // System notifications (push notifications)
+        // Permission notifications
+        permissionTitle: ({ session }: { session: string }) => `"${session}" требует разрешения`,
+        permissionBody: ({ permission, reason }: { permission: string; reason: string }) =>
+            reason ? `Требуется разрешение ${permission}: ${reason}` : `Требуется разрешение ${permission}`,
+        unknownPermission: 'неизвестное разрешение',
+
+        // Input required notifications
+        inputTitle: ({ session }: { session: string }) => `"${session}" ожидает ввода`,
+        waitingForCommand: 'Ожидание вашей следующей команды',
+
+        // Task completed notifications
+        completionTitle: ({ session }: { session: string }) => `"${session}" завершено`,
+        taskCompletedDefault: 'Задача завершена, готов к следующему шагу',
+
+        // Error notifications
+        errorTitle: ({ session }: { session: string }) => `"${session}" обнаружена ошибка`,
+        unknownError: 'Произошла неизвестная ошибка',
     }
 } as const;
 

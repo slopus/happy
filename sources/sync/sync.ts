@@ -30,6 +30,7 @@ import { projectManager } from './projectManager';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { Message } from './typesMessage';
 import { EncryptionCache } from './encryption/encryptionCache';
+import { notifyPermissionRequired, notifyInputRequired } from '@/services/notificationManager';
 import { systemPrompt } from './prompt/systemPrompt';
 import { fetchArtifact, fetchArtifacts, createArtifact, updateArtifact } from './apiArtifacts';
 import { DecryptedArtifact, Artifact, ArtifactCreateRequest, ArtifactUpdateRequest } from './artifactTypes';
@@ -1980,9 +1981,40 @@ class Sync {
         presence?: "online" | number;
     })[]) => {
         const active = storage.getState().getActiveSessions();
+        const oldSessions = storage.getState().sessions;
+
         storage.getState().applySessions(sessions);
         const newActive = storage.getState().getActiveSessions();
         this.applySessionDiff(active, newActive);
+
+        // Detect state changes for notifications
+        for (const newSession of sessions) {
+            const oldSession = oldSessions[newSession.id];
+            if (!oldSession) continue;
+
+            // Detect new permission requests
+            const newRequests = Object.keys(newSession.agentState?.requests || {});
+            const oldRequests = Object.keys(oldSession.agentState?.requests || {});
+            const addedRequests = newRequests.filter(r => !oldRequests.includes(r));
+
+            if (addedRequests.length > 0) {
+                const firstRequest = newSession.agentState!.requests![addedRequests[0]];
+                notifyPermissionRequired(
+                    newSession as Session,
+                    firstRequest.tool,
+                    firstRequest.arguments?.reason || ''
+                );
+            }
+
+            // Detect AI finished thinking (waiting for input)
+            // Only notify if: was thinking -> now not thinking, and no pending requests
+            if (oldSession.thinking && !newSession.thinking) {
+                const hasRequests = newRequests.length > 0;
+                if (!hasRequests) {
+                    notifyInputRequired(newSession as Session);
+                }
+            }
+        }
     }
 
     private applySessionDiff = (active: Session[], newActive: Session[]) => {

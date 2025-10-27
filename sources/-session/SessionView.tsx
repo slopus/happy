@@ -8,7 +8,9 @@ import { Deferred } from '@/components/Deferred';
 import { EmptyMessages } from '@/components/EmptyMessages';
 import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
+import { useVoiceRecording } from '@/hooks/useVoiceRecording';
 import { Modal } from '@/modal';
+import { transcribeAudio, cleanupAudioFile } from '@/services/asr';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
 import { startRealtimeSession, stopRealtimeSession, updateCurrentSessionId } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
@@ -153,6 +155,8 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const isTablet = useIsTablet();
     const headerHeight = useHeaderHeight();
     const [message, setMessage] = React.useState('');
+    const [inputMode, setInputMode] = React.useState<'text' | 'voice'>('text');
+    const voiceRecording = useVoiceRecording();
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
     const acknowledgedCliVersions = useLocalSetting('acknowledgedCliVersions');
@@ -238,6 +242,77 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         isMicActive: realtimeStatus === 'connected' || realtimeStatus === 'connecting'
     }), [handleMicrophonePress, realtimeStatus]);
 
+    // Handle input mode change
+    const handleInputModeChange = React.useCallback((mode: 'text' | 'voice') => {
+        setInputMode(mode);
+        tracking?.capture('input_mode_changed', { mode });
+    }, []);
+
+    // Handle record button press with ASR integration
+    const handleRecordPress = React.useCallback(async () => {
+        if (voiceRecording.isRecording) {
+            try {
+                // Stop recording
+                const result = await voiceRecording.stopRecording();
+                tracking?.capture('recording_stopped');
+
+                if (!result) {
+                    Modal.alert(t('common.error'), t('errors.recordingFailed'));
+                    return;
+                }
+
+                // Transcribe audio using ASR
+                tracking?.capture('asr_started');
+                try {
+                    const transcription = await transcribeAudio(result.uri);
+
+                    // Clean up audio file
+                    await cleanupAudioFile(result.uri);
+
+                    // Fill the transcribed text into the input
+                    if (transcription.text.trim()) {
+                        setMessage(transcription.text.trim());
+                        tracking?.capture('asr_completed', {
+                            textLength: transcription.text.length,
+                            duration: result.duration
+                        });
+                    } else {
+                        Modal.alert(t('common.error'), t('errors.asrNoText'));
+                    }
+                } catch (asrError) {
+                    console.error('ASR failed:', asrError);
+                    await cleanupAudioFile(result.uri);
+                    Modal.alert(t('common.error'), t('errors.asrFailed'));
+                    tracking?.capture('asr_failed', {
+                        error: asrError instanceof Error ? asrError.message : 'Unknown error'
+                    });
+                }
+            } catch (error) {
+                console.error('Failed to stop recording:', error);
+                Modal.alert(t('common.error'), t('errors.recordingStopFailed'));
+                tracking?.capture('recording_stop_failed', {
+                    error: error instanceof Error ? error.message : 'Unknown error'
+                });
+            }
+        } else {
+            try {
+                // Start recording
+                await voiceRecording.startRecording();
+                tracking?.capture('recording_started');
+            } catch (error) {
+                console.error('Failed to start recording:', error);
+                if (error instanceof Error && error.message.includes('permission')) {
+                    Modal.alert(t('common.error'), t('errors.microphonePermissionDenied'));
+                } else {
+                    Modal.alert(t('common.error'), t('errors.recordingStartFailed'));
+                }
+                tracking?.capture('recording_start_failed', {
+                    error: error instanceof Error ? error.message : 'Unknown error'
+                });
+            }
+        }
+    }, [voiceRecording]);
+
     // Trigger session visibility and initialize git status sync
     React.useLayoutEffect(() => {
 
@@ -299,6 +374,12 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             }}
             onMicPress={micButtonState.onMicPress}
             isMicActive={micButtonState.isMicActive}
+            // Voice input mode
+            inputMode={inputMode}
+            onInputModeChange={handleInputModeChange}
+            onRecordPress={handleRecordPress}
+            isRecording={voiceRecording.isRecording}
+            isSpeaking={voiceRecording.isSpeaking}
             onAbort={() => sessionAbort(sessionId)}
             showAbortButton={sessionStatus.state === 'thinking' || sessionStatus.state === 'waiting'}
             onFileViewerPress={experiments ? () => router.push(`/session/${sessionId}/files`) : undefined}

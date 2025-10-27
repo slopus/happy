@@ -241,6 +241,14 @@ export const en = {
         failedToRemoveFriend: 'Failed to remove friend',
         searchFailed: 'Search failed. Please try again.',
         failedToSendRequest: 'Failed to send friend request',
+
+        // Voice recording errors
+        recordingFailed: 'Failed to record audio',
+        recordingStartFailed: 'Failed to start recording',
+        recordingStopFailed: 'Failed to stop recording',
+        microphonePermissionDenied: 'Microphone permission denied. Please enable it in Settings.',
+        asrFailed: 'Failed to transcribe audio. Please try again.',
+        asrNoText: 'No speech detected in the recording',
     },
 
     newSession: {
@@ -536,6 +544,15 @@ export const en = {
             title: 'Languages',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'language', plural: 'languages' })} available`,
             autoDetect: 'Auto-detect',
+        },
+        experimental: {
+            title: 'Experimental Features',
+            localVAD: 'Local VAD',
+            localVADDescription: 'Automatically detect when you finish speaking and stop recording. This feature uses local voice activity detection instead of relying on cloud services.',
+            warning: 'Experimental Feature',
+            warningDescription: 'This feature is experimental and may not work perfectly in all environments. You can disable it anytime.',
+            silenceTimeout: 'Silence Timeout',
+            silenceTimeoutDescription: 'Stop recording after N milliseconds of silence',
         }
     },
 
@@ -718,6 +735,12 @@ export const en = {
         unknownEvent: 'Unknown event',
         usageLimitUntil: ({ time }: { time: string }) => `Usage limit reached until ${time}`,
         unknownTime: 'unknown time',
+        // Message actions
+        copy: 'Copy Message',
+        copied: 'Message copied to clipboard',
+        copyFailed: 'Failed to copy message',
+        resend: 'Resend Message',
+        actions: 'Message Actions',
     },
 
     codex: {
@@ -847,6 +870,27 @@ export const en = {
         friendRequestGeneric: 'New friend request',
         friendAccepted: ({ name }: { name: string }) => `You are now friends with ${name}`,
         friendAcceptedGeneric: 'Friend request accepted',
+    },
+
+    notifications: {
+        // System notifications (push notifications)
+        // Permission notifications
+        permissionTitle: ({ session }: { session: string }) => `"${session}" needs permission`,
+        permissionBody: ({ permission, reason }: { permission: string; reason: string }) =>
+            reason ? `Needs ${permission} permission: ${reason}` : `Needs ${permission} permission`,
+        unknownPermission: 'unknown permission',
+
+        // Input required notifications
+        inputTitle: ({ session }: { session: string }) => `"${session}" waiting for input`,
+        waitingForCommand: 'Waiting for your next command',
+
+        // Task completed notifications
+        completionTitle: ({ session }: { session: string }) => `"${session}" completed`,
+        taskCompletedDefault: 'Task completed, ready for next step',
+
+        // Error notifications
+        errorTitle: ({ session }: { session: string }) => `"${session}" encountered error`,
+        unknownError: 'An unknown error occurred',
     }
 } as const;
 

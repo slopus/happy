@@ -114,6 +114,7 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                experimentalLocalVAD: false,
             };
             const delta: Partial<Settings> = {
                 viewInline: true
@@ -162,6 +163,7 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                experimentalLocalVAD: false,
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual({
@@ -193,6 +195,7 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                experimentalLocalVAD: false,
             };
             const delta: Partial<Settings> = {
                 viewInline: false
@@ -241,6 +244,7 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                experimentalLocalVAD: false,
             };
             expect(applySettings(currentSettings, {})).toEqual({
                 ...settingsDefaults,
@@ -286,6 +290,7 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                experimentalLocalVAD: false,
             };
             const delta: any = {
                 viewInline: false,

@@ -19,7 +19,7 @@ export default function VoiceSettingsScreen() {
     return (
         <ItemList style={{ paddingTop: 0 }}>
             {/* Language Settings */}
-            <ItemGroup 
+            <ItemGroup
                 title={t('settingsVoice.languageTitle')}
                 footer={t('settingsVoice.languageDescription')}
             >
@@ -29,6 +29,19 @@ export default function VoiceSettingsScreen() {
                     icon={<Ionicons name="language-outline" size={29} color="#007AFF" />}
                     detail={getLanguageDisplayName(currentLanguage)}
                     onPress={() => router.push('/settings/voice/language')}
+                />
+            </ItemGroup>
+
+            {/* Experimental Features */}
+            <ItemGroup
+                title={t('settingsVoice.experimental.title')}
+                footer={t('settingsVoice.experimental.localVADDescription')}
+            >
+                <Item
+                    title={t('settingsVoice.experimental.localVAD')}
+                    subtitle={t('settingsVoice.experimental.localVADDescription')}
+                    icon={<Ionicons name="flask-outline" size={29} color="#FF9500" />}
+                    onPress={() => router.push('/settings/voice/experimental')}
                 />
             </ItemGroup>
 

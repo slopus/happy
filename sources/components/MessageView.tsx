@@ -1,5 +1,5 @@
 import * as React from "react";
-import { View, Text } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { StyleSheet } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
@@ -10,6 +10,9 @@ import { ToolView } from "./tools/ToolView";
 import { AgentEvent } from "@/sync/typesRaw";
 import { sync } from '@/sync/sync';
 import { Option } from './markdown/MarkdownView';
+import * as Clipboard from 'expo-clipboard';
+import { Modal } from '@/modal';
+import { hapticsLight } from '@/utils/haptics';
 
 export const MessageView = (props: {
   message: Message;
@@ -72,14 +75,50 @@ function UserTextBlock(props: {
     sync.sendMessage(props.sessionId, option.title);
   }, [props.sessionId]);
 
+  const handleLongPress = React.useCallback(async () => {
+    hapticsLight();
+
+    Modal.actionSheet([
+      {
+        text: t('message.copy'),
+        onPress: async () => {
+          try {
+            await Clipboard.setStringAsync(props.message.text);
+            Modal.alert(t('common.success'), t('message.copied'));
+          } catch (error) {
+            console.error('Failed to copy message:', error);
+            Modal.alert(t('common.error'), t('message.copyFailed'));
+          }
+        }
+      },
+      {
+        text: t('message.resend'),
+        onPress: () => {
+          sync.sendMessage(props.sessionId, props.message.text);
+        }
+      },
+      {
+        text: t('common.cancel'),
+        style: 'cancel'
+      }
+    ]);
+  }, [props.message.text, props.sessionId]);
+
   return (
     <View style={styles.userMessageContainer}>
-      <View style={styles.userMessageBubble}>
+      <Pressable
+        onLongPress={handleLongPress}
+        delayLongPress={500}
+        style={({ pressed }) => [
+          styles.userMessageBubble,
+          pressed && styles.userMessageBubblePressed
+        ]}
+      >
         <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
         {/* {__DEV__ && (
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
-      </View>
+      </Pressable>
     </View>
   );
 }
@@ -189,6 +228,9 @@ const styles = StyleSheet.create((theme) => ({
     borderRadius: 12,
     marginBottom: 12,
     maxWidth: '100%',
+  },
+  userMessageBubblePressed: {
+    opacity: 0.7,
   },
   agentMessageContainer: {
     marginHorizontal: 16,

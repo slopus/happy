@@ -241,6 +241,14 @@ export const ca: TranslationStructure = {
         failedToRemoveFriend: 'No s\'ha pogut eliminar l\'amic',
         searchFailed: 'La cerca ha fallat. Si us plau, torna-ho a provar.',
         failedToSendRequest: 'No s\'ha pogut enviar la sol·licitud d\'amistat',
+
+        // Voice recording errors
+        recordingFailed: 'Error en gravar àudio',
+        recordingStartFailed: 'Error en iniciar la gravació',
+        recordingStopFailed: 'Error en aturar la gravació',
+        microphonePermissionDenied: 'Permís del micròfon denegat. Si us plau, habilita\'l a Configuració.',
+        asrFailed: 'Error en transcriure l\'àudio. Si us plau, torna-ho a provar.',
+        asrNoText: 'No s\'ha detectat veu a la gravació',
     },
 
     newSession: {
@@ -536,6 +544,15 @@ export const ca: TranslationStructure = {
             title: 'Idiomes',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomes' })} disponibles`,
             autoDetect: 'Detecta automàticament',
+        },
+        experimental: {
+            title: 'Funcions experimentals',
+            localVAD: 'VAD local',
+            localVADDescription: 'Detecta automàticament quan acabes de parlar i atura la gravació. Aquesta funció utilitza detecció d\'activitat de veu local en lloc de dependre de serveis al núvol.',
+            warning: 'Funció experimental',
+            warningDescription: 'Aquesta funció és experimental i pot no funcionar perfectament en tots els entorns. Pots desactivar-la en qualsevol moment.',
+            silenceTimeout: 'Temps d\'espera de silenci',
+            silenceTimeoutDescription: 'Aturar gravació després de N mil·lisegons de silenci',
         }
     },
 
@@ -718,6 +735,12 @@ export const ca: TranslationStructure = {
         unknownEvent: 'Esdeveniment desconegut',
         usageLimitUntil: ({ time }: { time: string }) => `Límit d'ús assolit fins a ${time}`,
         unknownTime: 'temps desconegut',
+        // Message actions
+        copy: 'Copiar missatge',
+        copied: 'Missatge copiat al porta-retalls',
+        copyFailed: 'Error en copiar el missatge',
+        resend: 'Reenviar missatge',
+        actions: 'Accions del missatge',
     },
 
     codex: {
@@ -846,6 +869,27 @@ export const ca: TranslationStructure = {
         friendRequestGeneric: 'Nova sol·licitud d\'amistat',
         friendAccepted: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
         friendAcceptedGeneric: 'Sol·licitud d\'amistat acceptada',
+    },
+
+    notifications: {
+        // System notifications (push notifications)
+        // Permission notifications
+        permissionTitle: ({ session }: { session: string }) => `"${session}" necessita permís`,
+        permissionBody: ({ permission, reason }: { permission: string; reason: string }) =>
+            reason ? `Necessita permís de ${permission}: ${reason}` : `Necessita permís de ${permission}`,
+        unknownPermission: 'permís desconegut',
+
+        // Input required notifications
+        inputTitle: ({ session }: { session: string }) => `"${session}" esperant entrada`,
+        waitingForCommand: 'Esperant la teva següent comanda',
+
+        // Task completed notifications
+        completionTitle: ({ session }: { session: string }) => `"${session}" completat`,
+        taskCompletedDefault: 'Tasca completada, preparat pel següent pas',
+
+        // Error notifications
+        errorTitle: ({ session }: { session: string }) => `"${session}" ha trobat un error`,
+        unknownError: 'S\'ha produït un error desconegut',
     }
 } as const;
 

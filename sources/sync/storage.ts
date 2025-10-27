@@ -21,6 +21,7 @@ import { isMutableTool } from "@/components/tools/knownTools";
 import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
+import { sortSessionsByPriority } from '@/utils/sessionSort';
 
 /**
  * Centralized session online state resolver
@@ -156,16 +157,16 @@ function buildSessionListViewData(
         }
     });
 
-    // Sort sessions by updated date (newest first)
-    activeSessions.sort((a, b) => b.updatedAt - a.updatedAt);
-    inactiveSessions.sort((a, b) => b.updatedAt - a.updatedAt);
+    // Sort sessions by smart priority (permission requests > waiting > thinking > time)
+    const sortedActiveSessions = sortSessionsByPriority(activeSessions);
+    const sortedInactiveSessions = sortSessionsByPriority(inactiveSessions);
 
     // Build unified list view data
     const listData: SessionListViewItem[] = [];
 
     // Add active sessions as a single item at the top (if any)
-    if (activeSessions.length > 0) {
-        listData.push({ type: 'active-sessions', sessions: activeSessions });
+    if (sortedActiveSessions.length > 0) {
+        listData.push({ type: 'active-sessions', sessions: sortedActiveSessions });
     }
 
     // Group inactive sessions by date
@@ -176,7 +177,7 @@ function buildSessionListViewData(
     let currentDateGroup: Session[] = [];
     let currentDateString: string | null = null;
 
-    for (const session of inactiveSessions) {
+    for (const session of sortedInactiveSessions) {
         const sessionDate = new Date(session.updatedAt);
         const dateString = sessionDate.toDateString();
 

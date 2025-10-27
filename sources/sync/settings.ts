@@ -29,6 +29,7 @@ export const SettingsSchema = z.object({
     lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
+    experimentalLocalVAD: z.boolean().describe('Use local VAD to auto-detect speech end (experimental)'),
 });
 
 //
@@ -72,6 +73,7 @@ export const settingsDefaults: Settings = {
     lastUsedAgent: null,
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,
+    experimentalLocalVAD: false,
 };
 Object.freeze(settingsDefaults);
 

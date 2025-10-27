@@ -1,13 +1,13 @@
 const variant = process.env.APP_ENV || 'development';
 const name = {
-    development: "Happy (dev)",
-    preview: "Happy (preview)",
-    production: "Happy"
+    development: "Happy Voice (dev)",
+    preview: "Happy Voice (preview)",
+    production: "Happy Voice"
 }[variant];
 const bundleId = {
-    development: "com.slopus.happy.dev",
-    preview: "com.slopus.happy.preview",
-    production: "com.ex3ndr.happy"
+    development: "com.vikingmew.happyVoice.dev",
+    preview: "com.vikingmew.happyVoice.preview",
+    production: "com.vikingmew.happyVoice"
 }[variant];
 
 export default {
@@ -18,7 +18,7 @@ export default {
         runtimeVersion: "18",
         orientation: "default",
         icon: "./sources/assets/images/icon.png",
-        scheme: "happy",
+        scheme: "happyvoice",
         userInterfaceStyle: "automatic",
         newArchEnabled: true,
         notification: {
@@ -98,6 +98,12 @@ export default {
                 "expo-audio",
                 {
                     microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone for voice conversations."
+                }
+            ],
+            [
+                "expo-audio-studio",
+                {
+                    microphonePermission: "Allow $(PRODUCT_NAME) to access your microphone for audio recording"
                 }
             ],
             [
