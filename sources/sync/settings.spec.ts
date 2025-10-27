@@ -114,6 +114,8 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: true
@@ -128,7 +130,7 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'brutalist',
+                avatarStyle: 'gradient', // This should be preserved from currentSettings
                 showFlavorIcons: false,
                 compactSessionView: false,
                 hideInactiveSessions: false,
@@ -136,6 +138,12 @@ describe('settings', () => {
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
                 preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
+                lastUsedPermissionMode: null,
+                lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
             });
         });
 
@@ -162,12 +170,11 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
             };
             const delta: Partial<Settings> = {};
-            expect(applySettings(currentSettings, delta)).toEqual({
-                ...settingsDefaults,
-                viewInline: true
-            });
+            expect(applySettings(currentSettings, delta)).toEqual(currentSettings);
         });
 
         it('should override existing values with delta', () => {
@@ -193,28 +200,15 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: false
             };
             expect(applySettings(currentSettings, delta)).toEqual({
-                viewInline: false,
-                expandTodos: true,
-                showLineNumbers: true,
-                showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
-                analyticsOptOut: false,
-                inferenceOpenAIKey: null,
-                experiments: false,
-                alwaysShowContextSize: false,
-                avatarStyle: 'brutalist',
-                showFlavorIcons: false,
-                compactSessionView: false,
-                hideInactiveSessions: false,
-                reviewPromptAnswered: false,
-                reviewPromptLikedApp: null,
-                voiceAssistantLanguage: null,
-                preferredLanguage: null,
+                ...currentSettings,
+                viewInline: false
             });
         });
 
@@ -241,11 +235,10 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
             };
-            expect(applySettings(currentSettings, {})).toEqual({
-                ...settingsDefaults,
-                viewInline: true
-            });
+            expect(applySettings(currentSettings, {})).toEqual(currentSettings);
         });
 
         it('should handle extra fields in current settings', () => {
@@ -286,13 +279,15 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
             };
             const delta: any = {
                 viewInline: false,
                 newField: 'new value'
             };
             expect(applySettings(currentSettings, delta)).toEqual({
-                ...settingsDefaults,
+                ...currentSettings,
                 viewInline: false,
                 newField: 'new value'
             });
@@ -328,7 +323,20 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
+                avatarStyle: 'brutalist',
+                showFlavorIcons: false,
+                compactSessionView: false,
                 hideInactiveSessions: false,
+                reviewPromptAnswered: false,
+                reviewPromptLikedApp: null,
+                voiceAssistantLanguage: null,
+                preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
+                lastUsedPermissionMode: null,
+                lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
             });
         });
 

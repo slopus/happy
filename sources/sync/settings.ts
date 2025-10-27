@@ -95,18 +95,33 @@ Object.freeze(settingsDefaults);
 //
 
 export function settingsParse(settings: unknown): Settings {
-    const parsed = SettingsSchemaPartial.safeParse(settings);
-    if (!parsed.success) {
+    // Handle null/undefined/invalid inputs
+    if (!settings || typeof settings !== 'object') {
         return { ...settingsDefaults };
     }
-    
+
+    const parsed = SettingsSchemaPartial.safeParse(settings);
+    if (!parsed.success) {
+        // For invalid settings, preserve unknown fields but use defaults for known fields
+        const unknownFields = { ...(settings as any) };
+        // Remove all known schema fields from unknownFields
+        const knownFields = Object.keys(SettingsSchema.shape);
+        knownFields.forEach(key => delete unknownFields[key]);
+        return { ...settingsDefaults, ...unknownFields };
+    }
+
     // Migration: Convert old 'zh' language code to 'zh-Hans'
     if (parsed.data.preferredLanguage === 'zh') {
         console.log('[Settings Migration] Converting language code from "zh" to "zh-Hans"');
         parsed.data.preferredLanguage = 'zh-Hans';
     }
-    
-    return { ...settingsDefaults, ...parsed.data };
+
+    // Merge defaults, parsed settings, and preserve unknown fields
+    const unknownFields = { ...(settings as any) };
+    // Remove known fields from unknownFields to preserve only the unknown ones
+    Object.keys(parsed.data).forEach(key => delete unknownFields[key]);
+
+    return { ...settingsDefaults, ...parsed.data, ...unknownFields };
 }
 
 //
@@ -115,5 +130,15 @@ export function settingsParse(settings: unknown): Settings {
 //
 
 export function applySettings(settings: Settings, delta: Partial<Settings>): Settings {
-    return { ...settingsDefaults, ...settings, ...delta };
+    // Original behavior: start with settings, apply delta, fill in missing with defaults
+    const result = { ...settings, ...delta };
+
+    // Fill in any missing fields with defaults
+    Object.keys(settingsDefaults).forEach(key => {
+        if (!(key in result)) {
+            (result as any)[key] = (settingsDefaults as any)[key];
+        }
+    });
+
+    return result;
 }

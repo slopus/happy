@@ -58,6 +58,8 @@ export const zhHans: TranslationStructure = {
         fileViewer: '文件查看器',
         loading: '加载中...',
         retry: '重试',
+        delete: '删除',
+        optional: '可选的',
     },
 
     profile: {
@@ -131,6 +133,8 @@ export const zhHans: TranslationStructure = {
         exchangingTokens: '正在交换令牌...',
         usage: '使用情况',
         usageSubtitle: '查看 API 使用情况和费用',
+        profiles: '配置文件',
+        profilesSubtitle: '管理环境配置文件和变量',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `已连接 ${service} 账户`,
@@ -840,6 +844,30 @@ export const zhHans: TranslationStructure = {
         usageOverTime: '使用趋势',
         byModel: '按模型',
         noData: '暂无使用数据',
+    },
+
+    profiles: {
+        title: '配置文件',
+        subtitle: '管理您的配置文件',
+        noProfile: '无配置文件',
+        noProfileDescription: '创建配置文件以管理您的环境设置',
+        addProfile: '添加配置文件',
+        addProfileTitle: '添加配置文件标题',
+        editProfile: '编辑配置文件',
+        profileName: '配置文件名称',
+        enterName: '输入配置文件名称',
+        baseURL: '基础 URL',
+        authToken: '认证令牌',
+        enterToken: '输入认证令牌',
+        model: '模型',
+        defaultModel: '默认模型',
+        tmuxSession: 'tmux 会话',
+        enterTmuxSession: '输入 tmux 会话名称',
+        tmuxTempDir: 'tmux 临时目录',
+        enterTmuxTempDir: '输入 tmux 临时目录',
+        tmuxUpdateEnvironment: '更新 tmux 环境',
+        deleteConfirm: '确定要删除此配置文件吗？',
+        nameRequired: '配置文件名称为必填项',
     },
 
     feed: {
