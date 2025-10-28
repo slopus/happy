@@ -3,6 +3,7 @@ SLOT=$(shell cat slot.txt)
 USER=ubuntu
 
 TAG := $(shell cat project_name.txt)
+FULLTAG := $(TAG)-$(SLOT)
 
 ifeq ($(strip $(TAG)),)
     $(error TAG must be set (from project_name.txt) and not empty!)
@@ -22,19 +23,19 @@ GOCLAUDE= claude --dangerously-skip-permissions --continue
 
 # `make CACHEBUST="$(date +%s)" build` to force rebuild.
 build: Dockerfile
-	$(CONTAINER) build -t $(TAG)-$(SLOT) .
+	$(CONTAINER) build -t $(FULLTAG) --build-arg CACHEBUST=$(CACHEBUST) .
 
 run:
 	$(CONTAINER) run -it --rm -u $(USER) \
 		-v `pwd`/home:/home/$(USER) \
 		-v `pwd`/..:/workspace \
-		$(TAG)-$(SLOT) bash
+		$(FULLTAG) bash
 
 root:
 	$(CONTAINER) run -it --rm -u root \
 		-v `pwd`/home:/root \
 		-v `pwd`/..:/workspace \
-		$(TAG)-$(SLOT) bash
+		$(FULLTAG) bash
 
 Dockerfile: Dockerfile.prefix Dockerfile.project
 	cat Dockerfile.prefix Dockerfile.project > Dockerfile
