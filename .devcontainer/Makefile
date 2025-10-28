@@ -21,6 +21,9 @@ endif
 
 GOCLAUDE= claude --dangerously-skip-permissions --continue
 
+# Always invoke claude from the same space so we don't confuse our claude.json workspace config.
+CLAUDEWORK= /workspace
+
 # `make CACHEBUST="$(date +%s)" build` to force rebuild.
 build: Dockerfile
 	$(CONTAINER) build -t $(FULLTAG) --build-arg CACHEBUST=$(CACHEBUST) .
@@ -46,19 +49,17 @@ Dockerfile: Dockerfile.prefix Dockerfile.project
 	echo $(TAG)-`hostname` > $@
 
 claude:
-	$(GOCLAUDE)
+	cd "$(CLAUDEWORK)" && $(GOCLAUDE)
 
 # Use my tweaked version of happy if it's available
 happy: .session_title.txt
 	TITLE=`cat $^` && cd .. && \
 	hits=$$(happy -h | grep '\-\-uname'); \
+	cd "$(CLAUDEWORK)" && \
 	if [ -z "$$hits" ]; then \
 	  happy --name "$$TITLE" $(GOCLAUDE); else \
 	  happy $(GOCLAUDE) "Tell happy to change the title to $$TITLE"; \
 	fi
-
-claude:
-	claude --dangerously-skip-permissions
 
 # Usually from outside the container, to pass it in:
 install-pat: home/.github/PAT.txt
