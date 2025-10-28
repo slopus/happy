@@ -85,6 +85,23 @@ const updateRecentMachinePaths = (
     return updated.slice(0, 10);
 };
 
+// Optimized profile lookup utility - converts array to Map for O(1) performance
+const useProfileMap = (profiles: Array<{ id: string; name: string; anthropicBaseUrl?: string | null; anthropicAuthToken?: string | null; anthropicModel?: string | null; tmuxSessionName?: string | null; tmuxTmpDir?: string | null; tmuxUpdateEnvironment?: boolean | null }>) => {
+    return React.useMemo(() =>
+        new Map(profiles.map(p => [p.id, p])),
+        [profiles]
+    );
+};
+
+// Environment variable transformation helper - converts profile to environment variables
+const transformProfileToEnvironmentVars = (profile: { anthropicBaseUrl?: string | null; anthropicAuthToken?: string | null; anthropicModel?: string | null; tmuxSessionName?: string | null; tmuxTmpDir?: string | null }) => ({
+    ANTHROPIC_BASE_URL: profile.anthropicBaseUrl || undefined,
+    ANTHROPIC_AUTH_TOKEN: profile.anthropicAuthToken || undefined,
+    ANTHROPIC_MODEL: profile.anthropicModel || undefined,
+    TMUX_SESSION_NAME: profile.tmuxSessionName || undefined,
+    TMUX_TMPDIR: profile.tmuxTmpDir || undefined,
+});
+
 function NewSessionScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
@@ -108,7 +125,7 @@ function NewSessionScreen() {
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
     const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(() => {
         // Initialize with last used profile if it exists and is valid
-        if (lastUsedProfile && profiles.find(p => p.id === lastUsedProfile)) {
+        if (lastUsedProfile && profileMap.has(lastUsedProfile)) {
             return lastUsedProfile;
         }
         return null;
@@ -126,6 +143,9 @@ function NewSessionScreen() {
     const experimentsEnabled = useSetting('experiments');
     const profiles = useSetting('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
+
+    // Optimized profile lookup for O(1) performance
+    const profileMap = useProfileMap(profiles);
 
     //
     // Machines state
@@ -397,18 +417,12 @@ function NewSessionScreen() {
             const updatedPaths = updateRecentMachinePaths(recentMachinePaths, selectedMachineId, selectedPath);
             sync.applySettings({ recentMachinePaths: updatedPaths });
 
-            // Get environment variables from selected profile
+            // Get environment variables from selected profile using optimized lookup
             let environmentVariables = undefined;
             if (selectedProfileId) {
-                const selectedProfile = profiles.find(p => p.id === selectedProfileId);
+                const selectedProfile = profileMap.get(selectedProfileId);
                 if (selectedProfile) {
-                    environmentVariables = {
-                        ANTHROPIC_BASE_URL: selectedProfile.anthropicBaseUrl || undefined,
-                        ANTHROPIC_AUTH_TOKEN: selectedProfile.anthropicAuthToken || undefined,
-                        ANTHROPIC_MODEL: selectedProfile.anthropicModel || undefined,
-                        TMUX_SESSION_NAME: selectedProfile.tmuxSessionName || undefined,
-                        TMUX_TMPDIR: selectedProfile.tmuxTmpDir || undefined,
-                    };
+                    environmentVariables = transformProfileToEnvironmentVars(selectedProfile);
                 }
             }
 
