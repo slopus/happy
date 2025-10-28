@@ -18,6 +18,9 @@ else
     CONTAINER= echo Unsupported_OS && exit 1
 endif
 
+GOCLAUDE= claude --dangerously-skip-permissions --continue
+
+# `make CACHEBUST="$(date +%s)" build` to force rebuild.
 build: Dockerfile
 	$(CONTAINER) build -t $(TAG)-$(SLOT) .
 
@@ -41,13 +44,16 @@ Dockerfile: Dockerfile.prefix Dockerfile.project
 .session_title.txt:
 	echo $(TAG)-`hostname` > $@
 
+claude:
+	$(GOCLAUDE)
+
 # Use my tweaked version of happy if it's available
 happy: .session_title.txt
 	TITLE=`cat $^` && cd .. && \
 	hits=$$(happy -h | grep '\-\-uname'); \
 	if [ -z "$$hits" ]; then \
-	  happy --name "$$TITLE" claude --dangerously-skip-permissions; else \
-	  happy claude --dangerously-skip-permissions "Tell happy to change the title to $$TITLE"; \
+	  happy --name "$$TITLE" $(GOCLAUDE); else \
+	  happy $(GOCLAUDE) "Tell happy to change the title to $$TITLE"; \
 	fi
 
 claude:
@@ -73,7 +79,7 @@ home/.ssh/id_rsa.pub:
 
 # From inside the container:
 claude-github:
-	claude mcp add --transport http github https://api.githubcopilot.com/mcp -H "Authorization: Bearer $GITHUB_PERSONAL_ACCESS_TOKEN"
+	claude mcp add --transport http github https://api.githubcopilot.com/mcp -H "Authorization: Bearer $$GITHUB_PERSONAL_ACCESS_TOKEN"
 
 # From inside the container:
 claude-beads:
