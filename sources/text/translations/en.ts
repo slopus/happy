@@ -11,8 +11,23 @@ function plural({ count, singular, plural }: { count: number; singular: string; 
 }
 
 /**
- * English translations for the Happy app
- * Must match the exact structure of the English translations in _default.ts
+ * ENGLISH TRANSLATIONS - DEDICATED FILE
+ *
+ * This file represents the new translation architecture where each language
+ * has its own dedicated file instead of being embedded in _default.ts.
+ *
+ * STRUCTURE CHANGE:
+ * - Previously: All languages in _default.ts as objects
+ * - Now: Separate files for each language (en.ts, ru.ts, pl.ts, es.ts, etc.)
+ * - Benefit: Better maintainability, smaller files, easier language management
+ *
+ * This file contains the complete English translation structure and serves as
+ * the reference implementation for all other language files.
+ *
+ * ARCHITECTURE NOTES:
+ * - All translation keys must match across all language files
+ * - Type safety enforced by TranslationStructure interface
+ * - New translation keys must be added to ALL language files
  */
 export const en: TranslationStructure = {
     tabs: {

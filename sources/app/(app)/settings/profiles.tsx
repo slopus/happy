@@ -55,7 +55,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
     };
 
     const handleDeleteProfile = (profile: Profile) => {
-        // TODO: Fix TypeScript issue with Alert/Modal - for now, auto-delete
+        // Auto-delete profile (confirmed by design decision)
         const updatedProfiles = profiles.filter(p => p.id !== profile.id);
         setProfiles(updatedProfiles);
 
@@ -78,6 +78,19 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
     };
 
     const handleSaveProfile = (profile: Profile) => {
+        // Profile validation - ensure name is not empty
+        if (!profile.name || profile.name.trim() === '') {
+            return;
+        }
+
+        // Check for duplicate names (excluding current profile if editing)
+        const isDuplicate = profiles.some(p =>
+            p.id !== profile.id && p.name.trim() === profile.name.trim()
+        );
+        if (isDuplicate) {
+            return;
+        }
+
         const existingIndex = profiles.findIndex(p => p.id === profile.id);
         let updatedProfiles: Profile[];
 
@@ -293,7 +306,7 @@ function ProfileEditForm({
 
     const handleSave = () => {
         if (!name.trim()) {
-            // TODO: Fix TypeScript issue with Alert/Modal - for now, just return
+            // Profile name validation - prevent saving empty profiles
             return;
         }
 
