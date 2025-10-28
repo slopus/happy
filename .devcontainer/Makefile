@@ -81,12 +81,12 @@ home/.ssh/id_rsa.pub:
 
 # From inside the container:
 claude-github:
-	claude mcp add --transport http github https://api.githubcopilot.com/mcp -H "Authorization: Bearer $(GITHUB_PERSONAL_ACCESS_TOKEN)"
+	cd "$(CLAUDEWORK)" && claude mcp add --transport http github https://api.githubcopilot.com/mcp -H "Authorization: Bearer $(GITHUB_PERSONAL_ACCESS_TOKEN)"
 
 # From inside the container:
 claude-beads:
-	claude plugin marketplace add steveyegge/beads
-	claude plugin install beads
+	cd "$(CLAUDEWORK)" && claude plugin marketplace add steveyegge/beads
+	cd "$(CLAUDEWORK)" && claude plugin install beads
 
 outside-setup: install-pat
 
