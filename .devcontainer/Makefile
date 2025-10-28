@@ -101,8 +101,8 @@ pull-main:
 	git checkout $$BRANCH && \
 	git merge main
 
-move-to-main:
-	git stash && git checkout main && git stash pop
+commit-to-main:
+	./commit_to_main.sh
 
 .PHONY: claude-beads claude-github setup-claude happy run build root pull-main \
    inside-setup outside-setup install-pat install-ssh-deploy-key
