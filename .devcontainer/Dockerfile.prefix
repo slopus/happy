@@ -62,12 +62,6 @@ ARG USERNAME=$MYUSER
 # Set `DEVCONTAINER` environment variable to help with orientation
 ENV DEVCONTAINER=true
 
-# Create workspace and config directories and set permissions
-RUN mkdir -p /workspace /home/$MYUSER/.claude && \
-  chown -R $MYUSER:$MYUSER /workspace /home/$MYUSER/.claude
-
-WORKDIR /workspace
-
 ARG GIT_DELTA_VERSION=0.18.2
 RUN ARCH=$(dpkg --print-architecture) && \
   wget "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
@@ -125,6 +119,12 @@ RUN /opt/venv/bin/python3 -m pip install uv
 RUN git clone --depth=1 https://github.com/rrnewton/happy-cli.git /tmp/happy && \
       cd /tmp/happy && npm install && npm run build && npm install -g . && \
       rm -rf /tmp/happy
+
+# Create workspace and config directories and set permissions
+#RUN mkdir -p /workspace /home/$MYUSER/.claude && \
+#  chown -R $MYUSER:$MYUSER /workspace /home/$MYUSER/.claude
+
+# WORKDIR /workspace
 
 USER $MYUSER
 ENV SHELL=/bin/bash
