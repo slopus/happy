@@ -86,6 +86,9 @@ claude-github:
 	claude mcp add --transport http github https://api.githubcopilot.com/mcp \
           -H "Authorization: Bearer $(GITHUB_PERSONAL_ACCESS_TOKEN)"
 
+gh-auth:
+	cat "$HOME/.github/PAT.txt" |  gh auth login --with-token
+
 # From inside the container:
 claude-beads:
 	cd "$(CLAUDEWORK)" && claude plugin marketplace add steveyegge/beads
@@ -93,7 +96,7 @@ claude-beads:
 
 outside-setup: install-pat
 
-inside-setup: claude-github claude-beads install-ssh-deploy-key
+inside-setup: claude-github claude-beads install-ssh-deploy-key gh-auth
 
 # Pull and rebase any upstream changes to the central config on the main branch.
 pull-main:
@@ -109,4 +112,4 @@ commit-to-main:
 	./commit_to_main.sh
 
 .PHONY: claude-beads claude-github setup-claude happy run build root pull-main \
-   inside-setup outside-setup install-pat install-ssh-deploy-key
+   inside-setup outside-setup install-pat install-ssh-deploy-key gh-auth
