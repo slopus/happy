@@ -122,8 +122,6 @@ def run_iteration(iteration: int, total: int, prompt_file: Path, logs_dir: Path,
     """Run a single iteration with claude."""
     print(f"\n=== Iteration {iteration} of {total} ===")
 
-    os.chdir("/workspace")
-
     # Find unused log filename
     log_num = find_next_log_number(logs_dir)
     log_file = logs_dir / f"claude_workstream{log_num:02d}.jsonl"
@@ -139,7 +137,7 @@ def run_iteration(iteration: int, total: int, prompt_file: Path, logs_dir: Path,
     # Determine which prompt to use and log it
     print(f"Using prompt: {prompt_file.name}")
 
-    # Read prompt content
+    # Read prompt content (use absolute path which works regardless of CWD)
     with open(prompt_file, 'r') as f:
         prompt_content = f.read()
 
@@ -186,11 +184,13 @@ def run_iteration(iteration: int, total: int, prompt_file: Path, logs_dir: Path,
     # Run claude command with tee-like behavior
     try:
         with open(log_file, 'a') as log:
+            # Run subprocess in /workspace directory
             process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                text=True
+                text=True,
+                cwd="/workspace"
             )
 
             # Process output line by line
@@ -224,8 +224,8 @@ def run_iteration(iteration: int, total: int, prompt_file: Path, logs_dir: Path,
         print(f"Error during iteration: {e}", file=sys.stderr)
         return False
 
-    # Check for error.txt
-    error_file = Path('error.txt')
+    # Check for error.txt in /workspace
+    error_file = Path('/workspace/error.txt')
     if error_file.exists():
         print("\nError detected in error.txt:")
         print(error_file.read_text())
@@ -236,6 +236,9 @@ def run_iteration(iteration: int, total: int, prompt_file: Path, logs_dir: Path,
 
 
 def main():
+    # Save original working directory
+    original_cwd = Path.cwd()
+
     parser = argparse.ArgumentParser(
         description='Drive claude repeatedly with prompts',
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -307,10 +310,13 @@ Prompt table format (for --prompt-table):
 
     # Determine which prompt to use for built-in selections
     if args.prompt_table:
-        # Load prompts from table file
+        # Load prompts from table file (resolve relative to original CWD)
         table_path = Path(args.prompt_table)
+        if not table_path.is_absolute():
+            table_path = original_cwd / table_path
+        table_path = table_path.resolve()
         if not table_path.exists():
-            parser.error(f"Prompt table file not found: {args.prompt_table}")
+            parser.error(f"Prompt table file not found: {table_path}")
         try:
             builtin_prompts = load_prompt_table(table_path, script_dir)
             prompt_mode = f"weighted table ({table_path.name})"
@@ -325,9 +331,13 @@ Prompt table format (for --prompt-table):
         fixed_prompt = None
         use_only_mode = False
     elif args.only:
+        # Resolve --only prompt path relative to original CWD
         only_prompt_path = Path(args.only)
+        if not only_prompt_path.is_absolute():
+            only_prompt_path = original_cwd / only_prompt_path
+        only_prompt_path = only_prompt_path.resolve()
         if not only_prompt_path.exists():
-            parser.error(f"Prompt file not found: {args.only}")
+            parser.error(f"Prompt file not found: {only_prompt_path}")
         fixed_prompt = only_prompt_path
         prompt_mode = f"custom ({only_prompt_path.name})"
         use_only_mode = True
@@ -348,8 +358,13 @@ Prompt table format (for --prompt-table):
         prompt_mode = "random weighted selection"
         use_only_mode = False
 
-    # Convert custom prompts to Paths
-    custom_prompts = [Path(p) for p in args.prompts]
+    # Convert custom prompts to absolute Paths (resolve relative to original CWD)
+    custom_prompts = []
+    for p in args.prompts:
+        prompt_path = Path(p)
+        if not prompt_path.is_absolute():
+            prompt_path = original_cwd / prompt_path
+        custom_prompts.append(prompt_path.resolve())
     num_custom = len(custom_prompts)
 
     # Print mode message
