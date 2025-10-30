@@ -9,6 +9,33 @@ ifeq ($(strip $(TAG)),)
     $(error TAG must be set (from project_name.txt) and not empty!)
 endif
 
+# Get or create workspace name
+# Go up ../ or ../../ until git remote does NOT include claude_template
+# Use directory name, unless it's "workspace", then use git remote name
+REPONAME := $(shell \
+	if [ -f ./home/workspace_name.txt ]; then \
+		cat ./home/workspace_name.txt; \
+	else \
+		PARENT_REMOTE=$$(cd .. && git remote get-url origin 2>/dev/null); \
+		if echo "$$PARENT_REMOTE" | grep -iq "claude_template"; then \
+			TOPLEVEL=$$(cd ../.. && git rev-parse --show-toplevel 2>/dev/null); \
+		else \
+			TOPLEVEL=$$(cd .. && git rev-parse --show-toplevel 2>/dev/null); \
+		fi; \
+		DIRNAME=$$(basename "$$TOPLEVEL"); \
+		if [ "$$DIRNAME" = "workspace" ]; then \
+			git -C "$$TOPLEVEL" remote get-url origin 2>/dev/null | sed -E 's|.*/([^/]+)\.git$$|\1|' | tee ./home/workspace_name.txt; \
+		else \
+			echo "$$DIRNAME" | tee ./home/workspace_name.txt; \
+		fi; \
+	fi)
+
+# Get or create realhostname
+REALHOSTNAME := $(shell if [ -f ./home/realhostname.txt ]; then cat ./home/realhostname.txt; else hostname | tee ./home/realhostname.txt; fi)
+
+# Compute dynamic workspace directory name
+WORKDIR := /$(REPONAME)-$(REALHOSTNAME)
+
 OS := $(shell uname)
 
 ifeq ($(OS),Darwin)
@@ -22,22 +49,23 @@ endif
 GOCLAUDE= claude --dangerously-skip-permissions --continue
 
 # Always invoke claude from the same space so we don't confuse our claude.json workspace config.
-CLAUDEWORK= /workspace
+# Now uses the dynamically computed WORKDIR instead of hardcoded /workspace
+CLAUDEWORK= $(WORKDIR)
 
 # `make CACHEBUST="$(date +%s)" build` to force rebuild.
 build: Dockerfile
-	$(CONTAINER) build -t $(FULLTAG) --build-arg CACHEBUST=$(CACHEBUST) .
+	$(CONTAINER) build -t $(FULLTAG) --build-arg CACHEBUST=$(CACHEBUST) --build-arg WORKDIR=$(WORKDIR) .
 
 run:
 	$(CONTAINER) run -it --rm -u $(USER) \
 		-v `pwd`/home:/home/$(USER) \
-		-v `pwd`/..:/workspace \
+		-v `pwd`/..:$(WORKDIR) \
 		$(FULLTAG) bash
 
 root:
 	$(CONTAINER) run -it --rm -u root \
 		-v `pwd`/home:/root \
-		-v `pwd`/..:/workspace \
+		-v `pwd`/..:$(WORKDIR) \
 		$(FULLTAG) bash
 
 Dockerfile: Dockerfile.prefix Dockerfile.project
@@ -110,6 +138,51 @@ pull-main:
 
 commit-to-main:
 	./commit_to_main.sh
+
+# Get out of the way so work in this repo doesn't mess with the scripts we're
+# running to drive Claude.
+#
+# Copy .devcontainer to $HOME if we're under /workspace, then switch to it
+rsync:
+	@if echo "$(PWD)" | grep -q "^/workspace"; then \
+		echo "Detected /workspace directory, copying to $$HOME/devcontainer_clone..."; \
+		mkdir -p "$$HOME/devcontainer_clone"; \
+		rsync -av --no-owner --no-group --exclude='home/' "$(PWD)/" "$$HOME/devcontainer_clone/"; \
+		echo "Switching to $$HOME/devcontainer_clone"; \
+		cd "$$HOME/devcontainer_clone" && exec bash; \
+	else \
+		echo "Not under /workspace directory, no action taken."; \
+		echo "Current directory: $(PWD)"; \
+	fi
+
+# Bidirectional sync using unison
+sync:
+	@if echo "$(PWD)" | grep -q "^/workspace"; then \
+		echo "Detected /workspace directory, syncing with $$HOME/devcontainer_clone..."; \
+		mkdir -p "$$HOME/devcontainer_clone"; \
+		unison "$(PWD)" "$$HOME/devcontainer_clone" \
+			-ignore 'Path home' \
+			-auto -batch -prefer "$(PWD)"; \
+		echo "Switching to $$HOME/devcontainer_clone"; \
+		cd "$$HOME/devcontainer_clone" && exec bash; \
+	else \
+		echo "Not under /workspace directory, no action taken."; \
+		echo "Current directory: $(PWD)"; \
+	fi
+
+# Smart side-step: use unison if available, otherwise rsync
+side-step:
+	@if command -v unison >/dev/null 2>&1; then \
+		echo "Using unison for bidirectional sync..."; \
+		$(MAKE) sync; \
+	else \
+		echo "Unison not found, falling back to rsync..."; \
+		$(MAKE) rsync; \
+	fi
+
+check-workdir:
+	echo Workdir should be $(WORKDIR)
+
 
 .PHONY: claude-beads claude-github setup-claude happy run build root pull-main \
    inside-setup outside-setup install-pat install-ssh-deploy-key gh-auth
