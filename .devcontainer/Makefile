@@ -87,7 +87,7 @@ claude-github:
           -H "Authorization: Bearer $(GITHUB_PERSONAL_ACCESS_TOKEN)"
 
 gh-auth:
-	cat "$HOME/.github/PAT.txt" |  gh auth login --with-token
+	cat "$(HOME)/.github/PAT.txt" |  gh auth login --with-token
 
 # From inside the container:
 claude-beads:
