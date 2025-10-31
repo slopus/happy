@@ -69,7 +69,7 @@ root:
 		$(FULLTAG) bash
 
 Dockerfile: Dockerfile.prefix Dockerfile.project
-	cat Dockerfile.prefix Dockerfile.project > Dockerfile
+	cat Dockerfile.prefix Dockerfile.project Dockerfile.postfix > Dockerfile
 
 # TODO: need a way to pass this into happy on the CLI.
 # It can take an MCP action to change it, but that's lame and wasteful.
