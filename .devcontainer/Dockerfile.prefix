@@ -126,5 +126,5 @@ RUN git clone --depth=1 https://github.com/rrnewton/happy-cli.git /tmp/happy && 
 
 # WORKDIR /workspace
 
-USER $MYUSER
+# USER $MYUSER
 ENV SHELL=/bin/bash
