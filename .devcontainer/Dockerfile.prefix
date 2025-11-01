@@ -7,8 +7,6 @@ FROM ubuntu:25.10
 # ARG TZ
 # ENV TZ="$TZ"
 
-ARG CLAUDE_CODE_VERSION=latest
-
 # Installs a TON of stufF:
 RUN apt-get update && apt-get install -y npm
 
@@ -62,15 +60,6 @@ ARG USERNAME=$MYUSER
 # Set `DEVCONTAINER` environment variable to help with orientation
 ENV DEVCONTAINER=true
 
-ARG GIT_DELTA_VERSION=0.18.2
-RUN ARCH=$(dpkg --print-architecture) && \
-  wget "https://github.com/dandavison/delta/releases/download/${GIT_DELTA_VERSION}/git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
-  sudo dpkg -i "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb" && \
-  rm "git-delta_${GIT_DELTA_VERSION}_${ARCH}.deb"
-
-# Set up non-root user
-USER $MYUSER
-
 # Install global packages
 ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
 ENV PATH=$PATH:/usr/local/share/npm-global/bin
@@ -93,21 +82,9 @@ ENV VISUAL=nano
 #   -a "export PROMPT_COMMAND='history -a' && export HISTFILE=/commandhistory/.bash_history" \
 #   -x
 
-# Install Claude
-RUN npm install -g @anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}
-
-
-# Copy and set up firewall script
-COPY init-firewall.sh /usr/local/bin/
-USER root
-RUN chmod +x /usr/local/bin/init-firewall.sh && \
-  echo "node ALL=(root) NOPASSWD: /usr/local/bin/init-firewall.sh" > /etc/sudoers.d/node-firewall && \
-  chmod 0440 /etc/sudoers.d/node-firewall
-ENV IS_SANDBOX=1
-# End claude-related dependencies and setup.
 
 # [RRN] basic additiions I like everywhere.
-RUN apt-get install -y time parallel hyperfine bc
+RUN apt-get install -y time parallel hyperfine bc emacs
 # [RRN] Python is so universal for scripting...
 RUN apt-get install -y python3 pip python3-venv
 RUN python3 -m venv /opt/venv

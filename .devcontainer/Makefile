@@ -87,10 +87,12 @@ root:
 		-v `pwd`/..:$(WORKDIR) \
 		$(FULLTAG) bash
 
+AGENT_LAYERS = Dockerfile.claude Dockerfile.gemini
+
 # Remove Dockerfile.rust if we are not using rust or minibeads:
 OPTIONAL_DOCKER_LAYERS = Dockerfile.rust
 Dockerfile: Dockerfile.prefix Dockerfile.project
-	cat Dockerfile.prefix $(OPTIONAL_DOCKER_LAYERS) Dockerfile.project Dockerfile.postfix > Dockerfile
+	cat Dockerfile.prefix $(AGENT_LAYER) $(OPTIONAL_DOCKER_LAYERS) Dockerfile.project Dockerfile.postfix > Dockerfile
 
 # TODO: need a way to pass this into happy on the CLI.
 # It can take an MCP action to change it, but that's lame and wasteful.
