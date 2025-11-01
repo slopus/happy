@@ -7,15 +7,12 @@ FROM ubuntu:25.10
 # ARG TZ
 # ENV TZ="$TZ"
 
-# Installs a TON of stufF:
-RUN apt-get update && apt-get install -y npm
-
 # Stolen from the nodejs/docker/node Dockerfile:
 # RUN groupadd --gid 1000 node \
 #   && useradd --uid 1000 --gid node --shell /bin/bash --create-home node
 
 # Install basic development tools and iptables/ipset
-RUN apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
   less \
   git \
   procps \
@@ -39,6 +36,14 @@ RUN apt-get install -y --no-install-recommends \
   # [RRN ] Don't clean because we want to keep apt and I don't mind if claude
   # installs either:
   # && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# Installs a TON of stufF:
+# RUN apt-get install -y npm
+
+# Going to a newer version for github copilot
+RUN apt-get install -y ca-certificates && \
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
+RUN . "$HOME/.nvm/nvm.sh" && nvm install 24 && node -v && npm -v 
 
 # [RRN] Differ in the non-root user we use from the node image:
 # ENV MYUSER=node
