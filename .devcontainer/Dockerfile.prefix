@@ -84,7 +84,9 @@ ENV VISUAL=nano
 
 
 # [RRN] basic additiions I like everywhere.
-RUN apt-get install -y time parallel hyperfine bc emacs
+# psmisc has killall:
+RUN apt-get install -y time parallel hyperfine bc emacs gnuplot psmisc
+
 # [RRN] Python is so universal for scripting...
 RUN apt-get install -y python3 pip python3-venv
 RUN python3 -m venv /opt/venv
