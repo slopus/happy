@@ -1,9 +1,7 @@
 
-SLOT=$(shell cat slot.txt)
 USER=ubuntu
 
 TAG := $(shell cat project_name.txt)
-FULLTAG := $(TAG)-$(SLOT)
 
 ifeq ($(strip $(TAG)),)
     $(error TAG must be set (from project_name.txt) and not empty!)
@@ -30,8 +28,29 @@ REPONAME := $(shell \
 		fi; \
 	fi)
 
+
 # Get or create realhostname
 REALHOSTNAME := $(shell if [ -f ./home/realhostname.txt ]; then cat ./home/realhostname.txt; else hostname | tee ./home/realhostname.txt; fi)
+
+# Reserve a unique, per-repo container index (N) on this host. 
+SLOT := $(shell \
+	if [ -f slot.txt ]; then \
+		cat slot.txt; \
+	else \
+		rep="$(REPONAME)"; n=1; \
+		while true; do \
+		   f="/tmp/container-$$rep-$$n.token"; \
+		   if ( set -o noclobber; : > "$$f" ) 2>/dev/null; \
+		     then echo $$n; break; \
+			 else n=$$((n+1)); \
+		   fi; \
+		done; \
+		echo $$n > slot.txt; \
+	fi)
+
+CONTAINER_HOSTNAME := $(REALHOSTNAME)-$(SLOT)
+
+FULLTAG := $(TAG)-$(SLOT)
 
 # Compute dynamic workspace directory name
 WORKDIR := /$(REPONAME)-$(REALHOSTNAME)
@@ -57,13 +76,13 @@ build: Dockerfile
 	$(CONTAINER) build -t $(FULLTAG) --build-arg CACHEBUST=$(CACHEBUST) --build-arg WORKDIR=$(WORKDIR) .
 
 run:
-	$(CONTAINER) run -it --rm -u $(USER) \
+	$(CONTAINER) run -it --rm -u $(USER) --hostname $(CONTAINER_HOSTNAME) \
 		-v `pwd`/home:/home/$(USER) \
 		-v `pwd`/..:$(WORKDIR) \
 		$(FULLTAG) bash
 
 root:
-	$(CONTAINER) run -it --rm -u root \
+	$(CONTAINER) run -it --rm -u root --hostname $(CONTAINER_HOSTNAME) \
 		-v `pwd`/home:/root \
 		-v `pwd`/..:$(WORKDIR) \
 		$(FULLTAG) bash
@@ -182,8 +201,10 @@ side-step:
 		$(MAKE) rsync; \
 	fi
 
-check-workdir:
-	echo Workdir should be $(WORKDIR)
+info:
+	@echo Workdir should be $(WORKDIR)
+	@echo   REALHOSTNAME=$(REALHOSTNAME)
+	@echo   CONTAINER_HOSTNAME=$(CONTAINER_HOSTNAME)
 
 
 .PHONY: claude-beads claude-github setup-claude happy run build root pull-main \
