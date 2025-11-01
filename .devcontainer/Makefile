@@ -87,11 +87,12 @@ root:
 		-v `pwd`/..:$(WORKDIR) \
 		$(FULLTAG) bash
 
-AGENT_LAYERS = Dockerfile.claude Dockerfile.gemini
+AGENT_LAYERS = Dockerfile.claude Dockerfile.copilot
+# Dockerfile.gemini
 
 # Remove Dockerfile.rust if we are not using rust or minibeads:
 OPTIONAL_DOCKER_LAYERS = Dockerfile.rust
-Dockerfile: Dockerfile.prefix Dockerfile.project
+Dockerfile: Dockerfile.*
 	cat Dockerfile.prefix $(AGENT_LAYERS) $(OPTIONAL_DOCKER_LAYERS) Dockerfile.project Dockerfile.postfix > Dockerfile
 
 # TODO: need a way to pass this into happy on the CLI.

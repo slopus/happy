@@ -43,7 +43,20 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Going to a newer version for github copilot
 RUN apt-get install -y ca-certificates && \
     curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.3/install.sh | bash
-RUN . "$HOME/.nvm/nvm.sh" && nvm install 24 && node -v && npm -v 
+
+ARG NODE_VERSION=24
+
+RUN . "$HOME/.nvm/nvm.sh" && nvm install ${NODE_VERSION} && \
+    nvm alias default ${NODE_VERSION} && nvm use default && \
+    which node && node -v && npm -v 
+
+# Hack to discover the minor version: e.g. /bin/versions/node/v24.11.0/bin/node
+RUN cd /bin/versions/node/ && ln -s v24* 24
+ENV PATH=$PATH:/bin/versions/node/24/bin/
+
+# Install global packages
+# ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
+# ENV PATH=$PATH:/usr/local/share/npm-global/bin
 
 # [RRN] Differ in the non-root user we use from the node image:
 # ENV MYUSER=node
@@ -64,10 +77,6 @@ ARG USERNAME=$MYUSER
 
 # Set `DEVCONTAINER` environment variable to help with orientation
 ENV DEVCONTAINER=true
-
-# Install global packages
-ENV NPM_CONFIG_PREFIX=/usr/local/share/npm-global
-ENV PATH=$PATH:/usr/local/share/npm-global/bin
 
 # [RRN] Uh, I don't know why claude needs to be opinionated about shell..
 # Set the default shell to zsh rather than sh
@@ -98,11 +107,14 @@ RUN python3 -m venv /opt/venv
 RUN /opt/venv/bin/python3 -m pip install uv
 # End shared, non-project configuration.
 
-# RUN npm install -g happy-coder
 # [RRN] Run my version, but cannot do it in a one-liner because of build step:
-RUN git clone --depth=1 https://github.com/rrnewton/happy-cli.git /tmp/happy && \
-      cd /tmp/happy && npm install && npm run build && npm install -g . && \
-      rm -rf /tmp/happy
+RUN . "$HOME/.nvm/nvm.sh" && \
+    npm install -g happy-coder
+# Shelving my version for now which just added --set-title.
+    # git clone --depth=1 https://github.com/rrnewton/happy-cli.git /tmp/happy && \
+    #   cd /tmp/happy && npm install && npm run build && npm install -g . && \
+    #   rm -rf /tmp/happy
+
 
 # Create workspace and config directories and set permissions
 #RUN mkdir -p /workspace /home/$MYUSER/.claude && \
