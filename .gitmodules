@@ -1,0 +1,9 @@
+[submodule "happy"]
+	path = happy
+	url = ../happy
+[submodule "happy-cli"]
+	path = happy-cli
+	url = ../happy-cli
+[submodule "happy-server"]
+	path = happy-server
+	url = ../happy-server
