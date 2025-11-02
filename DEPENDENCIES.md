@@ -72,3 +72,37 @@ This document tracks all dependencies installed during the self-hosted setup pro
 - **Installed via**: `apt-get install -y lsof`
 - **Purpose**: Used by happy-server dev script to kill existing processes on port 3005
 - **Used by**: happy-server
+
+## Testing Scripts
+
+### setup-test-credentials.mjs
+- **Location**: `/scripts/setup-test-credentials.mjs`
+- **Purpose**: Automates authentication flow for headless e2e testing
+- **Dependencies**: tweetnacl, axios (via symlink to happy-cli/node_modules)
+- **Creates**: Test credentials in `~/.happy-dev-test/`
+- **Usage**: `node scripts/setup-test-credentials.mjs`
+- **Note**: Kept outside happy-cli repo to avoid dirtying the system-under-test. Uses a symlink to happy-cli/node_modules for dependencies.
+
+### e2e-demo.sh
+- **Location**: `/e2e-demo.sh`
+- **Purpose**: Complete e2e demo script that shows the full self-hosted flow
+- **Dependencies**: happy-demo.sh, setup-test-credentials.mjs
+- **Usage**: `./e2e-demo.sh`
+
+## Environment Variables
+
+### For Testing
+- `HAPPY_HOME_DIR=/root/.happy-dev-test` - Test credentials directory (separate from prod)
+- `HAPPY_SERVER_URL=http://localhost:3005` - Local server URL
+
+## Directory Structure
+
+The `/scripts` directory contains e2e testing scripts and uses a symlink to access happy-cli dependencies:
+```
+scripts/
+├── setup-test-credentials.mjs
+├── auto-auth.mjs
+└── node_modules -> ../happy-cli/node_modules  (symlink)
+```
+
+This approach keeps the system-under-test repos (happy-cli, happy-server) clean while allowing test scripts to access necessary dependencies.

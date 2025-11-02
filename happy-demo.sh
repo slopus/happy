@@ -116,6 +116,71 @@ stop_all() {
     warning "To stop them manually: service postgresql stop && service redis-server stop"
 }
 
+# Complete cleanup - stops everything including system services
+cleanup_all() {
+    info "Running complete cleanup (stopping ALL services)..."
+    echo ""
+
+    # Stop happy-server
+    if is_running "tsx.*sources/main.ts"; then
+        info "Stopping happy-server..."
+        pkill -f "tsx.*sources/main.ts" || true
+        pkill -f "yarn tsx.*sources/main.ts" || true
+        success "happy-server stopped"
+    else
+        info "happy-server not running"
+    fi
+
+    # Stop MinIO
+    if is_running "minio server"; then
+        info "Stopping MinIO..."
+        pkill -f "minio server" || true
+        success "MinIO stopped"
+    else
+        info "MinIO not running"
+    fi
+
+    # Stop PostgreSQL
+    if is_running "postgres.*17/main"; then
+        info "Stopping PostgreSQL..."
+        service postgresql stop || true
+        success "PostgreSQL stopped"
+    else
+        info "PostgreSQL not running"
+    fi
+
+    # Stop Redis
+    if is_running "redis-server"; then
+        info "Stopping Redis..."
+        service redis-server stop || true
+        success "Redis stopped"
+    else
+        info "Redis not running"
+    fi
+
+    # Kill any orphaned node/yarn processes related to happy
+    info "Cleaning up any orphaned processes..."
+    pkill -f "node.*happy-server" 2>/dev/null || true
+    pkill -f "node.*happy-cli" 2>/dev/null || true
+
+    # Clean up log files (optional)
+    if [ "${2:-}" = "--clean-logs" ]; then
+        info "Cleaning up log files..."
+        rm -f /tmp/happy-server.log
+        rm -f /tmp/minio.log
+        success "Log files cleaned"
+    fi
+
+    echo ""
+    success "Complete cleanup finished!"
+    echo ""
+    info "All services have been stopped"
+    if [ "${2:-}" != "--clean-logs" ]; then
+        info "Logs preserved. Use '$0 cleanup --clean-logs' to remove them"
+    fi
+    echo ""
+}
+
 # Show status of all services
 show_status() {
     echo ""
@@ -247,6 +312,10 @@ case "${1:-}" in
         echo ""
         ;;
 
+    cleanup)
+        cleanup_all "$@"
+        ;;
+
     restart)
         $0 stop
         sleep 2
@@ -297,7 +366,9 @@ case "${1:-}" in
         echo ""
         echo "Commands:"
         echo "  start              Start all services (PostgreSQL, Redis, MinIO, happy-server)"
-        echo "  stop               Stop happy-server and MinIO"
+        echo "  stop               Stop happy-server and MinIO (leaves PostgreSQL/Redis running)"
+        echo "  cleanup            Stop ALL services including PostgreSQL and Redis"
+        echo "  cleanup --clean-logs   Stop all services and delete log files"
         echo "  restart            Restart all services"
         echo "  status             Show status of all services"
         echo "  logs <service>     Tail logs for a service (server, minio, postgres)"
@@ -309,6 +380,9 @@ case "${1:-}" in
         echo "Examples:"
         echo "  $0 start                    # Start everything"
         echo "  $0 status                   # Check what's running"
+        echo "  $0 stop                     # Stop server/MinIO (keep databases running)"
+        echo "  $0 cleanup                  # Stop everything including databases"
+        echo "  $0 cleanup --clean-logs     # Stop everything and delete logs"
         echo "  $0 logs server              # Watch server logs"
         echo "  $0 cli --version            # Run CLI command"
         echo "  $0 cli                      # Start interactive CLI session"
