@@ -44,3 +44,5 @@ if [ -f /opt/venv/bin/activate ]; then
 fi
 
 # export PATH=$PATH:$HOME/.local/bin
+
+alias copilot-yolo='copilot -allow-pall-paths --allow-all-tools'
