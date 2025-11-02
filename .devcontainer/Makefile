@@ -205,6 +205,7 @@ side-step:
 	fi
 
 info:
+	@echo Reponame discovered as $(REPONAME)
 	@echo Workdir should be $(WORKDIR)
 	@echo   REALHOSTNAME=$(REALHOSTNAME)
 	@echo   CONTAINER_HOSTNAME=$(CONTAINER_HOSTNAME)
