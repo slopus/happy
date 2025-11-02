@@ -106,7 +106,7 @@ claude:
 # Use my tweaked version of happy if it's available
 happy: .session_title.txt
 	TITLE=`cat $^` && cd .. && \
-	hits=$$(happy -h | grep '\-\-uname'); \
+	hits=$$(happy -h | grep '\-\-name'); \
 	cd "$(CLAUDEWORK)" && \
 	if [ -z "$$hits" ]; then \
 	  happy --name "$$TITLE" $(GOCLAUDE); else \
