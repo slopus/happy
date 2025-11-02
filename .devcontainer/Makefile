@@ -117,7 +117,7 @@ happy: .session_title.txt
 # Usually from outside the container, to pass it in:
 install-pat: home/.github/PAT.txt
 home/.github/PAT.txt:
-	mkdir home/.github
+	mkdir -p home/.github
 	@if ! [ -z "$(GITHUB_PERSONAL_ACCESS_TOKEN)" ]; then \
 		echo "$(GITHUB_PERSONAL_ACCESS_TOKEN)" > home/.github/PAT.txt; \
 	elif [ -f ~/.github/PAT.txt ]; then \
