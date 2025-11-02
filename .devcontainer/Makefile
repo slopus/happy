@@ -106,7 +106,8 @@ claude:
 # Use my tweaked version of happy if it's available
 happy: .session_title.txt
 	TITLE=`cat $^` && cd .. && \
-	hits=$$(happy -h | grep '\-\-name'); \
+	cd "$(CLAUDEWORK)" && happy $(GOCLAUDE)
+#	hits=$$(happy -h | grep '\-\-name'); \
 	cd "$(CLAUDEWORK)" && \
 	if [ -z "$$hits" ]; then \
 	  happy --name "$$TITLE" $(GOCLAUDE); else \
@@ -205,7 +206,10 @@ side-step:
 	fi
 
 info:
+<<<<<<< HEAD
 	@echo Reponame discovered as $(REPONAME)
+=======
+>>>>>>> main
 	@echo Workdir should be $(WORKDIR)
 	@echo   REALHOSTNAME=$(REALHOSTNAME)
 	@echo   CONTAINER_HOSTNAME=$(CONTAINER_HOSTNAME)
