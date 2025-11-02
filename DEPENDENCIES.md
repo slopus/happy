@@ -2,6 +2,8 @@
 
 This document tracks all dependencies installed during the self-hosted setup process.
 
+**Note**: All dependencies are now included in `.devcontainer/Dockerfile.project` for automatic installation when rebuilding the devcontainer.
+
 ## System Packages
 
 ### Docker

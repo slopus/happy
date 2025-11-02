@@ -118,3 +118,21 @@ To fully test the CLI-server connection, you would need:
 ✓ Self-hosted mode is functional
 
 The self-hosted setup is **ready for development and testing**!
+
+## For Future Rebuilds
+
+All dependencies have been added to `.devcontainer/Dockerfile.project`. When you rebuild the devcontainer, it will automatically:
+
+1. Install PostgreSQL, Redis, lsof, and wget
+2. Download and install MinIO server and client
+3. Copy the `happy-demo.sh` control script to `/workspace/`
+
+After rebuilding, you'll still need to:
+1. Run `happy-demo.sh start` to start all services
+2. Set up the database: Create the `handy` database and run migrations
+3. Configure MinIO: Create the `happy` bucket
+
+Or simply use the quick start:
+```bash
+./happy-demo.sh start
+```

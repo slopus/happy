@@ -1,3 +1,27 @@
 USER root
 
+# Install yarn
 RUN npm install -g yarn
+
+# Install system dependencies for happy-server
+RUN apt-get update && apt-get install -y \
+    postgresql \
+    postgresql-contrib \
+    redis-server \
+    lsof \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install MinIO server
+RUN wget -q https://dl.min.io/server/minio/release/linux-amd64/minio \
+    && chmod +x minio \
+    && mv minio /usr/local/bin/
+
+# Install MinIO client (mc)
+RUN wget -q https://dl.min.io/client/mc/release/linux-amd64/mc \
+    && chmod +x mc \
+    && mv mc /usr/local/bin/
+
+# Copy demo control script
+COPY happy-demo.sh /workspace/happy-demo.sh
+RUN chmod +x /workspace/happy-demo.sh
