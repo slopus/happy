@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Happy Web Client Diagnostics</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            max-width: 1000px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #0d1117;
+            color: #c9d1d9;
+        }
+        h1 { color: #58a6ff; }
+        h2 { color: #58a6ff; margin-top: 30px; }
+        .box {
+            background: #161b22;
+            border: 1px solid #30363d;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 6px;
+        }
+        .success { color: #3fb950; }
+        .error { color: #f85149; }
+        .warning { color: #d29922; }
+        .info { color: #58a6ff; }
+        button {
+            background: #238636;
+            color: #fff;
+            border: none;
+            padding: 12px 24px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            margin: 5px;
+        }
+        button:hover {
+            background: #2ea043;
+        }
+        button.danger {
+            background: #da3633;
+        }
+        button.danger:hover {
+            background: #f85149;
+        }
+        code {
+            background: #0d1117;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #79c0ff;
+        }
+        pre {
+            background: #0d1117;
+            padding: 16px;
+            border-radius: 6px;
+            overflow-x: auto;
+            color: #c9d1d9;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        td {
+            padding: 8px;
+            border-bottom: 1px solid #30363d;
+        }
+        td:first-child {
+            font-weight: bold;
+            width: 250px;
+            color: #8b949e;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔍 Happy Web Client Diagnostics</h1>
+
+    <div class="box">
+        <p><strong class="warning">⚠️  Important:</strong> Open this page while the Happy web client is running at <code>http://localhost:8081</code></p>
+        <p>This tool inspects browser localStorage to diagnose authentication issues.</p>
+    </div>
+
+    <h2>📊 Current Configuration</h2>
+    <div id="configStatus" class="box"></div>
+
+    <h2>🗄️ Browser LocalStorage Inspection</h2>
+    <div class="box">
+        <button onclick="inspectStorage()">🔍 Inspect Storage</button>
+        <button onclick="clearHappyStorage()" class="danger">🗑️  Clear Happy Storage</button>
+        <button onclick="clearAllStorage()" class="danger">⚠️  Clear ALL Storage</button>
+        <div id="storageData"></div>
+    </div>
+
+    <h2>🧪 Test Server Connection</h2>
+    <div class="box">
+        <label>Server URL to test:</label><br>
+        <input type="text" id="testUrl" value="http://localhost:3005" style="width: 400px; padding: 8px; margin: 10px 0; background: #0d1117; border: 1px solid #30363d; color: #c9d1d9; border-radius: 6px; font-family: 'Courier New', monospace;">
+        <br>
+        <button onclick="testServer()">🔌 Test Connection</button>
+        <div id="testResult"></div>
+    </div>
+
+    <h2>💡 Recommended Actions</h2>
+    <div id="recommendations" class="box"></div>
+
+    <script>
+        const MMKV_STORAGE_KEY = 'server-config.custom-server-url';
+
+        function updateConfigStatus() {
+            const configDiv = document.getElementById('configStatus');
+            const storedUrl = localStorage.getItem(MMKV_STORAGE_KEY);
+            const hostname = window.location.hostname;
+            const isLocalhost = hostname === 'localhost' || hostname === '127.0.0.1';
+
+            let html = '<table>';
+            html += `<tr><td>Current Page URL</td><td><code>${window.location.href}</code></td></tr>`;
+            html += `<tr><td>Hostname</td><td><code>${hostname}</code></td></tr>`;
+            html += `<tr><td>Is Localhost?</td><td><span class="${isLocalhost ? 'success' : 'error'}">${isLocalhost ? 'Yes ✓' : 'No ✗'}</span></td></tr>`;
+            html += `<tr><td>Cached Server URL</td><td>${storedUrl ? `<code class="warning">${storedUrl}</code>` : '<span class="success">None (will use default) ✓</span>'}</td></tr>`;
+
+            const expectedUrl = isLocalhost ? 'http://localhost:3005' : 'https://api.cluster-fluster.com';
+            const actualUrl = storedUrl || expectedUrl;
+            html += `<tr><td>Expected Server</td><td><code>${expectedUrl}</code></td></tr>`;
+            html += `<tr><td>Actual Server Being Used</td><td><code class="${actualUrl === expectedUrl ? 'success' : 'error'}">${actualUrl}</code></td></tr>`;
+            html += '</table>';
+
+            configDiv.innerHTML = html;
+
+            // Update recommendations
+            updateRecommendations(storedUrl, isLocalhost);
+        }
+
+        function updateRecommendations(storedUrl, isLocalhost) {
+            const recDiv = document.getElementById('recommendations');
+
+            if (!isLocalhost) {
+                recDiv.innerHTML = '<p class="warning">⚠️  You are not accessing from localhost. This diagnostic tool is meant for local development.</p>';
+                return;
+            }
+
+            if (storedUrl && storedUrl !== 'http://localhost:3005') {
+                recDiv.innerHTML = `
+                    <p class="error"><strong>❌ Problem Detected:</strong></p>
+                    <p>Your browser has a cached server URL: <code>${storedUrl}</code></p>
+                    <p>This is overriding the automatic localhost detection.</p>
+                    <br>
+                    <p class="success"><strong>✅ Solution:</strong></p>
+                    <ol>
+                        <li>Click the <strong>"Clear Happy Storage"</strong> button above</li>
+                        <li>Refresh the Happy web client page</li>
+                        <li>Try authenticating again with your secret key</li>
+                    </ol>
+                `;
+            } else if (storedUrl === 'http://localhost:3005') {
+                recDiv.innerHTML = `
+                    <p class="warning"><strong>ℹ️  Info:</strong></p>
+                    <p>You have manually configured the server URL to <code>http://localhost:3005</code>.</p>
+                    <p>This should work, but you can clear it to use automatic detection instead.</p>
+                `;
+            } else {
+                recDiv.innerHTML = `
+                    <p class="success"><strong>✅ Configuration Looks Good!</strong></p>
+                    <p>No cached server URL found. The web client should automatically use <code>http://localhost:3005</code>.</p>
+                    <br>
+                    <p>If you're still having authentication issues:</p>
+                    <ol>
+                        <li>Make sure happy-server is running: <code>curl http://localhost:3005</code></li>
+                        <li>Check that you're using the correct secret key from the latest run of <code>setup-test-credentials.mjs</code></li>
+                        <li>Verify the web client is using the latest code (restart with cache clear: <code>yarn start:local-server</code>)</li>
+                    </ol>
+                `;
+            }
+        }
+
+        function inspectStorage() {
+            const resultDiv = document.getElementById('storageData');
+            let html = '<h3>All localStorage Keys:</h3><pre>';
+
+            const happyKeys = [];
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.includes('happy') || key.includes('server') || key.includes('mmkv'))) {
+                    happyKeys.push(key);
+                }
+            }
+
+            if (happyKeys.length === 0) {
+                html += 'No Happy-related localStorage keys found.\n';
+            } else {
+                html += 'Found ' + happyKeys.length + ' Happy-related keys:\n\n';
+                happyKeys.forEach(key => {
+                    const value = localStorage.getItem(key);
+                    html += `${key}:\n  ${value}\n\n`;
+                });
+            }
+
+            html += '</pre>';
+            resultDiv.innerHTML = html;
+        }
+
+        function clearHappyStorage() {
+            const confirmed = confirm('Clear all Happy-related localStorage data?\n\nThis will log you out and reset server configuration.');
+            if (!confirmed) return;
+
+            let cleared = 0;
+            const keysToRemove = [];
+
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && (key.includes('happy') || key.includes('server') || key.includes('mmkv'))) {
+                    keysToRemove.push(key);
+                }
+            }
+
+            keysToRemove.forEach(key => {
+                localStorage.removeItem(key);
+                cleared++;
+            });
+
+            alert(`Cleared ${cleared} Happy-related localStorage keys.\n\nRefresh the Happy web client to apply changes.`);
+            updateConfigStatus();
+        }
+
+        function clearAllStorage() {
+            const confirmed = confirm('⚠️  WARNING: This will clear ALL localStorage for this domain!\n\nAre you sure?');
+            if (!confirmed) return;
+
+            const count = localStorage.length;
+            localStorage.clear();
+            alert(`Cleared all ${count} localStorage keys.\n\nRefresh the Happy web client to apply changes.`);
+            updateConfigStatus();
+        }
+
+        async function testServer() {
+            const url = document.getElementById('testUrl').value.trim();
+            const resultDiv = document.getElementById('testResult');
+
+            if (!url) {
+                resultDiv.innerHTML = '<p class="error">Please enter a URL to test</p>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<p class="info">Testing connection...</p>';
+
+            try {
+                const response = await fetch(url, {
+                    method: 'GET',
+                    headers: { 'Accept': 'text/plain' }
+                });
+
+                const text = await response.text();
+
+                if (text.includes('Welcome to Happy Server!')) {
+                    resultDiv.innerHTML = `
+                        <p class="success">✅ Success! Connected to Happy Server</p>
+                        <p>Server response:</p>
+                        <pre>${text}</pre>
+                    `;
+                } else {
+                    resultDiv.innerHTML = `
+                        <p class="warning">⚠️  Connected, but doesn't look like Happy Server</p>
+                        <p>Response:</p>
+                        <pre>${text}</pre>
+                    `;
+                }
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <p class="error">❌ Failed to connect</p>
+                    <p>Error: ${error.message}</p>
+                    <p>Make sure happy-server is running on this URL.</p>
+                `;
+            }
+        }
+
+        // Initialize on page load
+        updateConfigStatus();
+        inspectStorage();
+    </script>
+</body>
+</html>
