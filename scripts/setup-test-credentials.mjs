@@ -308,6 +308,17 @@ async function main() {
         const secretKeyBase64url = Buffer.from(secretSeed).toString('base64url');
         const backupKey = formatSecretKeyForBackup(secretKeyBase64url);
 
+        // Verify the key can restore the same account
+        const restoredKeypair = tweetnacl.sign.keyPair.fromSeed(secretSeed);
+        const publicKeysMatch = Buffer.from(account.keypair.publicKey).equals(Buffer.from(restoredKeypair.publicKey));
+
+        if (!publicKeysMatch) {
+            console.error('\n✗ ERROR: Public keys do not match!');
+            console.error('Original:', encodeBase64(account.keypair.publicKey));
+            console.error('Restored:', encodeBase64(restoredKeypair.publicKey));
+            throw new Error('Public key mismatch - secret key will not work');
+        }
+
         console.log('\n✓ Success! Test credentials are ready.');
         console.log('\n' + '='.repeat(70));
         console.log('  WEB CLIENT SECRET KEY (for restore access)');

@@ -62,11 +62,12 @@ fi
 echo -e "${GREEN}Building and starting container...${NC}"
 echo ""
 
-cd .devcontainer && make build root
+cd .devcontainer
+make build
 
 echo ""
 echo -e "${GREEN}╔════════════════════════════════════════════════════════════╗${NC}"
-echo -e "${GREEN}║  Container is running!                                     ║${NC}"
+echo -e "${GREEN}║  Container is built! Running next...                       ║${NC}"
 echo -e "${GREEN}╚════════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${BLUE}Quick Start:${NC}"
@@ -79,3 +80,6 @@ echo "  - WEB_CLIENT_GUIDE.md  : Web client setup and usage"
 echo "  - E2E_TESTING.md       : Testing infrastructure"
 echo "  - README.md            : Project overview"
 echo ""
+
+# Still in .devcontainer:
+make root
