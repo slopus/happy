@@ -2,6 +2,23 @@
 
 This repository contains a working self-hosted setup of Happy (server + CLI) with automated e2e testing.
 
+## Getting Started
+
+### Build and Run Container
+
+If you're not already inside the development container:
+
+```bash
+./build_and_run_container.sh
+```
+
+This builds the container image and starts it with all necessary ports forwarded (3005, 8081, 9000, 9001, 5432, 6379).
+
+Alternatively, you can use the Makefile directly:
+```bash
+cd .devcontainer && make build root
+```
+
 ## Quick Start
 
 ### CLI Only (Headless)
