@@ -189,12 +189,56 @@ Check that:
 3. Session was started with `--happy-starting-mode remote`
 4. Both CLI and web client are using the same server URL
 
+### "Invalid secret key" error when restoring
+
+**Root Cause:** The web client is trying to connect to the production server (`https://api.cluster-fluster.com`) instead of your local server. The secret keys generated for local accounts don't exist on the production server.
+
+**Solution:**
+
+1. **Clear browser storage** to remove cached server URL:
+   - Open browser DevTools (F12)
+   - Go to Application → Storage → Clear site data
+   - Or manually: Application → Local Storage → http://localhost:8081 → Delete all
+
+2. **Ensure .env file exists** in the `happy/` directory:
+   ```bash
+   cd happy
+   cat .env  # Should show EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005
+   ```
+   If missing, create it with:
+   ```bash
+   echo "EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005" > .env
+   ```
+
+3. **Restart the web client** to pick up the configuration:
+   ```bash
+   # Stop the web client (Ctrl+C)
+   # Start it again
+   yarn start:local-server
+   ```
+
+4. **Verify server URL** after the web client loads:
+   - Open browser DevTools console
+   - The client should connect to `ws://localhost:3005`
+   - Check network tab for WebSocket connections
+
+5. **Try authentication again** with the secret key from:
+   ```bash
+   node scripts/setup-test-credentials.mjs
+   ```
+
+**Alternative:** If the above doesn't work, check the server logs to see which server the authentication request is going to:
+```bash
+./happy-demo.sh logs server
+```
+
 ### Authentication fails in web browser
 
 Check:
 1. Server logs: `./happy-demo.sh logs server`
 2. Database is running: `./happy-demo.sh status`
 3. Try creating fresh test credentials: `node scripts/setup-test-credentials.mjs`
+4. See "Invalid secret key" troubleshooting section above
 
 ### Web client shows "Loading..." forever
 
