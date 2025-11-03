@@ -38,6 +38,37 @@ function decodeBase64(str) {
 }
 
 /**
+ * Format secret key for backup/restore (base32 with dashes)
+ * This matches the format expected by the web/mobile client
+ */
+function formatSecretKeyForBackup(secretKey) {
+    // Base32 alphabet (RFC 4648)
+    const base32Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+    let bits = '';
+    // Convert bytes to bits
+    for (let i = 0; i < secretKey.length; i++) {
+        bits += secretKey[i].toString(2).padStart(8, '0');
+    }
+
+    // Convert bits to base32
+    let base32 = '';
+    for (let i = 0; i < bits.length; i += 5) {
+        const chunk = bits.slice(i, i + 5).padEnd(5, '0');
+        base32 += base32Alphabet[parseInt(chunk, 2)];
+    }
+
+    // Add dashes every 5 characters
+    let formatted = '';
+    for (let i = 0; i < base32.length; i += 5) {
+        if (i > 0) formatted += '-';
+        formatted += base32.slice(i, i + 5);
+    }
+
+    return formatted;
+}
+
+/**
  * Step 1: Create a test account (simulates mobile/web client)
  */
 async function createTestAccount() {
@@ -252,8 +283,24 @@ async function main() {
         // Step 5: Write to disk
         await writeCredentials(credentials);
 
+        // Format the secret key for web client restore
+        // Use the first 32 bytes of the signing key (the seed)
+        const secretSeed = account.keypair.secretKey.slice(0, 32);
+        const backupKey = formatSecretKeyForBackup(secretSeed);
+
         console.log('\n✓ Success! Test credentials are ready.');
-        console.log(`\nYou can now run the CLI with:`);
+        console.log('\n' + '='.repeat(70));
+        console.log('  WEB CLIENT SECRET KEY (for restore access)');
+        console.log('='.repeat(70));
+        console.log(`\n  ${backupKey}\n`);
+        console.log('='.repeat(70));
+        console.log('\nTo use the web client:');
+        console.log('  1. Open http://localhost:8081 in your browser');
+        console.log('  2. Click "Enter your secret key to restore access"');
+        console.log('  3. Copy and paste the secret key above');
+        console.log('  4. You\'ll be logged in and can control CLI sessions!\n');
+
+        console.log('To use the CLI:');
         console.log(`  HAPPY_HOME_DIR=${HAPPY_HOME_DIR} HAPPY_SERVER_URL=${SERVER_URL} ./happy-cli/bin/happy.mjs\n`);
         console.log(`Or run the integration tests with:`);
         console.log(`  cd happy-cli && yarn test:integration-test-env\n`);
