@@ -38,34 +38,52 @@ function decodeBase64(str) {
 }
 
 /**
+ * Convert bytes to base32 (RFC 4648)
+ */
+function bytesToBase32(bytes) {
+    const base32Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+    let result = '';
+    let buffer = 0;
+    let bufferLength = 0;
+
+    for (const byte of bytes) {
+        buffer = (buffer << 8) | byte;
+        bufferLength += 8;
+
+        while (bufferLength >= 5) {
+            bufferLength -= 5;
+            result += base32Alphabet[(buffer >> bufferLength) & 0x1f];
+        }
+    }
+
+    // Handle remaining bits
+    if (bufferLength > 0) {
+        result += base32Alphabet[(buffer << (5 - bufferLength)) & 0x1f];
+    }
+
+    return result;
+}
+
+/**
  * Format secret key for backup/restore (base32 with dashes)
  * This matches the format expected by the web/mobile client
+ * Input should be base64url-encoded secret key
  */
-function formatSecretKeyForBackup(secretKey) {
-    // Base32 alphabet (RFC 4648)
-    const base32Alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function formatSecretKeyForBackup(secretKeyBase64url) {
+    // Decode from base64url to bytes
+    const bytes = Buffer.from(secretKeyBase64url, 'base64url');
 
-    let bits = '';
-    // Convert bytes to bits
-    for (let i = 0; i < secretKey.length; i++) {
-        bits += secretKey[i].toString(2).padStart(8, '0');
-    }
+    // Convert to base32
+    const base32 = bytesToBase32(bytes);
 
-    // Convert bits to base32
-    let base32 = '';
-    for (let i = 0; i < bits.length; i += 5) {
-        const chunk = bits.slice(i, i + 5).padEnd(5, '0');
-        base32 += base32Alphabet[parseInt(chunk, 2)];
-    }
-
-    // Add dashes every 5 characters
-    let formatted = '';
+    // Split into groups of 5 characters
+    const groups = [];
     for (let i = 0; i < base32.length; i += 5) {
-        if (i > 0) formatted += '-';
-        formatted += base32.slice(i, i + 5);
+        groups.push(base32.slice(i, i + 5));
     }
 
-    return formatted;
+    // Join with dashes
+    return groups.join('-');
 }
 
 /**
@@ -286,7 +304,9 @@ async function main() {
         // Format the secret key for web client restore
         // Use the first 32 bytes of the signing key (the seed)
         const secretSeed = account.keypair.secretKey.slice(0, 32);
-        const backupKey = formatSecretKeyForBackup(secretSeed);
+        // Encode as base64url first (this is what the web client expects)
+        const secretKeyBase64url = Buffer.from(secretSeed).toString('base64url');
+        const backupKey = formatSecretKeyForBackup(secretKeyBase64url);
 
         console.log('\n✓ Success! Test credentials are ready.');
         console.log('\n' + '='.repeat(70));
