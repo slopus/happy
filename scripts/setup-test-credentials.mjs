@@ -19,7 +19,7 @@ import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { join } from 'path';
 import { homedir } from 'os';
-import { randomUUID } from 'crypto';
+import { randomUUID, createHmac, createHash } from 'crypto';
 
 const SERVER_URL = process.env.HAPPY_SERVER_URL || 'http://localhost:3005';
 const HAPPY_HOME_DIR = process.env.HAPPY_HOME_DIR || join(homedir(), '.happy-dev-test');
@@ -35,6 +35,72 @@ function encodeBase64(data) {
 
 function decodeBase64(str) {
     return new Uint8Array(Buffer.from(str, 'base64'));
+}
+
+/**
+ * HMAC-SHA512 function
+ */
+function hmac_sha512(key, data) {
+    const hmac = createHmac('sha512', Buffer.from(key));
+    hmac.update(Buffer.from(data));
+    return new Uint8Array(hmac.digest());
+}
+
+/**
+ * Derive key tree root (matches Happy's deriveSecretKeyTreeRoot)
+ */
+function deriveSecretKeyTreeRoot(seed, usage) {
+    const I = hmac_sha512(
+        new TextEncoder().encode(usage + ' Master Seed'),
+        seed
+    );
+    return {
+        key: I.slice(0, 32),
+        chainCode: I.slice(32)
+    };
+}
+
+/**
+ * Derive key tree child (matches Happy's deriveSecretKeyTreeChild)
+ */
+function deriveSecretKeyTreeChild(chainCode, index) {
+    const data = new Uint8Array([0x00, ...new TextEncoder().encode(index)]);
+    const I = hmac_sha512(chainCode, data);
+    return {
+        key: I.slice(0, 32),
+        chainCode: I.slice(32)
+    };
+}
+
+/**
+ * Derive key (matches Happy's deriveKey function)
+ */
+function deriveKey(master, usage, path) {
+    let state = deriveSecretKeyTreeRoot(master, usage);
+    for (const index of path) {
+        state = deriveSecretKeyTreeChild(state.chainCode, index);
+    }
+    return state.key;
+}
+
+/**
+ * Derive the content encryption public key from an account's secret key
+ * This matches how the web client derives its encryption keypair
+ */
+function deriveContentEncryptionPublicKey(accountSecretKey) {
+    // Get the 32-byte seed from the Ed25519 secret key
+    const seed = accountSecretKey.slice(0, 32);
+
+    // Derive content data key (same as web client)
+    const contentDataKey = deriveKey(seed, 'Happy EnCoder', ['content']);
+
+    // Generate Box keypair from contentDataKey (matches libsodium's crypto_box_seed_keypair)
+    // Libsodium's crypto_box_seed_keypair does: SHA-512(seed) -> use first 32 bytes as secret key
+    const hash = createHash('sha512').update(Buffer.from(contentDataKey)).digest();
+    const boxSecretKey = hash.slice(0, 32);
+    const boxKeypair = tweetnacl.box.keyPair.fromSecretKey(boxSecretKey);
+
+    return boxKeypair.publicKey;
 }
 
 /**
@@ -146,12 +212,14 @@ async function approveAuthRequest(cliKeypair, accountKeypair, accountToken) {
     // Generate ephemeral keypair for encrypting the response
     const ephemeralKeypair = tweetnacl.box.keyPair();
 
-    // For legacy auth (v1), send the account's secret key (first 32 bytes)
-    // For v2, send [0x00, publicKey(32 bytes)]
-    // Let's use v2 format
+    // For v2 auth, send [0x00, encryptionPublicKey(32 bytes)]
+    // IMPORTANT: We must derive the content encryption public key (X25519) from the account secret key
+    // NOT use the Ed25519 signing public key!
+    const contentEncryptionPublicKey = deriveContentEncryptionPublicKey(accountKeypair.secretKey);
+
     const responseData = new Uint8Array(33);
     responseData[0] = 0x00; // v2 marker
-    responseData.set(accountKeypair.publicKey, 1);
+    responseData.set(contentEncryptionPublicKey, 1);
 
     // Encrypt the response for the CLI
     const nonce = tweetnacl.randomBytes(24);
