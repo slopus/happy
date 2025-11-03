@@ -56,6 +56,9 @@ step "Step 3: Starting Happy web client..."
 info "The web client will start in the background"
 info "Building may take a minute on first run..."
 cd happy
+# Clear cache to ensure latest code with debug logging is used
+info "Clearing cache to load latest code..."
+rm -rf .expo/web node_modules/.cache 2>/dev/null || true
 yarn start:local-server > /tmp/happy-web.log 2>&1 &
 WEB_PID=$!
 cd ..
@@ -126,13 +129,15 @@ echo -e "${CYAN}╔════════════════════�
 echo -e "${CYAN}║         🌐 USING THE WEB CLIENT                          ║${NC}"
 echo -e "${CYAN}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "${GREEN}Step 1: Open your browser${NC}"
+echo -e "${GREEN}Step 1: Open your browser with DevTools${NC}"
 echo "   → http://localhost:8081"
+echo "   → Press F12 to open DevTools Console (to see debug logs)"
 echo ""
 echo -e "${GREEN}Step 2: Click \"Enter your secret key to restore access\"${NC}"
 echo ""
 echo -e "${CYAN}ℹ️  NOTE: Web client auto-detects localhost and uses http://localhost:3005${NC}"
 echo "   If you previously used it, clear browser storage to remove cached settings"
+echo "   (F12 → Application → Storage → Clear site data)"
 echo ""
 echo -e "${GREEN}Step 3: Copy and paste this secret key:${NC}"
 echo ""
