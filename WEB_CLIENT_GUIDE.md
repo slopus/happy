@@ -191,45 +191,36 @@ Check that:
 
 ### "Invalid secret key" error when restoring
 
-**Root Cause:** The web client is trying to connect to the production server (`https://api.cluster-fluster.com`) instead of your local server. The secret keys generated for local accounts don't exist on the production server.
+**Root Cause:** The web client was trying to connect to the production server (`https://api.cluster-fluster.com`) instead of your local server. Test credentials only exist on your local server.
 
-**Solution:**
+**Solution (FIXED in latest version):**
 
-1. **Clear browser storage** to remove cached server URL:
+The web client now **automatically detects** when you're running on localhost and defaults to `http://localhost:3005`. This should work out of the box!
+
+If you're still seeing the error:
+
+1. **Clear browser storage** to remove any cached production server URL:
    - Open browser DevTools (F12)
    - Go to Application → Storage → Clear site data
-   - Or manually: Application → Local Storage → http://localhost:8081 → Delete all
+   - Refresh the page
 
-2. **Ensure .env file exists** in the `happy/` directory:
-   ```bash
-   cd happy
-   cat .env  # Should show EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005
-   ```
-   If missing, create it with:
-   ```bash
-   echo "EXPO_PUBLIC_HAPPY_SERVER_URL=http://localhost:3005" > .env
-   ```
+2. **Verify auto-detection is working:**
+   - Open http://localhost:8081
+   - In browser DevTools console, check what server it's connecting to
+   - You should see WebSocket connections to `ws://localhost:3005`
 
-3. **Restart the web client** to pick up the configuration:
-   ```bash
-   # Stop the web client (Ctrl+C)
-   # Start it again
-   yarn start:local-server
-   ```
+3. **Manual override (if auto-detection fails):**
+   - Navigate to Settings → Server Configuration in the web UI
+   - Enter `http://localhost:3005`
+   - Click Save
 
-4. **Verify server URL** after the web client loads:
-   - Open browser DevTools console
-   - The client should connect to `ws://localhost:3005`
-   - Check network tab for WebSocket connections
-
-5. **Try authentication again** with the secret key from:
-   ```bash
-   node scripts/setup-test-credentials.mjs
-   ```
-
-**Alternative:** If the above doesn't work, check the server logs to see which server the authentication request is going to:
-```bash
-./happy-demo.sh logs server
+**How it works:**
+```
+Priority order for server URL:
+1. Custom server set in Settings (localStorage)
+2. Environment variable EXPO_PUBLIC_HAPPY_SERVER_URL
+3. Auto-detect: localhost → http://localhost:3005
+4. Fallback: production server
 ```
 
 ### Authentication fails in web browser
