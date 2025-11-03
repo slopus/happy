@@ -153,6 +153,8 @@ cleanup_all() {
     if is_running "redis-server"; then
         info "Stopping Redis..."
         service redis-server stop || true
+        # Also kill any orphaned redis processes that the service didn't catch
+        pkill -f "redis-server" 2>/dev/null || true
         success "Redis stopped"
     else
         info "Redis not running"
@@ -162,6 +164,7 @@ cleanup_all() {
     info "Cleaning up any orphaned processes..."
     pkill -f "node.*happy-server" 2>/dev/null || true
     pkill -f "node.*happy-cli" 2>/dev/null || true
+    pkill -f "expo start" 2>/dev/null || true  # Also stop web client if running
 
     # Clean up log files (optional)
     if [ "${2:-}" = "--clean-logs" ]; then

@@ -81,11 +81,14 @@ run:
 		-v `pwd`/..:$(WORKDIR) \
 		$(FULLTAG) bash
 
+
+# Expose the web server and the happy-server:
+PORTS= -p 8081:8081 -p 3005:3005
 root:
 	$(CONTAINER) run -it --rm -u root --hostname $(CONTAINER_HOSTNAME) \
 		-v `pwd`/home:/root \
 		-v `pwd`/..:$(WORKDIR) \
-		$(FULLTAG) bash
+		$(PORTS) $(FULLTAG) bash
 
 AGENT_LAYERS = Dockerfile.claude Dockerfile.copilot
 # Dockerfile.gemini

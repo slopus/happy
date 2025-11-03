@@ -4,6 +4,8 @@ This repository contains a working self-hosted setup of Happy (server + CLI) wit
 
 ## Quick Start
 
+### CLI Only (Headless)
+
 ```bash
 # Start all services and run complete e2e demo
 ./e2e-demo.sh
@@ -16,13 +18,31 @@ This will:
 4. Create and track a test session
 5. Show you everything working
 
+### With Web Client (Full Stack)
+
+```bash
+# Start all services + web frontend
+./e2e-web-demo.sh
+```
+
+This will:
+1. Start all backend services
+2. Create test credentials
+3. Start the web client at http://localhost:8081
+4. Start CLI daemon and session
+5. Guide you through connecting from the browser
+
+See [WEB_CLIENT_GUIDE.md](WEB_CLIENT_GUIDE.md) for detailed instructions.
+
 ## What's Working
 
 ✅ **happy-server** running on port 3005
 ✅ **happy-cli** with full daemon support
+✅ **Happy web client** (browser UI on port 8081)
 ✅ **Automated authentication** (no browser/mobile app needed for testing)
 ✅ **Session creation and tracking**
-✅ **Database connectivity** (PostgreSQL)
+✅ **Remote session control from web UI**
+✅ **Database connectivity** (PostgreSQL, Redis, MinIO)
 ✅ **Real-time WebSocket communication**
 ✅ **Machine registration**
 
@@ -83,6 +103,7 @@ export HAPPY_SERVER_URL=http://localhost:3005
 
 ## Documentation
 
+- **[WEB_CLIENT_GUIDE.md](WEB_CLIENT_GUIDE.md)** - Browser UI setup and usage
 - **[E2E_TESTING.md](E2E_TESTING.md)** - Complete e2e testing guide
 - **[DEPENDENCIES.md](DEPENDENCIES.md)** - All installed dependencies
 - **[CLAUDE.md](CLAUDE.md)** - Project instructions for Claude
@@ -114,10 +135,13 @@ Complete end-to-end demonstration script that shows the full flow working.
 ## Service URLs
 
 - **happy-server**: http://localhost:3005/
+- **Happy Web Client**: http://localhost:8081/ (Expo/React Native web app)
 - **MinIO Console**: http://localhost:9001/ (minioadmin/minioadmin)
 - **Metrics**: http://localhost:9090/metrics
 - **PostgreSQL**: postgresql://postgres:postgres@localhost:5432/handy
 - **Redis**: redis://localhost:6379
+
+All ports are automatically forwarded when using the devcontainer.
 
 ## Troubleshooting
 

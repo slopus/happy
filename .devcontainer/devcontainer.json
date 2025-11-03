@@ -50,6 +50,30 @@
     "CLAUDE_CONFIG_DIR": "/home/node/.claude",
     "POWERLEVEL9K_DISABLE_GITSTATUS": "true"
   },
+  "forwardPorts": [
+    3005,
+    8081,
+    9000,
+    9001
+  ],
+  "portsAttributes": {
+    "3005": {
+      "label": "Happy Server",
+      "onAutoForward": "notify"
+    },
+    "8081": {
+      "label": "Happy Web Client",
+      "onAutoForward": "notify"
+    },
+    "9000": {
+      "label": "MinIO API",
+      "onAutoForward": "silent"
+    },
+    "9001": {
+      "label": "MinIO Console",
+      "onAutoForward": "silent"
+    }
+  },
   "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind,consistency=delegated",
   "workspaceFolder": "/workspace",
   "postStartCommand": "sudo /usr/local/bin/init-firewall.sh",
