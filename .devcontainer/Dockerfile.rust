@@ -7,7 +7,8 @@ RUN mkdir -p "$CARGO_HOME" && rustup toolchain install nightly
 # RUN mkdir -p "$CARGO_HOME" && rustup toolchain install stable
 
 # Install my minibeads tool for issue tracking
-RUN cargo install --git https://github.com/rrnewton/minibeads --tag v0.5
+RUN cargo install --git https://github.com/rrnewton/minibeads --tag v0.10 && \
+    ln -s `which mb` /usr/bin/bd
 
 RUN apt-get install -y heaptrack
 RUN cargo install cargo-heaptrack cargo-nextest
