@@ -25,6 +25,7 @@ import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
 let onPathSelected: (path: string) => void = () => { };
+
 export const callbacks = {
     onMachineSelected: (machineId: string) => {
         onMachineSelected(machineId);
@@ -85,8 +86,91 @@ const updateRecentMachinePaths = (
     return updated.slice(0, 10);
 };
 
+// Profile interface
+interface Profile {
+    id: string;
+    name: string;
+    anthropicBaseUrl?: string | null;
+    anthropicAuthToken?: string | null;
+    anthropicModel?: string | null;
+    tmuxSessionName?: string | null;
+    tmuxTmpDir?: string | null;
+    tmuxUpdateEnvironment?: boolean | null;
+    customEnvironmentVariables?: Record<string, string>;
+}
+
+// Built-in profile configurations
+const getBuiltInProfile = (id: string): Profile | null => {
+    switch (id) {
+        case 'anthropic':
+            return {
+                id: 'anthropic',
+                name: 'Anthropic (Default)',
+                anthropicBaseUrl: null,
+                anthropicAuthToken: null,
+                anthropicModel: null,
+                tmuxSessionName: null,
+                tmuxTmpDir: null,
+                tmuxUpdateEnvironment: false,
+                customEnvironmentVariables: {},
+            };
+        case 'deepseek':
+            return {
+                id: 'deepseek',
+                name: 'DeepSeek (Reasoner)',
+                anthropicBaseUrl: 'https://api.deepseek.com/anthropic',
+                anthropicAuthToken: null,
+                anthropicModel: 'deepseek-reasoner',
+                tmuxSessionName: null,
+                tmuxTmpDir: null,
+                tmuxUpdateEnvironment: false,
+                customEnvironmentVariables: {
+                    'DEEPSEEK_API_TIMEOUT_MS': '600000',
+                    'DEEPSEEK_SMALL_FAST_MODEL': 'deepseek-chat',
+                    'DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                    'API_TIMEOUT_MS': '600000',
+                    'ANTHROPIC_SMALL_FAST_MODEL': 'deepseek-chat',
+                    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                },
+            };
+        case 'zai':
+            return {
+                id: 'zai',
+                name: 'Z.AI (GLM-4.6)',
+                anthropicBaseUrl: 'https://api.z.ai/api/anthropic',
+                anthropicAuthToken: null,
+                anthropicModel: 'glm-4.6',
+                tmuxSessionName: null,
+                tmuxTmpDir: null,
+                tmuxUpdateEnvironment: false,
+                customEnvironmentVariables: {},
+            };
+        default:
+            return null;
+    }
+};
+
+// Default built-in profiles
+const DEFAULT_PROFILES = [
+    {
+        id: 'anthropic',
+        name: 'Anthropic (Default)',
+        isBuiltIn: true,
+    },
+    {
+        id: 'deepseek',
+        name: 'DeepSeek (Reasoner)',
+        isBuiltIn: true,
+    },
+    {
+        id: 'zai',
+        name: 'Z.AI (GLM-4.6)',
+        isBuiltIn: true,
+    }
+];
+
 // Optimized profile lookup utility - converts array to Map for O(1) performance
-const useProfileMap = (profiles: Array<{ id: string; name: string; anthropicBaseUrl?: string | null; anthropicAuthToken?: string | null; anthropicModel?: string | null; tmuxSessionName?: string | null; tmuxTmpDir?: string | null; tmuxUpdateEnvironment?: boolean | null }>) => {
+const useProfileMap = (profiles: Profile[]) => {
     return React.useMemo(() =>
         new Map(profiles.map(p => [p.id, p])),
         [profiles]
@@ -94,13 +178,20 @@ const useProfileMap = (profiles: Array<{ id: string; name: string; anthropicBase
 };
 
 // Environment variable transformation helper - converts profile to environment variables
-const transformProfileToEnvironmentVars = (profile: { anthropicBaseUrl?: string | null; anthropicAuthToken?: string | null; anthropicModel?: string | null; tmuxSessionName?: string | null; tmuxTmpDir?: string | null }) => ({
-    ANTHROPIC_BASE_URL: profile.anthropicBaseUrl || undefined,
-    ANTHROPIC_AUTH_TOKEN: profile.anthropicAuthToken || undefined,
-    ANTHROPIC_MODEL: profile.anthropicModel || undefined,
-    TMUX_SESSION_NAME: profile.tmuxSessionName || undefined,
-    TMUX_TMPDIR: profile.tmuxTmpDir || undefined,
-});
+const transformProfileToEnvironmentVars = (profile: Profile) => {
+    const baseVars = {
+        ANTHROPIC_BASE_URL: profile.anthropicBaseUrl || undefined,
+        ANTHROPIC_AUTH_TOKEN: profile.anthropicAuthToken || undefined,
+        ANTHROPIC_MODEL: profile.anthropicModel || undefined,
+        TMUX_SESSION_NAME: profile.tmuxSessionName || undefined,
+        TMUX_TMPDIR: profile.tmuxTmpDir || undefined,
+    };
+
+    // Merge custom environment variables
+    const customVars = profile.customEnvironmentVariables || {};
+
+    return { ...baseVars, ...customVars };
+};
 
 function NewSessionScreen() {
     const { theme } = useUnistyles();
@@ -123,14 +214,7 @@ function NewSessionScreen() {
     });
     const [isSending, setIsSending] = React.useState(false);
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
-    const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(() => {
-        // Initialize with last used profile if it exists and is valid
-        if (lastUsedProfile && profileMap.has(lastUsedProfile)) {
-            return lastUsedProfile;
-        }
-        return null;
-    });
-    const ref = React.useRef<MultiTextInputHandle>(null);
+      const ref = React.useRef<MultiTextInputHandle>(null);
     const headerHeight = useHeaderHeight();
     const safeArea = useSafeAreaInsets();
     const screenWidth = useWindowDimensions().width;
@@ -144,8 +228,21 @@ function NewSessionScreen() {
     const profiles = useSetting('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
 
+    // Combined profiles (built-in + custom)
+    const allProfiles = React.useMemo(() => {
+        const builtInProfiles = DEFAULT_PROFILES.map(bp => getBuiltInProfile(bp.id)!);
+        return [...builtInProfiles, ...profiles];
+    }, [profiles]);
+
     // Optimized profile lookup for O(1) performance
-    const profileMap = useProfileMap(profiles);
+    const profileMap = useProfileMap(allProfiles);
+    const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(() => {
+        // Initialize with last used profile if it exists and is valid
+        if (lastUsedProfile && profileMap.has(lastUsedProfile)) {
+            return lastUsedProfile;
+        }
+        return null;
+    });
 
     //
     // Machines state
@@ -539,6 +636,8 @@ function NewSessionScreen() {
                     onPermissionModeChange={handlePermissionModeChange}
                     modelMode={modelMode}
                     onModelModeChange={handleModelModeChange}
+                    selectedProfileId={selectedProfileId}
+                    onProfileChange={handleProfileChange}
                     autocompletePrefixes={[]}
                     autocompleteSuggestions={async () => []}
                 />

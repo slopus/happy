@@ -23,6 +23,90 @@ import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 
+interface Profile {
+    id: string;
+    anthropicBaseUrl?: string | null;
+    anthropicAuthToken?: string | null;
+    anthropicModel?: string | null;
+    tmuxSessionName?: string | null;
+    tmuxTmpDir?: string | null;
+    tmuxUpdateEnvironment?: boolean | null;
+    customEnvironmentVariables?: Record<string, string>;
+}
+
+interface ProfileDisplay {
+    id: string;
+    name: string;
+    isBuiltIn: boolean;
+}
+
+// Default built-in profiles
+const DEFAULT_PROFILES: ProfileDisplay[] = [
+    {
+        id: 'anthropic',
+        name: 'Anthropic (Default)',
+        isBuiltIn: true,
+    },
+    {
+        id: 'deepseek',
+        name: 'DeepSeek (Reasoner)',
+        isBuiltIn: true,
+    },
+    {
+        id: 'zai',
+        name: 'Z.AI (GLM-4.6)',
+        isBuiltIn: true,
+    }
+];
+
+// Built-in profile configurations
+const getBuiltInProfile = (id: string): Profile | null => {
+    switch (id) {
+        case 'anthropic':
+            return {
+                id: 'anthropic',
+                anthropicBaseUrl: null,
+                anthropicAuthToken: null,
+                anthropicModel: null,
+                tmuxSessionName: null,
+                tmuxTmpDir: null,
+                tmuxUpdateEnvironment: false,
+                customEnvironmentVariables: {},
+            };
+        case 'deepseek':
+            return {
+                id: 'deepseek',
+                anthropicBaseUrl: 'https://api.deepseek.com/anthropic',
+                anthropicAuthToken: null,
+                anthropicModel: 'deepseek-reasoner',
+                tmuxSessionName: null,
+                tmuxTmpDir: null,
+                tmuxUpdateEnvironment: false,
+                customEnvironmentVariables: {
+                    'DEEPSEEK_API_TIMEOUT_MS': '600000',
+                    'DEEPSEEK_SMALL_FAST_MODEL': 'deepseek-chat',
+                    'DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                    'API_TIMEOUT_MS': '600000',
+                    'ANTHROPIC_SMALL_FAST_MODEL': 'deepseek-chat',
+                    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                },
+            };
+        case 'zai':
+            return {
+                id: 'zai',
+                anthropicBaseUrl: 'https://api.z.ai/api/anthropic',
+                anthropicAuthToken: null,
+                anthropicModel: 'glm-4.6',
+                tmuxSessionName: null,
+                tmuxTmpDir: null,
+                tmuxUpdateEnvironment: false,
+                customEnvironmentVariables: {},
+            };
+        default:
+            return null;
+    }
+};
+
 interface AgentInputProps {
     value: string;
     placeholder: string;
@@ -65,6 +149,8 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
+    selectedProfileId?: string | null;
+    onProfileChange?: (profileId: string | null) => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -294,6 +380,17 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     // Check if this is a Codex session
     const isCodex = props.metadata?.flavor === 'codex';
 
+    // Load profiles for new session screen
+    const profiles = useSetting('profiles');
+    const allProfiles = React.useMemo(() => {
+        const builtInProfiles = DEFAULT_PROFILES.map(bp => getBuiltInProfile(bp.id)!);
+        return [...builtInProfiles, ...profiles];
+    }, [profiles]);
+    const profileMap = React.useMemo(() =>
+        new Map(allProfiles.map(p => [p.id, p])),
+        [allProfiles]
+    );
+
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
         ? getContextWarning(props.usageData.contextSize, props.alwaysShowContextSize ?? false, theme)
@@ -387,6 +484,13 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         props.onModelModeChange?.(mode);
         // Don't close the settings overlay - let users see the change and potentially switch again
     }, [props.onModelModeChange]);
+
+    // Handle profile selection
+    const handleProfileSelect = React.useCallback((profileId: string | null) => {
+        hapticsLight();
+        props.onProfileChange?.(profileId);
+        // Don't close the settings overlay - let users see the change and potentially switch again
+    }, [props.onProfileChange]);
 
     // Handle abort button press
     const handleAbortPress = React.useCallback(async () => {
@@ -592,6 +696,140 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 }}>
                                                     {config.label}
                                                 </Text>
+                                            </Pressable>
+                                        );
+                                    })}
+                                </View>
+
+                                {/* Divider */}
+                                <View style={{
+                                    height: 1,
+                                    backgroundColor: theme.colors.divider,
+                                    marginHorizontal: 16
+                                }} />
+
+                                {/* Profile Section */}
+                                <View style={{ paddingVertical: 8 }}>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        fontWeight: '600',
+                                        color: '#666',
+                                        paddingHorizontal: 16,
+                                        paddingBottom: 4,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        {t('profiles.title')}
+                                    </Text>
+
+                                    {/* None option - no profile */}
+                                    <Pressable
+                                        onPress={() => handleProfileSelect(null)}
+                                        style={({ pressed }) => ({
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            paddingHorizontal: 16,
+                                            paddingVertical: 8,
+                                            backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                        })}
+                                    >
+                                        <View style={{
+                                            width: 16,
+                                            height: 16,
+                                            borderRadius: 8,
+                                            borderWidth: 2,
+                                            borderColor: !props.selectedProfileId ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            marginRight: 12
+                                        }}>
+                                            {!props.selectedProfileId && (
+                                                <View style={{
+                                                    width: 6,
+                                                    height: 6,
+                                                    borderRadius: 3,
+                                                    backgroundColor: theme.colors.radio.dot
+                                                }} />
+                                            )}
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={{
+                                                fontSize: 14,
+                                                color: !props.selectedProfileId ? theme.colors.radio.active : theme.colors.text,
+                                                ...Typography.default()
+                                            }}>
+                                                {t('profiles.noProfile')}
+                                            </Text>
+                                            <Text style={{
+                                                fontSize: 12,
+                                                color: theme.colors.textSecondary,
+                                                marginTop: 1,
+                                                ...Typography.default()
+                                            }}>
+                                                {t('profiles.noProfileDescription')}
+                                            </Text>
+                                        </View>
+                                    </Pressable>
+
+                                    {/* Profile list */}
+                                    {allProfiles.map((profile) => {
+                                        const isSelected = props.selectedProfileId === profile.id;
+                                        const isBuiltIn = DEFAULT_PROFILES.some(bp => bp.id === profile.id);
+                                        const profileDisplay = DEFAULT_PROFILES.find(bp => bp.id === profile.id);
+                                        const displayName = profileDisplay?.name || `Custom Profile ${profile.id.slice(0, 8)}`;
+
+                                        return (
+                                            <Pressable
+                                                key={profile.id}
+                                                onPress={() => handleProfileSelect(profile.id)}
+                                                style={({ pressed }) => ({
+                                                    flexDirection: 'row',
+                                                    alignItems: 'center',
+                                                    paddingHorizontal: 16,
+                                                    paddingVertical: 8,
+                                                    backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
+                                                })}
+                                            >
+                                                <View style={{
+                                                    width: 16,
+                                                    height: 16,
+                                                    borderRadius: 8,
+                                                    borderWidth: 2,
+                                                    borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
+                                                    alignItems: 'center',
+                                                    justifyContent: 'center',
+                                                    marginRight: 12
+                                                }}>
+                                                    {isSelected && (
+                                                        <View style={{
+                                                            width: 6,
+                                                            height: 6,
+                                                            borderRadius: 3,
+                                                            backgroundColor: theme.colors.radio.dot
+                                                        }} />
+                                                    )}
+                                                </View>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={{
+                                                        fontSize: 14,
+                                                        color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                        ...Typography.default()
+                                                    }}>
+                                                        {displayName}
+                                                    </Text>
+                                                    <Text style={{
+                                                        fontSize: 12,
+                                                        color: theme.colors.textSecondary,
+                                                        marginTop: 1,
+                                                        ...Typography.default()
+                                                    }}>
+                                                        {profile.anthropicModel || t('profiles.defaultModel')}
+                                                        {profile.tmuxSessionName && ` • tmux: ${profile.tmuxSessionName}`}
+                                                        {profile.tmuxTmpDir && ` • dir: ${profile.tmuxTmpDir}`}
+                                                        {Object.keys(profile.customEnvironmentVariables || {}).length > 0 &&
+                                                            ` • ${Object.keys(profile.customEnvironmentVariables || {}).length} custom vars`
+                                                        }
+                                                    </Text>
+                                                </View>
                                             </Pressable>
                                         );
                                     })}

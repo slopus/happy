@@ -12,19 +12,92 @@ import { useWindowDimensions } from 'react-native';
 
 interface Profile {
     id: string;
-    name: string;
     anthropicBaseUrl?: string | null;
     anthropicAuthToken?: string | null;
     anthropicModel?: string | null;
     tmuxSessionName?: string | null;
     tmuxTmpDir?: string | null;
     tmuxUpdateEnvironment?: boolean | null;
+    customEnvironmentVariables?: Record<string, string>;
+}
+
+interface ProfileDisplay {
+    id: string;
+    name: string;
+    isBuiltIn: boolean;
 }
 
 interface ProfileManagerProps {
     onProfileSelect?: (profile: Profile | null) => void;
     selectedProfileId?: string | null;
 }
+
+// Default built-in profiles
+const DEFAULT_PROFILES: ProfileDisplay[] = [
+    {
+        id: 'anthropic',
+        name: 'Anthropic (Default)',
+        isBuiltIn: true,
+    },
+    {
+        id: 'deepseek',
+        name: 'DeepSeek (Reasoner)',
+        isBuiltIn: true,
+    },
+    {
+        id: 'zai',
+        name: 'Z.AI (GLM-4.6)',
+        isBuiltIn: true,
+    }
+];
+
+// Built-in profile configurations
+const getBuiltInProfile = (id: string): Profile | null => {
+    switch (id) {
+        case 'anthropic':
+            return {
+                id: 'anthropic',
+                anthropicBaseUrl: null,
+                anthropicAuthToken: null,
+                anthropicModel: null,
+                tmuxSessionName: null,
+                tmuxTmpDir: null,
+                tmuxUpdateEnvironment: false,
+                customEnvironmentVariables: {},
+            };
+        case 'deepseek':
+            return {
+                id: 'deepseek',
+                anthropicBaseUrl: 'https://api.deepseek.com/anthropic',
+                anthropicAuthToken: null, // User needs to set this
+                anthropicModel: 'deepseek-reasoner',
+                tmuxSessionName: null,
+                tmuxTmpDir: null,
+                tmuxUpdateEnvironment: false,
+                customEnvironmentVariables: {
+                    'DEEPSEEK_API_TIMEOUT_MS': '600000',
+                    'DEEPSEEK_SMALL_FAST_MODEL': 'deepseek-chat',
+                    'DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                    'API_TIMEOUT_MS': '600000',
+                    'ANTHROPIC_SMALL_FAST_MODEL': 'deepseek-chat',
+                    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                },
+            };
+        case 'zai':
+            return {
+                id: 'zai',
+                anthropicBaseUrl: 'https://api.z.ai/api/anthropic',
+                anthropicAuthToken: null, // User needs to set this
+                anthropicModel: 'glm-4.6',
+                tmuxSessionName: null,
+                tmuxTmpDir: null,
+                tmuxUpdateEnvironment: false,
+                customEnvironmentVariables: {},
+            };
+        default:
+            return null;
+    }
+};
 
 function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
     const { theme } = useUnistyles();
@@ -38,13 +111,13 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
     const handleAddProfile = () => {
         setEditingProfile({
             id: Date.now().toString(),
-            name: '',
             anthropicBaseUrl: '',
             anthropicAuthToken: '',
             anthropicModel: '',
             tmuxSessionName: '',
             tmuxTmpDir: '',
             tmuxUpdateEnvironment: false,
+            customEnvironmentVariables: {},
         });
         setShowAddForm(true);
     };
@@ -70,11 +143,24 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
         }
     };
 
-    const handleSelectProfile = (profile: Profile | null) => {
+    const handleSelectProfile = (profileId: string | null) => {
+        let profile: Profile | null = null;
+
+        if (profileId) {
+            // Check if it's a built-in profile
+            const builtInProfile = getBuiltInProfile(profileId);
+            if (builtInProfile) {
+                profile = builtInProfile;
+            } else {
+                // Check if it's a custom profile
+                profile = profiles.find(p => p.id === profileId) || null;
+            }
+        }
+
         if (onProfileSelect) {
             onProfileSelect(profile);
         }
-        setLastUsedProfile(profile?.id || null);
+        setLastUsedProfile(profileId);
     };
 
     const handleSaveProfile = (profile: Profile) => {
@@ -83,27 +169,50 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             return;
         }
 
-        // Check for duplicate names (excluding current profile if editing)
-        const isDuplicate = profiles.some(p =>
-            p.id !== profile.id && p.name.trim() === profile.name.trim()
-        );
-        if (isDuplicate) {
-            return;
-        }
+        // Check if this is a built-in profile being edited
+        const isBuiltIn = DEFAULT_PROFILES.some(bp => bp.id === profile.id);
 
-        const existingIndex = profiles.findIndex(p => p.id === profile.id);
-        let updatedProfiles: Profile[];
+        // For built-in profiles, create a new custom profile instead of modifying the built-in
+        if (isBuiltIn) {
+            const newProfile: Profile = {
+                ...profile,
+                id: Date.now().toString(), // Generate new ID for custom profile
+            };
 
-        if (existingIndex >= 0) {
-            // Update existing profile
-            updatedProfiles = [...profiles];
-            updatedProfiles[existingIndex] = profile;
+            // Check for duplicate names (excluding the new profile)
+            const isDuplicate = profiles.some(p =>
+                p.name.trim() === newProfile.name.trim()
+            );
+            if (isDuplicate) {
+                return;
+            }
+
+            setProfiles([...profiles, newProfile]);
         } else {
-            // Add new profile
-            updatedProfiles = [...profiles, profile];
+            // Handle custom profile updates
+            // Check for duplicate names (excluding current profile if editing)
+            const isDuplicate = profiles.some(p =>
+                p.id !== profile.id && p.name.trim() === profile.name.trim()
+            );
+            if (isDuplicate) {
+                return;
+            }
+
+            const existingIndex = profiles.findIndex(p => p.id === profile.id);
+            let updatedProfiles: Profile[];
+
+            if (existingIndex >= 0) {
+                // Update existing profile
+                updatedProfiles = [...profiles];
+                updatedProfiles[existingIndex] = profile;
+            } else {
+                // Add new profile
+                updatedProfiles = [...profiles, profile];
+            }
+
+            setProfiles(updatedProfiles);
         }
 
-        setProfiles(updatedProfiles);
         setShowAddForm(false);
         setEditingProfile(null);
     };
@@ -176,7 +285,72 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
                         )}
                     </Pressable>
 
-                    {/* Profile list */}
+                    {/* Built-in profiles */}
+                    {DEFAULT_PROFILES.map((profileDisplay) => {
+                        const profile = getBuiltInProfile(profileDisplay.id);
+                        if (!profile) return null;
+
+                        return (
+                            <Pressable
+                                key={profile.id}
+                                style={{
+                                    backgroundColor: theme.colors.input.background,
+                                    borderRadius: 12,
+                                    padding: 16,
+                                    marginBottom: 12,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    borderWidth: selectedProfileId === profile.id ? 2 : 0,
+                                    borderColor: theme.colors.text,
+                                }}
+                                onPress={() => handleSelectProfile(profile.id)}
+                            >
+                                <View style={{
+                                    width: 24,
+                                    height: 24,
+                                    borderRadius: 12,
+                                    backgroundColor: theme.colors.button.primary.background,
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    marginRight: 12,
+                                }}>
+                                    <Ionicons name="star" size={16} color="white" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '600',
+                                        color: theme.colors.text,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        {profile.name}
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 14,
+                                        color: theme.colors.textSecondary,
+                                        marginTop: 2,
+                                        ...Typography.default()
+                                    }}>
+                                        {profile.anthropicModel || 'Default model'}
+                                        {profile.anthropicBaseUrl && ` • ${profile.anthropicBaseUrl}`}
+                                    </Text>
+                                </View>
+                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                    {selectedProfileId === profile.id && (
+                                        <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
+                                    )}
+                                    <Pressable
+                                        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                        onPress={() => handleEditProfile(profile)}
+                                    >
+                                        <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                    </Pressable>
+                                </View>
+                            </Pressable>
+                        );
+                    })}
+
+                    {/* Custom profiles */}
                     {profiles.map((profile) => (
                         <Pressable
                             key={profile.id}
@@ -296,13 +470,38 @@ function ProfileEditForm({
     onCancel: () => void;
 }) {
     const { theme } = useUnistyles();
-    const [name, setName] = React.useState(profile.name);
+    const [name, setName] = React.useState(profile.name || '');
     const [baseUrl, setBaseUrl] = React.useState(profile.anthropicBaseUrl || '');
     const [authToken, setAuthToken] = React.useState(profile.anthropicAuthToken || '');
     const [model, setModel] = React.useState(profile.anthropicModel || '');
     const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxSessionName || '');
     const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxTmpDir || '');
     const [tmuxUpdateEnvironment, setTmuxUpdateEnvironment] = React.useState(profile.tmuxUpdateEnvironment || false);
+    const [customEnvVars, setCustomEnvVars] = React.useState<Record<string, string>>(profile.customEnvironmentVariables || {});
+
+    const [newEnvKey, setNewEnvKey] = React.useState('');
+    const [newEnvValue, setNewEnvValue] = React.useState('');
+    const [showAddEnvVar, setShowAddEnvVar] = React.useState(false);
+
+    const handleAddEnvVar = () => {
+        if (newEnvKey.trim() && newEnvValue.trim()) {
+            setCustomEnvVars(prev => ({
+                ...prev,
+                [newEnvKey.trim()]: newEnvValue.trim()
+            }));
+            setNewEnvKey('');
+            setNewEnvValue('');
+            setShowAddEnvVar(false);
+        }
+    };
+
+    const handleRemoveEnvVar = (key: string) => {
+        setCustomEnvVars(prev => {
+            const newVars = { ...prev };
+            delete newVars[key];
+            return newVars;
+        });
+    };
 
     const handleSave = () => {
         if (!name.trim()) {
@@ -319,6 +518,7 @@ function ProfileEditForm({
             tmuxSessionName: tmuxSession.trim() || null,
             tmuxTmpDir: tmuxTmpDir.trim() || null,
             tmuxUpdateEnvironment,
+            customEnvironmentVariables: customEnvVars,
         });
     };
 
@@ -545,6 +745,165 @@ function ProfileEditForm({
                             {t('profiles.tmuxUpdateEnvironment')}
                         </Text>
                     </Pressable>
+                </View>
+
+                {/* Custom Environment Variables */}
+                <View style={{ marginBottom: 24 }}>
+                    <View style={{
+                        flexDirection: 'row',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        marginBottom: 12,
+                    }}>
+                        <Text style={{
+                            fontSize: 16,
+                            fontWeight: '600',
+                            color: theme.colors.text,
+                            ...Typography.default('semiBold')
+                        }}>
+                            Custom Environment Variables
+                        </Text>
+                        <Pressable
+                            style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                padding: 4,
+                            }}
+                            onPress={() => setShowAddEnvVar(true)}
+                        >
+                            <Ionicons name="add-circle" size={20} color={theme.colors.button.primary.background} />
+                        </Pressable>
+                    </View>
+
+                    {/* Display existing custom environment variables */}
+                    {Object.entries(customEnvVars).map(([key, value]) => (
+                        <View key={key} style={{
+                            backgroundColor: theme.colors.input.background,
+                            borderRadius: 8,
+                            padding: 12,
+                            marginBottom: 8,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                        }}>
+                            <View style={{ flex: 1 }}>
+                                <Text style={{
+                                    fontSize: 14,
+                                    fontWeight: '600',
+                                    color: theme.colors.text,
+                                    ...Typography.default('semiBold')
+                                }}>
+                                    {key}
+                                </Text>
+                                <Text style={{
+                                    fontSize: 12,
+                                    color: theme.colors.textSecondary,
+                                    marginTop: 2,
+                                    ...Typography.default()
+                                }}>
+                                    {value}
+                                </Text>
+                            </View>
+                            <Pressable
+                                style={{
+                                    padding: 4,
+                                    marginLeft: 8,
+                                }}
+                                onPress={() => handleRemoveEnvVar(key)}
+                            >
+                                <Ionicons name="remove-circle" size={20} color="#FF6B6B" />
+                            </Pressable>
+                        </View>
+                    ))}
+
+                    {/* Add new environment variable form */}
+                    {showAddEnvVar && (
+                        <View style={{
+                            backgroundColor: theme.colors.input.background,
+                            borderRadius: 8,
+                            padding: 12,
+                            marginBottom: 8,
+                            borderWidth: 2,
+                            borderColor: theme.colors.button.primary.background,
+                        }}>
+                            <TextInput
+                                style={{
+                                    backgroundColor: theme.colors.surface,
+                                    borderRadius: 6,
+                                    padding: 8,
+                                    fontSize: 14,
+                                    color: theme.colors.text,
+                                    marginBottom: 8,
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.textSecondary,
+                                }}
+                                placeholder="Variable name (e.g., API_TIMEOUT)"
+                                value={newEnvKey}
+                                onChangeText={setNewEnvKey}
+                                autoCapitalize="none"
+                            />
+                            <TextInput
+                                style={{
+                                    backgroundColor: theme.colors.surface,
+                                    borderRadius: 6,
+                                    padding: 8,
+                                    fontSize: 14,
+                                    color: theme.colors.text,
+                                    marginBottom: 12,
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.textSecondary,
+                                }}
+                                placeholder="Variable value (e.g., 60000)"
+                                value={newEnvValue}
+                                onChangeText={setNewEnvValue}
+                                autoCapitalize="none"
+                            />
+                            <View style={{ flexDirection: 'row', gap: 8 }}>
+                                <Pressable
+                                    style={{
+                                        flex: 1,
+                                        backgroundColor: theme.colors.surface,
+                                        borderRadius: 6,
+                                        padding: 8,
+                                        alignItems: 'center',
+                                        borderWidth: 1,
+                                        borderColor: theme.colors.textSecondary,
+                                    }}
+                                    onPress={() => {
+                                        setShowAddEnvVar(false);
+                                        setNewEnvKey('');
+                                        setNewEnvValue('');
+                                    }}
+                                >
+                                    <Text style={{
+                                        fontSize: 14,
+                                        color: theme.colors.textSecondary,
+                                        ...Typography.default()
+                                    }}>
+                                        Cancel
+                                    </Text>
+                                </Pressable>
+                                <Pressable
+                                    style={{
+                                        flex: 1,
+                                        backgroundColor: theme.colors.button.primary.background,
+                                        borderRadius: 6,
+                                        padding: 8,
+                                        alignItems: 'center',
+                                    }}
+                                    onPress={handleAddEnvVar}
+                                >
+                                    <Text style={{
+                                        fontSize: 14,
+                                        color: 'white',
+                                        fontWeight: '600',
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        Add
+                                    </Text>
+                                </Pressable>
+                            </View>
+                        </View>
+                    )}
                 </View>
 
                 {/* Action buttons */}
