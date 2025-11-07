@@ -147,6 +147,27 @@ export const ApiKvBatchUpdateSchema = z.object({
     }))
 });
 
+// Profile update schemas for cross-client synchronization
+export const ApiUpdateProfileSchema = z.object({
+    t: z.literal('update-profile'),
+    profileId: z.string(),
+    profile: z.object({
+        version: z.number(),
+        value: z.string() // Encrypted profile data
+    })
+});
+
+export const ApiDeleteProfileSchema = z.object({
+    t: z.literal('delete-profile'),
+    profileId: z.string()
+});
+
+export const ApiActiveProfileSchema = z.object({
+    t: z.literal('active-profile'),
+    profileId: z.string(),
+    machineId: z.string()
+});
+
 export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiUpdateNewMessageSchema,
     ApiUpdateNewSessionSchema,
@@ -159,12 +180,18 @@ export const ApiUpdateSchema = z.discriminatedUnion('t', [
     ApiDeleteArtifactSchema,
     ApiRelationshipUpdatedSchema,
     ApiNewFeedPostSchema,
-    ApiKvBatchUpdateSchema
+    ApiKvBatchUpdateSchema,
+    ApiUpdateProfileSchema,
+    ApiDeleteProfileSchema,
+    ApiActiveProfileSchema
 ]);
 
 export type ApiUpdateNewMessage = z.infer<typeof ApiUpdateNewMessageSchema>;
 export type ApiRelationshipUpdated = z.infer<typeof ApiRelationshipUpdatedSchema>;
 export type ApiKvBatchUpdate = z.infer<typeof ApiKvBatchUpdateSchema>;
+export type ApiUpdateProfile = z.infer<typeof ApiUpdateProfileSchema>;
+export type ApiDeleteProfile = z.infer<typeof ApiDeleteProfileSchema>;
+export type ApiActiveProfile = z.infer<typeof ApiActiveProfileSchema>;
 export type ApiUpdate = z.infer<typeof ApiUpdateSchema>;
 
 //
