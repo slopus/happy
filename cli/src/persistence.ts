@@ -12,63 +12,86 @@ import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64 } from '@/api/encryption';
 
-// AI backend profile schema matching the happy app
-export interface AIBackendProfile {
-  id: string;
-  name: string;
-  description?: string;
+// AI backend profile schema - MUST match happy app exactly
+// Using same Zod schema as GUI for runtime validation consistency
 
-  // Agent-specific configurations
-  anthropicConfig?: {
-    baseUrl?: string;
-    authToken?: string;
-    model?: string;
-  };
-  openaiConfig?: {
-    apiKey?: string;
-    baseUrl?: string;
-    model?: string;
-  };
-  azureOpenAIConfig?: {
-    apiKey?: string;
-    endpoint?: string;
-    apiVersion?: string;
-    deploymentName?: string;
-  };
-  togetherAIConfig?: {
-    apiKey?: string;
-    model?: string;
-  };
+// Environment variable schemas for different AI providers (matching GUI exactly)
+const AnthropicConfigSchema = z.object({
+    baseUrl: z.string().url().optional(),
+    authToken: z.string().optional(),
+    model: z.string().optional(),
+});
 
-  // Tmux configuration
-  tmuxConfig?: {
-    sessionName?: string;
-    tmpDir?: string;
-    updateEnvironment?: boolean;
-  };
+const OpenAIConfigSchema = z.object({
+    apiKey: z.string().optional(),
+    baseUrl: z.string().url().optional(),
+    model: z.string().optional(),
+});
 
-  // Environment variables (validated)
-  environmentVariables?: Array<{
-    name: string;
-    value: string;
-  }>;
+const AzureOpenAIConfigSchema = z.object({
+    apiKey: z.string().optional(),
+    endpoint: z.string().url().optional(),
+    apiVersion: z.string().optional(),
+    deploymentName: z.string().optional(),
+});
 
-  // Compatibility metadata
-  compatibility: {
-    claude: boolean;
-    codex: boolean;
-  };
+const TogetherAIConfigSchema = z.object({
+    apiKey: z.string().optional(),
+    model: z.string().optional(),
+});
 
-  // Built-in profile indicator
-  isBuiltIn?: boolean;
+// Tmux configuration schema (matching GUI exactly)
+const TmuxConfigSchema = z.object({
+    sessionName: z.string().optional(),
+    tmpDir: z.string().optional(),
+    updateEnvironment: z.boolean().optional(),
+});
 
-  // Metadata
-  createdAt?: number;
-  updatedAt?: number;
-  version?: string;
-}
+// Environment variables schema with validation (matching GUI exactly)
+const EnvironmentVariableSchema = z.object({
+    name: z.string().regex(/^[A-Z_][A-Z0-9_]*$/, 'Invalid environment variable name'),
+    value: z.string(),
+});
 
-// Helper functions matching the happy app
+// Profile compatibility schema (matching GUI exactly)
+const ProfileCompatibilitySchema = z.object({
+    claude: z.boolean().default(true),
+    codex: z.boolean().default(true),
+});
+
+// AIBackendProfile schema - EXACT MATCH with GUI schema
+export const AIBackendProfileSchema = z.object({
+    id: z.string().uuid(),
+    name: z.string().min(1).max(100),
+    description: z.string().max(500).optional(),
+
+    // Agent-specific configurations
+    anthropicConfig: AnthropicConfigSchema.optional(),
+    openaiConfig: OpenAIConfigSchema.optional(),
+    azureOpenAIConfig: AzureOpenAIConfigSchema.optional(),
+    togetherAIConfig: TogetherAIConfigSchema.optional(),
+
+    // Tmux configuration
+    tmuxConfig: TmuxConfigSchema.optional(),
+
+    // Environment variables (validated)
+    environmentVariables: z.array(EnvironmentVariableSchema).default([]),
+
+    // Compatibility metadata
+    compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true }),
+
+    // Built-in profile indicator
+    isBuiltIn: z.boolean().default(false),
+
+    // Metadata
+    createdAt: z.number().default(() => Date.now()),
+    updatedAt: z.number().default(() => Date.now()),
+    version: z.string().default('1.0.0'),
+});
+
+export type AIBackendProfile = z.infer<typeof AIBackendProfileSchema>;
+
+// Helper functions matching the happy app exactly
 export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex'): boolean {
   return profile.compatibility[agent];
 }
@@ -77,11 +100,9 @@ export function getProfileEnvironmentVariables(profile: AIBackendProfile): Recor
   const envVars: Record<string, string> = {};
 
   // Add validated environment variables
-  if (profile.environmentVariables) {
-    profile.environmentVariables.forEach(envVar => {
-      envVars[envVar.name] = envVar.value;
-    });
-  }
+  profile.environmentVariables.forEach(envVar => {
+    envVars[envVar.name] = envVar.value;
+  });
 
   // Add Anthropic config
   if (profile.anthropicConfig) {
@@ -122,6 +143,16 @@ export function getProfileEnvironmentVariables(profile: AIBackendProfile): Recor
 
   return envVars;
 }
+
+// Profile validation function using Zod schema
+export function validateProfile(profile: unknown): AIBackendProfile {
+  const result = AIBackendProfileSchema.safeParse(profile);
+  if (!result.success) {
+    throw new Error(`Invalid profile data: ${result.error.message}`);
+  }
+  return result.data;
+}
+
 
 // Profile versioning system
 export const CURRENT_PROFILE_VERSION = '1.0.0';
@@ -496,17 +527,20 @@ export async function setActiveProfile(profileId: string): Promise<void> {
 }
 
 /**
- * Update profiles (synced from happy app)
+ * Update profiles (synced from happy app) with validation
  */
-export async function updateProfiles(profiles: AIBackendProfile[]): Promise<void> {
+export async function updateProfiles(profiles: unknown[]): Promise<void> {
+  // Validate all profiles using Zod schema
+  const validatedProfiles = profiles.map(profile => validateProfile(profile));
+
   await updateSettings(settings => {
     // Preserve active profile ID if it still exists
     const activeProfileId = settings.activeProfileId;
-    const activeProfileStillExists = activeProfileId && profiles.some(p => p.id === activeProfileId);
+    const activeProfileStillExists = activeProfileId && validatedProfiles.some(p => p.id === activeProfileId);
 
     return {
       ...settings,
-      profiles,
+      profiles: validatedProfiles,
       activeProfileId: activeProfileStillExists ? activeProfileId : undefined
     };
   });
