@@ -8,11 +8,12 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { PermissionModeSelector, PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
-import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
+import { useAllMachines, useSessions, useSetting, storage } from '@/sync/storage';
 import { useRouter } from 'expo-router';
 import { AIBackendProfile, validateProfileForAgent, getProfileEnvironmentVariables } from '@/sync/settings';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
+import { profileSyncService } from '@/sync/profileSync';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -163,6 +164,351 @@ const stylesheet = StyleSheet.create((theme) => ({
 
 type WizardStep = 'profile' | 'profileConfig' | 'sessionType' | 'agent' | 'options' | 'machine' | 'path' | 'prompt';
 
+// Profile selection item component with management actions
+interface ProfileSelectionItemProps {
+    profile: AIBackendProfile;
+    isSelected: boolean;
+    onSelect: () => void;
+    onUseAsIs: () => void;
+    onEdit: () => void;
+    onDuplicate?: () => void;
+    onDelete?: () => void;
+    showManagementActions?: boolean;
+}
+
+function ProfileSelectionItem({ profile, isSelected, onSelect, onUseAsIs, onEdit, onDuplicate, onDelete, showManagementActions = false }: ProfileSelectionItemProps) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+
+    return (
+        <View style={{
+            backgroundColor: isSelected ? theme.colors.input.background : 'transparent',
+            borderRadius: 12,
+            borderWidth: isSelected ? 2 : 1,
+            borderColor: isSelected ? theme.colors.button.primary.background : theme.colors.divider,
+            marginBottom: 12,
+            padding: 4,
+        }}>
+            {/* Profile Header */}
+            <Pressable onPress={onSelect} style={{ padding: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: theme.colors.button.primary.background,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 12,
+                    }}>
+                        <Ionicons
+                            name="person-outline"
+                            size={20}
+                            color="white"
+                        />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={{
+                            fontSize: 16,
+                            fontWeight: '600',
+                            color: theme.colors.text,
+                            marginBottom: 4,
+                            ...Typography.default('semiBold'),
+                        }}>
+                            {profile.name}
+                        </Text>
+                        <Text style={{
+                            fontSize: 14,
+                            color: theme.colors.textSecondary,
+                            ...Typography.default(),
+                        }}>
+                            {profile.description}
+                        </Text>
+                        {profile.isBuiltIn && (
+                            <Text style={{
+                                fontSize: 12,
+                                color: theme.colors.textSecondary,
+                                marginTop: 2,
+                            }}>
+                                Built-in profile
+                            </Text>
+                        )}
+                    </View>
+                    {isSelected && (
+                        <Ionicons
+                            name="checkmark-circle"
+                            size={20}
+                            color={theme.colors.button.primary.background}
+                        />
+                    )}
+                </View>
+            </Pressable>
+
+            {/* Action Buttons - Only show when selected */}
+            {isSelected && (
+                <View style={{
+                    flexDirection: 'column',
+                    paddingHorizontal: 12,
+                    paddingBottom: 12,
+                    gap: 8,
+                }}>
+                    {/* Primary Actions */}
+                    <View style={{
+                        flexDirection: 'row',
+                        gap: 8,
+                    }}>
+                        <Pressable
+                            style={{
+                                flex: 1,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                paddingVertical: 8,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: theme.colors.button.primary.background,
+                            }}
+                            onPress={onUseAsIs}
+                        >
+                            <Ionicons name="checkmark" size={16} color="white" />
+                            <Text style={{
+                                color: 'white',
+                                fontSize: 14,
+                                fontWeight: '600',
+                                marginLeft: 6,
+                                ...Typography.default('semiBold'),
+                            }}>
+                                Use As-Is
+                            </Text>
+                        </Pressable>
+
+                        <Pressable
+                            style={{
+                                flex: 1,
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                paddingVertical: 8,
+                                paddingHorizontal: 12,
+                                borderRadius: 8,
+                                backgroundColor: 'transparent',
+                                borderWidth: 1,
+                                borderColor: theme.colors.divider,
+                            }}
+                            onPress={onEdit}
+                        >
+                            <Ionicons name="create-outline" size={16} color={theme.colors.text} />
+                            <Text style={{
+                                color: theme.colors.text,
+                                fontSize: 14,
+                                fontWeight: '600',
+                                marginLeft: 6,
+                                ...Typography.default('semiBold'),
+                            }}>
+                                Edit
+                            </Text>
+                        </Pressable>
+                    </View>
+
+                    {/* Management Actions - Only show for custom profiles */}
+                    {showManagementActions && !profile.isBuiltIn && (
+                        <View style={{
+                            flexDirection: 'row',
+                            gap: 8,
+                        }}>
+                            <Pressable
+                                style={{
+                                    flex: 1,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    paddingVertical: 6,
+                                    paddingHorizontal: 8,
+                                    borderRadius: 6,
+                                    backgroundColor: 'transparent',
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.divider,
+                                }}
+                                onPress={onDuplicate}
+                            >
+                                <Ionicons name="copy-outline" size={14} color={theme.colors.textSecondary} />
+                                <Text style={{
+                                    color: theme.colors.textSecondary,
+                                    fontSize: 12,
+                                    fontWeight: '600',
+                                    marginLeft: 4,
+                                    ...Typography.default('semiBold'),
+                                }}>
+                                    Duplicate
+                                </Text>
+                            </Pressable>
+
+                            <Pressable
+                                style={{
+                                    flex: 1,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    paddingVertical: 6,
+                                    paddingHorizontal: 8,
+                                    borderRadius: 6,
+                                    backgroundColor: 'transparent',
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.textDestructive,
+                                }}
+                                onPress={onDelete}
+                            >
+                                <Ionicons name="trash-outline" size={14} color={theme.colors.textDestructive} />
+                                <Text style={{
+                                    color: theme.colors.textDestructive,
+                                    fontSize: 12,
+                                    fontWeight: '600',
+                                    marginLeft: 4,
+                                    ...Typography.default('semiBold'),
+                                }}>
+                                    Delete
+                                </Text>
+                            </Pressable>
+                        </View>
+                    )}
+                </View>
+            )}
+        </View>
+    );
+}
+
+// Manual configuration item component
+interface ManualConfigurationItemProps {
+    isSelected: boolean;
+    onSelect: () => void;
+    onUseCliVars: () => void;
+    onConfigureManually: () => void;
+}
+
+function ManualConfigurationItem({ isSelected, onSelect, onUseCliVars, onConfigureManually }: ManualConfigurationItemProps) {
+    const { theme } = useUnistyles();
+    const styles = stylesheet;
+
+    return (
+        <View style={{
+            backgroundColor: isSelected ? theme.colors.input.background : 'transparent',
+            borderRadius: 12,
+            borderWidth: isSelected ? 2 : 1,
+            borderColor: isSelected ? theme.colors.button.primary.background : theme.colors.divider,
+            marginBottom: 12,
+            padding: 4,
+        }}>
+            {/* Profile Header */}
+            <Pressable onPress={onSelect} style={{ padding: 12 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <View style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 20,
+                        backgroundColor: theme.colors.textSecondary,
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        marginRight: 12,
+                    }}>
+                        <Ionicons
+                            name="settings"
+                            size={20}
+                            color="white"
+                        />
+                    </View>
+                    <View style={{ flex: 1 }}>
+                        <Text style={{
+                            fontSize: 16,
+                            fontWeight: '600',
+                            color: theme.colors.text,
+                            marginBottom: 4,
+                            ...Typography.default('semiBold'),
+                        }}>
+                            Manual Configuration
+                        </Text>
+                        <Text style={{
+                            fontSize: 14,
+                            color: theme.colors.textSecondary,
+                            ...Typography.default(),
+                        }}>
+                            Use CLI environment variables or configure manually
+                        </Text>
+                    </View>
+                    {isSelected && (
+                        <Ionicons
+                            name="checkmark-circle"
+                            size={20}
+                            color={theme.colors.button.primary.background}
+                        />
+                    )}
+                </View>
+            </Pressable>
+
+            {/* Action Buttons - Only show when selected */}
+            {isSelected && (
+                <View style={{
+                    flexDirection: 'row',
+                    paddingHorizontal: 12,
+                    paddingBottom: 12,
+                    gap: 8,
+                }}>
+                    <Pressable
+                        style={{
+                            flex: 1,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            paddingVertical: 8,
+                            paddingHorizontal: 12,
+                            borderRadius: 8,
+                            backgroundColor: theme.colors.button.primary.background,
+                        }}
+                        onPress={onUseCliVars}
+                    >
+                        <Ionicons name="terminal-outline" size={16} color="white" />
+                        <Text style={{
+                            color: 'white',
+                            fontSize: 14,
+                            fontWeight: '600',
+                            marginLeft: 6,
+                            ...Typography.default('semiBold'),
+                        }}>
+                            Use CLI Vars
+                        </Text>
+                    </Pressable>
+
+                    <Pressable
+                        style={{
+                            flex: 1,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            paddingVertical: 8,
+                            paddingHorizontal: 12,
+                            borderRadius: 8,
+                            backgroundColor: 'transparent',
+                            borderWidth: 1,
+                            borderColor: theme.colors.divider,
+                        }}
+                        onPress={onConfigureManually}
+                    >
+                        <Ionicons name="create-outline" size={16} color={theme.colors.text} />
+                        <Text style={{
+                            color: theme.colors.text,
+                            fontSize: 14,
+                            fontWeight: '600',
+                            marginLeft: 6,
+                            ...Typography.default('semiBold'),
+                        }}>
+                            Configure
+                        </Text>
+                    </Pressable>
+                </View>
+            )}
+        </View>
+    );
+}
+
 interface NewSessionWizardProps {
     onComplete: (config: {
         sessionType: 'simple' | 'worktree';
@@ -243,16 +589,29 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         },
         {
             id: 'openai',
-            name: 'OpenAI (GPT-5)',
-            description: 'OpenAI GPT-5 Codex configuration',
+            name: 'OpenAI (GPT-4/Codex)',
+            description: 'OpenAI GPT-4 and Codex models',
             openaiConfig: {
                 baseUrl: 'https://api.openai.com/v1',
-                model: 'gpt-5-codex-high',
+                model: 'gpt-4-turbo',
             },
-            environmentVariables: [
-                { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
-                { name: 'CODEX_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
-            ],
+            environmentVariables: [],
+            compatibility: { claude: false, codex: true },
+            isBuiltIn: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
+        },
+        {
+            id: 'azure-openai-codex',
+            name: 'Azure OpenAI (Codex)',
+            description: 'Microsoft Azure OpenAI for Codex agents',
+            azureOpenAIConfig: {
+                endpoint: 'https://your-resource.openai.azure.com/',
+                apiVersion: '2024-02-15-preview',
+                deploymentName: 'gpt-4-turbo',
+            },
+            environmentVariables: [],
             compatibility: { claude: false, codex: true },
             isBuiltIn: true,
             createdAt: Date.now(),
@@ -369,7 +728,7 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         if (!profile) return false;
 
         // Check if profile is one that requires API keys
-        const profilesNeedingKeys = ['openai', 'azure-openai', 'zai', 'microsoft', 'deepseek'];
+        const profilesNeedingKeys = ['openai', 'azure-openai', 'azure-openai-codex', 'zai', 'microsoft', 'deepseek'];
         return profilesNeedingKeys.includes(profile.id);
     };
 
@@ -404,12 +763,18 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                     { key: 'AZURE_OPENAI_ENDPOINT', label: 'Azure Endpoint', placeholder: 'https://your-resource.openai.azure.com/' },
                     { key: 'AZURE_OPENAI_DEPLOYMENT_NAME', label: 'Deployment Name', placeholder: 'gpt-4-turbo' }
                 ];
+            case 'azure-openai-codex':
+                return [
+                    { key: 'AZURE_OPENAI_API_KEY', label: 'Azure OpenAI API Key', placeholder: 'Enter your Azure OpenAI API key', isPassword: true },
+                    { key: 'AZURE_OPENAI_ENDPOINT', label: 'Azure Endpoint', placeholder: 'https://your-resource.openai.azure.com/' },
+                    { key: 'AZURE_OPENAI_DEPLOYMENT_NAME', label: 'Deployment Name', placeholder: 'gpt-4-turbo' }
+                ];
             default:
                 return [];
         }
     };
 
-    // Auto-load profile settings
+    // Auto-load profile settings and sync with CLI
     React.useEffect(() => {
         if (selectedProfileId) {
             const selectedProfile = allProfiles.find(p => p.id === selectedProfileId);
@@ -420,10 +785,42 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                 } else if (selectedProfile.compatibility.codex && !selectedProfile.compatibility.claude) {
                     setAgentType('codex');
                 }
-                // Note: We could also load permissionMode and modelMode from profile if we store them there
+
+                // Sync active profile to CLI
+                profileSyncService.setActiveProfile(selectedProfileId).catch(error => {
+                    console.error('[Wizard] Failed to sync active profile to CLI:', error);
+                });
             }
         }
     }, [selectedProfileId, allProfiles]);
+
+    // Sync profiles with CLI on component mount and when profiles change
+    React.useEffect(() => {
+        const syncProfiles = async () => {
+            try {
+                await profileSyncService.bidirectionalSync(allProfiles);
+            } catch (error) {
+                console.error('[Wizard] Failed to sync profiles with CLI:', error);
+                // Continue without sync - profiles work locally
+            }
+        };
+
+        // Sync on mount
+        syncProfiles();
+
+        // Set up sync listener for profile changes
+        const handleSyncEvent = (event: any) => {
+            if (event.status === 'error') {
+                console.warn('[Wizard] Profile sync error:', event.error);
+            }
+        };
+
+        profileSyncService.addEventListener(handleSyncEvent);
+
+        return () => {
+            profileSyncService.removeEventListener(handleSyncEvent);
+        };
+    }, [allProfiles]);
 
     // Get recent paths for the selected machine
     const recentPaths = useMemo(() => {
@@ -473,6 +870,193 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const isFirstStep = currentStepIndex === 0;
     const isLastStep = currentStepIndex === steps.length - 1;
 
+    // Handler for "Use Profile As-Is" - quick session creation
+    const handleUseProfileAsIs = (profile: AIBackendProfile) => {
+        setSelectedProfileId(profile.id);
+
+        // Auto-select agent type based on profile compatibility
+        if (profile.compatibility.claude && !profile.compatibility.codex) {
+            setAgentType('claude');
+        } else if (profile.compatibility.codex && !profile.compatibility.claude) {
+            setAgentType('codex');
+        }
+
+        // Get environment variables from profile (no user configuration)
+        const environmentVariables = getProfileEnvironmentVariables(profile);
+
+        // Complete wizard immediately with profile settings
+        onComplete({
+            sessionType,
+            profileId: profile.id,
+            agentType: agentType || (profile.compatibility.claude ? 'claude' : 'codex'),
+            permissionMode,
+            modelMode,
+            machineId: selectedMachineId,
+            path: showCustomPathInput && customPath.trim() ? customPath.trim() : selectedPath,
+            prompt,
+            environmentVariables,
+        });
+    };
+
+    // Handler for "Edit Profile" - load profile and go to configuration step
+    const handleEditProfile = (profile: AIBackendProfile) => {
+        setSelectedProfileId(profile.id);
+
+        // Auto-select agent type based on profile compatibility
+        if (profile.compatibility.claude && !profile.compatibility.codex) {
+            setAgentType('claude');
+        } else if (profile.compatibility.codex && !profile.compatibility.claude) {
+            setAgentType('codex');
+        }
+
+        // If profile needs configuration, go to profileConfig step
+        if (profileNeedsConfiguration(profile.id)) {
+            setCurrentStep('profileConfig');
+        } else {
+            // If no configuration needed, proceed to next step in the normal flow
+            const profileIndex = steps.indexOf('profile');
+            setCurrentStep(steps[profileIndex + 1]);
+        }
+    };
+
+    // Handler for "Create New Profile"
+    const handleCreateProfile = () => {
+        Modal.prompt(
+            'Create New Profile',
+            'Enter a name for your new profile:',
+            {
+                defaultValue: 'My Custom Profile',
+                confirmText: 'Create',
+                cancelText: 'Cancel'
+            }
+        ).then((profileName) => {
+            if (profileName && profileName.trim()) {
+                const newProfile: AIBackendProfile = {
+                    id: crypto.randomUUID(),
+                    name: profileName.trim(),
+                    description: 'Custom AI profile',
+                    anthropicConfig: {},
+                    environmentVariables: [],
+                    compatibility: { claude: true, codex: true },
+                    isBuiltIn: false,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                    version: '1.0.0',
+                };
+
+                // Get current profiles from settings
+                const currentProfiles = storage.getState().settings.profiles || [];
+                const updatedProfiles = [...currentProfiles, newProfile];
+
+                // Persist through settings system
+                sync.applySettings({ profiles: updatedProfiles });
+
+                // Sync with CLI
+                profileSyncService.syncGuiToCli(updatedProfiles).catch(error => {
+                    console.error('[Wizard] Failed to sync new profile with CLI:', error);
+                });
+
+                // Auto-select the newly created profile
+                setSelectedProfileId(newProfile.id);
+            }
+        });
+    };
+
+    // Handler for "Duplicate Profile"
+    const handleDuplicateProfile = (profile: AIBackendProfile) => {
+        Modal.prompt(
+            'Duplicate Profile',
+            `Enter a name for the duplicate of "${profile.name}":`,
+            {
+                defaultValue: `${profile.name} (Copy)`,
+                confirmText: 'Duplicate',
+                cancelText: 'Cancel'
+            }
+        ).then((newName) => {
+            if (newName && newName.trim()) {
+                const duplicatedProfile: AIBackendProfile = {
+                    ...profile,
+                    id: crypto.randomUUID(),
+                    name: newName.trim(),
+                    description: profile.description ? `Copy of ${profile.description}` : 'Custom AI profile',
+                    isBuiltIn: false,
+                    createdAt: Date.now(),
+                    updatedAt: Date.now(),
+                };
+
+                // Get current profiles from settings
+                const currentProfiles = storage.getState().settings.profiles || [];
+                const updatedProfiles = [...currentProfiles, duplicatedProfile];
+
+                // Persist through settings system
+                sync.applySettings({ profiles: updatedProfiles });
+
+                // Sync with CLI
+                profileSyncService.syncGuiToCli(updatedProfiles).catch(error => {
+                    console.error('[Wizard] Failed to sync duplicated profile with CLI:', error);
+                });
+            }
+        });
+    };
+
+    // Handler for "Delete Profile"
+    const handleDeleteProfile = (profile: AIBackendProfile) => {
+        Modal.confirm(
+            'Delete Profile',
+            `Are you sure you want to delete "${profile.name}"? This action cannot be undone.`,
+            {
+                confirmText: 'Delete',
+                destructive: true
+            }
+        ).then((confirmed) => {
+            if (confirmed) {
+                // Get current profiles from settings
+                const currentProfiles = storage.getState().settings.profiles || [];
+                const updatedProfiles = currentProfiles.filter(p => p.id !== profile.id);
+
+                // Persist through settings system
+                sync.applySettings({ profiles: updatedProfiles });
+
+                // Sync with CLI
+                profileSyncService.syncGuiToCli(updatedProfiles).catch(error => {
+                    console.error('[Wizard] Failed to sync profile deletion with CLI:', error);
+                });
+
+                // Clear selection if deleted profile was selected
+                if (selectedProfileId === profile.id) {
+                    setSelectedProfileId(null);
+                }
+            }
+        });
+    };
+
+    // Handler for "Use CLI Environment Variables" - quick session creation with CLI vars
+    const handleUseCliEnvironmentVariables = () => {
+        setSelectedProfileId(null);
+
+        // Complete wizard immediately with no profile (rely on CLI environment variables)
+        onComplete({
+            sessionType,
+            profileId: null,
+            agentType,
+            permissionMode,
+            modelMode,
+            machineId: selectedMachineId,
+            path: showCustomPathInput && customPath.trim() ? customPath.trim() : selectedPath,
+            prompt,
+            environmentVariables: undefined, // Let CLI handle environment variables
+        });
+    };
+
+    // Handler for "Manual Configuration" - go through normal wizard flow
+    const handleManualConfiguration = () => {
+        setSelectedProfileId(null);
+
+        // Proceed to next step in normal wizard flow
+        const profileIndex = steps.indexOf('profile');
+        setCurrentStep(steps[profileIndex + 1]);
+    };
+
     const handleNext = () => {
         // Special handling for profileConfig step - skip if profile doesn't need configuration
         if (currentStep === 'profileConfig' && (!selectedProfileId || !profileNeedsConfiguration(selectedProfileId))) {
@@ -481,26 +1065,35 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
         }
 
         if (isLastStep) {
-            // Get environment variables from selected profile
+            // Get environment variables from selected profile with proper precedence handling
             let environmentVariables: Record<string, string> | undefined;
             if (selectedProfileId) {
                 const selectedProfile = allProfiles.find(p => p.id === selectedProfileId);
                 if (selectedProfile) {
+                    // Start with profile environment variables (base configuration)
                     environmentVariables = getProfileEnvironmentVariables(selectedProfile);
 
-                    // Add user-provided API keys and configurations
-                    if (profileApiKeys[selectedProfileId]) {
-                        environmentVariables = {
-                            ...environmentVariables,
-                            ...profileApiKeys[selectedProfileId]
-                        };
+                    // Only add user-provided API keys if they're non-empty
+                    // This preserves CLI environment variable precedence when wizard fields are empty
+                    const userApiKeys = profileApiKeys[selectedProfileId];
+                    if (userApiKeys) {
+                        Object.entries(userApiKeys).forEach(([key, value]) => {
+                            // Only override if user provided a non-empty value
+                            if (value && value.trim().length > 0) {
+                                environmentVariables![key] = value;
+                            }
+                        });
                     }
 
-                    if (profileConfigs[selectedProfileId]) {
-                        environmentVariables = {
-                            ...environmentVariables,
-                            ...profileConfigs[selectedProfileId]
-                        };
+                    // Only add user configurations if they're non-empty
+                    const userConfigs = profileConfigs[selectedProfileId];
+                    if (userConfigs) {
+                        Object.entries(userConfigs).forEach(([key, value]) => {
+                            // Only override if user provided a non-empty value
+                            if (value && value.trim().length > 0) {
+                                environmentVariables![key] = value;
+                            }
+                        });
                     }
                 }
             }
@@ -536,11 +1129,9 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             case 'profileConfig':
                 if (!selectedProfileId) return false;
                 const requiredFields = getProfileRequiredFields(selectedProfileId);
-                // Check if all required fields are filled
-                return requiredFields.every(field => {
-                    const value = (profileApiKeys[selectedProfileId] as any)?.[field.key] || (profileConfigs[selectedProfileId] as any)?.[field.key];
-                    return value && value.trim().length > 0;
-                });
+                // Profile configuration step is always shown when needed
+                // Users can leave fields empty to preserve CLI environment variables
+                return true;
             case 'sessionType':
                 return true; // Always valid
             case 'agent':
@@ -570,66 +1161,127 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
                         <ItemGroup title="Built-in Profiles">
                             {builtInProfiles.map((profile) => (
-                                <Pressable
+                                <ProfileSelectionItem
                                     key={profile.id}
-                                    onPress={() => setSelectedProfileId(profile.id)}
-                                >
-                                    <Item
-                                        icon="person-outline"
-                                        title={profile.name}
-                                        subtitle={profile.description}
-                                        rightElement={selectedProfileId === profile.id ? (
-                                            <Ionicons
-                                                name="checkmark-circle"
-                                                size={20}
-                                                color={theme.colors.button.primary.background}
-                                            />
-                                        ) : null}
-                                    />
-                                </Pressable>
+                                    profile={profile}
+                                    isSelected={selectedProfileId === profile.id}
+                                    onSelect={() => setSelectedProfileId(profile.id)}
+                                    onUseAsIs={() => handleUseProfileAsIs(profile)}
+                                    onEdit={() => handleEditProfile(profile)}
+                                />
                             ))}
                         </ItemGroup>
 
                         {profiles.length > 0 && (
                             <ItemGroup title="Custom Profiles">
                                 {profiles.map((profile) => (
-                                    <Pressable
+                                    <ProfileSelectionItem
                                         key={profile.id}
-                                        onPress={() => setSelectedProfileId(profile.id)}
-                                    >
-                                        <Item
-                                            icon="person-outline"
-                                            title={profile.name}
-                                            subtitle={profile.description}
-                                            rightElement={selectedProfileId === profile.id ? (
-                                                <Ionicons
-                                                    name="checkmark-circle"
-                                                    size={20}
-                                                    color={theme.colors.button.primary.background}
-                                                />
-                                            ) : null}
-                                        />
-                                    </Pressable>
+                                        profile={profile}
+                                        isSelected={selectedProfileId === profile.id}
+                                        onSelect={() => setSelectedProfileId(profile.id)}
+                                        onUseAsIs={() => handleUseProfileAsIs(profile)}
+                                        onEdit={() => handleEditProfile(profile)}
+                                        onDuplicate={() => handleDuplicateProfile(profile)}
+                                        onDelete={() => handleDeleteProfile(profile)}
+                                        showManagementActions={true}
+                                    />
                                 ))}
                             </ItemGroup>
                         )}
 
+                        {/* Create New Profile Button */}
+                        <Pressable
+                            style={{
+                                backgroundColor: theme.colors.input.background,
+                                borderRadius: 12,
+                                borderWidth: 2,
+                                borderColor: theme.colors.button.primary.background,
+                                borderStyle: 'dashed',
+                                padding: 16,
+                                marginBottom: 12,
+                            }}
+                            onPress={handleCreateProfile}
+                        >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+                                <View style={{
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: 20,
+                                    backgroundColor: theme.colors.button.primary.background,
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    marginRight: 12,
+                                }}>
+                                    <Ionicons name="add" size={20} color="white" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '600',
+                                        color: theme.colors.text,
+                                        marginBottom: 4,
+                                        ...Typography.default('semiBold'),
+                                    }}>
+                                        Create New Profile
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 14,
+                                        color: theme.colors.textSecondary,
+                                        ...Typography.default(),
+                                    }}>
+                                        Set up a custom AI backend configuration
+                                    </Text>
+                                </View>
+                            </View>
+                        </Pressable>
+
                         <ItemGroup title="Manual Configuration">
-                            <Pressable onPress={() => setSelectedProfileId(null)}>
-                                <Item
-                                    icon="settings"
-                                    title="Manual Configuration"
-                                    subtitle="Configure AI backend manually"
-                                    rightElement={selectedProfileId === null ? (
-                                        <Ionicons
-                                            name="checkmark-circle"
-                                            size={20}
-                                            color={theme.colors.button.primary.background}
-                                        />
-                                    ) : null}
-                                />
-                            </Pressable>
+                            <ManualConfigurationItem
+                                isSelected={selectedProfileId === null}
+                                onSelect={() => setSelectedProfileId(null)}
+                                onUseCliVars={() => handleUseCliEnvironmentVariables()}
+                                onConfigureManually={() => handleManualConfiguration()}
+                            />
                         </ItemGroup>
+
+                        <View style={{
+                            backgroundColor: theme.colors.input.background,
+                            padding: 12,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: theme.colors.divider,
+                            marginTop: 16,
+                        }}>
+                            <Text style={{
+                                fontSize: 14,
+                                color: theme.colors.textSecondary,
+                                marginBottom: 4,
+                            }}>
+                                💡 **Profile Selection Options:**
+                            </Text>
+                            <Text style={{
+                                fontSize: 12,
+                                color: theme.colors.textSecondary,
+                                marginTop: 4,
+                            }}>
+                                • **Use As-Is**: Quick session creation with current profile settings
+                            </Text>
+                            <Text style={{
+                                fontSize: 12,
+                                color: theme.colors.textSecondary,
+                                marginTop: 4,
+                            }}>
+                                • **Edit**: Configure API keys and settings before session creation
+                            </Text>
+                            <Text style={{
+                                fontSize: 12,
+                                color: theme.colors.textSecondary,
+                                marginTop: 4,
+                            }}>
+                                • **Manual**: Use CLI environment variables without profile configuration
+                            </Text>
+                        </View>
                     </View>
                 );
 
@@ -711,6 +1363,13 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 marginBottom: 4,
                             }}>
                                 💡 Tip: Your API keys are only used for this session and are not stored permanently
+                            </Text>
+                            <Text style={{
+                                fontSize: 12,
+                                color: theme.colors.textSecondary,
+                                marginTop: 4,
+                            }}>
+                                📝 Note: Leave fields empty to use CLI environment variables if they're already set
                             </Text>
                         </View>
                     </View>
