@@ -9,17 +9,7 @@ import { Modal as HappyModal } from '@/modal/ModalManager';
 import { layout } from '@/components/layout';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWindowDimensions } from 'react-native';
-
-interface Profile {
-    id: string;
-    anthropicBaseUrl?: string | null;
-    anthropicAuthToken?: string | null;
-    anthropicModel?: string | null;
-    tmuxSessionName?: string | null;
-    tmuxTmpDir?: string | null;
-    tmuxUpdateEnvironment?: boolean | null;
-    customEnvironmentVariables?: Record<string, string>;
-}
+import { AIBackendProfile } from '@/sync/settings';
 
 interface ProfileDisplay {
     id: string;
@@ -28,7 +18,7 @@ interface ProfileDisplay {
 }
 
 interface ProfileManagerProps {
-    onProfileSelect?: (profile: Profile | null) => void;
+    onProfileSelect?: (profile: AIBackendProfile | null) => void;
     selectedProfileId?: string | null;
 }
 
@@ -52,47 +42,56 @@ const DEFAULT_PROFILES: ProfileDisplay[] = [
 ];
 
 // Built-in profile configurations
-const getBuiltInProfile = (id: string): Profile | null => {
+const getBuiltInProfile = (id: string): AIBackendProfile | null => {
     switch (id) {
         case 'anthropic':
             return {
                 id: 'anthropic',
-                anthropicBaseUrl: null,
-                anthropicAuthToken: null,
-                anthropicModel: null,
-                tmuxSessionName: null,
-                tmuxTmpDir: null,
-                tmuxUpdateEnvironment: false,
-                customEnvironmentVariables: {},
+                name: 'Anthropic (Default)',
+                anthropicConfig: {},
+                environmentVariables: [],
+                compatibility: { claude: true, codex: false },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
             };
         case 'deepseek':
             return {
                 id: 'deepseek',
-                anthropicBaseUrl: 'https://api.deepseek.com/anthropic',
-                anthropicAuthToken: null, // User needs to set this
-                anthropicModel: 'deepseek-reasoner',
-                tmuxSessionName: null,
-                tmuxTmpDir: null,
-                tmuxUpdateEnvironment: false,
-                customEnvironmentVariables: {
-                    'DEEPSEEK_API_TIMEOUT_MS': '600000',
-                    'DEEPSEEK_SMALL_FAST_MODEL': 'deepseek-chat',
-                    'DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
-                    'API_TIMEOUT_MS': '600000',
-                    'ANTHROPIC_SMALL_FAST_MODEL': 'deepseek-chat',
-                    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                name: 'DeepSeek (Reasoner)',
+                anthropicConfig: {
+                    baseUrl: 'https://api.deepseek.com/anthropic',
+                    model: 'deepseek-reasoner',
                 },
+                environmentVariables: [
+                    { name: 'DEEPSEEK_API_TIMEOUT_MS', value: '600000' },
+                    { name: 'DEEPSEEK_SMALL_FAST_MODEL', value: 'deepseek-chat' },
+                    { name: 'DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
+                    { name: 'API_TIMEOUT_MS', value: '600000' },
+                    { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: 'deepseek-chat' },
+                    { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
+                ],
+                compatibility: { claude: true, codex: false },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
             };
         case 'zai':
             return {
                 id: 'zai',
-                anthropicBaseUrl: 'https://api.z.ai/api/anthropic',
-                anthropicAuthToken: null, // User needs to set this
-                anthropicModel: 'glm-4.6',
-                tmuxSessionName: null,
-                tmuxTmpDir: null,
-                tmuxUpdateEnvironment: false,
-                customEnvironmentVariables: {},
+                name: 'Z.AI (GLM-4.6)',
+                anthropicConfig: {
+                    baseUrl: 'https://api.z.ai/api/anthropic',
+                    model: 'glm-4.6',
+                },
+                environmentVariables: [],
+                compatibility: { claude: true, codex: false },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
             };
         default:
             return null;
@@ -103,7 +102,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
     const { theme } = useUnistyles();
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const [lastUsedProfile, setLastUsedProfile] = useSettingMutable('lastUsedProfile');
-    const [editingProfile, setEditingProfile] = React.useState<Profile | null>(null);
+    const [editingProfile, setEditingProfile] = React.useState<AIBackendProfile | null>(null);
     const [showAddForm, setShowAddForm] = React.useState(false);
     const safeArea = useSafeAreaInsets();
     const screenWidth = useWindowDimensions().width;
@@ -111,23 +110,24 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
     const handleAddProfile = () => {
         setEditingProfile({
             id: Date.now().toString(),
-            anthropicBaseUrl: '',
-            anthropicAuthToken: '',
-            anthropicModel: '',
-            tmuxSessionName: '',
-            tmuxTmpDir: '',
-            tmuxUpdateEnvironment: false,
-            customEnvironmentVariables: {},
+            name: '',
+            anthropicConfig: {},
+            environmentVariables: [],
+            compatibility: { claude: true, codex: true },
+            isBuiltIn: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
         });
         setShowAddForm(true);
     };
 
-    const handleEditProfile = (profile: Profile) => {
+    const handleEditProfile = (profile: AIBackendProfile) => {
         setEditingProfile({ ...profile });
         setShowAddForm(true);
     };
 
-    const handleDeleteProfile = (profile: Profile) => {
+    const handleDeleteProfile = (profile: AIBackendProfile) => {
         // Auto-delete profile (confirmed by design decision)
         const updatedProfiles = profiles.filter(p => p.id !== profile.id);
         setProfiles(updatedProfiles);
@@ -144,7 +144,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
     };
 
     const handleSelectProfile = (profileId: string | null) => {
-        let profile: Profile | null = null;
+        let profile: AIBackendProfile | null = null;
 
         if (profileId) {
             // Check if it's a built-in profile
@@ -163,7 +163,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
         setLastUsedProfile(profileId);
     };
 
-    const handleSaveProfile = (profile: Profile) => {
+    const handleSaveProfile = (profile: AIBackendProfile) => {
         // Profile validation - ensure name is not empty
         if (!profile.name || profile.name.trim() === '') {
             return;
@@ -174,7 +174,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
 
         // For built-in profiles, create a new custom profile instead of modifying the built-in
         if (isBuiltIn) {
-            const newProfile: Profile = {
+            const newProfile: AIBackendProfile = {
                 ...profile,
                 id: Date.now().toString(), // Generate new ID for custom profile
             };
@@ -199,7 +199,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
             }
 
             const existingIndex = profiles.findIndex(p => p.id === profile.id);
-            let updatedProfiles: Profile[];
+            let updatedProfiles: AIBackendProfile[];
 
             if (existingIndex >= 0) {
                 // Update existing profile
@@ -331,8 +331,8 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
                                         marginTop: 2,
                                         ...Typography.default()
                                     }}>
-                                        {profile.anthropicModel || 'Default model'}
-                                        {profile.anthropicBaseUrl && ` • ${profile.anthropicBaseUrl}`}
+                                        {profile.anthropicConfig?.model || 'Default model'}
+                                        {profile.anthropicConfig?.baseUrl && ` • ${profile.anthropicConfig.baseUrl}`}
                                     </Text>
                                 </View>
                                 <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -364,7 +364,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
                                 borderWidth: selectedProfileId === profile.id ? 2 : 0,
                                 borderColor: theme.colors.text,
                             }}
-                            onPress={() => handleSelectProfile(profile)}
+                            onPress={() => handleSelectProfile(profile.id)}
                         >
                             <View style={{
                                 width: 24,
@@ -392,9 +392,9 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
                                     marginTop: 2,
                                     ...Typography.default()
                                 }}>
-                                    {profile.anthropicModel || t('profiles.defaultModel')}
-                                    {profile.tmuxSessionName && ` • tmux: ${profile.tmuxSessionName}`}
-                                    {profile.tmuxTmpDir && ` • dir: ${profile.tmuxTmpDir}`}
+                                    {profile.anthropicConfig?.model || t('profiles.defaultModel')}
+                                    {profile.tmuxConfig?.sessionName && ` • tmux: ${profile.tmuxConfig.sessionName}`}
+                                    {profile.tmuxConfig?.tmpDir && ` • dir: ${profile.tmuxConfig.tmpDir}`}
                                 </Text>
                             </View>
                             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -465,19 +465,26 @@ function ProfileEditForm({
     onSave,
     onCancel
 }: {
-    profile: Profile;
-    onSave: (profile: Profile) => void;
+    profile: AIBackendProfile;
+    onSave: (profile: AIBackendProfile) => void;
     onCancel: () => void;
 }) {
     const { theme } = useUnistyles();
     const [name, setName] = React.useState(profile.name || '');
-    const [baseUrl, setBaseUrl] = React.useState(profile.anthropicBaseUrl || '');
-    const [authToken, setAuthToken] = React.useState(profile.anthropicAuthToken || '');
-    const [model, setModel] = React.useState(profile.anthropicModel || '');
-    const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxSessionName || '');
-    const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxTmpDir || '');
-    const [tmuxUpdateEnvironment, setTmuxUpdateEnvironment] = React.useState(profile.tmuxUpdateEnvironment || false);
-    const [customEnvVars, setCustomEnvVars] = React.useState<Record<string, string>>(profile.customEnvironmentVariables || {});
+    const [baseUrl, setBaseUrl] = React.useState(profile.anthropicConfig?.baseUrl || '');
+    const [authToken, setAuthToken] = React.useState(profile.anthropicConfig?.authToken || '');
+    const [model, setModel] = React.useState(profile.anthropicConfig?.model || '');
+    const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxConfig?.sessionName || '');
+    const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxConfig?.tmpDir || '');
+    const [tmuxUpdateEnvironment, setTmuxUpdateEnvironment] = React.useState(profile.tmuxConfig?.updateEnvironment || false);
+
+    // Convert environmentVariables array to record for editing
+    const [customEnvVars, setCustomEnvVars] = React.useState<Record<string, string>>(
+        profile.environmentVariables?.reduce((acc, envVar) => {
+            acc[envVar.name] = envVar.value;
+            return acc;
+        }, {} as Record<string, string>) || {}
+    );
 
     const [newEnvKey, setNewEnvKey] = React.useState('');
     const [newEnvValue, setNewEnvValue] = React.useState('');
@@ -509,16 +516,27 @@ function ProfileEditForm({
             return;
         }
 
+        // Convert customEnvVars record back to environmentVariables array
+        const environmentVariables = Object.entries(customEnvVars).map(([name, value]) => ({
+            name,
+            value,
+        }));
+
         onSave({
             ...profile,
             name: name.trim(),
-            anthropicBaseUrl: baseUrl.trim() || null,
-            anthropicAuthToken: authToken.trim() || null,
-            anthropicModel: model.trim() || null,
-            tmuxSessionName: tmuxSession.trim() || null,
-            tmuxTmpDir: tmuxTmpDir.trim() || null,
-            tmuxUpdateEnvironment,
-            customEnvironmentVariables: customEnvVars,
+            anthropicConfig: {
+                baseUrl: baseUrl.trim() || undefined,
+                authToken: authToken.trim() || undefined,
+                model: model.trim() || undefined,
+            },
+            tmuxConfig: {
+                sessionName: tmuxSession.trim() || undefined,
+                tmpDir: tmuxTmpDir.trim() || undefined,
+                updateEnvironment: tmuxUpdateEnvironment,
+            },
+            environmentVariables,
+            updatedAt: Date.now(),
         });
     };
 

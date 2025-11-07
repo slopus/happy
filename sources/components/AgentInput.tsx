@@ -19,20 +19,10 @@ import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
+import { AIBackendProfile } from '@/sync/settings';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
-
-interface Profile {
-    id: string;
-    anthropicBaseUrl?: string | null;
-    anthropicAuthToken?: string | null;
-    anthropicModel?: string | null;
-    tmuxSessionName?: string | null;
-    tmuxTmpDir?: string | null;
-    tmuxUpdateEnvironment?: boolean | null;
-    customEnvironmentVariables?: Record<string, string>;
-}
 
 interface ProfileDisplay {
     id: string;
@@ -56,51 +46,131 @@ const DEFAULT_PROFILES: ProfileDisplay[] = [
         id: 'zai',
         name: 'Z.AI (GLM-4.6)',
         isBuiltIn: true,
+    },
+    {
+        id: 'openai',
+        name: 'OpenAI (GPT-5)',
+        isBuiltIn: true,
+    },
+    {
+        id: 'azure-openai',
+        name: 'Azure OpenAI',
+        isBuiltIn: true,
+    },
+    {
+        id: 'together',
+        name: 'Together AI',
+        isBuiltIn: true,
     }
 ];
 
 // Built-in profile configurations
-const getBuiltInProfile = (id: string): Profile | null => {
+const getBuiltInProfile = (id: string): AIBackendProfile | null => {
     switch (id) {
         case 'anthropic':
             return {
                 id: 'anthropic',
-                anthropicBaseUrl: null,
-                anthropicAuthToken: null,
-                anthropicModel: null,
-                tmuxSessionName: null,
-                tmuxTmpDir: null,
-                tmuxUpdateEnvironment: false,
-                customEnvironmentVariables: {},
+                name: 'Anthropic (Default)',
+                anthropicConfig: {},
+                environmentVariables: [],
+                compatibility: { claude: true, codex: false },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
             };
         case 'deepseek':
             return {
                 id: 'deepseek',
-                anthropicBaseUrl: 'https://api.deepseek.com/anthropic',
-                anthropicAuthToken: null,
-                anthropicModel: 'deepseek-reasoner',
-                tmuxSessionName: null,
-                tmuxTmpDir: null,
-                tmuxUpdateEnvironment: false,
-                customEnvironmentVariables: {
-                    'DEEPSEEK_API_TIMEOUT_MS': '600000',
-                    'DEEPSEEK_SMALL_FAST_MODEL': 'deepseek-chat',
-                    'DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
-                    'API_TIMEOUT_MS': '600000',
-                    'ANTHROPIC_SMALL_FAST_MODEL': 'deepseek-chat',
-                    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                name: 'DeepSeek (Reasoner)',
+                anthropicConfig: {
+                    baseUrl: 'https://api.deepseek.com/anthropic',
+                    model: 'deepseek-reasoner',
                 },
+                environmentVariables: [
+                    { name: 'DEEPSEEK_API_TIMEOUT_MS', value: '600000' },
+                    { name: 'DEEPSEEK_SMALL_FAST_MODEL', value: 'deepseek-chat' },
+                    { name: 'DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
+                    { name: 'API_TIMEOUT_MS', value: '600000' },
+                    { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: 'deepseek-chat' },
+                    { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
+                ],
+                compatibility: { claude: true, codex: false },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
             };
         case 'zai':
             return {
                 id: 'zai',
-                anthropicBaseUrl: 'https://api.z.ai/api/anthropic',
-                anthropicAuthToken: null,
-                anthropicModel: 'glm-4.6',
-                tmuxSessionName: null,
-                tmuxTmpDir: null,
-                tmuxUpdateEnvironment: false,
-                customEnvironmentVariables: {},
+                name: 'Z.AI (GLM-4.6)',
+                anthropicConfig: {
+                    baseUrl: 'https://api.z.ai/api/anthropic',
+                    model: 'glm-4.6',
+                },
+                environmentVariables: [],
+                compatibility: { claude: true, codex: false },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
+            };
+        case 'openai':
+            return {
+                id: 'openai',
+                name: 'OpenAI (GPT-5)',
+                openaiConfig: {
+                    baseUrl: 'https://api.openai.com/v1',
+                    model: 'gpt-5-codex-high',
+                },
+                environmentVariables: [
+                    { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
+                    { name: 'OPENAI_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
+                    { name: 'API_TIMEOUT_MS', value: '600000' },
+                    { name: 'CODEX_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
+                ],
+                compatibility: { claude: false, codex: true },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
+            };
+        case 'azure-openai':
+            return {
+                id: 'azure-openai',
+                name: 'Azure OpenAI',
+                azureOpenAIConfig: {
+                    apiVersion: '2024-02-15-preview',
+                    deploymentName: 'gpt-5-codex',
+                },
+                environmentVariables: [
+                    { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
+                    { name: 'API_TIMEOUT_MS', value: '600000' },
+                ],
+                compatibility: { claude: false, codex: true },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
+            };
+        case 'together':
+            return {
+                id: 'together',
+                name: 'Together AI',
+                togetherAIConfig: {
+                    model: 'meta-llama/Llama-3.1-405B-Instruct-Turbo',
+                },
+                environmentVariables: [
+                    { name: 'OPENAI_BASE_URL', value: 'https://api.together.xyz/v1' },
+                    { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
+                    { name: 'API_TIMEOUT_MS', value: '600000' },
+                ],
+                compatibility: { claude: false, codex: true },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
             };
         default:
             return null;
@@ -368,6 +438,104 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
         return { text: t('agentInput.context.remaining', { percent: Math.round(percentageRemaining) }), color: theme.colors.warning };
     }
     return null; // No display needed
+};
+
+// Helper function to determine profile compatibility with agents
+const getProfileCompatibility = (profile: AIBackendProfile): {
+    compatibleWith: 'claude' | 'codex' | 'both';
+    claudeOptimized: boolean;
+    codexOptimized: boolean;
+} => {
+    // Built-in profiles that are known to be optimized for specific agents
+    const claudeOptimizedProfiles = ['anthropic', 'deepseek', 'zai'];
+    const codexOptimizedProfiles = ['openai', 'azure-openai', 'together'];
+
+    const claudeOptimized = claudeOptimizedProfiles.includes(profile.id);
+    const codexOptimized = codexOptimizedProfiles.includes(profile.id);
+
+    // Check for agent-specific configurations using new schema
+    const hasClaudeConfig = profile.anthropicConfig && (
+        profile.anthropicConfig.baseUrl ||
+        profile.anthropicConfig.authToken ||
+        profile.anthropicConfig.model
+    );
+    const hasCodexConfig = (profile.openaiConfig || profile.azureOpenAIConfig || profile.togetherAIConfig);
+
+    // Check environment variables for agent-specific patterns
+    const hasClaudeCustomVars = profile.environmentVariables?.some(envVar =>
+        envVar.name.startsWith('ANTHROPIC_') || envVar.name.includes('CLAUDE')
+    ) || false;
+    const hasCodexCustomVars = profile.environmentVariables?.some(envVar =>
+        envVar.name.startsWith('OPENAI_') ||
+        envVar.name.startsWith('AZURE_') ||
+        envVar.name.startsWith('TOGETHER_') ||
+        envVar.name.includes('CODEX')
+    ) || false;
+
+    // Use compatibility field from profile if available
+    if (profile.compatibility) {
+        if (profile.compatibility.claude && !profile.compatibility.codex) {
+            return { compatibleWith: 'claude', claudeOptimized: true, codexOptimized: false };
+        } else if (profile.compatibility.codex && !profile.compatibility.claude) {
+            return { compatibleWith: 'codex', claudeOptimized: false, codexOptimized: true };
+        }
+    }
+
+    // Determine compatibility based on configurations
+    if (claudeOptimized && !hasCodexConfig && !hasCodexCustomVars) {
+        return { compatibleWith: 'claude', claudeOptimized: true, codexOptimized: false };
+    } else if (codexOptimized && !hasClaudeConfig && !hasClaudeCustomVars) {
+        return { compatibleWith: 'codex', claudeOptimized: false, codexOptimized: true };
+    } else if (hasClaudeConfig || hasClaudeCustomVars) {
+        return { compatibleWith: 'claude', claudeOptimized: true, codexOptimized: false };
+    } else if (hasCodexConfig || hasCodexCustomVars) {
+        return { compatibleWith: 'codex', claudeOptimized: false, codexOptimized: true };
+    }
+
+    // Default to both compatible for generic profiles
+    return { compatibleWith: 'both', claudeOptimized: false, codexOptimized: false };
+};
+
+// Helper function to get compatibility display info
+const getCompatibilityDisplay = (profile: AIBackendProfile, currentAgentType: 'claude' | 'codex' | undefined) => {
+    const compatibility = getProfileCompatibility(profile);
+
+    if (!currentAgentType) {
+        // No agent selected, show optimization info
+        if (compatibility.compatibleWith === 'claude') {
+            return {
+                text: 'Optimized for Claude',
+                color: '#8B5CF6', // Purple
+                icon: '🤖'
+            };
+        } else if (compatibility.compatibleWith === 'codex') {
+            return {
+                text: 'Optimized for Codex',
+                color: '#3B82F6', // Blue
+                icon: '🧠'
+            };
+        }
+        return {
+            text: 'Universal profile',
+            color: '#6B7280', // Gray
+            icon: '⚙️'
+        };
+    }
+
+    // Agent selected, show compatibility status
+    if (compatibility.compatibleWith === currentAgentType || compatibility.compatibleWith === 'both') {
+        return {
+            text: currentAgentType === 'claude' ? 'Claude compatible' : 'Codex compatible',
+            color: '#10B981', // Green
+            icon: '✓'
+        };
+    } else {
+        return {
+            text: 'Limited compatibility',
+            color: '#F59E0B', // Amber/Orange
+            icon: '⚠️'
+        };
+    }
 };
 
 export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, AgentInputProps>((props, ref) => {
@@ -777,6 +945,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         const profileDisplay = DEFAULT_PROFILES.find(bp => bp.id === profile.id);
                                         const displayName = profileDisplay?.name || `Custom Profile ${profile.id.slice(0, 8)}`;
 
+                                        // Get compatibility display info
+                                        const currentAgentType = props.agentType || (isCodex ? 'codex' : undefined);
+                                        const compatibilityDisplay = getCompatibilityDisplay(profile, currentAgentType);
+
                                         return (
                                             <Pressable
                                                 key={profile.id}
@@ -809,24 +981,47 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                     )}
                                                 </View>
                                                 <View style={{ flex: 1 }}>
-                                                    <Text style={{
-                                                        fontSize: 14,
-                                                        color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        {displayName}
-                                                    </Text>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                                        <Text style={{
+                                                            fontSize: 14,
+                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            {displayName}
+                                                        </Text>
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                            <Text style={{
+                                                                fontSize: 10,
+                                                                color: compatibilityDisplay.color,
+                                                                marginRight: 4,
+                                                                ...Typography.default()
+                                                            }}>
+                                                                {compatibilityDisplay.icon}
+                                                            </Text>
+                                                            <Text style={{
+                                                                fontSize: 10,
+                                                                color: compatibilityDisplay.color,
+                                                                ...Typography.default()
+                                                            }}>
+                                                                {compatibilityDisplay.text}
+                                                            </Text>
+                                                        </View>
+                                                    </View>
                                                     <Text style={{
                                                         fontSize: 12,
                                                         color: theme.colors.textSecondary,
                                                         marginTop: 1,
                                                         ...Typography.default()
                                                     }}>
-                                                        {profile.anthropicModel || t('profiles.defaultModel')}
-                                                        {profile.tmuxSessionName && ` • tmux: ${profile.tmuxSessionName}`}
-                                                        {profile.tmuxTmpDir && ` • dir: ${profile.tmuxTmpDir}`}
-                                                        {Object.keys(profile.customEnvironmentVariables || {}).length > 0 &&
-                                                            ` • ${Object.keys(profile.customEnvironmentVariables || {}).length} custom vars`
+                                                        {profile.anthropicConfig?.model ||
+                                                         profile.openaiConfig?.model ||
+                                                         profile.azureOpenAIConfig?.deploymentName ||
+                                                         profile.togetherAIConfig?.model ||
+                                                         t('profiles.defaultModel')}
+                                                        {profile.tmuxConfig?.sessionName && ` • tmux: ${profile.tmuxConfig.sessionName}`}
+                                                        {profile.tmuxConfig?.tmpDir && ` • dir: ${profile.tmuxConfig.tmpDir}`}
+                                                        {profile.environmentVariables && profile.environmentVariables.length > 0 &&
+                                                            ` • ${profile.environmentVariables.length} custom vars`
                                                         }
                                                     </Text>
                                                 </View>

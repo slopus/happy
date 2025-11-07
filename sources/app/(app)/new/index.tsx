@@ -21,6 +21,7 @@ import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
+import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -86,64 +87,113 @@ const updateRecentMachinePaths = (
     return updated.slice(0, 10);
 };
 
-// Profile interface
-interface Profile {
-    id: string;
-    name: string;
-    anthropicBaseUrl?: string | null;
-    anthropicAuthToken?: string | null;
-    anthropicModel?: string | null;
-    tmuxSessionName?: string | null;
-    tmuxTmpDir?: string | null;
-    tmuxUpdateEnvironment?: boolean | null;
-    customEnvironmentVariables?: Record<string, string>;
-}
-
 // Built-in profile configurations
-const getBuiltInProfile = (id: string): Profile | null => {
+const getBuiltInProfile = (id: string): AIBackendProfile | null => {
     switch (id) {
         case 'anthropic':
             return {
                 id: 'anthropic',
                 name: 'Anthropic (Default)',
-                anthropicBaseUrl: null,
-                anthropicAuthToken: null,
-                anthropicModel: null,
-                tmuxSessionName: null,
-                tmuxTmpDir: null,
-                tmuxUpdateEnvironment: false,
-                customEnvironmentVariables: {},
+                anthropicConfig: {},
+                environmentVariables: [],
+                compatibility: { claude: true, codex: false },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
             };
         case 'deepseek':
             return {
                 id: 'deepseek',
                 name: 'DeepSeek (Reasoner)',
-                anthropicBaseUrl: 'https://api.deepseek.com/anthropic',
-                anthropicAuthToken: null,
-                anthropicModel: 'deepseek-reasoner',
-                tmuxSessionName: null,
-                tmuxTmpDir: null,
-                tmuxUpdateEnvironment: false,
-                customEnvironmentVariables: {
-                    'DEEPSEEK_API_TIMEOUT_MS': '600000',
-                    'DEEPSEEK_SMALL_FAST_MODEL': 'deepseek-chat',
-                    'DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
-                    'API_TIMEOUT_MS': '600000',
-                    'ANTHROPIC_SMALL_FAST_MODEL': 'deepseek-chat',
-                    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC': '1',
+                anthropicConfig: {
+                    baseUrl: 'https://api.deepseek.com/anthropic',
+                    model: 'deepseek-reasoner',
                 },
+                environmentVariables: [
+                    { name: 'DEEPSEEK_API_TIMEOUT_MS', value: '600000' },
+                    { name: 'DEEPSEEK_SMALL_FAST_MODEL', value: 'deepseek-chat' },
+                    { name: 'DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
+                    { name: 'API_TIMEOUT_MS', value: '600000' },
+                    { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: 'deepseek-chat' },
+                    { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
+                ],
+                compatibility: { claude: true, codex: false },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
             };
         case 'zai':
             return {
                 id: 'zai',
                 name: 'Z.AI (GLM-4.6)',
-                anthropicBaseUrl: 'https://api.z.ai/api/anthropic',
-                anthropicAuthToken: null,
-                anthropicModel: 'glm-4.6',
-                tmuxSessionName: null,
-                tmuxTmpDir: null,
-                tmuxUpdateEnvironment: false,
-                customEnvironmentVariables: {},
+                anthropicConfig: {
+                    baseUrl: 'https://api.z.ai/api/anthropic',
+                    model: 'glm-4.6',
+                },
+                environmentVariables: [],
+                compatibility: { claude: true, codex: false },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
+            };
+        case 'openai':
+            return {
+                id: 'openai',
+                name: 'OpenAI (GPT-5)',
+                openaiConfig: {
+                    baseUrl: 'https://api.openai.com/v1',
+                    model: 'gpt-5-codex-high',
+                },
+                environmentVariables: [
+                    { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
+                    { name: 'OPENAI_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
+                    { name: 'API_TIMEOUT_MS', value: '600000' },
+                    { name: 'CODEX_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
+                ],
+                compatibility: { claude: false, codex: true },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
+            };
+        case 'azure-openai':
+            return {
+                id: 'azure-openai',
+                name: 'Azure OpenAI',
+                azureOpenAIConfig: {
+                    apiVersion: '2024-02-15-preview',
+                    deploymentName: 'gpt-5-codex',
+                },
+                environmentVariables: [
+                    { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
+                    { name: 'API_TIMEOUT_MS', value: '600000' },
+                ],
+                compatibility: { claude: false, codex: true },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
+            };
+        case 'together':
+            return {
+                id: 'together',
+                name: 'Together AI',
+                openaiConfig: {
+                    baseUrl: 'https://api.together.xyz/v1',
+                    model: 'meta-llama/Llama-3.1-405B-Instruct-Turbo',
+                },
+                environmentVariables: [
+                    { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
+                    { name: 'API_TIMEOUT_MS', value: '600000' },
+                ],
+                compatibility: { claude: false, codex: true },
+                isBuiltIn: true,
+                createdAt: Date.now(),
+                updatedAt: Date.now(),
+                version: '1.0.0',
             };
         default:
             return null;
@@ -166,31 +216,170 @@ const DEFAULT_PROFILES = [
         id: 'zai',
         name: 'Z.AI (GLM-4.6)',
         isBuiltIn: true,
+    },
+    {
+        id: 'openai',
+        name: 'OpenAI (GPT-5)',
+        isBuiltIn: true,
+    },
+    {
+        id: 'azure-openai',
+        name: 'Azure OpenAI',
+        isBuiltIn: true,
+    },
+    {
+        id: 'together',
+        name: 'Together AI',
+        isBuiltIn: true,
     }
 ];
 
 // Optimized profile lookup utility - converts array to Map for O(1) performance
-const useProfileMap = (profiles: Profile[]) => {
+const useProfileMap = (profiles: AIBackendProfile[]) => {
     return React.useMemo(() =>
         new Map(profiles.map(p => [p.id, p])),
         [profiles]
     );
 };
 
+// Filter environment variables based on agent type to prevent conflicts
+const filterEnvironmentVarsForAgent = (
+    envVars: Record<string, string | undefined>,
+    agentType: 'claude' | 'codex'
+): Record<string, string | undefined> => {
+    const filtered: Record<string, string | undefined> = {};
+
+    // Universal variables that apply to both agents
+    const universalVars = [
+        'TMUX_SESSION_NAME',
+        'TMUX_TMPDIR',
+        'TMUX_UPDATE_ENVIRONMENT',
+        'API_TIMEOUT_MS',
+        'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'
+    ];
+
+    // Claude-specific variables
+    const claudeVars = [
+        'ANTHROPIC_BASE_URL',
+        'ANTHROPIC_AUTH_TOKEN',
+        'ANTHROPIC_MODEL',
+        'ANTHROPIC_SMALL_FAST_MODEL'
+    ];
+
+    // Codex/OpenAI-specific variables
+    const codexVars = [
+        'OPENAI_API_KEY',
+        'OPENAI_BASE_URL',
+        'OPENAI_MODEL',
+        'OPENAI_API_TIMEOUT_MS',
+        'OPENAI_SMALL_FAST_MODEL',
+        'AZURE_OPENAI_API_KEY',
+        'AZURE_OPENAI_ENDPOINT',
+        'AZURE_OPENAI_API_VERSION',
+        'AZURE_OPENAI_DEPLOYMENT_NAME',
+        'TOGETHER_API_KEY',
+        'CODEX_SMALL_FAST_MODEL'
+    ];
+
+    // Copy universal variables for both agents
+    Object.entries(envVars).forEach(([key, value]) => {
+        if (universalVars.includes(key) && value !== undefined) {
+            filtered[key] = value;
+        }
+    });
+
+    // Copy agent-specific variables
+    if (agentType === 'claude') {
+        Object.entries(envVars).forEach(([key, value]) => {
+            if (claudeVars.includes(key) && value !== undefined) {
+                filtered[key] = value;
+            }
+        });
+    } else if (agentType === 'codex') {
+        Object.entries(envVars).forEach(([key, value]) => {
+            if (codexVars.includes(key) && value !== undefined) {
+                filtered[key] = value;
+            }
+        });
+    }
+
+    return filtered;
+};
+
 // Environment variable transformation helper - converts profile to environment variables
-const transformProfileToEnvironmentVars = (profile: Profile) => {
-    const baseVars = {
-        ANTHROPIC_BASE_URL: profile.anthropicBaseUrl || undefined,
-        ANTHROPIC_AUTH_TOKEN: profile.anthropicAuthToken || undefined,
-        ANTHROPIC_MODEL: profile.anthropicModel || undefined,
-        TMUX_SESSION_NAME: profile.tmuxSessionName || undefined,
-        TMUX_TMPDIR: profile.tmuxTmpDir || undefined,
+const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' = 'claude') => {
+    // Use the new helper function from settings.ts
+    const envVars = getProfileEnvironmentVariables(profile);
+
+    // Filter environment variables based on agent type
+    return filterEnvironmentVarsForAgent(envVars, agentType);
+};
+
+// Profile compatibility validation helper
+const validateProfileCompatibility = (profile: AIBackendProfile, agentType: 'claude' | 'codex'): {
+    isCompatible: boolean;
+    warningMessage?: string;
+    filteredVarsCount: number;
+    totalVarsCount: number;
+} => {
+    // Use the new compatibility checker from settings.ts
+    const isCompatible = validateProfileForAgent(profile, agentType);
+
+    // Get all environment variables from the profile
+    const allVars = getProfileEnvironmentVariables(profile);
+
+    // Filter for the selected agent type
+    const filteredVars = filterEnvironmentVarsForAgent(allVars, agentType);
+
+    const totalVarsCount = Object.keys(allVars).length;
+    const filteredVarsCount = Object.keys(filteredVars).length;
+
+    // Built-in profiles that are known to be optimized for specific agents
+    const claudeOptimizedProfiles = ['anthropic', 'deepseek', 'zai'];
+    const codexOptimizedProfiles = ['openai', 'azure-openai', 'together'];
+    const isClaudeOptimizedBuiltIn = claudeOptimizedProfiles.includes(profile.id);
+    const isCodexOptimizedBuiltIn = codexOptimizedProfiles.includes(profile.id);
+
+    if (!isCompatible) {
+        if (agentType === 'codex' && isClaudeOptimizedBuiltIn) {
+            return {
+                isCompatible: false,
+                warningMessage: `This profile is optimized for Claude. When used with Codex, Claude-specific configurations like API endpoints and models will be ignored. Consider using an OpenAI-compatible profile for better results.`,
+                filteredVarsCount,
+                totalVarsCount
+            };
+        } else if (agentType === 'claude' && isCodexOptimizedBuiltIn) {
+            return {
+                isCompatible: false,
+                warningMessage: `This profile is optimized for Codex/OpenAI. When used with Claude, OpenAI-specific configurations will be ignored. Consider using an Anthropic-compatible profile for better results.`,
+                filteredVarsCount,
+                totalVarsCount
+            };
+        } else {
+            return {
+                isCompatible: false,
+                warningMessage: `This profile is not compatible with ${agentType === 'claude' ? 'Claude' : 'Codex'}. Consider creating a separate profile for this agent.`,
+                filteredVarsCount,
+                totalVarsCount
+            };
+        }
+    }
+
+    // For compatible profiles, provide informational feedback if variables were filtered
+    if (totalVarsCount > filteredVarsCount) {
+        return {
+            isCompatible: true,
+            warningMessage: `Some environment variables in this profile are unused with ${agentType === 'claude' ? 'Claude' : 'Codex'}. This is normal and won't cause issues.`,
+            filteredVarsCount,
+            totalVarsCount
+        };
+    }
+
+    return {
+        isCompatible: true,
+        filteredVarsCount,
+        totalVarsCount
     };
-
-    // Merge custom environment variables
-    const customVars = profile.customEnvironmentVariables || {};
-
-    return { ...baseVars, ...customVars };
 };
 
 function NewSessionScreen() {
@@ -438,7 +627,24 @@ function NewSessionScreen() {
         setSelectedProfileId(profileId);
         // Save the new selection immediately
         sync.applySettings({ lastUsedProfile: profileId });
-    }, []);
+
+        // Validate profile compatibility with current agent type
+        if (profileId && profileMap.has(profileId)) {
+            const profile = profileMap.get(profileId)!;
+            const compatibility = validateProfileCompatibility(profile, agentType);
+
+            if (compatibility.warningMessage) {
+                const title = compatibility.isCompatible ? 'Profile Information' : 'Profile Compatibility Warning';
+                Modal.alert(
+                    title,
+                    compatibility.warningMessage,
+                    [
+                        { text: 'OK', style: 'default' }
+                    ]
+                );
+            }
+        }
+    }, [profileMap, agentType]);
 
     //
     // Path selection
@@ -519,7 +725,7 @@ function NewSessionScreen() {
             if (selectedProfileId) {
                 const selectedProfile = profileMap.get(selectedProfileId);
                 if (selectedProfile) {
-                    environmentVariables = transformProfileToEnvironmentVars(selectedProfile);
+                    environmentVariables = transformProfileToEnvironmentVars(selectedProfile, agentType);
                 }
             }
 
