@@ -32,6 +32,50 @@ export enum TmuxControlState {
     LITERAL = "literal"
 }
 
+/** Union type of valid tmux control sequences for better type safety */
+export type TmuxControlSequence =
+    | 'C-m' | 'C-c' | 'C-l' | 'C-u' | 'C-w' | 'C-a' | 'C-b' | 'C-d' | 'C-e' | 'C-f'
+    | 'C-g' | 'C-h' | 'C-i' | 'C-j' | 'C-k' | 'C-n' | 'C-o' | 'C-p' | 'C-q' | 'C-r'
+    | 'C-s' | 'C-t' | 'C-v' | 'C-x' | 'C-y' | 'C-z' | 'C-\\' | 'C-]' | 'C-[' | 'C-]';
+
+/** Union type of valid tmux window operations for better type safety */
+export type TmuxWindowOperation =
+    // Navigation and window management
+    | 'new-window' | 'new' | 'nw'
+    | 'select-window' | 'sw' | 'window' | 'w'
+    | 'next-window' | 'n' | 'prev-window' | 'p' | 'pw'
+    // Pane management
+    | 'split-window' | 'split' | 'sp' | 'vsplit' | 'vsp'
+    | 'select-pane' | 'pane'
+    | 'next-pane' | 'np' | 'prev-pane' | 'pp'
+    // Session management
+    | 'new-session' | 'ns' | 'new-sess'
+    | 'attach-session' | 'attach' | 'as'
+    | 'detach-client' | 'detach' | 'dc'
+    // Layout and display
+    | 'select-layout' | 'layout' | 'sl'
+    | 'clock-mode' | 'clock'
+    | 'copy-mode' | 'copy'
+    | 'search-forward' | 'search-backward'
+    // Misc operations
+    | 'list-windows' | 'lw' | 'list-sessions' | 'ls' | 'list-panes' | 'lp'
+    | 'rename-window' | 'rename' | 'kill-window' | 'kw'
+    | 'kill-pane' | 'kp' | 'kill-session' | 'ks'
+    // Display and info
+    | 'display-message' | 'display' | 'dm'
+    | 'show-options' | 'show' | 'so'
+    // Control and scripting
+    | 'send-keys' | 'send' | 'sk'
+    | 'capture-pane' | 'capture' | 'cp'
+    | 'pipe-pane' | 'pipe'
+    // Buffer operations
+    | 'list-buffers' | 'lb' | 'save-buffer' | 'sb'
+    | 'delete-buffer' | 'db'
+    // Advanced operations
+    | 'resize-pane' | 'resize' | 'rp'
+    | 'swap-pane' | 'swap'
+    | 'join-pane' | 'join' | 'break-pane' | 'break';
+
 export interface TmuxEnvironment {
     session: string;
     window: string;
@@ -60,6 +104,99 @@ export interface TmuxSessionInfo {
     available_sessions: string[];
 }
 
+// Strongly typed tmux session identifier with validation
+export interface TmuxSessionIdentifier {
+    session: string;
+    window?: string;
+    pane?: string;
+}
+
+/** Validation error for tmux session identifiers */
+export class TmuxSessionIdentifierError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'TmuxSessionIdentifierError';
+    }
+}
+
+// Helper to parse tmux session identifier from string with validation
+export function parseTmuxSessionIdentifier(identifier: string): TmuxSessionIdentifier {
+    if (!identifier || typeof identifier !== 'string') {
+        throw new TmuxSessionIdentifierError('Session identifier must be a non-empty string');
+    }
+
+    // Format: session:window or session:window.pane or just session
+    const parts = identifier.split(':');
+    if (parts.length === 0 || !parts[0]) {
+        throw new TmuxSessionIdentifierError('Invalid session identifier: missing session name');
+    }
+
+    const result: TmuxSessionIdentifier = {
+        session: parts[0].trim()
+    };
+
+    // Validate session name (tmux has restrictions on session names)
+    if (!/^[a-zA-Z0-9._-]+$/.test(result.session)) {
+        throw new TmuxSessionIdentifierError(`Invalid session name: "${result.session}". Only alphanumeric characters, dots, hyphens, and underscores are allowed.`);
+    }
+
+    if (parts.length > 1) {
+        const windowAndPane = parts[1].split('.');
+        result.window = windowAndPane[0]?.trim();
+
+        if (result.window && !/^[a-zA-Z0-9._-]+$/.test(result.window)) {
+            throw new TmuxSessionIdentifierError(`Invalid window name: "${result.window}". Only alphanumeric characters, dots, hyphens, and underscores are allowed.`);
+        }
+
+        if (windowAndPane.length > 1) {
+            result.pane = windowAndPane[1]?.trim();
+            if (result.pane && !/^[0-9]+$/.test(result.pane)) {
+                throw new TmuxSessionIdentifierError(`Invalid pane identifier: "${result.pane}". Only numeric values are allowed.`);
+            }
+        }
+    }
+
+    return result;
+}
+
+// Helper to format tmux session identifier to string
+export function formatTmuxSessionIdentifier(identifier: TmuxSessionIdentifier): string {
+    if (!identifier.session) {
+        throw new TmuxSessionIdentifierError('Session identifier must have a session name');
+    }
+
+    let result = identifier.session;
+    if (identifier.window) {
+        result += `:${identifier.window}`;
+        if (identifier.pane) {
+            result += `.${identifier.pane}`;
+        }
+    }
+    return result;
+}
+
+// Helper to extract session and window from tmux output with improved validation
+export function extractSessionAndWindow(tmuxOutput: string): { session: string; window: string } | null {
+    if (!tmuxOutput || typeof tmuxOutput !== 'string') {
+        return null;
+    }
+
+    // Look for session:window patterns in tmux output
+    const lines = tmuxOutput.split('\n');
+
+    for (const line of lines) {
+        const match = line.match(/^([a-zA-Z0-9._-]+):([a-zA-Z0-9._-]+)(?:\.([0-9]+))?/);
+        if (match) {
+            return {
+                session: match[1],
+                window: match[2]
+            };
+        }
+    }
+
+    return null;
+}
+
 export interface TmuxSpawnOptions extends SpawnOptions {
     /** Target tmux session name */
     sessionName?: string;
@@ -73,9 +210,9 @@ export interface TmuxSpawnOptions extends SpawnOptions {
 
 /**
  * Complete WIN_OPS dispatch dictionary for tmux operations
- * Maps operation names to tmux commands
+ * Maps operation names to tmux commands with proper typing
  */
-const WIN_OPS: Record<string, string> = {
+const WIN_OPS: Record<TmuxWindowOperation, string> = {
     // Navigation and window management
     'new-window': 'new-window',
     'new': 'new-window',
@@ -205,8 +342,8 @@ const COMMANDS_SUPPORTING_TARGET = new Set([
     'new-session', 'kill-session', 'list-windows', 'list-panes'
 ]);
 
-// Control sequences that must be separate arguments
-const CONTROL_SEQUENCES = new Set([
+// Control sequences that must be separate arguments with proper typing
+const CONTROL_SEQUENCES: Set<TmuxControlSequence> = new Set([
     'C-m', 'C-c', 'C-l', 'C-u', 'C-w', 'C-a', 'C-b', 'C-d', 'C-e', 'C-f',
     'C-g', 'C-h', 'C-i', 'C-j', 'C-k', 'C-n', 'C-o', 'C-p', 'C-q', 'C-r',
     'C-s', 'C-t', 'C-v', 'C-x', 'C-y', 'C-z', 'C-\\', 'C-]', 'C-[', 'C-]'
@@ -413,10 +550,10 @@ export class TmuxUtilities {
     }
 
     /**
-     * Execute window operation using WIN_OPS dispatch
+     * Execute window operation using WIN_OPS dispatch with type safety
      */
     async executeWinOp(
-        operation: string,
+        operation: TmuxWindowOperation,
         args: string[] = [],
         session?: string,
         window?: string,
@@ -492,16 +629,22 @@ export class TmuxUtilities {
     }
 
     /**
-     * Send keys to tmux pane with proper control sequence handling
+     * Send keys to tmux pane with proper control sequence handling and type safety
      */
     async sendKeys(
-        keys: string,
+        keys: string | TmuxControlSequence,
         session?: string,
         window?: string,
         pane?: string
     ): Promise<boolean> {
+        // Validate input
+        if (!keys || typeof keys !== 'string') {
+            logger.debug('[TMUX] Invalid keys provided to sendKeys');
+            return false;
+        }
+
         // Handle control sequences that must be separate arguments
-        if (CONTROL_SEQUENCES.has(keys)) {
+        if (CONTROL_SEQUENCES.has(keys as TmuxControlSequence)) {
             const result = await this.executeTmuxCommand(['send-keys', keys], session, window, pane);
             return result !== null && result.returncode === 0;
         } else {
@@ -509,6 +652,30 @@ export class TmuxUtilities {
             const result = await this.executeTmuxCommand(['send-keys', keys], session, window, pane);
             return result !== null && result.returncode === 0;
         }
+    }
+
+    /**
+     * Send multiple keys to tmux pane with proper control sequence handling
+     */
+    async sendMultipleKeys(
+        keys: Array<string | TmuxControlSequence>,
+        session?: string,
+        window?: string,
+        pane?: string
+    ): Promise<boolean> {
+        if (!Array.isArray(keys) || keys.length === 0) {
+            logger.debug('[TMUX] Invalid keys array provided to sendMultipleKeys');
+            return false;
+        }
+
+        for (const key of keys) {
+            const success = await this.sendKeys(key, session, window, pane);
+            if (!success) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -602,9 +769,15 @@ export class TmuxUtilities {
 
             logger.debug(`[TMUX] Spawned command in tmux session ${sessionName}, window ${windowName}`);
 
+            // Return a properly formatted session identifier
+            const sessionIdentifier: TmuxSessionIdentifier = {
+                session: sessionName,
+                window: windowName
+            };
+
             return {
                 success: true,
-                sessionId: `${sessionName}:${windowName}`
+                sessionId: formatTmuxSessionIdentifier(sessionIdentifier)
             };
         } catch (error) {
             logger.debug('[TMUX] Failed to spawn in tmux:', error);
@@ -613,6 +786,71 @@ export class TmuxUtilities {
                 error: error instanceof Error ? error.message : String(error)
             };
         }
+    }
+
+    /**
+     * Get session info for a given session identifier string
+     */
+    async getSessionInfoFromString(sessionIdentifier: string): Promise<TmuxSessionInfo | null> {
+        try {
+            const parsed = parseTmuxSessionIdentifier(sessionIdentifier);
+            const info = await this.getSessionInfo(parsed.session);
+            return info;
+        } catch (error) {
+            if (error instanceof TmuxSessionIdentifierError) {
+                logger.debug(`[TMUX] Invalid session identifier: ${error.message}`);
+            } else {
+                logger.debug('[TMUX] Error getting session info:', error);
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Kill a tmux window safely with proper error handling
+     */
+    async killWindow(sessionIdentifier: string): Promise<boolean> {
+        try {
+            const parsed = parseTmuxSessionIdentifier(sessionIdentifier);
+            if (!parsed.window) {
+                throw new TmuxSessionIdentifierError(`Window identifier required: ${sessionIdentifier}`);
+            }
+
+            const result = await this.executeWinOp('kill-window', [parsed.window], parsed.session);
+            return result;
+        } catch (error) {
+            if (error instanceof TmuxSessionIdentifierError) {
+                logger.debug(`[TMUX] Invalid window identifier: ${error.message}`);
+            } else {
+                logger.debug('[TMUX] Error killing window:', error);
+            }
+            return false;
+        }
+    }
+
+    /**
+     * List windows in a session
+     */
+    async listWindows(sessionName?: string): Promise<string[]> {
+        const targetSession = sessionName || this.sessionName;
+        const result = await this.executeTmuxCommand(['list-windows', '-t', targetSession]);
+
+        if (!result || result.returncode !== 0) {
+            return [];
+        }
+
+        // Parse window names from tmux output
+        const windows: string[] = [];
+        const lines = result.stdout.trim().split('\n');
+
+        for (const line of lines) {
+            const match = line.match(/^\d+:\s+(\w+)/);
+            if (match) {
+                windows.push(match[1]);
+            }
+        }
+
+        return windows;
     }
 }
 
@@ -633,5 +871,104 @@ export async function isTmuxAvailable(): Promise<boolean> {
         return result !== null;
     } catch {
         return false;
+    }
+}
+
+/**
+ * Create a new tmux session with proper typing and validation
+ */
+export async function createTmuxSession(
+    sessionName: string,
+    options?: {
+        windowName?: string;
+        detached?: boolean;
+        attach?: boolean;
+    }
+): Promise<{ success: boolean; sessionIdentifier?: string; error?: string }> {
+    try {
+        if (!sessionName || !/^[a-zA-Z0-9._-]+$/.test(sessionName)) {
+            throw new TmuxSessionIdentifierError(`Invalid session name: "${sessionName}"`);
+        }
+
+        const utils = new TmuxUtilities(sessionName);
+        const windowName = options?.windowName || 'main';
+
+        const cmd = ['new-session'];
+        if (options?.detached !== false) {
+            cmd.push('-d');
+        }
+        cmd.push('-s', sessionName);
+        cmd.push('-n', windowName);
+
+        const result = await utils.executeTmuxCommand(cmd);
+        if (result && result.returncode === 0) {
+            const sessionIdentifier: TmuxSessionIdentifier = {
+                session: sessionName,
+                window: windowName
+            };
+            return {
+                success: true,
+                sessionIdentifier: formatTmuxSessionIdentifier(sessionIdentifier)
+            };
+        } else {
+            return {
+                success: false,
+                error: result?.stderr || 'Failed to create tmux session'
+            };
+        }
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : String(error)
+        };
+    }
+}
+
+/**
+ * Validate a tmux session identifier without throwing
+ */
+export function validateTmuxSessionIdentifier(identifier: string): { valid: boolean; error?: string } {
+    try {
+        parseTmuxSessionIdentifier(identifier);
+        return { valid: true };
+    } catch (error) {
+        return {
+            valid: false,
+            error: error instanceof Error ? error.message : 'Unknown validation error'
+        };
+    }
+}
+
+/**
+ * Build a tmux session identifier with validation
+ */
+export function buildTmuxSessionIdentifier(params: {
+    session: string;
+    window?: string;
+    pane?: string;
+}): { success: boolean; identifier?: string; error?: string } {
+    try {
+        if (!params.session || !/^[a-zA-Z0-9._-]+$/.test(params.session)) {
+            throw new TmuxSessionIdentifierError(`Invalid session name: "${params.session}"`);
+        }
+
+        if (params.window && !/^[a-zA-Z0-9._-]+$/.test(params.window)) {
+            throw new TmuxSessionIdentifierError(`Invalid window name: "${params.window}"`);
+        }
+
+        if (params.pane && !/^[0-9]+$/.test(params.pane)) {
+            throw new TmuxSessionIdentifierError(`Invalid pane identifier: "${params.pane}"`);
+        }
+
+        const identifier: TmuxSessionIdentifier = params;
+        return {
+            success: true,
+            identifier: formatTmuxSessionIdentifier(identifier)
+        };
+    } catch (error) {
+        return {
+            success: false,
+            error: error instanceof Error ? error.message : 'Unknown error'
+        };
     }
 }

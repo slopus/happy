@@ -16,13 +16,129 @@ import { encodeBase64 } from '@/api/encryption';
 export interface AIBackendProfile {
   id: string;
   name: string;
-  anthropicBaseUrl?: string;
-  anthropicAuthToken?: string;
-  anthropicModel?: string;
-  tmuxSessionName?: string;
-  tmuxTmpDir?: string;
-  tmuxUpdateEnvironment?: boolean;
-  customEnvironmentVariables?: Record<string, string>;
+  description?: string;
+
+  // Agent-specific configurations
+  anthropicConfig?: {
+    baseUrl?: string;
+    authToken?: string;
+    model?: string;
+  };
+  openaiConfig?: {
+    apiKey?: string;
+    baseUrl?: string;
+    model?: string;
+  };
+  azureOpenAIConfig?: {
+    apiKey?: string;
+    endpoint?: string;
+    apiVersion?: string;
+    deploymentName?: string;
+  };
+  togetherAIConfig?: {
+    apiKey?: string;
+    model?: string;
+  };
+
+  // Tmux configuration
+  tmuxConfig?: {
+    sessionName?: string;
+    tmpDir?: string;
+    updateEnvironment?: boolean;
+  };
+
+  // Environment variables (validated)
+  environmentVariables?: Array<{
+    name: string;
+    value: string;
+  }>;
+
+  // Compatibility metadata
+  compatibility: {
+    claude: boolean;
+    codex: boolean;
+  };
+
+  // Built-in profile indicator
+  isBuiltIn?: boolean;
+
+  // Metadata
+  createdAt?: number;
+  updatedAt?: number;
+  version?: string;
+}
+
+// Helper functions matching the happy app
+export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex'): boolean {
+  return profile.compatibility[agent];
+}
+
+export function getProfileEnvironmentVariables(profile: AIBackendProfile): Record<string, string> {
+  const envVars: Record<string, string> = {};
+
+  // Add validated environment variables
+  if (profile.environmentVariables) {
+    profile.environmentVariables.forEach(envVar => {
+      envVars[envVar.name] = envVar.value;
+    });
+  }
+
+  // Add Anthropic config
+  if (profile.anthropicConfig) {
+    if (profile.anthropicConfig.baseUrl) envVars.ANTHROPIC_BASE_URL = profile.anthropicConfig.baseUrl;
+    if (profile.anthropicConfig.authToken) envVars.ANTHROPIC_AUTH_TOKEN = profile.anthropicConfig.authToken;
+    if (profile.anthropicConfig.model) envVars.ANTHROPIC_MODEL = profile.anthropicConfig.model;
+  }
+
+  // Add OpenAI config
+  if (profile.openaiConfig) {
+    if (profile.openaiConfig.apiKey) envVars.OPENAI_API_KEY = profile.openaiConfig.apiKey;
+    if (profile.openaiConfig.baseUrl) envVars.OPENAI_BASE_URL = profile.openaiConfig.baseUrl;
+    if (profile.openaiConfig.model) envVars.OPENAI_MODEL = profile.openaiConfig.model;
+  }
+
+  // Add Azure OpenAI config
+  if (profile.azureOpenAIConfig) {
+    if (profile.azureOpenAIConfig.apiKey) envVars.AZURE_OPENAI_API_KEY = profile.azureOpenAIConfig.apiKey;
+    if (profile.azureOpenAIConfig.endpoint) envVars.AZURE_OPENAI_ENDPOINT = profile.azureOpenAIConfig.endpoint;
+    if (profile.azureOpenAIConfig.apiVersion) envVars.AZURE_OPENAI_API_VERSION = profile.azureOpenAIConfig.apiVersion;
+    if (profile.azureOpenAIConfig.deploymentName) envVars.AZURE_OPENAI_DEPLOYMENT_NAME = profile.azureOpenAIConfig.deploymentName;
+  }
+
+  // Add Together AI config
+  if (profile.togetherAIConfig) {
+    if (profile.togetherAIConfig.apiKey) envVars.TOGETHER_API_KEY = profile.togetherAIConfig.apiKey;
+    if (profile.togetherAIConfig.model) envVars.TOGETHER_MODEL = profile.togetherAIConfig.model;
+  }
+
+  // Add Tmux config
+  if (profile.tmuxConfig) {
+    if (profile.tmuxConfig.sessionName) envVars.TMUX_SESSION_NAME = profile.tmuxConfig.sessionName;
+    if (profile.tmuxConfig.tmpDir) envVars.TMUX_TMPDIR = profile.tmuxConfig.tmpDir;
+    if (profile.tmuxConfig.updateEnvironment !== undefined) {
+      envVars.TMUX_UPDATE_ENVIRONMENT = profile.tmuxConfig.updateEnvironment.toString();
+    }
+  }
+
+  return envVars;
+}
+
+// Profile versioning system
+export const CURRENT_PROFILE_VERSION = '1.0.0';
+
+// Profile version validation
+export function validateProfileVersion(profile: AIBackendProfile): boolean {
+  // Simple semver validation for now
+  const semverRegex = /^\d+\.\d+\.\d+$/;
+  return semverRegex.test(profile.version || '');
+}
+
+// Profile compatibility check for version upgrades
+export function isProfileVersionCompatible(profileVersion: string, requiredVersion: string = CURRENT_PROFILE_VERSION): boolean {
+  // For now, all 1.x.x versions are compatible
+  const [major] = profileVersion.split('.');
+  const [requiredMajor] = requiredVersion.split('.');
+  return major === requiredMajor;
 }
 
 interface Settings {
@@ -405,8 +521,13 @@ export async function getEnvironmentVariables(profileId: string): Promise<Record
   const profile = settings.profiles.find(p => p.id === profileId);
   if (!profile) return {};
 
-  // Start with profile's custom environment variables
-  const envVars: Record<string, string> = { ...profile.customEnvironmentVariables };
+  // Start with profile's environment variables (new schema)
+  const envVars: Record<string, string> = {};
+  if (profile.environmentVariables) {
+    profile.environmentVariables.forEach(envVar => {
+      envVars[envVar.name] = envVar.value;
+    });
+  }
 
   // Override with CLI-local cached environment variables
   const localEnvVars = settings.localEnvironmentVariables[profileId] || {};
@@ -430,7 +551,7 @@ export async function setEnvironmentVariables(profileId: string, envVars: Record
 
 /**
  * Get a specific environment variable for a profile
- * Checks CLI-local cache first, then profile custom env vars
+ * Checks CLI-local cache first, then profile environment variables
  */
 export async function getEnvironmentVariable(profileId: string, key: string): Promise<string | undefined> {
   const settings = await readSettings();
@@ -441,10 +562,13 @@ export async function getEnvironmentVariable(profileId: string, key: string): Pr
     return localEnvVars[key];
   }
 
-  // Fall back to profile custom environment variables
+  // Fall back to profile environment variables (new schema)
   const profile = settings.profiles.find(p => p.id === profileId);
-  if (profile?.customEnvironmentVariables?.[key] !== undefined) {
-    return profile.customEnvironmentVariables[key];
+  if (profile?.environmentVariables) {
+    const envVar = profile.environmentVariables.find(env => env.name === key);
+    if (envVar) {
+      return envVar.value;
+    }
   }
 
   return undefined;

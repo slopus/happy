@@ -13,14 +13,14 @@ import { startCaffeinate, stopCaffeinate } from '@/utils/caffeinate';
 import packageJson from '../../package.json';
 import { getEnvironmentInfo } from '@/ui/doctor';
 import { spawnHappyCLI } from '@/utils/spawnHappyCLI';
-import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings, getActiveProfile, getEnvironmentVariables } from '@/persistence';
+import { writeDaemonState, DaemonLocallyPersistedState, readDaemonState, acquireDaemonLock, releaseDaemonLock, readSettings, getActiveProfile, getEnvironmentVariables, validateProfileForAgent, getProfileEnvironmentVariables } from '@/persistence';
 
 import { cleanupDaemonState, isDaemonRunningCurrentlyInstalledHappyVersion, stopDaemon } from './controlClient';
 import { startDaemonControlServer } from './controlServer';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
-import { getTmuxUtilities, isTmuxAvailable } from '@/utils/tmux';
+import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -32,68 +32,35 @@ export const initialMachineMetadata: MachineMetadata = {
   happyLibDir: projectPath()
 };
 
-// Filter environment variables based on agent type to prevent conflicts
-function filterEnvironmentVarsForAgent(
-  envVars: Record<string, string>,
+// Get environment variables for a profile, filtered for agent compatibility
+async function getProfileEnvironmentVariablesForAgent(
+  profileId: string,
   agentType: 'claude' | 'codex'
-): Record<string, string> {
-  const filtered: Record<string, string> = {};
+): Promise<Record<string, string>> {
+  try {
+    const settings = await readSettings();
+    const profile = settings.profiles.find(p => p.id === profileId);
 
-  // Universal variables that apply to both agents
-  const universalVars = [
-    'TMUX_SESSION_NAME',
-    'TMUX_TMPDIR',
-    'TMUX_UPDATE_ENVIRONMENT',
-    'API_TIMEOUT_MS',
-    'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'
-  ];
-
-  // Claude-specific variables
-  const claudeVars = [
-    'ANTHROPIC_BASE_URL',
-    'ANTHROPIC_AUTH_TOKEN',
-    'ANTHROPIC_MODEL',
-    'ANTHROPIC_SMALL_FAST_MODEL'
-  ];
-
-  // Codex/OpenAI-specific variables
-  const codexVars = [
-    'OPENAI_API_KEY',
-    'OPENAI_BASE_URL',
-    'OPENAI_MODEL',
-    'OPENAI_API_TIMEOUT_MS',
-    'OPENAI_SMALL_FAST_MODEL',
-    'AZURE_OPENAI_API_KEY',
-    'AZURE_OPENAI_ENDPOINT',
-    'AZURE_OPENAI_API_VERSION',
-    'AZURE_OPENAI_DEPLOYMENT_NAME',
-    'TOGETHER_API_KEY',
-    'CODEX_SMALL_FAST_MODEL'
-  ];
-
-  // Copy universal variables for both agents
-  Object.entries(envVars).forEach(([key, value]) => {
-    if (universalVars.includes(key)) {
-      filtered[key] = value;
+    if (!profile) {
+      logger.debug(`[DAEMON RUN] Profile ${profileId} not found`);
+      return {};
     }
-  });
 
-  // Copy agent-specific variables
-  if (agentType === 'claude') {
-    Object.entries(envVars).forEach(([key, value]) => {
-      if (claudeVars.includes(key)) {
-        filtered[key] = value;
-      }
-    });
-  } else if (agentType === 'codex') {
-    Object.entries(envVars).forEach(([key, value]) => {
-      if (codexVars.includes(key)) {
-        filtered[key] = value;
-      }
-    });
+    // Check if profile is compatible with the agent
+    if (!validateProfileForAgent(profile, agentType)) {
+      logger.debug(`[DAEMON RUN] Profile ${profileId} not compatible with agent ${agentType}`);
+      return {};
+    }
+
+    // Get environment variables from profile (new schema)
+    const envVars = getProfileEnvironmentVariables(profile);
+
+    logger.debug(`[DAEMON RUN] Loaded ${Object.keys(envVars).length} environment variables from profile ${profileId} for agent ${agentType}`);
+    return envVars;
+  } catch (error) {
+    logger.debug('[DAEMON RUN] Failed to get profile environment variables:', error);
+    return {};
   }
-
-  return filtered;
 }
 
 export async function startDaemon(): Promise<void> {
@@ -326,17 +293,18 @@ export async function startDaemon(): Promise<void> {
           const settings = await readSettings();
           if (settings.activeProfileId) {
             logger.debug(`[DAEMON RUN] Loading environment variables for active profile: ${settings.activeProfileId}`);
-            const profileEnvVars = await getEnvironmentVariables(settings.activeProfileId);
 
-            // Filter environment variables based on agent type
-            const agentSpecificEnvVars = filterEnvironmentVarsForAgent(profileEnvVars, options.agent || 'claude');
+            // Get profile environment variables filtered for agent compatibility
+            const profileEnvVars = await getProfileEnvironmentVariablesForAgent(
+              settings.activeProfileId,
+              options.agent || 'claude'
+            );
 
-            // Merge agent-specific environment variables with extraEnv (extraEnv takes precedence)
-            const mergedEnvVars = { ...agentSpecificEnvVars, ...extraEnv };
+            // Merge profile environment variables with extraEnv (extraEnv takes precedence)
+            const mergedEnvVars = { ...profileEnvVars, ...extraEnv };
             extraEnv = mergedEnvVars;
 
-            const filteredCount = Object.keys(profileEnvVars).length - Object.keys(agentSpecificEnvVars).length;
-            logger.debug(`[DAEMON RUN] Applied ${Object.keys(agentSpecificEnvVars).length} environment variables from active profile (${filteredCount} filtered for ${options.agent || 'claude'})`);
+            logger.debug(`[DAEMON RUN] Applied ${Object.keys(profileEnvVars).length} environment variables from active profile for agent ${options.agent || 'claude'}`);
           }
         } catch (error) {
           logger.debug('[DAEMON RUN] Failed to load profile environment variables:', error);
@@ -347,19 +315,8 @@ export async function startDaemon(): Promise<void> {
         const tmuxAvailable = await isTmuxAvailable();
         let useTmux = tmuxAvailable;
 
-        // Check if profile has tmux-specific settings
-        const settings = await readSettings();
-        const profile = settings.activeProfileId ?
-          (settings.profiles?.find(p => p.id === settings.activeProfileId)) : null;
-
-        let tmuxSessionName: string | undefined;
-        if (profile?.tmuxSessionName) {
-          tmuxSessionName = profile.tmuxSessionName;
-          logger.debug(`[DAEMON RUN] Using tmux session name from profile: ${tmuxSessionName}`);
-        } else if (extraEnv.TMUX_SESSION_NAME) {
-          tmuxSessionName = extraEnv.TMUX_SESSION_NAME;
-          logger.debug(`[DAEMON RUN] Using tmux session name from environment: ${tmuxSessionName}`);
-        }
+        // Get tmux session name from environment variables (now set by profile system)
+        let tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
 
         // If tmux is not available or session name not specified, fall back to regular spawning
         if (!tmuxAvailable || !tmuxSessionName) {
