@@ -544,9 +544,26 @@ function NewSessionScreen() {
             const newAgent = prev === 'claude' ? 'codex' : 'claude';
             // Save the new selection immediately
             sync.applySettings({ lastUsedAgent: newAgent });
+
+            // If current profile is incompatible, automatically select a compatible one
+            if (selectedProfileId && profileMap.has(selectedProfileId)) {
+                const currentProfile = profileMap.get(selectedProfileId)!;
+                if (!validateProfileForAgent(currentProfile, newAgent)) {
+                    // Find the first compatible profile (prefer built-in for this agent type)
+                    const compatibleBuiltInProfile = newAgent === 'claude'
+                        ? profileMap.get('anthropic')  // Default Claude profile
+                        : profileMap.get('openai');   // Default Codex profile
+
+                    if (compatibleBuiltInProfile) {
+                        setSelectedProfileId(compatibleBuiltInProfile.id);
+                        sync.applySettings({ lastUsedProfile: compatibleBuiltInProfile.id });
+                    }
+                }
+            }
+
             return newAgent;
         });
-    }, []);
+    }, [selectedProfileId, profileMap]);
 
     //
     // Permission and Model Mode selection
@@ -597,6 +614,20 @@ function NewSessionScreen() {
         }
         return agentType === 'codex' ? 'gpt-5-codex-high' : 'default';
     });
+
+    // Filter profiles to show only ones compatible with current agent type
+    const compatibleProfiles = React.useMemo(() => {
+        return allProfiles.filter(profile => validateProfileForAgent(profile, agentType));
+    }, [allProfiles, agentType]);
+
+    // Check if current profile is compatible with current agent type
+    const isCurrentProfileCompatible = React.useMemo(() => {
+        if (!selectedProfileId || !profileMap.has(selectedProfileId)) {
+            return true; // No profile selected, nothing to validate
+        }
+        const currentProfile = profileMap.get(selectedProfileId)!;
+        return validateProfileForAgent(currentProfile, agentType);
+    }, [selectedProfileId, profileMap, agentType]);
 
     // Reset permission and model modes when agent type changes
     React.useEffect(() => {
@@ -844,6 +875,8 @@ function NewSessionScreen() {
                     onModelModeChange={handleModelModeChange}
                     selectedProfileId={selectedProfileId}
                     onProfileChange={handleProfileChange}
+                    compatibleProfiles={compatibleProfiles}
+                    isCurrentProfileCompatible={isCurrentProfileCompatible}
                     autocompletePrefixes={[]}
                     autocompleteSuggestions={async () => []}
                 />

@@ -221,6 +221,8 @@ interface AgentInputProps {
     minHeight?: number;
     selectedProfileId?: string | null;
     onProfileChange?: (profileId: string | null) => void;
+    compatibleProfiles?: any[];
+    isCurrentProfileCompatible?: boolean;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
