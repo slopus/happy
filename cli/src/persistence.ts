@@ -12,6 +12,19 @@ import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64 } from '@/api/encryption';
 
+// AI backend profile schema matching the happy app
+export interface AIBackendProfile {
+  id: string;
+  name: string;
+  anthropicBaseUrl?: string;
+  anthropicAuthToken?: string;
+  anthropicModel?: string;
+  tmuxSessionName?: string;
+  tmuxTmpDir?: string;
+  tmuxUpdateEnvironment?: boolean;
+  customEnvironmentVariables?: Record<string, string>;
+}
+
 interface Settings {
   onboardingCompleted: boolean
   // This ID is used as the actual database ID on the server
@@ -19,10 +32,17 @@ interface Settings {
   machineId?: string
   machineIdConfirmedByServer?: boolean
   daemonAutoStartWhenRunningHappy?: boolean
+  // Profile management settings (synced with happy app)
+  activeProfileId?: string
+  profiles: AIBackendProfile[]
+  // CLI-local environment variable cache (not synced)
+  localEnvironmentVariables: Record<string, Record<string, string>> // profileId -> env vars
 }
 
 const defaultSettings: Settings = {
-  onboardingCompleted: false
+  onboardingCompleted: false,
+  profiles: [],
+  localEnvironmentVariables: {}
 }
 
 /**
@@ -318,5 +338,115 @@ export async function releaseDaemonLock(lockHandle: FileHandle): Promise<void> {
       unlinkSync(configuration.daemonLockFile);
     }
   } catch { }
+}
+
+//
+// Profile Management
+//
+
+/**
+ * Get all profiles from settings
+ */
+export async function getProfiles(): Promise<AIBackendProfile[]> {
+  const settings = await readSettings();
+  return settings.profiles || [];
+}
+
+/**
+ * Get a specific profile by ID
+ */
+export async function getProfile(profileId: string): Promise<AIBackendProfile | null> {
+  const settings = await readSettings();
+  return settings.profiles.find(p => p.id === profileId) || null;
+}
+
+/**
+ * Get the active profile
+ */
+export async function getActiveProfile(): Promise<AIBackendProfile | null> {
+  const settings = await readSettings();
+  if (!settings.activeProfileId) return null;
+  return settings.profiles.find(p => p.id === settings.activeProfileId) || null;
+}
+
+/**
+ * Set the active profile by ID
+ */
+export async function setActiveProfile(profileId: string): Promise<void> {
+  await updateSettings(settings => ({
+    ...settings,
+    activeProfileId: profileId
+  }));
+}
+
+/**
+ * Update profiles (synced from happy app)
+ */
+export async function updateProfiles(profiles: AIBackendProfile[]): Promise<void> {
+  await updateSettings(settings => {
+    // Preserve active profile ID if it still exists
+    const activeProfileId = settings.activeProfileId;
+    const activeProfileStillExists = activeProfileId && profiles.some(p => p.id === activeProfileId);
+
+    return {
+      ...settings,
+      profiles,
+      activeProfileId: activeProfileStillExists ? activeProfileId : undefined
+    };
+  });
+}
+
+/**
+ * Get environment variables for a profile
+ * Combines profile custom env vars with CLI-local cached env vars
+ */
+export async function getEnvironmentVariables(profileId: string): Promise<Record<string, string>> {
+  const settings = await readSettings();
+  const profile = settings.profiles.find(p => p.id === profileId);
+  if (!profile) return {};
+
+  // Start with profile's custom environment variables
+  const envVars: Record<string, string> = { ...profile.customEnvironmentVariables };
+
+  // Override with CLI-local cached environment variables
+  const localEnvVars = settings.localEnvironmentVariables[profileId] || {};
+  Object.assign(envVars, localEnvVars);
+
+  return envVars;
+}
+
+/**
+ * Set environment variables for a profile in CLI-local cache
+ */
+export async function setEnvironmentVariables(profileId: string, envVars: Record<string, string>): Promise<void> {
+  await updateSettings(settings => ({
+    ...settings,
+    localEnvironmentVariables: {
+      ...settings.localEnvironmentVariables,
+      [profileId]: envVars
+    }
+  }));
+}
+
+/**
+ * Get a specific environment variable for a profile
+ * Checks CLI-local cache first, then profile custom env vars
+ */
+export async function getEnvironmentVariable(profileId: string, key: string): Promise<string | undefined> {
+  const settings = await readSettings();
+
+  // Check CLI-local cache first
+  const localEnvVars = settings.localEnvironmentVariables[profileId] || {};
+  if (localEnvVars[key] !== undefined) {
+    return localEnvVars[key];
+  }
+
+  // Fall back to profile custom environment variables
+  const profile = settings.profiles.find(p => p.id === profileId);
+  if (profile?.customEnvironmentVariables?.[key] !== undefined) {
+    return profile.customEnvironmentVariables[key];
+  }
+
+  return undefined;
 }
 

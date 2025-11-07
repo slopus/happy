@@ -121,6 +121,19 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean;
     agent?: 'claude' | 'codex';
     token?: string;
+    environmentVariables?: {
+        // Anthropic Claude API configuration
+        ANTHROPIC_BASE_URL?: string;        // Custom API endpoint (overrides default)
+        ANTHROPIC_AUTH_TOKEN?: string;      // API authentication token
+        ANTHROPIC_MODEL?: string;           // Model to use (e.g., claude-3-5-sonnet-20241022)
+
+        // Tmux session management environment variables
+        // Based on tmux(1) manual and common tmux usage patterns
+        TMUX_SESSION_NAME?: string;         // Name for tmux session (creates/attaches to named session)
+        TMUX_TMPDIR?: string;               // Temporary directory for tmux server socket files
+        // Note: TMUX_TMPDIR is used by tmux to store socket files when default /tmp is not suitable
+        // Common use case: When /tmp has limited space or different permissions
+    };
 }
 
 export type SpawnSessionResult =
