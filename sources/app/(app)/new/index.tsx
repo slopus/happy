@@ -1,15 +1,13 @@
 import React from 'react';
-import { View, Text, Platform, Pressable, useWindowDimensions } from 'react-native';
+import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting } from '@/sync/storage';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Octicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
-import { AgentInput } from '@/components/AgentInput';
-import { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Constants from 'expo-constants';
@@ -22,6 +20,10 @@ import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
+import { StyleSheet } from 'react-native-unistyles';
+
+// Wizard steps
+type WizardStep = 'welcome' | 'ai-backend' | 'tmux-config' | 'session-details' | 'creating';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -35,57 +37,6 @@ export const callbacks = {
         onPathSelected(path);
     }
 }
-
-// Helper function to get the most recent path for a machine from settings or sessions
-const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ machineId: string; path: string }>): string => {
-    if (!machineId) return '/home/';
-
-    // First check recent paths from settings
-    const recentPath = recentPaths.find(rp => rp.machineId === machineId);
-    if (recentPath) {
-        return recentPath.path;
-    }
-
-    // Fallback to session history
-    const machine = storage.getState().machines[machineId];
-    const defaultPath = machine?.metadata?.homeDir || '/home/';
-
-    const sessions = Object.values(storage.getState().sessions);
-    const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
-    const pathSet = new Set<string>();
-
-    sessions.forEach(session => {
-        if (session.metadata?.machineId === machineId && session.metadata?.path) {
-            const path = session.metadata.path;
-            if (!pathSet.has(path)) {
-                pathSet.add(path);
-                pathsWithTimestamps.push({
-                    path,
-                    timestamp: session.updatedAt || session.createdAt
-                });
-            }
-        }
-    });
-
-    // Sort by most recent first
-    pathsWithTimestamps.sort((a, b) => b.timestamp - a.timestamp);
-
-    return pathsWithTimestamps[0]?.path || defaultPath;
-};
-
-// Helper function to update recent machine paths
-const updateRecentMachinePaths = (
-    currentPaths: Array<{ machineId: string; path: string }>,
-    machineId: string,
-    path: string
-): Array<{ machineId: string; path: string }> => {
-    // Remove any existing entry for this machine
-    const filtered = currentPaths.filter(rp => rp.machineId !== machineId);
-    // Add new entry at the beginning
-    const updated = [{ machineId, path }, ...filtered];
-    // Keep only the last 10 entries
-    return updated.slice(0, 10);
-};
 
 // Built-in profile configurations
 const getBuiltInProfile = (id: string): AIBackendProfile | null => {
@@ -234,7 +185,7 @@ const DEFAULT_PROFILES = [
     }
 ];
 
-// Optimized profile lookup utility - converts array to Map for O(1) performance
+// Optimized profile lookup utility
 const useProfileMap = (profiles: AIBackendProfile[]) => {
     return React.useMemo(() =>
         new Map(profiles.map(p => [p.id, p])),
@@ -242,152 +193,264 @@ const useProfileMap = (profiles: AIBackendProfile[]) => {
     );
 };
 
-// Filter environment variables based on agent type to prevent conflicts
-const filterEnvironmentVarsForAgent = (
-    envVars: Record<string, string | undefined>,
-    agentType: 'claude' | 'codex'
-): Record<string, string | undefined> => {
+// Environment variable transformation helper
+const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' = 'claude') => {
+    const envVars = getProfileEnvironmentVariables(profile);
+
+    // Filter environment variables based on agent type
     const filtered: Record<string, string | undefined> = {};
 
-    // Universal variables that apply to both agents
+    // Universal variables
     const universalVars = [
-        'TMUX_SESSION_NAME',
-        'TMUX_TMPDIR',
-        'TMUX_UPDATE_ENVIRONMENT',
-        'API_TIMEOUT_MS',
-        'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'
+        'TMUX_SESSION_NAME', 'TMUX_TMPDIR', 'TMUX_UPDATE_ENVIRONMENT',
+        'API_TIMEOUT_MS', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'
     ];
 
-    // Claude-specific variables
+    // Agent-specific variables
     const claudeVars = [
-        'ANTHROPIC_BASE_URL',
-        'ANTHROPIC_AUTH_TOKEN',
-        'ANTHROPIC_MODEL',
-        'ANTHROPIC_SMALL_FAST_MODEL'
+        'ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL'
     ];
 
-    // Codex/OpenAI-specific variables
     const codexVars = [
-        'OPENAI_API_KEY',
-        'OPENAI_BASE_URL',
-        'OPENAI_MODEL',
-        'OPENAI_API_TIMEOUT_MS',
-        'OPENAI_SMALL_FAST_MODEL',
-        'AZURE_OPENAI_API_KEY',
-        'AZURE_OPENAI_ENDPOINT',
-        'AZURE_OPENAI_API_VERSION',
-        'AZURE_OPENAI_DEPLOYMENT_NAME',
-        'TOGETHER_API_KEY',
-        'CODEX_SMALL_FAST_MODEL'
+        'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL', 'OPENAI_API_TIMEOUT_MS',
+        'AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_ENDPOINT', 'AZURE_OPENAI_API_VERSION',
+        'AZURE_OPENAI_DEPLOYMENT_NAME', 'TOGETHER_API_KEY', 'CODEX_SMALL_FAST_MODEL'
     ];
 
-    // Copy universal variables for both agents
+    // Copy universal variables
     Object.entries(envVars).forEach(([key, value]) => {
-        if (universalVars.includes(key) && value !== undefined) {
+        if (universalVars.includes(key)) {
             filtered[key] = value;
         }
     });
 
     // Copy agent-specific variables
-    if (agentType === 'claude') {
-        Object.entries(envVars).forEach(([key, value]) => {
-            if (claudeVars.includes(key) && value !== undefined) {
-                filtered[key] = value;
-            }
-        });
-    } else if (agentType === 'codex') {
-        Object.entries(envVars).forEach(([key, value]) => {
-            if (codexVars.includes(key) && value !== undefined) {
-                filtered[key] = value;
-            }
-        });
-    }
+    const agentVars = agentType === 'claude' ? claudeVars : codexVars;
+    Object.entries(envVars).forEach(([key, value]) => {
+        if (agentVars.includes(key)) {
+            filtered[key] = value;
+        }
+    });
 
     return filtered;
 };
 
-// Environment variable transformation helper - converts profile to environment variables
-const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' = 'claude') => {
-    // Use the new helper function from settings.ts
-    const envVars = getProfileEnvironmentVariables(profile);
+// Helper function to get the most recent path for a machine
+const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ machineId: string; path: string }>): string => {
+    if (!machineId) return '/home/';
 
-    // Filter environment variables based on agent type
-    return filterEnvironmentVarsForAgent(envVars, agentType);
-};
+    const recentPath = recentPaths.find(rp => rp.machineId === machineId);
+    if (recentPath) {
+        return recentPath.path;
+    }
 
-// Profile compatibility validation helper
-const validateProfileCompatibility = (profile: AIBackendProfile, agentType: 'claude' | 'codex'): {
-    isCompatible: boolean;
-    warningMessage?: string;
-    filteredVarsCount: number;
-    totalVarsCount: number;
-} => {
-    // Use the new compatibility checker from settings.ts
-    const isCompatible = validateProfileForAgent(profile, agentType);
+    const machine = storage.getState().machines[machineId];
+    const defaultPath = machine?.metadata?.homeDir || '/home/';
 
-    // Get all environment variables from the profile
-    const allVars = getProfileEnvironmentVariables(profile);
+    const sessions = Object.values(storage.getState().sessions);
+    const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
+    const pathSet = new Set<string>();
 
-    // Filter for the selected agent type
-    const filteredVars = filterEnvironmentVarsForAgent(allVars, agentType);
-
-    const totalVarsCount = Object.keys(allVars).length;
-    const filteredVarsCount = Object.keys(filteredVars).length;
-
-    // Built-in profiles that are known to be optimized for specific agents
-    const claudeOptimizedProfiles = ['anthropic', 'deepseek', 'zai'];
-    const codexOptimizedProfiles = ['openai', 'azure-openai', 'together'];
-    const isClaudeOptimizedBuiltIn = claudeOptimizedProfiles.includes(profile.id);
-    const isCodexOptimizedBuiltIn = codexOptimizedProfiles.includes(profile.id);
-
-    if (!isCompatible) {
-        if (agentType === 'codex' && isClaudeOptimizedBuiltIn) {
-            return {
-                isCompatible: false,
-                warningMessage: `This profile is optimized for Claude. When used with Codex, Claude-specific configurations like API endpoints and models will be ignored. Consider using an OpenAI-compatible profile for better results.`,
-                filteredVarsCount,
-                totalVarsCount
-            };
-        } else if (agentType === 'claude' && isCodexOptimizedBuiltIn) {
-            return {
-                isCompatible: false,
-                warningMessage: `This profile is optimized for Codex/OpenAI. When used with Claude, OpenAI-specific configurations will be ignored. Consider using an Anthropic-compatible profile for better results.`,
-                filteredVarsCount,
-                totalVarsCount
-            };
-        } else {
-            return {
-                isCompatible: false,
-                warningMessage: `This profile is not compatible with ${agentType === 'claude' ? 'Claude' : 'Codex'}. Consider creating a separate profile for this agent.`,
-                filteredVarsCount,
-                totalVarsCount
-            };
+    sessions.forEach(session => {
+        if (session.metadata?.machineId === machineId && session.metadata?.path) {
+            const path = session.metadata.path;
+            if (!pathSet.has(path)) {
+                pathSet.add(path);
+                pathsWithTimestamps.push({
+                    path,
+                    timestamp: session.updatedAt || session.createdAt
+                });
+            }
         }
-    }
+    });
 
-    // For compatible profiles, provide informational feedback if variables were filtered
-    if (totalVarsCount > filteredVarsCount) {
-        return {
-            isCompatible: true,
-            warningMessage: `Some environment variables in this profile are unused with ${agentType === 'claude' ? 'Claude' : 'Codex'}. This is normal and won't cause issues.`,
-            filteredVarsCount,
-            totalVarsCount
-        };
-    }
-
-    return {
-        isCompatible: true,
-        filteredVarsCount,
-        totalVarsCount
-    };
+    pathsWithTimestamps.sort((a, b) => b.timestamp - a.timestamp);
+    return pathsWithTimestamps[0]?.path || defaultPath;
 };
 
-function NewSessionScreen() {
-    const { theme } = useUnistyles();
+const styles = StyleSheet.create((theme, rt) => ({
+    container: {
+        flex: 1,
+        justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
+        paddingTop: Platform.OS === 'web' ? 0 : 40,
+    },
+    scrollContainer: {
+        flexGrow: 1,
+        justifyContent: 'flex-end',
+    },
+    contentContainer: {
+        width: '100%',
+        alignSelf: 'center',
+        paddingTop: rt.insets.top,
+        paddingBottom: rt.insets.bottom,
+    },
+    wizardCard: {
+        backgroundColor: theme.colors.surface,
+        borderRadius: 16,
+        marginHorizontal: 16,
+        padding: 20,
+        marginBottom: 16,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.1,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    stepHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    stepNumber: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
+        backgroundColor: theme.colors.button.primary.background,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    stepNumberText: {
+        color: 'white',
+        fontWeight: 'bold',
+        fontSize: 16,
+    },
+    stepTitle: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: theme.colors.text,
+        flex: 1,
+    },
+    stepDescription: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        marginBottom: 20,
+        lineHeight: 20,
+    },
+    profileGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        marginBottom: 20,
+    },
+    profileCard: {
+        width: '48%',
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    profileCardSelected: {
+        borderColor: theme.colors.button.primary.background,
+        backgroundColor: theme.colors.button.primary.background + '10',
+    },
+    profileCardIncompatible: {
+        opacity: 0.5,
+        backgroundColor: theme.colors.input.background + '50',
+    },
+    profileName: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: theme.colors.text,
+        marginBottom: 4,
+    },
+    profileDescription: {
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        marginBottom: 8,
+    },
+    profileBadges: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+    },
+    profileBadge: {
+        backgroundColor: theme.colors.button.primary.background + '20',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+        marginRight: 4,
+        marginBottom: 4,
+    },
+    profileBadgeText: {
+        fontSize: 10,
+        color: theme.colors.button.primary.background,
+        fontWeight: '500',
+    },
+    buttonContainer: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        marginTop: 20,
+    },
+    button: {
+        paddingHorizontal: 20,
+        paddingVertical: 12,
+        borderRadius: 8,
+        minWidth: 100,
+        alignItems: 'center',
+    },
+    buttonPrimary: {
+        backgroundColor: theme.colors.button.primary.background,
+    },
+    buttonSecondary: {
+        backgroundColor: theme.colors.input.background,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+    },
+    buttonDisabled: {
+        opacity: 0.5,
+    },
+    buttonText: {
+        color: 'white',
+        fontWeight: '600',
+        fontSize: 16,
+    },
+    buttonTextSecondary: {
+        color: theme.colors.text,
+    },
+    inputContainer: {
+        marginBottom: 16,
+    },
+    inputLabel: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: theme.colors.text,
+        marginBottom: 8,
+    },
+    textInput: {
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 8,
+        padding: 12,
+        fontSize: 16,
+        color: theme.colors.text,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+    },
+    creatingContainer: {
+        alignItems: 'center',
+        paddingVertical: 40,
+    },
+    creatingTitle: {
+        fontSize: 18,
+        fontWeight: 'bold',
+        color: theme.colors.text,
+        marginTop: 16,
+        marginBottom: 8,
+    },
+    creatingDescription: {
+        fontSize: 14,
+        color: theme.colors.textSecondary,
+        textAlign: 'center',
+    },
+}));
+
+function NewSessionWizard() {
+    const { theme, rt } = useUnistyles();
     const router = useRouter();
     const { prompt, dataId } = useLocalSearchParams<{ prompt?: string; dataId?: string }>();
 
-    // Try to get data from temporary store first, fallback to direct prompt parameter
+    // Try to get data from temporary store first
     const tempSessionData = React.useMemo(() => {
         if (dataId) {
             return getTempData<NewSessionData>(dataId);
@@ -395,20 +458,7 @@ function NewSessionScreen() {
         return null;
     }, [dataId]);
 
-    const [input, setInput] = React.useState(() => {
-        if (tempSessionData?.prompt) {
-            return tempSessionData.prompt;
-        }
-        return prompt || '';
-    });
-    const [isSending, setIsSending] = React.useState(false);
-    const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
-      const ref = React.useRef<MultiTextInputHandle>(null);
-    const headerHeight = useHeaderHeight();
-    const safeArea = useSafeAreaInsets();
-    const screenWidth = useWindowDimensions().width;
-
-    // Load recent machine paths and last used agent from settings
+    // Settings and state
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
@@ -423,82 +473,187 @@ function NewSessionScreen() {
         return [...builtInProfiles, ...profiles];
     }, [profiles]);
 
-    // Optimized profile lookup for O(1) performance
     const profileMap = useProfileMap(allProfiles);
+    const machines = useAllMachines();
+
+    // Wizard state
+    const [currentStep, setCurrentStep] = React.useState<WizardStep>('welcome');
     const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(() => {
-        // Initialize with last used profile if it exists and is valid
         if (lastUsedProfile && profileMap.has(lastUsedProfile)) {
             return lastUsedProfile;
         }
         return null;
     });
+    const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
+        if (tempSessionData?.agentType) {
+            return tempSessionData.agentType;
+        }
+        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
+            return lastUsedAgent;
+        }
+        return 'claude';
+    });
+    const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
+    const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
+        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+        const validCodexModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
 
-    //
-    // Machines state
-    //
+        if (lastUsedPermissionMode) {
+            if (agentType === 'codex' && validCodexModes.includes(lastUsedPermissionMode as PermissionMode)) {
+                return lastUsedPermissionMode as PermissionMode;
+            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
+                return lastUsedPermissionMode as PermissionMode;
+            }
+        }
+        return 'default';
+    });
+    const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
+        const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
+        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'default', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
 
-    const machines = useAllMachines();
+        if (lastUsedModelMode) {
+            if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
+                return lastUsedModelMode as ModelMode;
+            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedModelMode as ModelMode)) {
+                return lastUsedModelMode as ModelMode;
+            }
+        }
+        return agentType === 'codex' ? 'gpt-5-codex-high' : 'default';
+    });
+
+    // Session details state
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
         if (machines.length > 0) {
-            // Check if we have a recently used machine that's currently available
             if (recentMachinePaths.length > 0) {
-                // Find the first machine from recent paths that's currently available
                 for (const recent of recentMachinePaths) {
                     if (machines.find(m => m.id === recent.machineId)) {
                         return recent.machineId;
                     }
                 }
             }
-            // Fallback to first machine if no recent machine is available
             return machines[0].id;
         }
         return null;
     });
-    React.useEffect(() => {
-        if (machines.length > 0) {
-            if (!selectedMachineId) {
-                // No machine selected yet, prefer the most recently used machine
-                let machineToSelect = machines[0].id; // Default to first machine
+    const [selectedPath, setSelectedPath] = React.useState<string>(() => {
+        return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
+    });
+    const [sessionPrompt, setSessionPrompt] = React.useState(() => {
+        return tempSessionData?.prompt || prompt || '';
+    });
+    const [isCreating, setIsCreating] = React.useState(false);
 
-                // Check if we have a recently used machine that's currently available
-                if (recentMachinePaths.length > 0) {
-                    for (const recent of recentMachinePaths) {
-                        if (machines.find(m => m.id === recent.machineId)) {
-                            machineToSelect = recent.machineId;
-                            break; // Use the first (most recent) match
-                        }
-                    }
-                }
+    // New profile creation state
+    const [newProfileName, setNewProfileName] = React.useState('');
+    const [newProfileDescription, setNewProfileDescription] = React.useState('');
 
-                setSelectedMachineId(machineToSelect);
-                // Also set the best path for the selected machine
-                const bestPath = getRecentPathForMachine(machineToSelect, recentMachinePaths);
-                setSelectedPath(bestPath);
-            } else {
-                // Machine is already selected, but check if we need to update path
-                // This handles the case where machines load after initial render
-                const currentMachine = machines.find(m => m.id === selectedMachineId);
-                if (currentMachine) {
-                    // Update path based on recent paths (only if path hasn't been manually changed)
-                    const bestPath = getRecentPathForMachine(selectedMachineId, recentMachinePaths);
-                    setSelectedPath(prevPath => {
-                        // Only update if current path is the default /home/
-                        if (prevPath === '/home/' && bestPath !== '/home/') {
-                            return bestPath;
-                        }
-                        return prevPath;
-                    });
+    // Computed values
+    const compatibleProfiles = React.useMemo(() => {
+        return allProfiles.filter(profile => validateProfileForAgent(profile, agentType));
+    }, [allProfiles, agentType]);
+
+    const selectedProfile = React.useMemo(() => {
+        if (!selectedProfileId || !profileMap.has(selectedProfileId)) {
+            return null;
+        }
+        return profileMap.get(selectedProfileId)!;
+    }, [selectedProfileId, profileMap]);
+
+    const selectedMachine = React.useMemo(() => {
+        if (!selectedMachineId) return null;
+        return machines.find(m => m.id === selectedMachineId);
+    }, [selectedMachineId, machines]);
+
+    // Navigation functions
+    const goToNextStep = React.useCallback(() => {
+        switch (currentStep) {
+            case 'welcome':
+                if (selectedProfileId) {
+                    setCurrentStep('session-details');
+                } else {
+                    setCurrentStep('ai-backend');
                 }
+                break;
+            case 'ai-backend':
+                setCurrentStep('tmux-config');
+                break;
+            case 'tmux-config':
+                setCurrentStep('session-details');
+                break;
+            case 'session-details':
+                handleCreateSession();
+                break;
+        }
+    }, [currentStep, selectedProfileId]);
+
+    const goToPreviousStep = React.useCallback(() => {
+        switch (currentStep) {
+            case 'ai-backend':
+                setCurrentStep('welcome');
+                break;
+            case 'tmux-config':
+                setCurrentStep('ai-backend');
+                break;
+            case 'session-details':
+                if (selectedProfileId) {
+                    setCurrentStep('welcome');
+                } else {
+                    setCurrentStep('tmux-config');
+                }
+                break;
+        }
+    }, [currentStep, selectedProfileId]);
+
+    const selectProfile = React.useCallback((profileId: string) => {
+        setSelectedProfileId(profileId);
+        const profile = profileMap.get(profileId);
+        if (profile) {
+            // Auto-select agent based on profile compatibility
+            if (profile.compatibility.claude && !profile.compatibility.codex) {
+                setAgentType('claude');
+            } else if (profile.compatibility.codex && !profile.compatibility.claude) {
+                setAgentType('codex');
             }
         }
-    }, [machines, selectedMachineId, recentMachinePaths]);
+    }, [profileMap]);
 
+    const createNewProfile = React.useCallback(() => {
+        if (!newProfileName.trim()) {
+            Modal.alert('Error', 'Please enter a profile name');
+            return;
+        }
+
+        const newProfile: AIBackendProfile = {
+            id: `custom-${Date.now()}`,
+            name: newProfileName.trim(),
+            description: newProfileDescription.trim() || undefined,
+            compatibility: {
+                claude: agentType === 'claude',
+                codex: agentType === 'codex',
+            },
+            environmentVariables: [],
+            isBuiltIn: false,
+            version: '1.0.0',
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+        };
+
+        // Add the new profile to settings
+        const updatedProfiles = [...profiles, newProfile];
+        sync.applySettings({ profiles: updatedProfiles });
+
+        setSelectedProfileId(newProfile.id);
+        setNewProfileName('');
+        setNewProfileDescription('');
+        setCurrentStep('session-details');
+    }, [newProfileName, newProfileDescription, agentType, profiles]);
+
+    // Handle machine and path selection callbacks
     React.useEffect(() => {
         let handler = (machineId: string) => {
             let machine = storage.getState().machines[machineId];
             if (machine) {
                 setSelectedMachineId(machineId);
-                // Also update the path when machine changes
                 const bestPath = getRecentPathForMachine(machineId, recentMachinePaths);
                 setSelectedPath(bestPath);
             }
@@ -523,193 +678,14 @@ function NewSessionScreen() {
         router.push('/new/pick/machine');
     }, []);
 
-    //
-    // Agent selection
-    //
-
-    const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
-        // Check if agent type was provided in temp data
-        if (tempSessionData?.agentType) {
-            return tempSessionData.agentType;
-        }
-        // Initialize with last used agent if valid, otherwise default to 'claude'
-        if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
-            return lastUsedAgent;
-        }
-        return 'claude';
-    });
-
-    const handleAgentClick = React.useCallback(() => {
-        setAgentType(prev => {
-            const newAgent = prev === 'claude' ? 'codex' : 'claude';
-            // Save the new selection immediately
-            sync.applySettings({ lastUsedAgent: newAgent });
-
-            // If current profile is incompatible, automatically select a compatible one
-            if (selectedProfileId && profileMap.has(selectedProfileId)) {
-                const currentProfile = profileMap.get(selectedProfileId)!;
-                if (!validateProfileForAgent(currentProfile, newAgent)) {
-                    // Find the first compatible profile (prefer built-in for this agent type)
-                    const compatibleBuiltInProfile = newAgent === 'claude'
-                        ? profileMap.get('anthropic')  // Default Claude profile
-                        : profileMap.get('openai');   // Default Codex profile
-
-                    if (compatibleBuiltInProfile) {
-                        setSelectedProfileId(compatibleBuiltInProfile.id);
-                        sync.applySettings({ lastUsedProfile: compatibleBuiltInProfile.id });
-                    }
-                }
-            }
-
-            return newAgent;
-        });
-    }, [selectedProfileId, profileMap]);
-
-    //
-    // Permission and Model Mode selection
-    //
-
-    const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
-        // Initialize with last used permission mode if valid, otherwise default to 'default'
-        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
-        const validCodexModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
-
-        if (lastUsedPermissionMode) {
-            // Check if the saved mode is valid for the current agent type
-            if (agentType === 'codex' && validCodexModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            } else {
-                // If the saved mode is not valid for the current agent type,
-                // check if we can find a suitable equivalent
-                const savedMode = lastUsedPermissionMode as PermissionMode;
-
-                // Map YOLO modes between agent types
-                if (savedMode === 'yolo' && agentType === 'claude') {
-                    return 'bypassPermissions'; // Claude equivalent of YOLO
-                } else if (savedMode === 'bypassPermissions' && agentType === 'codex') {
-                    return 'yolo'; // Codex equivalent of bypass permissions
-                } else if (savedMode === 'safe-yolo' && agentType === 'claude') {
-                    return 'acceptEdits'; // Claude equivalent of safe YOLO
-                } else if (savedMode === 'acceptEdits' && agentType === 'codex') {
-                    return 'safe-yolo'; // Codex equivalent of accept edits
-                }
-            }
-        }
-        return agentType === 'codex' ? 'default' : 'default';
-    });
-
-    const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
-        // Initialize with last used model mode if valid, otherwise default
-        const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'default', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
-
-        if (lastUsedModelMode) {
-            if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            }
-        }
-        return agentType === 'codex' ? 'gpt-5-codex-high' : 'default';
-    });
-
-    // Filter profiles to show only ones compatible with current agent type
-    const compatibleProfiles = React.useMemo(() => {
-        return allProfiles.filter(profile => validateProfileForAgent(profile, agentType));
-    }, [allProfiles, agentType]);
-
-    // Check if current profile is compatible with current agent type
-    const isCurrentProfileCompatible = React.useMemo(() => {
-        if (!selectedProfileId || !profileMap.has(selectedProfileId)) {
-            return true; // No profile selected, nothing to validate
-        }
-        const currentProfile = profileMap.get(selectedProfileId)!;
-        return validateProfileForAgent(currentProfile, agentType);
-    }, [selectedProfileId, profileMap, agentType]);
-
-    // Reset permission and model modes when agent type changes
-    React.useEffect(() => {
-        if (agentType === 'codex') {
-            // Switch to codex-compatible modes
-            setPermissionMode('default');
-            setModelMode('gpt-5-codex-high');
-        } else {
-            // Switch to claude-compatible modes
-            setPermissionMode('default');
-            setModelMode('default');
-        }
-    }, [agentType]);
-
-    const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
-        setPermissionMode(mode);
-        // Save the new selection immediately
-        sync.applySettings({ lastUsedPermissionMode: mode });
-    }, []);
-
-    const handleModelModeChange = React.useCallback((mode: ModelMode) => {
-        setModelMode(mode);
-        // Save the new selection immediately
-        sync.applySettings({ lastUsedModelMode: mode });
-    }, []);
-
-    const handleProfileChange = React.useCallback((profileId: string | null) => {
-        setSelectedProfileId(profileId);
-        // Save the new selection immediately
-        sync.applySettings({ lastUsedProfile: profileId });
-
-        // Validate profile compatibility with current agent type
-        if (profileId && profileMap.has(profileId)) {
-            const profile = profileMap.get(profileId)!;
-            const compatibility = validateProfileCompatibility(profile, agentType);
-
-            if (compatibility.warningMessage) {
-                const title = compatibility.isCompatible ? 'Profile Information' : 'Profile Compatibility Warning';
-                Modal.alert(
-                    title,
-                    compatibility.warningMessage,
-                    [
-                        { text: 'OK', style: 'default' }
-                    ]
-                );
-            }
-        }
-    }, [profileMap, agentType]);
-
-    //
-    // Path selection
-    //
-
-    const [selectedPath, setSelectedPath] = React.useState<string>(() => {
-        // Initialize with the path from the selected machine (which should be the most recent if available)
-        return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
-    });
     const handlePathClick = React.useCallback(() => {
         if (selectedMachineId) {
             router.push(`/new/pick/path?machineId=${selectedMachineId}`);
         }
     }, [selectedMachineId, router]);
 
-    // Get selected machine name
-    const selectedMachine = React.useMemo(() => {
-        if (!selectedMachineId) return null;
-        return machines.find(m => m.id === selectedMachineId);
-    }, [selectedMachineId, machines]);
-
-    // Autofocus
-    React.useLayoutEffect(() => {
-        if (Platform.OS === 'ios') {
-            setTimeout(() => {
-                ref.current?.focus();
-            }, 800);
-        } else {
-            ref.current?.focus();
-        }
-    }, []);
-
-    // Create
-    const doCreate = React.useCallback(async () => {
+    // Session creation
+    const handleCreateSession = React.useCallback(async () => {
         if (!selectedMachineId) {
             Modal.alert(t('common.error'), t('newSession.noMachineSelected'));
             return;
@@ -718,40 +694,46 @@ function NewSessionScreen() {
             Modal.alert(t('common.error'), t('newSession.noPathSelected'));
             return;
         }
+        if (!sessionPrompt.trim()) {
+            Modal.alert('Error', 'Please enter a prompt for the session');
+            return;
+        }
 
-        setIsSending(true);
+        setIsCreating(true);
+        setCurrentStep('creating');
+
         try {
             let actualPath = selectedPath;
 
-            // Handle worktree creation if selected and experiments are enabled
+            // Handle worktree creation
             if (sessionType === 'worktree' && experimentsEnabled) {
                 const worktreeResult = await createWorktree(selectedMachineId, selectedPath);
 
                 if (!worktreeResult.success) {
                     if (worktreeResult.error === 'Not a Git repository') {
-                        Modal.alert(
-                            t('common.error'),
-                            t('newSession.worktree.notGitRepo')
-                        );
+                        Modal.alert(t('common.error'), t('newSession.worktree.notGitRepo'));
                     } else {
-                        Modal.alert(
-                            t('common.error'),
-                            t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' })
-                        );
+                        Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
                     }
-                    setIsSending(false);
+                    setIsCreating(false);
+                    setCurrentStep('session-details');
                     return;
                 }
 
-                // Update the path to the new worktree location
                 actualPath = worktreeResult.worktreePath;
             }
 
-            // Save the machine-path combination to settings before sending
-            const updatedPaths = updateRecentMachinePaths(recentMachinePaths, selectedMachineId, selectedPath);
-            sync.applySettings({ recentMachinePaths: updatedPaths });
+            // Save settings
+            const updatedPaths = [{ machineId: selectedMachineId, path: selectedPath }, ...recentMachinePaths.filter(rp => rp.machineId !== selectedMachineId)].slice(0, 10);
+            sync.applySettings({
+                recentMachinePaths: updatedPaths,
+                lastUsedAgent: agentType,
+                lastUsedProfile: selectedProfileId,
+                lastUsedPermissionMode: permissionMode,
+                lastUsedModelMode: modelMode,
+            });
 
-            // Get environment variables from selected profile using optimized lookup
+            // Get environment variables from selected profile
             let environmentVariables = undefined;
             if (selectedProfileId) {
                 const selectedProfile = profileMap.get(selectedProfileId);
@@ -763,42 +745,19 @@ function NewSessionScreen() {
             const result = await machineSpawnNewSession({
                 machineId: selectedMachineId,
                 directory: actualPath,
-                // For now we assume you already have a path to start in
                 approvedNewDirectoryCreation: true,
                 agent: agentType,
                 environmentVariables
             });
 
-            // Use sessionId to check for success for backwards compatibility
             if ('sessionId' in result && result.sessionId) {
-                // Store worktree metadata if applicable
-                if (sessionType === 'worktree') {
-                    // The metadata will be stored by the session itself once created
-                }
-
-                // Link task to session if task ID is provided
-                if (tempSessionData?.taskId && tempSessionData?.taskTitle) {
-                    const promptDisplayTitle = tempSessionData.prompt?.startsWith('Work on this task:')
-                        ? `Work on: ${tempSessionData.taskTitle}`
-                        : `Clarify: ${tempSessionData.taskTitle}`;
-                    await linkTaskToSession(
-                        tempSessionData.taskId,
-                        result.sessionId,
-                        tempSessionData.taskTitle,
-                        promptDisplayTitle
-                    );
-                }
-
-                // Load sessions
                 await sync.refreshSessions();
 
-                // Set permission and model modes on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
                 storage.getState().updateSessionModelMode(result.sessionId, modelMode);
 
-                // Send message
-                await sync.sendMessage(result.sessionId, input);
-                // Navigate to session
+                await sync.sendMessage(result.sessionId, sessionPrompt);
+
                 router.replace(`/session/${result.sessionId}`, {
                     dangerouslySingular() {
                         return 'session'
@@ -809,7 +768,6 @@ function NewSessionScreen() {
             }
         } catch (error) {
             console.error('Failed to start session', error);
-
             let errorMessage = 'Failed to start session. Make sure the daemon is running on the target machine.';
             if (error instanceof Error) {
                 if (error.message.includes('timeout')) {
@@ -818,108 +776,312 @@ function NewSessionScreen() {
                     errorMessage = 'Not connected to server. Check your internet connection.';
                 }
             }
-
             Modal.alert(t('common.error'), errorMessage);
-        } finally {
-            setIsSending(false);
+            setIsCreating(false);
+            setCurrentStep('session-details');
         }
-    }, [agentType, selectedMachineId, selectedPath, input, recentMachinePaths, sessionType, experimentsEnabled, permissionMode, modelMode, selectedProfileId, profiles]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, router]);
+
+    const screenWidth = useWindowDimensions().width;
+
+    // Render wizard step content
+    const renderStepContent = () => {
+        switch (currentStep) {
+            case 'welcome':
+                return (
+                    <View style={styles.wizardCard}>
+                        <View style={styles.stepHeader}>
+                            <View style={styles.stepNumber}>
+                                <Text style={styles.stepNumberText}>1</Text>
+                            </View>
+                            <Text style={styles.stepTitle}>Choose Profile</Text>
+                        </View>
+                        <Text style={styles.stepDescription}>
+                            Select an existing AI profile to quickly get started with pre-configured settings, or create a new custom profile.
+                        </Text>
+
+                        <ScrollView style={{ maxHeight: 300 }}>
+                            <View style={styles.profileGrid}>
+                                {compatibleProfiles.map((profile) => (
+                                    <Pressable
+                                        key={profile.id}
+                                        style={[
+                                            styles.profileCard,
+                                            selectedProfileId === profile.id && styles.profileCardSelected,
+                                        ]}
+                                        onPress={() => selectProfile(profile.id)}
+                                    >
+                                        <Text style={styles.profileName}>{profile.name}</Text>
+                                        {profile.description && (
+                                            <Text style={styles.profileDescription} numberOfLines={2}>
+                                                {profile.description}
+                                            </Text>
+                                        )}
+                                        <View style={styles.profileBadges}>
+                                            {profile.compatibility.claude && (
+                                                <View style={styles.profileBadge}>
+                                                    <Text style={styles.profileBadgeText}>Claude</Text>
+                                                </View>
+                                            )}
+                                            {profile.compatibility.codex && (
+                                                <View style={styles.profileBadge}>
+                                                    <Text style={styles.profileBadgeText}>Codex</Text>
+                                                </View>
+                                            )}
+                                            {profile.isBuiltIn && (
+                                                <View style={styles.profileBadge}>
+                                                    <Text style={styles.profileBadgeText}>Built-in</Text>
+                                                </View>
+                                            )}
+                                        </View>
+                                    </Pressable>
+                                ))}
+                            </View>
+                        </ScrollView>
+
+                        <View style={styles.buttonContainer}>
+                            <Pressable
+                                style={[styles.button, styles.buttonSecondary]}
+                                onPress={() => setCurrentStep('ai-backend')}
+                            >
+                                <Text style={styles.buttonTextSecondary}>Create New</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[
+                                    styles.button,
+                                    styles.buttonPrimary,
+                                    !selectedProfileId && styles.buttonDisabled
+                                ]}
+                                onPress={goToNextStep}
+                                disabled={!selectedProfileId}
+                            >
+                                <Text style={styles.buttonText}>Next</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                );
+
+            case 'ai-backend':
+                return (
+                    <View style={styles.wizardCard}>
+                        <View style={styles.stepHeader}>
+                            <View style={styles.stepNumber}>
+                                <Text style={styles.stepNumberText}>2</Text>
+                            </View>
+                            <Text style={styles.stepTitle}>AI Backend</Text>
+                        </View>
+                        <Text style={styles.stepDescription}>
+                            Choose the AI backend and configure its settings for your new profile.
+                        </Text>
+
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputLabel}>Profile Name</Text>
+                            <TextInput
+                                style={styles.textInput}
+                                value={newProfileName}
+                                onChangeText={setNewProfileName}
+                                placeholder="Enter a name for this profile"
+                                placeholderTextColor={theme.colors.textSecondary}
+                            />
+                        </View>
+
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputLabel}>Description (Optional)</Text>
+                            <TextInput
+                                style={[styles.textInput, { height: 80 }]}
+                                value={newProfileDescription}
+                                onChangeText={setNewProfileDescription}
+                                placeholder="Describe what this profile is for"
+                                placeholderTextColor={theme.colors.textSecondary}
+                                multiline
+                                numberOfLines={3}
+                                textAlignVertical="top"
+                            />
+                        </View>
+
+                        <View style={styles.buttonContainer}>
+                            <Pressable
+                                style={[styles.button, styles.buttonSecondary]}
+                                onPress={goToPreviousStep}
+                            >
+                                <Text style={styles.buttonTextSecondary}>Back</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[
+                                    styles.button,
+                                    styles.buttonPrimary,
+                                    !newProfileName.trim() && styles.buttonDisabled
+                                ]}
+                                onPress={goToNextStep}
+                                disabled={!newProfileName.trim()}
+                            >
+                                <Text style={styles.buttonText}>Next</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                );
+
+            case 'tmux-config':
+                return (
+                    <View style={styles.wizardCard}>
+                        <View style={styles.stepHeader}>
+                            <View style={styles.stepNumber}>
+                                <Text style={styles.stepNumberText}>3</Text>
+                            </View>
+                            <Text style={styles.stepTitle}>Tmux Configuration</Text>
+                        </View>
+                        <Text style={styles.stepDescription}>
+                            Configure tmux session settings for terminal management. This allows you to see and manage your AI sessions in tmux.
+                        </Text>
+
+                        <Text style={styles.stepDescription}>
+                            Tmux configuration will be added here in the next iteration. For now, your profile will use default settings.
+                        </Text>
+
+                        <View style={styles.buttonContainer}>
+                            <Pressable
+                                style={[styles.button, styles.buttonSecondary]}
+                                onPress={goToPreviousStep}
+                            >
+                                <Text style={styles.buttonTextSecondary}>Back</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[styles.button, styles.buttonPrimary]}
+                                onPress={createNewProfile}
+                            >
+                                <Text style={styles.buttonText}>Create Profile</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                );
+
+            case 'session-details':
+                return (
+                    <View style={styles.wizardCard}>
+                        <View style={styles.stepHeader}>
+                            <View style={styles.stepNumber}>
+                                <Text style={styles.stepNumberText}>{selectedProfileId ? '2' : '4'}</Text>
+                            </View>
+                            <Text style={styles.stepTitle}>Session Details</Text>
+                        </View>
+                        <Text style={styles.stepDescription}>
+                            Set up the final details for your AI session.
+                        </Text>
+
+                        <View style={styles.inputContainer}>
+                            <Text style={styles.inputLabel}>What would you like to work on?</Text>
+                            <TextInput
+                                style={[styles.textInput, { height: 100 }]}
+                                value={sessionPrompt}
+                                onChangeText={setSessionPrompt}
+                                placeholder="Describe your task or question..."
+                                placeholderTextColor={theme.colors.textSecondary}
+                                multiline
+                                numberOfLines={4}
+                                textAlignVertical="top"
+                            />
+                        </View>
+
+                        <Pressable
+                            style={[styles.button, styles.buttonSecondary, { marginBottom: 12 }]}
+                            onPress={handleMachineClick}
+                        >
+                            <Text style={styles.buttonTextSecondary}>
+                                Machine: {selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || 'None selected'}
+                            </Text>
+                        </Pressable>
+
+                        <Pressable
+                            style={[styles.button, styles.buttonSecondary, { marginBottom: 12 }]}
+                            onPress={handlePathClick}
+                        >
+                            <Text style={styles.buttonTextSecondary}>
+                                Path: {selectedPath}
+                            </Text>
+                        </Pressable>
+
+                        {experimentsEnabled && (
+                            <View style={{ marginBottom: 12 }}>
+                                <SessionTypeSelector
+                                    value={sessionType}
+                                    onChange={setSessionType}
+                                />
+                            </View>
+                        )}
+
+                        <View style={styles.buttonContainer}>
+                            <Pressable
+                                style={[styles.button, styles.buttonSecondary]}
+                                onPress={goToPreviousStep}
+                            >
+                                <Text style={styles.buttonTextSecondary}>Back</Text>
+                            </Pressable>
+                            <Pressable
+                                style={[
+                                    styles.button,
+                                    styles.buttonPrimary,
+                                    (!sessionPrompt.trim() || !selectedMachineId || !selectedPath) && styles.buttonDisabled
+                                ]}
+                                onPress={goToNextStep}
+                                disabled={!sessionPrompt.trim() || !selectedMachineId || !selectedPath}
+                            >
+                                <Text style={styles.buttonText}>Create Session</Text>
+                            </Pressable>
+                        </View>
+                    </View>
+                );
+
+            case 'creating':
+                return (
+                    <View style={styles.wizardCard}>
+                        <View style={styles.creatingContainer}>
+                            <View style={{
+                                width: 48,
+                                height: 48,
+                                borderRadius: 24,
+                                backgroundColor: theme.colors.button.primary.background + '20',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                marginBottom: 16,
+                            }}>
+                                <Ionicons name="flash" size={24} color={theme.colors.button.primary.background} />
+                            </View>
+                            <Text style={styles.creatingTitle}>Creating Session</Text>
+                            <Text style={styles.creatingDescription}>
+                                Setting up your AI session with the selected configuration...
+                            </Text>
+                        </View>
+                    </View>
+                );
+
+            default:
+                return null;
+        }
+    };
 
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + headerHeight : 0}
-            style={{
-                flex: 1,
-                justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
-                paddingTop: Platform.OS === 'web' ? 0 : 40,
-                marginBottom: safeArea.bottom,
-            }}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
+            style={styles.container}
         >
-            <View style={{
-                width: '100%',
-                alignSelf: 'center',
-                paddingTop: safeArea.top,
-            }}>
-                {/* Session type selector - only show when experiments are enabled */}
-                {experimentsEnabled && (
-                    <View style={[
-                        { paddingHorizontal: screenWidth > 700 ? 16 : 8, flexDirection: 'row', justifyContent: 'center' }
-                    ]}>
-                        <View style={[
-                            { maxWidth: layout.maxWidth, flex: 1 }
-                        ]}>
-                            <SessionTypeSelector 
-                                value={sessionType}
-                                onChange={setSessionType}
-                            />
-                        </View>
-                    </View>
-                )}
-
-                {/* Agent input */}
-                <AgentInput
-                    placeholder={t('session.inputPlaceholder')}
-                    ref={ref}
-                    value={input}
-                    onChangeText={setInput}
-                    onSend={doCreate}
-                    isSending={isSending}
-                    agentType={agentType}
-                    onAgentClick={handleAgentClick}
-                    machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || null}
-                    onMachineClick={handleMachineClick}
-                    permissionMode={permissionMode}
-                    onPermissionModeChange={handlePermissionModeChange}
-                    modelMode={modelMode}
-                    onModelModeChange={handleModelModeChange}
-                    selectedProfileId={selectedProfileId}
-                    onProfileChange={handleProfileChange}
-                    compatibleProfiles={compatibleProfiles}
-                    isCurrentProfileCompatible={isCurrentProfileCompatible}
-                    autocompletePrefixes={[]}
-                    autocompleteSuggestions={async () => []}
-                />
-
+            <ScrollView
+                style={styles.scrollContainer}
+                contentContainerStyle={styles.contentContainer}
+                keyboardShouldPersistTaps="handled"
+            >
                 <View style={[
-                    { paddingHorizontal: screenWidth > 700 ? 16 : 8, flexDirection: 'row', justifyContent: 'center' }
+                    { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
                 ]}>
                     <View style={[
-                        { maxWidth: layout.maxWidth, flex: 1 }
+                        { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
                     ]}>
-                        <Pressable
-                            onPress={handlePathClick}
-                            style={(p) => ({
-                                backgroundColor: theme.colors.input.background,
-                                borderRadius: Platform.select({ default: 16, android: 20 }),
-                                paddingHorizontal: 12,
-                                paddingVertical: 10,
-                                marginBottom: 8,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                opacity: p.pressed ? 0.7 : 1,
-                            })}
-                        >
-                            <Ionicons
-                                name="folder-outline"
-                                size={14}
-                                color={theme.colors.button.secondary.tint}
-                            />
-                            <Text style={{
-                                fontSize: 13,
-                                color: theme.colors.button.secondary.tint,
-                                fontWeight: '600',
-                                marginLeft: 6,
-                                ...Typography.default('semiBold'),
-                            }}>
-                                {selectedPath}
-                            </Text>
-                        </Pressable>
+                        {renderStepContent()}
                     </View>
                 </View>
-            </View>
+            </ScrollView>
         </KeyboardAvoidingView>
-    )
+    );
 }
 
-export default React.memo(NewSessionScreen);
+export default React.memo(NewSessionWizard);
