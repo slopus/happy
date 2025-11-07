@@ -22,6 +22,7 @@ import { useSetting } from '@/sync/storage';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
+import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 
 interface AgentInputProps {
     value: string;
@@ -65,6 +66,8 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
+    profileId?: string | null;
+    onProfileClick?: () => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -290,9 +293,16 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const screenWidth = useWindowDimensions().width;
 
     const hasText = props.value.trim().length > 0;
-    
+
     // Check if this is a Codex session
     const isCodex = props.metadata?.flavor === 'codex';
+
+    // Profile data
+    const profiles = useSetting('profiles');
+    const currentProfile = React.useMemo(() => {
+        if (!props.profileId) return null;
+        return profiles.find(p => p.id === props.profileId) || null;
+    }, [profiles, props.profileId]);
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize

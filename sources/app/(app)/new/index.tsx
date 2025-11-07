@@ -20,9 +20,13 @@ import { Platform } from 'react-native';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
+let onPathSelected: (path: string) => void = () => { };
 export const callbacks = {
     onMachineSelected: (machineId: string) => {
         onMachineSelected(machineId);
+    },
+    onPathSelected: (path: string) => {
+        onPathSelected(path);
     }
 };
 
@@ -79,12 +83,14 @@ function NewSessionScreen() {
     const [showWizard, setShowWizard] = React.useState(true);
     const [wizardConfig, setWizardConfig] = React.useState<{
         sessionType: 'simple' | 'worktree';
+        profileId: string | null;
         agentType: 'claude' | 'codex';
         permissionMode: PermissionMode;
         modelMode: ModelMode;
         machineId: string;
         path: string;
         prompt: string;
+        environmentVariables?: Record<string, string>;
     } | null>(null);
 
     const [input, setInput] = React.useState(() => {
@@ -113,12 +119,14 @@ function NewSessionScreen() {
 
     const handleWizardComplete = (config: {
         sessionType: 'simple' | 'worktree';
+        profileId: string | null;
         agentType: 'claude' | 'codex';
         permissionMode: PermissionMode;
         modelMode: ModelMode;
         machineId: string;
         path: string;
         prompt: string;
+        environmentVariables?: Record<string, string>;
     }) => {
         setWizardConfig(config);
         setInput(config.prompt);
@@ -128,6 +136,7 @@ function NewSessionScreen() {
             lastUsedAgent: config.agentType,
             lastUsedPermissionMode: config.permissionMode,
             lastUsedModelMode: config.modelMode,
+            lastUsedProfile: config.profileId,
         });
 
         // Directly create the session since we have all the info
@@ -141,12 +150,14 @@ function NewSessionScreen() {
     // Create session
     const doCreate = React.useCallback(async (config?: {
         sessionType: 'simple' | 'worktree';
+        profileId: string | null;
         agentType: 'claude' | 'codex';
         permissionMode: PermissionMode;
         modelMode: ModelMode;
         machineId: string;
         path: string;
         prompt: string;
+        environmentVariables?: Record<string, string>;
     }) => {
         const activeConfig = config || wizardConfig;
         if (!activeConfig) {
@@ -186,12 +197,17 @@ function NewSessionScreen() {
             const updatedPaths = updateRecentMachinePaths(recentMachinePaths, activeConfig.machineId, activeConfig.path);
             sync.applySettings({ recentMachinePaths: updatedPaths });
 
+            // Apply environment variables from profile if any
+            // Note: Environment variables will be applied during session creation
+            // The profile system handles setting these variables automatically
+
             const result = await machineSpawnNewSession({
                 machineId: activeConfig.machineId,
                 directory: actualPath,
                 // For now we assume you already have a path to start in
                 approvedNewDirectoryCreation: true,
-                agent: activeConfig.agentType
+                agent: activeConfig.agentType,
+                environmentVariables: activeConfig.environmentVariables
             });
 
             // Use sessionId to check for success for backwards compatibility

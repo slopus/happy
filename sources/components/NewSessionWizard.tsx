@@ -10,6 +10,9 @@ import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { useAllMachines, useSessions, useSetting } from '@/sync/storage';
 import { useRouter } from 'expo-router';
+import { AIBackendProfile, validateProfileForAgent, getProfileEnvironmentVariables } from '@/sync/settings';
+import { Modal } from '@/modal';
+import { sync } from '@/sync/sync';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -158,17 +161,19 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
 }));
 
-type WizardStep = 'sessionType' | 'agent' | 'options' | 'machine' | 'path' | 'prompt';
+type WizardStep = 'profile' | 'profileConfig' | 'sessionType' | 'agent' | 'options' | 'machine' | 'path' | 'prompt';
 
 interface NewSessionWizardProps {
     onComplete: (config: {
         sessionType: 'simple' | 'worktree';
+        profileId: string | null;
         agentType: 'claude' | 'codex';
         permissionMode: PermissionMode;
         modelMode: ModelMode;
         machineId: string;
         path: string;
         prompt: string;
+        environmentVariables?: Record<string, string>;
     }) => void;
     onCancel: () => void;
     initialPrompt?: string;
@@ -185,9 +190,11 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const lastUsedAgent = useSetting('lastUsedAgent');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
+    const profiles = useSetting('profiles');
+    const lastUsedProfile = useSetting('lastUsedProfile');
 
     // Wizard state
-    const [currentStep, setCurrentStep] = useState<WizardStep>('sessionType');
+    const [currentStep, setCurrentStep] = useState<WizardStep>('profile');
     const [sessionType, setSessionType] = useState<'simple' | 'worktree'>('simple');
     const [agentType, setAgentType] = useState<'claude' | 'codex'>(() => {
         if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
@@ -197,6 +204,114 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     });
     const [permissionMode, setPermissionMode] = useState<PermissionMode>('default');
     const [modelMode, setModelMode] = useState<ModelMode>('default');
+    const [selectedProfileId, setSelectedProfileId] = useState<string | null>(() => {
+        return lastUsedProfile;
+    });
+
+    // Built-in profiles
+    const builtInProfiles: AIBackendProfile[] = useMemo(() => [
+        {
+            id: 'anthropic',
+            name: 'Anthropic (Default)',
+            description: 'Default Claude configuration',
+            anthropicConfig: {},
+            environmentVariables: [],
+            compatibility: { claude: true, codex: false },
+            isBuiltIn: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
+        },
+        {
+            id: 'deepseek',
+            name: 'DeepSeek (Reasoner)',
+            description: 'DeepSeek reasoning model with proxy to Anthropic API',
+            anthropicConfig: {
+                baseUrl: 'https://api.deepseek.com/anthropic',
+                model: 'deepseek-reasoner',
+            },
+            environmentVariables: [
+                { name: 'API_TIMEOUT_MS', value: '600000' },
+                { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: 'deepseek-chat' },
+                { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
+            ],
+            compatibility: { claude: true, codex: false },
+            isBuiltIn: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
+        },
+        {
+            id: 'openai',
+            name: 'OpenAI (GPT-5)',
+            description: 'OpenAI GPT-5 Codex configuration',
+            openaiConfig: {
+                baseUrl: 'https://api.openai.com/v1',
+                model: 'gpt-5-codex-high',
+            },
+            environmentVariables: [
+                { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
+                { name: 'CODEX_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
+            ],
+            compatibility: { claude: false, codex: true },
+            isBuiltIn: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
+        },
+        {
+            id: 'azure-openai',
+            name: 'Azure OpenAI',
+            description: 'Microsoft Azure OpenAI configuration',
+            azureOpenAIConfig: {
+                apiVersion: '2024-02-15-preview',
+            },
+            environmentVariables: [
+                { name: 'AZURE_OPENAI_API_VERSION', value: '2024-02-15-preview' },
+            ],
+            compatibility: { claude: false, codex: true },
+            isBuiltIn: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
+        },
+        {
+            id: 'zai',
+            name: 'Z.ai (GLM-4.6)',
+            description: 'Z.ai GLM-4.6 model with proxy to Anthropic API',
+            anthropicConfig: {
+                baseUrl: 'https://api.z.ai/api/anthropic',
+                model: 'glm-4.6',
+            },
+            environmentVariables: [],
+            compatibility: { claude: true, codex: false },
+            isBuiltIn: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
+        },
+        {
+            id: 'microsoft',
+            name: 'Microsoft Azure',
+            description: 'Microsoft Azure AI services',
+            openaiConfig: {
+                baseUrl: 'https://api.openai.azure.com',
+                model: 'gpt-4-turbo',
+            },
+            environmentVariables: [],
+            compatibility: { claude: false, codex: true },
+            isBuiltIn: true,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
+        },
+    ], []);
+
+    // Combined profiles
+    const allProfiles = useMemo(() => {
+        return [...builtInProfiles, ...profiles];
+    }, [profiles, builtInProfiles]);
+
     const [selectedMachineId, setSelectedMachineId] = useState<string>(() => {
         if (machines.length > 0) {
             // Check if we have a recently used machine that's currently available
@@ -222,9 +337,93 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const [customPath, setCustomPath] = useState<string>('');
     const [showCustomPathInput, setShowCustomPathInput] = useState<boolean>(false);
 
-    const steps: WizardStep[] = experimentsEnabled
-        ? ['sessionType', 'agent', 'options', 'machine', 'path', 'prompt']
-        : ['agent', 'options', 'machine', 'path', 'prompt'];
+    // Profile configuration state
+    const [profileApiKeys, setProfileApiKeys] = useState<Record<string, Record<string, string>>>({});
+    const [profileConfigs, setProfileConfigs] = useState<Record<string, Record<string, string>>>({});
+
+    // Dynamic steps based on whether profile needs configuration
+    const steps: WizardStep[] = React.useMemo(() => {
+        const baseSteps: WizardStep[] = experimentsEnabled
+            ? ['profile', 'sessionType', 'agent', 'options', 'machine', 'path', 'prompt']
+            : ['profile', 'agent', 'options', 'machine', 'path', 'prompt'];
+
+        // Insert profileConfig step after profile if needed
+        if (profileNeedsConfiguration(selectedProfileId)) {
+            const profileIndex = baseSteps.indexOf('profile');
+            const beforeProfile = baseSteps.slice(0, profileIndex + 1) as WizardStep[];
+            const afterProfile = baseSteps.slice(profileIndex + 1) as WizardStep[];
+            return [
+                ...beforeProfile,
+                'profileConfig',
+                ...afterProfile
+            ] as WizardStep[];
+        }
+
+        return baseSteps;
+    }, [experimentsEnabled, selectedProfileId]);
+
+    // Helper function to check if profile needs API keys
+    const profileNeedsConfiguration = (profileId: string | null): boolean => {
+        if (!profileId) return false; // Manual configuration doesn't need API keys
+        const profile = allProfiles.find(p => p.id === profileId);
+        if (!profile) return false;
+
+        // Check if profile is one that requires API keys
+        const profilesNeedingKeys = ['openai', 'azure-openai', 'zai', 'microsoft', 'deepseek'];
+        return profilesNeedingKeys.includes(profile.id);
+    };
+
+    // Get required fields for profile configuration
+    const getProfileRequiredFields = (profileId: string | null): Array<{key: string, label: string, placeholder: string, isPassword?: boolean}> => {
+        if (!profileId) return [];
+        const profile = allProfiles.find(p => p.id === profileId);
+        if (!profile) return [];
+
+        switch (profile.id) {
+            case 'deepseek':
+                return [
+                    { key: 'ANTHROPIC_AUTH_TOKEN', label: 'DeepSeek API Key', placeholder: 'DEEPSEEK_API_KEY', isPassword: true }
+                ];
+            case 'openai':
+                return [
+                    { key: 'OPENAI_API_KEY', label: 'OpenAI API Key', placeholder: 'sk-...', isPassword: true }
+                ];
+            case 'azure-openai':
+                return [
+                    { key: 'AZURE_OPENAI_API_KEY', label: 'Azure OpenAI API Key', placeholder: 'Enter your Azure OpenAI API key', isPassword: true },
+                    { key: 'AZURE_OPENAI_ENDPOINT', label: 'Azure Endpoint', placeholder: 'https://your-resource.openai.azure.com/' },
+                    { key: 'AZURE_OPENAI_DEPLOYMENT_NAME', label: 'Deployment Name', placeholder: 'gpt-4-turbo' }
+                ];
+            case 'zai':
+                return [
+                    { key: 'ANTHROPIC_AUTH_TOKEN', label: 'Z.ai API Key', placeholder: 'Z_AI_API_KEY', isPassword: true }
+                ];
+            case 'microsoft':
+                return [
+                    { key: 'AZURE_OPENAI_API_KEY', label: 'Azure API Key', placeholder: 'Enter your Azure API key', isPassword: true },
+                    { key: 'AZURE_OPENAI_ENDPOINT', label: 'Azure Endpoint', placeholder: 'https://your-resource.openai.azure.com/' },
+                    { key: 'AZURE_OPENAI_DEPLOYMENT_NAME', label: 'Deployment Name', placeholder: 'gpt-4-turbo' }
+                ];
+            default:
+                return [];
+        }
+    };
+
+    // Auto-load profile settings
+    React.useEffect(() => {
+        if (selectedProfileId) {
+            const selectedProfile = allProfiles.find(p => p.id === selectedProfileId);
+            if (selectedProfile) {
+                // Auto-select agent type based on profile compatibility
+                if (selectedProfile.compatibility.claude && !selectedProfile.compatibility.codex) {
+                    setAgentType('claude');
+                } else if (selectedProfile.compatibility.codex && !selectedProfile.compatibility.claude) {
+                    setAgentType('codex');
+                }
+                // Note: We could also load permissionMode and modelMode from profile if we store them there
+            }
+        }
+    }, [selectedProfileId, allProfiles]);
 
     // Get recent paths for the selected machine
     const recentPaths = useMemo(() => {
@@ -275,15 +474,47 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
     const isLastStep = currentStepIndex === steps.length - 1;
 
     const handleNext = () => {
+        // Special handling for profileConfig step - skip if profile doesn't need configuration
+        if (currentStep === 'profileConfig' && (!selectedProfileId || !profileNeedsConfiguration(selectedProfileId))) {
+            setCurrentStep(steps[currentStepIndex + 1]);
+            return;
+        }
+
         if (isLastStep) {
+            // Get environment variables from selected profile
+            let environmentVariables: Record<string, string> | undefined;
+            if (selectedProfileId) {
+                const selectedProfile = allProfiles.find(p => p.id === selectedProfileId);
+                if (selectedProfile) {
+                    environmentVariables = getProfileEnvironmentVariables(selectedProfile);
+
+                    // Add user-provided API keys and configurations
+                    if (profileApiKeys[selectedProfileId]) {
+                        environmentVariables = {
+                            ...environmentVariables,
+                            ...profileApiKeys[selectedProfileId]
+                        };
+                    }
+
+                    if (profileConfigs[selectedProfileId]) {
+                        environmentVariables = {
+                            ...environmentVariables,
+                            ...profileConfigs[selectedProfileId]
+                        };
+                    }
+                }
+            }
+
             onComplete({
                 sessionType,
+                profileId: selectedProfileId,
                 agentType,
                 permissionMode,
                 modelMode,
                 machineId: selectedMachineId,
                 path: showCustomPathInput && customPath.trim() ? customPath.trim() : selectedPath,
                 prompt,
+                environmentVariables,
             });
         } else {
             setCurrentStep(steps[currentStepIndex + 1]);
@@ -300,6 +531,16 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
 
     const canProceed = useMemo(() => {
         switch (currentStep) {
+            case 'profile':
+                return true; // Always valid (profile can be null for manual config)
+            case 'profileConfig':
+                if (!selectedProfileId) return false;
+                const requiredFields = getProfileRequiredFields(selectedProfileId);
+                // Check if all required fields are filled
+                return requiredFields.every(field => {
+                    const value = (profileApiKeys[selectedProfileId] as any)?.[field.key] || (profileConfigs[selectedProfileId] as any)?.[field.key];
+                    return value && value.trim().length > 0;
+                });
             case 'sessionType':
                 return true; // Always valid
             case 'agent':
@@ -315,17 +556,238 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
             default:
                 return false;
         }
-    }, [currentStep, selectedMachineId, selectedPath, prompt, showCustomPathInput, customPath]);
+    }, [currentStep, selectedMachineId, selectedPath, prompt, showCustomPathInput, customPath, selectedProfileId, profileApiKeys, profileConfigs, getProfileRequiredFields]);
 
     const renderStepContent = () => {
         switch (currentStep) {
+            case 'profile':
+                return (
+                    <View>
+                        <Text style={styles.stepTitle}>Choose AI Profile</Text>
+                        <Text style={styles.stepDescription}>
+                            Select a pre-configured AI profile or set up manually
+                        </Text>
+
+                        <ItemGroup title="Built-in Profiles">
+                            {builtInProfiles.map((profile) => (
+                                <Pressable
+                                    key={profile.id}
+                                    onPress={() => setSelectedProfileId(profile.id)}
+                                >
+                                    <Item
+                                        icon="person-outline"
+                                        title={profile.name}
+                                        subtitle={profile.description}
+                                        rightElement={selectedProfileId === profile.id ? (
+                                            <Ionicons
+                                                name="checkmark-circle"
+                                                size={20}
+                                                color={theme.colors.button.primary.background}
+                                            />
+                                        ) : null}
+                                    />
+                                </Pressable>
+                            ))}
+                        </ItemGroup>
+
+                        {profiles.length > 0 && (
+                            <ItemGroup title="Custom Profiles">
+                                {profiles.map((profile) => (
+                                    <Pressable
+                                        key={profile.id}
+                                        onPress={() => setSelectedProfileId(profile.id)}
+                                    >
+                                        <Item
+                                            icon="person-outline"
+                                            title={profile.name}
+                                            subtitle={profile.description}
+                                            rightElement={selectedProfileId === profile.id ? (
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={20}
+                                                    color={theme.colors.button.primary.background}
+                                                />
+                                            ) : null}
+                                        />
+                                    </Pressable>
+                                ))}
+                            </ItemGroup>
+                        )}
+
+                        <ItemGroup title="Manual Configuration">
+                            <Pressable onPress={() => setSelectedProfileId(null)}>
+                                <Item
+                                    icon="settings"
+                                    title="Manual Configuration"
+                                    subtitle="Configure AI backend manually"
+                                    rightElement={selectedProfileId === null ? (
+                                        <Ionicons
+                                            name="checkmark-circle"
+                                            size={20}
+                                            color={theme.colors.button.primary.background}
+                                        />
+                                    ) : null}
+                                />
+                            </Pressable>
+                        </ItemGroup>
+                    </View>
+                );
+
+            case 'profileConfig':
+                if (!selectedProfileId || !profileNeedsConfiguration(selectedProfileId)) {
+                    // Skip configuration if no profile selected or profile doesn't need configuration
+                    setCurrentStep(steps[currentStepIndex + 1]);
+                    return null;
+                }
+
+                return (
+                    <View>
+                        <Text style={styles.stepTitle}>Configure {allProfiles.find(p => p.id === selectedProfileId)?.name || 'Profile'}</Text>
+                        <Text style={styles.stepDescription}>
+                            Enter your API keys and configuration details
+                        </Text>
+
+                        <ItemGroup title="Required Configuration">
+                            {getProfileRequiredFields(selectedProfileId).map((field) => (
+                                <View key={field.key} style={{ marginBottom: 16 }}>
+                                    <Text style={{
+                                        fontSize: 16,
+                                        fontWeight: '600',
+                                        color: theme.colors.text,
+                                        marginBottom: 8,
+                                        ...Typography.default('semiBold'),
+                                    }}>
+                                        {field.label}
+                                    </Text>
+                                    <TextInput
+                                        style={[
+                                            styles.textInput,
+                                            { fontFamily: 'monospace' } // Monospace font for API keys
+                                        ]}
+                                        placeholder={field.placeholder}
+                                        placeholderTextColor={theme.colors.textSecondary}
+                                        value={(profileApiKeys[selectedProfileId!] as any)?.[field.key] || (profileConfigs[selectedProfileId!] as any)?.[field.key] || ''}
+                                        onChangeText={(text) => {
+                                            if (field.isPassword) {
+                                                // API key
+                                                setProfileApiKeys(prev => ({
+                                                    ...prev,
+                                                    [selectedProfileId!]: {
+                                                        ...(prev[selectedProfileId!] as Record<string, string> || {}),
+                                                        [field.key]: text
+                                                    }
+                                                }));
+                                            } else {
+                                                // Configuration field
+                                                setProfileConfigs(prev => ({
+                                                    ...prev,
+                                                    [selectedProfileId!]: {
+                                                        ...(prev[selectedProfileId!] as Record<string, string> || {}),
+                                                        [field.key]: text
+                                                    }
+                                                }));
+                                            }
+                                        }}
+                                        secureTextEntry={field.isPassword}
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                        returnKeyType="next"
+                                    />
+                                </View>
+                            ))}
+                        </ItemGroup>
+
+                        <View style={{
+                            backgroundColor: theme.colors.input.background,
+                            padding: 12,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: theme.colors.divider,
+                            marginTop: 16,
+                        }}>
+                            <Text style={{
+                                fontSize: 14,
+                                color: theme.colors.textSecondary,
+                                marginBottom: 4,
+                            }}>
+                                💡 Tip: Your API keys are only used for this session and are not stored permanently
+                            </Text>
+                        </View>
+                    </View>
+                );
+
             case 'sessionType':
                 return (
                     <View>
-                        <Text style={styles.stepTitle}>Choose Session Type</Text>
+                        <Text style={styles.stepTitle}>Choose AI Backend & Session Type</Text>
                         <Text style={styles.stepDescription}>
-                            Select how you want to work with your code
+                            Select your AI provider and how you want to work with your code
                         </Text>
+
+                        <ItemGroup title="AI Backend">
+                            {[
+                                {
+                                    id: 'anthropic',
+                                    name: 'Anthropic Claude',
+                                    description: 'Advanced reasoning and coding assistant',
+                                    icon: 'cube-outline',
+                                    agentType: 'claude' as const
+                                },
+                                {
+                                    id: 'openai',
+                                    name: 'OpenAI GPT-5',
+                                    description: 'Specialized coding assistant',
+                                    icon: 'code-outline',
+                                    agentType: 'codex' as const
+                                },
+                                {
+                                    id: 'deepseek',
+                                    name: 'DeepSeek Reasoner',
+                                    description: 'Advanced reasoning model',
+                                    icon: 'analytics-outline',
+                                    agentType: 'claude' as const
+                                },
+                                {
+                                    id: 'zai',
+                                    name: 'Z.ai',
+                                    description: 'AI assistant for development',
+                                    icon: 'flash-outline',
+                                    agentType: 'claude' as const
+                                },
+                                {
+                                    id: 'microsoft',
+                                    name: 'Microsoft Azure',
+                                    description: 'Enterprise AI services',
+                                    icon: 'cloud-outline',
+                                    agentType: 'codex' as const
+                                },
+                            ].map((backend) => (
+                                <Item
+                                    key={backend.id}
+                                    title={backend.name}
+                                    subtitle={backend.description}
+                                    leftElement={
+                                        <Ionicons
+                                            name={backend.icon as any}
+                                            size={24}
+                                            color={theme.colors.textSecondary}
+                                        />
+                                    }
+                                    rightElement={agentType === backend.agentType ? (
+                                        <Ionicons
+                                            name="checkmark-circle"
+                                            size={20}
+                                            color={theme.colors.button.primary.background}
+                                        />
+                                    ) : null}
+                                    onPress={() => setAgentType(backend.agentType)}
+                                    showChevron={false}
+                                    selected={agentType === backend.agentType}
+                                    showDivider={true}
+                                />
+                            ))}
+                        </ItemGroup>
+
                         <SessionTypeSelector
                             value={sessionType}
                             onChange={setSessionType}
@@ -341,12 +803,46 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                             Select which AI assistant you want to use
                         </Text>
 
+                        {selectedProfileId && (
+                            <View style={{
+                                backgroundColor: theme.colors.input.background,
+                                padding: 12,
+                                borderRadius: 8,
+                                marginBottom: 16,
+                                borderWidth: 1,
+                                borderColor: theme.colors.divider
+                            }}>
+                                <Text style={{
+                                    fontSize: 14,
+                                    color: theme.colors.textSecondary,
+                                    marginBottom: 4
+                                }}>
+                                    Profile: {allProfiles.find(p => p.id === selectedProfileId)?.name || 'Unknown'}
+                                </Text>
+                                <Text style={{
+                                    fontSize: 12,
+                                    color: theme.colors.textSecondary
+                                }}>
+                                    {allProfiles.find(p => p.id === selectedProfileId)?.description}
+                                </Text>
+                            </View>
+                        )}
+
                         <Pressable
                             style={[
                                 styles.agentOption,
-                                agentType === 'claude' ? styles.agentOptionSelected : styles.agentOptionUnselected
+                                agentType === 'claude' ? styles.agentOptionSelected : styles.agentOptionUnselected,
+                                selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.claude && {
+                                    opacity: 0.5,
+                                    backgroundColor: theme.colors.surface
+                                }
                             ]}
-                            onPress={() => setAgentType('claude')}
+                            onPress={() => {
+                                if (!selectedProfileId || allProfiles.find(p => p.id === selectedProfileId)?.compatibility.claude) {
+                                    setAgentType('claude');
+                                }
+                            }}
+                            disabled={!!(selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.claude)}
                         >
                             <View style={styles.agentIcon}>
                                 <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>C</Text>
@@ -356,6 +852,11 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 <Text style={styles.agentDescription}>
                                     Anthropic's AI assistant, great for coding and analysis
                                 </Text>
+                                {selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.claude && (
+                                    <Text style={{ fontSize: 12, color: theme.colors.textDestructive, marginTop: 4 }}>
+                                        Not compatible with selected profile
+                                    </Text>
+                                )}
                             </View>
                             {agentType === 'claude' && (
                                 <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
@@ -365,9 +866,18 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                         <Pressable
                             style={[
                                 styles.agentOption,
-                                agentType === 'codex' ? styles.agentOptionSelected : styles.agentOptionUnselected
+                                agentType === 'codex' ? styles.agentOptionSelected : styles.agentOptionUnselected,
+                                selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.codex && {
+                                    opacity: 0.5,
+                                    backgroundColor: theme.colors.surface
+                                }
                             ]}
-                            onPress={() => setAgentType('codex')}
+                            onPress={() => {
+                                if (!selectedProfileId || allProfiles.find(p => p.id === selectedProfileId)?.compatibility.codex) {
+                                    setAgentType('codex');
+                                }
+                            }}
+                            disabled={!!(selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.codex)}
                         >
                             <View style={styles.agentIcon}>
                                 <Text style={{ color: 'white', fontSize: 16, fontWeight: 'bold' }}>X</Text>
@@ -377,6 +887,11 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                                 <Text style={styles.agentDescription}>
                                     OpenAI's specialized coding assistant
                                 </Text>
+                                {selectedProfileId && !allProfiles.find(p => p.id === selectedProfileId)?.compatibility.codex && (
+                                    <Text style={{ fontSize: 12, color: theme.colors.textDestructive, marginTop: 4 }}>
+                                        Not compatible with selected profile
+                                    </Text>
+                                )}
                             </View>
                             {agentType === 'codex' && (
                                 <Ionicons name="checkmark-circle" size={24} color={theme.colors.button.primary.background} />
@@ -392,6 +907,31 @@ export function NewSessionWizard({ onComplete, onCancel, initialPrompt = '' }: N
                         <Text style={styles.stepDescription}>
                             Configure how the AI agent should behave
                         </Text>
+
+                        {selectedProfileId && (
+                            <View style={{
+                                backgroundColor: theme.colors.input.background,
+                                padding: 12,
+                                borderRadius: 8,
+                                marginBottom: 16,
+                                borderWidth: 1,
+                                borderColor: theme.colors.divider
+                            }}>
+                                <Text style={{
+                                    fontSize: 14,
+                                    color: theme.colors.textSecondary,
+                                    marginBottom: 4
+                                }}>
+                                    Using profile: {allProfiles.find(p => p.id === selectedProfileId)?.name || 'Unknown'}
+                                </Text>
+                                <Text style={{
+                                    fontSize: 12,
+                                    color: theme.colors.textSecondary
+                                }}>
+                                    Environment variables will be applied automatically
+                                </Text>
+                            </View>
+                        )}
                         <ItemGroup title="Permission Mode">
                             {([
                                 { value: 'default', label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
