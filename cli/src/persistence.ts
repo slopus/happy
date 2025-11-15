@@ -11,6 +11,7 @@ import { constants } from 'node:fs'
 import { configuration } from '@/configuration'
 import * as z from 'zod';
 import { encodeBase64 } from '@/api/encryption';
+import { logger } from '@/ui/logger';
 
 // AI backend profile schema - MUST match happy app exactly
 // Using same Zod schema as GUI for runtime validation consistency
@@ -157,6 +158,9 @@ export function validateProfile(profile: unknown): AIBackendProfile {
 // Profile versioning system
 export const CURRENT_PROFILE_VERSION = '1.0.0';
 
+// Settings schema version (for backwards compatibility)
+export const SUPPORTED_SCHEMA_VERSION = 2;
+
 // Profile version validation
 export function validateProfileVersion(profile: AIBackendProfile): boolean {
   // Simple semver validation for now
@@ -173,6 +177,8 @@ export function isProfileVersionCompatible(profileVersion: string, requiredVersi
 }
 
 interface Settings {
+  // Schema version for backwards compatibility
+  schemaVersion: number
   onboardingCompleted: boolean
   // This ID is used as the actual database ID on the server
   // All machine operations use this ID
@@ -187,9 +193,37 @@ interface Settings {
 }
 
 const defaultSettings: Settings = {
+  schemaVersion: SUPPORTED_SCHEMA_VERSION,
   onboardingCompleted: false,
   profiles: [],
   localEnvironmentVariables: {}
+}
+
+/**
+ * Migrate settings from old schema versions to current
+ * Always backwards compatible - preserves all data
+ */
+function migrateSettings(raw: any, fromVersion: number): any {
+  let migrated = { ...raw };
+
+  // Migration from v1 to v2 (added profile support)
+  if (fromVersion < 2) {
+    // Ensure profiles array exists
+    if (!migrated.profiles) {
+      migrated.profiles = [];
+    }
+    // Ensure localEnvironmentVariables exists
+    if (!migrated.localEnvironmentVariables) {
+      migrated.localEnvironmentVariables = {};
+    }
+    // Update schema version
+    migrated.schemaVersion = 2;
+  }
+
+  // Future migrations go here:
+  // if (fromVersion < 3) { ... }
+
+  return migrated;
 }
 
 /**
@@ -211,9 +245,47 @@ export async function readSettings(): Promise<Settings> {
   }
 
   try {
+    // Read raw settings
     const content = await readFile(configuration.settingsFile, 'utf8')
-    return JSON.parse(content)
-  } catch {
+    const raw = JSON.parse(content)
+
+    // Check schema version (default to 1 if missing)
+    const schemaVersion = raw.schemaVersion ?? 1;
+
+    // Warn if schema version is newer than supported
+    if (schemaVersion > SUPPORTED_SCHEMA_VERSION) {
+      logger.warn(
+        `⚠️ Settings schema v${schemaVersion} > supported v${SUPPORTED_SCHEMA_VERSION}. ` +
+        'Update happy-cli for full functionality.'
+      );
+    }
+
+    // Migrate if needed
+    const migrated = migrateSettings(raw, schemaVersion);
+
+    // Validate and clean profiles gracefully (don't crash on invalid profiles)
+    if (migrated.profiles && Array.isArray(migrated.profiles)) {
+      const validProfiles: AIBackendProfile[] = [];
+      for (const profile of migrated.profiles) {
+        try {
+          const validated = AIBackendProfileSchema.parse(profile);
+          validProfiles.push(validated);
+        } catch (error: any) {
+          logger.warn(
+            `⚠️ Invalid profile "${profile?.name || profile?.id || 'unknown'}" - skipping. ` +
+            `Error: ${error.message}`
+          );
+          // Continue processing other profiles
+        }
+      }
+      migrated.profiles = validProfiles;
+    }
+
+    // Merge with defaults to ensure all required fields exist
+    return { ...defaultSettings, ...migrated };
+  } catch (error: any) {
+    logger.error(`Failed to read settings: ${error.message}`);
+    // Return defaults on any error
     return { ...defaultSettings }
   }
 }
@@ -223,7 +295,13 @@ export async function writeSettings(settings: Settings): Promise<void> {
     await mkdir(configuration.happyHomeDir, { recursive: true })
   }
 
-  await writeFile(configuration.settingsFile, JSON.stringify(settings, null, 2))
+  // Ensure schema version is set before writing
+  const settingsWithVersion = {
+    ...settings,
+    schemaVersion: settings.schemaVersion ?? SUPPORTED_SCHEMA_VERSION
+  };
+
+  await writeFile(configuration.settingsFile, JSON.stringify(settingsWithVersion, null, 2))
 }
 
 /**
