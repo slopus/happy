@@ -10,6 +10,7 @@ import { layout } from '@/components/layout';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWindowDimensions } from 'react-native';
 import { AIBackendProfile } from '@/sync/settings';
+import { randomUUID } from 'expo-crypto';
 
 interface ProfileDisplay {
     id: string;
@@ -109,7 +110,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
 
     const handleAddProfile = () => {
         setEditingProfile({
-            id: Date.now().toString(),
+            id: randomUUID(),
             name: '',
             anthropicConfig: {},
             environmentVariables: [],
@@ -176,7 +177,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
         if (isBuiltIn) {
             const newProfile: AIBackendProfile = {
                 ...profile,
-                id: Date.now().toString(), // Generate new ID for custom profile
+                id: randomUUID(), // Generate new UUID for custom profile
             };
 
             // Check for duplicate names (excluding the new profile)

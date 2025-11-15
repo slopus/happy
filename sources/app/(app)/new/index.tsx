@@ -21,9 +21,10 @@ import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { StyleSheet } from 'react-native-unistyles';
+import { randomUUID } from 'expo-crypto';
 
 // Wizard steps
-type WizardStep = 'welcome' | 'ai-backend' | 'tmux-config' | 'session-details' | 'creating';
+type WizardStep = 'welcome' | 'ai-backend' | 'session-details' | 'creating';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -575,9 +576,7 @@ function NewSessionWizard() {
                 }
                 break;
             case 'ai-backend':
-                setCurrentStep('tmux-config');
-                break;
-            case 'tmux-config':
+                // Skip tmux-config step - configure tmux in profile settings instead
                 setCurrentStep('session-details');
                 break;
             case 'session-details':
@@ -591,14 +590,11 @@ function NewSessionWizard() {
             case 'ai-backend':
                 setCurrentStep('welcome');
                 break;
-            case 'tmux-config':
-                setCurrentStep('ai-backend');
-                break;
             case 'session-details':
                 if (selectedProfileId) {
                     setCurrentStep('welcome');
                 } else {
-                    setCurrentStep('tmux-config');
+                    setCurrentStep('ai-backend');
                 }
                 break;
         }
@@ -624,7 +620,7 @@ function NewSessionWizard() {
         }
 
         const newProfile: AIBackendProfile = {
-            id: `custom-${Date.now()}`,
+            id: randomUUID(),
             name: newProfileName.trim(),
             description: newProfileDescription.trim() || undefined,
             compatibility: {
@@ -921,46 +917,12 @@ function NewSessionWizard() {
                     </View>
                 );
 
-            case 'tmux-config':
-                return (
-                    <View style={styles.wizardCard}>
-                        <View style={styles.stepHeader}>
-                            <View style={styles.stepNumber}>
-                                <Text style={styles.stepNumberText}>3</Text>
-                            </View>
-                            <Text style={styles.stepTitle}>Tmux Configuration</Text>
-                        </View>
-                        <Text style={styles.stepDescription}>
-                            Configure tmux session settings for terminal management. This allows you to see and manage your AI sessions in tmux.
-                        </Text>
-
-                        <Text style={styles.stepDescription}>
-                            Tmux configuration will be added here in the next iteration. For now, your profile will use default settings.
-                        </Text>
-
-                        <View style={styles.buttonContainer}>
-                            <Pressable
-                                style={[styles.button, styles.buttonSecondary]}
-                                onPress={goToPreviousStep}
-                            >
-                                <Text style={styles.buttonTextSecondary}>Back</Text>
-                            </Pressable>
-                            <Pressable
-                                style={[styles.button, styles.buttonPrimary]}
-                                onPress={createNewProfile}
-                            >
-                                <Text style={styles.buttonText}>Create Profile</Text>
-                            </Pressable>
-                        </View>
-                    </View>
-                );
-
             case 'session-details':
                 return (
                     <View style={styles.wizardCard}>
                         <View style={styles.stepHeader}>
                             <View style={styles.stepNumber}>
-                                <Text style={styles.stepNumberText}>{selectedProfileId ? '2' : '4'}</Text>
+                                <Text style={styles.stepNumberText}>{selectedProfileId ? '2' : '3'}</Text>
                             </View>
                             <Text style={styles.stepTitle}>Session Details</Text>
                         </View>
