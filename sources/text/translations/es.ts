@@ -69,6 +69,17 @@ export const es: TranslationStructure = {
         status: 'Estado',
     },
 
+    profiles: {
+        // AI backend profile management
+        title: 'Perfiles de Backend de IA',
+        delete: {
+            title: 'Eliminar Perfil',
+            message: ({ name }: { name: string }) => `¿Estás seguro de que quieres eliminar "${name}"? Esta acción no se puede deshacer.`,
+            confirm: 'Eliminar',
+            cancel: 'Cancelar',
+        },
+    },
+
     status: {
         connected: 'conectado',
         connecting: 'conectando',

@@ -71,6 +71,17 @@ export const zhHans: TranslationStructure = {
         status: '状态',
     },
 
+    profiles: {
+        // AI backend profile management
+        title: 'AI 后端配置',
+        delete: {
+            title: '删除配置',
+            message: ({ name }: { name: string }) => `确定要删除"${name}"吗？此操作无法撤销。`,
+            confirm: '删除',
+            cancel: '取消',
+        },
+    },
+
     status: {
         connected: '已连接',
         connecting: '连接中',

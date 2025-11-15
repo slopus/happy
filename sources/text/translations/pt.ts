@@ -69,6 +69,17 @@ export const pt: TranslationStructure = {
         status: 'Status',
     },
 
+    profiles: {
+        // AI backend profile management
+        title: 'Perfis de Backend de IA',
+        delete: {
+            title: 'Excluir Perfil',
+            message: ({ name }: { name: string }) => `Tem certeza de que deseja excluir "${name}"? Esta ação não pode ser desfeita.`,
+            confirm: 'Excluir',
+            cancel: 'Cancelar',
+        },
+    },
+
     status: {
         connected: 'conectado',
         connecting: 'conectando',

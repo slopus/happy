@@ -154,7 +154,13 @@ export function isProfileVersionCompatible(profileVersion: string, requiredVersi
 // Settings Schema
 //
 
+// Current schema version for backward compatibility
+export const SUPPORTED_SCHEMA_VERSION = 2;
+
 export const SettingsSchema = z.object({
+    // Schema version for compatibility detection
+    schemaVersion: z.number().default(SUPPORTED_SCHEMA_VERSION).describe('Settings schema version for compatibility checks'),
+
     viewInline: z.boolean().describe('Whether to view inline tool calls'),
     inferenceOpenAIKey: z.string().nullish().describe('OpenAI API key for inference'),
     expandTodos: z.boolean().describe('Whether to expand todo lists'),
@@ -204,6 +210,7 @@ export type Settings = z.infer<typeof SettingsSchema>;
 //
 
 export const settingsDefaults: Settings = {
+    schemaVersion: SUPPORTED_SCHEMA_VERSION,
     viewInline: false,
     inferenceOpenAIKey: null,
     expandTodos: true,

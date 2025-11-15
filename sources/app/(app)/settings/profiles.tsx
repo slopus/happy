@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, TextInput } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettingMutable } from '@/sync/storage';
 import { useUnistyles } from 'react-native-unistyles';
@@ -129,19 +129,36 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
     };
 
     const handleDeleteProfile = (profile: AIBackendProfile) => {
-        // Auto-delete profile (confirmed by design decision)
-        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
-        setProfiles(updatedProfiles);
+        // Show confirmation dialog before deleting
+        Alert.alert(
+            t('profiles.delete.title'),
+            t('profiles.delete.message', { name: profile.name }),
+            [
+                {
+                    text: t('profiles.delete.cancel'),
+                    style: 'cancel',
+                },
+                {
+                    text: t('profiles.delete.confirm'),
+                    style: 'destructive',
+                    onPress: () => {
+                        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
+                        setProfiles(updatedProfiles);
 
-        // Clear last used profile if it was deleted
-        if (lastUsedProfile === profile.id) {
-            setLastUsedProfile(null);
-        }
+                        // Clear last used profile if it was deleted
+                        if (lastUsedProfile === profile.id) {
+                            setLastUsedProfile(null);
+                        }
 
-        // Notify parent if this was the selected profile
-        if (selectedProfileId === profile.id && onProfileSelect) {
-            onProfileSelect(null);
-        }
+                        // Notify parent if this was the selected profile
+                        if (selectedProfileId === profile.id && onProfileSelect) {
+                            onProfileSelect(null);
+                        }
+                    },
+                },
+            ],
+            { cancelable: true }
+        );
     };
 
     const handleSelectProfile = (profileId: string | null) => {
