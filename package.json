@@ -16,7 +16,17 @@
     "ota:production": "npx eas-cli@latest workflow:run ota.yaml",
     "typecheck": "tsc --noEmit",
     "postinstall": "patch-package",
-    "generate-theme": "tsx sources/theme.gen.ts"
+    "generate-theme": "tsx sources/theme.gen.ts",
+    "// ==== Development/Preview/Production Variants ====": "",
+    "ios:dev": "cross-env APP_ENV=development expo run:ios",
+    "ios:preview": "cross-env APP_ENV=preview expo run:ios",
+    "ios:production": "cross-env APP_ENV=production expo run:ios",
+    "android:dev": "cross-env APP_ENV=development expo run:android",
+    "android:preview": "cross-env APP_ENV=preview expo run:android",
+    "android:production": "cross-env APP_ENV=production expo run:android",
+    "start:dev": "cross-env APP_ENV=development expo start",
+    "start:preview": "cross-env APP_ENV=preview expo start",
+    "start:production": "cross-env APP_ENV=production expo start"
   },
   "jest": {
     "preset": "jest-expo"
@@ -159,6 +169,7 @@
     "@stablelib/hex": "^2.0.1",
     "@types/react": "~19.1.10",
     "babel-plugin-transform-remove-console": "^6.9.4",
+    "cross-env": "^10.1.0",
     "patch-package": "^8.0.0",
     "react-test-renderer": "19.0.0",
     "tsx": "^4.20.4",
