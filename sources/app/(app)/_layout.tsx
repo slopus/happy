@@ -305,13 +305,6 @@ export default function RootLayout() {
                 }}
             />
             <Stack.Screen
-                name="new/pick/path"
-                options={{
-                    headerTitle: '',
-                    headerBackTitle: t('common.back'),
-                }}
-            />
-            <Stack.Screen
                 name="new/index"
                 options={{
                     headerTitle: t('newSession.title'),

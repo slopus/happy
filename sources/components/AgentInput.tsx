@@ -19,163 +19,10 @@ import { applySuggestion } from './autocomplete/applySuggestion';
 import { GitStatusBadge, useHasMeaningfulGitStatus } from './GitStatusBadge';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSetting } from '@/sync/storage';
-import { AIBackendProfile } from '@/sync/settings';
 import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
-
-interface ProfileDisplay {
-    id: string;
-    name: string;
-    isBuiltIn: boolean;
-}
-
-// Default built-in profiles
-const DEFAULT_PROFILES: ProfileDisplay[] = [
-    {
-        id: 'anthropic',
-        name: 'Anthropic (Default)',
-        isBuiltIn: true,
-    },
-    {
-        id: 'deepseek',
-        name: 'DeepSeek (Reasoner)',
-        isBuiltIn: true,
-    },
-    {
-        id: 'zai',
-        name: 'Z.AI (GLM-4.6)',
-        isBuiltIn: true,
-    },
-    {
-        id: 'openai',
-        name: 'OpenAI (GPT-5)',
-        isBuiltIn: true,
-    },
-    {
-        id: 'azure-openai',
-        name: 'Azure OpenAI',
-        isBuiltIn: true,
-    },
-    {
-        id: 'together',
-        name: 'Together AI',
-        isBuiltIn: true,
-    }
-];
-
-// Built-in profile configurations
-const getBuiltInProfile = (id: string): AIBackendProfile | null => {
-    switch (id) {
-        case 'anthropic':
-            return {
-                id: 'anthropic',
-                name: 'Anthropic (Default)',
-                anthropicConfig: {},
-                environmentVariables: [],
-                compatibility: { claude: true, codex: false },
-                isBuiltIn: true,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                version: '1.0.0',
-            };
-        case 'deepseek':
-            return {
-                id: 'deepseek',
-                name: 'DeepSeek (Reasoner)',
-                anthropicConfig: {
-                    baseUrl: 'https://api.deepseek.com/anthropic',
-                    model: 'deepseek-reasoner',
-                },
-                environmentVariables: [
-                    { name: 'DEEPSEEK_API_TIMEOUT_MS', value: '600000' },
-                    { name: 'DEEPSEEK_SMALL_FAST_MODEL', value: 'deepseek-chat' },
-                    { name: 'DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
-                    { name: 'API_TIMEOUT_MS', value: '600000' },
-                    { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: 'deepseek-chat' },
-                    { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
-                ],
-                compatibility: { claude: true, codex: false },
-                isBuiltIn: true,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                version: '1.0.0',
-            };
-        case 'zai':
-            return {
-                id: 'zai',
-                name: 'Z.AI (GLM-4.6)',
-                anthropicConfig: {
-                    baseUrl: 'https://api.z.ai/api/anthropic',
-                    model: 'glm-4.6',
-                },
-                environmentVariables: [],
-                compatibility: { claude: true, codex: false },
-                isBuiltIn: true,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                version: '1.0.0',
-            };
-        case 'openai':
-            return {
-                id: 'openai',
-                name: 'OpenAI (GPT-5)',
-                openaiConfig: {
-                    baseUrl: 'https://api.openai.com/v1',
-                    model: 'gpt-5-codex-high',
-                },
-                environmentVariables: [
-                    { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
-                    { name: 'OPENAI_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
-                    { name: 'API_TIMEOUT_MS', value: '600000' },
-                    { name: 'CODEX_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
-                ],
-                compatibility: { claude: false, codex: true },
-                isBuiltIn: true,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                version: '1.0.0',
-            };
-        case 'azure-openai':
-            return {
-                id: 'azure-openai',
-                name: 'Azure OpenAI',
-                azureOpenAIConfig: {
-                    apiVersion: '2024-02-15-preview',
-                    deploymentName: 'gpt-5-codex',
-                },
-                environmentVariables: [
-                    { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
-                    { name: 'API_TIMEOUT_MS', value: '600000' },
-                ],
-                compatibility: { claude: false, codex: true },
-                isBuiltIn: true,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                version: '1.0.0',
-            };
-        case 'together':
-            return {
-                id: 'together',
-                name: 'Together AI',
-                togetherAIConfig: {
-                    model: 'meta-llama/Llama-3.1-405B-Instruct-Turbo',
-                },
-                environmentVariables: [
-                    { name: 'OPENAI_BASE_URL', value: 'https://api.together.xyz/v1' },
-                    { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
-                    { name: 'API_TIMEOUT_MS', value: '600000' },
-                ],
-                compatibility: { claude: false, codex: true },
-                isBuiltIn: true,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                version: '1.0.0',
-            };
-        default:
-            return null;
-    }
-};
+import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 
 interface AgentInputProps {
     value: string;
@@ -219,10 +66,8 @@ interface AgentInputProps {
     isSendDisabled?: boolean;
     isSending?: boolean;
     minHeight?: number;
-    selectedProfileId?: string | null;
-    onProfileChange?: (profileId: string | null) => void;
-    compatibleProfiles?: any[];
-    isCurrentProfileCompatible?: boolean;
+    profileId?: string | null;
+    onProfileClick?: () => void;
 }
 
 const MAX_CONTEXT_SIZE = 190000;
@@ -442,124 +287,22 @@ const getContextWarning = (contextSize: number, alwaysShow: boolean = false, the
     return null; // No display needed
 };
 
-// Helper function to determine profile compatibility with agents
-const getProfileCompatibility = (profile: AIBackendProfile): {
-    compatibleWith: 'claude' | 'codex' | 'both';
-    claudeOptimized: boolean;
-    codexOptimized: boolean;
-} => {
-    // Built-in profiles that are known to be optimized for specific agents
-    const claudeOptimizedProfiles = ['anthropic', 'deepseek', 'zai'];
-    const codexOptimizedProfiles = ['openai', 'azure-openai', 'together'];
-
-    const claudeOptimized = claudeOptimizedProfiles.includes(profile.id);
-    const codexOptimized = codexOptimizedProfiles.includes(profile.id);
-
-    // Check for agent-specific configurations using new schema
-    const hasClaudeConfig = profile.anthropicConfig && (
-        profile.anthropicConfig.baseUrl ||
-        profile.anthropicConfig.authToken ||
-        profile.anthropicConfig.model
-    );
-    const hasCodexConfig = (profile.openaiConfig || profile.azureOpenAIConfig || profile.togetherAIConfig);
-
-    // Check environment variables for agent-specific patterns
-    const hasClaudeCustomVars = profile.environmentVariables?.some(envVar =>
-        envVar.name.startsWith('ANTHROPIC_') || envVar.name.includes('CLAUDE')
-    ) || false;
-    const hasCodexCustomVars = profile.environmentVariables?.some(envVar =>
-        envVar.name.startsWith('OPENAI_') ||
-        envVar.name.startsWith('AZURE_') ||
-        envVar.name.startsWith('TOGETHER_') ||
-        envVar.name.includes('CODEX')
-    ) || false;
-
-    // Use compatibility field from profile if available
-    if (profile.compatibility) {
-        if (profile.compatibility.claude && !profile.compatibility.codex) {
-            return { compatibleWith: 'claude', claudeOptimized: true, codexOptimized: false };
-        } else if (profile.compatibility.codex && !profile.compatibility.claude) {
-            return { compatibleWith: 'codex', claudeOptimized: false, codexOptimized: true };
-        }
-    }
-
-    // Determine compatibility based on configurations
-    if (claudeOptimized && !hasCodexConfig && !hasCodexCustomVars) {
-        return { compatibleWith: 'claude', claudeOptimized: true, codexOptimized: false };
-    } else if (codexOptimized && !hasClaudeConfig && !hasClaudeCustomVars) {
-        return { compatibleWith: 'codex', claudeOptimized: false, codexOptimized: true };
-    } else if (hasClaudeConfig || hasClaudeCustomVars) {
-        return { compatibleWith: 'claude', claudeOptimized: true, codexOptimized: false };
-    } else if (hasCodexConfig || hasCodexCustomVars) {
-        return { compatibleWith: 'codex', claudeOptimized: false, codexOptimized: true };
-    }
-
-    // Default to both compatible for generic profiles
-    return { compatibleWith: 'both', claudeOptimized: false, codexOptimized: false };
-};
-
-// Helper function to get compatibility display info
-const getCompatibilityDisplay = (profile: AIBackendProfile, currentAgentType: 'claude' | 'codex' | undefined) => {
-    const compatibility = getProfileCompatibility(profile);
-
-    if (!currentAgentType) {
-        // No agent selected, show optimization info
-        if (compatibility.compatibleWith === 'claude') {
-            return {
-                text: 'Optimized for Claude',
-                color: '#8B5CF6', // Purple
-                icon: '🤖'
-            };
-        } else if (compatibility.compatibleWith === 'codex') {
-            return {
-                text: 'Optimized for Codex',
-                color: '#3B82F6', // Blue
-                icon: '🧠'
-            };
-        }
-        return {
-            text: 'Universal profile',
-            color: '#6B7280', // Gray
-            icon: '⚙️'
-        };
-    }
-
-    // Agent selected, show compatibility status
-    if (compatibility.compatibleWith === currentAgentType || compatibility.compatibleWith === 'both') {
-        return {
-            text: currentAgentType === 'claude' ? 'Claude compatible' : 'Codex compatible',
-            color: '#10B981', // Green
-            icon: '✓'
-        };
-    } else {
-        return {
-            text: 'Limited compatibility',
-            color: '#F59E0B', // Amber/Orange
-            icon: '⚠️'
-        };
-    }
-};
-
 export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, AgentInputProps>((props, ref) => {
     const styles = stylesheet;
     const { theme } = useUnistyles();
     const screenWidth = useWindowDimensions().width;
 
     const hasText = props.value.trim().length > 0;
-    
+
     // Check if this is a Codex session
     const isCodex = props.metadata?.flavor === 'codex';
 
-    // Load profiles for new session screen
+    // Profile data
     const profiles = useSetting('profiles');
-    const allProfiles = React.useMemo(() => {
-        const builtInProfiles = DEFAULT_PROFILES.map(bp => getBuiltInProfile(bp.id)!);
-        return [...builtInProfiles, ...profiles];
-    }, [profiles]);
-    const profileMap = React.useMemo(() =>
-        new Map(allProfiles.map(p => [p.id, p])),
-        [allProfiles]
-    );
+    const currentProfile = React.useMemo(() => {
+        if (!props.profileId) return null;
+        return profiles.find(p => p.id === props.profileId) || null;
+    }, [profiles, props.profileId]);
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
@@ -654,13 +397,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         props.onModelModeChange?.(mode);
         // Don't close the settings overlay - let users see the change and potentially switch again
     }, [props.onModelModeChange]);
-
-    // Handle profile selection
-    const handleProfileSelect = React.useCallback((profileId: string | null) => {
-        hapticsLight();
-        props.onProfileChange?.(profileId);
-        // Don't close the settings overlay - let users see the change and potentially switch again
-    }, [props.onProfileChange]);
 
     // Handle abort button press
     const handleAbortPress = React.useCallback(async () => {
@@ -866,167 +602,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                                 }}>
                                                     {config.label}
                                                 </Text>
-                                            </Pressable>
-                                        );
-                                    })}
-                                </View>
-
-                                {/* Divider */}
-                                <View style={{
-                                    height: 1,
-                                    backgroundColor: theme.colors.divider,
-                                    marginHorizontal: 16
-                                }} />
-
-                                {/* Profile Section */}
-                                <View style={{ paddingVertical: 8 }}>
-                                    <Text style={{
-                                        fontSize: 12,
-                                        fontWeight: '600',
-                                        color: '#666',
-                                        paddingHorizontal: 16,
-                                        paddingBottom: 4,
-                                        ...Typography.default('semiBold')
-                                    }}>
-                                        {t('profiles.title')}
-                                    </Text>
-
-                                    {/* None option - no profile */}
-                                    <Pressable
-                                        onPress={() => handleProfileSelect(null)}
-                                        style={({ pressed }) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            paddingHorizontal: 16,
-                                            paddingVertical: 8,
-                                            backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
-                                        })}
-                                    >
-                                        <View style={{
-                                            width: 16,
-                                            height: 16,
-                                            borderRadius: 8,
-                                            borderWidth: 2,
-                                            borderColor: !props.selectedProfileId ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                            alignItems: 'center',
-                                            justifyContent: 'center',
-                                            marginRight: 12
-                                        }}>
-                                            {!props.selectedProfileId && (
-                                                <View style={{
-                                                    width: 6,
-                                                    height: 6,
-                                                    borderRadius: 3,
-                                                    backgroundColor: theme.colors.radio.dot
-                                                }} />
-                                            )}
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={{
-                                                fontSize: 14,
-                                                color: !props.selectedProfileId ? theme.colors.radio.active : theme.colors.text,
-                                                ...Typography.default()
-                                            }}>
-                                                {t('profiles.noProfile')}
-                                            </Text>
-                                            <Text style={{
-                                                fontSize: 12,
-                                                color: theme.colors.textSecondary,
-                                                marginTop: 1,
-                                                ...Typography.default()
-                                            }}>
-                                                {t('profiles.noProfileDescription')}
-                                            </Text>
-                                        </View>
-                                    </Pressable>
-
-                                    {/* Profile list */}
-                                    {allProfiles.map((profile) => {
-                                        const isSelected = props.selectedProfileId === profile.id;
-                                        const isBuiltIn = DEFAULT_PROFILES.some(bp => bp.id === profile.id);
-                                        const profileDisplay = DEFAULT_PROFILES.find(bp => bp.id === profile.id);
-                                        const displayName = profileDisplay?.name || `Custom Profile ${profile.id.slice(0, 8)}`;
-
-                                        // Get compatibility display info
-                                        const currentAgentType = props.agentType || (isCodex ? 'codex' : undefined);
-                                        const compatibilityDisplay = getCompatibilityDisplay(profile, currentAgentType);
-
-                                        return (
-                                            <Pressable
-                                                key={profile.id}
-                                                onPress={() => handleProfileSelect(profile.id)}
-                                                style={({ pressed }) => ({
-                                                    flexDirection: 'row',
-                                                    alignItems: 'center',
-                                                    paddingHorizontal: 16,
-                                                    paddingVertical: 8,
-                                                    backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
-                                                })}
-                                            >
-                                                <View style={{
-                                                    width: 16,
-                                                    height: 16,
-                                                    borderRadius: 8,
-                                                    borderWidth: 2,
-                                                    borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    marginRight: 12
-                                                }}>
-                                                    {isSelected && (
-                                                        <View style={{
-                                                            width: 6,
-                                                            height: 6,
-                                                            borderRadius: 3,
-                                                            backgroundColor: theme.colors.radio.dot
-                                                        }} />
-                                                    )}
-                                                </View>
-                                                <View style={{ flex: 1 }}>
-                                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                                                        <Text style={{
-                                                            fontSize: 14,
-                                                            color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                            ...Typography.default()
-                                                        }}>
-                                                            {displayName}
-                                                        </Text>
-                                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                                            <Text style={{
-                                                                fontSize: 10,
-                                                                color: compatibilityDisplay.color,
-                                                                marginRight: 4,
-                                                                ...Typography.default()
-                                                            }}>
-                                                                {compatibilityDisplay.icon}
-                                                            </Text>
-                                                            <Text style={{
-                                                                fontSize: 10,
-                                                                color: compatibilityDisplay.color,
-                                                                ...Typography.default()
-                                                            }}>
-                                                                {compatibilityDisplay.text}
-                                                            </Text>
-                                                        </View>
-                                                    </View>
-                                                    <Text style={{
-                                                        fontSize: 12,
-                                                        color: theme.colors.textSecondary,
-                                                        marginTop: 1,
-                                                        ...Typography.default()
-                                                    }}>
-                                                        {profile.anthropicConfig?.model ||
-                                                         profile.openaiConfig?.model ||
-                                                         profile.azureOpenAIConfig?.deploymentName ||
-                                                         profile.togetherAIConfig?.model ||
-                                                         t('profiles.defaultModel')}
-                                                        {profile.tmuxConfig?.sessionName && ` • tmux: ${profile.tmuxConfig.sessionName}`}
-                                                        {profile.tmuxConfig?.tmpDir && ` • dir: ${profile.tmuxConfig.tmpDir}`}
-                                                        {profile.environmentVariables && profile.environmentVariables.length > 0 &&
-                                                            ` • ${profile.environmentVariables.length} custom vars`
-                                                        }
-                                                    </Text>
-                                                </View>
                                             </Pressable>
                                         );
                                     })}
