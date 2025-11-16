@@ -284,7 +284,7 @@ export async function readSettings(): Promise<Settings> {
     // Merge with defaults to ensure all required fields exist
     return { ...defaultSettings, ...migrated };
   } catch (error: any) {
-    logger.error(`Failed to read settings: ${error.message}`);
+    logger.warn(`Failed to read settings: ${error.message}`);
     // Return defaults on any error
     return { ...defaultSettings }
   }

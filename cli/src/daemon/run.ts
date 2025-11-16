@@ -266,8 +266,13 @@ export async function startDaemon(): Promise<void> {
 
       try {
 
-        // Resolve authentication token if provided
-        let extraEnv: Record<string, string> = {};
+        // Build environment variables with explicit precedence layers:
+        // Layer 1 (base): Authentication tokens - protected, cannot be overridden
+        // Layer 2 (middle): Profile environment variables - GUI profile OR CLI local profile
+        // Layer 3 (top): Auth tokens again to ensure they're never overridden
+
+        // Layer 1: Resolve authentication token if provided
+        const authEnv: Record<string, string> = {};
         if (options.token) {
           if (options.agent === 'codex') {
 
@@ -278,38 +283,49 @@ export async function startDaemon(): Promise<void> {
             fs.writeFile(join(codexHomeDir.name, 'auth.json'), options.token);
 
             // Set the environment variable for Codex
-            extraEnv = {
-              CODEX_HOME: codexHomeDir.name
-            };
+            authEnv.CODEX_HOME = codexHomeDir.name;
           } else { // Assuming claude
-            extraEnv = {
-              CLAUDE_CODE_OAUTH_TOKEN: options.token
-            };
+            authEnv.CLAUDE_CODE_OAUTH_TOKEN = options.token;
           }
         }
 
-        // Add environment variables from active profile (if any)
-        try {
-          const settings = await readSettings();
-          if (settings.activeProfileId) {
-            logger.debug(`[DAEMON RUN] Loading environment variables for active profile: ${settings.activeProfileId}`);
+        // Layer 2: Profile environment variables
+        // Priority: GUI-provided profile > CLI local active profile > none
+        let profileEnv: Record<string, string> = {};
 
-            // Get profile environment variables filtered for agent compatibility
-            const profileEnvVars = await getProfileEnvironmentVariablesForAgent(
-              settings.activeProfileId,
-              options.agent || 'claude'
-            );
+        if (options.environmentVariables && Object.keys(options.environmentVariables).length > 0) {
+          // GUI provided profile environment variables - highest priority for profile settings
+          profileEnv = options.environmentVariables;
+          logger.info(`[DAEMON RUN] Using GUI-provided profile environment variables (${Object.keys(profileEnv).length} vars)`);
+          logger.debug(`[DAEMON RUN] GUI profile env var keys: ${Object.keys(profileEnv).join(', ')}`);
+        } else {
+          // Fallback to CLI local active profile
+          try {
+            const settings = await readSettings();
+            if (settings.activeProfileId) {
+              logger.debug(`[DAEMON RUN] No GUI profile provided, loading CLI local active profile: ${settings.activeProfileId}`);
 
-            // Merge profile environment variables with extraEnv (extraEnv takes precedence)
-            const mergedEnvVars = { ...profileEnvVars, ...extraEnv };
-            extraEnv = mergedEnvVars;
+              // Get profile environment variables filtered for agent compatibility
+              profileEnv = await getProfileEnvironmentVariablesForAgent(
+                settings.activeProfileId,
+                options.agent || 'claude'
+              );
 
-            logger.debug(`[DAEMON RUN] Applied ${Object.keys(profileEnvVars).length} environment variables from active profile for agent ${options.agent || 'claude'}`);
+              logger.debug(`[DAEMON RUN] Loaded ${Object.keys(profileEnv).length} environment variables from CLI local profile for agent ${options.agent || 'claude'}`);
+              logger.debug(`[DAEMON RUN] CLI profile env var keys: ${Object.keys(profileEnv).join(', ')}`);
+            } else {
+              logger.debug('[DAEMON RUN] No CLI local active profile set');
+            }
+          } catch (error) {
+            logger.debug('[DAEMON RUN] Failed to load CLI local profile environment variables:', error);
+            // Continue without profile env vars - this is not a fatal error
           }
-        } catch (error) {
-          logger.debug('[DAEMON RUN] Failed to load profile environment variables:', error);
-          // Continue without profile env vars - this is not a fatal error
         }
+
+        // Final merge: Profile vars first, then auth (auth takes precedence to protect authentication)
+        const extraEnv = { ...profileEnv, ...authEnv };
+        logger.debug(`[DAEMON RUN] Final environment variable keys (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
+
 
         // Check if tmux is available and should be used
         const tmuxAvailable = await isTmuxAvailable();
