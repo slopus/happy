@@ -51,6 +51,88 @@ This will:
 
 Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup instructions, including how to run stable and development versions concurrently.
 
+## 🔧 Development: Running Stable & Dev Versions Concurrently
+
+For developers working on Happy, you can run both stable and development versions simultaneously with complete data isolation.
+
+### Quick Start (One Command)
+
+```bash
+npm run setup:dev
+```
+
+This creates:
+- `~/.happy/` - Stable version data
+- `~/.happy-dev/` - Development version data
+
+### Usage
+
+**Stable version (production-ready):**
+```bash
+npm run stable auth login
+npm run stable:daemon:start
+```
+
+**Development version (testing changes):**
+```bash
+npm run dev:variant auth login
+npm run dev:daemon:start
+```
+
+### All Available Commands
+
+**Stable:**
+```bash
+npm run stable <command>           # Any happy command
+npm run stable:daemon:start        # Start stable daemon
+npm run stable:daemon:stop         # Stop stable daemon
+npm run stable:daemon:status       # Check stable status
+npm run stable:auth <subcommand>   # Auth commands
+```
+
+**Development:**
+```bash
+npm run dev:variant <command>      # Any happy command
+npm run dev:daemon:start           # Start dev daemon
+npm run dev:daemon:stop            # Stop dev daemon
+npm run dev:daemon:status          # Check dev status
+npm run dev:auth <subcommand>      # Auth commands
+```
+
+### Visual Indicators
+
+Both versions show their status on startup:
+- **Stable:** `✅ STABLE MODE - Data: ~/.happy`
+- **Dev:** `🔧 DEV MODE - Data: ~/.happy-dev`
+
+### How It Works
+
+- Uses `HAPPY_HOME_DIR` environment variable (already built-in)
+- Cross-platform via Node.js (works on Windows/macOS/Linux)
+- No manual configuration needed
+- All commands in `package.json` for discoverability
+
+### Advanced: direnv Auto-Switching (Optional)
+
+If you use [direnv](https://direnv.net/):
+
+```bash
+cp .envrc.example .envrc
+direnv allow
+```
+
+Now when you `cd` into your development directory, the environment switches to dev mode automatically!
+
+### Data Isolation
+
+| Aspect | Stable | Development |
+|--------|--------|-------------|
+| Data Directory | `~/.happy/` | `~/.happy-dev/` |
+| Settings | `~/.happy/settings.json` | `~/.happy-dev/settings.json` |
+| Daemon State | `~/.happy/daemon.state.json` | `~/.happy-dev/daemon.state.json` |
+| Logs | `~/.happy/logs/` | `~/.happy-dev/logs/` |
+
+Complete separation - no conflicts!
 
 ## Requirements
 
