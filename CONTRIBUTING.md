@@ -1,14 +1,21 @@
-# Development Workflow: App Variants
+# Contributing to Happy
 
-## Overview
+## Development Workflow: Build Variants
 
-The Happy mobile app supports three build variants, each with separate bundle IDs so all three can be installed simultaneously:
+The Happy app supports three build variants across **iOS, Android, and macOS desktop**, each with separate bundle IDs so all three can be installed simultaneously:
 
 | Variant | Bundle ID | App Name | Use Case |
 |---------|-----------|----------|----------|
-| **Development** | `com.slopus.happy.dev` | Happy (dev) | Active development and testing |
-| **Preview** | `com.slopus.happy.preview` | Happy (preview) | Pre-release testing |
-| **Production** | `com.ex3ndr.happy` | Happy | Public release version |
+| **Development** | `com.slopus.happy.dev` | Happy (dev) | Local development with hot reload |
+| **Preview** | `com.slopus.happy.preview` | Happy (preview) | Beta testing & OTA updates before production |
+| **Production** | `com.ex3ndr.happy` | Happy | Public App Store release |
+
+**Why Preview?**
+- **Development**: Fast iteration, dev server, instant reload
+- **Preview**: Beta testers get OTA updates (`eas update --branch preview`) without app store submission
+- **Production**: Stable App Store builds
+
+This allows you to test production-like builds with real users before releasing to the App Store.
 
 ## Quick Start
 
@@ -37,6 +44,28 @@ npm run android:preview
 # Production variant
 npm run android:production
 ```
+
+### macOS Desktop (Tauri)
+
+```bash
+# Development variant - run with hot reload
+npm run tauri:dev
+
+# Build development variant
+npm run tauri:build:dev
+
+# Build preview variant
+npm run tauri:build:preview
+
+# Build production variant
+npm run tauri:build:production
+```
+
+**How Tauri Variants Work:**
+- Base config: `src-tauri/tauri.conf.json` (production defaults)
+- Partial configs: `tauri.dev.conf.json`, `tauri.preview.conf.json`
+- Tauri merges partial configs using [JSON Merge Patch (RFC 7396)](https://datatracker.ietf.org/doc/html/rfc7396)
+- Only differences need to be specified in partial configs (DRY principle)
 
 ### Development Server
 
