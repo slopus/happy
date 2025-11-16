@@ -316,7 +316,6 @@ export default function RootLayout() {
                 options={{
                     headerTitle: t('newSession.title'),
                     headerBackTitle: t('common.back'),
-                    presentation: 'modal',
                 }}
             />
             <Stack.Screen
