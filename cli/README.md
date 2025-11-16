@@ -47,6 +47,11 @@ This will:
 - `HAPPY_DISABLE_CAFFEINATE` - Disable macOS sleep prevention (set to `true`, `1`, or `yes`)
 - `HAPPY_EXPERIMENTAL` - Enable experimental features (set to `true`, `1`, or `yes`)
 
+## Contributing
+
+Interested in contributing? See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup instructions, including how to run stable and development versions concurrently.
+
+
 ## Requirements
 
 - Node.js >= 20.0.0
