@@ -5,7 +5,9 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { AIBackendProfile } from '@/sync/settings';
-import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
+import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
+import { ItemGroup } from '@/components/ItemGroup';
+import { Item } from '@/components/Item';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -241,18 +243,44 @@ export function ProfileEditForm({
                         fontSize: 14,
                         fontWeight: '600',
                         color: theme.colors.text,
-                        marginBottom: 8,
+                        marginBottom: 12,
                         ...Typography.default('semiBold')
                     }}>
                         Default Permission Mode
                     </Text>
-                    <View style={{ marginBottom: 16 }}>
-                        <PermissionModeSelector
-                            mode={defaultPermissionMode}
-                            onChange={setDefaultPermissionMode}
-                            agentType={agentType}
-                        />
-                    </View>
+                    <ItemGroup title="">
+                        {[
+                            { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
+                            { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
+                            { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
+                            { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
+                        ].map((option, index, array) => (
+                            <Item
+                                key={option.value}
+                                title={option.label}
+                                subtitle={option.description}
+                                leftElement={
+                                    <Ionicons
+                                        name={option.icon as any}
+                                        size={24}
+                                        color={theme.colors.textSecondary}
+                                    />
+                                }
+                                rightElement={defaultPermissionMode === option.value ? (
+                                    <Ionicons
+                                        name="checkmark-circle"
+                                        size={20}
+                                        color={theme.colors.button.primary.background}
+                                    />
+                                ) : null}
+                                onPress={() => setDefaultPermissionMode(option.value)}
+                                showChevron={false}
+                                selected={defaultPermissionMode === option.value}
+                                showDivider={index < array.length - 1}
+                            />
+                        ))}
+                    </ItemGroup>
+                    <View style={{ marginBottom: 16 }} />
 
                     {/* Tmux Session Name */}
                     <Text style={{

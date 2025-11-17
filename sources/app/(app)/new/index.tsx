@@ -3,6 +3,8 @@ import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextI
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
+import { ItemGroup } from '@/components/ItemGroup';
+import { Item } from '@/components/Item';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
@@ -760,36 +762,38 @@ function NewSessionWizard() {
 
                             {/* Section 4: Permission Mode */}
                             <Text style={styles.sectionHeader}>4. Permission Mode</Text>
-                            <View style={styles.permissionGrid}>
+                            <ItemGroup title="">
                                 {[
-                                    { mode: 'default' as PermissionMode, label: 'Default', icon: 'shield-checkmark', desc: 'Ask for permissions' },
-                                    { mode: 'acceptEdits' as PermissionMode, label: 'Accept Edits', icon: 'create', desc: 'Auto-approve edits' },
-                                    { mode: 'plan' as PermissionMode, label: 'Plan', icon: 'list', desc: 'Plan before executing' },
-                                    { mode: 'bypassPermissions' as PermissionMode, label: 'Yolo', icon: 'flash', desc: 'Skip all permissions' },
-                                ].map((option) => (
-                                    <Pressable
-                                        key={option.mode}
-                                        style={[
-                                            styles.permissionButton,
-                                            permissionMode === option.mode && styles.permissionButtonSelected,
-                                        ]}
-                                        onPress={() => setPermissionMode(option.mode)}
-                                    >
-                                        <Ionicons
-                                            name={option.icon as any}
-                                            size={24}
-                                            color={permissionMode === option.mode ? theme.colors.button.primary.background : theme.colors.textSecondary}
-                                        />
-                                        <Text style={[
-                                            styles.permissionButtonText,
-                                            permissionMode === option.mode && styles.permissionButtonTextSelected,
-                                        ]}>
-                                            {option.label}
-                                        </Text>
-                                        <Text style={styles.permissionButtonDesc}>{option.desc}</Text>
-                                    </Pressable>
+                                    { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
+                                    { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
+                                    { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
+                                    { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
+                                ].map((option, index, array) => (
+                                    <Item
+                                        key={option.value}
+                                        title={option.label}
+                                        subtitle={option.description}
+                                        leftElement={
+                                            <Ionicons
+                                                name={option.icon as any}
+                                                size={24}
+                                                color={theme.colors.textSecondary}
+                                            />
+                                        }
+                                        rightElement={permissionMode === option.value ? (
+                                            <Ionicons
+                                                name="checkmark-circle"
+                                                size={20}
+                                                color={theme.colors.button.primary.background}
+                                            />
+                                        ) : null}
+                                        onPress={() => setPermissionMode(option.value)}
+                                        showChevron={false}
+                                        selected={permissionMode === option.value}
+                                        showDivider={index < array.length - 1}
+                                    />
                                 ))}
-                            </View>
+                            </ItemGroup>
 
                             {/* Section 5: Advanced Options (Collapsible) */}
                             {experimentsEnabled && (
