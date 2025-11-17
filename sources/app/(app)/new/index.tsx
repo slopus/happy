@@ -790,38 +790,46 @@ function NewSessionWizard() {
 
                             {/* Section 4: Permission Mode */}
                             <Text style={styles.sectionHeader}>4. Permission Mode</Text>
-                            <ItemGroup title="">
-                                {[
-                                    { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                    { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                                    { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                                    { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
-                                ].map((option, index, array) => (
-                                    <Item
-                                        key={option.value}
-                                        title={option.label}
-                                        subtitle={option.description}
-                                        leftElement={
-                                            <Ionicons
-                                                name={option.icon as any}
-                                                size={24}
-                                                color={theme.colors.textSecondary}
-                                            />
-                                        }
-                                        rightElement={permissionMode === option.value ? (
-                                            <Ionicons
-                                                name="checkmark-circle"
-                                                size={20}
-                                                color={theme.colors.button.primary.background}
-                                            />
-                                        ) : null}
-                                        onPress={() => setPermissionMode(option.value)}
-                                        showChevron={false}
-                                        selected={permissionMode === option.value}
-                                        showDivider={index < array.length - 1}
-                                    />
-                                ))}
-                            </ItemGroup>
+                            <View style={{
+                                borderRadius: 12,
+                                overflow: 'hidden',
+                                borderWidth: 2,
+                                borderColor: 'white',
+                                marginBottom: 16,
+                            }}>
+                                <ItemGroup title="">
+                                    {[
+                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
+                                        { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
+                                        { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
+                                        { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
+                                    ].map((option, index, array) => (
+                                        <Item
+                                            key={option.value}
+                                            title={option.label}
+                                            subtitle={option.description}
+                                            leftElement={
+                                                <Ionicons
+                                                    name={option.icon as any}
+                                                    size={24}
+                                                    color={permissionMode === option.value ? 'white' : theme.colors.textSecondary}
+                                                />
+                                            }
+                                            rightElement={permissionMode === option.value ? (
+                                                <Ionicons
+                                                    name="checkmark-circle"
+                                                    size={20}
+                                                    color="white"
+                                                />
+                                            ) : null}
+                                            onPress={() => setPermissionMode(option.value)}
+                                            showChevron={false}
+                                            selected={permissionMode === option.value}
+                                            showDivider={index < array.length - 1}
+                                        />
+                                    ))}
+                                </ItemGroup>
+                            </View>
 
                             {/* Section 5: Advanced Options (Collapsible) */}
                             {experimentsEnabled && (
