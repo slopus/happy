@@ -760,28 +760,34 @@ function NewSessionWizard() {
                                         Add
                                     </Text>
                                 </Pressable>
-                                {selectedProfile && !selectedProfile.isBuiltIn && (
-                                    <>
-                                        <Pressable
-                                            style={[styles.addProfileButton, { flex: 1 }]}
-                                            onPress={() => selectedProfile && handleDuplicateProfile(selectedProfile)}
-                                        >
-                                            <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                            <Text style={styles.addProfileButtonText}>
-                                                Duplicate
-                                            </Text>
-                                        </Pressable>
-                                        <Pressable
-                                            style={[styles.addProfileButton, { flex: 1 }]}
-                                            onPress={() => selectedProfile && handleDeleteProfile(selectedProfile)}
-                                        >
-                                            <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-                                            <Text style={[styles.addProfileButtonText, { color: '#FF6B6B' }]}>
-                                                Delete
-                                            </Text>
-                                        </Pressable>
-                                    </>
-                                )}
+                                <Pressable
+                                    style={[
+                                        styles.addProfileButton,
+                                        { flex: 1 },
+                                        !selectedProfile && { opacity: 0.4 }
+                                    ]}
+                                    onPress={() => selectedProfile && handleDuplicateProfile(selectedProfile)}
+                                    disabled={!selectedProfile}
+                                >
+                                    <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                    <Text style={styles.addProfileButtonText}>
+                                        Duplicate
+                                    </Text>
+                                </Pressable>
+                                <Pressable
+                                    style={[
+                                        styles.addProfileButton,
+                                        { flex: 1 },
+                                        (!selectedProfile || selectedProfile.isBuiltIn) && { opacity: 0.4 }
+                                    ]}
+                                    onPress={() => selectedProfile && !selectedProfile.isBuiltIn && handleDeleteProfile(selectedProfile)}
+                                    disabled={!selectedProfile || selectedProfile.isBuiltIn}
+                                >
+                                    <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                                    <Text style={[styles.addProfileButtonText, { color: '#FF6B6B' }]}>
+                                        Delete
+                                    </Text>
+                                </Pressable>
                             </View>
 
                             {/* Section 2: Machine Selection */}
