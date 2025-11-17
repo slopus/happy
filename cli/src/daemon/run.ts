@@ -331,7 +331,7 @@ export async function startDaemon(): Promise<void> {
         // This ensures variable substitution works in both tmux and non-tmux modes
         // Example: ANTHROPIC_AUTH_TOKEN="${Z_AI_AUTH_TOKEN}" → ANTHROPIC_AUTH_TOKEN="sk-real-key"
         extraEnv = expandEnvironmentVariables(extraEnv, process.env);
-        logger.debug(`[DAEMON RUN] After ${VAR} expansion: ${Object.keys(extraEnv).join(', ')}`);
+        logger.debug(`[DAEMON RUN] After variable expansion: ${Object.keys(extraEnv).join(', ')}`);
 
         // Check if tmux is available and should be used
         const tmuxAvailable = await isTmuxAvailable();
