@@ -355,6 +355,9 @@ function NewSessionWizard() {
     const [showRecentPathsSection, setShowRecentPathsSection] = React.useState(true);
     const [showFavoritesSection, setShowFavoritesSection] = React.useState(true);
 
+    // Track if user is actively typing (vs clicking from list) to control expansion behavior
+    const isUserTyping = React.useRef(false);
+
     // Computed values
     const compatibleProfiles = React.useMemo(() => {
         return allProfiles.filter(profile => validateProfileForAgent(profile, agentType));
@@ -424,13 +427,33 @@ function NewSessionWizard() {
     // Filter paths based on text input
     const filteredRecentPaths = React.useMemo(() => {
         if (!pathInputText.trim()) return recentPaths;
+
+        // Don't filter if text matches the currently selected path (user clicked from list)
+        const homeDir = selectedMachine?.metadata?.homeDir;
+        const selectedDisplayPath = selectedPath ? formatPathRelativeToHome(selectedPath, homeDir) : null;
+        if (selectedDisplayPath && pathInputText === selectedDisplayPath) {
+            return recentPaths; // Show all paths, don't filter
+        }
+
+        // User is typing - filter the list
         const filterText = pathInputText.toLowerCase();
-        return recentPaths.filter(path => path.toLowerCase().includes(filterText));
-    }, [recentPaths, pathInputText]);
+        return recentPaths.filter(path => {
+            // Filter on the formatted display path (with ~), not the raw full path
+            const displayPath = formatPathRelativeToHome(path, homeDir);
+            return displayPath.toLowerCase().includes(filterText);
+        });
+    }, [recentPaths, pathInputText, selectedMachine, selectedPath]);
 
     // Filter favorites based on text input
     const filteredFavorites = React.useMemo(() => {
         if (!pathInputText.trim()) return favoriteDirectories;
+
+        // Don't filter if text matches a favorite (user clicked from list)
+        if (favoriteDirectories.some(fav => fav === pathInputText)) {
+            return favoriteDirectories; // Show all favorites, don't filter
+        }
+
+        // User is typing - filter the list
         const filterText = pathInputText.toLowerCase();
         return favoriteDirectories.filter(fav => fav.toLowerCase().includes(filterText));
     }, [favoriteDirectories, pathInputText]);
@@ -883,6 +906,7 @@ function NewSessionWizard() {
                                             <MultiTextInput
                                                 value={pathInputText}
                                                 onChangeText={(text) => {
+                                                    isUserTyping.current = true; // User is actively typing
                                                     setPathInputText(text);
                                                     // Update selectedPath if text is non-empty
                                                     if (text.trim() && selectedMachine?.metadata?.homeDir) {
@@ -940,8 +964,8 @@ function NewSessionWizard() {
                                     {showRecentPathsSection && (
                                         <ItemGroup title="">
                                             {(() => {
-                                                // Show first N by default, expand with toggle (unless filtering)
-                                                const pathsToShow = pathInputText.trim() || showAllRecentPaths
+                                                // Show first N by default, expand with toggle or when user is actively typing to filter
+                                                const pathsToShow = (pathInputText.trim() && isUserTyping.current) || showAllRecentPaths
                                                     ? filteredRecentPaths
                                                     : filteredRecentPaths.slice(0, RECENT_PATHS_DEFAULT_VISIBLE);
 
@@ -972,6 +996,7 @@ function NewSessionWizard() {
                                                                         />
                                                                     ) : null}
                                                                     onPress={() => {
+                                                                        isUserTyping.current = false; // User clicked from list
                                                                         setPathInputText(displayPath);
                                                                         setSelectedPath(path);
                                                                     }}
@@ -1092,6 +1117,7 @@ function NewSessionWizard() {
                                                                 </View>
                                                             }
                                                             onPress={() => {
+                                                                isUserTyping.current = false; // User clicked from list
                                                                 setPathInputText(dir.label);
                                                                 setSelectedPath(dir.value);
                                                             }}
