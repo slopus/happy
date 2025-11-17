@@ -562,6 +562,17 @@ function NewSessionWizard() {
                                 ))}
                             </View>
 
+                            {/* Manage Profiles Button */}
+                            <Pressable
+                                style={[styles.selectorButton, { marginTop: 8 }]}
+                                onPress={() => router.push('/settings/profiles')}
+                            >
+                                <Text style={styles.selectorButtonText}>
+                                    Manage Profiles (Create, Edit, Delete)
+                                </Text>
+                                <Ionicons name="settings-outline" size={20} color={theme.colors.textSecondary} />
+                            </Pressable>
+
                             {/* Section 2: Machine Selection */}
                             <Text style={styles.sectionHeader}>2. Select Machine</Text>
                             <Pressable
