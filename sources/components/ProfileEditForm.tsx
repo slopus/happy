@@ -5,6 +5,7 @@ import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { AIBackendProfile } from '@/sync/settings';
+import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -25,6 +26,12 @@ export function ProfileEditForm({
     const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxConfig?.sessionName || '');
     const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxConfig?.tmpDir || '');
     const [tmuxUpdateEnvironment, setTmuxUpdateEnvironment] = React.useState(profile.tmuxConfig?.updateEnvironment || false);
+    const [defaultPermissionMode, setDefaultPermissionMode] = React.useState<PermissionMode>((profile.defaultPermissionMode as PermissionMode) || 'default');
+    const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
+        if (profile.compatibility.claude && !profile.compatibility.codex) return 'claude';
+        if (profile.compatibility.codex && !profile.compatibility.claude) return 'codex';
+        return 'claude'; // Default to Claude if both or neither
+    });
 
     // Convert environmentVariables array to record for editing
     const [customEnvVars, setCustomEnvVars] = React.useState<Record<string, string>>(
@@ -84,6 +91,7 @@ export function ProfileEditForm({
                 updateEnvironment: tmuxUpdateEnvironment,
             },
             environmentVariables,
+            defaultPermissionMode: defaultPermissionMode,
             updatedAt: Date.now(),
         });
     };
@@ -227,6 +235,24 @@ export function ProfileEditForm({
                         value={model}
                         onChangeText={setModel}
                     />
+
+                    {/* Permission Mode */}
+                    <Text style={{
+                        fontSize: 14,
+                        fontWeight: '600',
+                        color: theme.colors.text,
+                        marginBottom: 8,
+                        ...Typography.default('semiBold')
+                    }}>
+                        Default Permission Mode
+                    </Text>
+                    <View style={{ marginBottom: 16 }}>
+                        <PermissionModeSelector
+                            mode={defaultPermissionMode}
+                            onChange={setDefaultPermissionMode}
+                            agentType={agentType}
+                        />
+                    </View>
 
                     {/* Tmux Session Name */}
                     <Text style={{

@@ -340,6 +340,10 @@ function NewSessionWizard() {
             } else if (profile.compatibility.codex && !profile.compatibility.claude) {
                 setAgentType('codex');
             }
+            // Set permission mode from profile's default
+            if (profile.defaultPermissionMode) {
+                setPermissionMode(profile.defaultPermissionMode as PermissionMode);
+            }
         }
     }, [profileMap]);
 
@@ -716,22 +720,32 @@ function NewSessionWizard() {
                                 <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
                             </Pressable>
 
-                            {/* Section 4: Advanced Options (Collapsible) */}
-                            <Pressable
-                                style={styles.advancedHeader}
-                                onPress={() => setShowAdvanced(!showAdvanced)}
-                            >
-                                <Text style={styles.advancedHeaderText}>Advanced Options</Text>
-                                <Ionicons
-                                    name={showAdvanced ? "chevron-up" : "chevron-down"}
-                                    size={20}
-                                    color={theme.colors.text}
+                            {/* Section 4: Permission Mode */}
+                            <Text style={styles.sectionHeader}>4. Permission Mode</Text>
+                            <View style={{ marginBottom: 16 }}>
+                                <PermissionModeSelector
+                                    mode={permissionMode}
+                                    onChange={setPermissionMode}
+                                    agentType={agentType}
                                 />
-                            </Pressable>
+                            </View>
 
-                            {showAdvanced && (
-                                <View style={{ marginBottom: 12 }}>
-                                    {experimentsEnabled && (
+                            {/* Section 5: Advanced Options (Collapsible) */}
+                            {experimentsEnabled && (
+                                <>
+                                    <Pressable
+                                        style={styles.advancedHeader}
+                                        onPress={() => setShowAdvanced(!showAdvanced)}
+                                    >
+                                        <Text style={styles.advancedHeaderText}>Advanced Options</Text>
+                                        <Ionicons
+                                            name={showAdvanced ? "chevron-up" : "chevron-down"}
+                                            size={20}
+                                            color={theme.colors.text}
+                                        />
+                                    </Pressable>
+
+                                    {showAdvanced && (
                                         <View style={{ marginBottom: 12 }}>
                                             <SessionTypeSelector
                                                 value={sessionType}
@@ -739,20 +753,7 @@ function NewSessionWizard() {
                                             />
                                         </View>
                                     )}
-                                    <View style={{ marginBottom: 12 }}>
-                                        <Text style={{
-                                            fontSize: 14,
-                                            fontWeight: '600',
-                                            color: theme.colors.text,
-                                            marginBottom: 8,
-                                        }}>Permission Mode</Text>
-                                        <PermissionModeSelector
-                                            mode={permissionMode}
-                                            onChange={setPermissionMode}
-                                            agentType={agentType}
-                                        />
-                                    </View>
-                                </View>
+                                </>
                             )}
                         </View>
 
