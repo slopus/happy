@@ -235,6 +235,8 @@ export const SettingsSchema = z.object({
     // Profile management settings
     profiles: z.array(AIBackendProfileSchema).describe('User-defined profiles for AI backend and environment variables'),
     lastUsedProfile: z.string().nullable().describe('Last selected profile for new sessions'),
+    // Favorite directories for quick path selection
+    favoriteDirectories: z.array(z.string()).describe('User-defined favorite directories for quick access in path selection'),
 });
 
 //
@@ -282,6 +284,8 @@ export const settingsDefaults: Settings = {
     // Profile management defaults
     profiles: [],
     lastUsedProfile: null,
+    // Default favorite directories (real common directories on Unix-like systems)
+    favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],
 };
 Object.freeze(settingsDefaults);
 

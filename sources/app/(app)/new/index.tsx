@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
 import { Typography } from '@/constants/Typography';
-import { useAllMachines, storage, useSetting, useSettingMutable } from '@/sync/storage';
+import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
@@ -26,18 +26,17 @@ import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { AgentInput } from '@/components/AgentInput';
 import { StyleSheet } from 'react-native-unistyles';
 import { randomUUID } from 'expo-crypto';
+import { formatPathRelativeToHome } from '@/utils/sessionUtils';
+import { resolveAbsolutePath } from '@/utils/pathUtils';
+import { MultiTextInput } from '@/components/MultiTextInput';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
-let onPathSelected: (path: string) => void = () => { };
 let onProfileSaved: (profile: AIBackendProfile) => void = () => { };
 
 export const callbacks = {
     onMachineSelected: (machineId: string) => {
         onMachineSelected(machineId);
-    },
-    onPathSelected: (path: string) => {
-        onPathSelected(path);
     },
     onProfileSaved: (profile: AIBackendProfile) => {
         onProfileSaved(profile);
@@ -62,7 +61,7 @@ const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType:
 
 // Helper function to get the most recent path for a machine
 const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ machineId: string; path: string }>): string => {
-    if (!machineId) return '/home/';
+    if (!machineId) return '';
 
     const recentPath = recentPaths.find(rp => rp.machineId === machineId);
     if (recentPath) {
@@ -70,7 +69,7 @@ const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ 
     }
 
     const machine = storage.getState().machines[machineId];
-    const defaultPath = machine?.metadata?.homeDir || '/home/';
+    const defaultPath = machine?.metadata?.homeDir || '';
 
     const sessions = Object.values(storage.getState().sessions);
     const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
@@ -92,6 +91,9 @@ const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ 
     pathsWithTimestamps.sort((a, b) => b.timestamp - a.timestamp);
     return pathsWithTimestamps[0]?.path || defaultPath;
 };
+
+// Configuration constants
+const RECENT_PATHS_DEFAULT_VISIBLE = 5;
 
 const styles = StyleSheet.create((theme, rt) => ({
     container: {
@@ -268,6 +270,7 @@ function NewSessionWizard() {
     const experimentsEnabled = useSetting('experiments');
     const [profiles, setProfiles] = useSettingMutable('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
+    const [favoriteDirectories, setFavoriteDirectories] = useSettingMutable('favoriteDirectories');
 
     // Combined profiles (built-in + custom)
     const allProfiles = React.useMemo(() => {
@@ -277,6 +280,7 @@ function NewSessionWizard() {
 
     const profileMap = useProfileMap(allProfiles);
     const machines = useAllMachines();
+    const sessions = useSessions();
 
     // Wizard state
     const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(() => {
@@ -345,6 +349,10 @@ function NewSessionWizard() {
     const [isCreating, setIsCreating] = React.useState(false);
     const [showAdvanced, setShowAdvanced] = React.useState(false);
 
+    // Path selection state
+    const [pathInputText, setPathInputText] = React.useState('');
+    const [showAllRecentPaths, setShowAllRecentPaths] = React.useState(false);
+
     // Computed values
     const compatibleProfiles = React.useMemo(() => {
         return allProfiles.filter(profile => validateProfileForAgent(profile, agentType));
@@ -366,6 +374,74 @@ function NewSessionWizard() {
         if (!selectedMachineId) return null;
         return machines.find(m => m.id === selectedMachineId);
     }, [selectedMachineId, machines]);
+
+    // Get recent paths for the selected machine
+    const recentPaths = React.useMemo(() => {
+        if (!selectedMachineId) return [];
+
+        const paths: string[] = [];
+        const pathSet = new Set<string>();
+
+        // First, add paths from recentMachinePaths (these are the most recent)
+        recentMachinePaths.forEach(entry => {
+            if (entry.machineId === selectedMachineId && !pathSet.has(entry.path)) {
+                paths.push(entry.path);
+                pathSet.add(entry.path);
+            }
+        });
+
+        // Then add paths from sessions if we need more
+        if (sessions) {
+            const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
+
+            sessions.forEach(item => {
+                if (typeof item === 'string') return; // Skip section headers
+
+                const session = item as any;
+                if (session.metadata?.machineId === selectedMachineId && session.metadata?.path) {
+                    const path = session.metadata.path;
+                    if (!pathSet.has(path)) {
+                        pathSet.add(path);
+                        pathsWithTimestamps.push({
+                            path,
+                            timestamp: session.updatedAt || session.createdAt
+                        });
+                    }
+                }
+            });
+
+            // Sort session paths by most recent first and add them
+            pathsWithTimestamps
+                .sort((a, b) => b.timestamp - a.timestamp)
+                .forEach(item => paths.push(item.path));
+        }
+
+        return paths;
+    }, [sessions, selectedMachineId, recentMachinePaths]);
+
+    // Filter paths based on text input
+    const filteredRecentPaths = React.useMemo(() => {
+        if (!pathInputText.trim()) return recentPaths;
+        const filterText = pathInputText.toLowerCase();
+        return recentPaths.filter(path => path.toLowerCase().includes(filterText));
+    }, [recentPaths, pathInputText]);
+
+    // Filter favorites based on text input
+    const filteredFavorites = React.useMemo(() => {
+        if (!pathInputText.trim()) return favoriteDirectories;
+        const filterText = pathInputText.toLowerCase();
+        return favoriteDirectories.filter(fav => fav.toLowerCase().includes(filterText));
+    }, [favoriteDirectories, pathInputText]);
+
+    // Check if current path input can be added to favorites (DRY - compute once)
+    const canAddToFavorites = React.useMemo(() => {
+        if (!pathInputText.trim() || !selectedMachine?.metadata?.homeDir) return false;
+        const homeDir = selectedMachine.metadata.homeDir;
+        const expandedInput = resolveAbsolutePath(pathInputText.trim(), homeDir);
+        return !favoriteDirectories.some(fav =>
+            resolveAbsolutePath(fav, homeDir) === expandedInput
+        );
+    }, [pathInputText, favoriteDirectories, selectedMachine]);
 
     // Validation
     const canCreate = React.useMemo(() => {
@@ -469,16 +545,6 @@ function NewSessionWizard() {
     }, [recentMachinePaths]);
 
     React.useEffect(() => {
-        let handler = (path: string) => {
-            setSelectedPath(path);
-        };
-        onPathSelected = handler;
-        return () => {
-            onPathSelected = () => { };
-        };
-    }, []);
-
-    React.useEffect(() => {
         let handler = (savedProfile: AIBackendProfile) => {
             // Handle saved profile from profile-edit screen
 
@@ -519,12 +585,6 @@ function NewSessionWizard() {
     const handleMachineClick = React.useCallback(() => {
         router.push('/new/pick/machine');
     }, [router]);
-
-    const handlePathClick = React.useCallback(() => {
-        if (selectedMachineId) {
-            router.push(`/new/pick/path?machineId=${selectedMachineId}&selectedPath=${encodeURIComponent(selectedPath)}`);
-        }
-    }, [selectedMachineId, selectedPath, router]);
 
     // Session creation
     const handleCreateSession = React.useCallback(async () => {
@@ -812,16 +872,200 @@ function NewSessionWizard() {
 
                             {/* Section 3: Working Directory */}
                             <Text style={styles.sectionHeader}>3. Working Directory</Text>
-                            <Pressable
-                                style={styles.selectorButton}
-                                onPress={handlePathClick}
-                                disabled={!selectedMachineId}
-                            >
-                                <Text style={styles.selectorButtonText}>
-                                    {selectedPath || 'Select a path...'}
-                                </Text>
-                                <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
-                            </Pressable>
+
+                            {/* Path Input and Add to Favorites */}
+                            <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                    <View style={{ flex: 1, backgroundColor: theme.colors.input.background, borderRadius: 10, borderWidth: 0.5, borderColor: theme.colors.divider }}>
+                                        <View style={{ paddingHorizontal: 12 }}>
+                                            <MultiTextInput
+                                                value={pathInputText}
+                                                onChangeText={(text) => {
+                                                    setPathInputText(text);
+                                                    // Update selectedPath if text is non-empty
+                                                    if (text.trim() && selectedMachine?.metadata?.homeDir) {
+                                                        const homeDir = selectedMachine.metadata.homeDir;
+                                                        setSelectedPath(resolveAbsolutePath(text.trim(), homeDir));
+                                                    }
+                                                }}
+                                                placeholder="Type to filter or enter custom path..."
+                                                maxHeight={40}
+                                                paddingTop={8}
+                                                paddingBottom={8}
+                                            />
+                                        </View>
+                                    </View>
+                                    <Pressable
+                                        onPress={() => {
+                                            if (canAddToFavorites) {
+                                                setFavoriteDirectories([...favoriteDirectories, pathInputText.trim()]);
+                                            }
+                                        }}
+                                        disabled={!canAddToFavorites}
+                                        style={({ pressed }) => ({
+                                            backgroundColor: canAddToFavorites
+                                                ? theme.colors.button.primary.background
+                                                : theme.colors.divider,
+                                            borderRadius: 8,
+                                            padding: 8,
+                                            opacity: pressed ? 0.7 : 1,
+                                        })}
+                                    >
+                                        <Ionicons
+                                            name="star"
+                                            size={20}
+                                            color={canAddToFavorites ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                                        />
+                                    </Pressable>
+                                </View>
+                            </View>
+
+                            {/* Recent Paths */}
+                            {filteredRecentPaths.length > 0 && (
+                                <ItemGroup title="Recent Paths">
+                                    {(() => {
+                                        // Show first N by default, expand with toggle (unless filtering)
+                                        const pathsToShow = pathInputText.trim() || showAllRecentPaths
+                                            ? filteredRecentPaths
+                                            : filteredRecentPaths.slice(0, RECENT_PATHS_DEFAULT_VISIBLE);
+
+                                        return (
+                                            <>
+                                                {pathsToShow.map((path, index, arr) => {
+                                                    const displayPath = formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir);
+                                                    const isSelected = pathInputText === displayPath || selectedPath === path;
+                                                    const isLast = index === arr.length - 1;
+
+                                                    return (
+                                                        <Item
+                                                            key={path}
+                                                            title={displayPath}
+                                                            subtitle="Recently used"
+                                                            leftElement={
+                                                                <Ionicons
+                                                                    name="time-outline"
+                                                                    size={24}
+                                                                    color={theme.colors.textSecondary}
+                                                                />
+                                                            }
+                                                            rightElement={isSelected ? (
+                                                                <Ionicons
+                                                                    name="checkmark-circle"
+                                                                    size={20}
+                                                                    color={theme.colors.button.primary.tint}
+                                                                />
+                                                            ) : null}
+                                                            onPress={() => {
+                                                                setPathInputText(displayPath);
+                                                                setSelectedPath(path);
+                                                            }}
+                                                            showChevron={false}
+                                                            selected={isSelected}
+                                                            showDivider={!isLast || (!pathInputText.trim() && filteredRecentPaths.length > RECENT_PATHS_DEFAULT_VISIBLE)}
+                                                        />
+                                                    );
+                                                })}
+
+                                                {!pathInputText.trim() && filteredRecentPaths.length > RECENT_PATHS_DEFAULT_VISIBLE && (
+                                                    <Item
+                                                        title={showAllRecentPaths ? t('machineLauncher.showLess') : t('machineLauncher.showAll', { count: filteredRecentPaths.length })}
+                                                        onPress={() => setShowAllRecentPaths(!showAllRecentPaths)}
+                                                        showChevron={false}
+                                                        showDivider={false}
+                                                        titleStyle={{
+                                                            textAlign: 'center',
+                                                            color: theme.colors.button.primary.tint
+                                                        }}
+                                                    />
+                                                )}
+                                            </>
+                                        );
+                                    })()}
+                                </ItemGroup>
+                            )}
+
+                            {/* Favorite Directories */}
+                            <ItemGroup title="Favorite Directories">
+                                {(() => {
+                                    if (!selectedMachine?.metadata?.homeDir) return null;
+                                    const homeDir = selectedMachine.metadata.homeDir;
+                                    // Always show home directory first
+                                    const homeFavorite = { value: homeDir, label: '~', description: 'Home directory', isHome: true };
+
+                                    // Expand ~ in favorite directories to actual home path and filter
+                                    const expandedFavorites = filteredFavorites.map(fav => ({
+                                        value: resolveAbsolutePath(fav, homeDir),
+                                        label: fav, // Keep ~ notation for display
+                                        description: fav.split('/').pop() || fav,
+                                        isHome: false
+                                    }));
+
+                                    const allFavorites = [homeFavorite, ...expandedFavorites];
+
+                                    return allFavorites.map((dir, index) => {
+                                        const isSelected = pathInputText === dir.label || selectedPath === dir.value;
+
+                                        return (
+                                            <Item
+                                                key={dir.value}
+                                                title={dir.label}
+                                                subtitle={dir.description}
+                                                leftElement={
+                                                    <Ionicons
+                                                        name={dir.isHome ? "home-outline" : "star-outline"}
+                                                        size={24}
+                                                        color={theme.colors.textSecondary}
+                                                    />
+                                                }
+                                                rightElement={
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                                        {isSelected && (
+                                                            <Ionicons
+                                                                name="checkmark-circle"
+                                                                size={20}
+                                                                color={theme.colors.button.primary.tint}
+                                                            />
+                                                        )}
+                                                        {!dir.isHome && (
+                                                            <Pressable
+                                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                                onPress={(e) => {
+                                                                    e.stopPropagation();
+                                                                    Modal.alert(
+                                                                        'Remove Favorite',
+                                                                        `Remove "${dir.label}" from favorites?`,
+                                                                        [
+                                                                            { text: 'Cancel', style: 'cancel' },
+                                                                            {
+                                                                                text: 'Remove',
+                                                                                style: 'destructive',
+                                                                                onPress: () => {
+                                                                                    setFavoriteDirectories(favoriteDirectories.filter(f =>
+                                                                                        resolveAbsolutePath(f, homeDir) !== dir.value
+                                                                                    ));
+                                                                                }
+                                                                            }
+                                                                        ]
+                                                                    );
+                                                                }}
+                                                            >
+                                                                <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                                                            </Pressable>
+                                                        )}
+                                                    </View>
+                                                }
+                                                onPress={() => {
+                                                    setPathInputText(dir.label);
+                                                    setSelectedPath(dir.value);
+                                                }}
+                                                showChevron={false}
+                                                selected={isSelected}
+                                                showDivider={index < allFavorites.length - 1}
+                                            />
+                                        );
+                                    });
+                                })()}
+                            </ItemGroup>
 
                             {/* Section 4: Permission Mode */}
                             <Text style={styles.sectionHeader}>4. Permission Mode</Text>
