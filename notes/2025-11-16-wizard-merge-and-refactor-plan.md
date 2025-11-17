@@ -373,8 +373,202 @@ The working directory currently has 5 unmerged files. DO NOT run `git reset --ha
 - [ ] Commit refactor
 - [ ] Update this plan file with completion notes
 
+## Critical Implementation Details
+
+### AgentInput Component (THE Session Panel Prompt Field)
+**Location:** `sources/components/AgentInput.tsx`
+**Used In:** `sources/-session/SessionView.tsx:276` (actual session panel)
+**Interface:** Lines 27-71 define AgentInputProps
+
+**Required Props:**
+```typescript
+value: string                    // sessionPrompt state
+onChangeText: (text) => void    // setSessionPrompt
+onSend: () => void              // handleCreateSession
+placeholder: string              // "What would you like to work on?"
+autocompletePrefixes: string[]   // [] for wizard (no autocomplete needed)
+autocompleteSuggestions: async  // async () => [] (empty for wizard)
+```
+
+**Validation Props:**
+```typescript
+isSendDisabled?: boolean        // Wire to !canCreate
+isSending?: boolean             // Wire to isCreating
+```
+
+**Optional Context Props (Useful):**
+```typescript
+agentType?: 'claude' | 'codex'  // Show agent indicator
+permissionMode?: PermissionMode  // Show permission badge
+modelMode?: ModelMode            // Show model info
+machineName?: string | null      // Show machine name
+currentPath?: string | null      // Show current path
+```
+
+### Current Wizard Structure (sources/app/(app)/new/index.tsx)
+
+**Lines to DELETE:**
+- Line 27: `type WizardStep = 'welcome' | 'ai-backend' | 'session-details' | 'creating';`
+- Lines 30-40: Module-level callbacks (onMachineSelected, onPathSelected, callbacks export)
+- Line 481: `const [currentStep, setCurrentStep] = useState<WizardStep>('welcome');`
+- Lines 569-601: `goToNextStep()` - handles step transitions
+- Lines 588-612: `goToPreviousStep()` - handles back navigation
+- Lines 673-681: `handleMachineClick()` and `handlePathClick()` - picker navigation
+- Lines 784-1022: `renderStepContent()` - switch statement rendering steps
+- Line 1041: `{renderStepContent()}` - call to render function
+
+**Content to EXTRACT and INLINE:**
+
+**Step 1 'welcome' (lines 788-857):**
+- Profile grid cards (lines 800-835)
+- compatibleProfiles.map() rendering
+- selectProfile() handler (line 808)
+- Profile badges (Claude/Codex/Built-in)
+- "Create New" button (line 841) → goes to ai-backend step
+
+**Step 2 'ai-backend' (lines 860-918):**
+- Create new profile form (lines 873-896)
+- newProfileName and newProfileDescription inputs
+- createNewProfile() handler (line 616, called from Next button)
+- This becomes profile edit modal, not inline
+
+**Step 3 'session-details' (lines 920-994):**
+- Prompt TextInput (lines 934-945) → REPLACE with AgentInput
+- Machine button (lines 947-954) → Keep as button, opens picker
+- Path button (lines 956-963) → Keep as button, opens picker
+- SessionTypeSelector (lines 965-972) → Move to advanced section
+- Create button (lines 982-991) → REMOVE (AgentInput has send button)
+
+**Step 4 'creating' (lines 996-1017):**
+- Loading spinner → REMOVE (AgentInput isSending handles this)
+
+**Functions to KEEP:**
+- Line 603: `selectProfile()` - auto-select agent based on profile
+- Line 616: `createNewProfile()` - add profile to settings
+- Lines 647-671: useEffect hooks for machine/path callbacks → DELETE
+- Lines 684-779: `handleCreateSession()` - KEEP, wire to AgentInput.onSend
+
+**State to KEEP:**
+- Lines 462-469: Settings hooks (recentMachinePaths, lastUsedAgent, etc.)
+- Lines 473-475: allProfiles useMemo
+- Line 477: profileMap
+- Line 478: machines
+- Lines 481-523: All wizard state (profile, agent, machine, path, prompt, etc.)
+- Lines 552-566: Computed values (compatibleProfiles, selectedProfile, selectedMachine)
+
+**NEW State to ADD:**
+```typescript
+const [showAdvanced, setShowAdvanced] = useState(false); // For collapsible section
+```
+
+### Picker Screens (KEEP - Provide Valuable UX)
+
+**sources/app/(app)/new/pick/machine.tsx:**
+- Machine selection with list
+- Uses callbacks.onMachineSelected() (line 30 in new/index.tsx)
+- Navigation route: `/new/pick/machine`
+
+**sources/app/(app)/new/pick/path.tsx:**
+- Recent paths display
+- Common directories (Home, Projects, Documents, Desktop)
+- Custom path input
+- Uses callbacks.onPathSelected() (line 31 in new/index.tsx)
+- Navigation route: `/new/pick/path?machineId=${selectedMachineId}`
+- **IMPORTANT:** Restored in merge (was mistakenly deleted by feature branch)
+
+**Decision:** Keep pickers but update wizard to show current selection inline
+- Show machine/path as Pressable buttons
+- Clicking opens picker screen
+- Picker uses callback to return selection
+- Main wizard shows updated selection
+
+### Profile Utilities Extraction (DRY)
+
+**Current Duplication:**
+- new/index.tsx lines 43-153: DEFAULT_PROFILES + getBuiltInProfile()
+- settings/profiles.tsx lines 27-100: Same code duplicated
+- AgentInput.tsx: NO LONGER HAS THIS (feature branch cleaned it up)
+
+**Solution:**
+Create `sources/sync/profileUtils.ts`:
+```typescript
+export const DEFAULT_PROFILES = [...]; // From new/index.tsx lines 156-187
+export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
+  // From new/index.tsx lines 43-153
+};
+```
+
+Then import in both files:
+```typescript
+import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
+```
+
+### Validation Logic
+
+**Current (lines 685-692 in handleCreateSession):**
+```typescript
+if (!selectedMachineId) {
+    Modal.alert(t('common.error'), t('newSession.noMachineSelected'));
+    return;
+}
+if (!selectedPath) {
+    Modal.alert(t('common.error'), t('newSession.noPathSelected'));
+    return;
+}
+if (!sessionPrompt.trim()) {
+    Modal.alert('Error', 'Please enter a prompt for the session');
+    return;
+}
+```
+
+**NEW canCreate Validation:**
+```typescript
+const canCreate = useMemo(() => {
+  return (
+    selectedProfileId !== undefined &&  // Allow null for manual config
+    selectedMachineId !== null &&
+    selectedPath.trim() !== ''
+    // Note: sessionPrompt is OPTIONAL (can create without initial message)
+  );
+}, [selectedProfileId, selectedMachineId, selectedPath]);
+```
+
+**Wire to AgentInput:**
+```typescript
+<AgentInput
+  isSendDisabled={!canCreate}
+  isSending={isCreating}
+  onSend={handleCreateSession}
+  ...
+/>
+```
+
+### handleCreateSession Changes
+
+**Current:** Lines 684-779, expects sessionPrompt from state
+**Keep As-Is:** AgentInput manages its own value state, passes to onSend
+**No Changes Needed:** handleCreateSession already reads from sessionPrompt state
+
+### Layout.tsx Picker Routes
+
+**Location:** `sources/app/(app)/_layout.tsx`
+
+**Verify These Exist:**
+```typescript
+<Stack.Screen
+  name="new/pick/machine"  // Line ~301
+  options={{...}}
+/>
+<Stack.Screen
+  name="new/pick/path"     // Line ~307
+  options={{...}}
+/>
+```
+
+**Action:** Check after merge - may have been removed, need to restore
+
 ## Current Status
 
-- [x] Merge completed at commit `80f425a`
-- [x] Plan file updated with accurate design requirements
-- [ ] Single-page refactor in progress
+- [x] Merge completed at commit `b618935`
+- [x] Plan file updated with all actionable details
+- [ ] Single-page refactor ready to begin
