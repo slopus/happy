@@ -736,18 +736,38 @@ export class TmuxUtilities {
                 throw new Error('tmux not available');
             }
 
-            const sessionName = options.sessionName || this.sessionName;
+            // Handle session name resolution
+            // - undefined: Use first existing session or create "happy"
+            // - empty string: Use first existing session or create "happy"
+            // - specific name: Use that session (create if doesn't exist)
+            let sessionName = options.sessionName !== undefined && options.sessionName !== ''
+                ? options.sessionName
+                : null;
+
+            // If no specific session name, try to use first existing session
+            if (!sessionName) {
+                const listResult = await this.executeTmuxCommand(['list-sessions', '-F', '#{session_name}']);
+                if (listResult && listResult.returncode === 0 && listResult.stdout.trim()) {
+                    // Use first session from list
+                    const firstSession = listResult.stdout.trim().split('\n')[0];
+                    sessionName = firstSession;
+                    logger.debug(`[TMUX] Using first existing session: ${sessionName}`);
+                } else {
+                    // No sessions exist, create "happy"
+                    sessionName = 'happy';
+                    logger.debug(`[TMUX] No existing sessions, using default: ${sessionName}`);
+                }
+            }
+
             const windowName = options.windowName || `happy-${Date.now()}`;
 
             // Ensure session exists
             await this.ensureSessionExists(sessionName);
 
             // Create new window in session
-            const createResult = await this.executeTmuxCommand([
-                'new-window',
-                '-n', windowName,
-                '-t', sessionName
-            ]);
+            const createWindowArgs = ['new-window', '-n', windowName, '-t', sessionName];
+
+            const createResult = await this.executeTmuxCommand(createWindowArgs);
 
             if (!createResult || createResult.returncode !== 0) {
                 throw new Error(`Failed to create tmux window: ${createResult?.stderr}`);

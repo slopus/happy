@@ -338,19 +338,22 @@ export async function startDaemon(): Promise<void> {
         let useTmux = tmuxAvailable;
 
         // Get tmux session name from environment variables (now set by profile system)
+        // Empty string means "use current/most recent session" (tmux default behavior)
         let tmuxSessionName: string | undefined = extraEnv.TMUX_SESSION_NAME;
 
-        // If tmux is not available or session name not specified, fall back to regular spawning
-        if (!tmuxAvailable || !tmuxSessionName) {
+        // If tmux is not available or session name is explicitly undefined, fall back to regular spawning
+        // Note: Empty string is valid (means use current/most recent tmux session)
+        if (!tmuxAvailable || tmuxSessionName === undefined) {
           useTmux = false;
-          if (tmuxSessionName) {
+          if (tmuxSessionName !== undefined) {
             logger.debug(`[DAEMON RUN] tmux session name specified but tmux not available, falling back to regular spawning`);
           }
         }
 
-        if (useTmux && tmuxSessionName) {
+        if (useTmux && tmuxSessionName !== undefined) {
           // Try to spawn in tmux session
-          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${tmuxSessionName}`);
+          const sessionDesc = tmuxSessionName || 'current/most recent session';
+          logger.debug(`[DAEMON RUN] Attempting to spawn session in tmux: ${sessionDesc}`);
 
           const tmux = getTmuxUtilities(tmuxSessionName);
 
