@@ -236,10 +236,42 @@ The working directory currently has 5 unmerged files. DO NOT run `git reset --ha
 **Profile Details Must Include:**
 - Profile name and description
 - API configuration (baseUrl, authToken, model)
-- Environment variables editor (key-value pairs)
+- **Environment variables editor with variable substitution support:**
+  - Key-value pairs (e.g., `ANTHROPIC_AUTH_TOKEN` = `${Z_AI_AUTH_TOKEN}`)
+  - Support literal values (e.g., `API_TIMEOUT_MS` = `600000`)
+  - Support variable references (e.g., `${DEEPSEEK_AUTH_TOKEN}`)
+  - Variables can reference:
+    - Other env vars on target machine CLI
+    - Other env vars set in GUI
+    - Literal string values
 - Tmux configuration (sessionName, tmpDir, updateEnvironment)
 - Compatibility flags (Claude/Codex)
 - Built-in vs custom profile indicator
+
+**Environment Variable Examples (from user):**
+```bash
+# Anthropic (unset all, use defaults)
+alias ac='unset ANTHROPIC_BASE_URL ANTHROPIC_AUTH_TOKEN ANTHROPIC_MODEL; claude'
+
+# Z.AI (use Z.AI credentials via variable substitution)
+alias zc='ANTHROPIC_BASE_URL=${Z_AI_BASE_URL}
+          ANTHROPIC_AUTH_TOKEN=${Z_AI_AUTH_TOKEN}
+          ANTHROPIC_MODEL=${Z_AI_MODEL} claude'
+
+# DeepSeek (use DeepSeek credentials + config via substitution)
+alias dc='ANTHROPIC_BASE_URL=${DEEPSEEK_BASE_URL}
+          ANTHROPIC_AUTH_TOKEN=${DEEPSEEK_AUTH_TOKEN}
+          API_TIMEOUT_MS=${DEEPSEEK_API_TIMEOUT_MS}
+          ANTHROPIC_MODEL=${DEEPSEEK_MODEL}
+          ANTHROPIC_SMALL_FAST_MODEL=${DEEPSEEK_SMALL_FAST_MODEL}
+          CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=${DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC} claude'
+```
+
+**Profile Environment Variable Design:**
+- Each profile stores environmentVariables array: `{ name: string, value: string }[]`
+- Values can be literals: `"600000"` or variable refs: `"${DEEPSEEK_API_KEY}"`
+- Variable substitution happens on target machine (daemon/CLI side)
+- GUI just stores the template, daemon resolves variables
 
 ### Validation Requirements
 - **Create button disabled when:**
