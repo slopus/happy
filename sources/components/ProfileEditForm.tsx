@@ -353,20 +353,20 @@ export function ProfileEditForm({
                         marginBottom: 12,
                         ...Typography.default('semiBold')
                     }}>
-                        Environment Refresh on Session Attach
+                        When Reconnecting to This Session
                     </Text>
                     <ItemGroup title="">
                         {[
                             {
                                 value: true,
-                                label: 'Update Automatically',
-                                description: 'Refresh SSH agent, DISPLAY for X11 forwarding',
+                                label: 'Update from Current Connection',
+                                description: 'Refresh SSH agent keys and X11 display when you reconnect (recommended for SSH)',
                                 icon: 'sync-outline'
                             },
                             {
                                 value: false,
-                                label: 'Keep Static',
-                                description: 'Use original environment (more predictable)',
+                                label: 'Keep Initial Values',
+                                description: 'Use environment from session creation (SSH agent keys may break on reconnect)',
                                 icon: 'lock-closed-outline'
                             },
                         ].map((option, index, array) => (
