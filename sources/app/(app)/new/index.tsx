@@ -351,10 +351,15 @@ function NewSessionWizard() {
     }, [allProfiles, agentType]);
 
     const selectedProfile = React.useMemo(() => {
-        if (!selectedProfileId || !profileMap.has(selectedProfileId)) {
+        if (!selectedProfileId) {
             return null;
         }
-        return profileMap.get(selectedProfileId)!;
+        // Check custom profiles first
+        if (profileMap.has(selectedProfileId)) {
+            return profileMap.get(selectedProfileId)!;
+        }
+        // Check built-in profiles
+        return getBuiltInProfile(selectedProfileId);
     }, [selectedProfileId, profileMap]);
 
     const selectedMachine = React.useMemo(() => {
