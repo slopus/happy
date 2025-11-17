@@ -204,6 +204,44 @@ const styles = StyleSheet.create((theme, rt) => ({
         fontWeight: '600',
         color: theme.colors.text,
     },
+    permissionGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        justifyContent: 'space-between',
+        marginBottom: 16,
+    },
+    permissionButton: {
+        width: '48%',
+        backgroundColor: theme.colors.input.background,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
+        alignItems: 'center',
+        borderWidth: 2,
+        borderColor: 'transparent',
+    },
+    permissionButtonSelected: {
+        borderColor: theme.colors.button.primary.background,
+        backgroundColor: theme.colors.button.primary.background + '10',
+    },
+    permissionButtonText: {
+        fontSize: 14,
+        fontWeight: '600',
+        color: theme.colors.text,
+        marginTop: 8,
+        textAlign: 'center',
+        ...Typography.default('semiBold')
+    },
+    permissionButtonTextSelected: {
+        color: theme.colors.button.primary.background,
+    },
+    permissionButtonDesc: {
+        fontSize: 11,
+        color: theme.colors.textSecondary,
+        marginTop: 4,
+        textAlign: 'center',
+        ...Typography.default()
+    },
 }));
 
 function NewSessionWizard() {
@@ -722,12 +760,35 @@ function NewSessionWizard() {
 
                             {/* Section 4: Permission Mode */}
                             <Text style={styles.sectionHeader}>4. Permission Mode</Text>
-                            <View style={{ marginBottom: 16 }}>
-                                <PermissionModeSelector
-                                    mode={permissionMode}
-                                    onChange={setPermissionMode}
-                                    agentType={agentType}
-                                />
+                            <View style={styles.permissionGrid}>
+                                {[
+                                    { mode: 'default' as PermissionMode, label: 'Default', icon: 'shield-checkmark', desc: 'Ask for permissions' },
+                                    { mode: 'acceptEdits' as PermissionMode, label: 'Accept Edits', icon: 'create', desc: 'Auto-approve edits' },
+                                    { mode: 'plan' as PermissionMode, label: 'Plan', icon: 'list', desc: 'Plan before executing' },
+                                    { mode: 'bypassPermissions' as PermissionMode, label: 'Yolo', icon: 'flash', desc: 'Skip all permissions' },
+                                ].map((option) => (
+                                    <Pressable
+                                        key={option.mode}
+                                        style={[
+                                            styles.permissionButton,
+                                            permissionMode === option.mode && styles.permissionButtonSelected,
+                                        ]}
+                                        onPress={() => setPermissionMode(option.mode)}
+                                    >
+                                        <Ionicons
+                                            name={option.icon as any}
+                                            size={24}
+                                            color={permissionMode === option.mode ? theme.colors.button.primary.background : theme.colors.textSecondary}
+                                        />
+                                        <Text style={[
+                                            styles.permissionButtonText,
+                                            permissionMode === option.mode && styles.permissionButtonTextSelected,
+                                        ]}>
+                                            {option.label}
+                                        </Text>
+                                        <Text style={styles.permissionButtonDesc}>{option.desc}</Text>
+                                    </Pressable>
+                                ))}
                             </View>
 
                             {/* Section 5: Advanced Options (Collapsible) */}
