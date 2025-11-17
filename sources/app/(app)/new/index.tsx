@@ -352,6 +352,8 @@ function NewSessionWizard() {
     // Path selection state
     const [pathInputText, setPathInputText] = React.useState('');
     const [showAllRecentPaths, setShowAllRecentPaths] = React.useState(false);
+    const [showRecentPathsSection, setShowRecentPathsSection] = React.useState(true);
+    const [showFavoritesSection, setShowFavoritesSection] = React.useState(true);
 
     // Computed values
     const compatibleProfiles = React.useMemo(() => {
@@ -922,150 +924,193 @@ function NewSessionWizard() {
 
                             {/* Recent Paths */}
                             {filteredRecentPaths.length > 0 && (
-                                <ItemGroup title="Recent Paths">
-                                    {(() => {
-                                        // Show first N by default, expand with toggle (unless filtering)
-                                        const pathsToShow = pathInputText.trim() || showAllRecentPaths
-                                            ? filteredRecentPaths
-                                            : filteredRecentPaths.slice(0, RECENT_PATHS_DEFAULT_VISIBLE);
+                                <>
+                                    <Pressable
+                                        style={styles.advancedHeader}
+                                        onPress={() => setShowRecentPathsSection(!showRecentPathsSection)}
+                                    >
+                                        <Text style={styles.advancedHeaderText}>Recent Paths</Text>
+                                        <Ionicons
+                                            name={showRecentPathsSection ? "chevron-up" : "chevron-down"}
+                                            size={20}
+                                            color={theme.colors.text}
+                                        />
+                                    </Pressable>
 
-                                        return (
-                                            <>
-                                                {pathsToShow.map((path, index, arr) => {
-                                                    const displayPath = formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir);
-                                                    const isSelected = pathInputText === displayPath || selectedPath === path;
-                                                    const isLast = index === arr.length - 1;
+                                    {showRecentPathsSection && (
+                                        <ItemGroup title="">
+                                            {(() => {
+                                                // Show first N by default, expand with toggle (unless filtering)
+                                                const pathsToShow = pathInputText.trim() || showAllRecentPaths
+                                                    ? filteredRecentPaths
+                                                    : filteredRecentPaths.slice(0, RECENT_PATHS_DEFAULT_VISIBLE);
+
+                                                return (
+                                                    <>
+                                                        {pathsToShow.map((path, index, arr) => {
+                                                            const displayPath = formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir);
+                                                            const isSelected = selectedPath === path;
+                                                            const isLast = index === arr.length - 1;
+
+                                                            return (
+                                                                <Item
+                                                                    key={path}
+                                                                    title={displayPath}
+                                                                    subtitle="Recently used"
+                                                                    leftElement={
+                                                                        <Ionicons
+                                                                            name="time-outline"
+                                                                            size={24}
+                                                                            color={theme.colors.textSecondary}
+                                                                        />
+                                                                    }
+                                                                    rightElement={isSelected ? (
+                                                                        <Ionicons
+                                                                            name="checkmark-circle"
+                                                                            size={20}
+                                                                            color={theme.colors.button.primary.tint}
+                                                                        />
+                                                                    ) : null}
+                                                                    onPress={() => {
+                                                                        setPathInputText(displayPath);
+                                                                        setSelectedPath(path);
+                                                                    }}
+                                                                    showChevron={false}
+                                                                    selected={isSelected}
+                                                                    showDivider={!isLast || (!pathInputText.trim() && filteredRecentPaths.length > RECENT_PATHS_DEFAULT_VISIBLE)}
+                                                                    style={isSelected ? {
+                                                                        borderWidth: 2,
+                                                                        borderColor: theme.colors.button.primary.tint,
+                                                                        borderRadius: 8,
+                                                                    } : undefined}
+                                                                />
+                                                            );
+                                                        })}
+
+                                                        {!pathInputText.trim() && filteredRecentPaths.length > RECENT_PATHS_DEFAULT_VISIBLE && (
+                                                            <Item
+                                                                title={showAllRecentPaths ? t('machineLauncher.showLess') : t('machineLauncher.showAll', { count: filteredRecentPaths.length })}
+                                                                onPress={() => setShowAllRecentPaths(!showAllRecentPaths)}
+                                                                showChevron={false}
+                                                                showDivider={false}
+                                                                titleStyle={{
+                                                                    textAlign: 'center',
+                                                                    color: theme.colors.button.primary.tint
+                                                                }}
+                                                            />
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
+                                        </ItemGroup>
+                                    )}
+                                </>
+                            )}
+
+                            {/* Favorite Directories */}
+                            {selectedMachine?.metadata?.homeDir && (
+                                <>
+                                    <Pressable
+                                        style={styles.advancedHeader}
+                                        onPress={() => setShowFavoritesSection(!showFavoritesSection)}
+                                    >
+                                        <Text style={styles.advancedHeaderText}>Favorite Directories</Text>
+                                        <Ionicons
+                                            name={showFavoritesSection ? "chevron-up" : "chevron-down"}
+                                            size={20}
+                                            color={theme.colors.text}
+                                        />
+                                    </Pressable>
+
+                                    {showFavoritesSection && (
+                                        <ItemGroup title="">
+                                            {(() => {
+                                                const homeDir = selectedMachine.metadata.homeDir;
+                                                // Always show home directory first
+                                                const homeFavorite = { value: homeDir, label: '~', description: 'Home directory', isHome: true };
+
+                                                // Expand ~ in favorite directories to actual home path and filter
+                                                const expandedFavorites = filteredFavorites.map(fav => ({
+                                                    value: resolveAbsolutePath(fav, homeDir),
+                                                    label: fav, // Keep ~ notation for display
+                                                    description: fav.split('/').pop() || fav,
+                                                    isHome: false
+                                                }));
+
+                                                const allFavorites = [homeFavorite, ...expandedFavorites];
+
+                                                return allFavorites.map((dir, index) => {
+                                                    const isSelected = selectedPath === dir.value;
 
                                                     return (
                                                         <Item
-                                                            key={path}
-                                                            title={displayPath}
-                                                            subtitle="Recently used"
+                                                            key={dir.value}
+                                                            title={dir.label}
+                                                            subtitle={dir.description}
                                                             leftElement={
                                                                 <Ionicons
-                                                                    name="time-outline"
+                                                                    name={dir.isHome ? "home-outline" : "star-outline"}
                                                                     size={24}
                                                                     color={theme.colors.textSecondary}
                                                                 />
                                                             }
-                                                            rightElement={isSelected ? (
-                                                                <Ionicons
-                                                                    name="checkmark-circle"
-                                                                    size={20}
-                                                                    color={theme.colors.button.primary.tint}
-                                                                />
-                                                            ) : null}
+                                                            rightElement={
+                                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                                                    {isSelected && (
+                                                                        <Ionicons
+                                                                            name="checkmark-circle"
+                                                                            size={20}
+                                                                            color={theme.colors.button.primary.tint}
+                                                                        />
+                                                                    )}
+                                                                    {!dir.isHome && (
+                                                                        <Pressable
+                                                                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                                            onPress={(e) => {
+                                                                                e.stopPropagation();
+                                                                                Modal.alert(
+                                                                                    'Remove Favorite',
+                                                                                    `Remove "${dir.label}" from favorites?`,
+                                                                                    [
+                                                                                        { text: 'Cancel', style: 'cancel' },
+                                                                                        {
+                                                                                            text: 'Remove',
+                                                                                            style: 'destructive',
+                                                                                            onPress: () => {
+                                                                                                setFavoriteDirectories(favoriteDirectories.filter(f =>
+                                                                                                    resolveAbsolutePath(f, homeDir) !== dir.value
+                                                                                                ));
+                                                                                            }
+                                                                                        }
+                                                                                    ]
+                                                                                );
+                                                                            }}
+                                                                        >
+                                                                            <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                                                                        </Pressable>
+                                                                    )}
+                                                                </View>
+                                                            }
                                                             onPress={() => {
-                                                                setPathInputText(displayPath);
-                                                                setSelectedPath(path);
+                                                                setPathInputText(dir.label);
+                                                                setSelectedPath(dir.value);
                                                             }}
                                                             showChevron={false}
                                                             selected={isSelected}
-                                                            showDivider={!isLast || (!pathInputText.trim() && filteredRecentPaths.length > RECENT_PATHS_DEFAULT_VISIBLE)}
+                                                            showDivider={index < allFavorites.length - 1}
+                                                            style={isSelected ? {
+                                                                borderWidth: 2,
+                                                                borderColor: theme.colors.button.primary.tint,
+                                                                borderRadius: 8,
+                                                            } : undefined}
                                                         />
                                                     );
-                                                })}
-
-                                                {!pathInputText.trim() && filteredRecentPaths.length > RECENT_PATHS_DEFAULT_VISIBLE && (
-                                                    <Item
-                                                        title={showAllRecentPaths ? t('machineLauncher.showLess') : t('machineLauncher.showAll', { count: filteredRecentPaths.length })}
-                                                        onPress={() => setShowAllRecentPaths(!showAllRecentPaths)}
-                                                        showChevron={false}
-                                                        showDivider={false}
-                                                        titleStyle={{
-                                                            textAlign: 'center',
-                                                            color: theme.colors.button.primary.tint
-                                                        }}
-                                                    />
-                                                )}
-                                            </>
-                                        );
-                                    })()}
-                                </ItemGroup>
+                                                });
+                                            })()}
+                                        </ItemGroup>
+                                    )}
+                                </>
                             )}
-
-                            {/* Favorite Directories */}
-                            <ItemGroup title="Favorite Directories">
-                                {(() => {
-                                    if (!selectedMachine?.metadata?.homeDir) return null;
-                                    const homeDir = selectedMachine.metadata.homeDir;
-                                    // Always show home directory first
-                                    const homeFavorite = { value: homeDir, label: '~', description: 'Home directory', isHome: true };
-
-                                    // Expand ~ in favorite directories to actual home path and filter
-                                    const expandedFavorites = filteredFavorites.map(fav => ({
-                                        value: resolveAbsolutePath(fav, homeDir),
-                                        label: fav, // Keep ~ notation for display
-                                        description: fav.split('/').pop() || fav,
-                                        isHome: false
-                                    }));
-
-                                    const allFavorites = [homeFavorite, ...expandedFavorites];
-
-                                    return allFavorites.map((dir, index) => {
-                                        const isSelected = pathInputText === dir.label || selectedPath === dir.value;
-
-                                        return (
-                                            <Item
-                                                key={dir.value}
-                                                title={dir.label}
-                                                subtitle={dir.description}
-                                                leftElement={
-                                                    <Ionicons
-                                                        name={dir.isHome ? "home-outline" : "star-outline"}
-                                                        size={24}
-                                                        color={theme.colors.textSecondary}
-                                                    />
-                                                }
-                                                rightElement={
-                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
-                                                        {isSelected && (
-                                                            <Ionicons
-                                                                name="checkmark-circle"
-                                                                size={20}
-                                                                color={theme.colors.button.primary.tint}
-                                                            />
-                                                        )}
-                                                        {!dir.isHome && (
-                                                            <Pressable
-                                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                                onPress={(e) => {
-                                                                    e.stopPropagation();
-                                                                    Modal.alert(
-                                                                        'Remove Favorite',
-                                                                        `Remove "${dir.label}" from favorites?`,
-                                                                        [
-                                                                            { text: 'Cancel', style: 'cancel' },
-                                                                            {
-                                                                                text: 'Remove',
-                                                                                style: 'destructive',
-                                                                                onPress: () => {
-                                                                                    setFavoriteDirectories(favoriteDirectories.filter(f =>
-                                                                                        resolveAbsolutePath(f, homeDir) !== dir.value
-                                                                                    ));
-                                                                                }
-                                                                            }
-                                                                        ]
-                                                                    );
-                                                                }}
-                                                            >
-                                                                <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-                                                            </Pressable>
-                                                        )}
-                                                    </View>
-                                                }
-                                                onPress={() => {
-                                                    setPathInputText(dir.label);
-                                                    setSelectedPath(dir.value);
-                                                }}
-                                                showChevron={false}
-                                                selected={isSelected}
-                                                showDivider={index < allFavorites.length - 1}
-                                            />
-                                        );
-                                    });
-                                })()}
-                            </ItemGroup>
 
                             {/* Section 4: Permission Mode */}
                             <Text style={styles.sectionHeader}>4. Permission Mode</Text>
