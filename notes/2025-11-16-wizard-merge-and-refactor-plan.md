@@ -756,3 +756,39 @@ Wizard shows updated machine/path selection
 - Wizard provides "Manage Profiles" button for easy navigation
 - Picker screens kept for better UX (recent paths, machine list)
 - AgentInput reused from session panel (consistent UX)
+
+## Phase 8: CLI/GUI Compatibility Verification
+
+### Schema Compatibility Checks:
+- [x] AIBackendProfile schema matches between CLI and GUI (EXACT MATCH in persistence.ts and settings.ts)
+- [x] environmentVariables field accepts Record<string, string> in both
+- [x] Daemon run.ts accepts GUI-provided environmentVariables (lines 296-328)
+- [x] Profile helper functions match (getProfileEnvironmentVariables, validateProfileForAgent)
+- [x] Profile versioning system matches (CURRENT_PROFILE_VERSION = '1.0.0')
+- [x] Settings schemaVersion matches (SUPPORTED_SCHEMA_VERSION = 2)
+
+### Critical Bug Fixes:
+- [x] **BUG**: transformProfileToEnvironmentVars() was filtering to whitelist
+  - Problem: Dropped custom DEEPSEEK_*, Z_AI_* variables
+  - Fix: Removed filter, now passes ALL vars from getProfileEnvironmentVariables()
+  - Commit: b151abc
+- [x] **BUG**: ops.ts type only listed 5 env vars (too restrictive)
+  - Problem: TypeScript would reject custom variables
+  - Fix: Changed to Record<string, string> to match daemon
+  - Commit: b151abc
+
+### Data Flow Verification:
+- [x] GUI: AIBackendProfile → getProfileEnvironmentVariables() → ALL vars returned
+- [x] GUI: transformProfileToEnvironmentVars() → passes ALL vars (no filtering)
+- [x] GUI: machineSpawnNewSession() → sends Record<string, string> via RPC
+- [x] Server: Forwards environmentVariables to daemon
+- [x] CLI Daemon: Receives Record<string, string> in options.environmentVariables
+- [x] CLI Daemon: Merges with authEnv, passes to process.env (lines 296-328)
+- [x] Agent Process: Receives complete environment with ALL custom vars
+
+### Compatibility Test Cases:
+- [ ] Test Anthropic profile (minimal config, no custom vars)
+- [ ] Test DeepSeek profile (6 env vars including 3 custom DEEPSEEK_*)
+- [ ] Test Z.AI profile (with ${Z_AI_AUTH_TOKEN} substitution)
+- [ ] Test custom profile with arbitrary env vars
+- [ ] Verify daemon logs show all env vars received
