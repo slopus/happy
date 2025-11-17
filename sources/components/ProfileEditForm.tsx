@@ -407,7 +407,7 @@ export function ProfileEditForm({
                                 }}
                                 onPress={() => setShowAddEnvVar(true)}
                             >
-                                <Ionicons name="add-circle" size={20} color={theme.colors.button.primary.background} />
+                                <Ionicons name="add-circle" size={20} color="white" />
                             </Pressable>
                         </View>
 

@@ -475,20 +475,34 @@ function NewSessionWizard() {
     React.useEffect(() => {
         let handler = (savedProfile: AIBackendProfile) => {
             // Handle saved profile from profile-edit screen
-            const existingIndex = profiles.findIndex(p => p.id === savedProfile.id);
+
+            // Check if this is a built-in profile being edited
+            const isBuiltIn = DEFAULT_PROFILES.some(bp => bp.id === savedProfile.id);
+            let profileToSave = savedProfile;
+
+            // For built-in profiles, create a new custom profile instead of modifying the built-in
+            if (isBuiltIn) {
+                profileToSave = {
+                    ...savedProfile,
+                    id: randomUUID(), // Generate new UUID for custom profile
+                    isBuiltIn: false,
+                };
+            }
+
+            const existingIndex = profiles.findIndex(p => p.id === profileToSave.id);
             let updatedProfiles: AIBackendProfile[];
 
             if (existingIndex >= 0) {
                 // Update existing profile
                 updatedProfiles = [...profiles];
-                updatedProfiles[existingIndex] = savedProfile;
+                updatedProfiles[existingIndex] = profileToSave;
             } else {
                 // Add new profile
-                updatedProfiles = [...profiles, savedProfile];
+                updatedProfiles = [...profiles, profileToSave];
             }
 
             setProfiles(updatedProfiles); // Use mutable setter for persistence
-            setSelectedProfileId(savedProfile.id);
+            setSelectedProfileId(profileToSave.id);
         };
         onProfileSaved = handler;
         return () => {
