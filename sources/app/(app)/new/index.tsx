@@ -28,6 +28,7 @@ import { randomUUID } from 'expo-crypto';
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
 let onPathSelected: (path: string) => void = () => { };
+let onProfileSaved: (profile: AIBackendProfile) => void = () => { };
 
 export const callbacks = {
     onMachineSelected: (machineId: string) => {
@@ -35,6 +36,9 @@ export const callbacks = {
     },
     onPathSelected: (path: string) => {
         onPathSelected(path);
+    },
+    onProfileSaved: (profile: AIBackendProfile) => {
+        onProfileSaved(profile);
     }
 }
 
@@ -122,52 +126,56 @@ const styles = StyleSheet.create((theme, rt) => ({
         marginBottom: 16,
         lineHeight: 20,
     },
-    profileGrid: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        justifyContent: 'space-between',
-        marginBottom: 16,
-    },
-    profileCard: {
-        width: '48%',
+    profileListItem: {
         backgroundColor: theme.colors.input.background,
         borderRadius: 12,
         padding: 16,
         marginBottom: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
         borderWidth: 2,
         borderColor: 'transparent',
     },
-    profileCardSelected: {
-        borderColor: theme.colors.button.primary.background,
-        backgroundColor: theme.colors.button.primary.background + '10',
+    profileListItemSelected: {
+        borderWidth: 2,
+        borderColor: theme.colors.text,
     },
-    profileName: {
+    profileIcon: {
+        width: 24,
+        height: 24,
+        borderRadius: 12,
+        backgroundColor: theme.colors.button.primary.background,
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginRight: 12,
+    },
+    profileListName: {
         fontSize: 16,
         fontWeight: '600',
         color: theme.colors.text,
-        marginBottom: 4,
+        ...Typography.default('semiBold')
     },
-    profileDescription: {
-        fontSize: 12,
+    profileListDetails: {
+        fontSize: 14,
         color: theme.colors.textSecondary,
-        marginBottom: 8,
+        marginTop: 2,
+        ...Typography.default()
     },
-    profileBadges: {
+    addProfileButton: {
+        backgroundColor: theme.colors.surface,
+        borderRadius: 12,
+        padding: 16,
+        marginBottom: 12,
         flexDirection: 'row',
-        flexWrap: 'wrap',
+        alignItems: 'center',
+        justifyContent: 'center',
     },
-    profileBadge: {
-        backgroundColor: theme.colors.button.primary.background + '20',
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
-        marginRight: 4,
-        marginBottom: 4,
-    },
-    profileBadgeText: {
-        fontSize: 10,
-        color: theme.colors.button.primary.background,
-        fontWeight: '500',
+    addProfileButtonText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: theme.colors.button.secondary.tint,
+        marginLeft: 8,
+        ...Typography.default('semiBold')
     },
     selectorButton: {
         backgroundColor: theme.colors.input.background,
@@ -335,6 +343,61 @@ function NewSessionWizard() {
         }
     }, [profileMap]);
 
+    const handleAddProfile = React.useCallback(() => {
+        const newProfile: AIBackendProfile = {
+            id: randomUUID(),
+            name: '',
+            anthropicConfig: {},
+            environmentVariables: [],
+            compatibility: { claude: true, codex: true },
+            isBuiltIn: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            version: '1.0.0',
+        };
+        const profileData = encodeURIComponent(JSON.stringify(newProfile));
+        router.push(`/new/pick/profile-edit?profileData=${profileData}`);
+    }, [router]);
+
+    const handleEditProfile = React.useCallback((profile: AIBackendProfile) => {
+        const profileData = encodeURIComponent(JSON.stringify(profile));
+        router.push(`/new/pick/profile-edit?profileData=${profileData}`);
+    }, [router]);
+
+    const handleDuplicateProfile = React.useCallback((profile: AIBackendProfile) => {
+        const duplicatedProfile: AIBackendProfile = {
+            ...profile,
+            id: randomUUID(),
+            name: `${profile.name} (Copy)`,
+            isBuiltIn: false,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+        };
+        const profileData = encodeURIComponent(JSON.stringify(duplicatedProfile));
+        router.push(`/new/pick/profile-edit?profileData=${profileData}`);
+    }, [router]);
+
+    const handleDeleteProfile = React.useCallback((profile: AIBackendProfile) => {
+        Modal.alert(
+            t('profiles.delete.title'),
+            t('profiles.delete.message', { name: profile.name }),
+            [
+                { text: t('profiles.delete.cancel'), style: 'cancel' },
+                {
+                    text: t('profiles.delete.confirm'),
+                    style: 'destructive',
+                    onPress: () => {
+                        const updatedProfiles = profiles.filter(p => p.id !== profile.id);
+                        sync.applySettings({ profiles: updatedProfiles });
+                        if (selectedProfileId === profile.id) {
+                            setSelectedProfileId('anthropic'); // Default to Anthropic
+                        }
+                    }
+                }
+            ]
+        );
+    }, [profiles, selectedProfileId]);
+
     // Handle machine and path selection callbacks
     React.useEffect(() => {
         let handler = (machineId: string) => {
@@ -360,6 +423,30 @@ function NewSessionWizard() {
             onPathSelected = () => { };
         };
     }, []);
+
+    React.useEffect(() => {
+        let handler = (savedProfile: AIBackendProfile) => {
+            // Handle saved profile from profile-edit screen
+            const existingIndex = profiles.findIndex(p => p.id === savedProfile.id);
+            let updatedProfiles: AIBackendProfile[];
+
+            if (existingIndex >= 0) {
+                // Update existing profile
+                updatedProfiles = [...profiles];
+                updatedProfiles[existingIndex] = savedProfile;
+            } else {
+                // Add new profile
+                updatedProfiles = [...profiles, savedProfile];
+            }
+
+            sync.applySettings({ profiles: updatedProfiles });
+            setSelectedProfileId(savedProfile.id);
+        };
+        onProfileSaved = handler;
+        return () => {
+            onProfileSaved = () => { };
+        };
+    }, [profiles]);
 
     const handleMachineClick = React.useCallback(() => {
         router.push('/new/pick/machine');
@@ -485,58 +572,123 @@ function NewSessionWizard() {
                         { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
                     ]}>
                         <View style={styles.wizardContainer}>
-                            {/* Section 1: Profile Selection */}
+                            {/* Section 1: Profile Management */}
                             <Text style={styles.sectionHeader}>1. Choose AI Profile</Text>
                             <Text style={styles.sectionDescription}>
-                                Select an AI profile with pre-configured settings for your session.
+                                Select, create, or edit AI profiles with custom environment variables.
                             </Text>
 
-                            <View style={styles.profileGrid}>
-                                {compatibleProfiles.map((profile) => (
+                            {/* Built-in profiles */}
+                            {DEFAULT_PROFILES.map((profileDisplay) => {
+                                const profile = getBuiltInProfile(profileDisplay.id);
+                                if (!profile || !validateProfileForAgent(profile, agentType)) return null;
+
+                                return (
                                     <Pressable
                                         key={profile.id}
                                         style={[
-                                            styles.profileCard,
-                                            selectedProfileId === profile.id && styles.profileCardSelected,
+                                            styles.profileListItem,
+                                            selectedProfileId === profile.id && styles.profileListItemSelected,
                                         ]}
                                         onPress={() => selectProfile(profile.id)}
                                     >
-                                        <Text style={styles.profileName}>{profile.name}</Text>
-                                        {profile.description && (
-                                            <Text style={styles.profileDescription} numberOfLines={2}>
-                                                {profile.description}
+                                        <View style={styles.profileIcon}>
+                                            <Ionicons name="star" size={16} color="white" />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.profileListName}>{profile.name}</Text>
+                                            <Text style={styles.profileListDetails}>
+                                                {profile.anthropicConfig?.model || 'Default model'}
+                                                {profile.anthropicConfig?.baseUrl && ` • ${profile.anthropicConfig.baseUrl}`}
                                             </Text>
-                                        )}
-                                        <View style={styles.profileBadges}>
-                                            {profile.compatibility.claude && (
-                                                <View style={styles.profileBadge}>
-                                                    <Text style={styles.profileBadgeText}>Claude</Text>
-                                                </View>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            {selectedProfileId === profile.id && (
+                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
                                             )}
-                                            {profile.compatibility.codex && (
-                                                <View style={styles.profileBadge}>
-                                                    <Text style={styles.profileBadgeText}>Codex</Text>
-                                                </View>
-                                            )}
-                                            {profile.isBuiltIn && (
-                                                <View style={styles.profileBadge}>
-                                                    <Text style={styles.profileBadgeText}>Built-in</Text>
-                                                </View>
-                                            )}
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    handleEditProfile(profile);
+                                                }}
+                                            >
+                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                            </Pressable>
                                         </View>
                                     </Pressable>
-                                ))}
-                            </View>
+                                );
+                            })}
 
-                            {/* Manage Profiles Button */}
+                            {/* Custom profiles */}
+                            {profiles.map((profile) => {
+                                if (!validateProfileForAgent(profile, agentType)) return null;
+
+                                return (
+                                    <Pressable
+                                        key={profile.id}
+                                        style={[
+                                            styles.profileListItem,
+                                            selectedProfileId === profile.id && styles.profileListItemSelected,
+                                        ]}
+                                        onPress={() => selectProfile(profile.id)}
+                                    >
+                                        <View style={[styles.profileIcon, { backgroundColor: theme.colors.button.secondary.tint }]}>
+                                            <Ionicons name="person" size={16} color="white" />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.profileListName}>{profile.name}</Text>
+                                            <Text style={styles.profileListDetails}>
+                                                {profile.anthropicConfig?.model || profile.openaiConfig?.model || 'Default model'}
+                                            </Text>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            {selectedProfileId === profile.id && (
+                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
+                                            )}
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    handleEditProfile(profile);
+                                                }}
+                                            >
+                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                            </Pressable>
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                style={{ marginLeft: 16 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDuplicateProfile(profile);
+                                                }}
+                                            >
+                                                <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                            </Pressable>
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                style={{ marginLeft: 16 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteProfile(profile);
+                                                }}
+                                            >
+                                                <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                                            </Pressable>
+                                        </View>
+                                    </Pressable>
+                                );
+                            })}
+
+                            {/* Add Profile Button */}
                             <Pressable
-                                style={[styles.selectorButton, { marginTop: 8 }]}
-                                onPress={() => router.push('/settings/profiles')}
+                                style={styles.addProfileButton}
+                                onPress={handleAddProfile}
                             >
-                                <Text style={styles.selectorButtonText}>
-                                    Manage Profiles (Create, Edit, Delete)
+                                <Ionicons name="add-circle-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                <Text style={styles.addProfileButtonText}>
+                                    {t('profiles.addProfile')}
                                 </Text>
-                                <Ionicons name="settings-outline" size={20} color={theme.colors.textSecondary} />
                             </Pressable>
 
                             {/* Section 2: Machine Selection */}
