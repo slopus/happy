@@ -139,19 +139,17 @@ export interface SpawnSessionOptions {
     approvedNewDirectoryCreation?: boolean;
     token?: string;
     agent?: 'codex' | 'claude';
-    environmentVariables?: {
-        // Anthropic Claude API configuration
-        ANTHROPIC_BASE_URL?: string;        // Custom API endpoint (overrides default)
-        ANTHROPIC_AUTH_TOKEN?: string;      // API authentication token
-        ANTHROPIC_MODEL?: string;           // Model to use (e.g., claude-3-5-sonnet-20241022)
-
-        // Tmux session management environment variables
-        // Based on tmux(1) manual and common tmux usage patterns
-        TMUX_SESSION_NAME?: string;         // Name for tmux session (creates/attaches to named session)
-        TMUX_TMPDIR?: string;               // Temporary directory for tmux server socket files
-        // Note: TMUX_TMPDIR is used by tmux to store socket files when default /tmp is not suitable
-        // Common use case: When /tmp has limited space or different permissions
-    };
+    // Environment variables from AI backend profile
+    // Accepts any environment variables - daemon will pass them to the agent process
+    // Common variables include:
+    // - ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_MODEL, ANTHROPIC_SMALL_FAST_MODEL
+    // - OPENAI_API_KEY, OPENAI_BASE_URL, OPENAI_MODEL, OPENAI_API_TIMEOUT_MS
+    // - AZURE_OPENAI_API_KEY, AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_VERSION, AZURE_OPENAI_DEPLOYMENT_NAME
+    // - TOGETHER_API_KEY, TOGETHER_MODEL
+    // - TMUX_SESSION_NAME, TMUX_TMPDIR, TMUX_UPDATE_ENVIRONMENT
+    // - API_TIMEOUT_MS, CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC
+    // - Custom variables (DEEPSEEK_*, Z_AI_*, etc.)
+    environmentVariables?: Record<string, string>;
 }
 
 // Exported session operation functions
@@ -170,13 +168,7 @@ export async function machineSpawnNewSession(options: SpawnSessionOptions): Prom
             approvedNewDirectoryCreation?: boolean,
             token?: string,
             agent?: 'codex' | 'claude',
-            environmentVariables?: {
-                ANTHROPIC_BASE_URL?: string;
-                ANTHROPIC_AUTH_TOKEN?: string;
-                ANTHROPIC_MODEL?: string;
-                TMUX_SESSION_NAME?: string;
-                TMUX_TMPDIR?: string;
-            };
+            environmentVariables?: Record<string, string>;
         }>(
             machineId,
             'spawn-happy-session',

@@ -47,45 +47,11 @@ const useProfileMap = (profiles: AIBackendProfile[]) => {
 };
 
 // Environment variable transformation helper
+// Returns ALL profile environment variables - daemon will use them as-is
 const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' = 'claude') => {
-    const envVars = getProfileEnvironmentVariables(profile);
-
-    // Filter environment variables based on agent type
-    const filtered: Record<string, string | undefined> = {};
-
-    // Universal variables
-    const universalVars = [
-        'TMUX_SESSION_NAME', 'TMUX_TMPDIR', 'TMUX_UPDATE_ENVIRONMENT',
-        'API_TIMEOUT_MS', 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC'
-    ];
-
-    // Agent-specific variables
-    const claudeVars = [
-        'ANTHROPIC_BASE_URL', 'ANTHROPIC_AUTH_TOKEN', 'ANTHROPIC_MODEL', 'ANTHROPIC_SMALL_FAST_MODEL'
-    ];
-
-    const codexVars = [
-        'OPENAI_API_KEY', 'OPENAI_BASE_URL', 'OPENAI_MODEL', 'OPENAI_API_TIMEOUT_MS',
-        'AZURE_OPENAI_API_KEY', 'AZURE_OPENAI_ENDPOINT', 'AZURE_OPENAI_API_VERSION',
-        'AZURE_OPENAI_DEPLOYMENT_NAME', 'TOGETHER_API_KEY', 'CODEX_SMALL_FAST_MODEL'
-    ];
-
-    // Copy universal variables
-    Object.entries(envVars).forEach(([key, value]) => {
-        if (universalVars.includes(key)) {
-            filtered[key] = value;
-        }
-    });
-
-    // Copy agent-specific variables
-    const agentVars = agentType === 'claude' ? claudeVars : codexVars;
-    Object.entries(envVars).forEach(([key, value]) => {
-        if (agentVars.includes(key)) {
-            filtered[key] = value;
-        }
-    });
-
-    return filtered;
+    // getProfileEnvironmentVariables already returns ALL env vars from profile
+    // including custom environmentVariables array and provider-specific configs
+    return getProfileEnvironmentVariables(profile);
 };
 
 // Helper function to get the most recent path for a machine
