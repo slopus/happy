@@ -367,9 +367,9 @@ function NewSessionWizard() {
 
     const handlePathClick = React.useCallback(() => {
         if (selectedMachineId) {
-            router.push(`/new/pick/path?machineId=${selectedMachineId}`);
+            router.push(`/new/pick/path?machineId=${selectedMachineId}&selectedPath=${encodeURIComponent(selectedPath)}`);
         }
-    }, [selectedMachineId, router]);
+    }, [selectedMachineId, selectedPath, router]);
 
     // Session creation
     const handleCreateSession = React.useCallback(async () => {
