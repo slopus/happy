@@ -30,6 +30,7 @@ export function ProfileEditForm({
     const [authToken, setAuthToken] = React.useState(profile.anthropicConfig?.authToken || '');
     const [useAuthToken, setUseAuthToken] = React.useState(!!profile.anthropicConfig?.authToken);
     const [model, setModel] = React.useState(profile.anthropicConfig?.model || '');
+    const [useTmux, setUseTmux] = React.useState(!!profile.tmuxConfig?.sessionName);
     const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxConfig?.sessionName || '');
     const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxConfig?.tmpDir || '');
     const [useCustomEnvVars, setUseCustomEnvVars] = React.useState(
@@ -97,10 +98,14 @@ export function ProfileEditForm({
                 authToken: useAuthToken ? (authToken.trim() || undefined) : undefined,
                 model: model.trim() || undefined,
             },
-            tmuxConfig: {
+            tmuxConfig: useTmux ? {
                 sessionName: tmuxSession.trim() || undefined,
                 tmpDir: tmuxTmpDir.trim() || undefined,
                 updateEnvironment: undefined, // Preserve schema compatibility, not used by daemon
+            } : {
+                sessionName: undefined,
+                tmpDir: undefined,
+                updateEnvironment: undefined,
             },
             environmentVariables,
             defaultSessionType: defaultSessionType,
@@ -204,7 +209,7 @@ export function ProfileEditForm({
                             <View style={{
                                 width: 20,
                                 height: 20,
-                                borderRadius: 10,
+                                borderRadius: 4,
                                 borderWidth: 2,
                                 borderColor: useAuthToken ? theme.colors.button.primary.background : theme.colors.textSecondary,
                                 backgroundColor: useAuthToken ? theme.colors.button.primary.background : 'transparent',
@@ -345,6 +350,54 @@ export function ProfileEditForm({
                     </ItemGroup>
                     <View style={{ marginBottom: 16 }} />
 
+                    {/* Tmux Enable/Disable */}
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        marginBottom: 8,
+                    }}>
+                        <Pressable
+                            style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                marginRight: 8,
+                            }}
+                            onPress={() => setUseTmux(!useTmux)}
+                        >
+                            <View style={{
+                                width: 20,
+                                height: 20,
+                                borderRadius: 4,
+                                borderWidth: 2,
+                                borderColor: useTmux ? theme.colors.button.primary.background : theme.colors.textSecondary,
+                                backgroundColor: useTmux ? theme.colors.button.primary.background : 'transparent',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                marginRight: 8,
+                            }}>
+                                {useTmux && (
+                                    <Ionicons name="checkmark" size={12} color={theme.colors.button.primary.tint} />
+                                )}
+                            </View>
+                        </Pressable>
+                        <Text style={{
+                            fontSize: 14,
+                            fontWeight: '600',
+                            color: theme.colors.text,
+                            ...Typography.default('semiBold')
+                        }}>
+                            Spawn Sessions in Tmux
+                        </Text>
+                    </View>
+                    <Text style={{
+                        fontSize: 12,
+                        color: theme.colors.textSecondary,
+                        marginBottom: 12,
+                        ...Typography.default()
+                    }}>
+                        {useTmux ? 'Sessions spawn in new tmux windows. Configure session name and temp directory below.' : 'Sessions spawn in regular shell (no tmux integration)'}
+                    </Text>
+
                     {/* Tmux Session Name */}
                     <Text style={{
                         fontSize: 14,
@@ -361,7 +414,7 @@ export function ProfileEditForm({
                         marginBottom: 8,
                         ...Typography.default()
                     }}>
-                        Empty = spawn in regular shell. Specify name (e.g., "my-work") = spawn in new tmux window in that session. Daemon will create session if it doesn't exist.
+                        Leave empty to use default session name. Specify name (e.g., "my-work") for custom session.
                     </Text>
                     <TextInput
                         style={{
@@ -369,14 +422,16 @@ export function ProfileEditForm({
                             borderRadius: 8,
                             padding: 12,
                             fontSize: 16,
-                            color: theme.colors.text,
+                            color: useTmux ? theme.colors.text : theme.colors.textSecondary,
                             marginBottom: 16,
                             borderWidth: 1,
                             borderColor: theme.colors.textSecondary,
+                            opacity: useTmux ? 1 : 0.5,
                         }}
-                        placeholder="my-session (leave empty for regular shell)"
+                        placeholder={useTmux ? "my-session (optional)" : "Disabled - tmux not enabled"}
                         value={tmuxSession}
                         onChangeText={setTmuxSession}
+                        editable={useTmux}
                     />
 
                     {/* Tmux Temp Directory */}
@@ -403,14 +458,16 @@ export function ProfileEditForm({
                             borderRadius: 8,
                             padding: 12,
                             fontSize: 16,
-                            color: theme.colors.text,
+                            color: useTmux ? theme.colors.text : theme.colors.textSecondary,
                             marginBottom: 16,
                             borderWidth: 1,
                             borderColor: theme.colors.textSecondary,
+                            opacity: useTmux ? 1 : 0.5,
                         }}
-                        placeholder="/tmp (leave empty for default)"
+                        placeholder={useTmux ? "/tmp (optional)" : "Disabled - tmux not enabled"}
                         value={tmuxTmpDir}
                         onChangeText={setTmuxTmpDir}
+                        editable={useTmux}
                     />
 
                     {/* Custom Environment Variables */}
@@ -431,7 +488,7 @@ export function ProfileEditForm({
                                 <View style={{
                                     width: 20,
                                     height: 20,
-                                    borderRadius: 10,
+                                    borderRadius: 4,
                                     borderWidth: 2,
                                     borderColor: useCustomEnvVars ? theme.colors.button.primary.background : theme.colors.textSecondary,
                                     backgroundColor: useCustomEnvVars ? theme.colors.button.primary.background : 'transparent',
