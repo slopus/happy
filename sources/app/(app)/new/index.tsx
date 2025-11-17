@@ -728,16 +728,40 @@ function NewSessionWizard() {
                                 );
                             })}
 
-                            {/* Add Profile Button */}
-                            <Pressable
-                                style={styles.addProfileButton}
-                                onPress={handleAddProfile}
-                            >
-                                <Ionicons name="add-circle-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                <Text style={styles.addProfileButtonText}>
-                                    {t('profiles.addProfile')}
-                                </Text>
-                            </Pressable>
+                            {/* Profile Action Buttons */}
+                            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 12 }}>
+                                <Pressable
+                                    style={[styles.addProfileButton, { flex: 1 }]}
+                                    onPress={handleAddProfile}
+                                >
+                                    <Ionicons name="add-circle-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                    <Text style={styles.addProfileButtonText}>
+                                        Add
+                                    </Text>
+                                </Pressable>
+                                {selectedProfile && !selectedProfile.isBuiltIn && (
+                                    <>
+                                        <Pressable
+                                            style={[styles.addProfileButton, { flex: 1 }]}
+                                            onPress={() => selectedProfile && handleDuplicateProfile(selectedProfile)}
+                                        >
+                                            <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                            <Text style={styles.addProfileButtonText}>
+                                                Duplicate
+                                            </Text>
+                                        </Pressable>
+                                        <Pressable
+                                            style={[styles.addProfileButton, { flex: 1 }]}
+                                            onPress={() => selectedProfile && handleDeleteProfile(selectedProfile)}
+                                        >
+                                            <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                                            <Text style={[styles.addProfileButtonText, { color: '#FF6B6B' }]}>
+                                                Delete
+                                            </Text>
+                                        </Pressable>
+                                    </>
+                                )}
+                            </View>
 
                             {/* Section 2: Machine Selection */}
                             <Text style={styles.sectionHeader}>2. Select Machine</Text>
