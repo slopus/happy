@@ -10,6 +10,7 @@ import { layout } from '@/components/layout';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useWindowDimensions } from 'react-native';
 import { AIBackendProfile } from '@/sync/settings';
+import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { randomUUID } from 'expo-crypto';
 
 interface ProfileDisplay {
@@ -23,81 +24,7 @@ interface ProfileManagerProps {
     selectedProfileId?: string | null;
 }
 
-// Default built-in profiles
-const DEFAULT_PROFILES: ProfileDisplay[] = [
-    {
-        id: 'anthropic',
-        name: 'Anthropic (Default)',
-        isBuiltIn: true,
-    },
-    {
-        id: 'deepseek',
-        name: 'DeepSeek (Reasoner)',
-        isBuiltIn: true,
-    },
-    {
-        id: 'zai',
-        name: 'Z.AI (GLM-4.6)',
-        isBuiltIn: true,
-    }
-];
-
-// Built-in profile configurations
-const getBuiltInProfile = (id: string): AIBackendProfile | null => {
-    switch (id) {
-        case 'anthropic':
-            return {
-                id: 'anthropic',
-                name: 'Anthropic (Default)',
-                anthropicConfig: {},
-                environmentVariables: [],
-                compatibility: { claude: true, codex: false },
-                isBuiltIn: true,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                version: '1.0.0',
-            };
-        case 'deepseek':
-            return {
-                id: 'deepseek',
-                name: 'DeepSeek (Reasoner)',
-                anthropicConfig: {
-                    baseUrl: 'https://api.deepseek.com/anthropic',
-                    model: 'deepseek-reasoner',
-                },
-                environmentVariables: [
-                    { name: 'DEEPSEEK_API_TIMEOUT_MS', value: '600000' },
-                    { name: 'DEEPSEEK_SMALL_FAST_MODEL', value: 'deepseek-chat' },
-                    { name: 'DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
-                    { name: 'API_TIMEOUT_MS', value: '600000' },
-                    { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: 'deepseek-chat' },
-                    { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '1' },
-                ],
-                compatibility: { claude: true, codex: false },
-                isBuiltIn: true,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                version: '1.0.0',
-            };
-        case 'zai':
-            return {
-                id: 'zai',
-                name: 'Z.AI (GLM-4.6)',
-                anthropicConfig: {
-                    baseUrl: 'https://api.z.ai/api/anthropic',
-                    model: 'glm-4.6',
-                },
-                environmentVariables: [],
-                compatibility: { claude: true, codex: false },
-                isBuiltIn: true,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                version: '1.0.0',
-            };
-        default:
-            return null;
-    }
-};
+// Profile utilities now imported from @/sync/profileUtils
 
 function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerProps) {
     const { theme } = useUnistyles();
