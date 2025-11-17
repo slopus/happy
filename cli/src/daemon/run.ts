@@ -21,6 +21,7 @@ import { readFileSync } from 'fs';
 import { join } from 'path';
 import { projectPath } from '@/projectPath';
 import { getTmuxUtilities, isTmuxAvailable, parseTmuxSessionIdentifier, formatTmuxSessionIdentifier } from '@/utils/tmux';
+import { expandEnvironmentVariables } from '@/utils/expandEnvVars';
 
 // Prepare initial metadata
 export const initialMachineMetadata: MachineMetadata = {
@@ -323,9 +324,14 @@ export async function startDaemon(): Promise<void> {
         }
 
         // Final merge: Profile vars first, then auth (auth takes precedence to protect authentication)
-        const extraEnv = { ...profileEnv, ...authEnv };
-        logger.debug(`[DAEMON RUN] Final environment variable keys (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
+        let extraEnv = { ...profileEnv, ...authEnv };
+        logger.debug(`[DAEMON RUN] Final environment variable keys (before expansion) (${Object.keys(extraEnv).length}): ${Object.keys(extraEnv).join(', ')}`);
 
+        // Expand ${VAR} references from daemon's process.env
+        // This ensures variable substitution works in both tmux and non-tmux modes
+        // Example: ANTHROPIC_AUTH_TOKEN="${Z_AI_AUTH_TOKEN}" → ANTHROPIC_AUTH_TOKEN="sk-real-key"
+        extraEnv = expandEnvironmentVariables(extraEnv, process.env);
+        logger.debug(`[DAEMON RUN] After ${VAR} expansion: ${Object.keys(extraEnv).join(', ')}`);
 
         // Check if tmux is available and should be used
         const tmuxAvailable = await isTmuxAvailable();
