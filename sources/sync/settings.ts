@@ -93,6 +93,42 @@ export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claud
     return profile.compatibility[agent];
 }
 
+/**
+ * Converts a profile into environment variables for session spawning.
+ *
+ * HOW ENVIRONMENT VARIABLES WORK:
+ *
+ * 1. USER LAUNCHES DAEMON with credentials in environment:
+ *    Example: Z_AI_AUTH_TOKEN=sk-real-key Z_AI_BASE_URL=https://api.z.ai happy daemon start
+ *
+ * 2. PROFILE DEFINES MAPPINGS using ${VAR} syntax to map daemon env vars to what CLI expects:
+ *    Z.AI example: { name: 'ANTHROPIC_AUTH_TOKEN', value: '${Z_AI_AUTH_TOKEN}' }
+ *    DeepSeek example: { name: 'ANTHROPIC_BASE_URL', value: '${DEEPSEEK_BASE_URL}' }
+ *    This maps provider-specific vars (Z_AI_AUTH_TOKEN, DEEPSEEK_BASE_URL) to CLI vars (ANTHROPIC_AUTH_TOKEN, ANTHROPIC_BASE_URL)
+ *
+ * 3. GUI SENDS to daemon: Profile env vars with ${VAR} placeholders unchanged
+ *    Sent: ANTHROPIC_AUTH_TOKEN=${Z_AI_AUTH_TOKEN} (literal string with placeholder)
+ *
+ * 4. DAEMON EXPANDS ${VAR} from its process.env when spawning session:
+ *    - Tmux mode: Shell expands via `export ANTHROPIC_AUTH_TOKEN="${Z_AI_AUTH_TOKEN}";` before launching
+ *    - Non-tmux mode: Node.js spawn with env: { ...process.env, ...profileEnvVars } (shell expansion in child)
+ *
+ * 5. SESSION RECEIVES actual expanded values:
+ *    ANTHROPIC_AUTH_TOKEN=sk-real-key (expanded from daemon's Z_AI_AUTH_TOKEN, not literal ${Z_AI_AUTH_TOKEN})
+ *
+ * 6. CLAUDE CLI reads ANTHROPIC_BASE_URL, ANTHROPIC_AUTH_TOKEN, ANTHROPIC_MODEL and connects to Z.AI/DeepSeek/etc
+ *
+ * This design lets users:
+ * - Set credentials ONCE when launching daemon (Z_AI_AUTH_TOKEN, DEEPSEEK_AUTH_TOKEN, ANTHROPIC_AUTH_TOKEN)
+ * - Create multiple sessions, each with a different backend profile selected
+ * - Session 1 can use Z.AI backend, Session 2 can use DeepSeek backend (simultaneously)
+ * - Each session uses its selected backend for its entire lifetime (no mid-session switching)
+ * - Keep secrets in shell environment, not in GUI/profile storage
+ *
+ * PRIORITY ORDER when spawning (daemon/run.ts):
+ * Final env = { ...daemon.process.env, ...expandedProfileVars, ...authVars }
+ * authVars override profile, profile overrides daemon.process.env
+ */
 export function getProfileEnvironmentVariables(profile: AIBackendProfile): Record<string, string> {
     const envVars: Record<string, string> = {};
 

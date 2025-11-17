@@ -28,10 +28,13 @@ export function ProfileEditForm({
     const [name, setName] = React.useState(profile.name || '');
     const [baseUrl, setBaseUrl] = React.useState(profile.anthropicConfig?.baseUrl || '');
     const [authToken, setAuthToken] = React.useState(profile.anthropicConfig?.authToken || '');
+    const [useAuthToken, setUseAuthToken] = React.useState(!!profile.anthropicConfig?.authToken);
     const [model, setModel] = React.useState(profile.anthropicConfig?.model || '');
     const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxConfig?.sessionName || '');
     const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxConfig?.tmpDir || '');
-    const [tmuxUpdateEnvironment, setTmuxUpdateEnvironment] = React.useState(profile.tmuxConfig?.updateEnvironment || false);
+    const [useCustomEnvVars, setUseCustomEnvVars] = React.useState(
+        profile.environmentVariables && profile.environmentVariables.length > 0
+    );
     const [defaultSessionType, setDefaultSessionType] = React.useState<'simple' | 'worktree'>(profile.defaultSessionType || 'simple');
     const [defaultPermissionMode, setDefaultPermissionMode] = React.useState<PermissionMode>((profile.defaultPermissionMode as PermissionMode) || 'default');
     const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
@@ -78,24 +81,26 @@ export function ProfileEditForm({
             return;
         }
 
-        // Convert customEnvVars record back to environmentVariables array
-        const environmentVariables = Object.entries(customEnvVars).map(([name, value]) => ({
-            name,
-            value,
-        }));
+        // Convert customEnvVars record back to environmentVariables array (only if enabled)
+        const environmentVariables = useCustomEnvVars
+            ? Object.entries(customEnvVars).map(([name, value]) => ({
+                name,
+                value,
+            }))
+            : [];
 
         onSave({
             ...profile,
             name: name.trim(),
             anthropicConfig: {
                 baseUrl: baseUrl.trim() || undefined,
-                authToken: authToken.trim() || undefined,
+                authToken: useAuthToken ? (authToken.trim() || undefined) : undefined,
                 model: model.trim() || undefined,
             },
             tmuxConfig: {
                 sessionName: tmuxSession.trim() || undefined,
                 tmpDir: tmuxTmpDir.trim() || undefined,
-                updateEnvironment: tmuxUpdateEnvironment,
+                updateEnvironment: undefined, // Preserve schema compatibility, not used by daemon
             },
             environmentVariables,
             defaultSessionType: defaultSessionType,
@@ -158,6 +163,14 @@ export function ProfileEditForm({
                     }}>
                         {t('profiles.baseURL')} ({t('common.optional')})
                     </Text>
+                    <Text style={{
+                        fontSize: 12,
+                        color: theme.colors.textSecondary,
+                        marginBottom: 8,
+                        ...Typography.default()
+                    }}>
+                        Leave empty for default. Can be overridden by ANTHROPIC_BASE_URL from daemon environment or custom env vars below.
+                    </Text>
                     <TextInput
                         style={{
                             backgroundColor: theme.colors.input.background,
@@ -175,14 +188,51 @@ export function ProfileEditForm({
                     />
 
                     {/* Auth Token */}
-                    <Text style={{
-                        fontSize: 14,
-                        fontWeight: '600',
-                        color: theme.colors.text,
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
                         marginBottom: 8,
-                        ...Typography.default('semiBold')
                     }}>
-                        {t('profiles.authToken')} ({t('common.optional')})
+                        <Pressable
+                            style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                marginRight: 8,
+                            }}
+                            onPress={() => setUseAuthToken(!useAuthToken)}
+                        >
+                            <View style={{
+                                width: 20,
+                                height: 20,
+                                borderRadius: 10,
+                                borderWidth: 2,
+                                borderColor: useAuthToken ? theme.colors.button.primary.background : theme.colors.textSecondary,
+                                backgroundColor: useAuthToken ? theme.colors.button.primary.background : 'transparent',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                marginRight: 8,
+                            }}>
+                                {useAuthToken && (
+                                    <Ionicons name="checkmark" size={12} color={theme.colors.button.primary.tint} />
+                                )}
+                            </View>
+                        </Pressable>
+                        <Text style={{
+                            fontSize: 14,
+                            fontWeight: '600',
+                            color: theme.colors.text,
+                            ...Typography.default('semiBold')
+                        }}>
+                            {t('profiles.authToken')} ({t('common.optional')})
+                        </Text>
+                    </View>
+                    <Text style={{
+                        fontSize: 12,
+                        color: theme.colors.textSecondary,
+                        marginBottom: 8,
+                        ...Typography.default()
+                    }}>
+                        {useAuthToken ? 'Uses this field. Uncheck to use ANTHROPIC_AUTH_TOKEN from daemon environment instead.' : 'Uses ANTHROPIC_AUTH_TOKEN from daemon environment (set when daemon launched)'}
                     </Text>
                     <TextInput
                         style={{
@@ -190,15 +240,17 @@ export function ProfileEditForm({
                             borderRadius: 8,
                             padding: 12,
                             fontSize: 16,
-                            color: theme.colors.text,
+                            color: useAuthToken ? theme.colors.text : theme.colors.textSecondary,
                             marginBottom: 16,
                             borderWidth: 1,
                             borderColor: theme.colors.textSecondary,
+                            opacity: useAuthToken ? 1 : 0.5,
                         }}
-                        placeholder={t('profiles.enterToken')}
+                        placeholder={useAuthToken ? t('profiles.enterToken') : 'Disabled - using shell environment'}
                         value={authToken}
                         onChangeText={setAuthToken}
                         secureTextEntry
+                        editable={useAuthToken}
                     />
 
                     {/* Model */}
@@ -301,7 +353,15 @@ export function ProfileEditForm({
                         marginBottom: 8,
                         ...Typography.default('semiBold')
                     }}>
-                        {t('profiles.tmuxSession')} ({t('common.optional')})
+                        Tmux Session Name ({t('common.optional')})
+                    </Text>
+                    <Text style={{
+                        fontSize: 12,
+                        color: theme.colors.textSecondary,
+                        marginBottom: 8,
+                        ...Typography.default()
+                    }}>
+                        Empty = spawn in regular shell. Specify name (e.g., "my-work") = spawn in new tmux window in that session. Daemon will create session if it doesn't exist.
                     </Text>
                     <TextInput
                         style={{
@@ -314,7 +374,7 @@ export function ProfileEditForm({
                             borderWidth: 1,
                             borderColor: theme.colors.textSecondary,
                         }}
-                        placeholder={t('profiles.enterTmuxSession')}
+                        placeholder="my-session (leave empty for regular shell)"
                         value={tmuxSession}
                         onChangeText={setTmuxSession}
                     />
@@ -327,7 +387,15 @@ export function ProfileEditForm({
                         marginBottom: 8,
                         ...Typography.default('semiBold')
                     }}>
-                        {t('profiles.tmuxTempDir')} ({t('common.optional')})
+                        Tmux Temp Directory ({t('common.optional')})
+                    </Text>
+                    <Text style={{
+                        fontSize: 12,
+                        color: theme.colors.textSecondary,
+                        marginBottom: 8,
+                        ...Typography.default()
+                    }}>
+                        Temporary directory for tmux session files. Leave empty for system default.
                     </Text>
                     <TextInput
                         style={{
@@ -340,84 +408,42 @@ export function ProfileEditForm({
                             borderWidth: 1,
                             borderColor: theme.colors.textSecondary,
                         }}
-                        placeholder={t('profiles.enterTmuxTempDir')}
+                        placeholder="/tmp (leave empty for default)"
                         value={tmuxTmpDir}
                         onChangeText={setTmuxTmpDir}
                     />
-
-                    {/* Tmux Update Environment */}
-                    <Text style={{
-                        fontSize: 14,
-                        fontWeight: '600',
-                        color: theme.colors.text,
-                        marginBottom: 8,
-                        ...Typography.default('semiBold')
-                    }}>
-                        System Variables on Reconnect
-                    </Text>
-                    <Text style={{
-                        fontSize: 12,
-                        color: theme.colors.textSecondary,
-                        marginBottom: 12,
-                        ...Typography.default()
-                    }}>
-                        API keys above are set once at session creation. This controls system variables (SSH agent, X11 display) when you reconnect.
-                    </Text>
-                    <ItemGroup title="">
-                        {[
-                            {
-                                value: true,
-                                label: 'Refresh from Current Connection',
-                                description: 'Update SSH_AUTH_SOCK, DISPLAY from new connection (git push, ssh keep working)',
-                                icon: 'sync-outline'
-                            },
-                            {
-                                value: false,
-                                label: 'Keep from Session Creation',
-                                description: 'Use SSH_AUTH_SOCK, DISPLAY from when session started (git push, ssh may fail)',
-                                icon: 'lock-closed-outline'
-                            },
-                        ].map((option, index, array) => (
-                            <Item
-                                key={option.value.toString()}
-                                title={option.label}
-                                subtitle={option.description}
-                                leftElement={
-                                    <Ionicons
-                                        name={option.icon as any}
-                                        size={24}
-                                        color={tmuxUpdateEnvironment === option.value ? theme.colors.button.primary.tint : theme.colors.textSecondary}
-                                    />
-                                }
-                                rightElement={tmuxUpdateEnvironment === option.value ? (
-                                    <Ionicons
-                                        name="checkmark-circle"
-                                        size={20}
-                                        color={theme.colors.button.primary.tint}
-                                    />
-                                ) : null}
-                                onPress={() => setTmuxUpdateEnvironment(option.value)}
-                                showChevron={false}
-                                selected={tmuxUpdateEnvironment === option.value}
-                                showDivider={index < array.length - 1}
-                                style={tmuxUpdateEnvironment === option.value ? {
-                                    borderWidth: 2,
-                                    borderColor: theme.colors.button.primary.tint,
-                                    borderRadius: 8,
-                                } : undefined}
-                            />
-                        ))}
-                    </ItemGroup>
-                    <View style={{ marginBottom: 16 }} />
 
                     {/* Custom Environment Variables */}
                     <View style={{ marginBottom: 24 }}>
                         <View style={{
                             flexDirection: 'row',
-                            justifyContent: 'space-between',
                             alignItems: 'center',
-                            marginBottom: 12,
+                            marginBottom: 8,
                         }}>
+                            <Pressable
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    marginRight: 8,
+                                }}
+                                onPress={() => setUseCustomEnvVars(!useCustomEnvVars)}
+                            >
+                                <View style={{
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: 10,
+                                    borderWidth: 2,
+                                    borderColor: useCustomEnvVars ? theme.colors.button.primary.background : theme.colors.textSecondary,
+                                    backgroundColor: useCustomEnvVars ? theme.colors.button.primary.background : 'transparent',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    marginRight: 8,
+                                }}>
+                                    {useCustomEnvVars && (
+                                        <Ionicons name="checkmark" size={12} color={theme.colors.button.primary.tint} />
+                                    )}
+                                </View>
+                            </Pressable>
                             <Text style={{
                                 fontSize: 16,
                                 fontWeight: '600',
@@ -426,13 +452,40 @@ export function ProfileEditForm({
                             }}>
                                 Custom Environment Variables
                             </Text>
+                        </View>
+                        <Text style={{
+                            fontSize: 12,
+                            color: theme.colors.textSecondary,
+                            marginBottom: 12,
+                            ...Typography.default()
+                        }}>
+                            {useCustomEnvVars
+                                ? 'Set when spawning each session. Use ${VAR} for daemon env (e.g., ANTHROPIC_AUTH_TOKEN=${Z_AI_AUTH_TOKEN}). Each session can use a different backend (Session 1: Z.AI, Session 2: DeepSeek, etc).'
+                                : 'Variables disabled - uses daemon environment as-is (all sessions use same backend)'}
+                        </Text>
+                        <View style={{
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            marginBottom: 12,
+                            opacity: useCustomEnvVars ? 1 : 0.5,
+                        }}>
+                            <Text style={{
+                                fontSize: 14,
+                                fontWeight: '600',
+                                color: theme.colors.text,
+                                ...Typography.default('semiBold')
+                            }}>
+                                Variables
+                            </Text>
                             <Pressable
                                 style={{
                                     flexDirection: 'row',
                                     alignItems: 'center',
                                     padding: 4,
                                 }}
-                                onPress={() => setShowAddEnvVar(true)}
+                                onPress={() => useCustomEnvVars && setShowAddEnvVar(true)}
+                                disabled={!useCustomEnvVars}
                             >
                                 <Ionicons name="add-circle" size={20} color={theme.colors.button.primary.tint} />
                             </Pressable>
@@ -447,6 +500,7 @@ export function ProfileEditForm({
                                 marginBottom: 8,
                                 flexDirection: 'row',
                                 alignItems: 'center',
+                                opacity: useCustomEnvVars ? 1 : 0.5,
                             }}>
                                 <View style={{ flex: 1 }}>
                                     <Text style={{
@@ -471,7 +525,8 @@ export function ProfileEditForm({
                                         padding: 4,
                                         marginLeft: 8,
                                     }}
-                                    onPress={() => handleRemoveEnvVar(key)}
+                                    onPress={() => useCustomEnvVars && handleRemoveEnvVar(key)}
+                                    disabled={!useCustomEnvVars}
                                 >
                                     <Ionicons name="remove-circle" size={20} color="#FF6B6B" />
                                 </Pressable>

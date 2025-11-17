@@ -4,6 +4,18 @@ import { AIBackendProfile } from './settings';
  * Get a built-in AI backend profile by ID.
  * Built-in profiles provide sensible defaults for popular AI providers.
  *
+ * ENVIRONMENT VARIABLE FLOW:
+ * 1. User launches daemon with env vars: Z_AI_AUTH_TOKEN=sk-... Z_AI_BASE_URL=https://api.z.ai
+ * 2. Profile defines mappings: ANTHROPIC_AUTH_TOKEN=${Z_AI_AUTH_TOKEN}
+ * 3. When spawning session, daemon expands ${VAR} from its process.env
+ * 4. Session receives: ANTHROPIC_AUTH_TOKEN=sk-... (actual value)
+ * 5. Claude CLI reads ANTHROPIC_* env vars, connects to Z.AI
+ *
+ * This pattern lets users:
+ * - Set credentials ONCE when launching daemon
+ * - Switch backends by selecting different profiles
+ * - Each profile maps daemon env vars to what CLI expects
+ *
  * @param id - The profile ID (anthropic, deepseek, zai, openai, azure-openai, together)
  * @returns The complete profile configuration, or null if not found
  */
@@ -22,18 +34,19 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                 version: '1.0.0',
             };
         case 'deepseek':
+            // DeepSeek profile: Maps DEEPSEEK_* daemon environment to ANTHROPIC_* for Claude CLI
+            // Launch daemon with: DEEPSEEK_AUTH_TOKEN=sk-... DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
+            // Profile uses ${VAR} substitution for all config, no hardcoded values
+            // NOTE: anthropicConfig left empty so environmentVariables aren't overridden (getProfileEnvironmentVariables priority)
             return {
                 id: 'deepseek',
                 name: 'DeepSeek (Reasoner)',
-                anthropicConfig: {
-                    baseUrl: 'https://api.deepseek.com/anthropic',
-                    model: 'deepseek-reasoner',
-                },
+                anthropicConfig: {},
                 environmentVariables: [
                     { name: 'ANTHROPIC_BASE_URL', value: '${DEEPSEEK_BASE_URL}' },
                     { name: 'ANTHROPIC_AUTH_TOKEN', value: '${DEEPSEEK_AUTH_TOKEN}' },
-                    { name: 'ANTHROPIC_MODEL', value: '${DEEPSEEK_MODEL}' },
                     { name: 'API_TIMEOUT_MS', value: '${DEEPSEEK_API_TIMEOUT_MS}' },
+                    { name: 'ANTHROPIC_MODEL', value: '${DEEPSEEK_MODEL}' },
                     { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: '${DEEPSEEK_SMALL_FAST_MODEL}' },
                     { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '${DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC}' },
                 ],
@@ -44,13 +57,14 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                 version: '1.0.0',
             };
         case 'zai':
+            // Z.AI profile: Maps Z_AI_* daemon environment to ANTHROPIC_* for Claude CLI
+            // Launch daemon with: Z_AI_AUTH_TOKEN=sk-... Z_AI_BASE_URL=https://api.z.ai Z_AI_MODEL=glm-4.6
+            // Profile uses ${VAR} substitution for all config, no hardcoded values
+            // NOTE: anthropicConfig left empty so environmentVariables aren't overridden
             return {
                 id: 'zai',
                 name: 'Z.AI (GLM-4.6)',
-                anthropicConfig: {
-                    baseUrl: 'https://api.z.ai/api/anthropic',
-                    model: 'glm-4.6',
-                },
+                anthropicConfig: {},
                 environmentVariables: [
                     { name: 'ANTHROPIC_BASE_URL', value: '${Z_AI_BASE_URL}' },
                     { name: 'ANTHROPIC_AUTH_TOKEN', value: '${Z_AI_AUTH_TOKEN}' },
