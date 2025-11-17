@@ -1,6 +1,7 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, TextInput } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, ViewStyle } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
@@ -14,12 +15,14 @@ export interface ProfileEditFormProps {
     profile: AIBackendProfile;
     onSave: (profile: AIBackendProfile) => void;
     onCancel: () => void;
+    containerStyle?: ViewStyle;
 }
 
 export function ProfileEditForm({
     profile,
     onSave,
-    onCancel
+    onCancel,
+    containerStyle
 }: ProfileEditFormProps) {
     const { theme } = useUnistyles();
     const [name, setName] = React.useState(profile.name || '');
@@ -102,29 +105,12 @@ export function ProfileEditForm({
     };
 
     return (
-        <View style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 20,
-        }}>
-            <ScrollView style={{
-                width: '100%',
-                maxWidth: 400,
-            }} contentContainerStyle={{
-                padding: 20,
-            }}>
-                <View style={{
-                    backgroundColor: theme.colors.surface,
-                    borderRadius: 16,
-                    padding: 20,
-                    width: '100%',
-                }}>
+        <ScrollView
+            style={[profileEditFormStyles.scrollView, containerStyle]}
+            contentContainerStyle={profileEditFormStyles.scrollContent}
+            keyboardShouldPersistTaps="handled"
+        >
+            <View style={profileEditFormStyles.formContainer}>
                     <Text style={{
                         fontSize: 20,
                         fontWeight: 'bold',
@@ -598,7 +584,21 @@ export function ProfileEditForm({
                         </Pressable>
                     </View>
                 </View>
-            </ScrollView>
-        </View>
+        </ScrollView>
     );
 }
+
+const profileEditFormStyles = StyleSheet.create((theme, rt) => ({
+    scrollView: {
+        flex: 1,
+    },
+    scrollContent: {
+        padding: 20,
+    },
+    formContainer: {
+        backgroundColor: theme.colors.surface,
+        borderRadius: 16,
+        padding: 20,
+        width: '100%',
+    },
+}));

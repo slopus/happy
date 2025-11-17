@@ -71,16 +71,6 @@ export const zhHans: TranslationStructure = {
         status: '状态',
     },
 
-    profiles: {
-        // AI backend profile management
-        title: 'AI 后端配置',
-        delete: {
-            title: '删除配置',
-            message: ({ name }: { name: string }) => `确定要删除"${name}"吗？此操作无法撤销。`,
-            confirm: '删除',
-            cancel: '取消',
-        },
-    },
 
     status: {
         connected: '已连接',
@@ -879,6 +869,12 @@ export const zhHans: TranslationStructure = {
         tmuxUpdateEnvironment: '更新 tmux 环境',
         deleteConfirm: '确定要删除此配置文件吗？',
         nameRequired: '配置文件名称为必填项',
+        delete: {
+            title: '删除配置',
+            message: ({ name }: { name: string }) => `确定要删除"${name}"吗？此操作无法撤销。`,
+            confirm: '删除',
+            cancel: '取消',
+        },
     },
 
     feed: {

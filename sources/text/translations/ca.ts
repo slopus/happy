@@ -69,16 +69,6 @@ export const ca: TranslationStructure = {
         status: 'Estat',
     },
 
-    profiles: {
-        // AI backend profile management
-        title: 'Perfils de Backend d\'IA',
-        delete: {
-            title: 'Eliminar Perfil',
-            message: ({ name }: { name: string }) => `Estàs segur que vols eliminar "${name}"? Aquesta acció no es pot desfer.`,
-            confirm: 'Eliminar',
-            cancel: 'Cancel·lar',
-        },
-    },
 
     status: {
         connected: 'connectat',
@@ -877,6 +867,12 @@ export const ca: TranslationStructure = {
         tmuxUpdateEnvironment: 'Actualitza l\'entorn tmux',
         deleteConfirm: 'Segur que vols eliminar aquest perfil?',
         nameRequired: 'El nom del perfil és obligatori',
+        delete: {
+            title: 'Eliminar Perfil',
+            message: ({ name }: { name: string }) => `Estàs segur que vols eliminar "${name}"? Aquesta acció no es pot desfer.`,
+            confirm: 'Eliminar',
+            cancel: 'Cancel·lar',
+        },
     },
 
     feed: {

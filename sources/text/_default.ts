@@ -876,6 +876,12 @@ export const en = {
         deleteConfirm: 'Are you sure you want to delete the profile "{name}"?',
         editProfile: 'Edit Profile',
         addProfileTitle: 'Add New Profile',
+        delete: {
+            title: 'Delete Profile',
+            message: ({ name }: { name: string }) => `Are you sure you want to delete "${name}"? This action cannot be undone.`,
+            confirm: 'Delete',
+            cancel: 'Cancel',
+        },
     }
 } as const;
 

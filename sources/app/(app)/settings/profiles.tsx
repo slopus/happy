@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, Pressable, ScrollView, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useSettingMutable } from '@/sync/storage';
+import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
@@ -393,19 +394,42 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
 
             {/* Profile Add/Edit Modal */}
             {showAddForm && editingProfile && (
-                <ProfileEditForm
-                    profile={editingProfile}
-                    onSave={handleSaveProfile}
-                    onCancel={() => {
-                        setShowAddForm(false);
-                        setEditingProfile(null);
-                    }}
-                />
+                <View style={profileManagerStyles.modalOverlay}>
+                    <View style={profileManagerStyles.modalContent}>
+                        <ProfileEditForm
+                            profile={editingProfile}
+                            onSave={handleSaveProfile}
+                            onCancel={() => {
+                                setShowAddForm(false);
+                                setEditingProfile(null);
+                            }}
+                        />
+                    </View>
+                </View>
             )}
         </View>
     );
 }
 
 // ProfileEditForm now imported from @/components/ProfileEditForm
+
+const profileManagerStyles = StyleSheet.create((theme) => ({
+    modalOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: 'rgba(0, 0, 0, 0.5)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: 20,
+    },
+    modalContent: {
+        width: '100%',
+        maxWidth: Math.min(layout.maxWidth, 600),
+        maxHeight: '90%',
+    },
+}));
 
 export default ProfileManager;

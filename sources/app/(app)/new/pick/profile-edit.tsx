@@ -1,16 +1,22 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
 import { Stack, useRouter, useLocalSearchParams } from 'expo-router';
+import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
+import { useHeaderHeight } from '@react-navigation/elements';
+import Constants from 'expo-constants';
 import { t } from '@/text';
 import { ProfileEditForm } from '@/components/ProfileEditForm';
 import { AIBackendProfile } from '@/sync/settings';
+import { layout } from '@/components/layout';
 import { callbacks } from '../index';
 
 export default function ProfileEditScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const params = useLocalSearchParams<{ profileData?: string }>();
+    const screenWidth = useWindowDimensions().width;
+    const headerHeight = useHeaderHeight();
 
     // Deserialize profile from URL params
     const profile: AIBackendProfile = React.useMemo(() => {
@@ -46,18 +52,39 @@ export default function ProfileEditScreen() {
     };
 
     return (
-        <View style={{ flex: 1, backgroundColor: theme.colors.surface }}>
+        <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + headerHeight : 0}
+            style={profileEditScreenStyles.container}
+        >
             <Stack.Screen
                 options={{
                     headerTitle: profile.name ? t('profiles.editProfile') : t('profiles.addProfile'),
                     headerBackTitle: t('common.back'),
                 }}
             />
-            <ProfileEditForm
-                profile={profile}
-                onSave={handleSave}
-                onCancel={handleCancel}
-            />
-        </View>
+            <View style={[
+                { flex: 1, paddingHorizontal: screenWidth > 700 ? 16 : 8 }
+            ]}>
+                <View style={[
+                    { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
+                ]}>
+                    <ProfileEditForm
+                        profile={profile}
+                        onSave={handleSave}
+                        onCancel={handleCancel}
+                    />
+                </View>
+            </View>
+        </KeyboardAvoidingView>
     );
 }
+
+const profileEditScreenStyles = StyleSheet.create((theme, rt) => ({
+    container: {
+        flex: 1,
+        backgroundColor: theme.colors.surface,
+        paddingTop: rt.insets.top,
+        paddingBottom: rt.insets.bottom,
+    },
+}));

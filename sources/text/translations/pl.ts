@@ -80,16 +80,6 @@ export const pl: TranslationStructure = {
         status: 'Status',
     },
 
-    profiles: {
-        // AI backend profile management
-        title: 'Profile Backend AI',
-        delete: {
-            title: 'Usuń Profil',
-            message: ({ name }: { name: string }) => `Czy na pewno chcesz usunąć "${name}"? Tej czynności nie można cofnąć.`,
-            confirm: 'Usuń',
-            cancel: 'Anuluj',
-        },
-    },
 
     status: {
         connected: 'połączono',
@@ -910,6 +900,12 @@ export const pl: TranslationStructure = {
         deleteConfirm: 'Czy na pewno chcesz usunąć profil "{name}"?',
         editProfile: 'Edytuj Profil',
         addProfileTitle: 'Dodaj Nowy Profil',
+        delete: {
+            title: 'Usuń Profil',
+            message: ({ name }: { name: string }) => `Czy na pewno chcesz usunąć "${name}"? Tej czynności nie można cofnąć.`,
+            confirm: 'Usuń',
+            cancel: 'Anuluj',
+        },
     }
 } as const;
 

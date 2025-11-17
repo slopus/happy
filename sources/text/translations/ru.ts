@@ -362,16 +362,6 @@ export const ru: TranslationStructure = {
         status: 'Статус',
     },
 
-    profiles: {
-        // AI backend profile management
-        title: 'Профили Backend ИИ',
-        delete: {
-            title: 'Удалить Профиль',
-            message: ({ name }: { name: string }) => `Вы уверены, что хотите удалить "${name}"? Это действие нельзя отменить.`,
-            confirm: 'Удалить',
-            cancel: 'Отмена',
-        },
-    },
 
     status: {
         connected: 'подключено',
@@ -909,6 +899,12 @@ export const ru: TranslationStructure = {
         deleteConfirm: 'Вы уверены, что хотите удалить профиль "{name}"?',
         editProfile: 'Редактировать Профиль',
         addProfileTitle: 'Добавить Новый Профиль',
+        delete: {
+            title: 'Удалить Профиль',
+            message: ({ name }: { name: string }) => `Вы уверены, что хотите удалить "${name}"? Это действие нельзя отменить.`,
+            confirm: 'Удалить',
+            cancel: 'Отмена',
+        },
     }
 } as const;
 
