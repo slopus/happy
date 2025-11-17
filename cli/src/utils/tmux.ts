@@ -374,7 +374,9 @@ export class TmuxUtilities {
             const parts = tmuxEnv.split(',');
             if (parts.length >= 3) {
                 const socketPath = parts[0];
-                const sessionAndWindow = parts[1].split('/')[-1] || parts[1];
+                // Extract last component from path (JavaScript doesn't support negative array indexing)
+                const pathParts = parts[1].split('/');
+                const sessionAndWindow = pathParts[pathParts.length - 1] || parts[1];
                 const pane = parts[2];
 
                 // Extract session name from session.window format

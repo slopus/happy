@@ -191,3 +191,71 @@ The system uses the built-in `HAPPY_HOME_DIR` environment variable to separate d
 Everything else (auth, sessions, logs, daemon) automatically follows the `HAPPY_HOME_DIR` setting.
 
 Cross-platform via Node.js - works identically on Windows, macOS, and Linux!
+
+## Testing Profile Sync Between GUI and CLI
+
+Profile synchronization ensures AI backend configurations created in the Happy mobile/web GUI work seamlessly with the CLI daemon.
+
+### Profile Schema Validation
+
+The profile schema is defined in both repositories:
+- **GUI:** `sources/sync/settings.ts` (AIBackendProfileSchema)
+- **CLI:** `src/persistence.ts` (AIBackendProfileSchema)
+
+**Critical:** These schemas MUST stay in sync to prevent sync failures.
+
+### Testing Profile Sync
+
+1. **Create profile in GUI:**
+   ```
+   - Open Happy mobile/web app
+   - Settings → AI Backend Profiles
+   - Create new profile with custom environment variables
+   - Note the profile ID
+   ```
+
+2. **Verify CLI receives profile:**
+   ```bash
+   # Start daemon with dev variant
+   npm run dev:daemon:start
+
+   # Check daemon logs
+   tail -f ~/.happy-dev/logs/*.log | grep -i profile
+   ```
+
+3. **Test profile-based session spawning:**
+   ```bash
+   # From GUI: Start new session with custom profile
+   # Check CLI daemon logs for:
+   # - "Loaded X environment variables from profile"
+   # - "Using GUI-provided profile environment variables"
+   ```
+
+4. **Verify environment variable expansion:**
+   ```bash
+   # If profile uses ${VAR} references:
+   # - Set reference var in daemon environment: export Z_AI_AUTH_TOKEN="sk-..."
+   # - Start session from GUI
+   # - Verify daemon logs show expansion: "${Z_AI_AUTH_TOKEN}" → "sk-..."
+   ```
+
+### Testing Schema Compatibility
+
+When modifying profile schemas:
+
+1. **Update both repositories** - Never update one without the other
+2. **Test migration** - Existing profiles should migrate gracefully
+3. **Version bump** - Update `CURRENT_PROFILE_VERSION` if schema changes
+4. **Test validation** - Invalid profiles should be caught with clear errors
+
+### Common Issues
+
+**"Invalid profile" warnings in logs:**
+- Check profile has valid UUID (not timestamp)
+- Verify environment variable names match regex: `^[A-Z_][A-Z0-9_]*$`
+- Ensure compatibility.claude or compatibility.codex is true
+
+**Environment variables not expanding:**
+- Reference variable must be set in daemon's process.env
+- Check daemon logs for expansion warnings
+- Verify no typos in ${VAR} references

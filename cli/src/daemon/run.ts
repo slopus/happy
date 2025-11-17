@@ -333,6 +333,24 @@ export async function startDaemon(): Promise<void> {
         extraEnv = expandEnvironmentVariables(extraEnv, process.env);
         logger.debug(`[DAEMON RUN] After variable expansion: ${Object.keys(extraEnv).join(', ')}`);
 
+        // Fail-fast validation: Check that any auth variables present are fully expanded
+        // Only validate variables that are actually set (different agents need different auth)
+        const potentialAuthVars = ['ANTHROPIC_AUTH_TOKEN', 'CLAUDE_CODE_OAUTH_TOKEN', 'OPENAI_API_KEY', 'CODEX_HOME', 'AZURE_OPENAI_API_KEY', 'TOGETHER_API_KEY'];
+        const unexpandedAuthVars = potentialAuthVars.filter(varName => {
+          const value = extraEnv[varName];
+          // Only fail if variable IS SET and contains unexpanded ${VAR} references
+          return value && typeof value === 'string' && value.includes('${');
+        });
+
+        if (unexpandedAuthVars.length > 0) {
+          const errorMessage = `Authentication may fail - variables contain unexpanded references: ${unexpandedAuthVars.map(v => `${v}="${extraEnv[v]}"`).join(', ')}. Set the referenced variables in the daemon's environment before starting sessions.`;
+          logger.warn(`[DAEMON RUN] ${errorMessage}`);
+          return {
+            type: 'error',
+            errorMessage
+          };
+        }
+
         // Check if tmux is available and should be used
         const tmuxAvailable = await isTmuxAvailable();
         let useTmux = tmuxAvailable;
