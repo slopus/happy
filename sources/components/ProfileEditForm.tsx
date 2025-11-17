@@ -99,7 +99,7 @@ export function ProfileEditForm({
                 model: model.trim() || undefined,
             },
             tmuxConfig: useTmux ? {
-                sessionName: tmuxSession.trim() || undefined,
+                sessionName: tmuxSession.trim() || 'happy', // Default to 'happy' if tmux enabled but no name specified
                 tmpDir: tmuxTmpDir.trim() || undefined,
                 updateEnvironment: undefined, // Preserve schema compatibility, not used by daemon
             } : {
@@ -414,7 +414,7 @@ export function ProfileEditForm({
                         marginBottom: 8,
                         ...Typography.default()
                     }}>
-                        Leave empty to use default session name. Specify name (e.g., "my-work") for custom session.
+                        Leave empty to use default session "happy". Specify name (e.g., "my-work") for custom session.
                     </Text>
                     <TextInput
                         style={{
@@ -428,7 +428,7 @@ export function ProfileEditForm({
                             borderColor: theme.colors.textSecondary,
                             opacity: useTmux ? 1 : 0.5,
                         }}
-                        placeholder={useTmux ? "my-session (optional)" : "Disabled - tmux not enabled"}
+                        placeholder={useTmux ? 'happy (default if empty)' : "Disabled - tmux not enabled"}
                         value={tmuxSession}
                         onChangeText={setTmuxSession}
                         editable={useTmux}
