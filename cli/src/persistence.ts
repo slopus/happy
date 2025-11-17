@@ -144,7 +144,8 @@ export function getProfileEnvironmentVariables(profile: AIBackendProfile): Recor
 
   // Add Tmux config
   if (profile.tmuxConfig) {
-    if (profile.tmuxConfig.sessionName) envVars.TMUX_SESSION_NAME = profile.tmuxConfig.sessionName;
+    // Empty string means "use current/most recent session", so include it
+    if (profile.tmuxConfig.sessionName !== undefined) envVars.TMUX_SESSION_NAME = profile.tmuxConfig.sessionName;
     if (profile.tmuxConfig.tmpDir) envVars.TMUX_TMPDIR = profile.tmuxConfig.tmpDir;
     if (profile.tmuxConfig.updateEnvironment !== undefined) {
       envVars.TMUX_UPDATE_ENVIRONMENT = profile.tmuxConfig.updateEnvironment.toString();
