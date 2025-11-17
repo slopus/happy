@@ -655,7 +655,7 @@ function NewSessionWizard() {
                                         onPress={() => selectProfile(profile.id)}
                                     >
                                         <View style={styles.profileIcon}>
-                                            <Ionicons name="star" size={16} color="white" />
+                                            <Ionicons name="star" size={16} color={theme.colors.button.primary.tint} />
                                         </View>
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
@@ -696,7 +696,7 @@ function NewSessionWizard() {
                                         onPress={() => selectProfile(profile.id)}
                                     >
                                         <View style={[styles.profileIcon, { backgroundColor: theme.colors.button.secondary.tint }]}>
-                                            <Ionicons name="person" size={16} color="white" />
+                                            <Ionicons name="person" size={16} color={theme.colors.button.primary.tint} />
                                         </View>
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
@@ -819,14 +819,14 @@ function NewSessionWizard() {
                                             <Ionicons
                                                 name={option.icon as any}
                                                 size={24}
-                                                color={permissionMode === option.value ? 'white' : theme.colors.textSecondary}
+                                                color={permissionMode === option.value ? theme.colors.button.primary.tint : theme.colors.textSecondary}
                                             />
                                         }
                                         rightElement={permissionMode === option.value ? (
                                             <Ionicons
                                                 name="checkmark-circle"
                                                 size={20}
-                                                color="white"
+                                                color={theme.colors.button.primary.tint}
                                             />
                                         ) : null}
                                         onPress={() => setPermissionMode(option.value)}
@@ -835,7 +835,7 @@ function NewSessionWizard() {
                                         showDivider={index < array.length - 1}
                                         style={permissionMode === option.value ? {
                                             borderWidth: 2,
-                                            borderColor: 'white',
+                                            borderColor: theme.colors.button.primary.tint,
                                             borderRadius: 8,
                                         } : undefined}
                                     />

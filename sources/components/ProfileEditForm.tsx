@@ -269,14 +269,14 @@ export function ProfileEditForm({
                                     <Ionicons
                                         name={option.icon as any}
                                         size={24}
-                                        color={defaultPermissionMode === option.value ? 'white' : theme.colors.textSecondary}
+                                        color={defaultPermissionMode === option.value ? theme.colors.button.primary.tint : theme.colors.textSecondary}
                                     />
                                 }
                                 rightElement={defaultPermissionMode === option.value ? (
                                     <Ionicons
                                         name="checkmark-circle"
                                         size={20}
-                                        color="white"
+                                        color={theme.colors.button.primary.tint}
                                     />
                                 ) : null}
                                 onPress={() => setDefaultPermissionMode(option.value)}
@@ -285,7 +285,7 @@ export function ProfileEditForm({
                                 showDivider={index < array.length - 1}
                                 style={defaultPermissionMode === option.value ? {
                                     borderWidth: 2,
-                                    borderColor: 'white',
+                                    borderColor: theme.colors.button.primary.tint,
                                     borderRadius: 8,
                                 } : undefined}
                             />
@@ -370,7 +370,7 @@ export function ProfileEditForm({
                                 marginRight: 8,
                             }}>
                                 {tmuxUpdateEnvironment && (
-                                    <Ionicons name="checkmark" size={12} color="white" />
+                                    <Ionicons name="checkmark" size={12} color={theme.colors.button.primary.tint} />
                                 )}
                             </View>
                             <Text style={{
@@ -407,7 +407,7 @@ export function ProfileEditForm({
                                 }}
                                 onPress={() => setShowAddEnvVar(true)}
                             >
-                                <Ionicons name="add-circle" size={20} color="white" />
+                                <Ionicons name="add-circle" size={20} color={theme.colors.button.primary.tint} />
                             </Pressable>
                         </View>
 
@@ -576,7 +576,7 @@ export function ProfileEditForm({
                             <Text style={{
                                 fontSize: 16,
                                 fontWeight: '600',
-                                color: 'white',
+                                color: theme.colors.button.primary.tint,
                                 ...Typography.default('semiBold')
                             }}>
                                 {t('common.save')}
