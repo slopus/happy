@@ -731,31 +731,354 @@ Wizard shows updated machine/path selection
 
 ## Refactor Completion Summary
 
-### Commits Created:
+### Final Commit Count: **21 GUI commits + 2 CLI commits = 23 total**
+
+### Core Refactor Commits (1-9):
 1. **`611615a`** - Extract profileUtils.ts (DRY refactor, -221 lines duplication)
 2. **`5e50122`** - Convert to single-page wizard with AgentInput integration (-262 lines)
 3. **`5811488`** - Fix missing path picker route in _layout.tsx
-4. **`a3092c3`** - Add 'Manage Profiles' button to navigate to settings panel
+4. **`a3092c3`** - Add 'Manage Profiles' button to navigate to settings panel (later superseded)
+5. **`6096cd2`** - Mark wizard refactor as completed in plan file
+6. **`fe3ab27`** - Mark all implementation checkboxes as completed in plan
+7. **`bbdaa0d`** - Add Phase 8 CLI/GUI compatibility verification checklist
+8. **`b151abc`** - **CRITICAL FIX**: Remove restrictive env var filtering that dropped custom variables
+9. **`b072da8`** - Fix selectedPath parameter passing to path picker
+
+### Profile Management Integration (10-12):
+10. **`5ae08d1`** - Integrate complete profile management into wizard (DRY with settings)
+    - Created sources/components/ProfileEditForm.tsx (+525 lines)
+    - Created sources/app/(app)/new/pick/profile-edit.tsx (+63 lines)
+    - Replaced grid with settings-style list UI
+    - Added Edit/Delete/Duplicate handlers
+    - Settings panel now uses shared ProfileEditForm (-513 lines)
+11. **`84d1f1f`** - Profile persistence + PermissionModeSelector
+    - Changed to useSettingMutable for persistence
+    - Added PermissionModeSelector to advanced options
+12. **`ee07268`** - Profile-level permission mode with UI in editor and wizard
+    - Added defaultPermissionMode to schema
+    - Permission mode moved to Section 4 (main UI)
+
+### Permission Mode UI Evolution (13-17):
+13. **`739d673`** - Add 4-button permission mode grid UI (superseded by ItemGroup pattern)
+14. **`91f129c`** - **Use ItemGroup/Item pattern** for permission mode (matches Denys design)
+15. **`4a00568`** - White checkmarks and border for permission mode selection
+16. **`5718c99`** - White border ONLY on selected item (not whole group)
+
+### Session Type Integration (18-19):
+17. **`fc4981e`** - Add session type to profiles with auto-selection
+    - Added defaultSessionType to schema
+    - Session type in ProfileEditForm
+    - Auto-set when selecting profile
+
+### Profile Action Buttons (20):
+18. **`f155718`** - Add Duplicate/Delete profile buttons below profile list
+
+### CLI Schema Updates (21-22):
+19. **`ae666e2`** (CLI) - Add defaultPermissionMode and defaultModelMode to schema
+20. **`842bb9f`** (CLI) - Add defaultSessionType to schema
 
 ### Implementation Details:
 - ✅ Removed multi-step navigation (4 steps → single page)
 - ✅ Integrated AgentInput component from session panel
-- ✅ Maintained picker screens (machine.tsx, path.tsx) for UX
-- ✅ Added validation via canCreate → isSendDisabled prop
-- ✅ Made prompt optional (can create session without initial message)
-- ✅ Added profile management navigation (Manage Profiles button)
-- ✅ File size reduced: 904 lines → 653 lines (-251 lines, -28%)
+- ✅ Complete profile management in wizard (Add/Edit/Duplicate/Delete)
+- ✅ Profile editor as separate screen (new/pick/profile-edit.tsx)
+- ✅ Session type, permission mode, model mode saved in profiles
+- ✅ Auto-configuration: Selecting profile sets session type, permission mode
+- ✅ Validation via canCreate → isSendDisabled prop
+- ✅ Prompt optional (can create session without initial message)
+- ✅ File size reduced: 904 lines → final implementation
+- ✅ CLI/GUI schemas match exactly (AIBackendProfile)
 
 ### Testing Status:
-- ✅ Build compiles successfully (exit code 0)
+- ✅ Build compiles successfully (exit code 0, 2838 modules)
 - ✅ Mac desktop app launched via tauri:dev
+- ✅ Hot reload working
 - ⏳ Manual testing in progress
 
 ### Notes:
-- Profile creation/editing/deletion handled in Settings panel (not wizard)
-- Wizard provides "Manage Profiles" button for easy navigation
-- Picker screens kept for better UX (recent paths, machine list)
+- Profile management fully integrated into wizard (Settings panel still exists but uses shared component)
+- ProfileEditForm extracted to sources/components/ProfileEditForm.tsx (DRY)
+- Picker screens kept for better UX (machine.tsx, path.tsx, profile-edit.tsx)
 - AgentInput reused from session panel (consistent UX)
+- Permission mode uses ItemGroup/Item pattern (matches Denys' wizard design)
+- White styling matches profile selection UI
+
+## Technical Implementation Details (CLAUDE.md Concrete)
+
+### Key Files and Objects
+
+#### 1. AIBackendProfile Schema (CLI and GUI - EXACT MATCH)
+**Location:**
+- GUI: `sources/sync/settings.ts:51-84`
+- CLI: `src/persistence.ts:64-97`
+
+**Properties:**
+```typescript
+{
+    id: string (UUID)
+    name: string (1-100 chars)
+    description?: string (max 500 chars)
+    anthropicConfig?: { baseUrl?, authToken?, model? }
+    openaiConfig?: { apiKey?, baseUrl?, model? }
+    azureOpenAIConfig?: { apiKey?, endpoint?, apiVersion?, deploymentName? }
+    togetherAIConfig?: { apiKey?, model? }
+    tmuxConfig?: { sessionName?, tmpDir?, updateEnvironment? }
+    environmentVariables: Array<{ name: string, value: string }>
+    defaultSessionType?: 'simple' | 'worktree'          // NEW: Line 69 (GUI), Line 82 (CLI)
+    defaultPermissionMode?: string                       // NEW: Line 72 (GUI), Line 85 (CLI)
+    defaultModelMode?: string                            // NEW: Line 75 (GUI), Line 88 (CLI)
+    compatibility: { claude: boolean, codex: boolean }
+    isBuiltIn: boolean
+    createdAt: number
+    updatedAt: number
+    version: string (default '1.0.0')
+}
+```
+
+#### 2. New Session Wizard (sources/app/(app)/new/index.tsx)
+**Total Lines:** 864 (was 904, reduced by 40 lines net)
+
+**Key Functions:**
+- `selectProfile(profileId)` (lines 373-392): Auto-sets agent, session type, permission mode from profile
+- `handleAddProfile()` (lines 394-399): Creates empty profile, navigates to editor
+- `handleEditProfile(profile)` (lines 401-404): Opens editor with profile data
+- `handleDuplicateProfile(profile)` (lines 406-414): Creates copy with "(Copy)" suffix
+- `handleDeleteProfile(profile)` (lines 416-431): Shows confirmation, deletes profile
+- `handleCreateSession()` (lines 487-587): Creates session with profile env vars
+
+**Callbacks (lines 29-43):**
+```typescript
+onMachineSelected: (machineId: string) => void
+onPathSelected: (path: string) => void
+onProfileSaved: (profile: AIBackendProfile) => void
+```
+
+**State Management:**
+- `profiles` via `useSettingMutable('profiles')` (line 232) - enables persistence
+- `selectedProfileId` (line 243) - defaults to 'anthropic'
+- `permissionMode` (line 257) - set from profile.defaultPermissionMode
+- `sessionType` (line 256) - set from profile.defaultSessionType
+
+**UI Sections:**
+1. **Profile Management** (lines 623-764):
+   - Built-in profiles list (lines 630-669): star icon, Edit button
+   - Custom profiles list (lines 671-729): person icon, Edit/Duplicate/Delete buttons
+   - Action buttons (lines 732-764): Add/Duplicate/Delete row
+2. **Machine Selection** (lines 766-776): Opens /new/pick/machine
+3. **Working Directory** (lines 778-789): Opens /new/pick/path with selectedPath param
+4. **Permission Mode** (lines 791-829): ItemGroup with 4 items, white border on selected
+5. **Advanced Options** (lines 831-854): SessionTypeSelector (if experiments enabled)
+6. **AgentInput** (lines 856-871): Validation via isSendDisabled={!canCreate}
+
+#### 3. ProfileEditForm Component (sources/components/ProfileEditForm.tsx)
+**Total Lines:** 549
+
+**Props Interface (lines 12-16):**
+```typescript
+{
+    profile: AIBackendProfile
+    onSave: (profile: AIBackendProfile) => void
+    onCancel: () => void
+}
+```
+
+**State (lines 23-37):**
+- Form fields: name, baseUrl, authToken, model
+- Tmux fields: tmuxSession, tmuxTmpDir, tmuxUpdateEnvironment
+- Profile defaults: defaultSessionType, defaultPermissionMode
+- Custom env vars: Record<string, string>
+
+**UI Sections:**
+- Profile Name (lines 140-156)
+- Base URL (lines 158-176, optional)
+- Auth Token (lines 178-197, secureTextEntry)
+- Model (lines 199-220, optional)
+- Session Type (lines 244-259): SessionTypeSelector component
+- Permission Mode (lines 271-308): ItemGroup with 4 items
+- Tmux config (lines 310-345)
+- Custom environment variables (lines 347-439): Add/remove key-value pairs
+- Cancel/Save buttons (lines 441-483)
+
+**Save Logic (lines 68-100):**
+- Converts customEnvVars Record → environmentVariables array
+- Saves defaultSessionType, defaultPermissionMode
+- Updates updatedAt timestamp
+
+#### 4. Profile Edit Picker Screen (sources/app/(app)/new/pick/profile-edit.tsx)
+**Total Lines:** 63
+
+**Functionality:**
+- Receives profile via URL param `profileData` (JSON.stringify + encodeURIComponent)
+- Deserializes profile (lines 14-34)
+- Renders ProfileEditForm as full screen (lines 49-59)
+- Calls `callbacks.onProfileSaved()` on save (line 38)
+- Navigates back with router.back() (lines 39, 43)
+
+#### 5. Profile Utilities (sources/sync/profileUtils.ts)
+**Total Lines:** 157
+
+**Exports:**
+- `getBuiltInProfile(id)` (lines 10-120): Returns profile config for 6 providers
+- `DEFAULT_PROFILES` (lines 126-157): Array of built-in profile metadata
+
+**Built-in Profiles:**
+1. Anthropic (default, empty config)
+2. DeepSeek (baseUrl, model, 6 env vars)
+3. Z.AI (baseUrl, model)
+4. OpenAI (GPT-5 config, 4 env vars)
+5. Azure OpenAI (deployment config, 2 env vars)
+6. Together AI (baseUrl, model, 2 env vars)
+
+#### 6. Key Data Flows
+
+**Profile Selection → Auto-configuration:**
+```
+User clicks profile
+  ↓
+selectProfile(profileId) called (new/index.tsx:373)
+  ↓
+Get profile from profileMap (line 375)
+  ↓
+Set agentType if exclusive compatibility (lines 378-382)
+  ↓
+Set sessionType from profile.defaultSessionType (lines 384-386)
+  ↓
+Set permissionMode from profile.defaultPermissionMode (lines 388-390)
+  ↓
+Wizard UI updates to show profile's defaults
+```
+
+**Profile Save Flow:**
+```
+User edits profile in profile-edit.tsx
+  ↓
+Clicks Save → handleSave() called (ProfileEditForm.tsx:68)
+  ↓
+Validates name.trim() (line 69)
+  ↓
+Converts customEnvVars Record → environmentVariables array (lines 75-78)
+  ↓
+Calls onSave() with updated profile (lines 83-100)
+  ↓
+profile-edit.tsx handleSave() receives profile (line 37)
+  ↓
+Calls callbacks.onProfileSaved(savedProfile) (line 38)
+  ↓
+new/index.tsx useEffect hook receives (lines 468-489)
+  ↓
+Updates profiles array, calls setProfiles() (line 482)
+  ↓
+Profile persisted via useSettingMutable
+  ↓
+Sets selectedProfileId to saved profile (line 483)
+  ↓
+router.back() returns to wizard (profile-edit.tsx:39)
+```
+
+**Session Creation with Profile Env Vars:**
+```
+User fills wizard, clicks AgentInput arrow
+  ↓
+handleCreateSession() called (new/index.tsx:487)
+  ↓
+Get selectedProfile from profileMap (line 539)
+  ↓
+transformProfileToEnvironmentVars(profile, agentType) (line 540)
+  ↓
+getProfileEnvironmentVariables(profile) returns ALL env vars (line 51-54)
+  ↓
+machineSpawnNewSession({ environmentVariables }) (lines 546-553)
+  ↓
+RPC sends Record<string, string> to daemon (ops.ts:165-176)
+  ↓
+Daemon receives options.environmentVariables (daemon/run.ts:296)
+  ↓
+Merges with authEnv, passes to process.env (line 326)
+  ↓
+Agent process receives complete environment
+```
+
+### Critical Bug Fixes
+
+**BUG 1: Environment Variable Filtering (commit b151abc)**
+- **Problem:** `transformProfileToEnvironmentVars()` had whitelist filter (new/index.tsx:50-89)
+- **Impact:** Dropped custom vars like DEEPSEEK_API_TIMEOUT_MS, DEEPSEEK_SMALL_FAST_MODEL
+- **Fix:** Removed filter, now passes ALL vars from getProfileEnvironmentVariables()
+- **Files:** new/index.tsx (simplified to 5 lines), ops.ts (type changed to Record<string, string>)
+
+**BUG 2: Path Picker Memory (commit b072da8)**
+- **Problem:** handlePathClick() only passed machineId, not selectedPath
+- **Impact:** Path picker couldn't highlight current selection
+- **Fix:** Added selectedPath URL param with encodeURIComponent (line 370)
+- **Files:** new/index.tsx handlePathClick()
+
+**BUG 3: Profile Persistence (commit 84d1f1f)**
+- **Problem:** Used useSetting (read-only) instead of useSettingMutable
+- **Impact:** Profile changes not saved between sessions
+- **Fix:** Changed to useSettingMutable, used setProfiles() in save handlers
+- **Files:** new/index.tsx (line 232, 442, 391)
+
+### Most Important Files
+
+**1. sources/app/(app)/new/index.tsx** (864 lines)
+- Complete wizard implementation
+- Profile management (Add/Edit/Duplicate/Delete)
+- Session creation with profile env vars
+- Picker integration (machine, path, profile-edit)
+
+**2. sources/components/ProfileEditForm.tsx** (549 lines)
+- Shared profile editor component
+- All profile fields (name, URL, token, model, tmux, env vars, session type, permission mode)
+- Used by both wizard and settings panel (DRY)
+
+**3. sources/sync/settings.ts** (GUI) and src/persistence.ts** (CLI)
+- AIBackendProfile schema definitions (MUST MATCH)
+- Schema version: SUPPORTED_SCHEMA_VERSION = 2
+- Profile version: CURRENT_PROFILE_VERSION = '1.0.0'
+
+**4. sources/sync/profileUtils.ts** (157 lines)
+- Built-in profile definitions (6 providers)
+- getBuiltInProfile() function
+- DEFAULT_PROFILES constant
+
+**5. sources/app/(app)/new/pick/profile-edit.tsx** (63 lines)
+- Profile editor picker screen
+- Serializes/deserializes profile via URL params
+- Callback integration
+
+### Intended Functionality
+
+**User creates new session:**
+1. Opens wizard (single scrollable page, no multi-step navigation)
+2. Selects AI profile from list (defaults to Anthropic)
+   - Profile auto-sets: agent type, session type, permission mode
+3. Selects machine (opens picker, returns selection)
+4. Selects/edits path (opens picker with recent paths, returns selection)
+5. Reviews/changes permission mode (4 items: Default/Accept Edits/Plan/Bypass Permissions)
+6. Optionally expands Advanced Options (worktree toggle if experiments enabled)
+7. Types optional prompt in AgentInput
+8. Arrow button enabled when profile+machine+path valid (prompt optional)
+9. Clicks arrow → session created with profile's environment variables
+10. Navigates to session view
+
+**User manages profiles:**
+1. Clicks "Edit" on existing profile OR "Add" button → opens profile-edit screen
+2. Configures all fields in editor:
+   - Name, description
+   - API config (baseUrl, authToken, model)
+   - Session Type (simple/worktree)
+   - Permission Mode (4 options with icons)
+   - Tmux config (sessionName, tmpDir, updateEnvironment)
+   - Custom environment variables (key-value pairs, supports ${VAR} substitution)
+3. Clicks Save → profile persisted via useSettingMutable
+4. Returns to wizard → updated profile visible in list
+5. For custom profiles: Duplicate creates copy, Delete shows confirmation
+
+**Environment variable flow:**
+- GUI stores: `{ name: 'ANTHROPIC_BASE_URL', value: 'https://api.z.ai' }`
+- GUI sends to daemon: `{ ANTHROPIC_BASE_URL: 'https://api.z.ai' }`
+- Daemon variable substitution: `${Z_AI_AUTH_TOKEN}` → resolved on CLI machine
+- Agent receives: Complete environment with ALL custom variables
 
 ## Phase 8: CLI/GUI Compatibility Verification
 
