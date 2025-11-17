@@ -727,4 +727,32 @@ Wizard shows updated machine/path selection
 
 - [x] Merge completed at commit `b618935`
 - [x] Plan file updated with all actionable details
-- [ ] Single-page refactor ready to begin
+- [x] Single-page refactor COMPLETED
+
+## Refactor Completion Summary
+
+### Commits Created:
+1. **`611615a`** - Extract profileUtils.ts (DRY refactor, -221 lines duplication)
+2. **`5e50122`** - Convert to single-page wizard with AgentInput integration (-262 lines)
+3. **`5811488`** - Fix missing path picker route in _layout.tsx
+4. **`a3092c3`** - Add 'Manage Profiles' button to navigate to settings panel
+
+### Implementation Details:
+- ✅ Removed multi-step navigation (4 steps → single page)
+- ✅ Integrated AgentInput component from session panel
+- ✅ Maintained picker screens (machine.tsx, path.tsx) for UX
+- ✅ Added validation via canCreate → isSendDisabled prop
+- ✅ Made prompt optional (can create session without initial message)
+- ✅ Added profile management navigation (Manage Profiles button)
+- ✅ File size reduced: 904 lines → 653 lines (-251 lines, -28%)
+
+### Testing Status:
+- ✅ Build compiles successfully (exit code 0)
+- ✅ Mac desktop app launched via tauri:dev
+- ⏳ Manual testing in progress
+
+### Notes:
+- Profile creation/editing/deletion handled in Settings panel (not wizard)
+- Wizard provides "Manage Profiles" button for easy navigation
+- Picker screens kept for better UX (recent paths, machine list)
+- AgentInput reused from session panel (consistent UX)
