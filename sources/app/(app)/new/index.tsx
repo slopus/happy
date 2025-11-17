@@ -650,7 +650,9 @@ function NewSessionWizard() {
                             {/* Built-in profiles */}
                             {DEFAULT_PROFILES.map((profileDisplay) => {
                                 const profile = getBuiltInProfile(profileDisplay.id);
-                                if (!profile || !validateProfileForAgent(profile, agentType)) return null;
+                                if (!profile) return null;
+
+                                const isCompatible = validateProfileForAgent(profile, agentType);
 
                                 return (
                                     <Pressable
@@ -658,8 +660,10 @@ function NewSessionWizard() {
                                         style={[
                                             styles.profileListItem,
                                             selectedProfileId === profile.id && styles.profileListItemSelected,
+                                            !isCompatible && { opacity: 0.5 }
                                         ]}
-                                        onPress={() => selectProfile(profile.id)}
+                                        onPress={() => isCompatible && selectProfile(profile.id)}
+                                        disabled={!isCompatible}
                                     >
                                         <View style={styles.profileIcon}>
                                             <Ionicons name="star" size={16} color={theme.colors.button.primary.tint} />
@@ -667,7 +671,8 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
                                             <Text style={styles.profileListDetails}>
-                                                {profile.anthropicConfig?.model || 'Default model'}
+                                                {!isCompatible && `⚠️ Requires ${agentType === 'claude' ? 'Codex' : 'Claude'} • `}
+                                                {profile.anthropicConfig?.model || profile.openaiConfig?.model || 'Default model'}
                                                 {profile.anthropicConfig?.baseUrl && ` • ${profile.anthropicConfig.baseUrl}`}
                                             </Text>
                                         </View>
@@ -691,7 +696,7 @@ function NewSessionWizard() {
 
                             {/* Custom profiles */}
                             {profiles.map((profile) => {
-                                if (!validateProfileForAgent(profile, agentType)) return null;
+                                const isCompatible = validateProfileForAgent(profile, agentType);
 
                                 return (
                                     <Pressable
@@ -699,8 +704,10 @@ function NewSessionWizard() {
                                         style={[
                                             styles.profileListItem,
                                             selectedProfileId === profile.id && styles.profileListItemSelected,
+                                            !isCompatible && { opacity: 0.5 }
                                         ]}
-                                        onPress={() => selectProfile(profile.id)}
+                                        onPress={() => isCompatible && selectProfile(profile.id)}
+                                        disabled={!isCompatible}
                                     >
                                         <View style={[styles.profileIcon, { backgroundColor: theme.colors.button.secondary.tint }]}>
                                             <Ionicons name="person" size={16} color={theme.colors.button.primary.tint} />
@@ -708,6 +715,7 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
                                             <Text style={styles.profileListDetails}>
+                                                {!isCompatible && `⚠️ Requires ${agentType === 'claude' ? 'Codex' : 'Claude'} • `}
                                                 {profile.anthropicConfig?.model || profile.openaiConfig?.model || 'Default model'}
                                             </Text>
                                         </View>

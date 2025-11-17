@@ -346,42 +346,61 @@ export function ProfileEditForm({
                     />
 
                     {/* Tmux Update Environment */}
-                    <View style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        marginBottom: 24,
+                    <Text style={{
+                        fontSize: 14,
+                        fontWeight: '600',
+                        color: theme.colors.text,
+                        marginBottom: 12,
+                        ...Typography.default('semiBold')
                     }}>
-                        <Pressable
-                            style={{
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                            }}
-                            onPress={() => setTmuxUpdateEnvironment(!tmuxUpdateEnvironment)}
-                        >
-                            <View style={{
-                                width: 20,
-                                height: 20,
-                                borderRadius: 10,
-                                borderWidth: 2,
-                                borderColor: tmuxUpdateEnvironment ? theme.colors.button.primary.background : theme.colors.textSecondary,
-                                backgroundColor: tmuxUpdateEnvironment ? theme.colors.button.primary.background : 'transparent',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                marginRight: 8,
-                            }}>
-                                {tmuxUpdateEnvironment && (
-                                    <Ionicons name="checkmark" size={12} color={theme.colors.button.primary.tint} />
-                                )}
-                            </View>
-                            <Text style={{
-                                fontSize: 14,
-                                color: theme.colors.text,
-                                ...Typography.default()
-                            }}>
-                                {t('profiles.tmuxUpdateEnvironment')}
-                            </Text>
-                        </Pressable>
-                    </View>
+                        Environment Refresh on Session Attach
+                    </Text>
+                    <ItemGroup title="">
+                        {[
+                            {
+                                value: true,
+                                label: 'Update Automatically',
+                                description: 'Refresh SSH agent, DISPLAY for X11 forwarding',
+                                icon: 'sync-outline'
+                            },
+                            {
+                                value: false,
+                                label: 'Keep Static',
+                                description: 'Use original environment (more predictable)',
+                                icon: 'lock-closed-outline'
+                            },
+                        ].map((option, index, array) => (
+                            <Item
+                                key={option.value.toString()}
+                                title={option.label}
+                                subtitle={option.description}
+                                leftElement={
+                                    <Ionicons
+                                        name={option.icon as any}
+                                        size={24}
+                                        color={tmuxUpdateEnvironment === option.value ? theme.colors.button.primary.tint : theme.colors.textSecondary}
+                                    />
+                                }
+                                rightElement={tmuxUpdateEnvironment === option.value ? (
+                                    <Ionicons
+                                        name="checkmark-circle"
+                                        size={20}
+                                        color={theme.colors.button.primary.tint}
+                                    />
+                                ) : null}
+                                onPress={() => setTmuxUpdateEnvironment(option.value)}
+                                showChevron={false}
+                                selected={tmuxUpdateEnvironment === option.value}
+                                showDivider={index < array.length - 1}
+                                style={tmuxUpdateEnvironment === option.value ? {
+                                    borderWidth: 2,
+                                    borderColor: theme.colors.button.primary.tint,
+                                    borderRadius: 8,
+                                } : undefined}
+                            />
+                        ))}
+                    </ItemGroup>
+                    <View style={{ marginBottom: 16 }} />
 
                     {/* Custom Environment Variables */}
                     <View style={{ marginBottom: 24 }}>
