@@ -100,13 +100,13 @@ const styles = StyleSheet.create((theme, rt) => ({
         paddingTop: Platform.OS === 'web' ? 0 : 40,
     },
     scrollContainer: {
-        flexGrow: 1,
+        flex: 1,
     },
     contentContainer: {
         width: '100%',
         alignSelf: 'center',
         paddingTop: rt.insets.top,
-        paddingBottom: rt.insets.bottom,
+        paddingBottom: 16,
     },
     wizardContainer: {
         backgroundColor: theme.colors.surface,
@@ -249,6 +249,7 @@ const styles = StyleSheet.create((theme, rt) => ({
 function NewSessionWizard() {
     const { theme, rt } = useUnistyles();
     const router = useRouter();
+    const safeArea = useSafeAreaInsets();
     const { prompt, dataId } = useLocalSearchParams<{ prompt?: string; dataId?: string }>();
 
     // Try to get data from temporary store first
@@ -622,11 +623,12 @@ function NewSessionWizard() {
             keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
             style={styles.container}
         >
-            <ScrollView
-                style={styles.scrollContainer}
-                contentContainerStyle={styles.contentContainer}
-                keyboardShouldPersistTaps="handled"
-            >
+            <View style={{ flex: 1 }}>
+                <ScrollView
+                    style={styles.scrollContainer}
+                    contentContainerStyle={styles.contentContainer}
+                    keyboardShouldPersistTaps="handled"
+                >
                 <View style={[
                     { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
                 ]}>
@@ -868,28 +870,31 @@ function NewSessionWizard() {
                                 </>
                             )}
                         </View>
-
-                        {/* Section 5: AgentInput at bottom */}
-                        <View style={{ marginHorizontal: 16, marginBottom: 16 }}>
-                            <AgentInput
-                                value={sessionPrompt}
-                                onChangeText={setSessionPrompt}
-                                onSend={handleCreateSession}
-                                isSendDisabled={!canCreate}
-                                isSending={isCreating}
-                                placeholder="What would you like to work on?"
-                                autocompletePrefixes={[]}
-                                autocompleteSuggestions={async () => []}
-                                agentType={agentType}
-                                permissionMode={permissionMode}
-                                modelMode={modelMode}
-                                machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
-                                currentPath={selectedPath}
-                            />
-                        </View>
                     </View>
                 </View>
-            </ScrollView>
+                </ScrollView>
+
+                {/* Section 5: AgentInput - Sticky at bottom */}
+                <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
+                    <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                        <AgentInput
+                            value={sessionPrompt}
+                            onChangeText={setSessionPrompt}
+                            onSend={handleCreateSession}
+                            isSendDisabled={!canCreate}
+                            isSending={isCreating}
+                            placeholder="What would you like to work on?"
+                            autocompletePrefixes={[]}
+                            autocompleteSuggestions={async () => []}
+                            agentType={agentType}
+                            permissionMode={permissionMode}
+                            modelMode={modelMode}
+                            machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
+                            currentPath={selectedPath}
+                        />
+                    </View>
+                </View>
+            </View>
         </KeyboardAvoidingView>
     );
 }
