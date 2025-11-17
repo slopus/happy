@@ -300,13 +300,14 @@ The working directory currently has 5 unmerged files. DO NOT run `git reset --ha
 - [ ] Update settings/profiles.tsx: Import from profileUtils
 - [ ] Test: Verify build still compiles
 
-### Phase 3: Remove Multi-Step Navigation
+### Phase 3: Remove Multi-Step Navigation (NOT Picker Navigation!)
 - [ ] Line 27: Delete `type WizardStep = ...`
-- [ ] Lines 30-40: Delete module-level callbacks
+- [ ] Lines 30-40: **KEEP** module-level callbacks (needed for pickers)
 - [ ] Line 481: Delete `const [currentStep, setCurrentStep] = ...`
 - [ ] Lines 569-601: Delete goToNextStep() function
 - [ ] Lines 588-612: Delete goToPreviousStep() function
-- [ ] Lines 673-681: Delete handleMachineClick and handlePathClick
+- [ ] Lines 673-681: **KEEP** handleMachineClick and handlePathClick (open pickers)
+- [ ] Lines 647-671: **KEEP** useEffect hooks (wire callbacks for pickers)
 - [ ] Lines 784-1022: Delete renderStepContent() function
 - [ ] Line 1041: Delete call to renderStepContent()
 
@@ -430,7 +431,17 @@ currentPath?: string | null      // Show current path
 - Create new profile form (lines 873-896)
 - newProfileName and newProfileDescription inputs
 - createNewProfile() handler (line 616, called from Next button)
-- This becomes profile edit modal, not inline
+- **BECOMES:** Profile edit modal (like settings/profiles.tsx:481-989 ProfileEditForm)
+- **MUST ADD:** Full profile editor with:
+  - Profile name (required)
+  - Base URL (optional)
+  - Auth token (optional, secureTextEntry)
+  - Model (optional)
+  - Tmux session name (optional)
+  - Tmux temp dir (optional)
+  - Tmux update environment (checkbox)
+  - Custom environment variables (key-value pairs with add/remove)
+- **REFERENCE:** settings/profiles.tsx:481-989 for complete implementation
 
 **Step 3 'session-details' (lines 920-994):**
 - Prompt TextInput (lines 934-945) → REPLACE with AgentInput
@@ -445,8 +456,10 @@ currentPath?: string | null      // Show current path
 **Functions to KEEP:**
 - Line 603: `selectProfile()` - auto-select agent based on profile
 - Line 616: `createNewProfile()` - add profile to settings
-- Lines 647-671: useEffect hooks for machine/path callbacks → DELETE
+- Lines 647-671: useEffect hooks for machine/path callbacks → **KEEP** (needed for pickers)
+- Lines 673-681: handleMachineClick(), handlePathClick() → **KEEP** (open pickers)
 - Lines 684-779: `handleCreateSession()` - KEEP, wire to AgentInput.onSend
+- **MISSING:** Need profile edit/delete handlers (check settings/profiles.tsx for reference)
 
 **State to KEEP:**
 - Lines 462-469: Settings hooks (recentMachinePaths, lastUsedAgent, etc.)
@@ -546,8 +559,21 @@ const canCreate = useMemo(() => {
 ### handleCreateSession Changes
 
 **Current:** Lines 684-779, expects sessionPrompt from state
-**Keep As-Is:** AgentInput manages its own value state, passes to onSend
-**No Changes Needed:** handleCreateSession already reads from sessionPrompt state
+**CORRECTION:** AgentInput is a CONTROLLED component (not self-managing)
+**Integration:**
+```typescript
+// Wizard provides state:
+const [sessionPrompt, setSessionPrompt] = useState('');
+
+// AgentInput is controlled:
+<AgentInput
+  value={sessionPrompt}           // Controlled value
+  onChangeText={setSessionPrompt} // Updates state
+  onSend={handleCreateSession}    // Calls handler
+/>
+
+// handleCreateSession reads from sessionPrompt state (no changes needed)
+```
 
 ### Layout.tsx Picker Routes
 
@@ -566,6 +592,104 @@ const canCreate = useMemo(() => {
 ```
 
 **Action:** Check after merge - may have been removed, need to restore
+
+## End-to-End Workflow
+
+### User Flow (After Refactor)
+
+1. **User clicks "New Session" button** → Navigates to `/new/index`
+2. **Wizard appears as single scrollable page** (not modal overlay - fixed in commit 0abfc20)
+3. **User sees all sections at once:**
+   - Profile grid at top (auto-selected: Anthropic default)
+   - Machine selector below (auto-selected: first/recent machine)
+   - Path input below (auto-populated: recent path for machine)
+   - Advanced options collapsed
+   - AgentInput at bottom with greyed arrow button
+
+4. **User can interact with any section:**
+   - Click different profile → Highlights, updates agent type if exclusive
+   - Click "Create Custom" → Opens full profile edit modal
+   - Click "Edit" on profile → Opens profile editor with all fields
+   - Click machine → Either inline select OR opens picker
+   - Click path → Either inline edit OR opens picker with recent paths
+   - Expand advanced → Shows SessionTypeSelector, permission/model modes
+   - Type in AgentInput → Prompt text appears
+
+5. **Validation feedback:**
+   - If profile missing → Arrow button greyed, AgentInput shows disabled state
+   - If machine missing → Arrow button greyed
+   - If path empty → Arrow button greyed
+   - When all required fields valid → Arrow button becomes active/enabled
+
+6. **User clicks arrow button:**
+   - Calls handleCreateSession() (lines 684-779)
+   - Creates session with profile environment variables
+   - Navigates to `/session/${sessionId}`
+
+### Critical Workflow Details
+
+**Profile Creation/Edit Workflow:**
+```
+User clicks "Create Custom" or "Edit" on profile card
+  ↓
+Modal appears with ProfileEditForm (based on settings/profiles.tsx:481-989)
+  ↓
+User fills: name, baseURL, authToken, model, tmux config, env vars
+  ↓
+User clicks Save
+  ↓
+handleSaveProfile() adds/updates in profiles array
+  ↓
+sync.applySettings({ profiles: updatedProfiles })
+  ↓
+Profile appears in grid, syncs with settings panel
+```
+
+**Session Creation Workflow:**
+```
+User fills wizard fields (profile, machine, path, optional prompt)
+  ↓
+All required fields valid → canCreate = true → Arrow enabled
+  ↓
+User types optional prompt in AgentInput
+  ↓
+User clicks arrow button (or presses Enter)
+  ↓
+handleCreateSession() called
+  ↓
+Gets environmentVariables from selectedProfile (line 737)
+  ↓
+transformProfileToEnvironmentVars() filters by agent type (lines 198-237)
+  ↓
+machineSpawnNewSession() with environmentVariables
+  ↓
+Session created, receives correct env vars
+  ↓
+Optional: sendMessage() if prompt provided (line 755)
+  ↓
+Navigate to session view
+```
+
+**Picker Integration Workflow:**
+```
+User clicks machine button
+  ↓
+handleMachineClick() calls router.push('/new/pick/machine')
+  ↓
+Picker screen opens (machine.tsx)
+  ↓
+User selects machine
+  ↓
+callbacks.onMachineSelected(machineId) called
+  ↓
+useEffect hook (lines 647-661) receives callback
+  ↓
+Updates selectedMachineId and auto-updates selectedPath
+  ↓
+Router.back() returns to wizard
+  ↓
+Wizard shows updated machine/path selection
+```
 
 ## Current Status
 
