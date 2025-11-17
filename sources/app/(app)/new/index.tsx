@@ -21,11 +21,9 @@ import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
+import { AgentInput } from '@/components/AgentInput';
 import { StyleSheet } from 'react-native-unistyles';
 import { randomUUID } from 'expo-crypto';
-
-// Wizard steps
-type WizardStep = 'welcome' | 'ai-backend' | 'session-details' | 'creating';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -39,8 +37,6 @@ export const callbacks = {
         onPathSelected(path);
     }
 }
-
-// Profile utilities now imported from @/sync/profileUtils
 
 // Optimized profile lookup utility
 const useProfileMap = (profiles: AIBackendProfile[]) => {
@@ -133,7 +129,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     },
     scrollContainer: {
         flexGrow: 1,
-        justifyContent: 'flex-end',
     },
     contentContainer: {
         width: '100%',
@@ -141,54 +136,31 @@ const styles = StyleSheet.create((theme, rt) => ({
         paddingTop: rt.insets.top,
         paddingBottom: rt.insets.bottom,
     },
-    wizardCard: {
+    wizardContainer: {
         backgroundColor: theme.colors.surface,
         borderRadius: 16,
         marginHorizontal: 16,
         padding: 20,
         marginBottom: 16,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.1,
-        shadowRadius: 8,
-        elevation: 4,
     },
-    stepHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 16,
-    },
-    stepNumber: {
-        width: 32,
-        height: 32,
-        borderRadius: 16,
-        backgroundColor: theme.colors.button.primary.background,
-        justifyContent: 'center',
-        alignItems: 'center',
-        marginRight: 12,
-    },
-    stepNumberText: {
-        color: 'white',
-        fontWeight: 'bold',
-        fontSize: 16,
-    },
-    stepTitle: {
-        fontSize: 20,
+    sectionHeader: {
+        fontSize: 18,
         fontWeight: 'bold',
         color: theme.colors.text,
-        flex: 1,
+        marginBottom: 12,
+        marginTop: 16,
     },
-    stepDescription: {
+    sectionDescription: {
         fontSize: 14,
         color: theme.colors.textSecondary,
-        marginBottom: 20,
+        marginBottom: 16,
         lineHeight: 20,
     },
     profileGrid: {
         flexDirection: 'row',
         flexWrap: 'wrap',
         justifyContent: 'space-between',
-        marginBottom: 20,
+        marginBottom: 16,
     },
     profileCard: {
         width: '48%',
@@ -202,10 +174,6 @@ const styles = StyleSheet.create((theme, rt) => ({
     profileCardSelected: {
         borderColor: theme.colors.button.primary.background,
         backgroundColor: theme.colors.button.primary.background + '10',
-    },
-    profileCardIncompatible: {
-        opacity: 0.5,
-        backgroundColor: theme.colors.input.background + '50',
     },
     profileName: {
         fontSize: 16,
@@ -235,70 +203,32 @@ const styles = StyleSheet.create((theme, rt) => ({
         color: theme.colors.button.primary.background,
         fontWeight: '500',
     },
-    buttonContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: 20,
-    },
-    button: {
-        paddingHorizontal: 20,
-        paddingVertical: 12,
-        borderRadius: 8,
-        minWidth: 100,
-        alignItems: 'center',
-    },
-    buttonPrimary: {
-        backgroundColor: theme.colors.button.primary.background,
-    },
-    buttonSecondary: {
-        backgroundColor: theme.colors.input.background,
-        borderWidth: 1,
-        borderColor: theme.colors.divider,
-    },
-    buttonDisabled: {
-        opacity: 0.5,
-    },
-    buttonText: {
-        color: 'white',
-        fontWeight: '600',
-        fontSize: 16,
-    },
-    buttonTextSecondary: {
-        color: theme.colors.text,
-    },
-    inputContainer: {
-        marginBottom: 16,
-    },
-    inputLabel: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: theme.colors.text,
-        marginBottom: 8,
-    },
-    textInput: {
+    selectorButton: {
         backgroundColor: theme.colors.input.background,
         borderRadius: 8,
         padding: 12,
-        fontSize: 16,
-        color: theme.colors.text,
+        marginBottom: 12,
         borderWidth: 1,
         borderColor: theme.colors.divider,
-    },
-    creatingContainer: {
+        flexDirection: 'row',
         alignItems: 'center',
-        paddingVertical: 40,
+        justifyContent: 'space-between',
     },
-    creatingTitle: {
-        fontSize: 18,
-        fontWeight: 'bold',
+    selectorButtonText: {
         color: theme.colors.text,
-        marginTop: 16,
-        marginBottom: 8,
-    },
-    creatingDescription: {
         fontSize: 14,
-        color: theme.colors.textSecondary,
-        textAlign: 'center',
+        flex: 1,
+    },
+    advancedHeader: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingVertical: 12,
+    },
+    advancedHeaderText: {
+        fontSize: 16,
+        fontWeight: '600',
+        color: theme.colors.text,
     },
 }));
 
@@ -334,12 +264,11 @@ function NewSessionWizard() {
     const machines = useAllMachines();
 
     // Wizard state
-    const [currentStep, setCurrentStep] = React.useState<WizardStep>('welcome');
     const [selectedProfileId, setSelectedProfileId] = React.useState<string | null>(() => {
         if (lastUsedProfile && profileMap.has(lastUsedProfile)) {
             return lastUsedProfile;
         }
-        return null;
+        return 'anthropic'; // Default to Anthropic
     });
     const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
         if (tempSessionData?.agentType) {
@@ -399,10 +328,7 @@ function NewSessionWizard() {
         return tempSessionData?.prompt || prompt || '';
     });
     const [isCreating, setIsCreating] = React.useState(false);
-
-    // New profile creation state
-    const [newProfileName, setNewProfileName] = React.useState('');
-    const [newProfileDescription, setNewProfileDescription] = React.useState('');
+    const [showAdvanced, setShowAdvanced] = React.useState(false);
 
     // Computed values
     const compatibleProfiles = React.useMemo(() => {
@@ -421,40 +347,14 @@ function NewSessionWizard() {
         return machines.find(m => m.id === selectedMachineId);
     }, [selectedMachineId, machines]);
 
-    // Navigation functions
-    const goToNextStep = React.useCallback(() => {
-        switch (currentStep) {
-            case 'welcome':
-                if (selectedProfileId) {
-                    setCurrentStep('session-details');
-                } else {
-                    setCurrentStep('ai-backend');
-                }
-                break;
-            case 'ai-backend':
-                // Skip tmux-config step - configure tmux in profile settings instead
-                setCurrentStep('session-details');
-                break;
-            case 'session-details':
-                handleCreateSession();
-                break;
-        }
-    }, [currentStep, selectedProfileId]);
-
-    const goToPreviousStep = React.useCallback(() => {
-        switch (currentStep) {
-            case 'ai-backend':
-                setCurrentStep('welcome');
-                break;
-            case 'session-details':
-                if (selectedProfileId) {
-                    setCurrentStep('welcome');
-                } else {
-                    setCurrentStep('ai-backend');
-                }
-                break;
-        }
-    }, [currentStep, selectedProfileId]);
+    // Validation
+    const canCreate = React.useMemo(() => {
+        return (
+            selectedProfileId !== null &&
+            selectedMachineId !== null &&
+            selectedPath.trim() !== ''
+        );
+    }, [selectedProfileId, selectedMachineId, selectedPath]);
 
     const selectProfile = React.useCallback((profileId: string) => {
         setSelectedProfileId(profileId);
@@ -468,37 +368,6 @@ function NewSessionWizard() {
             }
         }
     }, [profileMap]);
-
-    const createNewProfile = React.useCallback(() => {
-        if (!newProfileName.trim()) {
-            Modal.alert('Error', 'Please enter a profile name');
-            return;
-        }
-
-        const newProfile: AIBackendProfile = {
-            id: randomUUID(),
-            name: newProfileName.trim(),
-            description: newProfileDescription.trim() || undefined,
-            compatibility: {
-                claude: agentType === 'claude',
-                codex: agentType === 'codex',
-            },
-            environmentVariables: [],
-            isBuiltIn: false,
-            version: '1.0.0',
-            createdAt: Date.now(),
-            updatedAt: Date.now(),
-        };
-
-        // Add the new profile to settings
-        const updatedProfiles = [...profiles, newProfile];
-        sync.applySettings({ profiles: updatedProfiles });
-
-        setSelectedProfileId(newProfile.id);
-        setNewProfileName('');
-        setNewProfileDescription('');
-        setCurrentStep('session-details');
-    }, [newProfileName, newProfileDescription, agentType, profiles]);
 
     // Handle machine and path selection callbacks
     React.useEffect(() => {
@@ -528,7 +397,7 @@ function NewSessionWizard() {
 
     const handleMachineClick = React.useCallback(() => {
         router.push('/new/pick/machine');
-    }, []);
+    }, [router]);
 
     const handlePathClick = React.useCallback(() => {
         if (selectedMachineId) {
@@ -546,13 +415,8 @@ function NewSessionWizard() {
             Modal.alert(t('common.error'), t('newSession.noPathSelected'));
             return;
         }
-        if (!sessionPrompt.trim()) {
-            Modal.alert('Error', 'Please enter a prompt for the session');
-            return;
-        }
 
         setIsCreating(true);
-        setCurrentStep('creating');
 
         try {
             let actualPath = selectedPath;
@@ -568,7 +432,6 @@ function NewSessionWizard() {
                         Modal.alert(t('common.error'), t('newSession.worktree.failed', { error: worktreeResult.error || 'Unknown error' }));
                     }
                     setIsCreating(false);
-                    setCurrentStep('session-details');
                     return;
                 }
 
@@ -608,7 +471,10 @@ function NewSessionWizard() {
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
                 storage.getState().updateSessionModelMode(result.sessionId, modelMode);
 
-                await sync.sendMessage(result.sessionId, sessionPrompt);
+                // Send initial message if provided
+                if (sessionPrompt.trim()) {
+                    await sync.sendMessage(result.sessionId, sessionPrompt);
+                }
 
                 router.replace(`/session/${result.sessionId}`, {
                     dangerouslySingular() {
@@ -630,29 +496,35 @@ function NewSessionWizard() {
             }
             Modal.alert(t('common.error'), errorMessage);
             setIsCreating(false);
-            setCurrentStep('session-details');
         }
-    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, router]);
+    }, [selectedMachineId, selectedPath, sessionPrompt, sessionType, experimentsEnabled, agentType, selectedProfileId, permissionMode, modelMode, recentMachinePaths, profileMap, router]);
 
     const screenWidth = useWindowDimensions().width;
 
-    // Render wizard step content
-    const renderStepContent = () => {
-        switch (currentStep) {
-            case 'welcome':
-                return (
-                    <View style={styles.wizardCard}>
-                        <View style={styles.stepHeader}>
-                            <View style={styles.stepNumber}>
-                                <Text style={styles.stepNumberText}>1</Text>
-                            </View>
-                            <Text style={styles.stepTitle}>Choose Profile</Text>
-                        </View>
-                        <Text style={styles.stepDescription}>
-                            Select an existing AI profile to quickly get started with pre-configured settings, or create a new custom profile.
-                        </Text>
+    return (
+        <KeyboardAvoidingView
+            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
+            style={styles.container}
+        >
+            <ScrollView
+                style={styles.scrollContainer}
+                contentContainerStyle={styles.contentContainer}
+                keyboardShouldPersistTaps="handled"
+            >
+                <View style={[
+                    { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
+                ]}>
+                    <View style={[
+                        { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
+                    ]}>
+                        <View style={styles.wizardContainer}>
+                            {/* Section 1: Profile Selection */}
+                            <Text style={styles.sectionHeader}>1. Choose AI Profile</Text>
+                            <Text style={styles.sectionDescription}>
+                                Select an AI profile with pre-configured settings for your session.
+                            </Text>
 
-                        <ScrollView style={{ maxHeight: 300 }}>
                             <View style={styles.profileGrid}>
                                 {compatibleProfiles.map((profile) => (
                                     <Pressable
@@ -689,212 +561,77 @@ function NewSessionWizard() {
                                     </Pressable>
                                 ))}
                             </View>
-                        </ScrollView>
 
-                        <View style={styles.buttonContainer}>
+                            {/* Section 2: Machine Selection */}
+                            <Text style={styles.sectionHeader}>2. Select Machine</Text>
                             <Pressable
-                                style={[styles.button, styles.buttonSecondary]}
-                                onPress={() => setCurrentStep('ai-backend')}
+                                style={styles.selectorButton}
+                                onPress={handleMachineClick}
                             >
-                                <Text style={styles.buttonTextSecondary}>Create New</Text>
+                                <Text style={styles.selectorButtonText}>
+                                    {selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || 'Select a machine...'}
+                                </Text>
+                                <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
                             </Pressable>
+
+                            {/* Section 3: Working Directory */}
+                            <Text style={styles.sectionHeader}>3. Working Directory</Text>
                             <Pressable
-                                style={[
-                                    styles.button,
-                                    styles.buttonPrimary,
-                                    !selectedProfileId && styles.buttonDisabled
-                                ]}
-                                onPress={goToNextStep}
-                                disabled={!selectedProfileId}
+                                style={styles.selectorButton}
+                                onPress={handlePathClick}
+                                disabled={!selectedMachineId}
                             >
-                                <Text style={styles.buttonText}>Next</Text>
+                                <Text style={styles.selectorButtonText}>
+                                    {selectedPath || 'Select a path...'}
+                                </Text>
+                                <Ionicons name="chevron-forward" size={20} color={theme.colors.textSecondary} />
                             </Pressable>
-                        </View>
-                    </View>
-                );
 
-            case 'ai-backend':
-                return (
-                    <View style={styles.wizardCard}>
-                        <View style={styles.stepHeader}>
-                            <View style={styles.stepNumber}>
-                                <Text style={styles.stepNumberText}>2</Text>
-                            </View>
-                            <Text style={styles.stepTitle}>AI Backend</Text>
-                        </View>
-                        <Text style={styles.stepDescription}>
-                            Choose the AI backend and configure its settings for your new profile.
-                        </Text>
+                            {/* Section 4: Advanced Options (Collapsible) */}
+                            {experimentsEnabled && (
+                                <>
+                                    <Pressable
+                                        style={styles.advancedHeader}
+                                        onPress={() => setShowAdvanced(!showAdvanced)}
+                                    >
+                                        <Text style={styles.advancedHeaderText}>Advanced Options</Text>
+                                        <Ionicons
+                                            name={showAdvanced ? "chevron-up" : "chevron-down"}
+                                            size={20}
+                                            color={theme.colors.text}
+                                        />
+                                    </Pressable>
 
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.inputLabel}>Profile Name</Text>
-                            <TextInput
-                                style={styles.textInput}
-                                value={newProfileName}
-                                onChangeText={setNewProfileName}
-                                placeholder="Enter a name for this profile"
-                                placeholderTextColor={theme.colors.textSecondary}
-                            />
-                        </View>
-
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.inputLabel}>Description (Optional)</Text>
-                            <TextInput
-                                style={[styles.textInput, { height: 80 }]}
-                                value={newProfileDescription}
-                                onChangeText={setNewProfileDescription}
-                                placeholder="Describe what this profile is for"
-                                placeholderTextColor={theme.colors.textSecondary}
-                                multiline
-                                numberOfLines={3}
-                                textAlignVertical="top"
-                            />
+                                    {showAdvanced && (
+                                        <View style={{ marginBottom: 12 }}>
+                                            <SessionTypeSelector
+                                                value={sessionType}
+                                                onChange={setSessionType}
+                                            />
+                                        </View>
+                                    )}
+                                </>
+                            )}
                         </View>
 
-                        <View style={styles.buttonContainer}>
-                            <Pressable
-                                style={[styles.button, styles.buttonSecondary]}
-                                onPress={goToPreviousStep}
-                            >
-                                <Text style={styles.buttonTextSecondary}>Back</Text>
-                            </Pressable>
-                            <Pressable
-                                style={[
-                                    styles.button,
-                                    styles.buttonPrimary,
-                                    !newProfileName.trim() && styles.buttonDisabled
-                                ]}
-                                onPress={goToNextStep}
-                                disabled={!newProfileName.trim()}
-                            >
-                                <Text style={styles.buttonText}>Next</Text>
-                            </Pressable>
-                        </View>
-                    </View>
-                );
-
-            case 'session-details':
-                return (
-                    <View style={styles.wizardCard}>
-                        <View style={styles.stepHeader}>
-                            <View style={styles.stepNumber}>
-                                <Text style={styles.stepNumberText}>{selectedProfileId ? '2' : '3'}</Text>
-                            </View>
-                            <Text style={styles.stepTitle}>Session Details</Text>
-                        </View>
-                        <Text style={styles.stepDescription}>
-                            Set up the final details for your AI session.
-                        </Text>
-
-                        <View style={styles.inputContainer}>
-                            <Text style={styles.inputLabel}>What would you like to work on?</Text>
-                            <TextInput
-                                style={[styles.textInput, { height: 100 }]}
+                        {/* Section 5: AgentInput at bottom */}
+                        <View style={{ marginHorizontal: 16, marginBottom: 16 }}>
+                            <AgentInput
                                 value={sessionPrompt}
                                 onChangeText={setSessionPrompt}
-                                placeholder="Describe your task or question..."
-                                placeholderTextColor={theme.colors.textSecondary}
-                                multiline
-                                numberOfLines={4}
-                                textAlignVertical="top"
+                                onSend={handleCreateSession}
+                                isSendDisabled={!canCreate}
+                                isSending={isCreating}
+                                placeholder="What would you like to work on?"
+                                autocompletePrefixes={[]}
+                                autocompleteSuggestions={async () => []}
+                                agentType={agentType}
+                                permissionMode={permissionMode}
+                                modelMode={modelMode}
+                                machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
+                                currentPath={selectedPath}
                             />
                         </View>
-
-                        <Pressable
-                            style={[styles.button, styles.buttonSecondary, { marginBottom: 12 }]}
-                            onPress={handleMachineClick}
-                        >
-                            <Text style={styles.buttonTextSecondary}>
-                                Machine: {selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host || 'None selected'}
-                            </Text>
-                        </Pressable>
-
-                        <Pressable
-                            style={[styles.button, styles.buttonSecondary, { marginBottom: 12 }]}
-                            onPress={handlePathClick}
-                        >
-                            <Text style={styles.buttonTextSecondary}>
-                                Path: {selectedPath}
-                            </Text>
-                        </Pressable>
-
-                        {experimentsEnabled && (
-                            <View style={{ marginBottom: 12 }}>
-                                <SessionTypeSelector
-                                    value={sessionType}
-                                    onChange={setSessionType}
-                                />
-                            </View>
-                        )}
-
-                        <View style={styles.buttonContainer}>
-                            <Pressable
-                                style={[styles.button, styles.buttonSecondary]}
-                                onPress={goToPreviousStep}
-                            >
-                                <Text style={styles.buttonTextSecondary}>Back</Text>
-                            </Pressable>
-                            <Pressable
-                                style={[
-                                    styles.button,
-                                    styles.buttonPrimary,
-                                    (!sessionPrompt.trim() || !selectedMachineId || !selectedPath) && styles.buttonDisabled
-                                ]}
-                                onPress={goToNextStep}
-                                disabled={!sessionPrompt.trim() || !selectedMachineId || !selectedPath}
-                            >
-                                <Text style={styles.buttonText}>Create Session</Text>
-                            </Pressable>
-                        </View>
-                    </View>
-                );
-
-            case 'creating':
-                return (
-                    <View style={styles.wizardCard}>
-                        <View style={styles.creatingContainer}>
-                            <View style={{
-                                width: 48,
-                                height: 48,
-                                borderRadius: 24,
-                                backgroundColor: theme.colors.button.primary.background + '20',
-                                justifyContent: 'center',
-                                alignItems: 'center',
-                                marginBottom: 16,
-                            }}>
-                                <Ionicons name="flash" size={24} color={theme.colors.button.primary.background} />
-                            </View>
-                            <Text style={styles.creatingTitle}>Creating Session</Text>
-                            <Text style={styles.creatingDescription}>
-                                Setting up your AI session with the selected configuration...
-                            </Text>
-                        </View>
-                    </View>
-                );
-
-            default:
-                return null;
-        }
-    };
-
-    return (
-        <KeyboardAvoidingView
-            behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
-            style={styles.container}
-        >
-            <ScrollView
-                style={styles.scrollContainer}
-                contentContainerStyle={styles.contentContainer}
-                keyboardShouldPersistTaps="handled"
-            >
-                <View style={[
-                    { paddingHorizontal: screenWidth > 700 ? 16 : 8 }
-                ]}>
-                    <View style={[
-                        { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
-                    ]}>
-                        {renderStepContent()}
                     </View>
                 </View>
             </ScrollView>
