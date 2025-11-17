@@ -165,6 +165,216 @@ git commit -m "[message crediting Denys Vitali]"
 
 The working directory currently has 5 unmerged files. DO NOT run `git reset --hard` or `git merge --abort` until conflicts are properly resolved and committed.
 
-## Next Action
+## Design Requirements (User Specifications)
 
-Manually resolve AgentInput.tsx conflict by reading both versions and carefully editing.
+### UI Design Style
+- **Settings Panel Style:** Single scrollable page like settings/profiles.tsx
+- **Sessions Panel Style:** Prompt field at bottom like session message interface
+- **Send Button Behavior:** Arrow button greyed out until all required fields valid
+
+### Layout Structure (Per User Requirements)
+
+**Key Requirements:**
+- "wizard to appear in the same main panel as the message interface with the ai agent"
+- "create button that gets enabled and the prompt field should use the same 'screen' or 'field' or sub-window as the session prompt"
+- "arrow button can be greyed out until it is ready"
+- "first pane should be existing profile selection with the ability to create and remove profiles"
+- "keep the wizard short, ideally just one step where contents are on one page much like it is in the settings panel"
+
+```
+┌──────────────────────────────────────────────┐
+│ WIZARD CONFIGURATION (Settings Panel Style)  │
+│                                              │
+│ 1. Profile Selection (FIRST - required)     │
+│    ┌────────────┐ ┌────────────┐            │
+│    │ Anthropic  │ │  DeepSeek  │            │
+│    │ (selected) │ │            │            │
+│    └────────────┘ └────────────┘            │
+│    ┌────────────┐ ┌────────────┐            │
+│    │   Z.AI     │ │ + Create   │            │
+│    │            │ │   Custom   │            │
+│    └────────────┘ └────────────┘            │
+│    [Edit] [Delete] buttons on selected      │
+│                                              │
+│ 2. Machine Selection                        │
+│    ○ Machine 1 (MacBook Pro)                │
+│    ● Machine 2 (Server) ← selected          │
+│                                              │
+│ 3. Working Directory                        │
+│    [/Users/name/projects/app___________]    │
+│    Recent: /Users/name/projects/app         │
+│           /Users/name/Documents             │
+│                                              │
+│ 4. Advanced Options (Collapsed ▶)           │
+│    [Click to expand session type, perms]    │
+│                                              │
+├──────────────────────────────────────────────┤
+│ PROMPT & CREATE (REUSE AgentInput)          │
+│                                              │
+│ <AgentInput                                  │
+│   value={sessionPrompt}                     │
+│   onChangeText={setSessionPrompt}           │
+│   onSend={handleCreateSession}              │
+│   isSendDisabled={!canCreate}               │
+│   isSending={isCreating}                    │
+│   placeholder="What would you like..."      │
+│   sendIcon={<Ionicons name="arrow-forward"/>}│
+│ />                                           │
+│                                              │
+│ ↑ ACTUAL AgentInput component from sessions │
+│ ↑ Arrow button greyed when !canCreate       │
+│ ↑ Arrow button enabled when canCreate=true  │
+└──────────────────────────────────────────────┘
+```
+
+**CRITICAL: REUSE AgentInput Component**
+- **DO NOT** create new TextInput + Button
+- **DO** use existing `<AgentInput/>` from sources/components/AgentInput.tsx
+- **Benefits:** Gets autocomplete, file attachments, all features for free
+- **Integration:** Wire validation via `isSendDisabled={!canCreate}` prop
+
+**Profile Details Must Include:**
+- Profile name and description
+- API configuration (baseUrl, authToken, model)
+- Environment variables editor (key-value pairs)
+- Tmux configuration (sessionName, tmpDir, updateEnvironment)
+- Compatibility flags (Claude/Codex)
+- Built-in vs custom profile indicator
+
+### Validation Requirements
+- **Create button disabled when:**
+  - No profile selected
+  - No machine selected
+  - No path entered
+  - Profile incompatible with agent
+
+- **Create button enabled when:**
+  - All required fields valid
+  - Show enabled state (not greyed)
+
+### Feature Preservation Requirements
+**MUST KEEP:**
+- All profile management (create/edit/delete)
+- All environment variable handling
+- Machine/path selection
+- Advanced options (worktree, permission mode, model mode)
+- CLI daemon integration
+- Profile sync with settings panel
+
+**MUST REMOVE:**
+- Multi-step navigation (welcome → ai-backend → session-details → creating)
+- Module-level callbacks (onMachineSelected, onPathSelected)
+- Picker screen navigation (new/pick/machine.tsx, new/pick/path.tsx)
+- Step state machine logic
+
+### Code Quality Requirements
+- **DRY:** Extract shared profile utilities to profileUtils.ts
+- **KISS:** Keep it simple - inline selectors instead of navigation
+- **No Regressions:** Test everything works after refactor
+- **Clean Commits:** Follow CLAUDE.md commit message format
+
+## Merge Status
+
+✅ **COMPLETED** at commit `82c4617`
+- Proper merge commit with two parents preserved
+- Denys Vitali credited in git history
+- All conflicts manually resolved
+- No conflict markers in source files
+
+## Implementation Checklist
+
+### Phase 1: Preparation
+- [x] Merge feature branch into fix branch
+- [x] Restore path.tsx (was mistakenly deleted)
+- [x] Document design requirements in this file
+- [x] Read AgentInput props interface
+- [ ] Read complete new/index.tsx wizard structure
+- [ ] Map all 4 steps and their content (welcome, ai-backend, session-details, creating)
+
+### Phase 2: Extract Shared Code (DRY)
+- [ ] Create sources/sync/profileUtils.ts
+- [ ] Move DEFAULT_PROFILES constant to profileUtils.ts
+- [ ] Move getBuiltInProfile() function to profileUtils.ts
+- [ ] Export both from profileUtils.ts
+- [ ] Update new/index.tsx: Import from profileUtils
+- [ ] Update settings/profiles.tsx: Import from profileUtils
+- [ ] Test: Verify build still compiles
+
+### Phase 3: Remove Multi-Step Navigation
+- [ ] Line 27: Delete `type WizardStep = ...`
+- [ ] Lines 30-40: Delete module-level callbacks
+- [ ] Line 481: Delete `const [currentStep, setCurrentStep] = ...`
+- [ ] Lines 569-601: Delete goToNextStep() function
+- [ ] Lines 588-612: Delete goToPreviousStep() function
+- [ ] Lines 673-681: Delete handleMachineClick and handlePathClick
+- [ ] Lines 784-1022: Delete renderStepContent() function
+- [ ] Line 1041: Delete call to renderStepContent()
+
+### Phase 4: Build Single-Page Layout
+- [ ] Import AgentInput component at top
+- [ ] Create single ScrollView in return statement
+- [ ] Section 1: Add profile grid (from welcome step lines 800-835)
+- [ ] Section 1: Add "Create New Profile" button (from ai-backend step)
+- [ ] Section 1: Keep profile edit/delete handlers
+- [ ] Section 2: Add machine selector (button that opens picker, show current selection)
+- [ ] Section 3: Add path selector (button that opens picker, show current selection)
+- [ ] Section 4: Add collapsible advanced options
+  - [ ] SessionTypeSelector (if experiments enabled)
+  - [ ] Permission mode (could add PermissionModeSelector)
+  - [ ] Model mode (could add selector)
+- [ ] Section 5: Add AgentInput component with props:
+  - [ ] value={sessionPrompt}
+  - [ ] onChangeText={setSessionPrompt}
+  - [ ] onSend={handleCreateSession}
+  - [ ] isSendDisabled={!canCreate}
+  - [ ] isSending={isCreating}
+  - [ ] placeholder={t('newSession.prompt.placeholder')}
+  - [ ] autocompletePrefixes={[]}
+  - [ ] autocompleteSuggestions={async () => []}
+  - [ ] agentType={agentType}
+  - [ ] permissionMode={permissionMode}
+  - [ ] modelMode={modelMode}
+  - [ ] machineName={selectedMachine?.metadata?.displayName}
+  - [ ] currentPath={selectedPath}
+
+### Phase 5: Update Validation Logic
+- [ ] Update canCreate useMemo to check:
+  - [ ] selectedProfileId !== null (or allow null for manual config)
+  - [ ] selectedMachineId !== null
+  - [ ] selectedPath.trim() !== ''
+  - [ ] Profile compatible with agent
+- [ ] Remove validation from goToNextStep (deleted)
+- [ ] Keep validation in handleCreateSession
+
+### Phase 6: Test Thoroughly
+- [ ] Stop dev server
+- [ ] Clear Metro cache
+- [ ] Restart dev server
+- [ ] Build compiles without errors
+- [ ] New session button visible on home
+- [ ] Click new session - wizard appears
+- [ ] Wizard is single scrollable page (not steps)
+- [ ] Profile cards render correctly
+- [ ] Profile selection works
+- [ ] Machine picker button works
+- [ ] Path picker button works
+- [ ] Advanced section expands/collapses
+- [ ] AgentInput appears at bottom
+- [ ] Arrow button greyed when fields missing
+- [ ] Arrow button active when fields valid
+- [ ] Type in prompt field works
+- [ ] Create session works
+- [ ] Session receives profile env vars
+
+### Phase 7: Clean Up & Commit
+- [ ] Update _layout.tsx if needed (verify picker routes present)
+- [ ] Review complete git diff
+- [ ] Write CLAUDE.md-compliant commit message
+- [ ] Commit refactor
+- [ ] Update this plan file with completion notes
+
+## Current Status
+
+- [x] Merge completed at commit `80f425a`
+- [x] Plan file updated with accurate design requirements
+- [ ] Single-page refactor in progress
