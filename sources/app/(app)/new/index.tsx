@@ -380,6 +380,10 @@ function NewSessionWizard() {
             } else if (profile.compatibility.codex && !profile.compatibility.claude) {
                 setAgentType('codex');
             }
+            // Set session type from profile's default
+            if (profile.defaultSessionType) {
+                setSessionType(profile.defaultSessionType);
+            }
             // Set permission mode from profile's default
             if (profile.defaultPermissionMode) {
                 setPermissionMode(profile.defaultPermissionMode as PermissionMode);

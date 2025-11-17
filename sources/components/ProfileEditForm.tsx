@@ -6,6 +6,7 @@ import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { AIBackendProfile } from '@/sync/settings';
 import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
+import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 
@@ -28,6 +29,7 @@ export function ProfileEditForm({
     const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxConfig?.sessionName || '');
     const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxConfig?.tmpDir || '');
     const [tmuxUpdateEnvironment, setTmuxUpdateEnvironment] = React.useState(profile.tmuxConfig?.updateEnvironment || false);
+    const [defaultSessionType, setDefaultSessionType] = React.useState<'simple' | 'worktree'>(profile.defaultSessionType || 'simple');
     const [defaultPermissionMode, setDefaultPermissionMode] = React.useState<PermissionMode>((profile.defaultPermissionMode as PermissionMode) || 'default');
     const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
         if (profile.compatibility.claude && !profile.compatibility.codex) return 'claude';
@@ -93,6 +95,7 @@ export function ProfileEditForm({
                 updateEnvironment: tmuxUpdateEnvironment,
             },
             environmentVariables,
+            defaultSessionType: defaultSessionType,
             defaultPermissionMode: defaultPermissionMode,
             updatedAt: Date.now(),
         });
@@ -237,6 +240,23 @@ export function ProfileEditForm({
                         value={model}
                         onChangeText={setModel}
                     />
+
+                    {/* Session Type */}
+                    <Text style={{
+                        fontSize: 14,
+                        fontWeight: '600',
+                        color: theme.colors.text,
+                        marginBottom: 12,
+                        ...Typography.default('semiBold')
+                    }}>
+                        Default Session Type
+                    </Text>
+                    <View style={{ marginBottom: 16 }}>
+                        <SessionTypeSelector
+                            value={defaultSessionType}
+                            onChange={setDefaultSessionType}
+                        />
+                    </View>
 
                     {/* Permission Mode */}
                     <Text style={{
