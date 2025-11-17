@@ -1,3 +1,5 @@
+import { logger } from '@/ui/logger';
+
 /**
  * Expands ${VAR} references in environment variable values.
  *
@@ -29,6 +31,7 @@ export function expandEnvironmentVariables(
     sourceEnv: NodeJS.ProcessEnv = process.env
 ): Record<string, string> {
     const expanded: Record<string, string> = {};
+    const undefinedVars: string[] = [];
 
     for (const [key, value] of Object.entries(envVars)) {
         // Replace all ${VAR} references with actual values from sourceEnv
@@ -36,13 +39,23 @@ export function expandEnvironmentVariables(
             const resolvedValue = sourceEnv[varName];
             if (resolvedValue === undefined) {
                 // Variable not found in source environment - keep placeholder
-                // This makes debugging easier (users see what's missing)
+                // Track for warning below
+                undefinedVars.push(varName);
                 return match;
             }
             return resolvedValue;
         });
 
         expanded[key] = expandedValue;
+    }
+
+    // Log warning if any variables couldn't be resolved
+    if (undefinedVars.length > 0) {
+        logger.warn(`[EXPAND ENV] Undefined variables referenced in profile environment: ${undefinedVars.join(', ')}`);
+        logger.warn(`[EXPAND ENV] Session may fail to authenticate. Set these in daemon environment before launching:`);
+        undefinedVars.forEach(varName => {
+            logger.warn(`[EXPAND ENV]   ${varName}=<your-value>`);
+        });
     }
 
     return expanded;
