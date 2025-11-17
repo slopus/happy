@@ -14,6 +14,7 @@ import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
+import { Ionicons } from '@expo/vector-icons';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -236,6 +237,12 @@ export const SidebarView = React.memo(() => {
                                 style={[{ width: 32, height: 32 }]}
                                 tintColor={theme.colors.header.tint}
                             />
+                        </Pressable>
+                        <Pressable
+                            onPress={handleNewSession}
+                            hitSlop={15}
+                        >
+                            <Ionicons name="add-outline" size={28} color={theme.colors.header.tint} />
                         </Pressable>
                     </View>
                     <View style={styles.titleContainer}>
