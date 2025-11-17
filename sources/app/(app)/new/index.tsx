@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
 import { Typography } from '@/constants/Typography';
-import { useAllMachines, storage, useSetting } from '@/sync/storage';
+import { useAllMachines, storage, useSetting, useSettingMutable } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
@@ -18,7 +18,7 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
-import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
+import { PermissionMode, ModelMode, PermissionModeSelector } from '@/components/PermissionModeSelector';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
 import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { AgentInput } from '@/components/AgentInput';
@@ -225,7 +225,7 @@ function NewSessionWizard() {
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
-    const profiles = useSetting('profiles');
+    const [profiles, setProfiles] = useSettingMutable('profiles');
     const lastUsedProfile = useSetting('lastUsedProfile');
 
     // Combined profiles (built-in + custom)
@@ -388,7 +388,7 @@ function NewSessionWizard() {
                     style: 'destructive',
                     onPress: () => {
                         const updatedProfiles = profiles.filter(p => p.id !== profile.id);
-                        sync.applySettings({ profiles: updatedProfiles });
+                        setProfiles(updatedProfiles); // Use mutable setter for persistence
                         if (selectedProfileId === profile.id) {
                             setSelectedProfileId('anthropic'); // Default to Anthropic
                         }
@@ -396,7 +396,7 @@ function NewSessionWizard() {
                 }
             ]
         );
-    }, [profiles, selectedProfileId]);
+    }, [profiles, selectedProfileId, setProfiles]);
 
     // Handle machine and path selection callbacks
     React.useEffect(() => {
@@ -439,14 +439,14 @@ function NewSessionWizard() {
                 updatedProfiles = [...profiles, savedProfile];
             }
 
-            sync.applySettings({ profiles: updatedProfiles });
+            setProfiles(updatedProfiles); // Use mutable setter for persistence
             setSelectedProfileId(savedProfile.id);
         };
         onProfileSaved = handler;
         return () => {
             onProfileSaved = () => { };
         };
-    }, [profiles]);
+    }, [profiles, setProfiles]);
 
     const handleMachineClick = React.useCallback(() => {
         router.push('/new/pick/machine');
@@ -717,21 +717,21 @@ function NewSessionWizard() {
                             </Pressable>
 
                             {/* Section 4: Advanced Options (Collapsible) */}
-                            {experimentsEnabled && (
-                                <>
-                                    <Pressable
-                                        style={styles.advancedHeader}
-                                        onPress={() => setShowAdvanced(!showAdvanced)}
-                                    >
-                                        <Text style={styles.advancedHeaderText}>Advanced Options</Text>
-                                        <Ionicons
-                                            name={showAdvanced ? "chevron-up" : "chevron-down"}
-                                            size={20}
-                                            color={theme.colors.text}
-                                        />
-                                    </Pressable>
+                            <Pressable
+                                style={styles.advancedHeader}
+                                onPress={() => setShowAdvanced(!showAdvanced)}
+                            >
+                                <Text style={styles.advancedHeaderText}>Advanced Options</Text>
+                                <Ionicons
+                                    name={showAdvanced ? "chevron-up" : "chevron-down"}
+                                    size={20}
+                                    color={theme.colors.text}
+                                />
+                            </Pressable>
 
-                                    {showAdvanced && (
+                            {showAdvanced && (
+                                <View style={{ marginBottom: 12 }}>
+                                    {experimentsEnabled && (
                                         <View style={{ marginBottom: 12 }}>
                                             <SessionTypeSelector
                                                 value={sessionType}
@@ -739,7 +739,20 @@ function NewSessionWizard() {
                                             />
                                         </View>
                                     )}
-                                </>
+                                    <View style={{ marginBottom: 12 }}>
+                                        <Text style={{
+                                            fontSize: 14,
+                                            fontWeight: '600',
+                                            color: theme.colors.text,
+                                            marginBottom: 8,
+                                        }}>Permission Mode</Text>
+                                        <PermissionModeSelector
+                                            mode={permissionMode}
+                                            onChange={setPermissionMode}
+                                            agentType={agentType}
+                                        />
+                                    </View>
+                                </View>
                             )}
                         </View>
 
