@@ -350,23 +350,31 @@ export function ProfileEditForm({
                         fontSize: 14,
                         fontWeight: '600',
                         color: theme.colors.text,
-                        marginBottom: 12,
+                        marginBottom: 8,
                         ...Typography.default('semiBold')
                     }}>
-                        When Reconnecting to This Session
+                        System Variables on Reconnect
+                    </Text>
+                    <Text style={{
+                        fontSize: 12,
+                        color: theme.colors.textSecondary,
+                        marginBottom: 12,
+                        ...Typography.default()
+                    }}>
+                        API keys above are set once at session creation. This controls system variables (SSH agent, X11 display) when you reconnect.
                     </Text>
                     <ItemGroup title="">
                         {[
                             {
                                 value: true,
-                                label: 'Update from Current Connection',
-                                description: 'Refresh SSH agent keys and X11 display when you reconnect (recommended for SSH)',
+                                label: 'Refresh from Current Connection',
+                                description: 'Update SSH_AUTH_SOCK, DISPLAY from new connection (git push, ssh keep working)',
                                 icon: 'sync-outline'
                             },
                             {
                                 value: false,
-                                label: 'Keep Initial Values',
-                                description: 'Use environment from session creation (SSH agent keys may break on reconnect)',
+                                label: 'Keep from Session Creation',
+                                description: 'Use SSH_AUTH_SOCK, DISPLAY from when session started (git push, ssh may fail)',
                                 icon: 'lock-closed-outline'
                             },
                         ].map((option, index, array) => (
