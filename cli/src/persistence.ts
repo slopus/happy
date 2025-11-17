@@ -78,6 +78,9 @@ export const AIBackendProfileSchema = z.object({
     // Environment variables (validated)
     environmentVariables: z.array(EnvironmentVariableSchema).default([]),
 
+    // Default session type for this profile
+    defaultSessionType: z.enum(['simple', 'worktree']).optional(),
+
     // Default permission mode for this profile
     defaultPermissionMode: z.string().optional(),
 
