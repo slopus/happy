@@ -320,91 +320,91 @@ alias dc='ANTHROPIC_BASE_URL=${DEEPSEEK_BASE_URL}
 - [x] Restore path.tsx (was mistakenly deleted)
 - [x] Document design requirements in this file
 - [x] Read AgentInput props interface
-- [ ] Read complete new/index.tsx wizard structure
-- [ ] Map all 4 steps and their content (welcome, ai-backend, session-details, creating)
+- [x] Read complete new/index.tsx wizard structure
+- [x] Map all 4 steps and their content (welcome, ai-backend, session-details, creating)
 
 ### Phase 2: Extract Shared Code (DRY)
-- [ ] Create sources/sync/profileUtils.ts
-- [ ] Move DEFAULT_PROFILES constant to profileUtils.ts
-- [ ] Move getBuiltInProfile() function to profileUtils.ts
-- [ ] Export both from profileUtils.ts
-- [ ] Update new/index.tsx: Import from profileUtils
-- [ ] Update settings/profiles.tsx: Import from profileUtils
-- [ ] Test: Verify build still compiles
+- [x] Create sources/sync/profileUtils.ts
+- [x] Move DEFAULT_PROFILES constant to profileUtils.ts
+- [x] Move getBuiltInProfile() function to profileUtils.ts
+- [x] Export both from profileUtils.ts
+- [x] Update new/index.tsx: Import from profileUtils
+- [x] Update settings/profiles.tsx: Import from profileUtils
+- [x] Test: Verify build still compiles
 
 ### Phase 3: Remove Multi-Step Navigation (NOT Picker Navigation!)
-- [ ] Line 27: Delete `type WizardStep = ...`
-- [ ] Lines 30-40: **KEEP** module-level callbacks (needed for pickers)
-- [ ] Line 481: Delete `const [currentStep, setCurrentStep] = ...`
-- [ ] Lines 569-601: Delete goToNextStep() function
-- [ ] Lines 588-612: Delete goToPreviousStep() function
-- [ ] Lines 673-681: **KEEP** handleMachineClick and handlePathClick (open pickers)
-- [ ] Lines 647-671: **KEEP** useEffect hooks (wire callbacks for pickers)
-- [ ] Lines 784-1022: Delete renderStepContent() function
-- [ ] Line 1041: Delete call to renderStepContent()
+- [x] Line 27: Delete `type WizardStep = ...`
+- [x] Lines 30-40: **KEEP** module-level callbacks (needed for pickers) ✅ KEPT
+- [x] Line 481: Delete `const [currentStep, setCurrentStep] = ...`
+- [x] Lines 569-601: Delete goToNextStep() function
+- [x] Lines 588-612: Delete goToPreviousStep() function
+- [x] Lines 673-681: **KEEP** handleMachineClick and handlePathClick (open pickers) ✅ KEPT
+- [x] Lines 647-671: **KEEP** useEffect hooks (wire callbacks for pickers) ✅ KEPT
+- [x] Lines 784-1022: Delete renderStepContent() function
+- [x] Line 1041: Delete call to renderStepContent()
 
 ### Phase 4: Build Single-Page Layout
-- [ ] Import AgentInput component at top
-- [ ] Create single ScrollView in return statement
-- [ ] Section 1: Add profile grid (from welcome step lines 800-835)
-- [ ] Section 1: Add "Create New Profile" button (from ai-backend step)
-- [ ] Section 1: Keep profile edit/delete handlers
-- [ ] Section 2: Add machine selector (button that opens picker, show current selection)
-- [ ] Section 3: Add path selector (button that opens picker, show current selection)
-- [ ] Section 4: Add collapsible advanced options
-  - [ ] SessionTypeSelector (if experiments enabled)
-  - [ ] Permission mode (could add PermissionModeSelector)
-  - [ ] Model mode (could add selector)
-- [ ] Section 5: Add AgentInput component with props:
-  - [ ] value={sessionPrompt}
-  - [ ] onChangeText={setSessionPrompt}
-  - [ ] onSend={handleCreateSession}
-  - [ ] isSendDisabled={!canCreate}
-  - [ ] isSending={isCreating}
-  - [ ] placeholder={t('newSession.prompt.placeholder')}
-  - [ ] autocompletePrefixes={[]}
-  - [ ] autocompleteSuggestions={async () => []}
-  - [ ] agentType={agentType}
-  - [ ] permissionMode={permissionMode}
-  - [ ] modelMode={modelMode}
-  - [ ] machineName={selectedMachine?.metadata?.displayName}
-  - [ ] currentPath={selectedPath}
+- [x] Import AgentInput component at top
+- [x] Create single ScrollView in return statement
+- [x] Section 1: Add profile grid (from welcome step lines 800-835)
+- [x] Section 1: Add "Create New Profile" button (from ai-backend step) ✅ Added "Manage Profiles" navigation
+- [x] Section 1: Keep profile edit/delete handlers ✅ Handled in Settings panel via navigation
+- [x] Section 2: Add machine selector (button that opens picker, show current selection)
+- [x] Section 3: Add path selector (button that opens picker, show current selection)
+- [x] Section 4: Add collapsible advanced options
+  - [x] SessionTypeSelector (if experiments enabled)
+  - [x] Permission mode (could add PermissionModeSelector) ✅ Passed via AgentInput props
+  - [x] Model mode (could add selector) ✅ Passed via AgentInput props
+- [x] Section 5: Add AgentInput component with props:
+  - [x] value={sessionPrompt}
+  - [x] onChangeText={setSessionPrompt}
+  - [x] onSend={handleCreateSession}
+  - [x] isSendDisabled={!canCreate}
+  - [x] isSending={isCreating}
+  - [x] placeholder={t('newSession.prompt.placeholder')} ✅ Used hardcoded placeholder
+  - [x] autocompletePrefixes={[]}
+  - [x] autocompleteSuggestions={async () => []}
+  - [x] agentType={agentType}
+  - [x] permissionMode={permissionMode}
+  - [x] modelMode={modelMode}
+  - [x] machineName={selectedMachine?.metadata?.displayName}
+  - [x] currentPath={selectedPath}
 
 ### Phase 5: Update Validation Logic
-- [ ] Update canCreate useMemo to check:
-  - [ ] selectedProfileId !== null (or allow null for manual config)
-  - [ ] selectedMachineId !== null
-  - [ ] selectedPath.trim() !== ''
-  - [ ] Profile compatible with agent
-- [ ] Remove validation from goToNextStep (deleted)
-- [ ] Keep validation in handleCreateSession
+- [x] Update canCreate useMemo to check:
+  - [x] selectedProfileId !== null (or allow null for manual config)
+  - [x] selectedMachineId !== null
+  - [x] selectedPath.trim() !== ''
+  - [x] Profile compatible with agent ✅ Via compatibleProfiles filter
+- [x] Remove validation from goToNextStep (deleted)
+- [x] Keep validation in handleCreateSession
 
 ### Phase 6: Test Thoroughly
-- [ ] Stop dev server
-- [ ] Clear Metro cache
-- [ ] Restart dev server
-- [ ] Build compiles without errors
-- [ ] New session button visible on home
-- [ ] Click new session - wizard appears
-- [ ] Wizard is single scrollable page (not steps)
-- [ ] Profile cards render correctly
-- [ ] Profile selection works
-- [ ] Machine picker button works
-- [ ] Path picker button works
-- [ ] Advanced section expands/collapses
-- [ ] AgentInput appears at bottom
-- [ ] Arrow button greyed when fields missing
-- [ ] Arrow button active when fields valid
-- [ ] Type in prompt field works
-- [ ] Create session works
-- [ ] Session receives profile env vars
+- [x] Stop dev server
+- [x] Clear Metro cache
+- [x] Restart dev server
+- [x] Build compiles without errors
+- [ ] New session button visible on home ⏳ Needs manual testing
+- [ ] Click new session - wizard appears ⏳ Needs manual testing
+- [ ] Wizard is single scrollable page (not steps) ⏳ Needs manual testing
+- [ ] Profile cards render correctly ⏳ Needs manual testing
+- [ ] Profile selection works ⏳ Needs manual testing
+- [ ] Machine picker button works ⏳ Needs manual testing
+- [ ] Path picker button works ⏳ Needs manual testing
+- [ ] Advanced section expands/collapses ⏳ Needs manual testing
+- [ ] AgentInput appears at bottom ⏳ Needs manual testing
+- [ ] Arrow button greyed when fields missing ⏳ Needs manual testing
+- [ ] Arrow button active when fields valid ⏳ Needs manual testing
+- [ ] Type in prompt field works ⏳ Needs manual testing
+- [ ] Create session works ⏳ Needs manual testing
+- [ ] Session receives profile env vars ⏳ Needs manual testing
 
 ### Phase 7: Clean Up & Commit
-- [ ] Update _layout.tsx if needed (verify picker routes present)
-- [ ] Review complete git diff
-- [ ] Write CLAUDE.md-compliant commit message
-- [ ] Commit refactor
-- [ ] Update this plan file with completion notes
+- [x] Update _layout.tsx if needed (verify picker routes present) ✅ Added path route
+- [x] Review complete git diff
+- [x] Write CLAUDE.md-compliant commit message
+- [x] Commit refactor
+- [x] Update this plan file with completion notes
 
 ## Critical Implementation Details
 
