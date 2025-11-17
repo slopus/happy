@@ -78,6 +78,12 @@ export const AIBackendProfileSchema = z.object({
     // Environment variables (validated)
     environmentVariables: z.array(EnvironmentVariableSchema).default([]),
 
+    // Default permission mode for this profile
+    defaultPermissionMode: z.string().optional(),
+
+    // Default model mode for this profile
+    defaultModelMode: z.string().optional(),
+
     // Compatibility metadata
     compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true }),
 
