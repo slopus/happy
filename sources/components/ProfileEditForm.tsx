@@ -268,45 +268,43 @@ export function ProfileEditForm({
                     }}>
                         Default Permission Mode
                     </Text>
-                    <View style={{
-                        borderRadius: 12,
-                        overflow: 'hidden',
-                        borderWidth: 2,
-                        borderColor: 'white',
-                    }}>
-                        <ItemGroup title="">
-                            {[
-                                { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                                { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                                { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
-                            ].map((option, index, array) => (
-                                <Item
-                                    key={option.value}
-                                    title={option.label}
-                                    subtitle={option.description}
-                                    leftElement={
-                                        <Ionicons
-                                            name={option.icon as any}
-                                            size={24}
-                                            color={defaultPermissionMode === option.value ? 'white' : theme.colors.textSecondary}
-                                        />
-                                    }
-                                    rightElement={defaultPermissionMode === option.value ? (
-                                        <Ionicons
-                                            name="checkmark-circle"
-                                            size={20}
-                                            color="white"
-                                        />
-                                    ) : null}
-                                    onPress={() => setDefaultPermissionMode(option.value)}
-                                    showChevron={false}
-                                    selected={defaultPermissionMode === option.value}
-                                    showDivider={index < array.length - 1}
-                                />
-                            ))}
-                        </ItemGroup>
-                    </View>
+                    <ItemGroup title="">
+                        {[
+                            { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
+                            { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
+                            { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
+                            { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
+                        ].map((option, index, array) => (
+                            <Item
+                                key={option.value}
+                                title={option.label}
+                                subtitle={option.description}
+                                leftElement={
+                                    <Ionicons
+                                        name={option.icon as any}
+                                        size={24}
+                                        color={defaultPermissionMode === option.value ? 'white' : theme.colors.textSecondary}
+                                    />
+                                }
+                                rightElement={defaultPermissionMode === option.value ? (
+                                    <Ionicons
+                                        name="checkmark-circle"
+                                        size={20}
+                                        color="white"
+                                    />
+                                ) : null}
+                                onPress={() => setDefaultPermissionMode(option.value)}
+                                showChevron={false}
+                                selected={defaultPermissionMode === option.value}
+                                showDivider={index < array.length - 1}
+                                style={defaultPermissionMode === option.value ? {
+                                    borderWidth: 2,
+                                    borderColor: 'white',
+                                    borderRadius: 8,
+                                } : undefined}
+                            />
+                        ))}
+                    </ItemGroup>
                     <View style={{ marginBottom: 16 }} />
 
                     {/* Tmux Session Name */}
