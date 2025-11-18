@@ -460,6 +460,13 @@ function NewSessionWizard() {
     const filteredFavorites = React.useMemo(() => {
         if (!pathInputText.trim()) return favoriteDirectories;
 
+        // Don't filter if text matches the currently selected path (auto-populated or clicked from list)
+        const homeDir = selectedMachine?.metadata?.homeDir;
+        const selectedDisplayPath = selectedPath ? formatPathRelativeToHome(selectedPath, homeDir) : null;
+        if (selectedDisplayPath && pathInputText === selectedDisplayPath) {
+            return favoriteDirectories; // Show all favorites, don't filter
+        }
+
         // Don't filter if text matches a favorite (user clicked from list)
         if (favoriteDirectories.some(fav => fav === pathInputText)) {
             return favoriteDirectories; // Show all favorites, don't filter
@@ -468,7 +475,7 @@ function NewSessionWizard() {
         // User is typing - filter the list
         const filterText = pathInputText.toLowerCase();
         return favoriteDirectories.filter(fav => fav.toLowerCase().includes(filterText));
-    }, [favoriteDirectories, pathInputText]);
+    }, [favoriteDirectories, pathInputText, selectedMachine, selectedPath]);
 
     // Check if current path input can be added to favorites (DRY - compute once)
     const canAddToFavorites = React.useMemo(() => {
