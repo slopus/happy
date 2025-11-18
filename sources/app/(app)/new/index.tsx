@@ -347,8 +347,15 @@ function NewSessionWizard() {
     const [isCreating, setIsCreating] = React.useState(false);
     const [showAdvanced, setShowAdvanced] = React.useState(false);
 
-    // Path selection state
-    const [pathInputText, setPathInputText] = React.useState('');
+    // Path selection state - initialize with formatted selected path
+    const [pathInputText, setPathInputText] = React.useState(() => {
+        const initialPath = getRecentPathForMachine(selectedMachineId, recentMachinePaths);
+        if (initialPath && selectedMachineId) {
+            const machine = machines.find(m => m.id === selectedMachineId);
+            return formatPathRelativeToHome(initialPath, machine?.metadata?.homeDir);
+        }
+        return '';
+    });
     const [showAllRecentPaths, setShowAllRecentPaths] = React.useState(false);
     const [showRecentPathsSection, setShowRecentPathsSection] = React.useState(true);
     const [showFavoritesSection, setShowFavoritesSection] = React.useState(true);
