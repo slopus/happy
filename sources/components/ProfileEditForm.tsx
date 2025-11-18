@@ -25,11 +25,37 @@ export function ProfileEditForm({
     containerStyle
 }: ProfileEditFormProps) {
     const { theme } = useUnistyles();
+
+    // Helper function to get environment variable value by name
+    const getEnvVarValue = React.useCallback((name: string): string | undefined => {
+        return profile.environmentVariables?.find(ev => ev.name === name)?.value;
+    }, [profile.environmentVariables]);
+
+    // Extract base URL from either anthropicConfig or environmentVariables
+    const extractedBaseUrl = React.useMemo(() => {
+        return profile.anthropicConfig?.baseUrl || getEnvVarValue('ANTHROPIC_BASE_URL') || '';
+    }, [profile.anthropicConfig?.baseUrl, getEnvVarValue]);
+
+    // Extract model from either anthropicConfig or environmentVariables
+    const extractedModel = React.useMemo(() => {
+        return profile.anthropicConfig?.model || getEnvVarValue('ANTHROPIC_MODEL') || '';
+    }, [profile.anthropicConfig?.model, getEnvVarValue]);
+
+    // Extract model euphemism mappings (opus, sonnet, haiku)
+    const modelMappings = React.useMemo(() => {
+        return {
+            opus: getEnvVarValue('ANTHROPIC_DEFAULT_OPUS_MODEL'),
+            sonnet: getEnvVarValue('ANTHROPIC_DEFAULT_SONNET_MODEL'),
+            haiku: getEnvVarValue('ANTHROPIC_DEFAULT_HAIKU_MODEL'),
+            smallFast: getEnvVarValue('ANTHROPIC_SMALL_FAST_MODEL'),
+        };
+    }, [getEnvVarValue]);
+
     const [name, setName] = React.useState(profile.name || '');
-    const [baseUrl, setBaseUrl] = React.useState(profile.anthropicConfig?.baseUrl || '');
+    const [baseUrl, setBaseUrl] = React.useState(extractedBaseUrl);
     const [authToken, setAuthToken] = React.useState(profile.anthropicConfig?.authToken || '');
     const [useAuthToken, setUseAuthToken] = React.useState(!!profile.anthropicConfig?.authToken);
-    const [model, setModel] = React.useState(profile.anthropicConfig?.model || '');
+    const [model, setModel] = React.useState(extractedModel);
     const [useTmux, setUseTmux] = React.useState(!!profile.tmuxConfig?.sessionName);
     const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxConfig?.sessionName || '');
     const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxConfig?.tmpDir || '');
@@ -174,22 +200,27 @@ export function ProfileEditForm({
                         marginBottom: 8,
                         ...Typography.default()
                     }}>
-                        Leave empty for default. Can be overridden by ANTHROPIC_BASE_URL from daemon environment or custom env vars below.
+                        {profile.isBuiltIn && extractedBaseUrl
+                            ? `Built-in profile - uses environment variable: ${extractedBaseUrl}`
+                            : 'Leave empty for default. Can be overridden by ANTHROPIC_BASE_URL from daemon environment or custom env vars below.'
+                        }
                     </Text>
                     <TextInput
                         style={{
-                            backgroundColor: theme.colors.input.background,
+                            backgroundColor: profile.isBuiltIn ? theme.colors.surface : theme.colors.input.background,
                             borderRadius: 8,
                             padding: 12,
                             fontSize: 16,
-                            color: theme.colors.text,
+                            color: profile.isBuiltIn ? theme.colors.textSecondary : theme.colors.text,
                             marginBottom: 16,
                             borderWidth: 1,
                             borderColor: theme.colors.textSecondary,
+                            opacity: profile.isBuiltIn ? 0.7 : 1,
                         }}
-                        placeholder="https://api.anthropic.com"
+                        placeholder={profile.isBuiltIn ? "Defined by profile" : "https://api.anthropic.com"}
                         value={baseUrl}
                         onChangeText={setBaseUrl}
+                        editable={!profile.isBuiltIn}
                     />
 
                     {/* Auth Token */}
@@ -268,21 +299,140 @@ export function ProfileEditForm({
                     }}>
                         {t('profiles.model')} ({t('common.optional')})
                     </Text>
+                    <Text style={{
+                        fontSize: 12,
+                        color: theme.colors.textSecondary,
+                        marginBottom: 8,
+                        ...Typography.default()
+                    }}>
+                        {profile.isBuiltIn && extractedModel
+                            ? `Built-in profile - uses environment variable: ${extractedModel}`
+                            : 'Default model to use. Leave empty to use system default (usually latest Sonnet). Can be overridden by ANTHROPIC_MODEL from daemon environment or custom env vars below.'
+                        }
+                    </Text>
                     <TextInput
                         style={{
-                            backgroundColor: theme.colors.input.background,
+                            backgroundColor: profile.isBuiltIn ? theme.colors.surface : theme.colors.input.background,
                             borderRadius: 8,
                             padding: 12,
                             fontSize: 16,
-                            color: theme.colors.text,
+                            color: profile.isBuiltIn ? theme.colors.textSecondary : theme.colors.text,
+                            marginBottom: modelMappings.opus || modelMappings.sonnet || modelMappings.haiku || modelMappings.smallFast ? 8 : 16,
+                            borderWidth: 1,
+                            borderColor: theme.colors.textSecondary,
+                            opacity: profile.isBuiltIn ? 0.7 : 1,
+                        }}
+                        placeholder={profile.isBuiltIn ? "Defined by profile" : "claude-3-5-sonnet-20241022"}
+                        value={model}
+                        onChangeText={setModel}
+                        editable={!profile.isBuiltIn}
+                    />
+
+                    {/* Model Mappings (Opus/Sonnet/Haiku) - Only show if any exist */}
+                    {(modelMappings.opus || modelMappings.sonnet || modelMappings.haiku || modelMappings.smallFast) && (
+                        <View style={{
+                            backgroundColor: theme.colors.surface,
+                            borderRadius: 8,
+                            padding: 12,
                             marginBottom: 16,
                             borderWidth: 1,
                             borderColor: theme.colors.textSecondary,
-                        }}
-                        placeholder="claude-3-5-sonnet-20241022"
-                        value={model}
-                        onChangeText={setModel}
-                    />
+                        }}>
+                            <Text style={{
+                                fontSize: 13,
+                                fontWeight: '600',
+                                color: theme.colors.text,
+                                marginBottom: 8,
+                                ...Typography.default('semiBold')
+                            }}>
+                                Model Mappings (set by daemon environment variables)
+                            </Text>
+                            {modelMappings.opus && (
+                                <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: theme.colors.textSecondary,
+                                        fontWeight: '600',
+                                        width: 100,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        Opus:
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: theme.colors.text,
+                                        flex: 1,
+                                        ...Typography.default()
+                                    }}>
+                                        {modelMappings.opus}
+                                    </Text>
+                                </View>
+                            )}
+                            {modelMappings.sonnet && (
+                                <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: theme.colors.textSecondary,
+                                        fontWeight: '600',
+                                        width: 100,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        Sonnet:
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: theme.colors.text,
+                                        flex: 1,
+                                        ...Typography.default()
+                                    }}>
+                                        {modelMappings.sonnet}
+                                    </Text>
+                                </View>
+                            )}
+                            {modelMappings.haiku && (
+                                <View style={{ flexDirection: 'row', marginBottom: 4 }}>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: theme.colors.textSecondary,
+                                        fontWeight: '600',
+                                        width: 100,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        Haiku:
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: theme.colors.text,
+                                        flex: 1,
+                                        ...Typography.default()
+                                    }}>
+                                        {modelMappings.haiku}
+                                    </Text>
+                                </View>
+                            )}
+                            {modelMappings.smallFast && (
+                                <View style={{ flexDirection: 'row' }}>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: theme.colors.textSecondary,
+                                        fontWeight: '600',
+                                        width: 100,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        Small/Fast:
+                                    </Text>
+                                    <Text style={{
+                                        fontSize: 12,
+                                        color: theme.colors.text,
+                                        flex: 1,
+                                        ...Typography.default()
+                                    }}>
+                                        {modelMappings.smallFast}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
 
                     {/* Session Type */}
                     <Text style={{

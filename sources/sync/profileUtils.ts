@@ -60,7 +60,8 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             };
         case 'zai':
             // Z.AI profile: Maps Z_AI_* daemon environment to ANTHROPIC_* for Claude CLI
-            // Launch daemon with: Z_AI_AUTH_TOKEN=sk-... Z_AI_BASE_URL=https://api.z.ai Z_AI_MODEL=glm-4.6
+            // Launch daemon with: Z_AI_AUTH_TOKEN=sk-... Z_AI_BASE_URL=https://api.z.ai/api/anthropic
+            // Model mappings: Z_AI_OPUS_MODEL=GLM-4.6, Z_AI_SONNET_MODEL=GLM-4.6, Z_AI_HAIKU_MODEL=GLM-4.5-Air
             // Profile uses ${VAR} substitution for all config, no hardcoded values
             // NOTE: anthropicConfig left empty so environmentVariables aren't overridden
             return {
@@ -70,7 +71,11 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                 environmentVariables: [
                     { name: 'ANTHROPIC_BASE_URL', value: '${Z_AI_BASE_URL}' },
                     { name: 'ANTHROPIC_AUTH_TOKEN', value: '${Z_AI_AUTH_TOKEN}' },
+                    { name: 'API_TIMEOUT_MS', value: '${Z_AI_API_TIMEOUT_MS}' },
                     { name: 'ANTHROPIC_MODEL', value: '${Z_AI_MODEL}' },
+                    { name: 'ANTHROPIC_DEFAULT_OPUS_MODEL', value: '${Z_AI_OPUS_MODEL}' },
+                    { name: 'ANTHROPIC_DEFAULT_SONNET_MODEL', value: '${Z_AI_SONNET_MODEL}' },
+                    { name: 'ANTHROPIC_DEFAULT_HAIKU_MODEL', value: '${Z_AI_HAIKU_MODEL}' },
                 ],
                 defaultPermissionMode: 'default',
                 compatibility: { claude: true, codex: false },
