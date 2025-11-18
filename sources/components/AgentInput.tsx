@@ -23,6 +23,7 @@ import { Theme } from '@/theme';
 import { t } from '@/text';
 import { Metadata } from '@/sync/storageTypes';
 import { AIBackendProfile, getProfileEnvironmentVariables, validateProfileForAgent } from '@/sync/settings';
+import { getBuiltInProfile } from '@/sync/profileUtils';
 
 interface AgentInputProps {
     value: string;
@@ -301,7 +302,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     const profiles = useSetting('profiles');
     const currentProfile = React.useMemo(() => {
         if (!props.profileId) return null;
-        return profiles.find(p => p.id === props.profileId) || null;
+        // Check custom profiles first
+        const customProfile = profiles.find(p => p.id === props.profileId);
+        if (customProfile) return customProfile;
+        // Check built-in profiles
+        return getBuiltInProfile(props.profileId);
     }, [profiles, props.profileId]);
 
     // Calculate context warning
