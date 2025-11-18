@@ -960,23 +960,47 @@ function NewSessionWizard() {
                             <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                     <View style={{ flex: 1, backgroundColor: theme.colors.input.background, borderRadius: 10, borderWidth: 0.5, borderColor: theme.colors.divider }}>
-                                        <View style={{ paddingHorizontal: 12 }}>
-                                            <MultiTextInput
-                                                value={pathInputText}
-                                                onChangeText={(text) => {
-                                                    isUserTyping.current = true; // User is actively typing
-                                                    setPathInputText(text);
-                                                    // Update selectedPath if text is non-empty
-                                                    if (text.trim() && selectedMachine?.metadata?.homeDir) {
-                                                        const homeDir = selectedMachine.metadata.homeDir;
-                                                        setSelectedPath(resolveAbsolutePath(text.trim(), homeDir));
-                                                    }
-                                                }}
-                                                placeholder="Type to filter or enter custom path..."
-                                                maxHeight={40}
-                                                paddingTop={8}
-                                                paddingBottom={8}
-                                            />
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 }}>
+                                            <View style={{ flex: 1 }}>
+                                                <MultiTextInput
+                                                    value={pathInputText}
+                                                    onChangeText={(text) => {
+                                                        isUserTyping.current = true; // User is actively typing
+                                                        setPathInputText(text);
+                                                        // Update selectedPath if text is non-empty
+                                                        if (text.trim() && selectedMachine?.metadata?.homeDir) {
+                                                            const homeDir = selectedMachine.metadata.homeDir;
+                                                            setSelectedPath(resolveAbsolutePath(text.trim(), homeDir));
+                                                        }
+                                                    }}
+                                                    placeholder="Type to filter or enter custom path..."
+                                                    maxHeight={40}
+                                                    paddingTop={8}
+                                                    paddingBottom={8}
+                                                />
+                                            </View>
+                                            {pathInputText.trim() && (
+                                                <Pressable
+                                                    onPress={() => {
+                                                        isUserTyping.current = false;
+                                                        setPathInputText('');
+                                                        setSelectedPath('');
+                                                    }}
+                                                    hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                                    style={({ pressed }) => ({
+                                                        width: 20,
+                                                        height: 20,
+                                                        borderRadius: 10,
+                                                        backgroundColor: theme.colors.textSecondary,
+                                                        justifyContent: 'center',
+                                                        alignItems: 'center',
+                                                        opacity: pressed ? 0.6 : 0.8,
+                                                        marginLeft: 8,
+                                                    })}
+                                                >
+                                                    <Ionicons name="close" size={14} color={theme.colors.input.background} />
+                                                </Pressable>
+                                            )}
                                         </View>
                                     </View>
                                     <Pressable
