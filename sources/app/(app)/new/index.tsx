@@ -1064,7 +1064,7 @@ function NewSessionWizard() {
                                                                     style={isSelected ? {
                                                                         borderWidth: 2,
                                                                         borderColor: theme.colors.button.primary.tint,
-                                                                        borderRadius: 8,
+                                                                        borderRadius: Platform.select({ ios: 10, default: 16 }),
                                                                     } : undefined}
                                                                 />
                                                             );
@@ -1185,7 +1185,7 @@ function NewSessionWizard() {
                                                             style={isSelected ? {
                                                                 borderWidth: 2,
                                                                 borderColor: theme.colors.button.primary.tint,
-                                                                borderRadius: 8,
+                                                                borderRadius: Platform.select({ ios: 10, default: 16 }),
                                                             } : undefined}
                                                         />
                                                     );
@@ -1232,7 +1232,7 @@ function NewSessionWizard() {
                                         style={permissionMode === option.value ? {
                                             borderWidth: 2,
                                             borderColor: theme.colors.button.primary.tint,
-                                            borderRadius: 8,
+                                            borderRadius: Platform.select({ ios: 10, default: 16 }),
                                         } : undefined}
                                     />
                                 ))}
