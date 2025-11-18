@@ -60,35 +60,30 @@ const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType:
 };
 
 // Helper function to get the most recent path for a machine
+// Returns the path from the most recently CREATED session for this machine
 const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ machineId: string; path: string }>): string => {
     if (!machineId) return '';
-
-    const recentPath = recentPaths.find(rp => rp.machineId === machineId);
-    if (recentPath) {
-        return recentPath.path;
-    }
 
     const machine = storage.getState().machines[machineId];
     const defaultPath = machine?.metadata?.homeDir || '';
 
+    // Get all sessions for this machine, sorted by creation time (most recent first)
     const sessions = Object.values(storage.getState().sessions);
     const pathsWithTimestamps: Array<{ path: string; timestamp: number }> = [];
-    const pathSet = new Set<string>();
 
     sessions.forEach(session => {
         if (session.metadata?.machineId === machineId && session.metadata?.path) {
-            const path = session.metadata.path;
-            if (!pathSet.has(path)) {
-                pathSet.add(path);
-                pathsWithTimestamps.push({
-                    path,
-                    timestamp: session.updatedAt || session.createdAt
-                });
-            }
+            pathsWithTimestamps.push({
+                path: session.metadata.path,
+                timestamp: session.createdAt // Use createdAt, not updatedAt
+            });
         }
     });
 
+    // Sort by creation time (most recently created first)
     pathsWithTimestamps.sort((a, b) => b.timestamp - a.timestamp);
+
+    // Return the most recently created session's path, or default
     return pathsWithTimestamps[0]?.path || defaultPath;
 };
 
@@ -114,26 +109,28 @@ const styles = StyleSheet.create((theme, rt) => ({
         backgroundColor: theme.colors.surface,
         borderRadius: 16,
         marginHorizontal: 16,
-        padding: 20,
+        padding: 16,
         marginBottom: 16,
     },
     sectionHeader: {
-        fontSize: 18,
-        fontWeight: 'bold',
+        fontSize: 14,
+        fontWeight: '600',
         color: theme.colors.text,
-        marginBottom: 12,
-        marginTop: 16,
+        marginBottom: 8,
+        marginTop: 12,
+        ...Typography.default('semiBold')
     },
     sectionDescription: {
-        fontSize: 14,
+        fontSize: 12,
         color: theme.colors.textSecondary,
-        marginBottom: 16,
-        lineHeight: 20,
+        marginBottom: 12,
+        lineHeight: 18,
+        ...Typography.default()
     },
     profileListItem: {
         backgroundColor: theme.colors.input.background,
         borderRadius: 12,
-        padding: 11,
+        padding: 8,
         marginBottom: 8,
         flexDirection: 'row',
         alignItems: 'center',
@@ -145,22 +142,22 @@ const styles = StyleSheet.create((theme, rt) => ({
         borderColor: theme.colors.text,
     },
     profileIcon: {
-        width: 24,
-        height: 24,
-        borderRadius: 12,
+        width: 20,
+        height: 20,
+        borderRadius: 10,
         backgroundColor: theme.colors.button.primary.background,
         justifyContent: 'center',
         alignItems: 'center',
-        marginRight: 12,
+        marginRight: 10,
     },
     profileListName: {
-        fontSize: 16,
+        fontSize: 13,
         fontWeight: '600',
         color: theme.colors.text,
         ...Typography.default('semiBold')
     },
     profileListDetails: {
-        fontSize: 14,
+        fontSize: 12,
         color: theme.colors.textSecondary,
         marginTop: 2,
         ...Typography.default()
@@ -168,14 +165,14 @@ const styles = StyleSheet.create((theme, rt) => ({
     addProfileButton: {
         backgroundColor: theme.colors.surface,
         borderRadius: 12,
-        padding: 16,
+        padding: 12,
         marginBottom: 12,
         flexDirection: 'row',
         alignItems: 'center',
         justifyContent: 'center',
     },
     addProfileButtonText: {
-        fontSize: 16,
+        fontSize: 13,
         fontWeight: '600',
         color: theme.colors.button.secondary.tint,
         marginLeft: 8,
@@ -184,7 +181,7 @@ const styles = StyleSheet.create((theme, rt) => ({
     selectorButton: {
         backgroundColor: theme.colors.input.background,
         borderRadius: 8,
-        padding: 12,
+        padding: 10,
         marginBottom: 12,
         borderWidth: 1,
         borderColor: theme.colors.divider,
@@ -194,8 +191,9 @@ const styles = StyleSheet.create((theme, rt) => ({
     },
     selectorButtonText: {
         color: theme.colors.text,
-        fontSize: 14,
+        fontSize: 13,
         flex: 1,
+        ...Typography.default()
     },
     advancedHeader: {
         flexDirection: 'row',
@@ -358,6 +356,13 @@ function NewSessionWizard() {
     // Track if user is actively typing (vs clicking from list) to control expansion behavior
     const isUserTyping = React.useRef(false);
 
+    // Refs for scrolling to sections
+    const scrollViewRef = React.useRef<ScrollView>(null);
+    const profileSectionRef = React.useRef<View>(null);
+    const machineSectionRef = React.useRef<View>(null);
+    const pathSectionRef = React.useRef<View>(null);
+    const permissionSectionRef = React.useRef<View>(null);
+
     // Computed values
     const compatibleProfiles = React.useMemo(() => {
         return allProfiles.filter(profile => validateProfileForAgent(profile, agentType));
@@ -497,6 +502,40 @@ function NewSessionWizard() {
             }
         }
     }, [profileMap]);
+
+    // Scroll to section helpers - for AgentInput button clicks
+    const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {
+        if (ref.current && scrollViewRef.current) {
+            ref.current.measureLayout(
+                scrollViewRef.current as any,
+                (x, y) => {
+                    scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
+                },
+                () => { /* ignore errors */ }
+            );
+        }
+    }, []);
+
+    const handleAgentInputProfileClick = React.useCallback(() => {
+        scrollToSection(profileSectionRef);
+    }, [scrollToSection]);
+
+    const handleAgentInputMachineClick = React.useCallback(() => {
+        scrollToSection(machineSectionRef);
+    }, [scrollToSection]);
+
+    const handleAgentInputPathClick = React.useCallback(() => {
+        scrollToSection(pathSectionRef);
+    }, [scrollToSection]);
+
+    const handleAgentInputPermissionChange = React.useCallback((mode: PermissionMode) => {
+        setPermissionMode(mode);
+        scrollToSection(permissionSectionRef);
+    }, [scrollToSection]);
+
+    const handleAgentInputAgentClick = React.useCallback(() => {
+        scrollToSection(profileSectionRef); // Agent tied to profile section
+    }, [scrollToSection]);
 
     const handleAddProfile = React.useCallback(() => {
         const newProfile: AIBackendProfile = {
@@ -715,6 +754,7 @@ function NewSessionWizard() {
         >
             <View style={{ flex: 1 }}>
                 <ScrollView
+                    ref={scrollViewRef}
                     style={styles.scrollContainer}
                     contentContainerStyle={styles.contentContainer}
                     keyboardShouldPersistTaps="handled"
@@ -725,7 +765,7 @@ function NewSessionWizard() {
                     <View style={[
                         { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
                     ]}>
-                        <View style={styles.wizardContainer}>
+                        <View ref={profileSectionRef} style={styles.wizardContainer}>
                             {/* Section 1: Profile Management */}
                             <Text style={styles.sectionHeader}>1. Choose AI Profile</Text>
                             <Text style={styles.sectionDescription}>
@@ -884,7 +924,9 @@ function NewSessionWizard() {
                             </View>
 
                             {/* Section 2: Machine Selection */}
-                            <Text style={styles.sectionHeader}>2. Select Machine</Text>
+                            <View ref={machineSectionRef}>
+                                <Text style={styles.sectionHeader}>2. Select Machine</Text>
+                            </View>
                             <Pressable
                                 style={styles.selectorButton}
                                 onPress={handleMachineClick}
@@ -896,7 +938,9 @@ function NewSessionWizard() {
                             </Pressable>
 
                             {/* Section 3: Working Directory */}
-                            <Text style={styles.sectionHeader}>3. Working Directory</Text>
+                            <View ref={pathSectionRef}>
+                                <Text style={styles.sectionHeader}>3. Working Directory</Text>
+                            </View>
 
                             {/* Path Input and Add to Favorites */}
                             <View style={{ paddingHorizontal: 16, paddingBottom: 8 }}>
@@ -1139,7 +1183,9 @@ function NewSessionWizard() {
                             )}
 
                             {/* Section 4: Permission Mode */}
-                            <Text style={styles.sectionHeader}>4. Permission Mode</Text>
+                            <View ref={permissionSectionRef}>
+                                <Text style={styles.sectionHeader}>4. Permission Mode</Text>
+                            </View>
                             <ItemGroup title="">
                                 {[
                                     { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
@@ -1221,10 +1267,17 @@ function NewSessionWizard() {
                             autocompletePrefixes={[]}
                             autocompleteSuggestions={async () => []}
                             agentType={agentType}
+                            onAgentClick={handleAgentInputAgentClick}
                             permissionMode={permissionMode}
+                            onPermissionModeChange={handleAgentInputPermissionChange}
                             modelMode={modelMode}
+                            onModelModeChange={setModelMode}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
+                            onMachineClick={handleAgentInputMachineClick}
                             currentPath={selectedPath}
+                            onPathClick={handleAgentInputPathClick}
+                            profileId={selectedProfileId}
+                            onProfileClick={handleAgentInputProfileClick}
                         />
                     </View>
                 </View>
