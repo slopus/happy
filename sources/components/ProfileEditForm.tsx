@@ -225,7 +225,20 @@ export function ProfileEditForm({
 
                             {profileDocs.setupGuideUrl && (
                                 <Pressable
-                                    onPress={() => Linking.openURL(profileDocs.setupGuideUrl!)}
+                                    onPress={async () => {
+                                        try {
+                                            const url = profileDocs.setupGuideUrl!;
+                                            // On web/Tauri desktop, use window.open
+                                            if (Platform.OS === 'web') {
+                                                window.open(url, '_blank');
+                                            } else {
+                                                // On native (iOS/Android), use Linking API
+                                                await Linking.openURL(url);
+                                            }
+                                        } catch (error) {
+                                            console.error('Failed to open URL:', error);
+                                        }
+                                    }}
                                     style={{
                                         flexDirection: 'row',
                                         alignItems: 'center',
