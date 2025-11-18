@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, Pressable, ScrollView, TextInput, ViewStyle } from 'react-native';
+import { View, Text, Pressable, ScrollView, TextInput, ViewStyle, Linking, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { StyleSheet } from 'react-native-unistyles';
 import { useUnistyles } from 'react-native-unistyles';
@@ -10,6 +10,7 @@ import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
 import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
+import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -50,6 +51,12 @@ export function ProfileEditForm({
             smallFast: getEnvVarValue('ANTHROPIC_SMALL_FAST_MODEL'),
         };
     }, [getEnvVarValue]);
+
+    // Get documentation for built-in profiles
+    const profileDocs = React.useMemo(() => {
+        if (!profile.isBuiltIn) return null;
+        return getBuiltInProfileDocumentation(profile.id);
+    }, [profile.isBuiltIn, profile.id]);
 
     const [name, setName] = React.useState(profile.name || '');
     const [baseUrl, setBaseUrl] = React.useState(extractedBaseUrl);
@@ -184,6 +191,153 @@ export function ProfileEditForm({
                         onChangeText={setName}
                     />
 
+                    {/* Built-in Profile Documentation - Setup Instructions */}
+                    {profile.isBuiltIn && profileDocs && (
+                        <View style={{
+                            backgroundColor: theme.colors.surface,
+                            borderRadius: 12,
+                            padding: 16,
+                            marginBottom: 20,
+                            borderWidth: 1,
+                            borderColor: theme.colors.button.primary.background,
+                        }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                                <Ionicons name="information-circle" size={20} color={theme.colors.button.primary.tint} style={{ marginRight: 8 }} />
+                                <Text style={{
+                                    fontSize: 15,
+                                    fontWeight: '600',
+                                    color: theme.colors.text,
+                                    ...Typography.default('semiBold')
+                                }}>
+                                    Setup Instructions
+                                </Text>
+                            </View>
+
+                            <Text style={{
+                                fontSize: 13,
+                                color: theme.colors.text,
+                                marginBottom: 12,
+                                lineHeight: 18,
+                                ...Typography.default()
+                            }}>
+                                {profileDocs.description}
+                            </Text>
+
+                            {profileDocs.setupGuideUrl && (
+                                <Pressable
+                                    onPress={() => Linking.openURL(profileDocs.setupGuideUrl!)}
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        backgroundColor: theme.colors.button.primary.background,
+                                        borderRadius: 8,
+                                        padding: 12,
+                                        marginBottom: 16,
+                                    }}
+                                >
+                                    <Ionicons name="book-outline" size={16} color={theme.colors.button.primary.tint} style={{ marginRight: 8 }} />
+                                    <Text style={{
+                                        fontSize: 13,
+                                        color: theme.colors.button.primary.tint,
+                                        fontWeight: '600',
+                                        flex: 1,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        View Official Setup Guide
+                                    </Text>
+                                    <Ionicons name="open-outline" size={14} color={theme.colors.button.primary.tint} />
+                                </Pressable>
+                            )}
+
+                            {profileDocs.environmentVariables.length > 0 && (
+                                <>
+                                    <Text style={{
+                                        fontSize: 13,
+                                        fontWeight: '600',
+                                        color: theme.colors.text,
+                                        marginBottom: 8,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        Required Environment Variables (add to ~/.zshrc or ~/.bashrc on remote machine):
+                                    </Text>
+
+                                    {profileDocs.environmentVariables.map((envVar, index) => (
+                                        <View key={envVar.name} style={{
+                                            backgroundColor: theme.colors.surfacePressed,
+                                            borderRadius: 6,
+                                            padding: 10,
+                                            marginBottom: 8,
+                                        }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                                                <Text style={{
+                                                    fontSize: 12,
+                                                    fontWeight: '600',
+                                                    color: envVar.isSecret ? theme.colors.textDestructive : theme.colors.button.primary.tint,
+                                                    ...Typography.default('semiBold')
+                                                }}>
+                                                    {envVar.name}
+                                                </Text>
+                                                {envVar.isSecret && (
+                                                    <Ionicons name="lock-closed" size={12} color={theme.colors.textDestructive} style={{ marginLeft: 4 }} />
+                                                )}
+                                            </View>
+                                            <Text style={{
+                                                fontSize: 11,
+                                                color: theme.colors.textSecondary,
+                                                marginBottom: 4,
+                                                ...Typography.default()
+                                            }}>
+                                                {envVar.description}
+                                            </Text>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                <Text style={{
+                                                    fontSize: 11,
+                                                    color: theme.colors.textSecondary,
+                                                    marginRight: 4,
+                                                    ...Typography.default()
+                                                }}>
+                                                    Expected:
+                                                </Text>
+                                                <Text style={{
+                                                    fontSize: 11,
+                                                    color: theme.colors.text,
+                                                    ...Typography.default()
+                                                }}>
+                                                    {envVar.isSecret ? '***hidden***' : envVar.expectedValue}
+                                                </Text>
+                                            </View>
+                                        </View>
+                                    ))}
+
+                                    <Text style={{
+                                        fontSize: 12,
+                                        fontWeight: '600',
+                                        color: theme.colors.text,
+                                        marginTop: 8,
+                                        marginBottom: 6,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        Shell Configuration Example:
+                                    </Text>
+                                    <View style={{
+                                        backgroundColor: theme.colors.surfacePressed,
+                                        borderRadius: 6,
+                                        padding: 10,
+                                    }}>
+                                        <Text style={{
+                                            fontSize: 11,
+                                            color: theme.colors.text,
+                                            lineHeight: 16,
+                                            ...Typography.default()
+                                        }}>
+                                            {profileDocs.shellConfigExample}
+                                        </Text>
+                                    </View>
+                                </>
+                            )}
+                        </View>
+                    )}
+
                     {/* Base URL */}
                     <Text style={{
                         fontSize: 14,
@@ -201,7 +355,7 @@ export function ProfileEditForm({
                         ...Typography.default()
                     }}>
                         {profile.isBuiltIn && extractedBaseUrl
-                            ? `Built-in profile - uses environment variable: ${extractedBaseUrl}`
+                            ? `Read-only - This built-in profile uses: ${extractedBaseUrl}\nSee setup instructions above for expected values.`
                             : 'Leave empty for default. Can be overridden by ANTHROPIC_BASE_URL from daemon environment or custom env vars below.'
                         }
                     </Text>
@@ -306,7 +460,7 @@ export function ProfileEditForm({
                         ...Typography.default()
                     }}>
                         {profile.isBuiltIn && extractedModel
-                            ? `Built-in profile - uses environment variable: ${extractedModel}`
+                            ? `Read-only - This built-in profile uses: ${extractedModel}\nSee setup instructions above for expected values and model mappings.`
                             : 'Default model to use. Leave empty to use system default (usually latest Sonnet). Can be overridden by ANTHROPIC_MODEL from daemon environment or custom env vars below.'
                         }
                     </Text>
