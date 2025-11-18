@@ -779,54 +779,7 @@ function NewSessionWizard() {
                                 Select, create, or edit AI profiles with custom environment variables.
                             </Text>
 
-                            {/* Built-in profiles */}
-                            {DEFAULT_PROFILES.map((profileDisplay) => {
-                                const profile = getBuiltInProfile(profileDisplay.id);
-                                if (!profile) return null;
-
-                                const isCompatible = validateProfileForAgent(profile, agentType);
-
-                                return (
-                                    <Pressable
-                                        key={profile.id}
-                                        style={[
-                                            styles.profileListItem,
-                                            selectedProfileId === profile.id && styles.profileListItemSelected,
-                                            !isCompatible && { opacity: 0.5 }
-                                        ]}
-                                        onPress={() => isCompatible && selectProfile(profile.id)}
-                                        disabled={!isCompatible}
-                                    >
-                                        <View style={styles.profileIcon}>
-                                            <Ionicons name="star" size={16} color={theme.colors.button.primary.tint} />
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.profileListName}>{profile.name}</Text>
-                                            <Text style={styles.profileListDetails}>
-                                                {!isCompatible && `⚠️ Requires ${agentType === 'claude' ? 'Codex' : 'Claude'} • `}
-                                                {profile.anthropicConfig?.model || profile.openaiConfig?.model || 'Default model'}
-                                                {profile.anthropicConfig?.baseUrl && ` • ${profile.anthropicConfig.baseUrl}`}
-                                            </Text>
-                                        </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-                                            {selectedProfileId === profile.id && (
-                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
-                                            )}
-                                            <Pressable
-                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                onPress={(e) => {
-                                                    e.stopPropagation();
-                                                    handleEditProfile(profile);
-                                                }}
-                                            >
-                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
-                                            </Pressable>
-                                        </View>
-                                    </Pressable>
-                                );
-                            })}
-
-                            {/* Custom profiles */}
+                            {/* Custom profiles - show first */}
                             {profiles.map((profile) => {
                                 const isCompatible = validateProfileForAgent(profile, agentType);
 
@@ -883,6 +836,53 @@ function NewSessionWizard() {
                                                 }}
                                             >
                                                 <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                                            </Pressable>
+                                        </View>
+                                    </Pressable>
+                                );
+                            })}
+
+                            {/* Built-in profiles - show after custom */}
+                            {DEFAULT_PROFILES.map((profileDisplay) => {
+                                const profile = getBuiltInProfile(profileDisplay.id);
+                                if (!profile) return null;
+
+                                const isCompatible = validateProfileForAgent(profile, agentType);
+
+                                return (
+                                    <Pressable
+                                        key={profile.id}
+                                        style={[
+                                            styles.profileListItem,
+                                            selectedProfileId === profile.id && styles.profileListItemSelected,
+                                            !isCompatible && { opacity: 0.5 }
+                                        ]}
+                                        onPress={() => isCompatible && selectProfile(profile.id)}
+                                        disabled={!isCompatible}
+                                    >
+                                        <View style={styles.profileIcon}>
+                                            <Ionicons name="star" size={16} color={theme.colors.button.primary.tint} />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.profileListName}>{profile.name}</Text>
+                                            <Text style={styles.profileListDetails}>
+                                                {!isCompatible && `⚠️ Requires ${agentType === 'claude' ? 'Codex' : 'Claude'} • `}
+                                                {profile.anthropicConfig?.model || profile.openaiConfig?.model || 'Default model'}
+                                                {profile.anthropicConfig?.baseUrl && ` • ${profile.anthropicConfig.baseUrl}`}
+                                            </Text>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            {selectedProfileId === profile.id && (
+                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
+                                            )}
+                                            <Pressable
+                                                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                                                onPress={(e) => {
+                                                    e.stopPropagation();
+                                                    handleEditProfile(profile);
+                                                }}
+                                            >
+                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
                                             </Pressable>
                                         </View>
                                     </Pressable>
