@@ -787,9 +787,10 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                     {/* Action buttons below input */}
                     <View style={styles.actionButtonsContainer}>
-                        <View style={{ flexDirection: 'column', flex: 1, gap: 4 }}>
+                        <View style={{ flexDirection: 'column', flex: 1, gap: 2 }}>
                             {/* Row 1: Settings, Profile (FIRST), Agent, Abort, Git Status */}
-                            <View style={styles.actionButtonsLeft}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                <View style={styles.actionButtonsLeft}>
 
                                 {/* Settings button */}
                                 {props.onPermissionModeChange && (
@@ -923,6 +924,73 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
                                 {/* Git Status Badge */}
                                 <GitStatusButton sessionId={props.sessionId} onPress={props.onFileViewerPress} />
+                                </View>
+
+                                {/* Send/Voice button - aligned with first row */}
+                                <View
+                                    style={[
+                                        styles.sendButton,
+                                        (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
+                                            ? styles.sendButtonActive
+                                            : styles.sendButtonInactive
+                                    ]}
+                                >
+                                    <Pressable
+                                        style={(p) => ({
+                                            width: '100%',
+                                            height: '100%',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            opacity: p.pressed ? 0.7 : 1,
+                                        })}
+                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                        onPress={() => {
+                                            hapticsLight();
+                                            if (hasText) {
+                                                props.onSend();
+                                            } else {
+                                                props.onMicPress?.();
+                                            }
+                                        }}
+                                        disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
+                                    >
+                                        {props.isSending ? (
+                                            <ActivityIndicator
+                                                size="small"
+                                                color={theme.colors.button.primary.tint}
+                                            />
+                                        ) : hasText ? (
+                                            <Octicons
+                                                name="arrow-up"
+                                                size={16}
+                                                color={theme.colors.button.primary.tint}
+                                                style={[
+                                                    styles.sendButtonIcon,
+                                                    { marginTop: Platform.OS === 'web' ? 2 : 0 }
+                                                ]}
+                                            />
+                                        ) : props.onMicPress && !props.isMicActive ? (
+                                            <Image
+                                                source={require('@/assets/images/icon-voice-white.png')}
+                                                style={{
+                                                    width: 24,
+                                                    height: 24,
+                                                }}
+                                                tintColor={theme.colors.button.primary.tint}
+                                            />
+                                        ) : (
+                                            <Octicons
+                                                name="arrow-up"
+                                                size={16}
+                                                color={theme.colors.button.primary.tint}
+                                                style={[
+                                                    styles.sendButtonIcon,
+                                                    { marginTop: Platform.OS === 'web' ? 2 : 0 }
+                                                ]}
+                                            />
+                                        )}
+                                    </Pressable>
+                                </View>
                             </View>
 
                             {/* Row 2: Machine (separate line) */}
@@ -1000,72 +1068,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     </Pressable>
                                 </View>
                             )}
-                        </View>
-
-                        {/* Send/Voice button */}
-                        <View
-                            style={[
-                                styles.sendButton,
-                                (hasText || props.isSending || (props.onMicPress && !props.isMicActive))
-                                    ? styles.sendButtonActive
-                                    : styles.sendButtonInactive
-                            ]}
-                        >
-                            <Pressable
-                                style={(p) => ({
-                                    width: '100%',
-                                    height: '100%',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    opacity: p.pressed ? 0.7 : 1,
-                                })}
-                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                onPress={() => {
-                                    hapticsLight();
-                                    if (hasText) {
-                                        props.onSend();
-                                    } else {
-                                        props.onMicPress?.();
-                                    }
-                                }}
-                                disabled={props.isSendDisabled || props.isSending || (!hasText && !props.onMicPress)}
-                            >
-                                {props.isSending ? (
-                                    <ActivityIndicator
-                                        size="small"
-                                        color={theme.colors.button.primary.tint}
-                                    />
-                                ) : hasText ? (
-                                    <Octicons
-                                        name="arrow-up"
-                                        size={16}
-                                        color={theme.colors.button.primary.tint}
-                                        style={[
-                                            styles.sendButtonIcon,
-                                            { marginTop: Platform.OS === 'web' ? 2 : 0 }
-                                        ]}
-                                    />
-                                ) : props.onMicPress && !props.isMicActive ? (
-                                    <Image
-                                        source={require('@/assets/images/icon-voice-white.png')}
-                                        style={{
-                                            width: 24,
-                                            height: 24,
-                                        }}
-                                        tintColor={theme.colors.button.primary.tint}
-                                    />
-                                ) : (
-                                    <Octicons
-                                        name="arrow-up"
-                                        size={16}
-                                        color={theme.colors.button.primary.tint}
-                                        style={[
-                                            styles.sendButtonIcon,
-                                            { marginTop: Platform.OS === 'web' ? 2 : 0 }
-                                        ]}
-                                    />
-                                )}
-                            </Pressable>
                         </View>
                     </View>
                 </View>
