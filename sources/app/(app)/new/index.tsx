@@ -586,6 +586,57 @@ function NewSessionWizard() {
         router.push(`/new/pick/profile-edit?profileData=${profileData}`);
     }, [router]);
 
+    // Helper to get meaningful subtitle text for profiles
+    const getProfileSubtitle = React.useCallback((profile: AIBackendProfile, isCompatible: boolean): string => {
+        const parts: string[] = [];
+
+        // Add compatibility warning if incompatible
+        if (!isCompatible) {
+            parts.push(`⚠️ Requires ${agentType === 'claude' ? 'Codex' : 'Claude'}`);
+        }
+
+        // Get model name - check both anthropicConfig and environmentVariables
+        let modelName: string | undefined;
+        if (profile.anthropicConfig?.model) {
+            modelName = profile.anthropicConfig.model;
+        } else if (profile.openaiConfig?.model) {
+            modelName = profile.openaiConfig.model;
+        } else {
+            // For built-in profiles, extract model from environmentVariables
+            const modelEnvVar = profile.environmentVariables?.find(ev => ev.name === 'ANTHROPIC_MODEL');
+            if (modelEnvVar) {
+                modelName = modelEnvVar.value;
+            }
+        }
+
+        if (modelName) {
+            parts.push(modelName);
+        } else {
+            // Show compatibility instead of generic "Default model"
+            if (profile.compatibility.claude && profile.compatibility.codex) {
+                parts.push('Claude & Codex compatible');
+            } else if (profile.compatibility.claude) {
+                parts.push('Claude-compatible');
+            } else if (profile.compatibility.codex) {
+                parts.push('Codex-compatible');
+            }
+        }
+
+        // Add base URL if exists
+        if (profile.anthropicConfig?.baseUrl) {
+            const url = new URL(profile.anthropicConfig.baseUrl);
+            parts.push(url.hostname);
+        } else {
+            // Check environmentVariables for base URL
+            const baseUrlEnvVar = profile.environmentVariables?.find(ev => ev.name === 'ANTHROPIC_BASE_URL');
+            if (baseUrlEnvVar) {
+                parts.push(baseUrlEnvVar.value);
+            }
+        }
+
+        return parts.join(' • ');
+    }, [agentType]);
+
     const handleDeleteProfile = React.useCallback((profile: AIBackendProfile) => {
         Modal.alert(
             t('profiles.delete.title'),
@@ -808,8 +859,7 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
                                             <Text style={styles.profileListDetails}>
-                                                {!isCompatible && `⚠️ Requires ${agentType === 'claude' ? 'Codex' : 'Claude'} • `}
-                                                {profile.anthropicConfig?.model || profile.openaiConfig?.model || 'Default model'}
+                                                {getProfileSubtitle(profile, isCompatible)}
                                             </Text>
                                         </View>
                                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -874,9 +924,7 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
                                             <Text style={styles.profileListDetails}>
-                                                {!isCompatible && `⚠️ Requires ${agentType === 'claude' ? 'Codex' : 'Claude'} • `}
-                                                {profile.anthropicConfig?.model || profile.openaiConfig?.model || 'Default model'}
-                                                {profile.anthropicConfig?.baseUrl && ` • ${profile.anthropicConfig.baseUrl}`}
+                                                {getProfileSubtitle(profile, isCompatible)}
                                             </Text>
                                         </View>
                                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
