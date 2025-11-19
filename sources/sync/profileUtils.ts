@@ -54,8 +54,8 @@ export const getBuiltInProfileDocumentation = (id: string): ProfileDocumentation
                     },
                     {
                         name: 'DEEPSEEK_MODEL',
-                        expectedValue: 'deepseek-reasoner',
-                        description: 'Default model (reasoning model)',
+                        expectedValue: 'deepseek-chat',
+                        description: 'Default model (standard chat model, use deepseek-reasoner for reasoning tasks)',
                         isSecret: false,
                     },
                     {
@@ -75,9 +75,11 @@ export const getBuiltInProfileDocumentation = (id: string): ProfileDocumentation
 export DEEPSEEK_BASE_URL="https://api.deepseek.com/anthropic"
 export DEEPSEEK_AUTH_TOKEN="sk-YOUR_DEEPSEEK_API_KEY"
 export DEEPSEEK_API_TIMEOUT_MS="600000"
-export DEEPSEEK_MODEL="deepseek-reasoner"
+export DEEPSEEK_MODEL="deepseek-chat"
 export DEEPSEEK_SMALL_FAST_MODEL="deepseek-chat"
-export DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"`,
+export DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1"
+
+# Note: Use DEEPSEEK_MODEL="deepseek-reasoner" for reasoning tasks with detailed thinking traces`,
             };
         case 'zai':
             return {
