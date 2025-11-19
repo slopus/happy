@@ -569,8 +569,9 @@ function NewSessionWizard() {
 
     const handleEditProfile = React.useCallback((profile: AIBackendProfile) => {
         const profileData = encodeURIComponent(JSON.stringify(profile));
-        router.push(`/new/pick/profile-edit?profileData=${profileData}`);
-    }, [router]);
+        const machineId = selectedMachineId || '';
+        router.push(`/new/pick/profile-edit?profileData=${profileData}&machineId=${machineId}`);
+    }, [router, selectedMachineId]);
 
     const handleDuplicateProfile = React.useCallback((profile: AIBackendProfile) => {
         const duplicatedProfile: AIBackendProfile = {

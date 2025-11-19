@@ -11,9 +11,11 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
+import { machineBash } from '@/sync/ops';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
+    machineId: string | null;
     onSave: (profile: AIBackendProfile) => void;
     onCancel: () => void;
     containerStyle?: ViewStyle;
@@ -21,11 +23,15 @@ export interface ProfileEditFormProps {
 
 export function ProfileEditForm({
     profile,
+    machineId,
     onSave,
     onCancel,
     containerStyle
 }: ProfileEditFormProps) {
     const { theme } = useUnistyles();
+
+    // State to store actual environment variable values from the remote machine
+    const [actualEnvVars, setActualEnvVars] = React.useState<Record<string, string | null>>({});
 
     // Helper function to get environment variable value by name
     const getEnvVarValue = React.useCallback((name: string): string | undefined => {
@@ -57,6 +63,42 @@ export function ProfileEditForm({
         if (!profile.isBuiltIn) return null;
         return getBuiltInProfileDocumentation(profile.id);
     }, [profile.isBuiltIn, profile.id]);
+
+    // Fetch actual environment variable values from the remote machine
+    React.useEffect(() => {
+        if (!machineId || !profileDocs) return;
+
+        const fetchEnvVars = async () => {
+            const results: Record<string, string | null> = {};
+
+            for (const envVar of profileDocs.environmentVariables) {
+                // Skip secret variables - never retrieve actual values
+                if (envVar.isSecret) {
+                    results[envVar.name] = null;
+                    continue;
+                }
+
+                try {
+                    // Use machineBash to echo the environment variable
+                    const result = await machineBash(machineId, `echo "$${envVar.name}"`, '/');
+                    if (result.success && result.exitCode === 0) {
+                        const value = result.stdout.trim();
+                        // Empty string means variable not set
+                        results[envVar.name] = value || null;
+                    } else {
+                        results[envVar.name] = null;
+                    }
+                } catch (error) {
+                    console.error(`Failed to fetch ${envVar.name}:`, error);
+                    results[envVar.name] = null;
+                }
+            }
+
+            setActualEnvVars(results);
+        };
+
+        fetchEnvVars();
+    }, [machineId, profileDocs]);
 
     const [name, setName] = React.useState(profile.name || '');
     const [baseUrl, setBaseUrl] = React.useState(extractedBaseUrl);
@@ -302,7 +344,8 @@ export function ProfileEditForm({
                                             }}>
                                                 {envVar.description}
                                             </Text>
-                                            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                            {/* Expected value */}
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: machineId && !envVar.isSecret ? 4 : 0 }}>
                                                 <Text style={{
                                                     fontSize: 11,
                                                     color: theme.colors.textSecondary,
@@ -319,6 +362,63 @@ export function ProfileEditForm({
                                                     {envVar.isSecret ? '***hidden***' : envVar.expectedValue}
                                                 </Text>
                                             </View>
+
+                                            {/* Actual value - only show if we have a machine and it's not a secret */}
+                                            {machineId && !envVar.isSecret && (
+                                                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                                    <Text style={{
+                                                        fontSize: 11,
+                                                        color: theme.colors.textSecondary,
+                                                        marginRight: 4,
+                                                        ...Typography.default()
+                                                    }}>
+                                                        Actual:
+                                                    </Text>
+                                                    {actualEnvVars[envVar.name] === undefined ? (
+                                                        <Text style={{
+                                                            fontSize: 11,
+                                                            color: theme.colors.textSecondary,
+                                                            fontStyle: 'italic',
+                                                            ...Typography.default()
+                                                        }}>
+                                                            Loading...
+                                                        </Text>
+                                                    ) : actualEnvVars[envVar.name] === null ? (
+                                                        <>
+                                                            <Ionicons name="alert-circle" size={12} color={theme.colors.warning} style={{ marginRight: 4 }} />
+                                                            <Text style={{
+                                                                fontSize: 11,
+                                                                color: theme.colors.warning,
+                                                                ...Typography.default()
+                                                            }}>
+                                                                Not set
+                                                            </Text>
+                                                        </>
+                                                    ) : actualEnvVars[envVar.name] === envVar.expectedValue ? (
+                                                        <>
+                                                            <Ionicons name="checkmark-circle" size={12} color={theme.colors.success} style={{ marginRight: 4 }} />
+                                                            <Text style={{
+                                                                fontSize: 11,
+                                                                color: theme.colors.success,
+                                                                ...Typography.default()
+                                                            }}>
+                                                                {actualEnvVars[envVar.name]}
+                                                            </Text>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <Ionicons name="close-circle" size={12} color={theme.colors.textDestructive} style={{ marginRight: 4 }} />
+                                                            <Text style={{
+                                                                fontSize: 11,
+                                                                color: theme.colors.textDestructive,
+                                                                ...Typography.default()
+                                                            }}>
+                                                                {actualEnvVars[envVar.name]} (mismatch)
+                                                            </Text>
+                                                        </>
+                                                    )}
+                                                </View>
+                                            )}
                                         </View>
                                     ))}
 

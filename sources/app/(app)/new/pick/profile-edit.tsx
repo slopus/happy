@@ -14,7 +14,7 @@ import { callbacks } from '../index';
 export default function ProfileEditScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
-    const params = useLocalSearchParams<{ profileData?: string }>();
+    const params = useLocalSearchParams<{ profileData?: string; machineId?: string }>();
     const screenWidth = useWindowDimensions().width;
     const headerHeight = useHeaderHeight();
 
@@ -71,6 +71,7 @@ export default function ProfileEditScreen() {
                 ]}>
                     <ProfileEditForm
                         profile={profile}
+                        machineId={params.machineId || null}
                         onSave={handleSave}
                         onCancel={handleCancel}
                     />

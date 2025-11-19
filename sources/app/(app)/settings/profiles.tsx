@@ -398,6 +398,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
                     <View style={profileManagerStyles.modalContent}>
                         <ProfileEditForm
                             profile={editingProfile}
+                            machineId={null}
                             onSave={handleSaveProfile}
                             onCancel={() => {
                                 setShowAddForm(false);
