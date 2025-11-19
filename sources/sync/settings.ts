@@ -62,6 +62,9 @@ export const AIBackendProfileSchema = z.object({
     // Tmux configuration
     tmuxConfig: TmuxConfigSchema.optional(),
 
+    // Startup bash script (executed before spawning session)
+    startupBashScript: z.string().optional(),
+
     // Environment variables (validated)
     environmentVariables: z.array(EnvironmentVariableSchema).default([]),
 

@@ -64,6 +64,16 @@ export function ProfileEditForm({
         return getBuiltInProfileDocumentation(profile.id);
     }, [profile.isBuiltIn, profile.id]);
 
+    // Helper to evaluate environment variable substitutions like ${VAR}
+    const evaluateEnvVar = React.useCallback((value: string): string | null => {
+        const match = value.match(/^\$\{(.+)\}$/);
+        if (match) {
+            const varName = match[1];
+            return actualEnvVars[varName] !== undefined ? actualEnvVars[varName] : null;
+        }
+        return value; // Not a substitution, return as-is
+    }, [actualEnvVars]);
+
     // Fetch actual environment variable values from the remote machine
     React.useEffect(() => {
         if (!machineId || !profileDocs) return;
@@ -108,6 +118,8 @@ export function ProfileEditForm({
     const [useTmux, setUseTmux] = React.useState(!!profile.tmuxConfig?.sessionName);
     const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxConfig?.sessionName || '');
     const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxConfig?.tmpDir || '');
+    const [useStartupScript, setUseStartupScript] = React.useState(!!profile.startupBashScript);
+    const [startupScript, setStartupScript] = React.useState(profile.startupBashScript || '');
     const [useCustomEnvVars, setUseCustomEnvVars] = React.useState(
         profile.environmentVariables && profile.environmentVariables.length > 0
     );
@@ -183,6 +195,7 @@ export function ProfileEditForm({
                 updateEnvironment: undefined,
             },
             environmentVariables,
+            startupBashScript: useStartupScript ? (startupScript.trim() || undefined) : undefined,
             defaultSessionType: defaultSessionType,
             defaultPermissionMode: defaultPermissionMode,
             updatedAt: Date.now(),
@@ -966,46 +979,103 @@ export function ProfileEditForm({
                         </View>
 
                         {/* Display existing custom environment variables */}
-                        {Object.entries(customEnvVars).map(([key, value]) => (
-                            <View key={key} style={{
-                                backgroundColor: theme.colors.input.background,
-                                borderRadius: 8,
-                                padding: 12,
-                                marginBottom: 8,
-                                flexDirection: 'row',
-                                alignItems: 'center',
-                                opacity: useCustomEnvVars ? 1 : 0.5,
-                            }}>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={{
-                                        fontSize: 14,
-                                        fontWeight: '600',
-                                        color: theme.colors.text,
-                                        ...Typography.default('semiBold')
-                                    }}>
-                                        {key}
-                                    </Text>
-                                    <Text style={{
-                                        fontSize: 12,
-                                        color: theme.colors.textSecondary,
-                                        marginTop: 2,
-                                        ...Typography.default()
-                                    }}>
-                                        {value}
-                                    </Text>
+                        {Object.entries(customEnvVars).map(([key, value]) => {
+                            const evaluatedValue = machineId ? evaluateEnvVar(value) : null;
+                            const isTokenOrSecret = key.includes('TOKEN') || key.includes('KEY') || key.includes('SECRET');
+
+                            return (
+                                <View key={key} style={{
+                                    backgroundColor: theme.colors.input.background,
+                                    borderRadius: 8,
+                                    padding: 12,
+                                    marginBottom: 8,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    opacity: useCustomEnvVars ? 1 : 0.5,
+                                }}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={{
+                                            fontSize: 14,
+                                            fontWeight: '600',
+                                            color: theme.colors.text,
+                                            ...Typography.default('semiBold')
+                                        }}>
+                                            {key}
+                                        </Text>
+                                        <Text style={{
+                                            fontSize: 12,
+                                            color: theme.colors.textSecondary,
+                                            marginTop: 2,
+                                            ...Typography.default()
+                                        }}>
+                                            Mapping: {value}
+                                        </Text>
+                                        {machineId && !isTokenOrSecret && (
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+                                                <Text style={{
+                                                    fontSize: 11,
+                                                    color: theme.colors.textSecondary,
+                                                    marginRight: 4,
+                                                    ...Typography.default()
+                                                }}>
+                                                    Evaluates to:
+                                                </Text>
+                                                {evaluatedValue === undefined ? (
+                                                    <Text style={{
+                                                        fontSize: 11,
+                                                        color: theme.colors.textSecondary,
+                                                        fontStyle: 'italic',
+                                                        ...Typography.default()
+                                                    }}>
+                                                        Loading...
+                                                    </Text>
+                                                ) : evaluatedValue === null ? (
+                                                    <>
+                                                        <Ionicons name="alert-circle" size={11} color={theme.colors.warning} style={{ marginRight: 2 }} />
+                                                        <Text style={{
+                                                            fontSize: 11,
+                                                            color: theme.colors.warning,
+                                                            ...Typography.default()
+                                                        }}>
+                                                            Not set on remote
+                                                        </Text>
+                                                    </>
+                                                ) : (
+                                                    <Text style={{
+                                                        fontSize: 11,
+                                                        color: theme.colors.success,
+                                                        ...Typography.default()
+                                                    }}>
+                                                        {evaluatedValue}
+                                                    </Text>
+                                                )}
+                                            </View>
+                                        )}
+                                        {isTokenOrSecret && (
+                                            <Text style={{
+                                                fontSize: 11,
+                                                color: theme.colors.textSecondary,
+                                                marginTop: 4,
+                                                fontStyle: 'italic',
+                                                ...Typography.default()
+                                            }}>
+                                                🔒 Secret value - not retrieved for security
+                                            </Text>
+                                        )}
+                                    </View>
+                                    <Pressable
+                                        style={{
+                                            padding: 4,
+                                            marginLeft: 8,
+                                        }}
+                                        onPress={() => useCustomEnvVars && handleRemoveEnvVar(key)}
+                                        disabled={!useCustomEnvVars}
+                                    >
+                                        <Ionicons name="remove-circle" size={20} color="#FF6B6B" />
+                                    </Pressable>
                                 </View>
-                                <Pressable
-                                    style={{
-                                        padding: 4,
-                                        marginLeft: 8,
-                                    }}
-                                    onPress={() => useCustomEnvVars && handleRemoveEnvVar(key)}
-                                    disabled={!useCustomEnvVars}
-                                >
-                                    <Ionicons name="remove-circle" size={20} color="#FF6B6B" />
-                                </Pressable>
-                            </View>
-                        ))}
+                            );
+                        })}
 
                         {/* Add new environment variable form */}
                         {showAddEnvVar && (
@@ -1096,6 +1166,103 @@ export function ProfileEditForm({
                                 </View>
                             </View>
                         )}
+                    </View>
+
+                    {/* Startup Bash Script */}
+                    <View style={{ marginBottom: 24 }}>
+                        <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            marginBottom: 8,
+                        }}>
+                            <Pressable
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    marginRight: 8,
+                                }}
+                                onPress={() => setUseStartupScript(!useStartupScript)}
+                            >
+                                <View style={{
+                                    width: 20,
+                                    height: 20,
+                                    borderRadius: 4,
+                                    borderWidth: 2,
+                                    borderColor: useStartupScript ? theme.colors.button.primary.background : theme.colors.textSecondary,
+                                    backgroundColor: useStartupScript ? theme.colors.button.primary.background : 'transparent',
+                                    justifyContent: 'center',
+                                    alignItems: 'center',
+                                    marginRight: 8,
+                                }}>
+                                    {useStartupScript && (
+                                        <Ionicons name="checkmark" size={12} color={theme.colors.button.primary.tint} />
+                                    )}
+                                </View>
+                            </Pressable>
+                            <Text style={{
+                                fontSize: 16,
+                                fontWeight: '600',
+                                color: theme.colors.text,
+                                ...Typography.default('semiBold')
+                            }}>
+                                Startup Bash Script
+                            </Text>
+                        </View>
+                        <Text style={{
+                            fontSize: 12,
+                            color: theme.colors.textSecondary,
+                            marginBottom: 12,
+                            ...Typography.default()
+                        }}>
+                            {useStartupScript
+                                ? 'Executed before spawning each session. Use for dynamic setup, environment checks, or custom initialization.'
+                                : 'No startup script - sessions spawn directly'}
+                        </Text>
+                        <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'flex-start',
+                            gap: 8,
+                            opacity: useStartupScript ? 1 : 0.5,
+                        }}>
+                            <TextInput
+                                style={{
+                                    flex: 1,
+                                    backgroundColor: useStartupScript ? theme.colors.input.background : theme.colors.surface,
+                                    borderRadius: 8,
+                                    padding: 12,
+                                    fontSize: 14,
+                                    color: useStartupScript ? theme.colors.text : theme.colors.textSecondary,
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.textSecondary,
+                                    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                                    minHeight: 100,
+                                }}
+                                placeholder={useStartupScript ? "#!/bin/bash\necho 'Initializing...'\n# Your script here" : "Disabled"}
+                                value={startupScript}
+                                onChangeText={setStartupScript}
+                                editable={useStartupScript}
+                                multiline
+                                textAlignVertical="top"
+                            />
+                            {useStartupScript && startupScript.trim() && (
+                                <Pressable
+                                    style={{
+                                        backgroundColor: theme.colors.button.primary.background,
+                                        borderRadius: 6,
+                                        padding: 10,
+                                        justifyContent: 'center',
+                                        alignItems: 'center',
+                                    }}
+                                    onPress={() => {
+                                        if (Platform.OS === 'web') {
+                                            navigator.clipboard.writeText(startupScript);
+                                        }
+                                    }}
+                                >
+                                    <Ionicons name="copy-outline" size={18} color={theme.colors.button.primary.tint} />
+                                </Pressable>
+                            )}
+                        </View>
                     </View>
 
                     {/* Action buttons */}
