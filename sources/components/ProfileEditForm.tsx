@@ -233,7 +233,7 @@ export function ProfileEditForm({
                     <TextInput
                         style={{
                             backgroundColor: theme.colors.input.background,
-                            borderRadius: 8,
+                            borderRadius: 10, // Matches new session panel input fields
                             padding: 12,
                             fontSize: 16,
                             color: theme.colors.text,
@@ -332,7 +332,7 @@ export function ProfileEditForm({
                                     {profileDocs.environmentVariables.map((envVar, index) => (
                                         <View key={envVar.name} style={{
                                             backgroundColor: theme.colors.surfacePressed,
-                                            borderRadius: 6,
+                                            borderRadius: 10, // Matches new session panel items
                                             padding: 10,
                                             marginBottom: 8,
                                         }}>
@@ -447,7 +447,7 @@ export function ProfileEditForm({
                                     </Text>
                                     <View style={{
                                         backgroundColor: theme.colors.surfacePressed,
-                                        borderRadius: 6,
+                                        borderRadius: 10, // Matches new session panel items
                                         padding: 10,
                                     }}>
                                         <Text style={{
@@ -488,7 +488,7 @@ export function ProfileEditForm({
                     <TextInput
                         style={{
                             backgroundColor: profile.isBuiltIn ? theme.colors.surface : theme.colors.input.background,
-                            borderRadius: 8,
+                            borderRadius: 10, // Matches new session panel input fields
                             padding: 12,
                             fontSize: 16,
                             color: profile.isBuiltIn ? theme.colors.textSecondary : theme.colors.text,
@@ -553,7 +553,7 @@ export function ProfileEditForm({
                     <TextInput
                         style={{
                             backgroundColor: theme.colors.input.background,
-                            borderRadius: 8,
+                            borderRadius: 10, // Matches new session panel input fields
                             padding: 12,
                             fontSize: 16,
                             color: useAuthToken ? theme.colors.text : theme.colors.textSecondary,
@@ -593,7 +593,7 @@ export function ProfileEditForm({
                     <TextInput
                         style={{
                             backgroundColor: profile.isBuiltIn ? theme.colors.surface : theme.colors.input.background,
-                            borderRadius: 8,
+                            borderRadius: 10, // Matches new session panel input fields
                             padding: 12,
                             fontSize: 16,
                             color: profile.isBuiltIn ? theme.colors.textSecondary : theme.colors.text,
@@ -849,7 +849,7 @@ export function ProfileEditForm({
                     <TextInput
                         style={{
                             backgroundColor: theme.colors.input.background,
-                            borderRadius: 8,
+                            borderRadius: 10, // Matches new session panel input fields
                             padding: 12,
                             fontSize: 16,
                             color: useTmux ? theme.colors.text : theme.colors.textSecondary,
@@ -885,7 +885,7 @@ export function ProfileEditForm({
                     <TextInput
                         style={{
                             backgroundColor: theme.colors.input.background,
-                            borderRadius: 8,
+                            borderRadius: 10, // Matches new session panel input fields
                             padding: 12,
                             fontSize: 16,
                             color: useTmux ? theme.colors.text : theme.colors.textSecondary,
@@ -965,17 +965,30 @@ export function ProfileEditForm({
                             }}>
                                 Variables
                             </Text>
-                            <Pressable
-                                style={{
-                                    flexDirection: 'row',
-                                    alignItems: 'center',
-                                    padding: 4,
-                                }}
-                                onPress={() => useCustomEnvVars && setShowAddEnvVar(true)}
-                                disabled={!useCustomEnvVars}
-                            >
-                                <Ionicons name="add-circle" size={20} color={theme.colors.button.primary.tint} />
-                            </Pressable>
+                            {useCustomEnvVars && (
+                                <Pressable
+                                    style={{
+                                        flexDirection: 'row',
+                                        alignItems: 'center',
+                                        backgroundColor: theme.colors.button.primary.background,
+                                        borderRadius: 8,
+                                        paddingHorizontal: 12,
+                                        paddingVertical: 6,
+                                        gap: 6,
+                                    }}
+                                    onPress={() => setShowAddEnvVar(true)}
+                                >
+                                    <Ionicons name="add" size={16} color={theme.colors.button.primary.tint} />
+                                    <Text style={{
+                                        fontSize: 13,
+                                        fontWeight: '600',
+                                        color: theme.colors.button.primary.tint,
+                                        ...Typography.default('semiBold')
+                                    }}>
+                                        Add Variable
+                                    </Text>
+                                </Pressable>
+                            )}
                         </View>
 
                         {/* Display existing custom environment variables */}
@@ -986,7 +999,7 @@ export function ProfileEditForm({
                             return (
                                 <View key={key} style={{
                                     backgroundColor: theme.colors.input.background,
-                                    borderRadius: 8,
+                                    borderRadius: 10, // Matches new session panel items
                                     padding: 12,
                                     marginBottom: 8,
                                     flexDirection: 'row',
@@ -1081,7 +1094,7 @@ export function ProfileEditForm({
                         {showAddEnvVar && (
                             <View style={{
                                 backgroundColor: theme.colors.input.background,
-                                borderRadius: 8,
+                                borderRadius: 10, // Matches new session panel items
                                 padding: 12,
                                 marginBottom: 8,
                                 borderWidth: 2,
@@ -1090,7 +1103,7 @@ export function ProfileEditForm({
                                 <TextInput
                                     style={{
                                         backgroundColor: theme.colors.surface,
-                                        borderRadius: 6,
+                                        borderRadius: 10, // Matches new session panel input fields
                                         padding: 8,
                                         fontSize: 14,
                                         color: theme.colors.text,
@@ -1106,7 +1119,7 @@ export function ProfileEditForm({
                                 <TextInput
                                     style={{
                                         backgroundColor: theme.colors.surface,
-                                        borderRadius: 6,
+                                        borderRadius: 10, // Matches new session panel input fields
                                         padding: 8,
                                         fontSize: 14,
                                         color: theme.colors.text,
@@ -1228,7 +1241,7 @@ export function ProfileEditForm({
                                 style={{
                                     flex: 1,
                                     backgroundColor: useStartupScript ? theme.colors.input.background : theme.colors.surface,
-                                    borderRadius: 8,
+                                    borderRadius: 10, // Matches new session panel input fields
                                     padding: 12,
                                     fontSize: 14,
                                     color: useStartupScript ? theme.colors.text : theme.colors.textSecondary,
@@ -1320,7 +1333,7 @@ const profileEditFormStyles = StyleSheet.create((theme, rt) => ({
     },
     formContainer: {
         backgroundColor: theme.colors.surface,
-        borderRadius: 16,
+        borderRadius: 16, // Matches new session panel main container
         padding: 20,
         width: '100%',
     },
