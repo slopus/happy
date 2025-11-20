@@ -943,7 +943,7 @@ function NewSessionWizard() {
                                     borderColor: theme.colors.box.warning.border,
                                 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 6, gap: 6 }}>
-                                        <Ionicons name="alert-circle" size={16} color={theme.colors.warning} />
+                                        <Ionicons name="warning" size={16} color={theme.colors.warning} />
                                         <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
                                             Claude CLI Not Detected
                                         </Text>
@@ -1013,7 +1013,7 @@ function NewSessionWizard() {
                                     borderColor: theme.colors.box.warning.border,
                                 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 6, gap: 6 }}>
-                                        <Ionicons name="alert-circle" size={16} color={theme.colors.warning} />
+                                        <Ionicons name="warning" size={16} color={theme.colors.warning} />
                                         <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
                                             Codex CLI Not Detected
                                         </Text>
