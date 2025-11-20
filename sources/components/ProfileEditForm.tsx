@@ -115,6 +115,7 @@ export function ProfileEditForm({
     const [authToken, setAuthToken] = React.useState(profile.anthropicConfig?.authToken || '');
     const [useAuthToken, setUseAuthToken] = React.useState(!!profile.anthropicConfig?.authToken);
     const [model, setModel] = React.useState(extractedModel);
+    const [useModel, setUseModel] = React.useState(!!extractedModel);
     const [useTmux, setUseTmux] = React.useState(!!profile.tmuxConfig?.sessionName);
     const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxConfig?.sessionName || '');
     const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxConfig?.tmpDir || '');
@@ -183,7 +184,7 @@ export function ProfileEditForm({
             anthropicConfig: {
                 baseUrl: baseUrl.trim() || undefined,
                 authToken: useAuthToken ? (authToken.trim() || undefined) : undefined,
-                model: model.trim() || undefined,
+                model: useModel ? (model.trim() || undefined) : undefined,
             },
             tmuxConfig: useTmux ? {
                 sessionName: tmuxSession.trim() || '', // Empty string = use current/most recent tmux session
@@ -570,15 +571,44 @@ export function ProfileEditForm({
                     />
 
                     {/* Model */}
-                    <Text style={{
-                        fontSize: 14,
-                        fontWeight: '600',
-                        color: theme.colors.text,
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
                         marginBottom: 8,
-                        ...Typography.default('semiBold')
                     }}>
-                        {t('profiles.model')} ({t('common.optional')})
-                    </Text>
+                        <Pressable
+                            style={{
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                marginRight: 8,
+                            }}
+                            onPress={() => setUseModel(!useModel)}
+                        >
+                            <View style={{
+                                width: 20,
+                                height: 20,
+                                borderRadius: 4,
+                                borderWidth: 2,
+                                borderColor: useModel ? theme.colors.button.primary.background : theme.colors.textSecondary,
+                                backgroundColor: useModel ? theme.colors.button.primary.background : 'transparent',
+                                justifyContent: 'center',
+                                alignItems: 'center',
+                                marginRight: 8,
+                            }}>
+                                {useModel && (
+                                    <Ionicons name="checkmark" size={12} color={theme.colors.button.primary.tint} />
+                                )}
+                            </View>
+                        </Pressable>
+                        <Text style={{
+                            fontSize: 14,
+                            fontWeight: '600',
+                            color: theme.colors.text,
+                            ...Typography.default('semiBold')
+                        }}>
+                            {t('profiles.model')} ({t('common.optional')})
+                        </Text>
+                    </View>
                     <Text style={{
                         fontSize: 12,
                         color: theme.colors.textSecondary,
@@ -587,25 +617,27 @@ export function ProfileEditForm({
                     }}>
                         {profile.isBuiltIn && extractedModel
                             ? `Read-only - This built-in profile uses: ${extractedModel}\nSee setup instructions above for expected values and model mappings.`
-                            : 'Default model to use. Leave empty to use system default (usually latest Sonnet). Can be overridden by ANTHROPIC_MODEL from daemon environment or custom env vars below.'
+                            : useModel
+                                ? 'Uses this field. Uncheck to use system default model (depends on account type and usage tier - typically latest Sonnet).'
+                                : 'Uses system default model from Claude CLI (depends on account type and usage tier - typically latest Sonnet)'
                         }
                     </Text>
                     <TextInput
                         style={{
-                            backgroundColor: profile.isBuiltIn ? theme.colors.surface : theme.colors.input.background,
+                            backgroundColor: (profile.isBuiltIn || !useModel) ? theme.colors.surface : theme.colors.input.background,
                             borderRadius: 10, // Matches new session panel input fields
                             padding: 12,
                             fontSize: 16,
-                            color: profile.isBuiltIn ? theme.colors.textSecondary : theme.colors.text,
+                            color: (profile.isBuiltIn || !useModel) ? theme.colors.textSecondary : theme.colors.text,
                             marginBottom: modelMappings.opus || modelMappings.sonnet || modelMappings.haiku || modelMappings.smallFast ? 8 : 16,
                             borderWidth: 1,
                             borderColor: theme.colors.textSecondary,
-                            opacity: profile.isBuiltIn ? 0.7 : 1,
+                            opacity: (profile.isBuiltIn || !useModel) ? 0.5 : 1,
                         }}
-                        placeholder={profile.isBuiltIn ? "Defined by profile" : "claude-3-5-sonnet-20241022"}
+                        placeholder={profile.isBuiltIn ? "Defined by profile" : useModel ? "claude-sonnet-4-5-20250929" : "Disabled - using system default"}
                         value={model}
                         onChangeText={setModel}
-                        editable={!profile.isBuiltIn}
+                        editable={!profile.isBuiltIn && useModel}
                     />
 
                     {/* Model Mappings (Opus/Sonnet/Haiku) - Only show if any exist */}

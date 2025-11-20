@@ -590,9 +590,10 @@ function NewSessionWizard() {
     const getProfileSubtitle = React.useCallback((profile: AIBackendProfile, isCompatible: boolean): string => {
         const parts: string[] = [];
 
-        // Add compatibility warning if incompatible
+        // Add compatibility warning if incompatible - clarify this is about profile compatibility, not CLI detection
         if (!isCompatible) {
-            parts.push(`⚠️ Requires ${agentType === 'claude' ? 'Codex' : 'Claude'}`);
+            const requiredAgent = agentType === 'claude' ? 'Codex' : 'Claude';
+            parts.push(`⚠️ ${requiredAgent}-only profile - not compatible with ${agentType === 'claude' ? 'Claude' : 'Codex'} CLI`);
         }
 
         // Get model name - check both anthropicConfig and environmentVariables
