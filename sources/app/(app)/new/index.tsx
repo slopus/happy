@@ -667,15 +667,29 @@ function NewSessionWizard() {
         const parts: string[] = [];
         const availability = isProfileAvailable(profile);
 
+        // Add "Built-in" indicator first for built-in profiles
+        if (profile.isBuiltIn) {
+            parts.push('Built-in');
+        }
+
+        // Add CLI type second (before warnings/availability)
+        if (profile.compatibility.claude && profile.compatibility.codex) {
+            parts.push('Claude & Codex CLI');
+        } else if (profile.compatibility.claude) {
+            parts.push('Claude CLI');
+        } else if (profile.compatibility.codex) {
+            parts.push('Codex CLI');
+        }
+
         // Add availability warning if unavailable
         if (!availability.available && availability.reason) {
             if (availability.reason.startsWith('requires-agent:')) {
                 const required = availability.reason.split(':')[1];
-                parts.push(`⚠️ This profile requires ${required} CLI (you selected ${agentType})`);
+                parts.push(`⚠️ This profile uses ${required} CLI only`);
             } else if (availability.reason.startsWith('cli-not-detected:')) {
                 const cli = availability.reason.split(':')[1];
                 const cliName = cli === 'claude' ? 'Claude' : 'Codex';
-                parts.push(`⚠️ ${cliName} CLI not detected on this machine`);
+                parts.push(`⚠️ ${cliName} CLI not detected (this profile needs it)`);
             }
         }
 
@@ -695,15 +709,6 @@ function NewSessionWizard() {
 
         if (modelName) {
             parts.push(modelName);
-        } else {
-            // Show compatibility instead of generic "Default model"
-            if (profile.compatibility.claude && profile.compatibility.codex) {
-                parts.push('Claude & Codex compatible');
-            } else if (profile.compatibility.claude) {
-                parts.push('Claude-compatible');
-            } else if (profile.compatibility.codex) {
-                parts.push('Codex-compatible');
-            }
         }
 
         // Add base URL if exists
