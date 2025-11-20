@@ -22,21 +22,21 @@ export interface SpecialCommandResult {
  */
 export function parseCompact(message: string): CompactCommandResult {
     const trimmed = message.trim();
-    
+
     if (trimmed === '/compact') {
         return {
             isCompact: true,
             originalMessage: trimmed
         };
     }
-    
+
     if (trimmed.startsWith('/compact ')) {
         return {
             isCompact: true,
             originalMessage: trimmed
         };
     }
-    
+
     return {
         isCompact: false,
         originalMessage: message
@@ -49,7 +49,7 @@ export function parseCompact(message: string): CompactCommandResult {
  */
 export function parseClear(message: string): ClearCommandResult {
     const trimmed = message.trim();
-    
+
     return {
         isClear: trimmed === '/clear'
     };
@@ -67,14 +67,14 @@ export function parseSpecialCommand(message: string): SpecialCommandResult {
             originalMessage: compactResult.originalMessage
         };
     }
-    
+
     const clearResult = parseClear(message);
     if (clearResult.isClear) {
         return {
             type: 'clear'
         };
     }
-    
+
     return {
         type: null
     };

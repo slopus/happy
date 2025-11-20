@@ -41,6 +41,7 @@ import { buildTerminalFallbackMessage } from '@/terminal/terminalFallbackMessage
 import { readPersistedHappySession, writePersistedHappySession, updatePersistedHappySessionVendorResumeId } from "@/daemon/persistedHappySession";
 import { isExperimentalCodexVendorResumeEnabled } from '@/utils/agentCapabilities';
 import { maybeUpdatePermissionModeMetadata } from '@/utils/permissionModeMetadata';
+import { parseSpecialCommand } from '@/parsers/specialCommands';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -311,7 +312,13 @@ export async function runCodex(opts: {
             permissionMode: messagePermissionMode || 'default',
             model: messageModel,
         };
-        messageQueue.push(message.content.text, enhancedMode);
+
+        const specialCommand = parseSpecialCommand(message.content.text);
+        if (specialCommand.type === 'clear') {
+            messageQueue.pushIsolateAndClear(message.content.text, enhancedMode);
+        } else {
+            messageQueue.push(message.content.text, enhancedMode);
+        }
     });
 
     let thinking = false;
@@ -381,7 +388,7 @@ export async function runCodex(opts: {
                 storedSessionIdForResume = client.storeSessionForResume();
                 logger.debug('[Codex] Stored session for resume:', storedSessionIdForResume);
             }
-            
+
             abortController.abort();
             reasoningProcessor.abort();
             logger.debug('[Codex] Abort completed - session remains active');
@@ -413,7 +420,7 @@ export async function runCodex(opts: {
                     archivedBy: 'cli',
                     archiveReason: 'User terminated'
                 }));
-                
+
                 // Send session death message
                 session.sendSessionDeath();
                 await session.flush();
@@ -817,6 +824,30 @@ export async function runCodex(opts: {
             // Display user messages in the UI
             messageBuffer.addMessage(message.message, 'user');
             currentModeHash = message.hash;
+
+            const specialCommand = parseSpecialCommand(message.message);
+            if (specialCommand.type === 'clear') {
+                logger.debug('[Codex] Handling /clear command - resetting session');
+                client.clearSession();
+                wasCreated = false;
+                currentModeHash = null;
+
+                // Reset processors/permissions
+                permissionHandler.reset();
+                reasoningProcessor.abort();
+                diffProcessor.reset();
+                thinking = false;
+                session.keepAlive(thinking, 'remote');
+
+                messageBuffer.addMessage('Session reset.', 'status');
+                emitReadyIfIdle({
+                    pending,
+                    queueSize: () => messageQueue.size(),
+                    shouldExit,
+                    sendReady,
+                });
+                continue;
+            }
 
             try {
                 // Map permission mode to approval policy and sandbox for startSession
