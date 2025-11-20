@@ -927,6 +927,7 @@ export function ProfileEditForm({
                             opacity: useTmux ? 1 : 0.5,
                         }}
                         placeholder={useTmux ? "/tmp (optional)" : "Disabled - tmux not enabled"}
+                        placeholderTextColor={theme.colors.input.placeholder}
                         value={tmuxTmpDir}
                         onChangeText={setTmuxTmpDir}
                         editable={useTmux}
