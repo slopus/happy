@@ -267,24 +267,6 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
                 updatedAt: Date.now(),
                 version: '1.0.0',
             };
-        case 'together':
-            return {
-                id: 'together',
-                name: 'Together AI',
-                openaiConfig: {
-                    baseUrl: 'https://api.together.xyz/v1',
-                    model: 'meta-llama/Llama-3.1-405B-Instruct-Turbo',
-                },
-                environmentVariables: [
-                    { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
-                    { name: 'API_TIMEOUT_MS', value: '600000' },
-                ],
-                compatibility: { claude: false, codex: true },
-                isBuiltIn: true,
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                version: '1.0.0',
-            };
         default:
             return null;
     }
@@ -318,11 +300,6 @@ export const DEFAULT_PROFILES = [
     {
         id: 'azure-openai',
         name: 'Azure OpenAI',
-        isBuiltIn: true,
-    },
-    {
-        id: 'together',
-        name: 'Together AI',
         isBuiltIn: true,
     }
 ];
