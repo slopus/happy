@@ -1147,7 +1147,7 @@ function NewSessionWizard() {
                                             </Pressable>
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                style={{ marginLeft: 24 }}
+                                                style={{ marginLeft: 24, marginRight: 24 }}
                                                 onPress={(e) => {
                                                     e.stopPropagation();
                                                     handleEditProfile(profile);
