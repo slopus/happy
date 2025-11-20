@@ -203,9 +203,10 @@ const styles = StyleSheet.create((theme, rt) => ({
         paddingVertical: 12,
     },
     advancedHeaderText: {
-        fontSize: 16,
-        fontWeight: '600',
-        color: theme.colors.text,
+        fontSize: 13,
+        fontWeight: '500',
+        color: theme.colors.textSecondary,
+        ...Typography.default(),
     },
     permissionGrid: {
         flexDirection: 'row',

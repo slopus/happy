@@ -964,10 +964,11 @@ export function ProfileEditForm({
                                 </View>
                             </Pressable>
                             <Text style={{
-                                fontSize: 16,
-                                fontWeight: '600',
-                                color: theme.colors.text,
-                                ...Typography.default('semiBold')
+                                fontSize: 13,
+                                fontWeight: '500',
+                                color: theme.colors.textSecondary,
+                                marginTop: 16,
+                                ...Typography.default()
                             }}>
                                 Custom Environment Variables
                             </Text>
