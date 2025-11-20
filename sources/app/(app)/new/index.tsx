@@ -957,35 +957,54 @@ function NewSessionWizard() {
                                             <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
                                         </Pressable>
                                     </View>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Install: npm install -g @anthropic-ai/claude-code •
-                                        </Text>
-                                        <Pressable onPress={() => {
-                                            if (Platform.OS === 'web') {
-                                                window.open('https://docs.anthropic.com/en/docs/claude-code/installation', '_blank');
-                                            }
-                                        }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Installation Guide
+                                    <View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                Install: npm install -g @anthropic-ai/claude-code •
                                             </Text>
-                                        </Pressable>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            •
-                                        </Text>
-                                        <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Don't show popup for
-                                        </Text>
-                                        <Pressable onPress={() => dismissWarning('claude', 'machine')}>
-                                            <Text style={{ fontSize: 10, color: theme.colors.textLink, ...Typography.default() }}>
-                                                [this machine]
+                                            <Pressable onPress={() => {
+                                                if (Platform.OS === 'web') {
+                                                    window.open('https://docs.anthropic.com/en/docs/claude-code/installation', '_blank');
+                                                }
+                                            }}>
+                                                <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
+                                                    View Installation Guide →
+                                                </Text>
+                                            </Pressable>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 6 }}>
+                                            <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                Don't show this popup for
                                             </Text>
-                                        </Pressable>
-                                        <Pressable onPress={() => dismissWarning('claude', 'global')}>
-                                            <Text style={{ fontSize: 10, color: theme.colors.textLink, ...Typography.default() }}>
-                                                [any machine]
-                                            </Text>
-                                        </Pressable>
+                                            <Pressable
+                                                onPress={() => dismissWarning('claude', 'machine')}
+                                                style={{
+                                                    borderRadius: 4,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.textSecondary,
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 3,
+                                                }}
+                                            >
+                                                <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                    this machine
+                                                </Text>
+                                            </Pressable>
+                                            <Pressable
+                                                onPress={() => dismissWarning('claude', 'global')}
+                                                style={{
+                                                    borderRadius: 4,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.textSecondary,
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 3,
+                                                }}
+                                            >
+                                                <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                    any machine
+                                                </Text>
+                                            </Pressable>
+                                        </View>
                                     </View>
                                 </View>
                             )}
@@ -1014,35 +1033,54 @@ function NewSessionWizard() {
                                             <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
                                         </Pressable>
                                     </View>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Install: npm install -g codex-cli •
-                                        </Text>
-                                        <Pressable onPress={() => {
-                                            if (Platform.OS === 'web') {
-                                                window.open('https://github.com/openai/openai-codex', '_blank');
-                                            }
-                                        }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Installation Guide
+                                    <View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                                            <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                Install: npm install -g codex-cli •
                                             </Text>
-                                        </Pressable>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            •
-                                        </Text>
-                                        <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                            Don't show popup for
-                                        </Text>
-                                        <Pressable onPress={() => dismissWarning('codex', 'machine')}>
-                                            <Text style={{ fontSize: 10, color: theme.colors.textLink, ...Typography.default() }}>
-                                                [this machine]
+                                            <Pressable onPress={() => {
+                                                if (Platform.OS === 'web') {
+                                                    window.open('https://github.com/openai/openai-codex', '_blank');
+                                                }
+                                            }}>
+                                                <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
+                                                    View Installation Guide →
+                                                </Text>
+                                            </Pressable>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 6 }}>
+                                            <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                                Don't show this popup for
                                             </Text>
-                                        </Pressable>
-                                        <Pressable onPress={() => dismissWarning('codex', 'global')}>
-                                            <Text style={{ fontSize: 10, color: theme.colors.textLink, ...Typography.default() }}>
-                                                [any machine]
-                                            </Text>
-                                        </Pressable>
+                                            <Pressable
+                                                onPress={() => dismissWarning('codex', 'machine')}
+                                                style={{
+                                                    borderRadius: 4,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.textSecondary,
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 3,
+                                                }}
+                                            >
+                                                <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                    this machine
+                                                </Text>
+                                            </Pressable>
+                                            <Pressable
+                                                onPress={() => dismissWarning('codex', 'global')}
+                                                style={{
+                                                    borderRadius: 4,
+                                                    borderWidth: 1,
+                                                    borderColor: theme.colors.textSecondary,
+                                                    paddingHorizontal: 8,
+                                                    paddingVertical: 3,
+                                                }}
+                                            >
+                                                <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                    any machine
+                                                </Text>
+                                            </Pressable>
+                                        </View>
                                     </View>
                                 </View>
                             )}
