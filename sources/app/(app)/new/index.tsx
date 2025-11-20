@@ -943,7 +943,7 @@ function NewSessionWizard() {
                                     borderColor: theme.colors.box.warning.border,
                                 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 8 }}>
+                                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
                                             <Ionicons name="warning" size={16} color={theme.colors.warning} />
                                             <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
                                                 Claude CLI Not Detected
@@ -1015,7 +1015,7 @@ function NewSessionWizard() {
                                     borderColor: theme.colors.box.warning.border,
                                 }}>
                                     <View style={{ flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 6 }}>
-                                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 8 }}>
+                                        <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6, marginRight: 16 }}>
                                             <Ionicons name="warning" size={16} color={theme.colors.warning} />
                                             <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
                                                 Codex CLI Not Detected
