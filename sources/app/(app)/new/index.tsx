@@ -1101,7 +1101,10 @@ function NewSessionWizard() {
                                         disabled={!availability.available}
                                     >
                                         <View style={[styles.profileIcon, { backgroundColor: theme.colors.button.secondary.tint }]}>
-                                            <Ionicons name="person" size={16} color={theme.colors.button.primary.tint} />
+                                            <Text style={{ fontSize: 16, color: theme.colors.button.primary.tint, ...Typography.default() }}>
+                                                {profile.compatibility.claude && profile.compatibility.codex ? '✳꩜' :
+                                                 profile.compatibility.claude ? '✳' : '꩜'}
+                                            </Text>
                                         </View>
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
@@ -1166,7 +1169,10 @@ function NewSessionWizard() {
                                         disabled={!availability.available}
                                     >
                                         <View style={styles.profileIcon}>
-                                            <Ionicons name="star" size={16} color={theme.colors.button.primary.tint} />
+                                            <Text style={{ fontSize: 16, color: theme.colors.button.primary.tint, ...Typography.default() }}>
+                                                {profile.compatibility.claude && profile.compatibility.codex ? '✳꩜' :
+                                                 profile.compatibility.claude ? '✳' : '꩜'}
+                                            </Text>
                                         </View>
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
