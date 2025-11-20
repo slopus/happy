@@ -1,7 +1,167 @@
 # CLI Detection and Profile Availability - Implementation Plan
 **Date:** 2025-11-20
 **Branch:** fix/new-session-wizard-ux-improvements
-**Status:** Planning Complete - Awaiting Execution Approval
+**Status:** ✅ COMPLETED - All Features Implemented
+
+## Cumulative User Instructions (Session Timeline)
+
+### Session Start: Profile Edit Menu Bugs
+
+**Instruction 1:** "there are bugs in the edit profile menu, the base url field does not accurately display the base url for that profile, nor does the model field"
+- Model field should be optional with system default
+- Base URL and model need to show values from environmentVariables array (for Z.AI, DeepSeek)
+- Show actual environment variable mappings, not just field values
+
+**Instruction 2:** "can all the environment variables portions at the bottom also show the variable, its contents, and what it evaluates to if applicable"
+- Custom environment variables section needs to show:
+  1. Variable name (e.g., ANTHROPIC_BASE_URL)
+  2. Mapping/contents (e.g., ${DEEPSEEK_BASE_URL})
+  3. What it evaluates to (actual value from remote machine)
+- Never show token/secret values for security
+
+**Instruction 3:** "Can there also just be an optional startup bash script text box with each profile and an enable/disable checkbox like the other field that has it and a copy and paste button"
+- Add startup bash script field
+- Enable/disable checkbox (like tmux and auth token fields)
+- Copy button for clipboard
+- Place after environment variables
+
+**Instruction 4:** "the add button is very hard to see for the custom environment variables and it does not appear to work"
+- Make add variable button more visible
+- Should only show when custom env vars enabled (not grayed out)
+
+**Instruction 5:** "the radius of the rounded box corners and the white selection boxes needs to match the radii used in the start new session panel"
+- Update all border radii to match new session panel:
+  - Inputs: 10px
+  - Sections: 12px
+  - Buttons: 8px
+  - Container: 16px
+
+### Profile Documentation and Model Field
+
+**Instruction 6:** "it needs to be easy to use correctly and hard to use incorrectly"
+- Show expected environment variable values, not just variable names
+- Provide clickable documentation links
+- Show copy-paste ready shell configuration examples
+- Retrieve actual values from remote machine via bash RPC
+
+**Instruction 7:** "for the inconsistencies it appears you searched the z.ai website but then just assumed deepseek was the same instead of searching the deepseek website and checking it"
+- Search actual DeepSeek documentation
+- Verify expected values match official docs
+- Don't assume, always verify
+
+**Instruction 8:** "the model(optional) field the default text needs to be accurate and have a checkbox that is unchecked by default like the auth token field"
+- Add checkbox to model field (unchecked by default)
+- When unchecked: "Disabled - using system default"
+- When checked: Editable with placeholder showing current model
+- Don't guess system default - it depends on account type and usage tier
+
+### Profile Subtitles and Warnings
+
+**Instruction 9:** "the default model under the name of the profile tends to not be particularly helpful maybe that smaller text can be more meaningful or useful"
+- Show model mapping (${Z_AI_MODEL}) instead of "Default model"
+- Show base URL mapping (${Z_AI_BASE_URL})
+- Extract from environmentVariables array for built-in profiles
+
+**Instruction 10:** "the warning messages are inconsistent when the cli utility is unavailable"
+- Make warnings explicit about what they mean
+- Distinguish between "profile requires X CLI" vs "CLI not detected on machine"
+
+### CLI Detection Implementation
+
+**Instruction 11:** "yes I'm referring to the requires claude and requires codex warnings which need to be more clear that the daemon did not detect those cli apps"
+- Warnings should clarify this is about profile compatibility AND CLI detection
+- Two types of warnings:
+  - Agent type mismatch: "This profile requires Codex CLI (you selected Claude)"
+  - CLI not detected: "Codex CLI not detected on this machine"
+
+**Instruction 12:** "so are you saying the bash rpc with a return does not exist right now? are they only one way? do not change that just if it can be done with existing capabilities, do it right"
+- Use EXISTING bash RPC infrastructure (machineBash())
+- Don't add new RPCs, use what's already there
+- Verified: machineBash() returns { success, stdout, stderr, exitCode }
+
+**Instruction 13:** "can you explore the codebase more deeply use rg to search 'claude' and 'codex' to see if there is any existing tool to check what exists"
+- Search thoroughly for any existing CLI detection
+- Don't duplicate if it exists
+- Found: No existing detection, must implement
+
+**Instruction 14:** "yes, but think your plan for ensuring the enabling / greying of profile cils through and make an md file with your plan in the notes folder prefixed with the date first"
+- Create comprehensive plan document
+- Include architecture decisions, implementation steps, testing strategy
+- Follow development planning and execution process
+
+**Instruction 15:** "can it also be done in a non-blocking way?"
+- Detection must not block UI
+- Use async useEffect hook
+- Optimistic initial state (show all profiles while detecting)
+- Results update when detection completes
+
+**User Preferences (via AskUserQuestion):**
+- Detection should be automatic on machine selection (not manual)
+- Optimistic fallback if detection fails (show all profiles)
+
+### Dismissal Options
+
+**Instruction 16:** "this looks quite good, though for the info warning you need to have a do not show again option in the yellow popup box for people who cannot / will not use the other tool"
+- Add dismissal option to CLI warning banners
+- Persist dismissal in settings
+- Don't nag users who intentionally only use one CLI
+
+**Instruction 17:** "the don't show again needs to be don't show again with for this machine and for any machine options"
+- Two dismissal scopes:
+  - Per-machine: Only dismiss for current machine
+  - Global: Dismiss for all machines
+- Users with multiple machines shouldn't have to dismiss repeatedly
+
+### UI/UX Refinements
+
+**Instruction 18:** "can Don't show this popup for [this machine] [any machine] be right justified"
+- Right-justify dismiss options
+- Separate from install instructions visually
+
+**Instruction 19:** "the view installation guide had an external link arrow if I recall which looked nicer (make sure the link works and goes to the right place in both cases)"
+- Restore → arrow to installation guide links
+- Verify URLs are correct for both Claude and Codex
+
+**Instruction 20:** "by the brackets I meant unobtrusive adequately sized buttons for mobile"
+- Convert [this machine] [any machine] text to actual bordered buttons
+- Small, unobtrusive sizing
+- Clear tap targets for mobile
+
+**Instruction 21:** "also the x button on the popup is missing check the regression the x button looked great before"
+- Restore X button to top right of warning banners
+- Was accidentally removed in earlier iteration
+- Should be locked to top right corner (doesn't wrap)
+
+**Instruction 22:** "the this machine, any machine and install instructions don't wrap correctly when the width gets small anymore, also can the don't show this popup be on the same line as the codex cli not detected, with a bit of an empty space gap before the x"
+- Move dismiss options to header row (same line as title)
+- Add gap before X button
+- Ensure proper wrapping on narrow screens
+
+**Instruction 23:** "also when the yellow popup appears instead of the info icon probably the same caution icon as on the disabled profiles should be there"
+- Use warning triangle icon (matches ⚠️ emoji)
+- Visual consistency with disabled profile warnings
+
+**Instruction 24:** "the spacers for the x button aren't large enough and the x button is now part of the line when it should be locked to the top right as it was before"
+- Increase spacer size (10px → 20px)
+- Lock X button to top right using space-between layout
+- X button should never wrap, always stay in corner
+
+### Quality and Process Instructions
+
+**Instruction 25:** "again remember to do a real detailed regression check, also why do typechecks keep having errors"
+- Carefully review each commit diff before committing
+- Verify no regressions in functionality
+- Typecheck errors are pre-existing in test files, not caused by changes
+
+**Instruction 26:** "continue and add to your todo list to carefully double check your last commit and your current commit for regressions go over each diff block and make sure you are strictly improving before you start the commit process"
+- Review diffs line by line
+- Ensure every change is a strict improvement
+- No regressions allowed
+
+**Instruction 27:** "also remember when you are setting colors use the variables representing the colors avoid hard coding"
+- Always use theme.colors.* variables
+- Never hardcode color values
+- Maintain theme consistency
 
 ## Problem Statement
 
