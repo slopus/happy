@@ -26,6 +26,7 @@ import { getBuiltInProfile, DEFAULT_PROFILES } from '@/sync/profileUtils';
 import { AgentInput } from '@/components/AgentInput';
 import { StyleSheet } from 'react-native-unistyles';
 import { randomUUID } from 'expo-crypto';
+import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput } from '@/components/MultiTextInput';
@@ -370,6 +371,36 @@ function NewSessionWizard() {
     const pathSectionRef = React.useRef<View>(null);
     const permissionSectionRef = React.useRef<View>(null);
 
+    // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
+    const cliAvailability = useCLIDetection(selectedMachineId);
+
+    // Helper to check if profile is available (compatible + CLI detected)
+    const isProfileAvailable = React.useCallback((profile: AIBackendProfile): { available: boolean; reason?: string } => {
+        // Check profile compatibility with selected agent type
+        if (!validateProfileForAgent(profile, agentType)) {
+            const required = agentType === 'claude' ? 'Codex' : 'Claude';
+            return {
+                available: false,
+                reason: `requires-agent:${required}`,
+            };
+        }
+
+        // Check if required CLI is detected on machine (only if detection completed)
+        const requiredCLI = profile.compatibility.claude && !profile.compatibility.codex ? 'claude'
+            : !profile.compatibility.codex && profile.compatibility.claude ? 'codex'
+            : null; // Profile supports both CLIs
+
+        if (requiredCLI && cliAvailability[requiredCLI] === false) {
+            return {
+                available: false,
+                reason: `cli-not-detected:${requiredCLI}`,
+            };
+        }
+
+        // Optimistic: If detection hasn't completed (null) or profile supports both, assume available
+        return { available: true };
+    }, [agentType, cliAvailability]);
+
     // Computed values
     const compatibleProfiles = React.useMemo(() => {
         return allProfiles.filter(profile => validateProfileForAgent(profile, agentType));
@@ -587,13 +618,20 @@ function NewSessionWizard() {
     }, [router]);
 
     // Helper to get meaningful subtitle text for profiles
-    const getProfileSubtitle = React.useCallback((profile: AIBackendProfile, isCompatible: boolean): string => {
+    const getProfileSubtitle = React.useCallback((profile: AIBackendProfile): string => {
         const parts: string[] = [];
+        const availability = isProfileAvailable(profile);
 
-        // Add compatibility warning if incompatible - clarify this is about profile compatibility, not CLI detection
-        if (!isCompatible) {
-            const requiredAgent = agentType === 'claude' ? 'Codex' : 'Claude';
-            parts.push(`⚠️ ${requiredAgent}-only profile - not compatible with ${agentType === 'claude' ? 'Claude' : 'Codex'} CLI`);
+        // Add availability warning if unavailable
+        if (!availability.available && availability.reason) {
+            if (availability.reason.startsWith('requires-agent:')) {
+                const required = availability.reason.split(':')[1];
+                parts.push(`⚠️ This profile requires ${required} CLI (you selected ${agentType})`);
+            } else if (availability.reason.startsWith('cli-not-detected:')) {
+                const cli = availability.reason.split(':')[1];
+                const cliName = cli === 'claude' ? 'Claude' : 'Codex';
+                parts.push(`⚠️ ${cliName} CLI not detected on this machine`);
+            }
         }
 
         // Get model name - check both anthropicConfig and environmentVariables
@@ -636,7 +674,7 @@ function NewSessionWizard() {
         }
 
         return parts.join(' • ');
-    }, [agentType]);
+    }, [agentType, isProfileAvailable]);
 
     const handleDeleteProfile = React.useCallback((profile: AIBackendProfile) => {
         Modal.alert(
@@ -839,9 +877,88 @@ function NewSessionWizard() {
                                 Select, create, or edit AI profiles with custom environment variables.
                             </Text>
 
+                            {/* CLI Detection Status Banner - shows after detection completes */}
+                            {selectedMachineId && cliAvailability.timestamp > 0 && (
+                                <View style={{
+                                    backgroundColor: theme.colors.surfacePressed,
+                                    borderRadius: 10,
+                                    padding: 10,
+                                    marginBottom: 12,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 8,
+                                }}>
+                                    <Ionicons name="information-circle-outline" size={16} color={theme.colors.textSecondary} />
+                                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                        Detected: {cliAvailability.claude ? '✓ Claude' : '✗ Claude'} • {cliAvailability.codex ? '✓ Codex' : '✗ Codex'}
+                                    </Text>
+                                </View>
+                            )}
+
+                            {/* Missing CLI Installation Banners */}
+                            {selectedMachineId && cliAvailability.claude === false && (
+                                <View style={{
+                                    backgroundColor: theme.colors.box.warning.background,
+                                    borderRadius: 10,
+                                    padding: 12,
+                                    marginBottom: 12,
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.box.warning.border,
+                                }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                        <Ionicons name="alert-circle" size={16} color={theme.colors.warning} style={{ marginRight: 6 }} />
+                                        <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                            Claude CLI Not Detected
+                                        </Text>
+                                    </View>
+                                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 6, ...Typography.default() }}>
+                                        Install: npm install -g @anthropic-ai/claude-code
+                                    </Text>
+                                    <Pressable onPress={() => {
+                                        if (Platform.OS === 'web') {
+                                            window.open('https://docs.anthropic.com/en/docs/claude-code/installation', '_blank');
+                                        }
+                                    }}>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
+                                            View Installation Guide →
+                                        </Text>
+                                    </Pressable>
+                                </View>
+                            )}
+
+                            {selectedMachineId && cliAvailability.codex === false && (
+                                <View style={{
+                                    backgroundColor: theme.colors.box.warning.background,
+                                    borderRadius: 10,
+                                    padding: 12,
+                                    marginBottom: 12,
+                                    borderWidth: 1,
+                                    borderColor: theme.colors.box.warning.border,
+                                }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                        <Ionicons name="alert-circle" size={16} color={theme.colors.warning} style={{ marginRight: 6 }} />
+                                        <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                            Codex CLI Not Detected
+                                        </Text>
+                                    </View>
+                                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 6, ...Typography.default() }}>
+                                        Install: npm install -g codex-cli
+                                        </Text>
+                                    <Pressable onPress={() => {
+                                        if (Platform.OS === 'web') {
+                                            window.open('https://github.com/openai/openai-codex', '_blank');
+                                        }
+                                    }}>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
+                                            View Installation Guide →
+                                        </Text>
+                                    </Pressable>
+                                </View>
+                            )}
+
                             {/* Custom profiles - show first */}
                             {profiles.map((profile) => {
-                                const isCompatible = validateProfileForAgent(profile, agentType);
+                                const availability = isProfileAvailable(profile);
 
                                 return (
                                     <Pressable
@@ -849,10 +966,10 @@ function NewSessionWizard() {
                                         style={[
                                             styles.profileListItem,
                                             selectedProfileId === profile.id && styles.profileListItemSelected,
-                                            !isCompatible && { opacity: 0.5 }
+                                            !availability.available && { opacity: 0.5 }
                                         ]}
-                                        onPress={() => isCompatible && selectProfile(profile.id)}
-                                        disabled={!isCompatible}
+                                        onPress={() => availability.available && selectProfile(profile.id)}
+                                        disabled={!availability.available}
                                     >
                                         <View style={[styles.profileIcon, { backgroundColor: theme.colors.button.secondary.tint }]}>
                                             <Ionicons name="person" size={16} color={theme.colors.button.primary.tint} />
@@ -860,7 +977,7 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
                                             <Text style={styles.profileListDetails}>
-                                                {getProfileSubtitle(profile, isCompatible)}
+                                                {getProfileSubtitle(profile)}
                                             </Text>
                                         </View>
                                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
@@ -906,7 +1023,7 @@ function NewSessionWizard() {
                                 const profile = getBuiltInProfile(profileDisplay.id);
                                 if (!profile) return null;
 
-                                const isCompatible = validateProfileForAgent(profile, agentType);
+                                const availability = isProfileAvailable(profile);
 
                                 return (
                                     <Pressable
@@ -914,10 +1031,10 @@ function NewSessionWizard() {
                                         style={[
                                             styles.profileListItem,
                                             selectedProfileId === profile.id && styles.profileListItemSelected,
-                                            !isCompatible && { opacity: 0.5 }
+                                            !availability.available && { opacity: 0.5 }
                                         ]}
-                                        onPress={() => isCompatible && selectProfile(profile.id)}
-                                        disabled={!isCompatible}
+                                        onPress={() => availability.available && selectProfile(profile.id)}
+                                        disabled={!availability.available}
                                     >
                                         <View style={styles.profileIcon}>
                                             <Ionicons name="star" size={16} color={theme.colors.button.primary.tint} />
@@ -925,7 +1042,7 @@ function NewSessionWizard() {
                                         <View style={{ flex: 1 }}>
                                             <Text style={styles.profileListName}>{profile.name}</Text>
                                             <Text style={styles.profileListDetails}>
-                                                {getProfileSubtitle(profile, isCompatible)}
+                                                {getProfileSubtitle(profile)}
                                             </Text>
                                         </View>
                                         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
