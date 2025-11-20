@@ -375,6 +375,9 @@ function NewSessionWizard() {
     // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
     const cliAvailability = useCLIDetection(selectedMachineId);
 
+    // Temporary banner dismissal (X button) - resets when component unmounts or machine changes
+    const [hiddenBanners, setHiddenBanners] = React.useState<{ claude: boolean; codex: boolean }>({ claude: false, codex: false });
+
     // Helper to check if CLI warning has been dismissed (checks both global and per-machine)
     const isWarningDismissed = React.useCallback((cli: 'claude' | 'codex'): boolean => {
         // Check global dismissal first
@@ -384,9 +387,13 @@ function NewSessionWizard() {
         return dismissedCLIWarnings.perMachine?.[selectedMachineId]?.[cli] === true;
     }, [selectedMachineId, dismissedCLIWarnings]);
 
-    // Helper to dismiss CLI warning (per-machine or globally)
-    const dismissWarning = React.useCallback((cli: 'claude' | 'codex', scope: 'machine' | 'global') => {
-        if (scope === 'global') {
+    // Unified dismiss handler for all three button types (easy to use correctly, hard to use incorrectly)
+    const handleCLIBannerDismiss = React.useCallback((cli: 'claude' | 'codex', type: 'temporary' | 'machine' | 'global') => {
+        if (type === 'temporary') {
+            // X button: Hide for current session only (not persisted)
+            setHiddenBanners(prev => ({ ...prev, [cli]: true }));
+        } else if (type === 'global') {
+            // [any machine] button: Permanent dismissal across all machines
             setDismissedCLIWarnings({
                 ...dismissedCLIWarnings,
                 global: {
@@ -395,6 +402,7 @@ function NewSessionWizard() {
                 },
             });
         } else {
+            // [this machine] button: Permanent dismissal for current machine only
             if (!selectedMachineId) return;
             const machineWarnings = dismissedCLIWarnings.perMachine?.[selectedMachineId] || {};
             setDismissedCLIWarnings({
@@ -933,7 +941,7 @@ function NewSessionWizard() {
                             )}
 
                             {/* Missing CLI Installation Banners */}
-                            {selectedMachineId && cliAvailability.claude === false && !isWarningDismissed('claude') && (
+                            {selectedMachineId && cliAvailability.claude === false && !isWarningDismissed('claude') && !hiddenBanners.claude && (
                                 <View style={{
                                     backgroundColor: theme.colors.box.warning.background,
                                     borderRadius: 10,
@@ -953,7 +961,7 @@ function NewSessionWizard() {
                                                 Don't show this popup for
                                             </Text>
                                             <Pressable
-                                                onPress={() => dismissWarning('claude', 'machine')}
+                                                onPress={() => handleCLIBannerDismiss('claude', 'machine')}
                                                 style={{
                                                     borderRadius: 4,
                                                     borderWidth: 1,
@@ -967,7 +975,7 @@ function NewSessionWizard() {
                                                 </Text>
                                             </Pressable>
                                             <Pressable
-                                                onPress={() => dismissWarning('claude', 'global')}
+                                                onPress={() => handleCLIBannerDismiss('claude', 'global')}
                                                 style={{
                                                     borderRadius: 4,
                                                     borderWidth: 1,
@@ -982,7 +990,7 @@ function NewSessionWizard() {
                                             </Pressable>
                                         </View>
                                         <Pressable
-                                            onPress={() => dismissWarning('claude', 'machine')}
+                                            onPress={() => handleCLIBannerDismiss('claude', 'temporary')}
                                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                         >
                                             <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
@@ -1005,7 +1013,7 @@ function NewSessionWizard() {
                                 </View>
                             )}
 
-                            {selectedMachineId && cliAvailability.codex === false && !isWarningDismissed('codex') && (
+                            {selectedMachineId && cliAvailability.codex === false && !isWarningDismissed('codex') && !hiddenBanners.codex && (
                                 <View style={{
                                     backgroundColor: theme.colors.box.warning.background,
                                     borderRadius: 10,
@@ -1025,7 +1033,7 @@ function NewSessionWizard() {
                                                 Don't show this popup for
                                             </Text>
                                             <Pressable
-                                                onPress={() => dismissWarning('codex', 'machine')}
+                                                onPress={() => handleCLIBannerDismiss('codex', 'machine')}
                                                 style={{
                                                     borderRadius: 4,
                                                     borderWidth: 1,
@@ -1039,7 +1047,7 @@ function NewSessionWizard() {
                                                 </Text>
                                             </Pressable>
                                             <Pressable
-                                                onPress={() => dismissWarning('codex', 'global')}
+                                                onPress={() => handleCLIBannerDismiss('codex', 'global')}
                                                 style={{
                                                     borderRadius: 4,
                                                     borderWidth: 1,
@@ -1054,7 +1062,7 @@ function NewSessionWizard() {
                                             </Pressable>
                                         </View>
                                         <Pressable
-                                            onPress={() => dismissWarning('codex', 'machine')}
+                                            onPress={() => handleCLIBannerDismiss('codex', 'temporary')}
                                             hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
                                         >
                                             <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
