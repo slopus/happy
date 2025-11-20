@@ -908,7 +908,7 @@ function NewSessionWizard() {
         if (!selectedMachine) return undefined;
         const isOnline = isMachineOnline(selectedMachine);
         return {
-            text: isOnline ? t('common.online') : t('common.offline'),
+            text: isOnline ? t('common.status.online') : t('common.status.offline'),
             color: isOnline ? theme.colors.success : theme.colors.textSecondary,
             dotColor: isOnline ? theme.colors.success : theme.colors.textSecondary,
             isPulsing: isOnline,
@@ -1160,7 +1160,7 @@ function NewSessionWizard() {
                                             </Pressable>
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                style={{ marginLeft: 24, marginRight: 24 }}
+                                                style={{ marginLeft: 24 }}
                                                 onPress={(e) => {
                                                     e.stopPropagation();
                                                     handleEditProfile(profile);

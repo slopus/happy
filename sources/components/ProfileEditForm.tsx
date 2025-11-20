@@ -210,17 +210,6 @@ export function ProfileEditForm({
             keyboardShouldPersistTaps="handled"
         >
             <View style={profileEditFormStyles.formContainer}>
-                    <Text style={{
-                        fontSize: 20,
-                        fontWeight: 'bold',
-                        color: theme.colors.text,
-                        marginBottom: 20,
-                        textAlign: 'center',
-                        ...Typography.default('semiBold')
-                    }}>
-                        {profile.name ? t('profiles.editProfile') : t('profiles.addProfile')}
-                    </Text>
-
                     {/* Profile Name */}
                     <Text style={{
                         fontSize: 14,
