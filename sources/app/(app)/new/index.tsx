@@ -1120,14 +1120,14 @@ function NewSessionWizard() {
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
                                                 onPress={(e) => {
                                                     e.stopPropagation();
-                                                    handleEditProfile(profile);
+                                                    handleDeleteProfile(profile);
                                                 }}
                                             >
-                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
+                                                <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
                                             </Pressable>
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                style={{ marginLeft: 16 }}
+                                                style={{ marginLeft: 24 }}
                                                 onPress={(e) => {
                                                     e.stopPropagation();
                                                     handleDuplicateProfile(profile);
@@ -1137,13 +1137,13 @@ function NewSessionWizard() {
                                             </Pressable>
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                style={{ marginLeft: 16 }}
+                                                style={{ marginLeft: 24 }}
                                                 onPress={(e) => {
                                                     e.stopPropagation();
-                                                    handleDeleteProfile(profile);
+                                                    handleEditProfile(profile);
                                                 }}
                                             >
-                                                <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                                                <Ionicons name="create-outline" size={20} color={theme.colors.button.secondary.tint} />
                                             </Pressable>
                                         </View>
                                     </Pressable>
