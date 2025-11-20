@@ -565,7 +565,8 @@ function NewSessionWizard() {
 
     const selectProfile = React.useCallback((profileId: string) => {
         setSelectedProfileId(profileId);
-        const profile = profileMap.get(profileId);
+        // Check both custom profiles and built-in profiles
+        const profile = profileMap.get(profileId) || getBuiltInProfile(profileId);
         if (profile) {
             // Auto-select agent based on profile compatibility
             if (profile.compatibility.claude && !profile.compatibility.codex) {
@@ -914,7 +915,7 @@ function NewSessionWizard() {
                             </Text>
 
                             {/* CLI Detection Status Banner - shows after detection completes */}
-                            {selectedMachineId && cliAvailability.timestamp > 0 && (
+                            {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && (
                                 <View style={{
                                     backgroundColor: theme.colors.surfacePressed,
                                     borderRadius: 10,
@@ -926,7 +927,7 @@ function NewSessionWizard() {
                                 }}>
                                     <Ionicons name="information-circle-outline" size={16} color={theme.colors.textSecondary} />
                                     <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                        Detected: {cliAvailability.claude ? '✓ Claude' : '✗ Claude'} • {cliAvailability.codex ? '✓ Codex' : '✗ Codex'}
+                                        {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}: {cliAvailability.claude ? '✓ Claude' : '✗ Claude'} • {cliAvailability.codex ? '✓ Codex' : '✗ Codex'}
                                     </Text>
                                 </View>
                             )}
@@ -941,53 +942,48 @@ function NewSessionWizard() {
                                     borderWidth: 1,
                                     borderColor: theme.colors.box.warning.border,
                                 }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                                        <Ionicons name="alert-circle" size={16} color={theme.colors.warning} style={{ marginRight: 6 }} />
-                                        <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                            Claude CLI Not Detected
-                                        </Text>
-                                    </View>
-                                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 8, ...Typography.default() }}>
-                                        Install: npm install -g @anthropic-ai/claude-code
-                                    </Text>
-                                    <Pressable onPress={() => {
-                                        if (Platform.OS === 'web') {
-                                            window.open('https://docs.anthropic.com/en/docs/claude-code/installation', '_blank');
-                                        }
-                                    }} style={{ marginBottom: 10 }}>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                            View Installation Guide →
-                                        </Text>
-                                    </Pressable>
-                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                                            <Ionicons name="alert-circle" size={16} color={theme.colors.warning} style={{ marginRight: 6 }} />
+                                            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                                Claude CLI Not Detected
+                                            </Text>
+                                        </View>
                                         <Pressable
                                             onPress={() => dismissWarning('claude', 'machine')}
-                                            style={{
-                                                flex: 1,
-                                                backgroundColor: theme.colors.surface,
-                                                borderRadius: 6,
-                                                paddingVertical: 6,
-                                                paddingHorizontal: 8,
-                                                alignItems: 'center',
-                                            }}
+                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                            style={{ marginLeft: 8 }}
                                         >
-                                            <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
-                                                Don't show for this machine
+                                            <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                            Install: npm install -g @anthropic-ai/claude-code •
+                                        </Text>
+                                        <Pressable onPress={() => {
+                                            if (Platform.OS === 'web') {
+                                                window.open('https://docs.anthropic.com/en/docs/claude-code/installation', '_blank');
+                                            }
+                                        }}>
+                                            <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
+                                                View Installation Guide
                                             </Text>
                                         </Pressable>
-                                        <Pressable
-                                            onPress={() => dismissWarning('claude', 'global')}
-                                            style={{
-                                                flex: 1,
-                                                backgroundColor: theme.colors.surface,
-                                                borderRadius: 6,
-                                                paddingVertical: 6,
-                                                paddingHorizontal: 8,
-                                                alignItems: 'center',
-                                            }}
-                                        >
-                                            <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
-                                                Don't show for any machine
+                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                            •
+                                        </Text>
+                                        <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                            Don't show popup for
+                                        </Text>
+                                        <Pressable onPress={() => dismissWarning('claude', 'machine')}>
+                                            <Text style={{ fontSize: 10, color: theme.colors.textLink, ...Typography.default() }}>
+                                                [this machine]
+                                            </Text>
+                                        </Pressable>
+                                        <Pressable onPress={() => dismissWarning('claude', 'global')}>
+                                            <Text style={{ fontSize: 10, color: theme.colors.textLink, ...Typography.default() }}>
+                                                [any machine]
                                             </Text>
                                         </Pressable>
                                     </View>
@@ -1003,53 +999,48 @@ function NewSessionWizard() {
                                     borderWidth: 1,
                                     borderColor: theme.colors.box.warning.border,
                                 }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
-                                        <Ionicons name="alert-circle" size={16} color={theme.colors.warning} style={{ marginRight: 6 }} />
-                                        <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                            Codex CLI Not Detected
-                                        </Text>
-                                    </View>
-                                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 8, ...Typography.default() }}>
-                                        Install: npm install -g codex-cli
-                                    </Text>
-                                    <Pressable onPress={() => {
-                                        if (Platform.OS === 'web') {
-                                            window.open('https://github.com/openai/openai-codex', '_blank');
-                                        }
-                                    }} style={{ marginBottom: 10 }}>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                            View Installation Guide →
-                                        </Text>
-                                    </Pressable>
-                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                                            <Ionicons name="alert-circle" size={16} color={theme.colors.warning} style={{ marginRight: 6 }} />
+                                            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                                Codex CLI Not Detected
+                                            </Text>
+                                        </View>
                                         <Pressable
                                             onPress={() => dismissWarning('codex', 'machine')}
-                                            style={{
-                                                flex: 1,
-                                                backgroundColor: theme.colors.surface,
-                                                borderRadius: 6,
-                                                paddingVertical: 6,
-                                                paddingHorizontal: 8,
-                                                alignItems: 'center',
-                                            }}
+                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                            style={{ marginLeft: 8 }}
                                         >
-                                            <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
-                                                Don't show for this machine
+                                            <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
+                                        </Pressable>
+                                    </View>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                            Install: npm install -g codex-cli •
+                                        </Text>
+                                        <Pressable onPress={() => {
+                                            if (Platform.OS === 'web') {
+                                                window.open('https://github.com/openai/openai-codex', '_blank');
+                                            }
+                                        }}>
+                                            <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
+                                                View Installation Guide
                                             </Text>
                                         </Pressable>
-                                        <Pressable
-                                            onPress={() => dismissWarning('codex', 'global')}
-                                            style={{
-                                                flex: 1,
-                                                backgroundColor: theme.colors.surface,
-                                                borderRadius: 6,
-                                                paddingVertical: 6,
-                                                paddingHorizontal: 8,
-                                                alignItems: 'center',
-                                            }}
-                                        >
-                                            <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
-                                                Don't show for any machine
+                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                            •
+                                        </Text>
+                                        <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                            Don't show popup for
+                                        </Text>
+                                        <Pressable onPress={() => dismissWarning('codex', 'machine')}>
+                                            <Text style={{ fontSize: 10, color: theme.colors.textLink, ...Typography.default() }}>
+                                                [this machine]
+                                            </Text>
+                                        </Pressable>
+                                        <Pressable onPress={() => dismissWarning('codex', 'global')}>
+                                            <Text style={{ fontSize: 10, color: theme.colors.textLink, ...Typography.default() }}>
+                                                [any machine]
                                             </Text>
                                         </Pressable>
                                     </View>
