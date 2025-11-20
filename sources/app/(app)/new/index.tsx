@@ -922,7 +922,11 @@ function NewSessionWizard() {
                     ]}>
                         <View ref={profileSectionRef} style={styles.wizardContainer}>
                             {/* Section 1: Profile Management */}
-                            <Text style={styles.sectionHeader}>1. Choose AI Profile</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
+                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
+                                <Ionicons name="person-outline" size={18} color={theme.colors.text} />
+                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Choose AI Profile</Text>
+                            </View>
                             <Text style={styles.sectionDescription}>
                                 Select, create, or edit AI profiles with custom environment variables.
                             </Text>

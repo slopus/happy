@@ -773,7 +773,89 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         </View>
                     </View>
                 )}
-                {/* Unified panel containing input and action buttons */}
+
+                {/* Box 1: Context Information (Machine + Path) - Only show if either exists */}
+                {(props.machineName !== undefined || props.currentPath) && (
+                    <View style={{
+                        backgroundColor: theme.colors.surfacePressed,
+                        borderRadius: 12,
+                        padding: 8,
+                        marginBottom: 8,
+                        gap: 4,
+                    }}>
+                        {/* Machine chip */}
+                        {props.machineName !== undefined && props.onMachineClick && (
+                            <Pressable
+                                onPress={() => {
+                                    hapticsLight();
+                                    props.onMachineClick?.();
+                                }}
+                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                style={(p) => ({
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    borderRadius: Platform.select({ default: 16, android: 20 }),
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 6,
+                                    height: 32,
+                                    opacity: p.pressed ? 0.7 : 1,
+                                    gap: 6,
+                                })}
+                            >
+                                <Ionicons
+                                    name="desktop-outline"
+                                    size={14}
+                                    color={theme.colors.textSecondary}
+                                />
+                                <Text style={{
+                                    fontSize: 13,
+                                    color: theme.colors.text,
+                                    fontWeight: '600',
+                                    ...Typography.default('semiBold'),
+                                }}>
+                                    {props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName}
+                                </Text>
+                            </Pressable>
+                        )}
+
+                        {/* Path chip */}
+                        {props.currentPath && props.onPathClick && (
+                            <Pressable
+                                onPress={() => {
+                                    hapticsLight();
+                                    props.onPathClick?.();
+                                }}
+                                hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
+                                style={(p) => ({
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    borderRadius: Platform.select({ default: 16, android: 20 }),
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 6,
+                                    height: 32,
+                                    opacity: p.pressed ? 0.7 : 1,
+                                    gap: 6,
+                                })}
+                            >
+                                <Ionicons
+                                    name="folder-outline"
+                                    size={14}
+                                    color={theme.colors.textSecondary}
+                                />
+                                <Text style={{
+                                    fontSize: 13,
+                                    color: theme.colors.text,
+                                    fontWeight: '600',
+                                    ...Typography.default('semiBold'),
+                                }}>
+                                    {props.currentPath}
+                                </Text>
+                            </Pressable>
+                        )}
+                    </View>
+                )}
+
+                {/* Box 2: Action Area (Input + Send) */}
                 <View style={styles.unifiedPanel}>
                     {/* Input field */}
                     <View style={[styles.inputContainer, props.minHeight ? { minHeight: props.minHeight } : undefined]}>
@@ -997,82 +1079,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     </Pressable>
                                 </View>
                             </View>
-
-                            {/* Row 2: Machine (separate line) */}
-                            {(props.machineName !== undefined) && props.onMachineClick && (
-                                <View style={{ flexDirection: 'row' }}>
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onMachineClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-                                        <Ionicons
-                                            name="desktop-outline"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {props.machineName === null ? t('agentInput.noMachinesAvailable') : props.machineName}
-                                        </Text>
-                                    </Pressable>
-                                </View>
-                            )}
-
-                            {/* Row 3: Path (separate line) */}
-                            {props.currentPath && props.onPathClick && (
-                                <View style={{ flexDirection: 'row' }}>
-                                    <Pressable
-                                        onPress={() => {
-                                            hapticsLight();
-                                            props.onPathClick?.();
-                                        }}
-                                        hitSlop={{ top: 5, bottom: 10, left: 0, right: 0 }}
-                                        style={(p) => ({
-                                            flexDirection: 'row',
-                                            alignItems: 'center',
-                                            borderRadius: Platform.select({ default: 16, android: 20 }),
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 6,
-                                            justifyContent: 'center',
-                                            height: 32,
-                                            opacity: p.pressed ? 0.7 : 1,
-                                            gap: 6,
-                                        })}
-                                    >
-                                        <Ionicons
-                                            name="folder-outline"
-                                            size={14}
-                                            color={theme.colors.button.secondary.tint}
-                                        />
-                                        <Text style={{
-                                            fontSize: 13,
-                                            color: theme.colors.button.secondary.tint,
-                                            fontWeight: '600',
-                                            ...Typography.default('semiBold'),
-                                        }}>
-                                            {props.currentPath}
-                                        </Text>
-                                    </Pressable>
-                                </View>
-                            )}
                         </View>
                     </View>
                 </View>
