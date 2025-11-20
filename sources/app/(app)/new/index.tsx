@@ -30,6 +30,7 @@ import { useCLIDetection } from '@/hooks/useCLIDetection';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput } from '@/components/MultiTextInput';
+import { isMachineOnline } from '@/utils/machineUtils';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -902,6 +903,18 @@ function NewSessionWizard() {
 
     const screenWidth = useWindowDimensions().width;
 
+    // Machine online status for AgentInput
+    const connectionStatus = React.useMemo(() => {
+        if (!selectedMachine) return undefined;
+        const isOnline = isMachineOnline(selectedMachine);
+        return {
+            text: isOnline ? t('common.online') : t('common.offline'),
+            color: isOnline ? theme.colors.success : theme.colors.textSecondary,
+            dotColor: isOnline ? theme.colors.success : theme.colors.textSecondary,
+            isPulsing: isOnline,
+        };
+    }, [selectedMachine, theme]);
+
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -1622,6 +1635,7 @@ function NewSessionWizard() {
                             onPermissionModeChange={handleAgentInputPermissionChange}
                             modelMode={modelMode}
                             onModelModeChange={setModelMode}
+                            connectionStatus={connectionStatus}
                             machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
                             onMachineClick={handleAgentInputMachineClick}
                             currentPath={selectedPath}
