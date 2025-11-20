@@ -240,6 +240,11 @@ export const SettingsSchema = z.object({
     lastUsedProfile: z.string().nullable().describe('Last selected profile for new sessions'),
     // Favorite directories for quick path selection
     favoriteDirectories: z.array(z.string()).describe('User-defined favorite directories for quick access in path selection'),
+    // Dismissed CLI warning banners per machine (user chose not to install that CLI)
+    dismissedCLIWarnings: z.record(z.string(), z.object({
+        claude: z.boolean().optional(),
+        codex: z.boolean().optional(),
+    })).default({}).describe('Tracks which CLI installation warnings user has dismissed per machine'),
 });
 
 //
@@ -289,6 +294,8 @@ export const settingsDefaults: Settings = {
     lastUsedProfile: null,
     // Default favorite directories (real common directories on Unix-like systems)
     favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],
+    // Dismissed CLI warnings (empty by default)
+    dismissedCLIWarnings: {},
 };
 Object.freeze(settingsDefaults);
 
