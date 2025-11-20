@@ -375,23 +375,39 @@ function NewSessionWizard() {
     // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
     const cliAvailability = useCLIDetection(selectedMachineId);
 
-    // Helper to check if CLI warning has been dismissed for this machine
+    // Helper to check if CLI warning has been dismissed (checks both global and per-machine)
     const isWarningDismissed = React.useCallback((cli: 'claude' | 'codex'): boolean => {
+        // Check global dismissal first
+        if (dismissedCLIWarnings.global?.[cli] === true) return true;
+        // Check per-machine dismissal
         if (!selectedMachineId) return false;
-        return dismissedCLIWarnings[selectedMachineId]?.[cli] === true;
+        return dismissedCLIWarnings.perMachine?.[selectedMachineId]?.[cli] === true;
     }, [selectedMachineId, dismissedCLIWarnings]);
 
-    // Helper to dismiss CLI warning for this machine
-    const dismissWarning = React.useCallback((cli: 'claude' | 'codex') => {
-        if (!selectedMachineId) return;
-        const machineWarnings = dismissedCLIWarnings[selectedMachineId] || {};
-        setDismissedCLIWarnings({
-            ...dismissedCLIWarnings,
-            [selectedMachineId]: {
-                ...machineWarnings,
-                [cli]: true,
-            },
-        });
+    // Helper to dismiss CLI warning (per-machine or globally)
+    const dismissWarning = React.useCallback((cli: 'claude' | 'codex', scope: 'machine' | 'global') => {
+        if (scope === 'global') {
+            setDismissedCLIWarnings({
+                ...dismissedCLIWarnings,
+                global: {
+                    ...dismissedCLIWarnings.global,
+                    [cli]: true,
+                },
+            });
+        } else {
+            if (!selectedMachineId) return;
+            const machineWarnings = dismissedCLIWarnings.perMachine?.[selectedMachineId] || {};
+            setDismissedCLIWarnings({
+                ...dismissedCLIWarnings,
+                perMachine: {
+                    ...dismissedCLIWarnings.perMachine,
+                    [selectedMachineId]: {
+                        ...machineWarnings,
+                        [cli]: true,
+                    },
+                },
+            });
+        }
     }, [selectedMachineId, dismissedCLIWarnings, setDismissedCLIWarnings]);
 
     // Helper to check if profile is available (compatible + CLI detected)
@@ -925,43 +941,53 @@ function NewSessionWizard() {
                                     borderWidth: 1,
                                     borderColor: theme.colors.box.warning.border,
                                 }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                                            <Ionicons name="alert-circle" size={16} color={theme.colors.warning} style={{ marginRight: 6 }} />
-                                            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                Claude CLI Not Detected
-                                            </Text>
-                                        </View>
-                                        <Pressable
-                                            onPress={() => dismissWarning('claude')}
-                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                            style={{ marginLeft: 8 }}
-                                        >
-                                            <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                        </Pressable>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                        <Ionicons name="alert-circle" size={16} color={theme.colors.warning} style={{ marginRight: 6 }} />
+                                        <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                            Claude CLI Not Detected
+                                        </Text>
                                     </View>
-                                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 6, ...Typography.default() }}>
+                                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 8, ...Typography.default() }}>
                                         Install: npm install -g @anthropic-ai/claude-code
                                     </Text>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <Pressable onPress={() => {
-                                            if (Platform.OS === 'web') {
-                                                window.open('https://docs.anthropic.com/en/docs/claude-code/installation', '_blank');
-                                            }
-                                        }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Installation Guide →
+                                    <Pressable onPress={() => {
+                                        if (Platform.OS === 'web') {
+                                            window.open('https://docs.anthropic.com/en/docs/claude-code/installation', '_blank');
+                                        }
+                                    }} style={{ marginBottom: 10 }}>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
+                                            View Installation Guide →
+                                        </Text>
+                                    </Pressable>
+                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                        <Pressable
+                                            onPress={() => dismissWarning('claude', 'machine')}
+                                            style={{
+                                                flex: 1,
+                                                backgroundColor: theme.colors.surface,
+                                                borderRadius: 6,
+                                                paddingVertical: 6,
+                                                paddingHorizontal: 8,
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                Don't show for this machine
                                             </Text>
                                         </Pressable>
                                         <Pressable
-                                            onPress={() => dismissWarning('claude')}
+                                            onPress={() => dismissWarning('claude', 'global')}
                                             style={{
+                                                flex: 1,
+                                                backgroundColor: theme.colors.surface,
+                                                borderRadius: 6,
+                                                paddingVertical: 6,
                                                 paddingHorizontal: 8,
-                                                paddingVertical: 4,
+                                                alignItems: 'center',
                                             }}
                                         >
-                                            <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Don't show again
+                                            <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                Don't show for any machine
                                             </Text>
                                         </Pressable>
                                     </View>
@@ -977,43 +1003,53 @@ function NewSessionWizard() {
                                     borderWidth: 1,
                                     borderColor: theme.colors.box.warning.border,
                                 }}>
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
-                                            <Ionicons name="alert-circle" size={16} color={theme.colors.warning} style={{ marginRight: 6 }} />
-                                            <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
-                                                Codex CLI Not Detected
-                                            </Text>
-                                        </View>
-                                        <Pressable
-                                            onPress={() => dismissWarning('codex')}
-                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                            style={{ marginLeft: 8 }}
-                                        >
-                                            <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
-                                        </Pressable>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+                                        <Ionicons name="alert-circle" size={16} color={theme.colors.warning} style={{ marginRight: 6 }} />
+                                        <Text style={{ fontSize: 13, fontWeight: '600', color: theme.colors.text, ...Typography.default('semiBold') }}>
+                                            Codex CLI Not Detected
+                                        </Text>
                                     </View>
-                                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 6, ...Typography.default() }}>
+                                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, marginBottom: 8, ...Typography.default() }}>
                                         Install: npm install -g codex-cli
                                     </Text>
-                                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                                        <Pressable onPress={() => {
-                                            if (Platform.OS === 'web') {
-                                                window.open('https://github.com/openai/openai-codex', '_blank');
-                                            }
-                                        }}>
-                                            <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
-                                                View Installation Guide →
+                                    <Pressable onPress={() => {
+                                        if (Platform.OS === 'web') {
+                                            window.open('https://github.com/openai/openai-codex', '_blank');
+                                        }
+                                    }} style={{ marginBottom: 10 }}>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textLink, ...Typography.default() }}>
+                                            View Installation Guide →
+                                        </Text>
+                                    </Pressable>
+                                    <View style={{ flexDirection: 'row', gap: 8 }}>
+                                        <Pressable
+                                            onPress={() => dismissWarning('codex', 'machine')}
+                                            style={{
+                                                flex: 1,
+                                                backgroundColor: theme.colors.surface,
+                                                borderRadius: 6,
+                                                paddingVertical: 6,
+                                                paddingHorizontal: 8,
+                                                alignItems: 'center',
+                                            }}
+                                        >
+                                            <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                Don't show for this machine
                                             </Text>
                                         </Pressable>
                                         <Pressable
-                                            onPress={() => dismissWarning('codex')}
+                                            onPress={() => dismissWarning('codex', 'global')}
                                             style={{
+                                                flex: 1,
+                                                backgroundColor: theme.colors.surface,
+                                                borderRadius: 6,
+                                                paddingVertical: 6,
                                                 paddingHorizontal: 8,
-                                                paddingVertical: 4,
+                                                alignItems: 'center',
                                             }}
                                         >
-                                            <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                                Don't show again
+                                            <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                Don't show for any machine
                                             </Text>
                                         </Pressable>
                                     </View>
