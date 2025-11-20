@@ -957,8 +957,8 @@ function NewSessionWizard() {
                                             <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
                                         </Pressable>
                                     </View>
-                                    <View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                                             <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
                                                 Install: npm install -g @anthropic-ai/claude-code •
                                             </Text>
@@ -972,7 +972,7 @@ function NewSessionWizard() {
                                                 </Text>
                                             </Pressable>
                                         </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 6 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                                             <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
                                                 Don't show this popup for
                                             </Text>
@@ -986,7 +986,7 @@ function NewSessionWizard() {
                                                     paddingVertical: 3,
                                                 }}
                                             >
-                                                <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
                                                     this machine
                                                 </Text>
                                             </Pressable>
@@ -1000,7 +1000,7 @@ function NewSessionWizard() {
                                                     paddingVertical: 3,
                                                 }}
                                             >
-                                                <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
                                                     any machine
                                                 </Text>
                                             </Pressable>
@@ -1033,8 +1033,8 @@ function NewSessionWizard() {
                                             <Ionicons name="close" size={18} color={theme.colors.textSecondary} />
                                         </Pressable>
                                     </View>
-                                    <View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4, marginBottom: 8 }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 4 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                                             <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
                                                 Install: npm install -g codex-cli •
                                             </Text>
@@ -1048,7 +1048,7 @@ function NewSessionWizard() {
                                                 </Text>
                                             </Pressable>
                                         </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', flexWrap: 'wrap', gap: 6 }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
                                             <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
                                                 Don't show this popup for
                                             </Text>
@@ -1062,7 +1062,7 @@ function NewSessionWizard() {
                                                     paddingVertical: 3,
                                                 }}
                                             >
-                                                <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
                                                     this machine
                                                 </Text>
                                             </Pressable>
@@ -1076,7 +1076,7 @@ function NewSessionWizard() {
                                                     paddingVertical: 3,
                                                 }}
                                             >
-                                                <Text style={{ fontSize: 10, color: theme.colors.text, ...Typography.default() }}>
+                                                <Text style={{ fontSize: 10, color: theme.colors.textSecondary, ...Typography.default() }}>
                                                     any machine
                                                 </Text>
                                             </Pressable>
