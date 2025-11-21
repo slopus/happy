@@ -240,6 +240,8 @@ export const SettingsSchema = z.object({
     lastUsedProfile: z.string().nullable().describe('Last selected profile for new sessions'),
     // Favorite directories for quick path selection
     favoriteDirectories: z.array(z.string()).describe('User-defined favorite directories for quick access in path selection'),
+    // Favorite machines for quick machine selection
+    favoriteMachines: z.array(z.string()).describe('User-defined favorite machines (machine IDs) for quick access in machine selection'),
     // Dismissed CLI warning banners (supports both per-machine and global dismissal)
     dismissedCLIWarnings: z.object({
         perMachine: z.record(z.string(), z.object({
@@ -300,6 +302,8 @@ export const settingsDefaults: Settings = {
     lastUsedProfile: null,
     // Default favorite directories (real common directories on Unix-like systems)
     favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],
+    // Favorite machines (empty by default)
+    favoriteMachines: [],
     // Dismissed CLI warnings (empty by default)
     dismissedCLIWarnings: { perMachine: {}, global: {} },
 };

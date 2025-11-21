@@ -93,6 +93,7 @@ describe('settings', () => {
     describe('applySettings', () => {
         it('should apply delta to existing settings', () => {
             const currentSettings: Settings = {
+                schemaVersion: 1,
                 viewInline: false,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -116,6 +117,9 @@ describe('settings', () => {
                 lastUsedModelMode: null,
                 profiles: [],
                 lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {
                 viewInline: true
@@ -149,6 +153,7 @@ describe('settings', () => {
 
         it('should merge with defaults', () => {
             const currentSettings: Settings = {
+                schemaVersion: 1,
                 viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -172,6 +177,9 @@ describe('settings', () => {
                 lastUsedModelMode: null,
                 profiles: [],
                 lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual(currentSettings);
@@ -179,6 +187,7 @@ describe('settings', () => {
 
         it('should override existing values with delta', () => {
             const currentSettings: Settings = {
+                schemaVersion: 1,
                 viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -202,6 +211,9 @@ describe('settings', () => {
                 lastUsedModelMode: null,
                 profiles: [],
                 lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {
                 viewInline: false
@@ -214,6 +226,7 @@ describe('settings', () => {
 
         it('should handle empty delta', () => {
             const currentSettings: Settings = {
+                schemaVersion: 1,
                 viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -237,6 +250,9 @@ describe('settings', () => {
                 lastUsedModelMode: null,
                 profiles: [],
                 lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             expect(applySettings(currentSettings, {})).toEqual(currentSettings);
         });
@@ -258,6 +274,7 @@ describe('settings', () => {
 
         it('should handle extra fields in delta', () => {
             const currentSettings: Settings = {
+                schemaVersion: 1,
                 viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -281,6 +298,9 @@ describe('settings', () => {
                 lastUsedModelMode: null,
                 profiles: [],
                 lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: any = {
                 viewInline: false,
