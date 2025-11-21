@@ -94,9 +94,9 @@ export interface SearchableListSelectorProps<T> {
 const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
 // Spacing constants (match existing codebase patterns)
 const STATUS_DOT_TEXT_GAP = 4; // Gap between StatusDot and text (used throughout app for status indicators)
-const RIGHT_ELEMENT_GAP = 8; // Gap between status, checkmark, actions (standard element spacing)
-// Item padding (default is platform-specific: iOS 11-12px, Android 16px)
-const COMPACT_ITEM_PADDING = 4; // Reduced vertical padding for compact lists
+const ITEM_SPACING_GAP = 4; // Gap between elements and spacing between items (compact)
+const COMPACT_ITEM_PADDING = 4; // Vertical padding for compact lists
+const ITEM_BORDER_RADIUS = 8; // Rounded corners for individual items
 
 const stylesheet = StyleSheet.create((theme) => ({
     inputContainer: {
@@ -154,6 +154,12 @@ const stylesheet = StyleSheet.create((theme) => ({
     },
     compactItemStyle: {
         paddingVertical: COMPACT_ITEM_PADDING,
+        minHeight: 0, // Override Item's default minHeight (44-56px) for compact mode
+    },
+    itemBackground: {
+        backgroundColor: theme.colors.input.background,
+        borderRadius: ITEM_BORDER_RADIUS,
+        marginBottom: ITEM_SPACING_GAP,
     },
     showMoreTitle: {
         textAlign: 'center',
@@ -417,7 +423,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 subtitleLines={0}
                 leftElement={icon}
                 rightElement={
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: RIGHT_ELEMENT_GAP }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_SPACING_GAP }}>
                         {renderStatus(status)}
                         {isSelected && (
                             <Ionicons
@@ -433,6 +439,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 selected={isSelected}
                 showDivider={showDividerOverride !== undefined ? showDividerOverride : !isLast}
                 style={[
+                    styles.itemBackground,
                     config.compactItems ? styles.compactItemStyle : undefined,
                     isSelected ? styles.selectedItemStyle : undefined
                 ]}
@@ -588,7 +595,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                         subtitleLines={0}
                                         leftElement={icon}
                                         rightElement={
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: RIGHT_ELEMENT_GAP }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: ITEM_SPACING_GAP }}>
                                                 {renderStatus(status)}
                                                 {isSelected && (
                                                     <Ionicons
@@ -615,6 +622,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                         selected={isSelected}
                                         showDivider={!isLast}
                                         style={[
+                                            styles.itemBackground,
                                             config.compactItems ? styles.compactItemStyle : undefined,
                                             isSelected ? styles.selectedItemStyle : undefined
                                         ]}
