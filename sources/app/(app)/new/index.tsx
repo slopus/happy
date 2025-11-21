@@ -1135,9 +1135,9 @@ function NewSessionWizard() {
                                                 {getProfileSubtitle(profile)}
                                             </Text>
                                         </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                                             {selectedProfileId === profile.id && (
-                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
+                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
                                             )}
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1150,7 +1150,6 @@ function NewSessionWizard() {
                                             </Pressable>
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                style={{ marginLeft: 24 }}
                                                 onPress={(e) => {
                                                     e.stopPropagation();
                                                     handleDuplicateProfile(profile);
@@ -1160,7 +1159,6 @@ function NewSessionWizard() {
                                             </Pressable>
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                                                style={{ marginLeft: 24 }}
                                                 onPress={(e) => {
                                                     e.stopPropagation();
                                                     handleEditProfile(profile);
@@ -1203,9 +1201,9 @@ function NewSessionWizard() {
                                                 {getProfileSubtitle(profile)}
                                             </Text>
                                         </View>
-                                        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
                                             {selectedProfileId === profile.id && (
-                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} style={{ marginRight: 12 }} />
+                                                <Ionicons name="checkmark-circle" size={20} color={theme.colors.text} />
                                             )}
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
