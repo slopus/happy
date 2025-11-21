@@ -333,15 +333,25 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 subtitle={subtitle}
                 subtitleLines={0}
                 leftElement={icon}
-                rightElement={isSelected ? (
-                    <Ionicons
-                        name="checkmark-circle"
-                        size={20}
-                        color={theme.colors.button.primary.tint}
-                    />
-                ) : null}
-                detail={status?.text}
-                detailStyle={status ? { color: status.color } : undefined}
+                rightElement={
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        {status && (
+                            <Text style={[
+                                { fontSize: 17, letterSpacing: -0.41 },
+                                { color: status.color }
+                            ]}>
+                                {status.text}
+                            </Text>
+                        )}
+                        {isSelected && (
+                            <Ionicons
+                                name="checkmark-circle"
+                                size={20}
+                                color={theme.colors.button.primary.tint}
+                            />
+                        )}
+                    </View>
+                }
                 onPress={() => handleSelectItem(item)}
                 showChevron={false}
                 selected={isSelected}
@@ -499,7 +509,15 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                         subtitleLines={0}
                                         leftElement={icon}
                                         rightElement={
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                                {status && (
+                                                    <Text style={[
+                                                        { fontSize: 17, letterSpacing: -0.41 },
+                                                        { color: status.color }
+                                                    ]}>
+                                                        {status.text}
+                                                    </Text>
+                                                )}
                                                 {isSelected && (
                                                     <Ionicons
                                                         name="checkmark-circle"
@@ -520,8 +538,6 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                                 )}
                                             </View>
                                         }
-                                        detail={status?.text}
-                                        detailStyle={status ? { color: status.color } : undefined}
                                         onPress={() => handleSelectItem(item)}
                                         showChevron={false}
                                         selected={isSelected}
