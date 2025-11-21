@@ -375,28 +375,22 @@ export async function startDaemon(): Promise<void> {
 
           const tmux = getTmuxUtilities(tmuxSessionName);
 
-          // Construct command with environment variables
-          const commandParts = [];
-
-          // Add environment variables to command
-          Object.entries(extraEnv).forEach(([key, value]) => {
-            commandParts.push(`export ${key}="${value}";`);
-          });
-
-          // Add the happy CLI command
+          // Construct command for the CLI
           const cliPath = join(projectPath(), 'dist', 'index.mjs');
           const agent = options.agent === 'claude' ? 'claude' : 'codex';
-          commandParts.push(`node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`);
+          const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
 
-          const fullCommand = commandParts.join(' ');
-
-          // Spawn in tmux with a descriptive window name
+          // Spawn in tmux with environment variables
+          // IMPORTANT: Only pass extraEnv (not process.env) because:
+          // 1. Tmux windows already inherit environment from tmux server
+          // 2. extraEnv contains only NEW or DIFFERENT variables (profile settings)
+          // 3. Passing all of process.env would create 50+ unnecessary -e flags
           const windowName = `happy-${Date.now()}-${agent}`;
           const tmuxResult = await tmux.spawnInTmux([fullCommand], {
             sessionName: tmuxSessionName,
             windowName: windowName,
             cwd: directory
-          }, extraEnv);
+          }, extraEnv);  // Third parameter: only profile environment variables
 
           if (tmuxResult.success) {
             logger.debug(`[DAEMON RUN] Successfully spawned in tmux session: ${tmuxResult.sessionId}`);

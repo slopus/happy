@@ -197,7 +197,7 @@ export function extractSessionAndWindow(tmuxOutput: string): { session: string; 
     return null;
 }
 
-export interface TmuxSpawnOptions extends SpawnOptions {
+export interface TmuxSpawnOptions extends Omit<SpawnOptions, 'env'> {
     /** Target tmux session name */
     sessionName?: string;
     /** Custom tmux socket path */
@@ -206,6 +206,10 @@ export interface TmuxSpawnOptions extends SpawnOptions {
     createWindow?: boolean;
     /** Window name for new windows */
     windowName?: string;
+    // Note: env is intentionally excluded from this interface.
+    // It's passed as a separate parameter to spawnInTmux() for clarity
+    // and efficiency - only variables that differ from the tmux server
+    // environment need to be passed via -e flags.
 }
 
 /**
@@ -724,7 +728,18 @@ export class TmuxUtilities {
     }
 
     /**
-     * Spawn process in tmux session or fallback to regular spawning
+     * Spawn process in tmux session with environment variables.
+     *
+     * IMPORTANT: Unlike Node.js spawn(), env is a separate parameter.
+     * This is intentional because:
+     * - Tmux windows inherit environment from the tmux server
+     * - Only NEW or DIFFERENT variables need to be set via -e flag
+     * - Passing all of process.env would create 50+ unnecessary -e flags
+     *
+     * @param args - Command and arguments to execute (as array, will be joined)
+     * @param options - Spawn options (tmux-specific, excludes env)
+     * @param env - Environment variables to set in window (only pass what's different!)
+     * @returns Result with success status and session identifier
      */
     async spawnInTmux(
         args: string[],
@@ -766,8 +781,38 @@ export class TmuxUtilities {
             // Ensure session exists
             await this.ensureSessionExists(sessionName);
 
-            // Create new window in session
+            // Create new window in session with environment variables
             const createWindowArgs = ['new-window', '-n', windowName, '-t', sessionName];
+
+            // Add environment variables using -e flag (sets them in the window's environment)
+            // Only pass variables that are NEW or DIFFERENT from the tmux server environment
+            // (tmux windows already inherit most environment from the server)
+            if (env && Object.keys(env).length > 0) {
+                for (const [key, value] of Object.entries(env)) {
+                    // Skip undefined/null values with warning
+                    if (value === undefined || value === null) {
+                        logger.warn(`[TMUX] Skipping undefined/null environment variable: ${key}`);
+                        continue;
+                    }
+
+                    // Validate variable name (tmux accepts standard env var names)
+                    if (!/^[A-Z_][A-Z0-9_]*$/i.test(key)) {
+                        logger.warn(`[TMUX] Skipping invalid environment variable name: ${key}`);
+                        continue;
+                    }
+
+                    // Escape value for shell safety
+                    // Must escape: backslashes, double quotes, dollar signs, backticks
+                    const escapedValue = value
+                        .replace(/\\/g, '\\\\')   // Backslash first!
+                        .replace(/"/g, '\\"')     // Double quotes
+                        .replace(/\$/g, '\\$')    // Dollar signs
+                        .replace(/`/g, '\\`');    // Backticks
+
+                    createWindowArgs.push('-e', `${key}="${escapedValue}"`);
+                }
+                logger.debug(`[TMUX] Setting ${Object.keys(env).length} environment variables in tmux window`);
+            }
 
             const createResult = await this.executeTmuxCommand(createWindowArgs);
 
