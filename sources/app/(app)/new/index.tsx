@@ -31,6 +31,7 @@ import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput } from '@/components/MultiTextInput';
 import { isMachineOnline } from '@/utils/machineUtils';
+import { StatusDot } from '@/components/StatusDot';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -910,14 +911,14 @@ function NewSessionWizard() {
 
     const screenWidth = useWindowDimensions().width;
 
-    // Machine online status for AgentInput
+    // Machine online status for AgentInput (DRY - reused in info box too)
     const connectionStatus = React.useMemo(() => {
         if (!selectedMachine) return undefined;
         const isOnline = isMachineOnline(selectedMachine);
         return {
-            text: isOnline ? 'Online' : 'Offline',
-            color: isOnline ? theme.colors.success : theme.colors.error,
-            dotColor: isOnline ? theme.colors.success : theme.colors.error,
+            text: isOnline ? 'online' : 'offline',
+            color: isOnline ? theme.colors.success : theme.colors.textDestructive,
+            dotColor: isOnline ? theme.colors.success : theme.colors.textDestructive,
             isPulsing: isOnline,
         };
     }, [selectedMachine, theme]);
@@ -953,32 +954,48 @@ function NewSessionWizard() {
                             </Text>
 
                             {/* CLI Detection Status Banner - shows after detection completes */}
-                            {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && (
+                            {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && connectionStatus && (
                                 <View style={{
                                     backgroundColor: theme.colors.surfacePressed,
                                     borderRadius: 10,
                                     padding: 10,
+                                    paddingRight: 18,
                                     marginBottom: 12,
                                     flexDirection: 'row',
                                     alignItems: 'center',
-                                    gap: 8,
+                                    gap: 9,
                                 }}>
                                     <Ionicons name="information-circle-outline" size={16} color={theme.colors.textSecondary} />
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
                                             {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}:
                                         </Text>
-                                        <Text style={{ fontSize: 11, color: isMachineOnline(selectedMachine) ? theme.colors.success : theme.colors.error, ...Typography.default() }}>
-                                            {isMachineOnline(selectedMachine) ? 'Online' : 'Offline'}
-                                        </Text>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>•</Text>
-                                        <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.error, ...Typography.default() }}>
-                                            {cliAvailability.claude ? '✓' : '✗'} Claude
-                                        </Text>
-                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>•</Text>
-                                        <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.error, ...Typography.default() }}>
-                                            {cliAvailability.codex ? '✓' : '✗'} Codex
-                                        </Text>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                            <StatusDot
+                                                color={connectionStatus.dotColor}
+                                                isPulsing={connectionStatus.isPulsing}
+                                                size={6}
+                                            />
+                                            <Text style={{ fontSize: 11, color: connectionStatus.color, ...Typography.default() }}>
+                                                {connectionStatus.text}
+                                            </Text>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                            <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                {cliAvailability.claude ? '✓' : '✗'}
+                                            </Text>
+                                            <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                claude
+                                            </Text>
+                                        </View>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                            <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                {cliAvailability.codex ? '✓' : '✗'}
+                                            </Text>
+                                            <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textDestructive, ...Typography.default() }}>
+                                                codex
+                                            </Text>
+                                        </View>
                                     </View>
                                 </View>
                             )}
