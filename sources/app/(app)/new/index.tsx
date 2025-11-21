@@ -1393,10 +1393,10 @@ function NewSessionWizard() {
                                         const displayPath = formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir);
                                         return displayPath.toLowerCase().includes(searchText.toLowerCase());
                                     },
-                                    searchPlaceholder: "Type to filter or enter custom path...",
-                                    recentSectionTitle: "Recent Paths",
+                                    searchPlaceholder: "Type to filter or enter custom directory...",
+                                    recentSectionTitle: "Recent Directories",
                                     favoritesSectionTitle: "Favorite Directories",
-                                    noItemsMessage: "No recent paths",
+                                    noItemsMessage: "No recent directories",
                                     showFavorites: true,
                                     showRecent: true,
                                     showSearch: true,
