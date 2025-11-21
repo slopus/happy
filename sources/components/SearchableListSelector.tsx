@@ -562,34 +562,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                 const isSelected = itemId === selectedId;
                                 const isLast = index === items.length - 1;
 
-                                const title = config.getItemTitle(item);
-                                const subtitle = config.getItemSubtitle?.(item);
-                                const icon = config.getItemIcon(item);
-                                const status = config.getItemStatus?.(item, theme);
-
-                                return (
-                                    <Item
-                                        key={itemId}
-                                        title={title}
-                                        subtitle={subtitle}
-                                        subtitleLines={0}
-                                        leftElement={icon}
-                                        rightElement={isSelected ? (
-                                            <Ionicons
-                                                name="checkmark-circle"
-                                                size={20}
-                                                color={theme.colors.button.primary.tint}
-                                            />
-                                        ) : null}
-                                        detail={status?.text}
-                                        detailStyle={status ? { color: status.color } : undefined}
-                                        onPress={() => handleSelectItem(item)}
-                                        showChevron={false}
-                                        selected={isSelected}
-                                        showDivider={!isLast}
-                                        style={isSelected ? styles.selectedItemStyle : undefined}
-                                    />
-                                );
+                                return renderItem(item, isSelected, isLast, !isLast, false);
                             })}
                         </ItemGroup>
                     )}
