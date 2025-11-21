@@ -538,21 +538,23 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
             {/* All Items Section - always shown when items provided */}
             {items.length > 0 && (
                 <>
-                    <Pressable
-                        style={styles.sectionHeader}
-                        onPress={() => setShowAllItemsSection(!showAllItemsSection)}
-                    >
-                        <Text style={styles.sectionHeaderText}>
-                            {config.recentSectionTitle.replace('Recent ', 'All ')}
-                        </Text>
-                        <Ionicons
-                            name={showAllItemsSection ? "chevron-up" : "chevron-down"}
-                            size={20}
-                            color={theme.colors.text}
-                        />
-                    </Pressable>
+                    {items.length > RECENT_ITEMS_DEFAULT_VISIBLE ? (
+                        <Pressable
+                            style={styles.sectionHeader}
+                            onPress={() => setShowAllItemsSection(!showAllItemsSection)}
+                        >
+                            <Text style={styles.sectionHeaderText}>
+                                {config.recentSectionTitle.replace('Recent ', 'All ')}
+                            </Text>
+                            <Ionicons
+                                name={showAllItemsSection ? "chevron-up" : "chevron-down"}
+                                size={20}
+                                color={theme.colors.text}
+                            />
+                        </Pressable>
+                    ) : null}
 
-                    {showAllItemsSection && (
+                    {(items.length <= RECENT_ITEMS_DEFAULT_VISIBLE || showAllItemsSection) && (
                         <ItemGroup title="">
                             {items.map((item, index) => {
                                 const itemId = config.getItemId(item);
