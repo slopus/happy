@@ -78,6 +78,14 @@ export interface SearchableListSelectorProps<T> {
     showFavorites?: boolean;
     showRecent?: boolean;
     showSearch?: boolean;
+
+    // Controlled collapse states (optional - defaults to uncontrolled internal state)
+    collapsedSections?: {
+        recent?: boolean;
+        favorites?: boolean;
+        all?: boolean;
+    };
+    onCollapsedSectionsChange?: (collapsed: { recent?: boolean; favorites?: boolean; all?: boolean }) => void;
 }
 
 const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
@@ -197,7 +205,12 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         showFavorites = config.showFavorites !== false,
         showRecent = config.showRecent !== false,
         showSearch = config.showSearch !== false,
+        collapsedSections,
+        onCollapsedSectionsChange,
     } = props;
+
+    // Use controlled state if provided, otherwise use internal state
+    const isControlled = collapsedSections !== undefined && onCollapsedSectionsChange !== undefined;
 
     // State management (matches Working Directory pattern)
     const [inputText, setInputText] = React.useState(() => {
@@ -207,9 +220,41 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         return '';
     });
     const [showAllRecent, setShowAllRecent] = React.useState(false);
-    const [showRecentSection, setShowRecentSection] = React.useState(false);
-    const [showFavoritesSection, setShowFavoritesSection] = React.useState(false);
-    const [showAllItemsSection, setShowAllItemsSection] = React.useState(true);
+
+    // Internal uncontrolled state (used when not controlled from parent)
+    const [internalShowRecentSection, setInternalShowRecentSection] = React.useState(false);
+    const [internalShowFavoritesSection, setInternalShowFavoritesSection] = React.useState(false);
+    const [internalShowAllItemsSection, setInternalShowAllItemsSection] = React.useState(true);
+
+    // Use controlled or uncontrolled state
+    const showRecentSection = isControlled ? !collapsedSections?.recent : internalShowRecentSection;
+    const showFavoritesSection = isControlled ? !collapsedSections?.favorites : internalShowFavoritesSection;
+    const showAllItemsSection = isControlled ? !collapsedSections?.all : internalShowAllItemsSection;
+
+    // Toggle handlers that work for both controlled and uncontrolled
+    const toggleRecentSection = () => {
+        if (isControlled) {
+            onCollapsedSectionsChange?.({ ...collapsedSections, recent: !collapsedSections?.recent });
+        } else {
+            setInternalShowRecentSection(!internalShowRecentSection);
+        }
+    };
+
+    const toggleFavoritesSection = () => {
+        if (isControlled) {
+            onCollapsedSectionsChange?.({ ...collapsedSections, favorites: !collapsedSections?.favorites });
+        } else {
+            setInternalShowFavoritesSection(!internalShowFavoritesSection);
+        }
+    };
+
+    const toggleAllItemsSection = () => {
+        if (isControlled) {
+            onCollapsedSectionsChange?.({ ...collapsedSections, all: !collapsedSections?.all });
+        } else {
+            setInternalShowAllItemsSection(!internalShowAllItemsSection);
+        }
+    };
 
     // Track if user is actively typing (vs clicking from list) to control expansion behavior
     const isUserTyping = React.useRef(false);
@@ -449,7 +494,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 <>
                     <Pressable
                         style={styles.sectionHeader}
-                        onPress={() => setShowRecentSection(!showRecentSection)}
+                        onPress={toggleRecentSection}
                     >
                         <Text style={styles.sectionHeaderText}>{config.recentSectionTitle}</Text>
                         <Ionicons
@@ -500,7 +545,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 <>
                     <Pressable
                         style={styles.sectionHeader}
-                        onPress={() => setShowFavoritesSection(!showFavoritesSection)}
+                        onPress={toggleFavoritesSection}
                     >
                         <Text style={styles.sectionHeaderText}>{config.favoritesSectionTitle}</Text>
                         <Ionicons
@@ -572,7 +617,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 <>
                     <Pressable
                         style={styles.sectionHeader}
-                        onPress={() => setShowAllItemsSection(!showAllItemsSection)}
+                        onPress={toggleAllItemsSection}
                     >
                         <Text style={styles.sectionHeaderText}>
                             {config.recentSectionTitle.replace('Recent ', 'All ')}
