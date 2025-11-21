@@ -114,7 +114,14 @@ export default function MachinePickerScreen() {
                             <Ionicons
                                 name="desktop-outline"
                                 size={24}
-                                color={isMachineOnline(machine) ? theme.colors.text : theme.colors.textSecondary}
+                                color={theme.colors.textSecondary}
+                            />
+                        ),
+                        getRecentItemIcon: () => (
+                            <Ionicons
+                                name="time-outline"
+                                size={24}
+                                color={theme.colors.textSecondary}
                             />
                         ),
                         getItemStatus: (machine) => {

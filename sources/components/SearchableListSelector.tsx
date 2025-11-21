@@ -48,6 +48,9 @@ export interface SelectorConfig<T> {
     // Item subtitle override (for recent items, e.g., "Recently used")
     getRecentItemSubtitle?: (item: T) => string | undefined;
 
+    // Custom icon for recent items (e.g., time-outline for recency indicator)
+    getRecentItemIcon?: (item: T) => React.ReactNode;
+
     // Custom icon for favorite items (e.g., home directory uses home-outline instead of star-outline)
     getFavoriteItemIcon?: (item: T) => React.ReactNode;
 
@@ -317,7 +320,9 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         const subtitle = forRecent && config.getRecentItemSubtitle
             ? config.getRecentItemSubtitle(item)
             : config.getItemSubtitle?.(item);
-        const icon = config.getItemIcon(item);
+        const icon = forRecent && config.getRecentItemIcon
+            ? config.getRecentItemIcon(item)
+            : config.getItemIcon(item);
         const status = config.getItemStatus?.(item, theme);
 
         return (

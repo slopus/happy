@@ -1270,7 +1270,11 @@ function NewSessionWizard() {
 
                             {/* Section 2: Machine Selection */}
                             <View ref={machineSectionRef}>
-                                <Text style={styles.sectionHeader}>2. Select Machine</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>2.</Text>
+                                    <Ionicons name="desktop-outline" size={18} color={theme.colors.text} />
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Machine</Text>
+                                </View>
                             </View>
 
                             <SearchableListSelector<typeof machines[0]>
@@ -1285,6 +1289,13 @@ function NewSessionWizard() {
                                     getItemIcon: (machine) => (
                                         <Ionicons
                                             name="desktop-outline"
+                                            size={24}
+                                            color={theme.colors.textSecondary}
+                                        />
+                                    ),
+                                    getRecentItemIcon: () => (
+                                        <Ionicons
+                                            name="time-outline"
                                             size={24}
                                             color={theme.colors.textSecondary}
                                         />
@@ -1343,7 +1354,11 @@ function NewSessionWizard() {
 
                             {/* Section 3: Working Directory */}
                             <View ref={pathSectionRef}>
-                                <Text style={styles.sectionHeader}>3. Working Directory</Text>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>3.</Text>
+                                    <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Working Directory</Text>
+                                </View>
                             </View>
 
                             <SearchableListSelector<string>
