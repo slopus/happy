@@ -81,8 +81,9 @@ export interface SearchableListSelectorProps<T> {
 }
 
 const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
-const STATUS_GAP = 4; // Gap between StatusDot and text (matches existing pattern)
-const RIGHT_ELEMENT_GAP = 8; // Gap between status, checkmark, actions
+// Spacing constants (match existing codebase patterns)
+const STATUS_DOT_TEXT_GAP = 4; // Gap between StatusDot and text (used throughout app for status indicators)
+const RIGHT_ELEMENT_GAP = 8; // Gap between status, checkmark, actions (standard element spacing)
 
 const stylesheet = StyleSheet.create((theme) => ({
     inputContainer: {
@@ -319,17 +320,24 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         );
     };
 
-    // Render status with StatusDot (DRY helper)
+    // Render status with StatusDot (DRY helper - matches Item.tsx detail style)
     const renderStatus = (status: { text: string; color: string; dotColor: string; isPulsing?: boolean } | null | undefined) => {
         if (!status) return null;
         return (
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: STATUS_GAP }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: STATUS_DOT_TEXT_GAP }}>
                 <StatusDot
                     color={status.dotColor}
                     isPulsing={status.isPulsing}
                     size={6}
                 />
-                <Text style={{ fontSize: 17, letterSpacing: -0.41, color: status.color }}>
+                <Text style={[
+                    Typography.default('regular'),
+                    {
+                        fontSize: Platform.select({ ios: 17, default: 16 }),
+                        letterSpacing: Platform.select({ ios: -0.41, default: 0.15 }),
+                        color: status.color
+                    }
+                ]}>
                     {status.text}
                 </Text>
             </View>
