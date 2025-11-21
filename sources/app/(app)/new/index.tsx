@@ -952,16 +952,6 @@ function NewSessionWizard() {
                         { maxWidth: layout.maxWidth, flex: 1, width: '100%', alignSelf: 'center' }
                     ]}>
                         <View ref={profileSectionRef} style={styles.wizardContainer}>
-                            {/* Section 1: Profile Management */}
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
-                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
-                                <Ionicons name="person-outline" size={18} color={theme.colors.text} />
-                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Choose AI Profile</Text>
-                            </View>
-                            <Text style={styles.sectionDescription}>
-                                Choose which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.
-                            </Text>
-
                             {/* CLI Detection Status Banner - shows after detection completes */}
                             {selectedMachineId && cliAvailability.timestamp > 0 && selectedMachine && connectionStatus && (
                                 <View style={{
@@ -974,7 +964,7 @@ function NewSessionWizard() {
                                     alignItems: 'center',
                                     gap: STATUS_ITEM_GAP,
                                 }}>
-                                    <Ionicons name="information-circle-outline" size={16} color={theme.colors.textSecondary} />
+                                    <Ionicons name="desktop-outline" size={16} color={theme.colors.textSecondary} />
                                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: STATUS_ITEM_GAP, flexWrap: 'wrap' }}>
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
                                             {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}:
@@ -1008,6 +998,16 @@ function NewSessionWizard() {
                                     </View>
                                 </View>
                             )}
+
+                            {/* Section 1: Profile Management */}
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
+                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>1.</Text>
+                                <Ionicons name="person-outline" size={18} color={theme.colors.text} />
+                                <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Choose AI Profile</Text>
+                            </View>
+                            <Text style={styles.sectionDescription}>
+                                Choose which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.
+                            </Text>
 
                             {/* Missing CLI Installation Banners */}
                             {selectedMachineId && cliAvailability.claude === false && !isWarningDismissed('claude') && !hiddenBanners.claude && (
