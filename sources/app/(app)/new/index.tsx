@@ -1301,7 +1301,9 @@ function NewSessionWizard() {
                                         const offline = !isMachineOnline(machine);
                                         return {
                                             text: offline ? 'offline' : 'online',
-                                            color: offline ? theme.colors.status.disconnected : theme.colors.status.connected
+                                            color: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
+                                            dotColor: offline ? theme.colors.status.disconnected : theme.colors.status.connected,
+                                            isPulsing: !offline,
                                         };
                                     },
                                     formatForDisplay: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,

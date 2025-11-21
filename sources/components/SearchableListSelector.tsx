@@ -8,6 +8,7 @@ import { Item } from '@/components/Item';
 import { MultiTextInput } from '@/components/MultiTextInput';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { StatusDot } from '@/components/StatusDot';
 
 /**
  * Configuration object for customizing the SearchableListSelector component.
@@ -24,6 +25,8 @@ export interface SelectorConfig<T> {
     getItemStatus?: (item: T, theme: any) => {
         text: string;
         color: string;
+        dotColor: string;
+        isPulsing?: boolean;
     } | null;
 
     // Display formatting (e.g., formatPathRelativeToHome for paths, displayName for machines)
@@ -336,12 +339,19 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 rightElement={
                     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                         {status && (
-                            <Text style={[
-                                { fontSize: 17, letterSpacing: -0.41 },
-                                { color: status.color }
-                            ]}>
-                                {status.text}
-                            </Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                <StatusDot
+                                    color={status.dotColor}
+                                    isPulsing={status.isPulsing}
+                                    size={6}
+                                />
+                                <Text style={[
+                                    { fontSize: 17, letterSpacing: -0.41 },
+                                    { color: status.color }
+                                ]}>
+                                    {status.text}
+                                </Text>
+                            </View>
                         )}
                         {isSelected && (
                             <Ionicons
@@ -511,12 +521,19 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                         rightElement={
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                                                 {status && (
-                                                    <Text style={[
-                                                        { fontSize: 17, letterSpacing: -0.41 },
-                                                        { color: status.color }
-                                                    ]}>
-                                                        {status.text}
-                                                    </Text>
+                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                        <StatusDot
+                                                            color={status.dotColor}
+                                                            isPulsing={status.isPulsing}
+                                                            size={6}
+                                                        />
+                                                        <Text style={[
+                                                            { fontSize: 17, letterSpacing: -0.41 },
+                                                            { color: status.color }
+                                                        ]}>
+                                                            {status.text}
+                                                        </Text>
+                                                    </View>
                                                 )}
                                                 {isSelected && (
                                                     <Ionicons
