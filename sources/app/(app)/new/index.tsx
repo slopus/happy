@@ -1277,8 +1277,9 @@ function NewSessionWizard() {
                                 </View>
                             </View>
 
-                            <SearchableListSelector<typeof machines[0]>
-                                config={{
+                            <View style={{ marginBottom: 24 }}>
+                                <SearchableListSelector<typeof machines[0]>
+                                    config={{
                                     getItemId: (machine) => machine.id,
                                     getItemTitle: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
                                     getItemSubtitle: undefined,
@@ -1341,7 +1342,8 @@ function NewSessionWizard() {
                                         setFavoriteMachines([...favoriteMachines, machine.id]);
                                     }
                                 }}
-                            />
+                                />
+                            </View>
 
                             {/* Section 3: Working Directory */}
                             <View ref={pathSectionRef}>
@@ -1352,8 +1354,9 @@ function NewSessionWizard() {
                                 </View>
                             </View>
 
-                            <SearchableListSelector<string>
-                                config={{
+                            <View style={{ marginBottom: 24 }}>
+                                <SearchableListSelector<string>
+                                    config={{
                                     getItemId: (path) => path,
                                     getItemTitle: (path) => formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir),
                                     getItemSubtitle: undefined,
@@ -1436,8 +1439,9 @@ function NewSessionWizard() {
                                         setFavoriteDirectories([...favoriteDirectories, relativePath]);
                                     }
                                 }}
-                                context={{ homeDir: selectedMachine?.metadata?.homeDir }}
-                            />
+                                    context={{ homeDir: selectedMachine?.metadata?.homeDir }}
+                                />
+                            </View>
 
                             {/* Section 4: Permission Mode */}
                             <View ref={permissionSectionRef}>
