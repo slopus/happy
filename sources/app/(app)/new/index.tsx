@@ -1352,7 +1352,7 @@ function NewSessionWizard() {
                                 <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 8, marginTop: 12 }}>
                                     <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>3.</Text>
                                     <Ionicons name="folder-outline" size={18} color={theme.colors.text} />
-                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Working Directory</Text>
+                                    <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Select Working Directory</Text>
                                 </View>
                             </View>
 
