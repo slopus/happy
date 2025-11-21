@@ -254,19 +254,20 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
         case 'deepseek':
             // DeepSeek profile: Maps DEEPSEEK_* daemon environment to ANTHROPIC_* for Claude CLI
             // Launch daemon with: DEEPSEEK_AUTH_TOKEN=sk-... DEEPSEEK_BASE_URL=https://api.deepseek.com/anthropic
-            // Profile uses ${VAR} substitution for all config, no hardcoded values
+            // Uses ${VAR:-default} format for fallback values (bash parameter expansion)
+            // Secrets use ${VAR} without fallback for security
             // NOTE: anthropicConfig left empty so environmentVariables aren't overridden (getProfileEnvironmentVariables priority)
             return {
                 id: 'deepseek',
                 name: 'DeepSeek (Reasoner)',
                 anthropicConfig: {},
                 environmentVariables: [
-                    { name: 'ANTHROPIC_BASE_URL', value: '${DEEPSEEK_BASE_URL}' },
-                    { name: 'ANTHROPIC_AUTH_TOKEN', value: '${DEEPSEEK_AUTH_TOKEN}' },
-                    { name: 'API_TIMEOUT_MS', value: '${DEEPSEEK_API_TIMEOUT_MS}' },
-                    { name: 'ANTHROPIC_MODEL', value: '${DEEPSEEK_MODEL}' },
-                    { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: '${DEEPSEEK_SMALL_FAST_MODEL}' },
-                    { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '${DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC}' },
+                    { name: 'ANTHROPIC_BASE_URL', value: '${DEEPSEEK_BASE_URL:-https://api.deepseek.com/anthropic}' },
+                    { name: 'ANTHROPIC_AUTH_TOKEN', value: '${DEEPSEEK_AUTH_TOKEN}' }, // Secret - no fallback
+                    { name: 'API_TIMEOUT_MS', value: '${DEEPSEEK_API_TIMEOUT_MS:-600000}' },
+                    { name: 'ANTHROPIC_MODEL', value: '${DEEPSEEK_MODEL:-deepseek-reasoner}' },
+                    { name: 'ANTHROPIC_SMALL_FAST_MODEL', value: '${DEEPSEEK_SMALL_FAST_MODEL:-deepseek-chat}' },
+                    { name: 'CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC', value: '${DEEPSEEK_CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC:-1}' },
                 ],
                 defaultPermissionMode: 'default',
                 compatibility: { claude: true, codex: false },
@@ -279,20 +280,21 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             // Z.AI profile: Maps Z_AI_* daemon environment to ANTHROPIC_* for Claude CLI
             // Launch daemon with: Z_AI_AUTH_TOKEN=sk-... Z_AI_BASE_URL=https://api.z.ai/api/anthropic
             // Model mappings: Z_AI_OPUS_MODEL=GLM-4.6, Z_AI_SONNET_MODEL=GLM-4.6, Z_AI_HAIKU_MODEL=GLM-4.5-Air
-            // Profile uses ${VAR} substitution for all config, no hardcoded values
+            // Uses ${VAR:-default} format for fallback values (bash parameter expansion)
+            // Secrets use ${VAR} without fallback for security
             // NOTE: anthropicConfig left empty so environmentVariables aren't overridden
             return {
                 id: 'zai',
                 name: 'Z.AI (GLM-4.6)',
                 anthropicConfig: {},
                 environmentVariables: [
-                    { name: 'ANTHROPIC_BASE_URL', value: '${Z_AI_BASE_URL}' },
-                    { name: 'ANTHROPIC_AUTH_TOKEN', value: '${Z_AI_AUTH_TOKEN}' },
-                    { name: 'API_TIMEOUT_MS', value: '${Z_AI_API_TIMEOUT_MS}' },
-                    { name: 'ANTHROPIC_MODEL', value: '${Z_AI_MODEL}' },
-                    { name: 'ANTHROPIC_DEFAULT_OPUS_MODEL', value: '${Z_AI_OPUS_MODEL}' },
-                    { name: 'ANTHROPIC_DEFAULT_SONNET_MODEL', value: '${Z_AI_SONNET_MODEL}' },
-                    { name: 'ANTHROPIC_DEFAULT_HAIKU_MODEL', value: '${Z_AI_HAIKU_MODEL}' },
+                    { name: 'ANTHROPIC_BASE_URL', value: '${Z_AI_BASE_URL:-https://api.z.ai/api/anthropic}' },
+                    { name: 'ANTHROPIC_AUTH_TOKEN', value: '${Z_AI_AUTH_TOKEN}' }, // Secret - no fallback
+                    { name: 'API_TIMEOUT_MS', value: '${Z_AI_API_TIMEOUT_MS:-3000000}' },
+                    { name: 'ANTHROPIC_MODEL', value: '${Z_AI_MODEL:-GLM-4.6}' },
+                    { name: 'ANTHROPIC_DEFAULT_OPUS_MODEL', value: '${Z_AI_OPUS_MODEL:-GLM-4.6}' },
+                    { name: 'ANTHROPIC_DEFAULT_SONNET_MODEL', value: '${Z_AI_SONNET_MODEL:-GLM-4.6}' },
+                    { name: 'ANTHROPIC_DEFAULT_HAIKU_MODEL', value: '${Z_AI_HAIKU_MODEL:-GLM-4.5-Air}' },
                 ],
                 defaultPermissionMode: 'default',
                 compatibility: { claude: true, codex: false },

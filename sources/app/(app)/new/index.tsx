@@ -707,31 +707,24 @@ function NewSessionWizard() {
             parts.push(modelName);
         }
 
-        // Add base URL if exists
-        if (profile.anthropicConfig?.baseUrl) {
-            // User set in GUI - literal value
-            const url = new URL(profile.anthropicConfig.baseUrl);
-            parts.push(url.hostname);
-        } else {
-            // Check environmentVariables - may need ${VAR} evaluation
-            const baseUrlEnvVar = profile.environmentVariables?.find(ev => ev.name === 'ANTHROPIC_BASE_URL');
-            if (baseUrlEnvVar) {
-                const resolved = resolveEnvVarSubstitution(baseUrlEnvVar.value, daemonEnv);
-                if (resolved) {
-                    // Extract hostname and show with variable name
-                    const varName = baseUrlEnvVar.value.match(/^\$\{(.+)\}$/)?.[1];
-                    try {
-                        const url = new URL(resolved);
-                        const display = varName ? `${varName}: ${url.hostname}` : url.hostname;
-                        parts.push(display);
-                    } catch {
-                        // Not a valid URL, show as-is with variable name
-                        parts.push(varName ? `${varName}: ${resolved}` : resolved);
-                    }
-                } else {
-                    // Show raw ${VAR} if not resolved (machine not selected or var not set)
-                    parts.push(baseUrlEnvVar.value);
+        // Add base URL if exists in environmentVariables
+        const baseUrlEnvVar = profile.environmentVariables?.find(ev => ev.name === 'ANTHROPIC_BASE_URL');
+        if (baseUrlEnvVar) {
+            const resolved = resolveEnvVarSubstitution(baseUrlEnvVar.value, daemonEnv);
+            if (resolved) {
+                // Extract hostname and show with variable name
+                const varName = baseUrlEnvVar.value.match(/^\$\{([A-Z_][A-Z0-9_]*)/)?.[1];
+                try {
+                    const url = new URL(resolved);
+                    const display = varName ? `${varName}: ${url.hostname}` : url.hostname;
+                    parts.push(display);
+                } catch {
+                    // Not a valid URL, show as-is with variable name
+                    parts.push(varName ? `${varName}: ${resolved}` : resolved);
                 }
+            } else {
+                // Show raw ${VAR} if not resolved (machine not selected or var not set)
+                parts.push(baseUrlEnvVar.value);
             }
         }
 
