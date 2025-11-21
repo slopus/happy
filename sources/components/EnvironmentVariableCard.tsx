@@ -322,9 +322,13 @@ export function EnvironmentVariableCard({
                 ...Typography.default()
             }}>
                 Session will receive: {variable.name} = {
-                    useRemoteVariable && remoteValue !== undefined && remoteValue !== null
-                        ? remoteValue
-                        : defaultValue || '(empty)'
+                    isSecret
+                        ? (useRemoteVariable && remoteVariableName
+                            ? `(from ${remoteVariableName} - hidden for security)`
+                            : (defaultValue ? '***hidden***' : '(empty)'))
+                        : (useRemoteVariable && remoteValue !== undefined && remoteValue !== null
+                            ? remoteValue
+                            : defaultValue || '(empty)')
                 }
             </Text>
         </View>
