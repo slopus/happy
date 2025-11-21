@@ -99,7 +99,9 @@ const COMPACT_ITEM_PADDING = 4; // Vertical padding for compact lists
 // Border radius constants (consistent rounding)
 const INPUT_BORDER_RADIUS = 10; // Input field and containers
 const BUTTON_BORDER_RADIUS = 8; // Buttons and actionable elements
-const ITEM_BORDER_RADIUS = 8; // Individual list items
+// ITEM_BORDER_RADIUS must match ItemGroup's contentContainer borderRadius to prevent clipping
+// ItemGroup uses Platform.select({ ios: 10, default: 16 })
+const ITEM_BORDER_RADIUS = Platform.select({ ios: 10, default: 16 }); // Match ItemGroup container radius
 
 const stylesheet = StyleSheet.create((theme) => ({
     inputContainer: {
