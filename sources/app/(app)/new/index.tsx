@@ -1281,11 +1281,7 @@ function NewSessionWizard() {
                                 config={{
                                     getItemId: (machine) => machine.id,
                                     getItemTitle: (machine) => machine.metadata?.displayName || machine.metadata?.host || machine.id,
-                                    getItemSubtitle: (machine) => {
-                                        const name = machine.metadata?.displayName;
-                                        const host = machine.metadata?.host;
-                                        return name !== host ? host : undefined;
-                                    },
+                                    getItemSubtitle: undefined,
                                     getItemIcon: (machine) => (
                                         <Ionicons
                                             name="desktop-outline"
@@ -1327,11 +1323,6 @@ function NewSessionWizard() {
                                     showRecent: true,
                                     showSearch: true,
                                     allowCustomInput: false,
-                                    getRecentItemSubtitle: (machine) => {
-                                        const name = machine.metadata?.displayName;
-                                        const host = machine.metadata?.host;
-                                        return name !== host ? host : undefined;
-                                    },
                                 }}
                                 items={machines}
                                 recentItems={recentMachines}
@@ -1365,12 +1356,7 @@ function NewSessionWizard() {
                                 config={{
                                     getItemId: (path) => path,
                                     getItemTitle: (path) => formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir),
-                                    getItemSubtitle: (path) => {
-                                        // Show folder name as subtitle
-                                        const displayPath = formatPathRelativeToHome(path, selectedMachine?.metadata?.homeDir);
-                                        if (path === selectedMachine?.metadata?.homeDir) return 'Home directory';
-                                        return displayPath.split('/').pop() || displayPath;
-                                    },
+                                    getItemSubtitle: undefined,
                                     getItemIcon: (path) => (
                                         <Ionicons
                                             name="folder-outline"

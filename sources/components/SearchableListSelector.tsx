@@ -330,6 +330,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 key={itemId}
                 title={title}
                 subtitle={subtitle}
+                subtitleLines={0}
                 leftElement={icon}
                 rightElement={isSelected ? (
                     <Ionicons
@@ -494,6 +495,7 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                         key={itemId}
                                         title={title}
                                         subtitle={subtitle}
+                                        subtitleLines={0}
                                         leftElement={icon}
                                         rightElement={
                                             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
@@ -530,6 +532,47 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                         </ItemGroup>
                     )}
                 </>
+            )}
+
+            {/* All Items Section - shown when items list provided and not filtered by recent/favorites */}
+            {items.length > 0 && (recentItems.length === 0 && favoriteItems.length === 0) && (
+                <ItemGroup title="">
+                    {items.map((item, index) => {
+                        const itemId = config.getItemId(item);
+                        const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
+                        const isSelected = itemId === selectedId;
+                        const isLast = index === items.length - 1;
+
+                        const title = config.getItemTitle(item);
+                        const subtitle = config.getItemSubtitle?.(item);
+                        const icon = config.getItemIcon(item);
+                        const status = config.getItemStatus?.(item, theme);
+
+                        return (
+                            <Item
+                                key={itemId}
+                                title={title}
+                                subtitle={subtitle}
+                                subtitleLines={0}
+                                leftElement={icon}
+                                rightElement={isSelected ? (
+                                    <Ionicons
+                                        name="checkmark-circle"
+                                        size={20}
+                                        color={theme.colors.button.primary.tint}
+                                    />
+                                ) : null}
+                                detail={status?.text}
+                                detailStyle={status ? { color: status.color } : undefined}
+                                onPress={() => handleSelectItem(item)}
+                                showChevron={false}
+                                selected={isSelected}
+                                showDivider={!isLast}
+                                style={isSelected ? styles.selectedItemStyle : undefined}
+                            />
+                        );
+                    })}
+                </ItemGroup>
             )}
         </>
     );
