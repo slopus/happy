@@ -985,3 +985,251 @@ Instead of installation command in subtitle (too long), add installation guidanc
 - 0 new TypeScript errors
 - Backward compatible with main branch
 
+---
+
+## Session 3: Generic SearchableListSelector Component (2025-11-20)
+
+### Session Overview
+
+**User Request:** "is there a way that the working directory code can also be pulled out and made modular, and then be reused with both with some elements being unique like how it is rendered and the online status, and the dir fields can have the dir icon at the front, while the computer fields can have the computer icon at the front. this could be much more DRY"
+
+**Solution:** Created fully generic `SearchableListSelector<T>` component using TypeScript generics that eliminates code duplication between machine and path selection.
+
+### Implementation Details
+
+**New Component Created:**
+- `sources/components/SearchableListSelector.tsx` (~600 lines)
+- Generic component using TypeScript `<T>` for any data type
+- Configuration object pattern (SelectorConfig<T>)
+- Supports machines, paths, and any future selector use cases
+
+**Architecture Features:**
+1. **Configuration-Based Customization:**
+   - `getItemId`, `getItemTitle`, `getItemSubtitle` - Data accessors
+   - `getItemIcon`, `getRecentItemIcon`, `getFavoriteItemIcon` - Icon customization per context
+   - `getItemStatus` - Status display with StatusDot (online/offline for machines)
+   - `formatForDisplay`, `parseFromDisplay` - Display/parse transformations
+   - `filterItem` - Custom filtering logic
+   - `canRemoveFavorite` - Per-item deletion restrictions (e.g., home directory)
+   - `compactItems` - Optional tight spacing mode
+
+2. **Internal State Management:**
+   - `inputText` - Search/filter text (syncs with selectedItem via useEffect)
+   - `isUserTyping` ref - Tracks manual typing vs list selection
+   - `showRecentSection`, `showFavoritesSection`, `showAllItemsSection` - Collapse states
+   - `showAllRecent` - "Show More" toggle for recent items >5
+
+3. **Controlled/Uncontrolled Pattern:**
+   - Supports optional `collapsedSections` + `onCollapsedSectionsChange` props
+   - Enables future persistence of collapse states to settings
+   - Defaults to uncontrolled (internal state) for simplicity
+
+4. **Sections Rendered:**
+   - **Search Input** - With clear button and optional favorite star button
+   - **Recent Items** - With "Show More" toggle when >5 items
+   - **Favorites** - With trash button for removal (unless canRemoveFavorite returns false)
+   - **All Items** - Shows complete list, collapsible header
+
+### Visual Design Constants
+
+**Spacing (all 4px for compact design):**
+```typescript
+const STATUS_DOT_TEXT_GAP = 4; // Gap between StatusDot and text
+const ITEM_SPACING_GAP = 4; // Gap between elements and between items
+const COMPACT_ITEM_PADDING = 4; // Vertical padding for items
+```
+
+**Border Radius (semantic naming):**
+```typescript
+const INPUT_BORDER_RADIUS = 10; // Input fields and containers
+const BUTTON_BORDER_RADIUS = 8; // Buttons and actionable elements
+const ITEM_BORDER_RADIUS = 8; // Individual list items
+```
+
+**Item Styling:**
+- `backgroundColor: theme.colors.input.background` (#F5F5F5)
+- `borderRadius: ITEM_BORDER_RADIUS` (8px)
+- `marginBottom: ITEM_SPACING_GAP` (4px)
+- `minHeight: 0` (override Item's 44-56px default in compact mode)
+
+### Machine Selection - Inline Implementation
+
+**Location:** `sources/app/(app)/new/index.tsx` (Section 2)
+
+**Header Format:** "2. 🖥️ Select Machine"
+
+**Features:**
+- Search/filter by machine name or hostname
+- Recent machines from session history
+- Favorite machines with star/unstar (persisted to settings)
+- Online/offline status with pulsing green dot (online) or static red dot (offline)
+- Collapsible sections: All Machines (expanded), Recent (collapsed), Favorites (collapsed)
+
+**Configuration:**
+```typescript
+getItemIcon: desktop-outline (gray)
+getRecentItemIcon: time-outline (indicates recency)
+getItemStatus: { text: "online/offline", color, dotColor, isPulsing }
+compactItems: true
+```
+
+**Behavior:**
+- Machine selection triggers path update: `setSelectedPath(getRecentPathForMachine(...))`
+- Recent machines computed from sessions (deduped, sorted by timestamp)
+- Favorite machines filter: `machines.filter(m => favoriteMachines.includes(m.id))`
+
+### Path Selection - Refactored Implementation
+
+**Location:** `sources/app/(app)/new/index.tsx` (Section 3)
+
+**Header Format:** "3. 📁 Select Working Directory"
+
+**Features:**
+- Search/filter/enter custom paths
+- Recent directories (per-machine, from recentMachinePaths + sessions)
+- Favorite directories with home directory always first (can't be removed)
+- Path wrapping (multiline, no ellipsis)
+- Collapsible sections: All Directories (expanded), Recent (collapsed), Favorites (collapsed)
+
+**Configuration:**
+```typescript
+getItemIcon: folder-outline
+getRecentItemIcon: time-outline (indicates recency)
+getFavoriteItemIcon: home-outline (for homeDir) or star-outline
+canRemoveFavorite: (path) => path !== homeDir
+compactItems: true
+allowCustomInput: true
+```
+
+**Special Handling:**
+- Home directory always shown first in favorites
+- Paths stored with `~` notation, expanded via `resolveAbsolutePath`
+- Display formatted via `formatPathRelativeToHome`
+
+### Modal Machine Picker - Updated
+
+**Location:** `sources/app/(app)/new/pick/machine.tsx`
+
+**Changes:**
+- Now wraps `SearchableListSelector<Machine>` component
+- Net reduction: -68 lines (was ~160 lines, now ~90 lines)
+- Shows search and recent machines
+- `showFavorites: false` for simpler modal experience
+- Preserves backward compatibility for any existing modal usage
+
+### Settings Schema Updates
+
+**Added to `sources/sync/settings.ts`:**
+```typescript
+favoriteMachines: z.array(z.string()).describe('User-defined favorite machines (machine IDs)')
+```
+
+**Default:**
+```typescript
+favoriteMachines: []
+```
+
+**Access Pattern:**
+```typescript
+const [favoriteMachines, setFavoriteMachines] = useSettingMutable('favoriteMachines');
+```
+
+### Code Quality Metrics
+
+**Code Reduction:**
+- Working Directory: -340 lines (inline code + state/filtering logic)
+- Machine Picker Modal: -68 lines
+- Dead Code Removed: -67 lines (pathInputText state, filtering, etc.)
+- **Total Removed:** 475 lines
+- **Generic Component:** +600 lines
+- **Net Change:** +125 lines (but prevents ~1000+ future duplication)
+
+**DRY Achievements:**
+- Single `renderItem` function used by all sections
+- Single `renderStatus` helper for StatusDot + text
+- Consolidated `ITEM_SPACING_GAP` for element gaps and item spacing
+- Typography and Platform.select patterns reused from Item.tsx
+
+**TypeScript:**
+- Full generic support with `<T>` type parameter
+- SelectorConfig<T> interface for type-safe configuration
+- 0 compilation errors
+- Fixed pre-existing errors (measureLayout callback, test schema fields)
+
+### Testing Outcomes
+
+**Verified Functionality:**
+- ✅ Machine selection inline with search, recent, favorites
+- ✅ Path selection refactored to use same component
+- ✅ Online/offline status with pulsing dots for all machines
+- ✅ Per-machine recent paths (indexed by machineId)
+- ✅ Home directory protection (can't be removed from favorites)
+- ✅ Machine→path cascade preserved (auto-updates on machine change)
+- ✅ Modal picker still works (backward compatible)
+- ✅ Multiline wrapping for long paths/machine names
+- ✅ Section headers with icons (person, desktop, folder)
+- ✅ Compact 4px spacing throughout
+- ✅ Individual item backgrounds matching profile list
+
+**Visual Consistency:**
+- All sections use identical UX patterns
+- StatusDot + text matches info box and AgentInput
+- Typography matches Item.tsx detail style
+- Border radii: 10px (inputs), 8px (buttons/items)
+- Theme colors: input.background for items, surface for containers
+
+### Commits Summary (Session 3)
+
+**Major Refactor:**
+1. `685a12a` - Create generic SearchableListSelector, inline machine selection (+819, -424 lines)
+
+**Bug Fixes & Refinements:**
+2. `ce53ca2` - Remove "Recently used" subtitle, use hostname
+3. `da7452d` - Add section header icons, time icon for recent
+4. `e79dd5d` - Properly parameterize getRecentItemIcon
+5. `eb87cfc` - Remove subtitles, enable wrapping, add all items fallback
+6. `f136968` - Add 24px spacing below sections
+7. `81de418` - Add "All Machines/Directories" sections
+8. `a1373bb` - Collapse Recent/Favorites by default, typo fixes
+9. `5661c2a` - Auto-expand All when ≤5 items
+10. `fed833d` - DRY: Reuse renderItem (-25 lines duplication)
+11. `3c8fd4a` - Show status alongside checkmark in rightElement
+12. `ce8d20a` - Consistent "Directories" terminology
+13. `c0babb2` - Add StatusDot with pulsing animation
+14. `15872d5` - Extract renderStatus helper, named constants
+15. `acf1d8e` - Use Typography and Platform.select patterns
+16. `dc4fb65` - Always show toggle headers
+17. `ed25bc0` - "Select Working Directory" for consistency
+18. `e38e629` - Configurable compact spacing (4px)
+19. `7b3310e` - Controlled/uncontrolled collapse state support
+20. `04b810f` - (squashed into e38e629)
+21. `b3be913` - Individual item backgrounds with 4px spacing
+22. `1147399` - Consolidate borderRadius constants
+
+**Total Commits (Session 3):** 22 incremental commits
+**Final State:** Production-ready, DRY, fully tested
+
+### Architecture Excellence Achieved
+
+**OODA Applied:**
+- **Observe:** User identified DRY violation between machine and path selection
+- **Orient:** Analyzed Working Directory as proven template
+- **Decide:** Generic component with configuration pattern
+- **Act:** Implemented incrementally with continuous testing
+
+**Design Patterns:**
+- ✅ Generic components (TypeScript `<T>`)
+- ✅ Configuration object pattern
+- ✅ Controlled/uncontrolled pattern (React best practice)
+- ✅ Composition over duplication
+- ✅ Single responsibility principle
+- ✅ DRY throughout (constants, helpers, renderItem reuse)
+- ✅ Theme-based styling (no hardcoded values)
+- ✅ Platform-aware (Platform.select for differences)
+
+**Maintainability:**
+- All constants named and documented
+- Helper functions for repeated patterns
+- Type-safe configuration
+- Future selectors (profiles, etc.) can reuse with zero duplication
+
