@@ -324,7 +324,7 @@ export function EnvironmentVariableCard({
                 Session will receive: {variable.name} = {
                     isSecret
                         ? (useRemoteVariable && remoteVariableName
-                            ? `(from ${remoteVariableName} - hidden for security)`
+                            ? `\${${remoteVariableName}${defaultValue ? `:-***` : ''}} - hidden for security`
                             : (defaultValue ? '***hidden***' : '(empty)'))
                         : (useRemoteVariable && remoteValue !== undefined && remoteValue !== null
                             ? remoteValue
