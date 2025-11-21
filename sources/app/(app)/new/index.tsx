@@ -1293,7 +1293,7 @@ function NewSessionWizard() {
                                             color={theme.colors.textSecondary}
                                         />
                                     ),
-                                    getRecentItemIcon: () => (
+                                    getRecentItemIcon: (machine) => (
                                         <Ionicons
                                             name="time-outline"
                                             size={24}
@@ -1372,6 +1372,13 @@ function NewSessionWizard() {
                                         return displayPath.split('/').pop() || displayPath;
                                     },
                                     getItemIcon: (path) => (
+                                        <Ionicons
+                                            name="folder-outline"
+                                            size={24}
+                                            color={theme.colors.textSecondary}
+                                        />
+                                    ),
+                                    getRecentItemIcon: (path) => (
                                         <Ionicons
                                             name="time-outline"
                                             size={24}

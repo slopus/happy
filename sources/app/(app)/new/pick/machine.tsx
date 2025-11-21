@@ -117,7 +117,7 @@ export default function MachinePickerScreen() {
                                 color={theme.colors.textSecondary}
                             />
                         ),
-                        getRecentItemIcon: () => (
+                        getRecentItemIcon: (machine) => (
                             <Ionicons
                                 name="time-outline"
                                 size={24}
