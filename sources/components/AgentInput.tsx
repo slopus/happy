@@ -46,6 +46,10 @@ interface AgentInputProps {
         color: string;
         dotColor: string;
         isPulsing?: boolean;
+        cliStatus?: {
+            claude: boolean | null;
+            codex: boolean | null;
+        };
     };
     autocompletePrefixes: string[];
     autocompleteSuggestions: (query: string) => Promise<{ key: string, text: string, component: React.ElementType }[]>;
@@ -711,22 +715,68 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                         paddingBottom: 4,
                         minHeight: 20, // Fixed minimum height to prevent jumping
                     }}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 11 }}>
                             {props.connectionStatus && (
                                 <>
-                                    <StatusDot
-                                        color={props.connectionStatus.dotColor}
-                                        isPulsing={props.connectionStatus.isPulsing}
-                                        size={6}
-                                        style={{ marginRight: 6 }}
-                                    />
-                                    <Text style={{
-                                        fontSize: 11,
-                                        color: props.connectionStatus.color,
-                                        ...Typography.default()
-                                    }}>
-                                        {props.connectionStatus.text}
-                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                        <StatusDot
+                                            color={props.connectionStatus.dotColor}
+                                            isPulsing={props.connectionStatus.isPulsing}
+                                            size={6}
+                                        />
+                                        <Text style={{
+                                            fontSize: 11,
+                                            color: props.connectionStatus.color,
+                                            ...Typography.default()
+                                        }}>
+                                            {props.connectionStatus.text}
+                                        </Text>
+                                    </View>
+                                    {/* CLI Status - only shown when provided (wizard only) */}
+                                    {props.connectionStatus.cliStatus && (
+                                        <>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                <Text style={{
+                                                    fontSize: 11,
+                                                    color: props.connectionStatus.cliStatus.claude
+                                                        ? theme.colors.success
+                                                        : theme.colors.textDestructive,
+                                                    ...Typography.default()
+                                                }}>
+                                                    {props.connectionStatus.cliStatus.claude ? '✓' : '✗'}
+                                                </Text>
+                                                <Text style={{
+                                                    fontSize: 11,
+                                                    color: props.connectionStatus.cliStatus.claude
+                                                        ? theme.colors.success
+                                                        : theme.colors.textDestructive,
+                                                    ...Typography.default()
+                                                }}>
+                                                    claude
+                                                </Text>
+                                            </View>
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                                                <Text style={{
+                                                    fontSize: 11,
+                                                    color: props.connectionStatus.cliStatus.codex
+                                                        ? theme.colors.success
+                                                        : theme.colors.textDestructive,
+                                                    ...Typography.default()
+                                                }}>
+                                                    {props.connectionStatus.cliStatus.codex ? '✓' : '✗'}
+                                                </Text>
+                                                <Text style={{
+                                                    fontSize: 11,
+                                                    color: props.connectionStatus.cliStatus.codex
+                                                        ? theme.colors.success
+                                                        : theme.colors.textDestructive,
+                                                    ...Typography.default()
+                                                }}>
+                                                    codex
+                                                </Text>
+                                            </View>
+                                        </>
+                                    )}
                                 </>
                             )}
                             {contextWarning && (

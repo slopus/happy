@@ -92,6 +92,7 @@ const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ 
 
 // Configuration constants
 const RECENT_PATHS_DEFAULT_VISIBLE = 5;
+const STATUS_ITEM_GAP = 11; // Spacing between status items (machine, CLI) - ~2 character spaces at 11px font
 
 const styles = StyleSheet.create((theme, rt) => ({
     container: {
@@ -915,13 +916,21 @@ function NewSessionWizard() {
     const connectionStatus = React.useMemo(() => {
         if (!selectedMachine) return undefined;
         const isOnline = isMachineOnline(selectedMachine);
+
+        // Include CLI status only when in wizard AND detection completed
+        const includeCLI = selectedMachineId && cliAvailability.timestamp > 0;
+
         return {
             text: isOnline ? 'online' : 'offline',
             color: isOnline ? theme.colors.success : theme.colors.textDestructive,
             dotColor: isOnline ? theme.colors.success : theme.colors.textDestructive,
             isPulsing: isOnline,
+            cliStatus: includeCLI ? {
+                claude: cliAvailability.claude,
+                codex: cliAvailability.codex,
+            } : undefined,
         };
-    }, [selectedMachine, theme]);
+    }, [selectedMachine, selectedMachineId, cliAvailability, theme]);
 
     return (
         <KeyboardAvoidingView
@@ -963,10 +972,10 @@ function NewSessionWizard() {
                                     marginBottom: 12,
                                     flexDirection: 'row',
                                     alignItems: 'center',
-                                    gap: 9,
+                                    gap: STATUS_ITEM_GAP,
                                 }}>
                                     <Ionicons name="information-circle-outline" size={16} color={theme.colors.textSecondary} />
-                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9, flexWrap: 'wrap' }}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: STATUS_ITEM_GAP, flexWrap: 'wrap' }}>
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
                                             {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}:
                                         </Text>
