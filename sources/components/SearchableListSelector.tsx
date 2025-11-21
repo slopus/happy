@@ -201,8 +201,9 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         return '';
     });
     const [showAllRecent, setShowAllRecent] = React.useState(false);
-    const [showRecentSection, setShowRecentSection] = React.useState(true);
-    const [showFavoritesSection, setShowFavoritesSection] = React.useState(true);
+    const [showRecentSection, setShowRecentSection] = React.useState(false);
+    const [showFavoritesSection, setShowFavoritesSection] = React.useState(false);
+    const [showAllItemsSection, setShowAllItemsSection] = React.useState(true);
 
     // Track if user is actively typing (vs clicking from list) to control expansion behavior
     const isUserTyping = React.useRef(false);
@@ -537,56 +538,59 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
             {/* All Items Section - always shown when items provided */}
             {items.length > 0 && (
                 <>
-                    {(showRecent && recentItems.length > 0) || (showFavorites && favoriteItems.length > 0) ? (
-                        <Pressable
-                            style={styles.sectionHeader}
-                            onPress={() => setShowRecentSection(!showRecentSection)}
-                        >
-                            <Text style={styles.sectionHeaderText}>All {config.recentSectionTitle.replace('Recent ', '')}</Text>
-                            <Ionicons
-                                name={showRecentSection ? "chevron-up" : "chevron-down"}
-                                size={20}
-                                color={theme.colors.text}
-                            />
-                        </Pressable>
-                    ) : null}
-                    <ItemGroup title="">
-                        {items.map((item, index) => {
-                        const itemId = config.getItemId(item);
-                        const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
-                        const isSelected = itemId === selectedId;
-                        const isLast = index === items.length - 1;
+                    <Pressable
+                        style={styles.sectionHeader}
+                        onPress={() => setShowAllItemsSection(!showAllItemsSection)}
+                    >
+                        <Text style={styles.sectionHeaderText}>
+                            {config.recentSectionTitle.replace('Recent ', 'All ')}
+                        </Text>
+                        <Ionicons
+                            name={showAllItemsSection ? "chevron-up" : "chevron-down"}
+                            size={20}
+                            color={theme.colors.text}
+                        />
+                    </Pressable>
 
-                        const title = config.getItemTitle(item);
-                        const subtitle = config.getItemSubtitle?.(item);
-                        const icon = config.getItemIcon(item);
-                        const status = config.getItemStatus?.(item, theme);
+                    {showAllItemsSection && (
+                        <ItemGroup title="">
+                            {items.map((item, index) => {
+                                const itemId = config.getItemId(item);
+                                const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
+                                const isSelected = itemId === selectedId;
+                                const isLast = index === items.length - 1;
 
-                        return (
-                            <Item
-                                key={itemId}
-                                title={title}
-                                subtitle={subtitle}
-                                subtitleLines={0}
-                                leftElement={icon}
-                                rightElement={isSelected ? (
-                                    <Ionicons
-                                        name="checkmark-circle"
-                                        size={20}
-                                        color={theme.colors.button.primary.tint}
+                                const title = config.getItemTitle(item);
+                                const subtitle = config.getItemSubtitle?.(item);
+                                const icon = config.getItemIcon(item);
+                                const status = config.getItemStatus?.(item, theme);
+
+                                return (
+                                    <Item
+                                        key={itemId}
+                                        title={title}
+                                        subtitle={subtitle}
+                                        subtitleLines={0}
+                                        leftElement={icon}
+                                        rightElement={isSelected ? (
+                                            <Ionicons
+                                                name="checkmark-circle"
+                                                size={20}
+                                                color={theme.colors.button.primary.tint}
+                                            />
+                                        ) : null}
+                                        detail={status?.text}
+                                        detailStyle={status ? { color: status.color } : undefined}
+                                        onPress={() => handleSelectItem(item)}
+                                        showChevron={false}
+                                        selected={isSelected}
+                                        showDivider={!isLast}
+                                        style={isSelected ? styles.selectedItemStyle : undefined}
                                     />
-                                ) : null}
-                                detail={status?.text}
-                                detailStyle={status ? { color: status.color } : undefined}
-                                onPress={() => handleSelectItem(item)}
-                                showChevron={false}
-                                selected={isSelected}
-                                showDivider={!isLast}
-                                style={isSelected ? styles.selectedItemStyle : undefined}
-                            />
-                        );
-                        })}
-                    </ItemGroup>
+                                );
+                            })}
+                        </ItemGroup>
+                    )}
                 </>
             )}
         </>
