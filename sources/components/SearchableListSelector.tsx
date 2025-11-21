@@ -81,6 +81,8 @@ export interface SearchableListSelectorProps<T> {
 }
 
 const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
+const STATUS_GAP = 4; // Gap between StatusDot and text (matches existing pattern)
+const RIGHT_ELEMENT_GAP = 8; // Gap between status, checkmark, actions
 
 const stylesheet = StyleSheet.create((theme) => ({
     inputContainer: {
@@ -317,6 +319,23 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
         );
     };
 
+    // Render status with StatusDot (DRY helper)
+    const renderStatus = (status: { text: string; color: string; dotColor: string; isPulsing?: boolean } | null | undefined) => {
+        if (!status) return null;
+        return (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: STATUS_GAP }}>
+                <StatusDot
+                    color={status.dotColor}
+                    isPulsing={status.isPulsing}
+                    size={6}
+                />
+                <Text style={{ fontSize: 17, letterSpacing: -0.41, color: status.color }}>
+                    {status.text}
+                </Text>
+            </View>
+        );
+    };
+
     // Render individual item (for recent items)
     const renderItem = (item: T, isSelected: boolean, isLast: boolean, showDividerOverride?: boolean, forRecent = false) => {
         const itemId = config.getItemId(item);
@@ -337,22 +356,8 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 subtitleLines={0}
                 leftElement={icon}
                 rightElement={
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                        {status && (
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                <StatusDot
-                                    color={status.dotColor}
-                                    isPulsing={status.isPulsing}
-                                    size={6}
-                                />
-                                <Text style={[
-                                    { fontSize: 17, letterSpacing: -0.41 },
-                                    { color: status.color }
-                                ]}>
-                                    {status.text}
-                                </Text>
-                            </View>
-                        )}
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: RIGHT_ELEMENT_GAP }}>
+                        {renderStatus(status)}
                         {isSelected && (
                             <Ionicons
                                 name="checkmark-circle"
@@ -519,22 +524,8 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                         subtitleLines={0}
                                         leftElement={icon}
                                         rightElement={
-                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                                {status && (
-                                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
-                                                        <StatusDot
-                                                            color={status.dotColor}
-                                                            isPulsing={status.isPulsing}
-                                                            size={6}
-                                                        />
-                                                        <Text style={[
-                                                            { fontSize: 17, letterSpacing: -0.41 },
-                                                            { color: status.color }
-                                                        ]}>
-                                                            {status.text}
-                                                        </Text>
-                                                    </View>
-                                                )}
+                                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: RIGHT_ELEMENT_GAP }}>
+                                                {renderStatus(status)}
                                                 {isSelected && (
                                                     <Ionicons
                                                         name="checkmark-circle"
