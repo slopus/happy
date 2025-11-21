@@ -104,8 +104,8 @@ export const SessionView = React.memo((props: { id: string }) => {
                 }} />
             )}
 
-            {/* Header - always shown, hidden in landscape mode on phone */}
-            {!(isLandscape && deviceType === 'phone') && (
+            {/* Header - always shown on desktop/Mac, hidden in landscape mode only on actual phones */}
+            {!(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') && (
                 <View style={{
                     position: 'absolute',
                     top: 0,
@@ -121,7 +121,7 @@ export const SessionView = React.memo((props: { id: string }) => {
             )}
 
             {/* Content based on state */}
-            <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone') ? safeArea.top + headerHeight : 0 }}>
+            <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone' && Platform.OS !== 'web') ? safeArea.top + headerHeight : 0 }}>
                 {!isDataReady ? (
                     // Loading state
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
