@@ -534,10 +534,24 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 </>
             )}
 
-            {/* All Items Section - shown when items list provided and not filtered by recent/favorites */}
-            {items.length > 0 && (recentItems.length === 0 && favoriteItems.length === 0) && (
-                <ItemGroup title="">
-                    {items.map((item, index) => {
+            {/* All Items Section - always shown when items provided */}
+            {items.length > 0 && (
+                <>
+                    {(showRecent && recentItems.length > 0) || (showFavorites && favoriteItems.length > 0) ? (
+                        <Pressable
+                            style={styles.sectionHeader}
+                            onPress={() => setShowRecentSection(!showRecentSection)}
+                        >
+                            <Text style={styles.sectionHeaderText}>All {config.recentSectionTitle.replace('Recent ', '')}</Text>
+                            <Ionicons
+                                name={showRecentSection ? "chevron-up" : "chevron-down"}
+                                size={20}
+                                color={theme.colors.text}
+                            />
+                        </Pressable>
+                    ) : null}
+                    <ItemGroup title="">
+                        {items.map((item, index) => {
                         const itemId = config.getItemId(item);
                         const selectedId = selectedItem ? config.getItemId(selectedItem) : null;
                         const isSelected = itemId === selectedId;
@@ -571,8 +585,9 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                 style={isSelected ? styles.selectedItemStyle : undefined}
                             />
                         );
-                    })}
-                </ItemGroup>
+                        })}
+                    </ItemGroup>
+                </>
             )}
         </>
     );
