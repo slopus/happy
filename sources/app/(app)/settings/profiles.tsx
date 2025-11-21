@@ -359,7 +359,7 @@ function ProfileManager({ onProfileSelect, selectedProfileId }: ProfileManagerPr
                                     onPress={() => handleDeleteProfile(profile)}
                                     style={{ marginLeft: 16 }}
                                 >
-                                    <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                                    <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
                                 </Pressable>
                             </View>
                         </Pressable>

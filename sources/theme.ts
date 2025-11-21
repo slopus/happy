@@ -12,6 +12,7 @@ export const lightTheme = {
         textDestructive: Platform.select({ ios: '#FF3B30', default: '#F44336' }),
         textSecondary: Platform.select({ ios: '#8E8E93', default: '#49454F' }),
         textLink: '#2BACCC',
+        deleteAction: '#FF6B6B', // Delete/remove button color
         warningCritical: '#FF3B30',
         warning: '#8E8E93',
         success: '#34C759',
@@ -218,6 +219,7 @@ export const darkTheme = {
         textDestructive: Platform.select({ ios: '#FF453A', default: '#F48FB1' }),
         textSecondary: Platform.select({ ios: '#8E8E93', default: '#CAC4D0' }),
         textLink: '#2BACCC',
+        deleteAction: '#FF6B6B', // Delete/remove button color (same in both themes)
         warningCritical: '#FF453A',
         warning: '#8E8E93',
         success: '#32D74B',

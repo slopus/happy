@@ -1193,7 +1193,7 @@ function NewSessionWizard() {
                                                     handleDeleteProfile(profile);
                                                 }}
                                             >
-                                                <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
+                                                <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
                                             </Pressable>
                                             <Pressable
                                                 hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -1300,8 +1300,8 @@ function NewSessionWizard() {
                                     onPress={() => selectedProfile && !selectedProfile.isBuiltIn && handleDeleteProfile(selectedProfile)}
                                     disabled={!selectedProfile || selectedProfile.isBuiltIn}
                                 >
-                                    <Ionicons name="trash-outline" size={20} color="#FF6B6B" />
-                                    <Text style={[styles.addProfileButtonText, { color: '#FF6B6B' }]}>
+                                    <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
+                                    <Text style={[styles.addProfileButtonText, { color: theme.colors.deleteAction }]}>
                                         Delete
                                     </Text>
                                 </Pressable>

@@ -206,99 +206,94 @@ fontSize: 11  // Descriptions, status text, expected/actual values
 - Font size: `11`
 - Soft, informational, not alarming
 
-### CRUD Operations (Matches Profile List Pattern from index.tsx:1159-1260)
+### CRUD Operations
 
-#### **List View: All Environment Variables (Collapsed State)**
+**DESIGN DECISION: All Variables Editable By Default (No Collapse/Expand)**
+
+User is already in "Edit Profile" mode - adding another layer of "view → edit" is redundant and violates "Easy to Use Correctly" principle. All environment variables shown in fully editable state by default.
+
+#### **Variable Card (All Editable By Default)**
+
+Matches profile list pattern (index.tsx:1163-1217) but all fields editable since user is already in Edit Profile mode:
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│ Environment Variables                                        │
-├─────────────────────────────────────────────────────────────┤
-│                                                              │
-│ [Icon] [+] Add Variable                                     │
-│  (Black button, matches profile list add button pattern)    │
-│                                                              │
-│ ┌──────────────────────────────────────────────────────────┐│
-│ │ ANTHROPIC_MODEL              [Delete][Duplicate][Edit] ││
-│ │ Which model Claude CLI will use                        ││
-│ │                                                          ││
-│ │ ✓ Value found: GLM-4.6                                  ││
-│ │ Session receives: ANTHROPIC_MODEL = GLM-4.6             ││
-│ └──────────────────────────────────────────────────────────┘│
-│                                                              │
-│ ┌──────────────────────────────────────────────────────────┐│
-│ │ ANTHROPIC_BASE_URL           [Delete][Duplicate][Edit] ││
-│ │ API endpoint                                            ││
-│ │                                                          ││
-│ │ ✓ Value found: https://api.z.ai/api/anthropic          ││
-│ │ Session receives: ANTHROPIC_BASE_URL = https://...     ││
-│ └──────────────────────────────────────────────────────────┘│
-│                                                              │
-│ ... 5 more variables ...                                    │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────┐
+│ ANTHROPIC_MODEL                    [Delete] [Duplicate]  │
+│ Model that Claude CLI will use                          │
+│                                                           │
+│ ☑ First try copying variable from remote machine:       │
+│ ┌───────────────────────────────────────────────┐       │
+│ │ Z_AI_MODEL                                    │       │
+│ └───────────────────────────────────────────────┘       │
+│ ✓ Value found: GLM-4.6                                  │
+│                                                           │
+│ Default value:                                           │
+│ ┌───────────────────────────────────────────────┐       │
+│ │ GLM-4.6                                       │       │
+│ └───────────────────────────────────────────────┘       │
+│                                                           │
+│ Session will receive: ANTHROPIC_MODEL = GLM-4.6          │
+└──────────────────────────────────────────────────────────┘
 ```
 
-**Styling (matches profile list at index.tsx:1163-1178, 1189-1215):**
-- Container: `backgroundColor: theme.colors.input.background`, `borderRadius: 12`, `padding: 16`, `marginBottom: 12`
-- Name: `fontSize: 16`, `fontWeight: '600'` (matches profileListName style)
-- Description: `fontSize: 14`, `color: theme.colors.textSecondary` (matches profileListDetails)
-- Status text: `fontSize: 11`, `color: theme.colors.success/warning/textDestructive`
-- Action buttons (right-aligned, gap: 12):
-  - Delete: `trash-outline` icon, `size: 20`, `color: #FF6B6B`
-  - Duplicate: `copy-outline` icon, `size: 20`, `color: theme.colors.button.secondary.tint`
-  - Edit: `create-outline` icon, `size: 20`, `color: theme.colors.button.secondary.tint`
-  - All buttons have `hitSlop: { top: 10, bottom: 10, left: 10, right: 10 }`
-
-#### **Edit Mode: Inline Expanded Card**
-User clicks [Edit] button → Card expands **in place** (inline, not modal) showing full configuration UI (States 1-8 above)
-
-**Expansion Behavior:**
-- Collapsed card height: ~100px (name, description, status, buttons)
-- Expanded card height: ~350px (adds checkbox, 2 input fields, warnings, preview)
-- Smooth height transition (no jarring layout shifts)
-- Other cards stay in place (don't jump around)
-- Only one card can be expanded at a time (clicking Edit on another collapses current)
-
-**Action Buttons in Expanded Edit Card:**
-- **Header (top right):** [Delete] [Cancel] buttons
-  - Delete: `trash-outline`, `size: 20`, `color: #FF6B6B` (hardcoded, matches existing pattern at index.tsx:1196)
-  - Cancel: `close-outline`, `size: 20`, `color: theme.colors.button.secondary.tint`
-  - gap: `12` between buttons
-  - `hitSlop: { top: 10, bottom: 10, left: 10, right: 10 }`
-
-- **Footer (bottom):** [Save] button
-  - Primary button styling: `backgroundColor: theme.colors.button.primary.background`
-  - Text: `fontSize: 16`, `fontWeight: '600'`, `color: theme.colors.button.primary.tint`
-  - `borderRadius: 8`, `padding: 12`
-
-**IMPORTANT - Color Variables to Use in Implementation:**
+**Card Styling (matches profile list at index.tsx:1163-1178):**
 ```typescript
-// Status indicators
-theme.colors.success           // ✓ Value found
-theme.colors.warning           // ✗ Value not found (gray, same as textSecondary)
-theme.colors.textSecondary     // ⚠️ Warning text (muted gray)
-theme.colors.textDestructive   // Mismatch errors (red)
-
-// Text
-theme.colors.text              // Primary text (variable names, labels)
-theme.colors.textSecondary     // Descriptions, secondary text
-
-// Buttons
-theme.colors.button.primary.background  // Save button background
-theme.colors.button.primary.tint        // Save button text
-theme.colors.button.secondary.tint      // Edit/Duplicate/Cancel icons
-
-// Backgrounds
-theme.colors.input.background  // Card backgrounds, input fields
-theme.colors.surface           // Input field backgrounds (lighter)
-theme.colors.surfacePressed    // Code examples
-
-// Exception: Delete button color
-#FF6B6B  // Hardcoded across codebase - matches index.tsx:1196, profiles.tsx:362
-         // NOTE: Avoid using theme variable for this - use literal #FF6B6B for consistency
+backgroundColor: theme.colors.input.background  // #F5F5F5
+borderRadius: 12
+padding: 16
+marginBottom: 12
+flexDirection: 'column'  // Vertical layout for form fields
 ```
 
-#### **Add Mode: Inline Form (Matches Existing Pattern)**
+**Action Buttons (top right corner, matches index.tsx:1185-1216):**
+```typescript
+// Container for buttons
+flexDirection: 'row'
+alignItems: 'center'
+gap: 12
+// Position at top right of card
+
+// Delete button
+<Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
+hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+
+// Duplicate button
+<Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
+hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+```
+
+**No [Edit] button** - everything is already editable!
+
+**Typography:**
+- Variable name (ANTHROPIC_MODEL): `fontSize: 12`, `fontWeight: '600'`, `color: theme.colors.text`
+- Description: `fontSize: 11`, `color: theme.colors.textSecondary`
+- Labels ("First try copying...", "Default value:"): `fontSize: 11`, `color: theme.colors.textSecondary`
+- Input fields: `fontSize: 14`, `backgroundColor: theme.colors.surface`, `borderRadius: 10`
+- Status text: `fontSize: 11`, `color: theme.colors.success/warning/textSecondary`
+
+#### **[+] Add Variable Button (Top of Section)**
+
+Matches profile list "Add Profile" button pattern (index.tsx:1269-1308):
+```typescript
+<Pressable style={{
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.button.primary.background,
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+}}>
+    <Ionicons name="add" size={16} color={theme.colors.button.primary.tint} />
+    <Text style={{
+        fontSize: 13,
+        fontWeight: '600',
+        color: theme.colors.button.primary.tint,
+    }}>Add Variable</Text>
+</Pressable>
+```
+
+#### **Add Mode: Inline Form**
 User clicks [+] Add Variable → Inline form appears (existing implementation at ProfileEditForm.tsx:1086-1170):
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -468,22 +463,207 @@ const showDefaultOverrideWarning =
 4. **No Schema Changes:** Uses existing `environmentVariables` array structure
 5. **Backward Compatible:** Existing profiles continue to work
 
-## Files to Modify
+## Component Architecture (DRY - Matches Profile List Pattern)
 
-### 1. `sources/components/ProfileEditForm.tsx`
+### Rendering Pattern: Simple Array Map
+
+**Matches profile list implementation** (index.tsx:1159-1219):
+```typescript
+environmentVariables.map((envVar, index) => (
+    <EnvironmentVariableCard
+        key={index}
+        variable={envVar}
+        machineId={machineId}
+        expectedValue={getExpectedValue(envVar.name)}
+        description={getDescription(envVar.name)}
+        onUpdate={(newValue) => handleUpdateVariable(index, newValue)}
+        onDelete={() => handleDeleteVariable(index)}
+        onDuplicate={() => handleDuplicateVariable(index)}
+    />
+))
+```
+
+**NOT using SearchableListSelector** - Environment variables don't need search/favorites/recent sections like machines/paths do.
+
+### New Component 1: `sources/components/EnvironmentVariablesList.tsx`
+
+**Purpose:** Complete environment variables section with title, add button, and card list
+
+**Props:**
+```typescript
+interface EnvironmentVariablesListProps {
+    environmentVariables: Array<{ name: string; value: string }>;
+    machineId: string | null;
+    profileDocs?: ProfileDocumentation | null;  // For expected values
+    onChange: (newVariables: Array<{ name: string; value: string }>) => void;
+}
+```
+
+**Renders:**
+- Section title
+- [+] Add Variable button
+- Maps over array rendering EnvironmentVariableCard for each
+- Handles add/update/delete/duplicate logic internally
+
+**Usage in ProfileEditForm:**
+```tsx
+<EnvironmentVariablesList
+    environmentVariables={environmentVariables}
+    machineId={machineId}
+    profileDocs={profileDocs}
+    onChange={setEnvironmentVariables}
+/>
+```
+
+### New Component 2: `sources/components/EnvironmentVariableCard.tsx`
+
+**Purpose:** Single variable card (used by EnvironmentVariablesList)
+
+**Props:**
+```typescript
+interface EnvironmentVariableCardProps {
+    variable: { name: string; value: string };
+    machineId: string | null;
+    expectedValue?: string;  // From profile documentation (e.g., "GLM-4.6")
+    description?: string;    // Variable description (e.g., "Default model")
+    onUpdate: (newValue: string) => void;
+    onDelete: () => void;
+    onDuplicate: () => void;
+}
+```
+
+**Card Structure (matches profile list at index.tsx:1163-1217):**
+```typescript
+<View style={{
+    backgroundColor: theme.colors.input.background,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12
+}}>
+    {/* Header row */}
+    <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        <Text style={{ fontSize: 12, fontWeight: '600' }}>{variable.name}</Text>
+        <View style={{ flexDirection: 'row', gap: 12 }}>
+            <Pressable onPress={onDelete}>
+                <Ionicons name="trash-outline" size={20} color={theme.colors.deleteAction} />
+            </Pressable>
+            <Pressable onPress={onDuplicate}>
+                <Ionicons name="copy-outline" size={20} color={theme.colors.button.secondary.tint} />
+            </Pressable>
+        </View>
+    </View>
+
+    {/* Description */}
+    {description && <Text style={{ fontSize: 11, color: theme.colors.textSecondary }}>{description}</Text>}
+
+    {/* Checkbox + inputs + status + warnings */}
+    {/* ... (see Visual Design states above) ... */}
+</View>
+```
+
+**Benefits:**
+- Reusable in other contexts (session settings, daemon config)
+- Self-contained logic (parsing ${VAR}, querying remote, validation)
+- Single responsibility (one variable)
+- Matches existing card pattern (profile list)
+
+### Updated Component: `sources/components/ProfileEditForm.tsx`
+
 **Changes:**
-- Refactor environment variables section to show edit UI
-- Add checkbox for "First try copying variable from remote machine"
-- Add variable name and default value input fields
-- Show remote variable status (✓ found, ✗ not found, ⏳ loading)
-- Show warnings for differs/overriding (muted gray)
-- Add [Edit] button to each variable card
-- Add [+] Add Variable button
-- Add [Delete] button in edit mode
-- Implement parseVariableValue() helper
-- Query remote variables using useEnvironmentVariables()
+- Import EnvironmentVariablesList component
+- Reorder sections: Move Setup Instructions box and Environment Variables to bottom
+- Replace both "Required Environment Variables" (lines 279-422) and "Custom Environment Variables" (lines 894-1100) with single EnvironmentVariablesList component
+- All variables (documented + custom) unified in one editable section
 
-**Lines affected:** ~300-1100 (environment variables display section)
+**New Section Order:**
+1. Profile Name
+2. Base URL (optional)
+3. Model (optional)
+4. Auth Token (optional)
+5. Tmux Configuration (optional)
+6. Startup Bash Script (optional)
+7. **Setup Instructions** (for built-in profiles only - description + docs link, NO env vars)
+8. **Environment Variables** (ALL variables - documented + custom, all editable)
+
+**Section Structure:**
+```tsx
+{/* Environment Variables Section - Inline in ProfileEditForm */}
+<View style={{ marginBottom: 16 }}>
+    {/* Section header */}
+    <Text style={{
+        fontSize: 14,
+        fontWeight: '600',
+        color: theme.colors.text,
+        marginBottom: 12,
+        ...Typography.default('semiBold')
+    }}>
+        Environment Variables
+    </Text>
+
+    {/* Add Variable Button (matches index.tsx Add Profile button) */}
+    <Pressable
+        style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: theme.colors.button.primary.background,
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            paddingVertical: 6,
+            gap: 6,
+            marginBottom: 12
+        }}
+        onPress={handleAddVariable}
+    >
+        <Ionicons name="add" size={16} color={theme.colors.button.primary.tint} />
+        <Text style={{
+            fontSize: 13,
+            fontWeight: '600',
+            color: theme.colors.button.primary.tint,
+            ...Typography.default('semiBold')
+        }}>
+            Add Variable
+        </Text>
+    </Pressable>
+
+    {/* Variable Cards - Simple map (matches profile list pattern) */}
+    {environmentVariables.map((envVar, index) => (
+        <EnvironmentVariableCard
+            key={index}
+            variable={envVar}
+            machineId={machineId}
+            expectedValue={profileDocs?.environmentVariables.find(ev =>
+                ev.name === extractVarNameFromValue(envVar.value))?.expectedValue
+            }
+            description={profileDocs?.environmentVariables.find(ev =>
+                ev.name === extractVarNameFromValue(envVar.value))?.description
+            }
+            onUpdate={(newValue) => {
+                const updated = [...environmentVariables];
+                updated[index] = { ...envVar, value: newValue };
+                setEnvironmentVariables(updated);
+            }}
+            onDelete={() => {
+                setEnvironmentVariables(environmentVariables.filter((_, i) => i !== index));
+            }}
+            onDuplicate={() => {
+                const duplicated = { ...envVar, name: `${envVar.name}_COPY` };
+                setEnvironmentVariables([...environmentVariables, duplicated]);
+            }}
+        />
+    ))}
+</View>
+```
+
+**Lines affected:**
+- New file: `sources/components/EnvironmentVariablesList.tsx` (~200 lines)
+- New file: `sources/components/EnvironmentVariableCard.tsx` (~300 lines)
+- Modified: `sources/components/ProfileEditForm.tsx`:
+  - Lines ~209-278: Keep Setup Instructions box, remove env vars from inside it
+  - Lines ~279-422: Remove "Required Environment Variables" section (replaced by EnvironmentVariablesList)
+  - Lines ~894-1100: Remove "Custom Environment Variables" section (replaced by EnvironmentVariablesList)
+  - Move Setup Instructions box to position 7 (above Environment Variables)
+  - Add EnvironmentVariablesList at position 8 (bottom of form)
+  - Net reduction: ~400 lines removed, replaced with single component call
 
 ### 2. `sources/hooks/useEnvironmentVariables.ts`
 **Changes:**

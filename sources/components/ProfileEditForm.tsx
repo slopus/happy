@@ -1076,7 +1076,7 @@ export function ProfileEditForm({
                                         onPress={() => useCustomEnvVars && handleRemoveEnvVar(key)}
                                         disabled={!useCustomEnvVars}
                                     >
-                                        <Ionicons name="remove-circle" size={20} color="#FF6B6B" />
+                                        <Ionicons name="remove-circle" size={20} color={theme.colors.deleteAction} />
                                     </Pressable>
                                 </View>
                             );
