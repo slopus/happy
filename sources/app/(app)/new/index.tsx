@@ -949,7 +949,7 @@ function NewSessionWizard() {
                                 <Text style={[styles.sectionHeader, { marginBottom: 0, marginTop: 0 }]}>Choose AI Profile</Text>
                             </View>
                             <Text style={styles.sectionDescription}>
-                                Select, create, or edit AI profiles with custom environment variables.
+                                Choose which AI backend runs your session (Claude or Codex). Create custom profiles for alternative APIs.
                             </Text>
 
                             {/* CLI Detection Status Banner - shows after detection completes */}
@@ -964,9 +964,18 @@ function NewSessionWizard() {
                                     gap: 8,
                                 }}>
                                     <Ionicons name="information-circle-outline" size={16} color={theme.colors.textSecondary} />
-                                    <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
-                                        {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}: {cliAvailability.claude ? '✓ Claude' : '✗ Claude'} • {cliAvailability.codex ? '✓ Codex' : '✗ Codex'}
-                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
+                                            {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}:
+                                        </Text>
+                                        <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textSecondary, ...Typography.default() }}>
+                                            {cliAvailability.claude ? '✓' : '✗'} Claude
+                                        </Text>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>•</Text>
+                                        <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textSecondary, ...Typography.default() }}>
+                                            {cliAvailability.codex ? '✓' : '✗'} Codex
+                                        </Text>
+                                    </View>
                                 </View>
                             )}
 
