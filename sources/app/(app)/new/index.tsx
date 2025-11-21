@@ -1409,7 +1409,7 @@ function NewSessionWizard() {
                                                                     }}
                                                                     showChevron={false}
                                                                     selected={isSelected}
-                                                                    showDivider={!isLast || (!pathInputText.trim() && filteredRecentPaths.length > RECENT_PATHS_DEFAULT_VISIBLE)}
+                                                                    showDivider={!isLast || (!(pathInputText.trim() && isUserTyping.current) && !showAllRecentPaths && filteredRecentPaths.length > RECENT_PATHS_DEFAULT_VISIBLE)}
                                                                     style={isSelected ? {
                                                                         borderWidth: 2,
                                                                         borderColor: theme.colors.button.primary.tint,
@@ -1419,7 +1419,7 @@ function NewSessionWizard() {
                                                             );
                                                         })}
 
-                                                        {!pathInputText.trim() && filteredRecentPaths.length > RECENT_PATHS_DEFAULT_VISIBLE && (
+                                                        {!(pathInputText.trim() && isUserTyping.current) && filteredRecentPaths.length > RECENT_PATHS_DEFAULT_VISIBLE && (
                                                             <Item
                                                                 title={showAllRecentPaths ? t('machineLauncher.showLess') : t('machineLauncher.showAll', { count: filteredRecentPaths.length })}
                                                                 onPress={() => setShowAllRecentPaths(!showAllRecentPaths)}
