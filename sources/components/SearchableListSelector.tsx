@@ -46,7 +46,7 @@ export interface SelectorConfig<T> {
     allowCustomInput?: boolean;
 
     // Item subtitle override (for recent items, e.g., "Recently used")
-    getRecentItemSubtitle?: (item: T) => string;
+    getRecentItemSubtitle?: (item: T) => string | undefined;
 
     // Custom icon for favorite items (e.g., home directory uses home-outline instead of star-outline)
     getFavoriteItemIcon?: (item: T) => React.ReactNode;

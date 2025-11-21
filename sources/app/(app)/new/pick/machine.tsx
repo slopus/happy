@@ -144,7 +144,11 @@ export default function MachinePickerScreen() {
                         showRecent: true,
                         showSearch: true,
                         allowCustomInput: false,
-                        getRecentItemSubtitle: () => "Recently used",
+                        getRecentItemSubtitle: (machine) => {
+                            const name = machine.metadata?.displayName;
+                            const host = machine.metadata?.host;
+                            return name !== host ? host : undefined;
+                        },
                     }}
                     items={machines}
                     recentItems={recentMachines}

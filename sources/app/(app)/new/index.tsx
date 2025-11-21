@@ -1286,7 +1286,7 @@ function NewSessionWizard() {
                                         <Ionicons
                                             name="desktop-outline"
                                             size={24}
-                                            color={isMachineOnline(machine) ? theme.colors.text : theme.colors.textSecondary}
+                                            color={theme.colors.textSecondary}
                                         />
                                     ),
                                     getItemStatus: (machine) => {
@@ -1316,7 +1316,11 @@ function NewSessionWizard() {
                                     showRecent: true,
                                     showSearch: true,
                                     allowCustomInput: false,
-                                    getRecentItemSubtitle: () => "Recently used",
+                                    getRecentItemSubtitle: (machine) => {
+                                        const name = machine.metadata?.displayName;
+                                        const host = machine.metadata?.host;
+                                        return name !== host ? host : undefined;
+                                    },
                                 }}
                                 items={machines}
                                 recentItems={recentMachines}
@@ -1386,7 +1390,6 @@ function NewSessionWizard() {
                                     showRecent: true,
                                     showSearch: true,
                                     allowCustomInput: true,
-                                    getRecentItemSubtitle: () => "Recently used",
                                 }}
                                 items={recentPaths}
                                 recentItems={recentPaths}
