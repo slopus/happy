@@ -915,9 +915,9 @@ function NewSessionWizard() {
         if (!selectedMachine) return undefined;
         const isOnline = isMachineOnline(selectedMachine);
         return {
-            text: isOnline ? t('common.status.online') : t('common.status.offline'),
-            color: isOnline ? theme.colors.success : theme.colors.textSecondary,
-            dotColor: isOnline ? theme.colors.success : theme.colors.textSecondary,
+            text: isOnline ? 'Online' : 'Offline',
+            color: isOnline ? theme.colors.success : theme.colors.error,
+            dotColor: isOnline ? theme.colors.success : theme.colors.error,
             isPulsing: isOnline,
         };
     }, [selectedMachine, theme]);
@@ -968,11 +968,15 @@ function NewSessionWizard() {
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>
                                             {selectedMachine.metadata?.displayName || selectedMachine.metadata?.host || 'Machine'}:
                                         </Text>
-                                        <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.textSecondary, ...Typography.default() }}>
+                                        <Text style={{ fontSize: 11, color: isMachineOnline(selectedMachine) ? theme.colors.success : theme.colors.error, ...Typography.default() }}>
+                                            {isMachineOnline(selectedMachine) ? 'Online' : 'Offline'}
+                                        </Text>
+                                        <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>•</Text>
+                                        <Text style={{ fontSize: 11, color: cliAvailability.claude ? theme.colors.success : theme.colors.error, ...Typography.default() }}>
                                             {cliAvailability.claude ? '✓' : '✗'} Claude
                                         </Text>
                                         <Text style={{ fontSize: 11, color: theme.colors.textSecondary, ...Typography.default() }}>•</Text>
-                                        <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.textSecondary, ...Typography.default() }}>
+                                        <Text style={{ fontSize: 11, color: cliAvailability.codex ? theme.colors.success : theme.colors.error, ...Typography.default() }}>
                                             {cliAvailability.codex ? '✓' : '✗'} Codex
                                         </Text>
                                     </View>
