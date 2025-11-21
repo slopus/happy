@@ -7,10 +7,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Development
 - `yarn start` - Start the Expo development server
 - `yarn ios` - Run the app on iOS simulator
-- `yarn android` - Run the app on Android emulator  
+- `yarn android` - Run the app on Android emulator
 - `yarn web` - Run the app in web browser
 - `yarn prebuild` - Generate native iOS and Android directories
 - `yarn typecheck` - Run TypeScript type checking after all changes
+
+### macOS Desktop (Tauri)
+- `yarn tauri:dev` - Run macOS desktop app with hot reload
+- `yarn tauri:build:dev` - Build development variant
+- `yarn tauri:build:preview` - Build preview variant
+- `yarn tauri:build:production` - Build production variant
 
 ### Testing
 - `yarn test` - Run tests in watch mode (Jest with jest-expo preset)
