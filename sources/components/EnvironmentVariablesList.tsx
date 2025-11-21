@@ -236,6 +236,9 @@ export function EnvironmentVariablesList({
                 const varNameFromValue = extractVarNameFromValue(envVar.value);
                 const docs = getDocumentation(varNameFromValue || envVar.name);
 
+                // Auto-detect secrets if not explicitly documented
+                const isSecret = docs.isSecret || /TOKEN|KEY|SECRET|AUTH/i.test(envVar.name) || /TOKEN|KEY|SECRET|AUTH/i.test(varNameFromValue || '');
+
                 return (
                     <EnvironmentVariableCard
                         key={index}
@@ -243,7 +246,7 @@ export function EnvironmentVariablesList({
                         machineId={machineId}
                         expectedValue={docs.expectedValue}
                         description={docs.description}
-                        isSecret={docs.isSecret}
+                        isSecret={isSecret}
                         onUpdate={(newValue) => handleUpdateVariable(index, newValue)}
                         onDelete={() => handleDeleteVariable(index)}
                         onDuplicate={() => handleDuplicateVariable(index)}

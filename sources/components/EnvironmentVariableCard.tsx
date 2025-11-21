@@ -258,6 +258,19 @@ export function EnvironmentVariableCard({
                 </Text>
             )}
 
+            {/* Security message for secrets */}
+            {isSecret && (
+                <Text style={{
+                    fontSize: 11,
+                    color: theme.colors.textSecondary,
+                    marginBottom: 8,
+                    fontStyle: 'italic',
+                    ...Typography.default()
+                }}>
+                    🔒 Secret value - not retrieved for security
+                </Text>
+            )}
+
             {/* Default value label */}
             <Text style={{
                 fontSize: 11,
