@@ -597,15 +597,22 @@ function NewSessionWizard() {
 
     // Scroll to section helpers - for AgentInput button clicks
     const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {
-        if (ref.current && scrollViewRef.current) {
-            ref.current.measureLayout(
-                scrollViewRef.current as any,
-                (x, y) => {
-                    scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
-                },
-                () => { /* ignore errors */ }
-            );
-        }
+        if (!ref.current || !scrollViewRef.current) return;
+
+        // Use requestAnimationFrame to ensure layout is painted before measuring
+        requestAnimationFrame(() => {
+            if (ref.current && scrollViewRef.current) {
+                ref.current.measureLayout(
+                    scrollViewRef.current as any,
+                    (x, y) => {
+                        scrollViewRef.current?.scrollTo({ y: y - 20, animated: true });
+                    },
+                    (error) => {
+                        console.warn('measureLayout failed:', error);
+                    }
+                );
+            }
+        });
     }, []);
 
     const handleAgentInputProfileClick = React.useCallback(() => {
