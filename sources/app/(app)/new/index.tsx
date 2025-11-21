@@ -27,6 +27,7 @@ import { AgentInput } from '@/components/AgentInput';
 import { StyleSheet } from 'react-native-unistyles';
 import { randomUUID } from 'expo-crypto';
 import { useCLIDetection } from '@/hooks/useCLIDetection';
+import { useEnvironmentVariables, resolveEnvVarSubstitution, extractEnvVarReferences } from '@/hooks/useEnvironmentVariables';
 import { formatPathRelativeToHome } from '@/utils/sessionUtils';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { MultiTextInput } from '@/components/MultiTextInput';
@@ -367,6 +368,19 @@ function NewSessionWizard() {
     // CLI Detection - automatic, non-blocking detection of installed CLIs on selected machine
     const cliAvailability = useCLIDetection(selectedMachineId);
 
+    // Extract all ${VAR} references from profiles to query daemon environment
+    const envVarRefs = React.useMemo(() => {
+        const refs = new Set<string>();
+        allProfiles.forEach(profile => {
+            extractEnvVarReferences(profile.environmentVariables || [])
+                .forEach(ref => refs.add(ref));
+        });
+        return Array.from(refs);
+    }, [allProfiles]);
+
+    // Query daemon environment for ${VAR} resolution
+    const { variables: daemonEnv } = useEnvironmentVariables(selectedMachineId, envVarRefs);
+
     // Temporary banner dismissal (X button) - resets when component unmounts or machine changes
     const [hiddenBanners, setHiddenBanners] = React.useState<{ claude: boolean; codex: boolean }>({ claude: false, codex: false });
 
@@ -669,14 +683,23 @@ function NewSessionWizard() {
         // Get model name - check both anthropicConfig and environmentVariables
         let modelName: string | undefined;
         if (profile.anthropicConfig?.model) {
+            // User set in GUI - literal value, no evaluation needed
             modelName = profile.anthropicConfig.model;
         } else if (profile.openaiConfig?.model) {
             modelName = profile.openaiConfig.model;
         } else {
-            // For built-in profiles, extract model from environmentVariables
+            // Check environmentVariables - may need ${VAR} evaluation
             const modelEnvVar = profile.environmentVariables?.find(ev => ev.name === 'ANTHROPIC_MODEL');
             if (modelEnvVar) {
-                modelName = modelEnvVar.value;
+                const resolved = resolveEnvVarSubstitution(modelEnvVar.value, daemonEnv);
+                if (resolved) {
+                    // Show as "VARIABLE: value" when evaluated from ${VAR}
+                    const varName = modelEnvVar.value.match(/^\$\{(.+)\}$/)?.[1];
+                    modelName = varName ? `${varName}: ${resolved}` : resolved;
+                } else {
+                    // Show raw ${VAR} if not resolved (machine not selected or var not set)
+                    modelName = modelEnvVar.value;
+                }
             }
         }
 
@@ -686,18 +709,34 @@ function NewSessionWizard() {
 
         // Add base URL if exists
         if (profile.anthropicConfig?.baseUrl) {
+            // User set in GUI - literal value
             const url = new URL(profile.anthropicConfig.baseUrl);
             parts.push(url.hostname);
         } else {
-            // Check environmentVariables for base URL
+            // Check environmentVariables - may need ${VAR} evaluation
             const baseUrlEnvVar = profile.environmentVariables?.find(ev => ev.name === 'ANTHROPIC_BASE_URL');
             if (baseUrlEnvVar) {
-                parts.push(baseUrlEnvVar.value);
+                const resolved = resolveEnvVarSubstitution(baseUrlEnvVar.value, daemonEnv);
+                if (resolved) {
+                    // Extract hostname and show with variable name
+                    const varName = baseUrlEnvVar.value.match(/^\$\{(.+)\}$/)?.[1];
+                    try {
+                        const url = new URL(resolved);
+                        const display = varName ? `${varName}: ${url.hostname}` : url.hostname;
+                        parts.push(display);
+                    } catch {
+                        // Not a valid URL, show as-is with variable name
+                        parts.push(varName ? `${varName}: ${resolved}` : resolved);
+                    }
+                } else {
+                    // Show raw ${VAR} if not resolved (machine not selected or var not set)
+                    parts.push(baseUrlEnvVar.value);
+                }
             }
         }
 
-        return parts.join(' • ');
-    }, [agentType, isProfileAvailable]);
+        return parts.join(', ');
+    }, [agentType, isProfileAvailable, daemonEnv]);
 
     const handleDeleteProfile = React.useCallback((profile: AIBackendProfile) => {
         Modal.alert(

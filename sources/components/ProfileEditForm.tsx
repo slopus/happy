@@ -11,7 +11,7 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
-import { machineBash } from '@/sync/ops';
+import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -29,9 +29,6 @@ export function ProfileEditForm({
     containerStyle
 }: ProfileEditFormProps) {
     const { theme } = useUnistyles();
-
-    // State to store actual environment variable values from the remote machine
-    const [actualEnvVars, setActualEnvVars] = React.useState<Record<string, string | null>>({});
 
     // Helper function to get environment variable value by name
     const getEnvVarValue = React.useCallback((name: string): string | undefined => {
@@ -64,6 +61,17 @@ export function ProfileEditForm({
         return getBuiltInProfileDocumentation(profile.id);
     }, [profile.isBuiltIn, profile.id]);
 
+    // Extract non-secret variable names from documentation
+    const envVarNames = React.useMemo(() => {
+        if (!profileDocs) return [];
+        return profileDocs.environmentVariables
+            .filter(ev => !ev.isSecret)
+            .map(ev => ev.name);
+    }, [profileDocs]);
+
+    // Query daemon environment using hook
+    const { variables: actualEnvVars } = useEnvironmentVariables(machineId, envVarNames);
+
     // Helper to evaluate environment variable substitutions like ${VAR}
     const evaluateEnvVar = React.useCallback((value: string): string | null => {
         const match = value.match(/^\$\{(.+)\}$/);
@@ -73,42 +81,6 @@ export function ProfileEditForm({
         }
         return value; // Not a substitution, return as-is
     }, [actualEnvVars]);
-
-    // Fetch actual environment variable values from the remote machine
-    React.useEffect(() => {
-        if (!machineId || !profileDocs) return;
-
-        const fetchEnvVars = async () => {
-            const results: Record<string, string | null> = {};
-
-            for (const envVar of profileDocs.environmentVariables) {
-                // Skip secret variables - never retrieve actual values
-                if (envVar.isSecret) {
-                    results[envVar.name] = null;
-                    continue;
-                }
-
-                try {
-                    // Use machineBash to echo the environment variable
-                    const result = await machineBash(machineId, `echo "$${envVar.name}"`, '/');
-                    if (result.success && result.exitCode === 0) {
-                        const value = result.stdout.trim();
-                        // Empty string means variable not set
-                        results[envVar.name] = value || null;
-                    } else {
-                        results[envVar.name] = null;
-                    }
-                } catch (error) {
-                    console.error(`Failed to fetch ${envVar.name}:`, error);
-                    results[envVar.name] = null;
-                }
-            }
-
-            setActualEnvVars(results);
-        };
-
-        fetchEnvVars();
-    }, [machineId, profileDocs]);
 
     const [name, setName] = React.useState(profile.name || '');
     const [baseUrl, setBaseUrl] = React.useState(extractedBaseUrl);
