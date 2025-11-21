@@ -140,6 +140,78 @@ export Z_AI_OPUS_MODEL="GLM-4.6"
 export Z_AI_SONNET_MODEL="GLM-4.6"
 export Z_AI_HAIKU_MODEL="GLM-4.5-Air"`,
             };
+        case 'openai':
+            return {
+                setupGuideUrl: 'https://platform.openai.com/docs/api-reference',
+                description: 'OpenAI GPT-5 Codex API for code generation and completion',
+                environmentVariables: [
+                    {
+                        name: 'OPENAI_BASE_URL',
+                        expectedValue: 'https://api.openai.com/v1',
+                        description: 'OpenAI API endpoint',
+                        isSecret: false,
+                    },
+                    {
+                        name: 'OPENAI_API_KEY',
+                        expectedValue: '',
+                        description: 'Your OpenAI API key',
+                        isSecret: true,
+                    },
+                    {
+                        name: 'OPENAI_MODEL',
+                        expectedValue: 'gpt-5-codex-high',
+                        description: 'Default model for code tasks',
+                        isSecret: false,
+                    },
+                    {
+                        name: 'OPENAI_SMALL_FAST_MODEL',
+                        expectedValue: 'gpt-5-codex-low',
+                        description: 'Fast model for quick responses',
+                        isSecret: false,
+                    },
+                ],
+                shellConfigExample: `# Add to ~/.zshrc or ~/.bashrc:
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+export OPENAI_API_KEY="sk-YOUR_OPENAI_API_KEY"
+export OPENAI_MODEL="gpt-5-codex-high"
+export OPENAI_SMALL_FAST_MODEL="gpt-5-codex-low"`,
+            };
+        case 'azure-openai':
+            return {
+                setupGuideUrl: 'https://learn.microsoft.com/en-us/azure/ai-services/openai/',
+                description: 'Azure OpenAI Service for enterprise-grade AI with enhanced security and compliance',
+                environmentVariables: [
+                    {
+                        name: 'AZURE_OPENAI_ENDPOINT',
+                        expectedValue: 'https://YOUR_RESOURCE.openai.azure.com',
+                        description: 'Your Azure OpenAI endpoint URL',
+                        isSecret: false,
+                    },
+                    {
+                        name: 'AZURE_OPENAI_API_KEY',
+                        expectedValue: '',
+                        description: 'Your Azure OpenAI API key',
+                        isSecret: true,
+                    },
+                    {
+                        name: 'AZURE_OPENAI_API_VERSION',
+                        expectedValue: '2024-02-15-preview',
+                        description: 'Azure OpenAI API version',
+                        isSecret: false,
+                    },
+                    {
+                        name: 'AZURE_OPENAI_DEPLOYMENT_NAME',
+                        expectedValue: 'gpt-5-codex',
+                        description: 'Your deployment name for the model',
+                        isSecret: false,
+                    },
+                ],
+                shellConfigExample: `# Add to ~/.zshrc or ~/.bashrc:
+export AZURE_OPENAI_ENDPOINT="https://YOUR_RESOURCE.openai.azure.com"
+export AZURE_OPENAI_API_KEY="YOUR_AZURE_API_KEY"
+export AZURE_OPENAI_API_VERSION="2024-02-15-preview"
+export AZURE_OPENAI_DEPLOYMENT_NAME="gpt-5-codex"`,
+            };
         default:
             return null;
     }
@@ -233,11 +305,10 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             return {
                 id: 'openai',
                 name: 'OpenAI (GPT-5)',
-                openaiConfig: {
-                    baseUrl: 'https://api.openai.com/v1',
-                    model: 'gpt-5-codex-high',
-                },
+                openaiConfig: {},
                 environmentVariables: [
+                    { name: 'OPENAI_BASE_URL', value: 'https://api.openai.com/v1' },
+                    { name: 'OPENAI_MODEL', value: 'gpt-5-codex-high' },
                     { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
                     { name: 'OPENAI_SMALL_FAST_MODEL', value: 'gpt-5-codex-low' },
                     { name: 'API_TIMEOUT_MS', value: '600000' },
@@ -253,11 +324,10 @@ export const getBuiltInProfile = (id: string): AIBackendProfile | null => {
             return {
                 id: 'azure-openai',
                 name: 'Azure OpenAI',
-                azureOpenAIConfig: {
-                    apiVersion: '2024-02-15-preview',
-                    deploymentName: 'gpt-5-codex',
-                },
+                azureOpenAIConfig: {},
                 environmentVariables: [
+                    { name: 'AZURE_OPENAI_API_VERSION', value: '2024-02-15-preview' },
+                    { name: 'AZURE_OPENAI_DEPLOYMENT_NAME', value: 'gpt-5-codex' },
                     { name: 'OPENAI_API_TIMEOUT_MS', value: '600000' },
                     { name: 'API_TIMEOUT_MS', value: '600000' },
                 ],
