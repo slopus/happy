@@ -11,7 +11,7 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { ItemGroup } from '@/components/ItemGroup';
 import { Item } from '@/components/Item';
 import { getBuiltInProfileDocumentation } from '@/sync/profileUtils';
-import { useEnvironmentVariables } from '@/hooks/useEnvironmentVariables';
+import { useEnvironmentVariables, extractEnvVarReferences } from '@/hooks/useEnvironmentVariables';
 
 export interface ProfileEditFormProps {
     profile: AIBackendProfile;
@@ -61,13 +61,10 @@ export function ProfileEditForm({
         return getBuiltInProfileDocumentation(profile.id);
     }, [profile.isBuiltIn, profile.id]);
 
-    // Extract non-secret variable names from documentation
+    // Extract ${VAR} references from profile's environmentVariables array (just like index.tsx does)
     const envVarNames = React.useMemo(() => {
-        if (!profileDocs) return [];
-        return profileDocs.environmentVariables
-            .filter(ev => !ev.isSecret)
-            .map(ev => ev.name);
-    }, [profileDocs]);
+        return extractEnvVarReferences(profile.environmentVariables || []);
+    }, [profile.environmentVariables]);
 
     // Query daemon environment using hook
     const { variables: actualEnvVars } = useEnvironmentVariables(machineId, envVarNames);

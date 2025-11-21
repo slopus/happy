@@ -70,7 +70,7 @@ export function useEnvironmentVariables(
             // Format: echo "VAR1=$VAR1" && echo "VAR2=$VAR2" && ...
             // Using echo with variable expansion ensures we get daemon's environment
             const command = validVarNames
-                .map(name => `echo "${name}=\${${name}:-}"`)
+                .map(name => `echo "${name}=$${name}"`)
                 .join(' && ');
 
             try {
