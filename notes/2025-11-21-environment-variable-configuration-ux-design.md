@@ -15,6 +15,69 @@
 **Root Cause:**
 ProfileEditForm shows environment variables as read-only documentation without edit capabilities. The distinction between `${Z_AI_MODEL}` (reads from daemon) and `GLM-4.6` (literal value) is not exposed to users.
 
+## OODA Analysis: Cross-Profile Verification
+
+### Observe: All Profile Types
+
+**1. Anthropic (Default) - Claude CLI:**
+- `anthropicConfig: {}`, `environmentVariables: []`
+- Uses system defaults, no configuration needed ✓
+
+**2. DeepSeek - Claude CLI:**
+- `anthropicConfig: {}`, `environmentVariables: [6 vars]`
+- All use `${VAR}` templates mapping DEEPSEEK_* → ANTHROPIC_* ✓
+
+**3. Z.AI - Claude CLI:**
+- `anthropicConfig: {}`, `environmentVariables: [7 vars]`
+- All use `${VAR}` templates mapping Z_AI_* → ANTHROPIC_* ✓
+
+**4. OpenAI - Codex CLI:**
+- BEFORE: `openaiConfig: { baseUrl, model }` + `environmentVariables: [4 vars]`
+- AFTER: `openaiConfig: {}` + `environmentVariables: [6 vars]` (migrated baseUrl, model)
+- Now consistent with Claude profiles ✓
+
+**5. Azure OpenAI - Codex CLI:**
+- BEFORE: `azureOpenAIConfig: { apiVersion, deploymentName }` + `environmentVariables: [2 vars]`
+- AFTER: `azureOpenAIConfig: {}` + `environmentVariables: [4 vars]` (migrated apiVersion, deploymentName)
+- Now consistent with Claude profiles ✓
+
+### Orient: Migration Impact
+
+**getProfileEnvironmentVariables() (settings.ts:174-208):**
+- Priority: environmentVariables → anthropicConfig → openaiConfig → azureOpenAIConfig (config overrides env)
+- After migration: All configs empty, only environmentVariables used
+- Result: SAME environment variables sent to session (functionally equivalent)
+
+**CLI Compatibility:**
+- Claude Code CLI reads: ANTHROPIC_BASE_URL, ANTHROPIC_MODEL, ANTHROPIC_AUTH_TOKEN ✓
+- Codex CLI reads: OPENAI_BASE_URL, OPENAI_MODEL, OPENAI_API_KEY, AZURE_OPENAI_* ✓
+- Happy CLI passes through all env vars unchanged ✓
+
+**No Breaking Changes:**
+- No users exist yet (confirmed)
+- Built-in profiles migrated in commit c3069ad
+- getProfileEnvironmentVariables() handles both old and new formats
+
+### Decide: Unified Configuration Approach
+
+**Single Interface for Everything:**
+- ✅ Remove Base URL, Model, Auth Token individual fields from ProfileEditForm
+- ✅ ALL configuration through EnvironmentVariablesList component
+- ✅ Works for ALL profile types (Anthropic, DeepSeek, Z.AI, OpenAI, Azure)
+- ✅ DRY: Same UI, same code, same patterns
+
+### Act: Implementation Status
+
+**Completed:**
+- ✅ Migrated OpenAI and Azure profiles (commit c3069ad)
+- ✅ Added documentation for OpenAI and Azure variables
+- ✅ Profile version field exists ('1.0.0') for future versioning
+
+**Ready to Implement:**
+- Create EnvironmentVariablesList component
+- Create EnvironmentVariableCard component
+- Refactor ProfileEditForm to use new components
+
 ## Solution: Checkbox-Based Variable Configuration
 
 ### Design Principles
@@ -577,13 +640,14 @@ interface EnvironmentVariableCardProps {
 
 **New Section Order:**
 1. Profile Name
-2. Base URL (optional)
-3. Model (optional)
-4. Auth Token (optional)
-5. Tmux Configuration (optional)
-6. Startup Bash Script (optional)
-7. **Setup Instructions** (for built-in profiles only - description + docs link, NO env vars)
-8. **Environment Variables** (ALL variables - documented + custom, all editable)
+2. Session Type (optional)
+3. Permission Mode (optional)
+4. Tmux Configuration (optional)
+5. Startup Bash Script (optional)
+6. **Setup Instructions** (for built-in profiles only - description + docs link, NO env vars)
+7. **Environment Variables** (ALL configuration - base URL, model, auth token, timeouts, custom vars)
+
+**CRITICAL CHANGE:** Remove individual Base URL, Model, Auth Token fields from top. ALL configuration goes through Environment Variables section using unified editable card format. This eliminates confusion about `anthropicConfig` vs `environmentVariables` priority and provides single consistent interface.
 
 **Section Structure:**
 ```tsx
@@ -658,12 +722,15 @@ interface EnvironmentVariableCardProps {
 - New file: `sources/components/EnvironmentVariablesList.tsx` (~200 lines)
 - New file: `sources/components/EnvironmentVariableCard.tsx` (~300 lines)
 - Modified: `sources/components/ProfileEditForm.tsx`:
-  - Lines ~209-278: Keep Setup Instructions box, remove env vars from inside it
+  - Lines ~38-56: Remove extractedBaseUrl, extractedModel, modelMappings helpers (no longer needed)
+  - Lines ~85-132: Remove baseUrl, model, authToken, useAuthToken, useModel state (no longer needed)
+  - Lines ~209-278: Keep Setup Instructions box, remove env vars from inside it, move to position 6
   - Lines ~279-422: Remove "Required Environment Variables" section (replaced by EnvironmentVariablesList)
+  - Lines ~426-595: Remove Base URL, Model, Auth Token field sections
   - Lines ~894-1100: Remove "Custom Environment Variables" section (replaced by EnvironmentVariablesList)
-  - Move Setup Instructions box to position 7 (above Environment Variables)
-  - Add EnvironmentVariablesList at position 8 (bottom of form)
-  - Net reduction: ~400 lines removed, replaced with single component call
+  - Add EnvironmentVariablesList at position 7 (after Setup Instructions)
+  - handleSave: Remove anthropicConfig fields, only save environmentVariables array
+  - Net reduction: ~600 lines removed, replaced with single component call
 
 ### 2. `sources/hooks/useEnvironmentVariables.ts`
 **Changes:**
