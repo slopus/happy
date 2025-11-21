@@ -149,6 +149,7 @@ export default function MachinePickerScreen() {
                         showRecent: true,
                         showSearch: true,
                         allowCustomInput: false,
+                        compactItems: true,
                     }}
                     items={machines}
                     recentItems={recentMachines}

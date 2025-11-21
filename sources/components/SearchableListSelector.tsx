@@ -59,6 +59,9 @@ export interface SelectorConfig<T> {
 
     // Check if a favorite item can be removed (e.g., home directory can't be removed)
     canRemoveFavorite?: (item: T) => boolean;
+
+    // Visual customization
+    compactItems?: boolean; // Use reduced padding for more compact lists (default: false)
 }
 
 /**
@@ -92,6 +95,8 @@ const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
 // Spacing constants (match existing codebase patterns)
 const STATUS_DOT_TEXT_GAP = 4; // Gap between StatusDot and text (used throughout app for status indicators)
 const RIGHT_ELEMENT_GAP = 8; // Gap between status, checkmark, actions (standard element spacing)
+// Item padding (default is platform-specific: iOS 11-12px, Android 16px)
+const COMPACT_ITEM_PADDING = 4; // Reduced vertical padding for compact lists
 
 const stylesheet = StyleSheet.create((theme) => ({
     inputContainer: {
@@ -146,6 +151,9 @@ const stylesheet = StyleSheet.create((theme) => ({
         borderWidth: 2,
         borderColor: theme.colors.button.primary.tint,
         borderRadius: Platform.select({ ios: 10, default: 16 }),
+    },
+    compactItemStyle: {
+        paddingVertical: COMPACT_ITEM_PADDING,
     },
     showMoreTitle: {
         textAlign: 'center',
@@ -424,7 +432,10 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                 showChevron={false}
                 selected={isSelected}
                 showDivider={showDividerOverride !== undefined ? showDividerOverride : !isLast}
-                style={isSelected ? styles.selectedItemStyle : undefined}
+                style={[
+                    config.compactItems ? styles.compactItemStyle : undefined,
+                    isSelected ? styles.selectedItemStyle : undefined
+                ]}
             />
         );
     };
@@ -603,7 +614,10 @@ export function SearchableListSelector<T>(props: SearchableListSelectorProps<T>)
                                         showChevron={false}
                                         selected={isSelected}
                                         showDivider={!isLast}
-                                        style={isSelected ? styles.selectedItemStyle : undefined}
+                                        style={[
+                                            config.compactItems ? styles.compactItemStyle : undefined,
+                                            isSelected ? styles.selectedItemStyle : undefined
+                                        ]}
                                     />
                                 );
                             })}

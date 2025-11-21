@@ -1326,6 +1326,7 @@ function NewSessionWizard() {
                                     showRecent: true,
                                     showSearch: true,
                                     allowCustomInput: false,
+                                    compactItems: true,
                                 }}
                                 items={machines}
                                 recentItems={recentMachines}
@@ -1403,6 +1404,7 @@ function NewSessionWizard() {
                                     showRecent: true,
                                     showSearch: true,
                                     allowCustomInput: true,
+                                    compactItems: true,
                                 }}
                                 items={recentPaths}
                                 recentItems={recentPaths}
