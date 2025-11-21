@@ -96,7 +96,10 @@ const RECENT_ITEMS_DEFAULT_VISIBLE = 5;
 const STATUS_DOT_TEXT_GAP = 4; // Gap between StatusDot and text (used throughout app for status indicators)
 const ITEM_SPACING_GAP = 4; // Gap between elements and spacing between items (compact)
 const COMPACT_ITEM_PADDING = 4; // Vertical padding for compact lists
-const ITEM_BORDER_RADIUS = 8; // Rounded corners for individual items
+// Border radius constants (consistent rounding)
+const INPUT_BORDER_RADIUS = 10; // Input field and containers
+const BUTTON_BORDER_RADIUS = 8; // Buttons and actionable elements
+const ITEM_BORDER_RADIUS = 8; // Individual list items
 
 const stylesheet = StyleSheet.create((theme) => ({
     inputContainer: {
@@ -109,7 +112,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     inputWrapper: {
         flex: 1,
         backgroundColor: theme.colors.input.background,
-        borderRadius: 10,
+        borderRadius: INPUT_BORDER_RADIUS,
         borderWidth: 0.5,
         borderColor: theme.colors.divider,
     },
@@ -124,14 +127,14 @@ const stylesheet = StyleSheet.create((theme) => ({
     clearButton: {
         width: 20,
         height: 20,
-        borderRadius: 10,
+        borderRadius: INPUT_BORDER_RADIUS,
         backgroundColor: theme.colors.textSecondary,
         justifyContent: 'center',
         alignItems: 'center',
         marginLeft: 8,
     },
     favoriteButton: {
-        borderRadius: 8,
+        borderRadius: BUTTON_BORDER_RADIUS,
         padding: 8,
     },
     sectionHeader: {
@@ -150,7 +153,7 @@ const stylesheet = StyleSheet.create((theme) => ({
     selectedItemStyle: {
         borderWidth: 2,
         borderColor: theme.colors.button.primary.tint,
-        borderRadius: Platform.select({ ios: 10, default: 16 }),
+        borderRadius: ITEM_BORDER_RADIUS,
     },
     compactItemStyle: {
         paddingVertical: COMPACT_ITEM_PADDING,
