@@ -45,6 +45,7 @@ export const pl: TranslationStructure = {
         cancel: 'Anuluj',
         authenticate: 'Uwierzytelnij',
         save: 'Zapisz',
+        saveAs: 'Zapisz jako',
         error: 'Błąd',
         success: 'Sukces',
         ok: 'OK',

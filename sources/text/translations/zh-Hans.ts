@@ -36,6 +36,7 @@ export const zhHans: TranslationStructure = {
         cancel: '取消',
         authenticate: '认证',
         save: '保存',
+        saveAs: '另存为',
         error: '错误',
         success: '成功',
         ok: '确定',

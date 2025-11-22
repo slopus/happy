@@ -34,6 +34,7 @@ export const ca: TranslationStructure = {
         cancel: 'Cancel·la',
         authenticate: 'Autentica',
         save: 'Desa',
+        saveAs: 'Desa com a',
         error: 'Error',
         success: 'Èxit',
         ok: 'D\'acord',

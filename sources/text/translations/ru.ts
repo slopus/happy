@@ -45,6 +45,7 @@ export const ru: TranslationStructure = {
         cancel: 'Отмена',
         authenticate: 'Авторизация',
         save: 'Сохранить',
+        saveAs: 'Сохранить как',
         error: 'Ошибка',
         success: 'Успешно',
         ok: 'ОК',

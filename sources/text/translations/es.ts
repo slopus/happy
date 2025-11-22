@@ -34,6 +34,7 @@ export const es: TranslationStructure = {
         cancel: 'Cancelar',
         authenticate: 'Autenticar',
         save: 'Guardar',
+        saveAs: 'Guardar como',
         error: 'Error',
         success: 'Éxito',
         ok: 'OK',

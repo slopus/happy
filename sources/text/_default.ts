@@ -34,6 +34,7 @@ export const en = {
         cancel: 'Cancel',
         authenticate: 'Authenticate',
         save: 'Save',
+        saveAs: 'Save As',
         error: 'Error',
         success: 'Success',
         ok: 'OK',
