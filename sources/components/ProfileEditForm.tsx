@@ -51,7 +51,7 @@ export function ProfileEditForm({
     const { variables: actualEnvVars } = useEnvironmentVariables(machineId, envVarNames);
 
     const [name, setName] = React.useState(profile.name || '');
-    const [useTmux, setUseTmux] = React.useState(!!profile.tmuxConfig?.sessionName);
+    const [useTmux, setUseTmux] = React.useState(profile.tmuxConfig?.sessionName !== undefined);
     const [tmuxSession, setTmuxSession] = React.useState(profile.tmuxConfig?.sessionName || '');
     const [tmuxTmpDir, setTmuxTmpDir] = React.useState(profile.tmuxConfig?.tmpDir || '');
     const [useStartupScript, setUseStartupScript] = React.useState(!!profile.startupBashScript);
