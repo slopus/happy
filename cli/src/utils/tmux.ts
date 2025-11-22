@@ -781,8 +781,18 @@ export class TmuxUtilities {
             // Ensure session exists
             await this.ensureSessionExists(sessionName);
 
-            // Create new window in session with environment variables
-            const createWindowArgs = ['new-window', '-n', windowName, '-t', sessionName];
+            // Build command to execute in the new window
+            const fullCommand = args.join(' ');
+
+            // Create new window in session with command and environment variables
+            // IMPORTANT: Don't manually add -t here - executeTmuxCommand handles it via parameters
+            const createWindowArgs = ['new-window', '-n', windowName];
+
+            // Add working directory if specified
+            if (options.cwd) {
+                const cwdPath = typeof options.cwd === 'string' ? options.cwd : options.cwd.pathname;
+                createWindowArgs.push('-c', cwdPath);
+            }
 
             // Add environment variables using -e flag (sets them in the window's environment)
             // Only pass variables that are NEW or DIFFERENT from the tmux server environment
@@ -814,24 +824,14 @@ export class TmuxUtilities {
                 logger.debug(`[TMUX] Setting ${Object.keys(env).length} environment variables in tmux window`);
             }
 
-            const createResult = await this.executeTmuxCommand(createWindowArgs);
+            // Add the command to run in the window (runs immediately when window is created)
+            createWindowArgs.push(fullCommand);
+
+            // Create window with command - pass session as parameter so executeTmuxCommand adds -t
+            const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
 
             if (!createResult || createResult.returncode !== 0) {
                 throw new Error(`Failed to create tmux window: ${createResult?.stderr}`);
-            }
-
-            // Build command to execute in the new window
-            const fullCommand = args.join(' ');
-
-            // Send command to the new window
-            const sendResult = await this.executeTmuxCommand([
-                'send-keys',
-                fullCommand,
-                'C-m'  // Execute the command
-            ], sessionName, windowName);
-
-            if (!sendResult || sendResult.returncode !== 0) {
-                throw new Error(`Failed to send command to tmux: ${sendResult?.stderr}`);
             }
 
             logger.debug(`[TMUX] Spawned command in tmux session ${sessionName}, window ${windowName}`);
