@@ -795,8 +795,8 @@ export class TmuxUtilities {
             }
 
             // Add environment variables using -e flag (sets them in the window's environment)
-            // Only pass variables that are NEW or DIFFERENT from the tmux server environment
-            // (tmux windows already inherit most environment from the server)
+            // Note: tmux windows inherit environment from tmux server, but we need to ensure
+            // the daemon's environment variables (especially expanded auth variables) are available
             if (env && Object.keys(env).length > 0) {
                 for (const [key, value] of Object.entries(env)) {
                     // Skip undefined/null values with warning

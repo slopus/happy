@@ -381,17 +381,28 @@ export async function startDaemon(): Promise<void> {
           const fullCommand = `node --no-warnings --no-deprecation ${cliPath} ${agent} --happy-starting-mode remote --started-by daemon`;
 
           // Spawn in tmux with environment variables
-          // IMPORTANT: Only pass extraEnv (not process.env) because:
-          // 1. Tmux windows already inherit environment from tmux server
-          // 2. extraEnv contains only NEW or DIFFERENT variables (profile settings)
-          // 3. Passing all of process.env would create 50+ unnecessary -e flags
+          // IMPORTANT: Pass complete environment (process.env + extraEnv) because:
+          // 1. tmux sessions need daemon's expanded auth variables (e.g., ANTHROPIC_AUTH_TOKEN)
+          // 2. Regular spawn uses env: { ...process.env, ...extraEnv }
+          // 3. tmux needs explicit environment via -e flags to ensure all variables are available
           const windowName = `happy-${Date.now()}-${agent}`;
+          const tmuxEnv: Record<string, string> = {};
+
+          // Add all daemon environment variables (filtering out undefined)
+          for (const [key, value] of Object.entries(process.env)) {
+            if (value !== undefined) {
+              tmuxEnv[key] = value;
+            }
+          }
+
+          // Add extra environment variables (these should already be filtered)
+          Object.assign(tmuxEnv, extraEnv);
 
           const tmuxResult = await tmux.spawnInTmux([fullCommand], {
             sessionName: tmuxSessionName,
             windowName: windowName,
             cwd: directory
-          }, extraEnv);  // Third parameter: only profile environment variables
+          }, tmuxEnv);  // Pass complete environment for tmux session
 
           if (tmuxResult.success) {
             logger.debug(`[DAEMON RUN] Successfully spawned in tmux session: ${tmuxResult.sessionId}, PID: ${tmuxResult.pid}`);
