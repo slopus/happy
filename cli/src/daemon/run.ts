@@ -386,6 +386,7 @@ export async function startDaemon(): Promise<void> {
           // 2. extraEnv contains only NEW or DIFFERENT variables (profile settings)
           // 3. Passing all of process.env would create 50+ unnecessary -e flags
           const windowName = `happy-${Date.now()}-${agent}`;
+
           const tmuxResult = await tmux.spawnInTmux([fullCommand], {
             sessionName: tmuxSessionName,
             windowName: windowName,
@@ -393,46 +394,45 @@ export async function startDaemon(): Promise<void> {
           }, extraEnv);  // Third parameter: only profile environment variables
 
           if (tmuxResult.success) {
-            logger.debug(`[DAEMON RUN] Successfully spawned in tmux session: ${tmuxResult.sessionId}`);
+            logger.debug(`[DAEMON RUN] Successfully spawned in tmux session: ${tmuxResult.sessionId}, PID: ${tmuxResult.pid}`);
 
-            // For tmux sessions, we create a dummy tracked session since we don't have a direct PID
+            // Validate we got a PID from tmux
+            if (!tmuxResult.pid) {
+              throw new Error('Tmux window created but no PID returned');
+            }
+
+            // Create a tracked session for tmux windows - now we have the real PID!
             const trackedSession: TrackedSession = {
               startedBy: 'daemon',
-              pid: -1, // Dummy PID for tmux sessions
+              pid: tmuxResult.pid, // Real PID from tmux -P flag
               tmuxSessionId: tmuxResult.sessionId,
               directoryCreated,
               message: directoryCreated
-                ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSessionName}'.`
+                ? `The path '${directory}' did not exist. We created a new folder and spawned a new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
                 : `Spawned new session in tmux session '${tmuxSessionName}'. Use 'tmux attach -t ${tmuxSessionName}' to view the session.`
             };
 
-            // For tmux sessions, we simulate the webhook resolution after a short delay
-            // since we can't track PIDs directly
-            setTimeout(() => {
-              const mockSessionId = `tmux-${Date.now()}`;
-              trackedSession.happySessionId = mockSessionId;
+            // Add to tracking map so webhook can find it later
+            pidToTrackedSession.set(tmuxResult.pid, trackedSession);
 
-              const awaiter = Array.from(pidToAwaiter.values())[0]; // Get first awaiter
-              if (awaiter) {
-                awaiter(trackedSession);
-                pidToAwaiter.clear();
-              }
-            }, 2000); // Give time for the session to start
+            // Wait for webhook to populate session with happySessionId (exact same as regular flow)
+            logger.debug(`[DAEMON RUN] Waiting for session webhook for PID ${tmuxResult.pid} (tmux)`);
 
             return new Promise((resolve) => {
-              // Set timeout for tmux session startup
+              // Set timeout for webhook (same as regular flow)
               const timeout = setTimeout(() => {
-                logger.debug(`[DAEMON RUN] tmux session startup timeout`);
+                pidToAwaiter.delete(tmuxResult.pid!);
+                logger.debug(`[DAEMON RUN] Session webhook timeout for PID ${tmuxResult.pid} (tmux)`);
                 resolve({
                   type: 'error',
-                  errorMessage: 'tmux session failed to start within timeout period'
+                  errorMessage: `Session webhook timeout for PID ${tmuxResult.pid} (tmux)`
                 });
-              }, 15_000);
+              }, 15_000); // Same timeout as regular sessions
 
-              // Register awaiter for tmux session
-              pidToAwaiter.set(-1, (completedSession) => {
+              // Register awaiter for tmux session (exact same as regular flow)
+              pidToAwaiter.set(tmuxResult.pid!, (completedSession) => {
                 clearTimeout(timeout);
-                logger.debug(`[DAEMON RUN] tmux session ${completedSession.happySessionId} started successfully`);
+                logger.debug(`[DAEMON RUN] Session ${completedSession.happySessionId} fully spawned with webhook (tmux)`);
                 resolve({
                   type: 'success',
                   sessionId: completedSession.happySessionId!

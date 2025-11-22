@@ -745,7 +745,7 @@ export class TmuxUtilities {
         args: string[],
         options: TmuxSpawnOptions = {},
         env?: Record<string, string>
-    ): Promise<{ success: boolean; sessionId?: string; error?: string }> {
+    ): Promise<{ success: boolean; sessionId?: string; pid?: number; error?: string }> {
         try {
             // Check if tmux is available
             const tmuxCheck = await this.executeTmuxCommand(['list-sessions']);
@@ -827,16 +827,26 @@ export class TmuxUtilities {
             // Add the command to run in the window (runs immediately when window is created)
             createWindowArgs.push(fullCommand);
 
-            // Create window with command - pass session as parameter so executeTmuxCommand adds -t
+            // Add -P flag to print the pane PID immediately
+            createWindowArgs.push('-P');
+            createWindowArgs.push('-F', '#{pane_pid}');
+
+            // Create window with command and get PID immediately
             const createResult = await this.executeTmuxCommand(createWindowArgs, sessionName);
 
             if (!createResult || createResult.returncode !== 0) {
                 throw new Error(`Failed to create tmux window: ${createResult?.stderr}`);
             }
 
-            logger.debug(`[TMUX] Spawned command in tmux session ${sessionName}, window ${windowName}`);
+            // Extract the PID from the output
+            const panePid = parseInt(createResult.stdout.trim());
+            if (isNaN(panePid)) {
+                throw new Error(`Failed to extract PID from tmux output: ${createResult.stdout}`);
+            }
 
-            // Return a properly formatted session identifier
+            logger.debug(`[TMUX] Spawned command in tmux session ${sessionName}, window ${windowName}, PID ${panePid}`);
+
+            // Return tmux session info and PID
             const sessionIdentifier: TmuxSessionIdentifier = {
                 session: sessionName,
                 window: windowName
@@ -844,7 +854,8 @@ export class TmuxUtilities {
 
             return {
                 success: true,
-                sessionId: formatTmuxSessionIdentifier(sessionIdentifier)
+                sessionId: formatTmuxSessionIdentifier(sessionIdentifier),
+                pid: panePid
             };
         } catch (error) {
             logger.debug('[TMUX] Failed to spawn in tmux:', error);
