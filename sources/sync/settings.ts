@@ -113,7 +113,7 @@ export const AIBackendProfileSchema = z.object({
     defaultSessionType: z.enum(['simple', 'worktree']).optional(),
 
     // Default permission mode for this profile
-    defaultPermissionMode: z.string().optional(),
+    defaultPermissionMode: z.enum(['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo']).optional(),
 
     // Default model mode for this profile
     defaultModelMode: z.string().optional(),
