@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { UsageSchema } from '@/claude/types'
-import { PermissionMode } from '@/claude/loop'
+
+/**
+ * Permission mode type - includes both Claude and Codex modes
+ * Must match MessageMetaSchema.permissionMode enum values
+ */
+export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo'
 
 /**
  * Usage data type from Claude
