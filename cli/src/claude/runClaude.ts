@@ -169,11 +169,29 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
             const validModes: PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
-            if (validModes.includes(message.meta.permissionMode as PermissionMode)) {
-                messagePermissionMode = message.meta.permissionMode as PermissionMode;
+            let mappedMode = message.meta.permissionMode as PermissionMode;
+
+            // Defensive fallback: map Codex-specific modes to Claude equivalents
+            if (!validModes.includes(mappedMode)) {
+                const codexToClaudeMap: Record<string, PermissionMode> = {
+                    'yolo': 'bypassPermissions',        // Full access: both skip all permissions
+                    'safe-yolo': 'default',             // Conservative: ask for permissions (closest safe equivalent)
+                    'read-only': 'default',             // Conservative: Claude doesn't support read-only, ask for permissions
+                };
+                if (mappedMode in codexToClaudeMap) {
+                    const originalMode = mappedMode;
+                    mappedMode = codexToClaudeMap[mappedMode];
+                    logger.debug(`[loop] Mapped Codex permission mode '${originalMode}' to Claude equivalent '${mappedMode}'`);
+                } else {
+                    logger.warn(`[loop] Unknown permission mode '${mappedMode}', using 'default'`);
+                    mappedMode = 'default';
+                }
+            }
+
+            if (validModes.includes(mappedMode)) {
+                messagePermissionMode = mappedMode;
                 currentPermissionMode = messagePermissionMode;
                 logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
-
             } else {
                 logger.debug(`[loop] Invalid permission mode received: ${message.meta.permissionMode}`);
             }

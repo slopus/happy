@@ -63,7 +63,8 @@ export async function runCodex(opts: {
     credentials: Credentials;
     startedBy?: 'daemon' | 'terminal';
 }): Promise<void> {
-    type PermissionMode = 'default' | 'read-only' | 'safe-yolo' | 'yolo';
+    // Use shared PermissionMode type for cross-agent compatibility
+    type PermissionMode = import('@/api/types').PermissionMode;
     interface EnhancedMode {
         permissionMode: PermissionMode;
         model?: string;
@@ -142,21 +143,17 @@ export async function runCodex(opts: {
     }));
 
     // Track current overrides to apply per message
-    let currentPermissionMode: PermissionMode | undefined = undefined;
+    // Use shared PermissionMode type from api/types for cross-agent compatibility
+    let currentPermissionMode: import('@/api/types').PermissionMode | undefined = undefined;
     let currentModel: string | undefined = undefined;
 
     session.onUserMessage((message) => {
-        // Resolve permission mode (validate)
+        // Resolve permission mode (accept all modes, will be mapped in switch statement)
         let messagePermissionMode = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            const validModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
-            if (validModes.includes(message.meta.permissionMode as PermissionMode)) {
-                messagePermissionMode = message.meta.permissionMode as PermissionMode;
-                currentPermissionMode = messagePermissionMode;
-                logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
-            } else {
-                logger.debug(`[Codex] Invalid permission mode received: ${message.meta.permissionMode}`);
-            }
+            messagePermissionMode = message.meta.permissionMode as import('@/api/types').PermissionMode;
+            currentPermissionMode = messagePermissionMode;
+            logger.debug(`[Codex] Permission mode updated from user message to: ${currentPermissionMode}`);
         } else {
             logger.debug(`[Codex] User message received with no permission mode override, using current: ${currentPermissionMode ?? 'default (effective)'}`);
         }
@@ -619,18 +616,30 @@ export async function runCodex(opts: {
                 // Map permission mode to approval policy and sandbox for startSession
                 const approvalPolicy = (() => {
                     switch (message.mode.permissionMode) {
-                        case 'default': return 'untrusted' as const;
-                        case 'read-only': return 'never' as const;
-                        case 'safe-yolo': return 'on-failure' as const;
-                        case 'yolo': return 'on-failure' as const;
+                        // Codex native modes
+                        case 'default': return 'untrusted' as const;                    // Ask for non-trusted commands
+                        case 'read-only': return 'never' as const;                      // Never ask, read-only enforced by sandbox
+                        case 'safe-yolo': return 'on-failure' as const;                 // Auto-run, ask only on failure
+                        case 'yolo': return 'on-failure' as const;                      // Auto-run, ask only on failure
+                        // Defensive fallback for Claude-specific modes (backward compatibility)
+                        case 'bypassPermissions': return 'on-failure' as const;         // Full access: map to yolo behavior
+                        case 'acceptEdits': return 'on-request' as const;               // Let model decide (closest to auto-approve edits)
+                        case 'plan': return 'untrusted' as const;                       // Conservative: ask for non-trusted
+                        default: return 'untrusted' as const;                           // Safe fallback
                     }
                 })();
                 const sandbox = (() => {
                     switch (message.mode.permissionMode) {
-                        case 'default': return 'workspace-write' as const;
-                        case 'read-only': return 'read-only' as const;
-                        case 'safe-yolo': return 'workspace-write' as const;
-                        case 'yolo': return 'danger-full-access' as const;
+                        // Codex native modes
+                        case 'default': return 'workspace-write' as const;              // Can write in workspace
+                        case 'read-only': return 'read-only' as const;                  // Read-only filesystem
+                        case 'safe-yolo': return 'workspace-write' as const;            // Can write in workspace
+                        case 'yolo': return 'danger-full-access' as const;              // Full system access
+                        // Defensive fallback for Claude-specific modes
+                        case 'bypassPermissions': return 'danger-full-access' as const; // Full access: map to yolo
+                        case 'acceptEdits': return 'workspace-write' as const;          // Can edit files in workspace
+                        case 'plan': return 'workspace-write' as const;                 // Can write for planning
+                        default: return 'workspace-write' as const;                     // Safe default
                     }
                 })();
 
