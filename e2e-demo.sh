@@ -25,40 +25,47 @@ echo ""
 echo "=== Happy Self-Hosted E2E Demo ==="
 echo ""
 echo "This script will:"
-echo "  1. Start all services (PostgreSQL, Redis, MinIO, happy-server)"
-echo "  2. Create test credentials (automated, no user interaction)"
-echo "  3. Start the daemon"
-echo "  4. Create a test session"
-echo "  5. List active sessions"
+echo "  1. Verify PostgreSQL setup"
+echo "  2. Start all services (PostgreSQL, Redis, MinIO, happy-server)"
+echo "  3. Create test credentials (automated, no user interaction)"
+echo "  4. Start the daemon"
+echo "  5. Create a test session"
+echo "  6. List active sessions"
 echo ""
 
-# Step 1: Start services
-info "Step 1: Starting all services..."
+# Step 1: Verify PostgreSQL setup
+info "Step 1: Verifying PostgreSQL setup..."
+./setup-postgres.sh
+success "PostgreSQL setup verified"
+echo ""
+
+# Step 2: Start services
+info "Step 2: Starting all services..."
 ./happy-demo.sh start
 success "All services started"
 echo ""
 
-# Step 2: Create test credentials
-info "Step 2: Creating test credentials (automated)..."
+# Step 3: Create test credentials
+info "Step 3: Creating test credentials (automated)..."
 node scripts/setup-test-credentials.mjs
 success "Test credentials created"
 echo ""
 
-# Step 3: Check authentication status
-info "Step 3: Verifying authentication..."
+# Step 4: Check authentication status
+info "Step 4: Verifying authentication..."
 ./happy-cli/bin/happy.mjs auth status
 echo ""
 
-# Step 4: Start daemon
-info "Step 4: Starting daemon..."
+# Step 5: Start daemon
+info "Step 5: Starting daemon..."
 ./happy-cli/bin/happy.mjs daemon start
 sleep 2
 ./happy-cli/bin/happy.mjs daemon status
 success "Daemon started"
 echo ""
 
-# Step 5: Create a test session
-info "Step 5: Creating test session..."
+# Step 6: Create a test session
+info "Step 6: Creating test session..."
 echo "Running: timeout 3 ./happy-cli/bin/happy.mjs --happy-starting-mode remote &"
 cd /tmp
 timeout 3 $SCRIPT_DIR/happy-cli/bin/happy.mjs --happy-starting-mode remote --started-by terminal > /dev/null 2>&1 &
@@ -68,13 +75,13 @@ sleep 2
 success "Test session created (PID: $SESSION_PID)"
 echo ""
 
-# Step 6: List sessions
-info "Step 6: Listing active sessions..."
+# Step 7: List sessions
+info "Step 7: Listing active sessions..."
 ./happy-cli/bin/happy.mjs daemon list
 echo ""
 
-# Step 7: Show logs
-info "Step 7: Recent daemon log entries..."
+# Step 8: Show logs
+info "Step 8: Recent daemon log entries..."
 tail -n 20 "$HAPPY_HOME_DIR/logs"/*-daemon.log 2>/dev/null || echo "No logs found yet"
 echo ""
 

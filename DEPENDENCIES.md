@@ -18,7 +18,8 @@ This document tracks all dependencies installed during the self-hosted setup pro
 - **Installed via**: `apt-get install -y postgresql postgresql-contrib`
 - **Purpose**: Database for happy-server
 - **Used by**: happy-server
-- **Database**: handy (created during setup)
+- **Database**: handy (auto-created by setup-postgres.sh)
+- **Setup**: Fully automated via `setup-postgres.sh` (see Setup Notes below)
 
 ### Redis
 - **Package**: `redis-server`
@@ -75,6 +76,13 @@ This document tracks all dependencies installed during the self-hosted setup pro
 
 ## Testing Scripts
 
+### setup-postgres.sh
+- **Location**: `/setup-postgres.sh`
+- **Purpose**: Automated PostgreSQL setup and verification script
+- **Checks**: Password configuration, database existence, schema migrations
+- **Usage**: `./setup-postgres.sh` (or called automatically by e2e-demo.sh)
+- **Features**: Idempotent - safe to run multiple times
+
 ### setup-test-credentials.mjs
 - **Location**: `/scripts/setup-test-credentials.mjs`
 - **Purpose**: Automates authentication flow for headless e2e testing
@@ -86,7 +94,7 @@ This document tracks all dependencies installed during the self-hosted setup pro
 ### e2e-demo.sh
 - **Location**: `/e2e-demo.sh`
 - **Purpose**: Complete e2e demo script that shows the full self-hosted flow
-- **Dependencies**: happy-demo.sh, setup-test-credentials.mjs
+- **Dependencies**: setup-postgres.sh, happy-demo.sh, setup-test-credentials.mjs
 - **Usage**: `./e2e-demo.sh`
 
 ## Environment Variables
@@ -106,3 +114,44 @@ scripts/
 ```
 
 This approach keeps the system-under-test repos (happy-cli, happy-server) clean while allowing test scripts to access necessary dependencies.
+
+## Setup Notes
+
+### PostgreSQL Initial Setup
+
+PostgreSQL setup is **fully automated** via the `setup-postgres.sh` script, which is called automatically by `e2e-demo.sh`.
+
+The setup script checks and fixes:
+1. PostgreSQL password configuration (sets to `postgres` if needed)
+2. Database existence (creates `handy` database if missing)
+3. Database schema (runs Prisma migrations if tables are missing)
+
+**Manual setup is no longer required.** Just run `./e2e-demo.sh` and it will handle everything.
+
+#### Manual Setup Script
+
+If you need to run the PostgreSQL setup manually:
+```bash
+./setup-postgres.sh
+```
+
+This script is idempotent - it's safe to run multiple times and will only make changes if needed.
+
+#### What the Script Does
+
+1. **Checks PostgreSQL is running** - Exits if PostgreSQL service is not started
+2. **Verifies password** - Sets `postgres` user password to `postgres` if not configured
+3. **Creates database** - Creates `handy` database if it doesn't exist
+4. **Runs migrations** - Executes Prisma migrations if database tables are missing
+
+The script expects:
+- Database credentials: `postgres:postgres@localhost:5432/handy` (as configured in happy-server/.env)
+- PostgreSQL service to be running (start with `service postgresql start`)
+
+### Common Issues
+
+**Issue**: "PostgreSQL is not running"
+**Solution**: Start PostgreSQL with `service postgresql start`
+
+**Issue**: Server fails to start with database errors
+**Solution**: Run `./setup-postgres.sh` manually to verify and fix setup
