@@ -19,6 +19,34 @@ Alternatively, you can use the Makefile directly:
 cd .devcontainer && make build root
 ```
 
+### Branch Structure
+
+**Base Development (`happy` branch):**
+- Parent repo on `happy` branch
+- All submodules on `main` branch tracking `origin/main`
+- Each submodule's `origin/main` stays rebased on `upstream/main`
+
+**Feature Development (`happy-X` branch):**
+- Parent repo on `happy-X` branch
+- All submodules on `feature-X` branch
+- Feature name tracked in `feature_name.txt` (added to git)
+
+### Makefile Commands
+
+```bash
+make setup           # Configure submodule remotes and branches
+make status          # Show current branch status
+make rebase-upstream # Rebase all submodules on upstream/main
+make feature-start FEATURE=name  # Start a new feature
+make feature-end     # End feature and return to base development
+```
+
+### Remote Configuration
+
+Each submodule maintains two remotes:
+- `origin` → `git@github.com:rrnewton/happy*` (your fork)
+- `upstream` → `git@github.com:slopus/happy*` (upstream repo)
+
 ## Quick Start
 
 ### CLI Only (Headless)
