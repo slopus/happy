@@ -1,5 +1,6 @@
 # Complete One-Command Setup for happy-coder on Windows ARM64
 # This script does EVERYTHING - clone, fix, download, build, install
+# With robust error handling and fallback to run from source
 
 Write-Host "============================================================" -ForegroundColor Cyan
 Write-Host "   happy-coder Windows ARM64 Installer" -ForegroundColor Cyan
@@ -11,6 +12,7 @@ Write-Host ""
 $RepoUrl = "https://github.com/slopus/happy-cli.git"
 $WorkDir = Join-Path $env:USERPROFILE "happy-cli-arm64-setup"
 $CloneDir = Join-Path $WorkDir "happy-cli"
+$BuildSuccessful = $false
 
 # Create working directory
 Write-Host "Creating working directory..." -ForegroundColor Yellow
@@ -26,6 +28,10 @@ if (Test-Path $CloneDir) {
     git pull
 } else {
     git clone $RepoUrl
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  Failed to clone repository" -ForegroundColor Red
+        exit 1
+    }
     Set-Location $CloneDir
 }
 
@@ -141,15 +147,132 @@ Write-Host "Step 5/6: Building happy-coder..." -ForegroundColor Yellow
 if (!(Get-Command yarn -ErrorAction SilentlyContinue)) {
     Write-Host "  Installing yarn..." -ForegroundColor Gray
     npm install -g yarn
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  Failed to install yarn" -ForegroundColor Red
+        exit 1
+    }
 }
 
-Write-Host "  - Installing dependencies..." -ForegroundColor Gray
-yarn install --silent
+# Function to attempt build
+function Attempt-Build {
+    param (
+        [string]$AttemptName
+    )
 
-Write-Host "  - Building package..." -ForegroundColor Gray
-yarn build
+    Write-Host "  $AttemptName" -ForegroundColor Gray
+    Write-Host "  - Installing dependencies..." -ForegroundColor Gray
+    yarn install --silent
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  - Dependency installation failed" -ForegroundColor Red
+        return $false
+    }
 
-Write-Host "  Build complete" -ForegroundColor Green
+    Write-Host "  - Building package..." -ForegroundColor Gray
+    yarn build
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  - Build failed" -ForegroundColor Red
+        return $false
+    }
+
+    # Verify dist folder was created
+    if (!(Test-Path "dist")) {
+        Write-Host "  - Build succeeded but dist/ folder not created" -ForegroundColor Red
+        return $false
+    }
+
+    # Verify dist has files
+    $distFiles = Get-ChildItem -Path "dist" -File
+    if ($distFiles.Count -eq 0) {
+        Write-Host "  - Build succeeded but dist/ folder is empty" -ForegroundColor Red
+        return $false
+    }
+
+    Write-Host "  - Build successful" -ForegroundColor Green
+    return $true
+}
+
+# Attempt 1: Regular build
+$BuildSuccessful = Attempt-Build "Attempting build..."
+
+# Attempt 2: Clean reinstall if first build failed
+if (!$BuildSuccessful) {
+    Write-Host ""
+    Write-Host "  Build failed. Trying clean reinstall (npm suggested fix)..." -ForegroundColor Yellow
+    Write-Host "  - Removing package-lock.json and node_modules..." -ForegroundColor Gray
+
+    Remove-Item -Path "package-lock.json" -Force -ErrorAction SilentlyContinue
+    Remove-Item -Path "node_modules" -Recurse -Force -ErrorAction SilentlyContinue
+
+    $BuildSuccessful = Attempt-Build "Retrying build after clean..."
+}
+
+# If build still failed, set up source-based execution
+if (!$BuildSuccessful) {
+    Write-Host ""
+    Write-Host "  Build failed after retry. Setting up fallback mode..." -ForegroundColor Yellow
+    Write-Host "  (happy will run from source using tsx instead of compiled code)" -ForegroundColor Gray
+
+    # Ensure tsx is available
+    Write-Host "  - Installing tsx globally..." -ForegroundColor Gray
+    npm install -g tsx
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "  Failed to install tsx" -ForegroundColor Red
+        exit 1
+    }
+
+    # Create a wrapper script that runs from source
+    $WrapperContent = @"
+#!/usr/bin/env node
+// Wrapper to run happy-coder from source on Windows ARM64
+// This is used when the build fails due to Rollup ARM64 issues
+
+const { spawn } = require('child_process');
+const path = require('path');
+
+const sourceDir = '$($CloneDir.Replace('\', '\\'))';
+const mainFile = path.join(sourceDir, 'src', 'index.ts');
+
+const args = process.argv.slice(2);
+
+const child = spawn('tsx', [mainFile, ...args], {
+    stdio: 'inherit',
+    cwd: sourceDir,
+    env: { ...process.env }
+});
+
+child.on('exit', (code) => {
+    process.exit(code || 0);
+});
+"@
+
+    $WrapperPath = Join-Path $CloneDir "happy-wrapper.cjs"
+    $WrapperContent | Set-Content -Path $WrapperPath -Encoding UTF8
+
+    # Update package.json to use the wrapper
+    $PackageJsonPath = Join-Path $CloneDir "package.json"
+    $packageJson = Get-Content $PackageJsonPath -Raw | ConvertFrom-Json
+
+    # Store original bin value
+    $originalBin = $packageJson.bin
+
+    # Update bin to point to wrapper
+    $packageJson.bin = @{
+        "happy" = "./happy-wrapper.cjs"
+    }
+
+    # If there are other binaries, add them pointing to the wrapper too
+    if ($originalBin -is [hashtable] -or $originalBin -is [PSCustomObject]) {
+        $originalBin.PSObject.Properties | ForEach-Object {
+            if ($_.Name -ne "happy") {
+                $packageJson.bin[$_.Name] = "./happy-wrapper.cjs"
+            }
+        }
+    }
+
+    $packageJson | ConvertTo-Json -Depth 10 | Set-Content -Path $PackageJsonPath
+
+    Write-Host "  - Fallback mode configured" -ForegroundColor Green
+}
 
 # Install globally
 Write-Host ""
@@ -160,6 +283,18 @@ npm unlink happy-coder 2>$null
 
 # Link the package
 npm link
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "  Failed to link package globally" -ForegroundColor Red
+    Write-Host ""
+    Write-Host "You can still run happy from the source directory:" -ForegroundColor Yellow
+    Write-Host "  cd $CloneDir" -ForegroundColor Gray
+    if ($BuildSuccessful) {
+        Write-Host "  node dist/index.js" -ForegroundColor Gray
+    } else {
+        Write-Host "  npx tsx src/index.ts" -ForegroundColor Gray
+    }
+    exit 1
+}
 
 Write-Host "  Installed successfully" -ForegroundColor Green
 
@@ -174,6 +309,13 @@ Write-Host "============================================================" -Foreg
 Write-Host "  Installation Complete!" -ForegroundColor Green
 Write-Host "============================================================" -ForegroundColor Green
 Write-Host ""
+
+if (!$BuildSuccessful) {
+    Write-Host "NOTE: Running in fallback mode (from source with tsx)" -ForegroundColor Yellow
+    Write-Host "This is slightly slower but fully functional." -ForegroundColor Yellow
+    Write-Host ""
+}
+
 Write-Host "You can now use happy-coder just like any other user:" -ForegroundColor Cyan
 Write-Host ""
 Write-Host "  To start Happy:" -ForegroundColor White
