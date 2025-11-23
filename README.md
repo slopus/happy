@@ -9,8 +9,8 @@ Use Claude Code or Codex from anywhere with end-to-end encryption.
 </h4>
 
 <div align="center">
-  
-[📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [⭐ **Star on GitHub**](https://github.com/slopus/happy) • [📚 **Documentation**](https://happy.engineering/docs/)
+
+[📱 **iOS App**](https://apps.apple.com/us/app/happy-claude-code-client/id6748571505) • [🤖 **Android App**](https://play.google.com/store/apps/details?id=com.ex3ndr.happy) • [🌐 **Web App**](https://app.happy.engineering) • [💻 **Desktop (ARM64)**](#desktop-apps-arm64) • [🎥 **See a Demo**](https://youtu.be/GCS0OG9QMSE) • [⭐ **Star on GitHub**](https://github.com/slopus/happy) • [📚 **Documentation**](https://happy.engineering/docs/)
 
 </div>
 
@@ -50,6 +50,32 @@ happy
 happy codex
 
 ```
+
+## Desktop Apps (ARM64)
+
+Happy now supports native desktop builds for ARM64 laptops (Apple Silicon Macs, ARM64 Linux, and Windows on ARM).
+
+**Quick Start:**
+```bash
+# Install dependencies
+yarn install
+
+# Run in development mode
+yarn desktop:dev
+
+# Build for your platform
+yarn desktop:build:arm64-linux    # Linux ARM64
+yarn desktop:build:arm64-mac      # macOS ARM64 (Apple Silicon)
+yarn desktop:build:arm64-windows  # Windows ARM64
+yarn desktop:build:all-arm64      # All platforms
+```
+
+**Why ARM64?**
+- 🚀 **Faster performance** - Native ARM execution without translation
+- 🔋 **Better battery life** - Optimized for ARM efficiency
+- 💻 **Native experience** - Full desktop app with system integration
+
+For detailed build instructions, prerequisites, and troubleshooting, see [BUILD-ARM64.md](BUILD-ARM64.md).
 
 ## How does it work?
 

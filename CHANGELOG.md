@@ -1,5 +1,17 @@
 # Changelog
 
+## Version 5 - 2025-11-23
+
+This release brings native desktop support to ARM64 laptops, delivering exceptional performance and battery efficiency for Apple Silicon Macs, ARM64 Linux systems, and Windows on ARM devices. Experience Happy as a full-fledged desktop application with native system integration.
+
+- Added native ARM64 desktop builds for Linux, macOS (Apple Silicon), and Windows on ARM using Tauri framework
+- Implemented comprehensive build system with dedicated yarn scripts for each ARM64 platform
+- Created detailed build documentation covering prerequisites, cross-compilation, and platform-specific configurations
+- Optimized desktop performance leveraging native ARM execution without translation layers
+- Enhanced battery efficiency through ARM-optimized compilation and native system integration
+- Integrated browser-based encryption (libsodium WebAssembly) ensuring consistent security across all platforms
+- Added development mode with hot reload for rapid desktop application iteration
+
 ## Version 4 - 2025-09-12
 
 This release revolutionizes remote development with Codex integration and Daemon Mode, enabling instant AI assistance from anywhere. Start coding sessions with a single tap while maintaining complete control over your development environment.

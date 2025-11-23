@@ -1,6 +1,21 @@
 {
   "entries": [
     {
+      "version": 5,
+      "date": "2025-11-23",
+      "summary": "This release brings native desktop support to ARM64 laptops, delivering exceptional performance and battery efficiency for Apple Silicon Macs, ARM64 Linux systems, and Windows on ARM devices. Experience Happy as a full-fledged desktop application with native system integration.",
+      "changes": [
+        "Added native ARM64 desktop builds for Linux, macOS (Apple Silicon), and Windows on ARM using Tauri framework",
+        "Implemented comprehensive build system with dedicated yarn scripts for each ARM64 platform",
+        "Created detailed build documentation covering prerequisites, cross-compilation, and platform-specific configurations",
+        "Optimized desktop performance leveraging native ARM execution without translation layers",
+        "Enhanced battery efficiency through ARM-optimized compilation and native system integration",
+        "Integrated browser-based encryption (libsodium WebAssembly) ensuring consistent security across all platforms",
+        "Added development mode with hot reload for rapid desktop application iteration"
+      ],
+      "rawMarkdown": "## Version 5 - 2025-11-23\n\n\nThis release brings native desktop support to ARM64 laptops, delivering exceptional performance and battery efficiency for Apple Silicon Macs, ARM64 Linux systems, and Windows on ARM devices. Experience Happy as a full-fledged desktop application with native system integration.\n\n- Added native ARM64 desktop builds for Linux, macOS (Apple Silicon), and Windows on ARM using Tauri framework\n- Implemented comprehensive build system with dedicated yarn scripts for each ARM64 platform\n- Created detailed build documentation covering prerequisites, cross-compilation, and platform-specific configurations\n- Optimized desktop performance leveraging native ARM execution without translation layers\n- Enhanced battery efficiency through ARM-optimized compilation and native system integration\n- Integrated browser-based encryption (libsodium WebAssembly) ensuring consistent security across all platforms\n- Added development mode with hot reload for rapid desktop application iteration"
+    },
+    {
       "version": 4,
       "date": "2025-09-12",
       "summary": "This release revolutionizes remote development with Codex integration and Daemon Mode, enabling instant AI assistance from anywhere. Start coding sessions with a single tap while maintaining complete control over your development environment.",
@@ -53,5 +68,5 @@
       "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
     }
   ],
-  "latestVersion": 4
+  "latestVersion": 5
 }
