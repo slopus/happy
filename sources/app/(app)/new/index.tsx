@@ -573,6 +573,20 @@ function NewSessionWizard() {
         }
     }, [profileMap]);
 
+    // Reset permission mode to 'default' when agent type changes and current mode is invalid for new agent
+    React.useEffect(() => {
+        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+        const validCodexModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
+
+        const isValidForCurrentAgent = agentType === 'codex'
+            ? validCodexModes.includes(permissionMode)
+            : validClaudeModes.includes(permissionMode);
+
+        if (!isValidForCurrentAgent) {
+            setPermissionMode('default');
+        }
+    }, [agentType, permissionMode]);
+
     // Scroll to section helpers - for AgentInput button clicks
     const scrollToSection = React.useCallback((ref: React.RefObject<View | Text | null>) => {
         if (!ref.current || !scrollViewRef.current) return;
@@ -1484,12 +1498,20 @@ function NewSessionWizard() {
                                 <Text style={styles.sectionHeader}>4. Permission Mode</Text>
                             </View>
                             <ItemGroup title="">
-                                {[
-                                    { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
-                                    { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
-                                    { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
-                                    { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
-                                ].map((option, index, array) => (
+                                {(agentType === 'codex'
+                                    ? [
+                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
+                                        { value: 'read-only' as PermissionMode, label: 'Read Only', description: 'Read-only mode', icon: 'eye-outline' },
+                                        { value: 'safe-yolo' as PermissionMode, label: 'Safe YOLO', description: 'Workspace write with approval', icon: 'shield-checkmark-outline' },
+                                        { value: 'yolo' as PermissionMode, label: 'YOLO', description: 'Full access, skip permissions', icon: 'flash-outline' },
+                                    ]
+                                    : [
+                                        { value: 'default' as PermissionMode, label: 'Default', description: 'Ask for permissions', icon: 'shield-outline' },
+                                        { value: 'acceptEdits' as PermissionMode, label: 'Accept Edits', description: 'Auto-approve edits', icon: 'checkmark-outline' },
+                                        { value: 'plan' as PermissionMode, label: 'Plan', description: 'Plan before executing', icon: 'list-outline' },
+                                        { value: 'bypassPermissions' as PermissionMode, label: 'Bypass Permissions', description: 'Skip all permissions', icon: 'flash-outline' },
+                                    ]
+                                ).map((option, index, array) => (
                                     <Item
                                         key={option.value}
                                         title={option.label}
