@@ -161,29 +161,37 @@ function Attempt-Build {
 
     Write-Host "  $AttemptName" -ForegroundColor Gray
     Write-Host "  - Installing dependencies..." -ForegroundColor Gray
-    yarn install --silent
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "  - Dependency installation failed" -ForegroundColor Red
+
+    $ErrorActionPreference = 'Continue'
+    yarn install --silent 2>&1 | Out-Null
+    $installExitCode = $LASTEXITCODE
+
+    if ($installExitCode -ne 0) {
+        Write-Host "  - Dependency installation failed (exit code: $installExitCode)" -ForegroundColor Red
         return $false
     }
 
     Write-Host "  - Building package..." -ForegroundColor Gray
-    yarn build
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "  - Build failed" -ForegroundColor Red
-        return $false
+
+    # Remove old dist if it exists
+    if (Test-Path "dist") {
+        Remove-Item -Path "dist" -Recurse -Force
     }
 
-    # Verify dist folder was created
-    if (!(Test-Path "dist")) {
-        Write-Host "  - Build succeeded but dist/ folder not created" -ForegroundColor Red
-        return $false
+    yarn build 2>&1 | Out-Null
+    $buildExitCode = $LASTEXITCODE
+
+    # Always check for dist folder regardless of exit code
+    $distExists = Test-Path "dist"
+    $hasDistFiles = $false
+
+    if ($distExists) {
+        $distFiles = Get-ChildItem -Path "dist" -File -ErrorAction SilentlyContinue
+        $hasDistFiles = ($distFiles -and $distFiles.Count -gt 0)
     }
 
-    # Verify dist has files
-    $distFiles = Get-ChildItem -Path "dist" -File
-    if ($distFiles.Count -eq 0) {
-        Write-Host "  - Build succeeded but dist/ folder is empty" -ForegroundColor Red
+    if ($buildExitCode -ne 0 -or !$distExists -or !$hasDistFiles) {
+        Write-Host "  - Build failed (exit: $buildExitCode, dist exists: $distExists, has files: $hasDistFiles)" -ForegroundColor Red
         return $false
     }
 
