@@ -230,7 +230,6 @@ if (!$BuildSuccessful) {
 
     # Create a wrapper script that runs from source
     $WrapperContent = @"
-#!/usr/bin/env node
 // Wrapper to run happy-coder from source on Windows ARM64
 // This is used when the build fails due to Rollup ARM64 issues
 
@@ -254,7 +253,9 @@ child.on('exit', (code) => {
 "@
 
     $WrapperPath = Join-Path $CloneDir "happy-wrapper.cjs"
-    $WrapperContent | Set-Content -Path $WrapperPath -Encoding UTF8
+    # Use UTF8 without BOM
+    $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+    [System.IO.File]::WriteAllText($WrapperPath, $WrapperContent, $Utf8NoBom)
 
     # Update package.json to use the wrapper
     $PackageJsonPath = Join-Path $CloneDir "package.json"
