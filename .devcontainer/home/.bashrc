@@ -46,3 +46,5 @@ fi
 # export PATH=$PATH:$HOME/.local/bin
 
 alias copilot-yolo='copilot -allow-pall-paths --allow-all-tools'
+
+alias glo="git log --oneline --graph --decorate --all -30"
