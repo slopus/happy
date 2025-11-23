@@ -28,11 +28,12 @@ echo "=== Happy Self-Hosted E2E Demo with Web Client ==="
 echo ""
 echo "This script will:"
 echo "  1. Start all services (PostgreSQL, Redis, MinIO, happy-server)"
-echo "  2. Create test credentials (automated, no user interaction)"
-echo "  3. Start the web client (browser UI)"
-echo "  4. Start the CLI daemon"
-echo "  5. Create a CLI session"
-echo "  6. Show you how to connect from the browser"
+echo "  2. Stop existing daemon (to ensure clean credentials)"
+echo "  3. Create test credentials (automated, no user interaction)"
+echo "  4. Start the web client (browser UI)"
+echo "  5. Start the CLI daemon"
+echo "  6. Create a CLI session"
+echo "  7. Show you how to connect from the browser"
 echo ""
 
 # Step 1: Start services
@@ -41,8 +42,14 @@ step "Step 1: Starting all services..."
 success "All services started"
 echo ""
 
-# Step 2: Create test credentials
-step "Step 2: Creating test credentials (automated)..."
+# Step 2: Stop daemon if running (so we can create fresh credentials)
+step "Step 2: Stopping daemon if running..."
+HAPPY_HOME_DIR=/root/.happy-dev-test HAPPY_SERVER_URL=http://localhost:3005 ./happy-cli/bin/happy.mjs daemon stop 2>/dev/null || true
+success "Daemon stopped (if it was running)"
+echo ""
+
+# Step 3: Create test credentials
+step "Step 3: Creating test credentials (automated)..."
 # Capture output to extract the secret key
 node scripts/setup-test-credentials.mjs > /tmp/creds-output.txt 2>&1
 cat /tmp/creds-output.txt
@@ -51,8 +58,8 @@ WEB_SECRET_KEY=$(grep -E "^  [A-Z0-9]+-[A-Z0-9]+" /tmp/creds-output.txt | xargs)
 success "Test credentials created"
 echo ""
 
-# Step 3: Start web client
-step "Step 3: Starting Happy web client..."
+# Step 4: Start web client
+step "Step 4: Starting Happy web client..."
 info "The web client will start in the background"
 info "Building may take a minute on first run..."
 cd happy
@@ -86,21 +93,21 @@ else
 fi
 echo ""
 
-# Step 4: Check authentication status
-step "Step 4: Verifying CLI authentication..."
+# Step 5: Check authentication status
+step "Step 5: Verifying CLI authentication..."
 ./happy-cli/bin/happy.mjs auth status
 echo ""
 
-# Step 5: Start daemon
-step "Step 5: Starting CLI daemon..."
+# Step 6: Start daemon
+step "Step 6: Starting CLI daemon..."
 ./happy-cli/bin/happy.mjs daemon start
 sleep 2
 ./happy-cli/bin/happy.mjs daemon status | head -20
 success "Daemon started"
 echo ""
 
-# Step 6: Start a CLI session that can be controlled from web
-step "Step 6: Starting a CLI session in remote mode..."
+# Step 7: Start a CLI session that can be controlled from web
+step "Step 7: Starting a CLI session in remote mode..."
 info "This session will be controllable from the web UI"
 cd /tmp
 timeout 5 $SCRIPT_DIR/happy-cli/bin/happy.mjs --happy-starting-mode remote --started-by terminal > /dev/null 2>&1 &
@@ -110,12 +117,12 @@ sleep 3
 success "CLI session started (PID: $SESSION_PID)"
 echo ""
 
-# Step 7: List sessions
-step "Step 7: Listing active sessions..."
+# Step 8: List sessions
+step "Step 8: Listing active sessions..."
 ./happy-cli/bin/happy.mjs daemon list
 echo ""
 
-# Step 8: Instructions for using web UI
+# Step 9: Instructions for using web UI
 echo ""
 echo "=== E2E Web Demo Complete ==="
 echo ""
