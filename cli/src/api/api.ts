@@ -121,43 +121,67 @@ export class ApiClient {
     }
 
     // Create machine
-    const response = await axios.post(
-      `${configuration.serverUrl}/v1/machines`,
-      {
-        id: opts.machineId,
-        metadata: encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.metadata)),
-        daemonState: opts.daemonState ? encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.daemonState)) : undefined,
-        dataEncryptionKey: dataEncryptionKey ? encodeBase64(dataEncryptionKey) : undefined
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${this.credential.token}`,
-          'Content-Type': 'application/json'
+    try {
+      const response = await axios.post(
+        `${configuration.serverUrl}/v1/machines`,
+        {
+          id: opts.machineId,
+          metadata: encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.metadata)),
+          daemonState: opts.daemonState ? encodeBase64(encrypt(encryptionKey, encryptionVariant, opts.daemonState)) : undefined,
+          dataEncryptionKey: dataEncryptionKey ? encodeBase64(dataEncryptionKey) : undefined
         },
-        timeout: 60000 // 1 minute timeout for very bad network connections
+        {
+          headers: {
+            'Authorization': `Bearer ${this.credential.token}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 60000 // 1 minute timeout for very bad network connections
+        }
+      );
+
+      if (response.status !== 200) {
+        console.error(chalk.red(`[API] Failed to create machine: ${response.statusText}`));
+        console.log(chalk.yellow(`[API] Failed to create machine: ${response.statusText}, most likely you have re-authenticated, but you still have a machine associated with the old account. Now we are trying to re-associate the machine with the new account. That is not allowed. Please run 'happy doctor clean' to clean up your happy state, and try your original command again. Please create an issue on github if this is causing you problems. We apologize for the inconvenience.`));
+        process.exit(1);
       }
-    );
 
-    if (response.status !== 200) {
-      console.error(chalk.red(`[API] Failed to create machine: ${response.statusText}`));
-      console.log(chalk.yellow(`[API] Failed to create machine: ${response.statusText}, most likely you have re-authenticated, but you still have a machine associated with the old account. Now we are trying to re-associate the machine with the new account. That is not allowed. Please run 'happy doctor clean' to clean up your happy state, and try your original command again. Please create an issue on github if this is causing you problems. We apologize for the inconvenience.`));
-      process.exit(1);
+      const raw = response.data.machine;
+      logger.debug(`[API] Machine ${opts.machineId} registered/updated with server`);
+
+      // Return decrypted machine like we do for sessions
+      const machine: Machine = {
+        id: raw.id,
+        encryptionKey: encryptionKey,
+        encryptionVariant: encryptionVariant,
+        metadata: raw.metadata ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.metadata)) : null,
+        metadataVersion: raw.metadataVersion || 0,
+        daemonState: raw.daemonState ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.daemonState)) : null,
+        daemonStateVersion: raw.daemonStateVersion || 0,
+      };
+      return machine;
+    } catch (error) {
+      // Handle 404 gracefully - server endpoint may not be available yet
+      if (axios.isAxiosError(error) && error.response?.status === 404) {
+        console.warn(chalk.yellow(`[API] Warning: Machine registration endpoint not available (404)`));
+        console.warn(chalk.yellow(`[API] Continuing without machine registration. This is normal in development mode.`));
+        logger.debug(`[API] Server: ${configuration.serverUrl}/v1/machines returned 404`);
+
+        // Return a minimal machine object without server registration
+        const machine: Machine = {
+          id: opts.machineId,
+          encryptionKey: encryptionKey,
+          encryptionVariant: encryptionVariant,
+          metadata: opts.metadata,
+          metadataVersion: 0,
+          daemonState: opts.daemonState || null,
+          daemonStateVersion: 0,
+        };
+        return machine;
+      }
+
+      // For other errors, rethrow
+      throw error;
     }
-
-    const raw = response.data.machine;
-    logger.debug(`[API] Machine ${opts.machineId} registered/updated with server`);
-
-    // Return decrypted machine like we do for sessions
-    const machine: Machine = {
-      id: raw.id,
-      encryptionKey: encryptionKey,
-      encryptionVariant: encryptionVariant,
-      metadata: raw.metadata ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.metadata)) : null,
-      metadataVersion: raw.metadataVersion || 0,
-      daemonState: raw.daemonState ? decrypt(encryptionKey, encryptionVariant, decodeBase64(raw.daemonState)) : null,
-      daemonStateVersion: raw.daemonStateVersion || 0,
-    };
-    return machine;
   }
 
   sessionSyncClient(session: Session): ApiSessionClient {
