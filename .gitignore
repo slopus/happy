@@ -44,4 +44,4 @@ yarn-error.*
 
 CLAUDE.local.md
 
-.dev/worktree/*
+.dev/worktree/*dist/
