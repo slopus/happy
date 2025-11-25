@@ -85,8 +85,8 @@
     "doctor": "node scripts/env-wrapper.cjs stable doctor"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "2.0.24",
-    "@anthropic-ai/sdk": "0.65.0",
+    "@anthropic-ai/claude-code": "2.0.53",
+    "@anthropic-ai/sdk": "0.71.0",
     "@modelcontextprotocol/sdk": "^1.15.1",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",

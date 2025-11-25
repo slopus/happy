@@ -1,4 +1,4 @@
-import { SDKMessage, SDKUserMessage } from "@anthropic-ai/claude-code";
+import { SDKMessage, SDKUserMessage } from "@/claude/sdk";
 import { logger } from "@/ui/logger";
 
 /**
@@ -36,7 +36,7 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
                     role: 'user',
                     content: message,
                 },
-                parent_tool_use_id: null,
+                parent_tool_use_id: undefined,
                 session_id: '',
             });
         } else {
@@ -47,7 +47,7 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
                     role: 'user',
                     content: message,
                 },
-                parent_tool_use_id: null,
+                parent_tool_use_id: undefined,
                 session_id: '',
             });
         }
