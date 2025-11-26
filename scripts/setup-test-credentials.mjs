@@ -22,7 +22,7 @@ import { homedir } from 'os';
 import { randomUUID, createHmac, createHash } from 'crypto';
 
 const SERVER_URL = process.env.HAPPY_SERVER_URL || 'http://localhost:3005';
-const HAPPY_HOME_DIR = process.env.HAPPY_HOME_DIR || join(homedir(), '.happy-dev-test');
+const HAPPY_HOME_DIR = process.env.HAPPY_HOME_DIR || join(homedir(), '.happy');
 
 console.log('=== Happy Test Credentials Setup ===\n');
 console.log(`Server: ${SERVER_URL}`);

@@ -1,12 +1,14 @@
 #!/bin/bash
 
-# E2E Web Demo Script for Self-Hosted Happy
-# This script demonstrates the complete flow including the web frontend
+# E2E Test Script for Self-Hosted Happy
+# This script runs a full end-to-end test with ISOLATED test credentials
+# For normal development, use 'make server' instead
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export HAPPY_HOME_DIR=/root/.happy-dev-test
+# Use isolated test directory to avoid polluting real ~/.happy credentials
+export HAPPY_HOME_DIR=/root/.happy-e2e-test
 export HAPPY_SERVER_URL=http://localhost:3005
 
 # Colors for output
@@ -44,7 +46,7 @@ echo ""
 
 # Step 2: Stop daemon if running (so we can create fresh credentials)
 step "Step 2: Stopping daemon if running..."
-HAPPY_HOME_DIR=/root/.happy-dev-test HAPPY_SERVER_URL=http://localhost:3005 ./happy-cli/bin/happy.mjs daemon stop 2>/dev/null || true
+HAPPY_HOME_DIR=/root/.happy-e2e-test HAPPY_SERVER_URL=http://localhost:3005 ./happy-cli/bin/happy.mjs daemon stop 2>/dev/null || true
 success "Daemon stopped (if it was running)"
 echo ""
 

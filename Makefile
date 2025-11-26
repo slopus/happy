@@ -1,17 +1,25 @@
-.PHONY: help setup rebase-upstream status feature-start feature-end build build-cli build-server install demo demo-clean browser-inspect
+.PHONY: help setup rebase-upstream status feature-start feature-end build build-cli build-server install server stop logs cli e2e-test browser-inspect setup-credentials
 
 # Default target
 help:
 	@echo "Happy Repository Management"
 	@echo ""
-	@echo "=== Build & Demo Targets ==="
+	@echo "=== Server & Development ==="
+	@echo "  make server          - Start all services (server + webapp)"
+	@echo "  make stop            - Stop all services"
+	@echo "  make logs            - View server logs"
+	@echo "  make cli             - Run CLI with local server (uses ~/.happy)"
+	@echo "  make setup-credentials - Auto-create test credentials in ~/.happy"
+	@echo ""
+	@echo "=== Build Targets ==="
 	@echo "  make build           - Build all TypeScript code (CLI and server)"
 	@echo "  make build-cli       - Build happy-cli only"
 	@echo "  make build-server    - Typecheck happy-server only"
 	@echo "  make install         - Install dependencies for all repos"
-	@echo "  make demo            - Clean and launch full E2E demo"
-	@echo "  make demo-clean      - Stop all services and clean logs"
-	@echo "  make browser-inspect - Inspect webapp with headless browser (takes screenshot)"
+	@echo ""
+	@echo "=== Testing ==="
+	@echo "  make e2e-test        - Run full E2E test (isolated test credentials)"
+	@echo "  make browser-inspect - Inspect webapp with headless browser"
 	@echo ""
 	@echo "=== Repository Management ==="
 	@echo "  make setup           - Configure submodule remotes and branches"
@@ -21,10 +29,9 @@ help:
 	@echo "  make feature-end     - End feature branch and return to base development"
 	@echo ""
 	@echo "Examples:"
+	@echo "  make server          # Start all services for development"
+	@echo "  make cli             # Run CLI connected to local server"
 	@echo "  make build           # Rebuild all TypeScript after code changes"
-	@echo "  make demo            # Clean start of full demo with web client"
-	@echo "  make setup"
-	@echo "  make feature-start FEATURE=goremote-button"
 	@echo ""
 
 # Setup submodule remotes and branches
@@ -169,19 +176,49 @@ build: build-cli build-server
 	@echo ""
 
 # ============================================================================
-# Demo Targets
+# Server & Development Targets
 # ============================================================================
 
-# Stop all services and clean logs
-demo-clean:
-	@echo "=== Stopping all services and cleaning logs ==="
-	@./happy-demo.sh cleanup --clean-logs
+# Start all services (server + webapp) - no test credentials created
+server: build
+	@echo ""
+	@echo "=== Starting Happy Server ==="
+	@echo ""
+	@./start-server.sh
 
-# Full E2E demo: clean, build, and launch everything
-demo: build demo-clean
+# Stop all services
+stop:
+	@echo "=== Stopping all services ==="
+	@./happy-demo.sh cleanup
+	@pkill -f 'expo start' 2>/dev/null || true
+	@echo "All services stopped"
+
+# View server logs
+logs:
+	@./happy-demo.sh logs server
+
+# Run CLI with local server (uses default ~/.happy credentials)
+cli:
+	@HAPPY_SERVER_URL=http://localhost:3005 ./happy-cli/bin/happy.mjs
+
+list:
+	@HAPPY_SERVER_URL=http://localhost:3005 ./happy-cli/bin/happy.mjs list
+
+# Auto-create credentials in ~/.happy (for quick setup)
+setup-credentials:
+	@echo "=== Creating credentials in ~/.happy ==="
+	@HAPPY_HOME_DIR=~/.happy HAPPY_SERVER_URL=http://localhost:3005 node scripts/setup-test-credentials.mjs
+
+# ============================================================================
+# Testing Targets
+# ============================================================================
+
+# Full E2E test with isolated test credentials (for CI/testing only)
+e2e-test: build
 	@echo ""
-	@echo "=== Starting E2E Web Demo ==="
+	@echo "=== Running E2E Test (isolated credentials) ==="
 	@echo ""
+	@./happy-demo.sh cleanup --clean-logs
 	@./e2e-web-demo.sh
 
 # Inspect webapp with headless browser (requires webapp to be running)
