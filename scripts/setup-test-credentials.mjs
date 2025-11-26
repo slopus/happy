@@ -84,8 +84,10 @@ function deriveKey(master, usage, path) {
 }
 
 /**
- * Derive the content encryption public key from an account's secret key
+ * Derive the content encryption seed from an account's secret key
  * This matches how the web client derives its encryption keypair
+ * IMPORTANT: Returns the SEED, not the public key!
+ * The CLI will derive the keypair from this seed.
  */
 function deriveContentEncryptionPublicKey(accountSecretKey) {
     // Get the 32-byte seed from the Ed25519 secret key
@@ -94,13 +96,9 @@ function deriveContentEncryptionPublicKey(accountSecretKey) {
     // Derive content data key (same as web client)
     const contentDataKey = deriveKey(seed, 'Happy EnCoder', ['content']);
 
-    // Generate Box keypair from contentDataKey (matches libsodium's crypto_box_seed_keypair)
-    // Libsodium's crypto_box_seed_keypair does: SHA-512(seed) -> use first 32 bytes as secret key
-    const hash = createHash('sha512').update(Buffer.from(contentDataKey)).digest();
-    const boxSecretKey = hash.slice(0, 32);
-    const boxKeypair = tweetnacl.box.keyPair.fromSecretKey(boxSecretKey);
-
-    return boxKeypair.publicKey;
+    // Return the SEED, not the derived public key
+    // The CLI will derive the keypair from this seed using the same method
+    return contentDataKey;
 }
 
 /**

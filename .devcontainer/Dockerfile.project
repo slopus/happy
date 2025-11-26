@@ -23,6 +23,10 @@ RUN wget -q https://dl.min.io/client/mc/release/linux-amd64/mc \
     && chmod +x mc \
     && mv mc /usr/local/bin/
 
+# Install Playwright for browser automation testing
+RUN npm install -g playwright \
+    && npx playwright install chromium \
+    && npx playwright install-deps chromium
 
 # Expose ports for Happy services
 # happy-server API

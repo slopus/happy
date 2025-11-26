@@ -1,10 +1,19 @@
-.PHONY: help setup rebase-upstream status feature-start feature-end
+.PHONY: help setup rebase-upstream status feature-start feature-end build build-cli build-server install demo demo-clean browser-inspect
 
 # Default target
 help:
 	@echo "Happy Repository Management"
 	@echo ""
-	@echo "Available targets:"
+	@echo "=== Build & Demo Targets ==="
+	@echo "  make build           - Build all TypeScript code (CLI and server)"
+	@echo "  make build-cli       - Build happy-cli only"
+	@echo "  make build-server    - Typecheck happy-server only"
+	@echo "  make install         - Install dependencies for all repos"
+	@echo "  make demo            - Clean and launch full E2E demo"
+	@echo "  make demo-clean      - Stop all services and clean logs"
+	@echo "  make browser-inspect - Inspect webapp with headless browser (takes screenshot)"
+	@echo ""
+	@echo "=== Repository Management ==="
 	@echo "  make setup           - Configure submodule remotes and branches"
 	@echo "  make rebase-upstream - Fetch and rebase on upstream/main"
 	@echo "  make status          - Show submodule branch status"
@@ -12,10 +21,10 @@ help:
 	@echo "  make feature-end     - End feature branch and return to base development"
 	@echo ""
 	@echo "Examples:"
+	@echo "  make build           # Rebuild all TypeScript after code changes"
+	@echo "  make demo            # Clean start of full demo with web client"
 	@echo "  make setup"
-	@echo "  make rebase-upstream"
 	@echo "  make feature-start FEATURE=goremote-button"
-	@echo "  make feature-end"
 	@echo ""
 
 # Setup submodule remotes and branches
@@ -115,3 +124,67 @@ feature-end:
 	echo "    git branch -D happy-$$FEATURE" && \
 	echo "    cd <submodule> && git branch -D feature-$$FEATURE" && \
 	echo ""
+
+# ============================================================================
+# Build Targets
+# ============================================================================
+
+# Install dependencies for all repositories
+install:
+	@echo "=== Installing dependencies for all repositories ==="
+	@echo ""
+	@echo "Installing happy-server dependencies..."
+	@cd happy-server && yarn install
+	@echo ""
+	@echo "Installing happy-cli dependencies..."
+	@cd happy-cli && yarn install
+	@echo ""
+	@echo "Installing happy webapp dependencies..."
+	@cd happy && yarn install
+	@echo ""
+	@echo "=== All dependencies installed ==="
+
+# Build happy-cli (compiles TypeScript to dist/)
+build-cli:
+	@echo "=== Building happy-cli ==="
+	@cd happy-cli && yarn build
+	@echo "=== happy-cli build complete ==="
+
+# Typecheck happy-server (runs with tsx, no compilation needed)
+build-server:
+	@echo "=== Typechecking happy-server ==="
+	@cd happy-server && yarn build
+	@echo "=== happy-server typecheck complete ==="
+
+# Build all TypeScript code
+# Note: happy webapp uses Expo and builds at runtime, no pre-build needed
+build: build-cli build-server
+	@echo ""
+	@echo "=== All builds complete ==="
+	@echo ""
+	@echo "Built components:"
+	@echo "  - happy-cli:    dist/ directory updated"
+	@echo "  - happy-server: TypeScript validated (runs directly with tsx)"
+	@echo "  - happy webapp: No pre-build needed (Expo builds at runtime)"
+	@echo ""
+
+# ============================================================================
+# Demo Targets
+# ============================================================================
+
+# Stop all services and clean logs
+demo-clean:
+	@echo "=== Stopping all services and cleaning logs ==="
+	@./happy-demo.sh cleanup --clean-logs
+
+# Full E2E demo: clean, build, and launch everything
+demo: build demo-clean
+	@echo ""
+	@echo "=== Starting E2E Web Demo ==="
+	@echo ""
+	@./e2e-web-demo.sh
+
+# Inspect webapp with headless browser (requires webapp to be running)
+browser-inspect:
+	@echo "=== Inspecting webapp with headless browser ==="
+	@cd scripts/browser && node inspect-webapp.mjs --screenshot --console

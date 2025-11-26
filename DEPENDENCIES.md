@@ -155,3 +155,59 @@ The script expects:
 
 **Issue**: Server fails to start with database errors
 **Solution**: Run `./setup-postgres.sh` manually to verify and fix setup
+
+## Browser Automation (Playwright)
+
+### Installation
+
+Playwright with Chromium is installed for headless browser testing of the webapp.
+
+```bash
+# Install Playwright globally
+npm install -g playwright
+
+# Install Chromium browser binaries
+npx playwright install chromium
+
+# Install system dependencies (fonts, xvfb, etc.)
+npx playwright install-deps chromium
+```
+
+### System Packages Installed by Playwright
+
+The `playwright install-deps chromium` command installs:
+- `xvfb` - X Virtual Frame Buffer for headless display
+- `fonts-*` - Various fonts for proper text rendering
+- `libnss3`, `libnspr4` - Security libraries
+- Various X11 libraries for graphics rendering
+
+### Browser Test Scripts
+
+Located in `/scripts/browser/`:
+
+- **`inspect-webapp.mjs`** - Basic webapp inspection and screenshot tool
+- **`test-webapp-e2e.mjs`** - Full E2E test with login flow
+
+### Usage
+
+```bash
+cd /happy-all-WinGamingPC/scripts/browser
+
+# Basic inspection with screenshot
+node inspect-webapp.mjs --screenshot --console
+
+# Full E2E test with login
+node test-webapp-e2e.mjs "YOUR-SECRET-KEY"
+```
+
+### Environment Variables
+
+- `WEBAPP_URL` - Override webapp URL (default: `http://localhost:8081`)
+- `SCREENSHOT_DIR` - Directory for screenshots (default: `/tmp`)
+
+### Screenshots
+
+Screenshots are saved to `/tmp/` with timestamps:
+- `happy-e2e-01-initial-{timestamp}.png`
+- `happy-e2e-02-after-create-click-{timestamp}.png`
+- etc.
