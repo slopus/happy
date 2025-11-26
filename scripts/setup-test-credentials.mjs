@@ -10,7 +10,7 @@
  * 4. Writes credentials to the CLI's config directory
  *
  * Usage:
- *   HAPPY_HOME_DIR=~/.happy-dev-test node scripts/setup-test-credentials.mjs
+ *   HAPPY_HOME_DIR=~/.happy node scripts/setup-test-credentials.mjs
  */
 
 import tweetnacl from 'tweetnacl';

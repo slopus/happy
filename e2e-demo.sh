@@ -6,7 +6,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export HAPPY_HOME_DIR=/root/.happy-dev-test
+export HAPPY_HOME_DIR=/root/.happy-e2e-test
 export HAPPY_SERVER_URL=http://localhost:3005
 
 # Colors for output

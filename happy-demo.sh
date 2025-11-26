@@ -254,7 +254,7 @@ show_logs() {
 run_cli() {
     info "Running happy CLI..."
     cd "$CLI_DIR"
-    export HAPPY_HOME_DIR=~/.happy-dev
+    export HAPPY_HOME_DIR=~/.happy
     export HAPPY_SERVER_URL=http://localhost:3005
 
     if [ $# -eq 0 ]; then
