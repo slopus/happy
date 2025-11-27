@@ -180,7 +180,12 @@ start_server() {
         PORT="$HAPPY_SERVER_PORT" \
         DATABASE_URL="postgresql://postgres:postgres@localhost:${POSTGRES_PORT}/handy" \
         REDIS_URL="redis://localhost:${REDIS_PORT}" \
+        S3_HOST="localhost" \
         S3_PORT="$MINIO_PORT" \
+        S3_USE_SSL="false" \
+        S3_ACCESS_KEY="minioadmin" \
+        S3_SECRET_KEY="minioadmin" \
+        S3_BUCKET="happy" \
         S3_PUBLIC_URL="http://localhost:${MINIO_PORT}/happy" \
             yarn start > /tmp/happy-server.log 2>&1 &
         cd "$SCRIPT_DIR"
