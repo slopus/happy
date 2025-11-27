@@ -199,10 +199,10 @@ logs:
 
 # Run CLI with local server (uses default ~/.happy credentials)
 cli:
-	@HAPPY_SERVER_URL=http://localhost:3005 ./happy-cli/bin/happy.mjs
+	HAPPY_SERVER_URL=http://localhost:3005 ./happy-cli/bin/happy.mjs
 
 list:
-	@HAPPY_SERVER_URL=http://localhost:3005 ./happy-cli/bin/happy.mjs list
+	HAPPY_SERVER_URL=http://localhost:3005 ./happy-cli/bin/happy.mjs list
 
 # Auto-create credentials in ~/.happy (for quick setup)
 setup-credentials:
