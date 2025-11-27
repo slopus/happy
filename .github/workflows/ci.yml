@@ -78,6 +78,12 @@ jobs:
         working-directory: happy-server
         run: yarn install --frozen-lockfile
 
+      - name: Setup happy-server database (Prisma migrations)
+        working-directory: happy-server
+        run: yarn migrate
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/handy
+
       - name: Install happy webapp dependencies
         working-directory: happy
         run: yarn install --frozen-lockfile
