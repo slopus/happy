@@ -6,21 +6,35 @@
 #   ./scripts/validate.sh           # Run all tests
 #   ./scripts/validate.sh --quick   # Skip browser tests (faster)
 #
+# Port configuration is inherited from happy-demo.sh via environment variables:
+#   HAPPY_SERVER_PORT, HAPPY_WEBAPP_PORT, MINIO_PORT, etc.
+#
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
 
-# Colors for output
+# =============================================================================
+# Colors and helpers
+# =============================================================================
+
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 QUICK_MODE=false
 FAILED_TESTS=()
 PASSED_TESTS=()
+SERVICES_STARTED=false
+
+# Port configuration (same defaults as happy-demo.sh)
+HAPPY_SERVER_PORT="${HAPPY_SERVER_PORT:-3005}"
+HAPPY_WEBAPP_PORT="${HAPPY_WEBAPP_PORT:-8081}"
+HAPPY_SERVER_URL="http://localhost:${HAPPY_SERVER_PORT}"
+HAPPY_WEBAPP_URL="http://localhost:${HAPPY_WEBAPP_PORT}"
 
 # Parse arguments
 for arg in "$@"; do
@@ -31,12 +45,6 @@ for arg in "$@"; do
             ;;
     esac
 done
-
-echo ""
-echo "=============================================="
-echo "  Happy Validation Suite"
-echo "=============================================="
-echo ""
 
 # Helper function to run a test
 run_test() {
@@ -59,6 +67,32 @@ run_test() {
         return 1
     fi
 }
+
+# Cleanup on exit
+cleanup_on_exit() {
+    if [ "$SERVICES_STARTED" = true ]; then
+        echo ""
+        echo -e "${BLUE}Stopping services...${NC}"
+        "$ROOT_DIR/happy-demo.sh" stop 2>/dev/null || true
+    fi
+}
+
+trap cleanup_on_exit EXIT
+
+# =============================================================================
+# Main Script
+# =============================================================================
+
+echo ""
+echo "=============================================="
+echo "  Happy Validation Suite"
+echo "=============================================="
+echo ""
+
+# Clean up any existing services first
+echo -e "${BLUE}Cleaning up any existing services...${NC}"
+"$ROOT_DIR/happy-demo.sh" cleanup --clean-logs 2>/dev/null || true
+echo ""
 
 # =============================================================================
 # Build Tests
@@ -95,7 +129,7 @@ fi
 echo ""
 
 # =============================================================================
-# Browser Tests (requires running services)
+# Browser/E2E Tests
 # =============================================================================
 
 if [ "$QUICK_MODE" = true ]; then
@@ -105,32 +139,26 @@ else
     echo "=== Browser Tests ==="
     echo ""
 
-    # Check if services are running
-    WEBAPP_RUNNING=false
-    SERVER_RUNNING=false
-
-    if curl -s http://localhost:8081 > /dev/null 2>&1; then
-        WEBAPP_RUNNING=true
-    fi
-
-    if curl -s http://localhost:3005/health > /dev/null 2>&1; then
-        SERVER_RUNNING=true
-    fi
-
-    if [ "$WEBAPP_RUNNING" = true ] && [ "$SERVER_RUNNING" = true ]; then
-        echo "  Services detected: webapp on :8081, server on :3005"
+    # Start all services using happy-demo.sh
+    echo -e "${BLUE}Starting services for E2E tests...${NC}"
+    if "$ROOT_DIR/happy-demo.sh" start-all; then
+        SERVICES_STARTED=true
+        echo ""
+        echo "  Services running: server on :${HAPPY_SERVER_PORT}, webapp on :${HAPPY_WEBAPP_PORT}"
         echo ""
 
-        # Run browser tests
+        # Run browser tests with environment variables for ports
+        export WEBAPP_URL="$HAPPY_WEBAPP_URL"
+        export HAPPY_SERVER_URL="$HAPPY_SERVER_URL"
+
         run_test "webapp create account" "cd '$ROOT_DIR/scripts/browser' && node test-create-account.mjs" || true
 
         # Add more browser tests here as they are created
         # run_test "webapp e2e" "cd '$ROOT_DIR/scripts/browser' && node test-webapp-e2e.mjs" || true
         # run_test "webapp restore login" "cd '$ROOT_DIR/scripts/browser' && node test-restore-login.mjs" || true
     else
-        echo -e "${YELLOW}  Skipping browser tests - services not running${NC}"
-        echo "  Start services with: make server"
-        echo ""
+        echo -e "${RED}  Failed to start services - skipping browser tests${NC}"
+        FAILED_TESTS+=("service startup")
     fi
 fi
 
