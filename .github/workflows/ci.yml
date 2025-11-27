@@ -88,6 +88,10 @@ jobs:
         working-directory: happy
         run: yarn install --frozen-lockfile
 
+      - name: Install browser test dependencies
+        working-directory: scripts/browser
+        run: npm install
+
       - name: Run validation (quick mode - builds and unit tests only)
         run: ./scripts/validate.sh --quick
 
