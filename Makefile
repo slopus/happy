@@ -1,5 +1,8 @@
 .PHONY: help setup rebase-upstream status feature-start feature-end build build-cli build-server install server stop logs cli e2e-test browser-inspect setup-credentials
 
+# Base development branch for submodules (combines all features we want to merge)
+BASE_SUBMODULE_BRANCH := rrnewton
+
 # Default target
 help:
 	@echo "Happy Repository Management"
@@ -88,11 +91,11 @@ feature-start:
 	@git add feature_name.txt
 	@git commit -m "Start feature: $(FEATURE)"
 	@echo ""
-	@# Create feature branches in submodules
+	@# Create feature branches in submodules (branching from base development branch)
 	@for submod in happy happy-cli happy-server; do \
-		echo "Creating feature-$(FEATURE) in $$submod..."; \
+		echo "Creating feature-$(FEATURE) in $$submod (from $(BASE_SUBMODULE_BRANCH))..."; \
 		cd $$submod && \
-		git checkout -b feature-$(FEATURE) main && \
+		git checkout -b feature-$(FEATURE) $(BASE_SUBMODULE_BRANCH) && \
 		cd ..; \
 	done
 	@echo ""
@@ -110,10 +113,10 @@ feature-end:
 	@FEATURE=$$(cat feature_name.txt) && \
 	echo "Ending feature: $$FEATURE" && \
 	echo "" && \
-	echo "Checking out main in submodules..." && \
+	echo "Checking out $(BASE_SUBMODULE_BRANCH) in submodules..." && \
 	for submod in happy happy-cli happy-server; do \
 		cd $$submod && \
-		git checkout main && \
+		git checkout $(BASE_SUBMODULE_BRANCH) && \
 		cd ..; \
 	done && \
 	echo "" && \

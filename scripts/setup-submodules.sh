@@ -20,6 +20,10 @@ success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
+# Base development branch for submodules
+# This branch combines all features we want to merge together
+BASE_SUBMODULE_BRANCH="rrnewton"
+
 # Check if we're in a feature branch
 FEATURE_FILE="$REPO_ROOT/feature_name.txt"
 if [ -f "$FEATURE_FILE" ]; then
@@ -29,8 +33,8 @@ if [ -f "$FEATURE_FILE" ]; then
     info "Feature mode detected: $FEATURE_NAME"
 else
     PARENT_BRANCH="happy"
-    SUBMODULE_BRANCH="main"
-    info "Base development mode"
+    SUBMODULE_BRANCH="$BASE_SUBMODULE_BRANCH"
+    info "Base development mode (submodules on $BASE_SUBMODULE_BRANCH)"
 fi
 
 # Verify parent branch
