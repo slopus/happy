@@ -180,6 +180,7 @@ start_server() {
         PORT="$HAPPY_SERVER_PORT" \
         DATABASE_URL="postgresql://postgres:postgres@localhost:${POSTGRES_PORT}/handy" \
         REDIS_URL="redis://localhost:${REDIS_PORT}" \
+        HANDY_MASTER_SECRET="test-secret-for-local-development" \
         S3_HOST="localhost" \
         S3_PORT="$MINIO_PORT" \
         S3_USE_SSL="false" \
