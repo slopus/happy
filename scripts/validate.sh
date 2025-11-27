@@ -158,6 +158,8 @@ else
         # run_test "webapp restore login" "cd '$ROOT_DIR/scripts/browser' && node test-restore-login.mjs" || true
     else
         echo -e "${RED}  Failed to start services - skipping browser tests${NC}"
+        echo -e "${YELLOW}  Server log (last 50 lines):${NC}"
+        tail -50 /tmp/happy-server.log 2>/dev/null || echo "  (no log file found)"
         FAILED_TESTS+=("service startup")
     fi
 fi
