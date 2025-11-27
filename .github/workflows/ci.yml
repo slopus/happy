@@ -1,0 +1,92 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+    branches: ['**']
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: handy
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'yarn'
+          cache-dependency-path: |
+            happy-cli/yarn.lock
+            happy-server/yarn.lock
+            happy/yarn.lock
+
+      - name: Install yarn
+        run: npm install -g yarn
+
+      - name: Install MinIO server and client
+        run: |
+          wget -q https://dl.min.io/server/minio/release/linux-amd64/minio
+          chmod +x minio
+          sudo mv minio /usr/local/bin/
+          wget -q https://dl.min.io/client/mc/release/linux-amd64/mc
+          chmod +x mc
+          sudo mv mc /usr/local/bin/
+
+      - name: Install Playwright dependencies
+        run: |
+          npm install -g playwright
+          npx playwright install chromium
+          npx playwright install-deps chromium
+
+      - name: Install happy-cli dependencies
+        working-directory: happy-cli
+        run: yarn install --frozen-lockfile
+
+      - name: Install happy-server dependencies
+        working-directory: happy-server
+        run: yarn install --frozen-lockfile
+
+      - name: Install happy webapp dependencies
+        working-directory: happy
+        run: yarn install --frozen-lockfile
+
+      - name: Run validation (quick mode - builds and unit tests only)
+        run: ./scripts/validate.sh --quick
+
+      - name: Run full validation with E2E tests
+        run: ./scripts/validate.sh
+        env:
+          POSTGRES_PORT: 5432
+          REDIS_PORT: 6379
