@@ -179,6 +179,7 @@ start_server() {
         # Start server with environment variables for ports
         PORT="$HAPPY_SERVER_PORT" \
         DATABASE_URL="postgresql://postgres:postgres@localhost:${POSTGRES_PORT}/handy" \
+        REDIS_URL="redis://localhost:${REDIS_PORT}" \
         S3_PORT="$MINIO_PORT" \
         S3_PUBLIC_URL="http://localhost:${MINIO_PORT}/happy" \
             yarn start > /tmp/happy-server.log 2>&1 &
