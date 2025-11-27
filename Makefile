@@ -1,4 +1,4 @@
-.PHONY: help setup rebase-upstream status feature-start feature-end build build-cli build-server install server stop logs cli e2e-test browser-inspect setup-credentials
+.PHONY: help setup rebase-upstream status feature-start feature-end build build-cli build-server install server stop logs cli e2e-test browser-inspect setup-credentials validate validate-quick
 
 # Base development branch for submodules (combines all features we want to merge)
 BASE_SUBMODULE_BRANCH := rrnewton
@@ -21,6 +21,8 @@ help:
 	@echo "  make install         - Install dependencies for all repos"
 	@echo ""
 	@echo "=== Testing ==="
+	@echo "  make validate        - Run all validation tests (builds + unit + browser)"
+	@echo "  make validate-quick  - Run quick validation (builds only, no browser tests)"
 	@echo "  make e2e-test        - Run full E2E test (isolated test credentials)"
 	@echo "  make browser-inspect - Inspect webapp with headless browser"
 	@echo ""
@@ -228,3 +230,11 @@ e2e-test: build
 browser-inspect:
 	@echo "=== Inspecting webapp with headless browser ==="
 	@cd scripts/browser && node inspect-webapp.mjs --screenshot --console
+
+# Run all validation tests (builds, unit tests, browser tests if services running)
+validate:
+	@./scripts/validate.sh
+
+# Run quick validation (builds only, skip browser tests)
+validate-quick:
+	@./scripts/validate.sh --quick
