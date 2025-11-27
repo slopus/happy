@@ -90,11 +90,23 @@ wait_for_port() {
 # =============================================================================
 
 start_postgres() {
+    # Check if port is already listening (e.g., via Docker/CI service)
+    if port_listening "$POSTGRES_PORT"; then
+        info "PostgreSQL is already running on port $POSTGRES_PORT"
+        return 0
+    fi
     if is_running "postgres.*17/main"; then
-        info "PostgreSQL is already running"
+        info "PostgreSQL process detected, waiting for port..."
+        wait_for_port "$POSTGRES_PORT" "PostgreSQL" 10 || {
+            error "PostgreSQL process running but port not responding"
+            return 1
+        }
     else
         info "Starting PostgreSQL..."
-        service postgresql start
+        service postgresql start 2>/dev/null || {
+            error "Failed to start PostgreSQL service"
+            return 1
+        }
         wait_for_port "$POSTGRES_PORT" "PostgreSQL" 10 || {
             error "PostgreSQL failed to start"
             return 1
@@ -104,8 +116,17 @@ start_postgres() {
 }
 
 start_redis() {
+    # Check if port is already listening (e.g., via Docker/CI service)
+    if port_listening "$REDIS_PORT"; then
+        info "Redis is already running on port $REDIS_PORT"
+        return 0
+    fi
     if is_running "redis-server"; then
-        info "Redis is already running"
+        info "Redis process detected, waiting for port..."
+        wait_for_port "$REDIS_PORT" "Redis" 10 || {
+            error "Redis process running but port not responding"
+            return 1
+        }
     else
         info "Starting Redis..."
         redis-server --daemonize yes --port "$REDIS_PORT" 2>/dev/null || \
@@ -155,7 +176,12 @@ start_server() {
             cp .env.dev .env
         fi
 
-        PORT="$HAPPY_SERVER_PORT" yarn start > /tmp/happy-server.log 2>&1 &
+        # Start server with environment variables for ports
+        PORT="$HAPPY_SERVER_PORT" \
+        DATABASE_URL="postgresql://postgres:postgres@localhost:${POSTGRES_PORT}/handy" \
+        S3_PORT="$MINIO_PORT" \
+        S3_PUBLIC_URL="http://localhost:${MINIO_PORT}/happy" \
+            yarn start > /tmp/happy-server.log 2>&1 &
         cd "$SCRIPT_DIR"
 
         wait_for_port "$HAPPY_SERVER_PORT" "happy-server" 30 || {

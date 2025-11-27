@@ -88,5 +88,6 @@ jobs:
       - name: Run full validation with E2E tests
         run: ./scripts/validate.sh
         env:
+          CI: true
           POSTGRES_PORT: 5432
           REDIS_PORT: 6379
