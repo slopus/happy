@@ -15,6 +15,8 @@ export const UsageSchema = z.object({
 }).passthrough();
 
 // Main schema with minimal validation for only the fields we use
+// NOTE: Schema is intentionally lenient to handle various Claude Code message formats
+// including synthetic error messages, API errors, and different SDK versions
 export const RawJSONLinesSchema = z.discriminatedUnion("type", [
   // User message - validates uuid and message.content
   z.object({
@@ -27,14 +29,15 @@ export const RawJSONLinesSchema = z.discriminatedUnion("type", [
     }).passthrough()
   }).passthrough(),
 
-  // Assistant message - validates message object with usage and content
+  // Assistant message - only validates uuid and type
+  // message object is optional to handle synthetic error messages (isApiErrorMessage: true)
+  // which may have different structure than normal assistant messages
   z.object({
     uuid: z.string(),
     type: z.literal("assistant"),
-    message: z.object({// Entire message used in getMessageKey()
+    message: z.object({
       usage: UsageSchema.optional(), // Used in apiSession.ts
-      content: z.any() // Used in tests
-    }).passthrough()
+    }).passthrough().optional()
   }).passthrough(),
 
   // Summary message - validates summary and leafUuid

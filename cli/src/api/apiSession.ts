@@ -201,7 +201,7 @@ export class ApiSessionClient extends EventEmitter {
         });
 
         // Track usage from assistant messages
-        if (body.type === 'assistant' && body.message.usage) {
+        if (body.type === 'assistant' && body.message?.usage) {
             try {
                 this.sendUsageData(body.message.usage);
             } catch (error) {
