@@ -102,10 +102,15 @@ export async function claudeLocal(opts: {
             }
 
             // Prepare environment variables
+            // Note: Local mode always uses bundled claude because launcher needs in-process
+            // interceptors for session ID detection and thinking state tracking
             const env = {
                 ...process.env,
                 ...opts.claudeEnvVars
             }
+
+            logger.debug(`[ClaudeLocal] Spawning launcher: ${claudeCliPath}`);
+            logger.debug(`[ClaudeLocal] Args: ${JSON.stringify(args)}`);
 
             const child = spawn('node', [claudeCliPath, ...args], {
                 stdio: ['inherit', 'inherit', 'inherit', 'pipe'],

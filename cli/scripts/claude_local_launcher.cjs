@@ -95,4 +95,78 @@ global.fetch = function(...args) {
 Object.defineProperty(global.fetch, 'name', { value: 'fetch' });
 Object.defineProperty(global.fetch, 'length', { value: originalFetch.length });
 
-import('@anthropic-ai/claude-code/cli.js')
+// Determine which cli.js to import
+// We need to import (not spawn) to keep interceptors working
+const { execSync } = require('child_process');
+const path = require('path');
+
+function findGlobalClaudeCliPath() {
+    try {
+        // Try to find global npm root
+        const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
+        const globalCliPath = path.join(globalRoot, '@anthropic-ai', 'claude-code', 'cli.js');
+        if (fs.existsSync(globalCliPath)) {
+            return globalCliPath;
+        }
+    } catch (e) {
+        // npm root -g failed
+    }
+    return null;
+}
+
+function getBundledCliPath() {
+    // Bundled version in local node_modules
+    return require.resolve('@anthropic-ai/claude-code/cli.js');
+}
+
+function getGlobalVersion(cliPath) {
+    try {
+        const pkgPath = path.join(path.dirname(cliPath), 'package.json');
+        if (fs.existsSync(pkgPath)) {
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            return pkg.version;
+        }
+    } catch (e) {}
+    return null;
+}
+
+// Find paths and versions
+const globalCliPath = findGlobalClaudeCliPath();
+const bundledCliPath = getBundledCliPath();
+const globalVersion = globalCliPath ? getGlobalVersion(globalCliPath) : null;
+const bundledVersion = getGlobalVersion(bundledCliPath);
+
+console.error(`[LAUNCHER] Global: ${globalVersion || 'not found'}, Bundled: ${bundledVersion || 'unknown'}`);
+
+// Compare versions and use the newer one
+function compareVersions(a, b) {
+    if (!a || !b) return 0;
+    const partsA = a.split('.').map(Number);
+    const partsB = b.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        if (partsA[i] > partsB[i]) return 1;
+        if (partsA[i] < partsB[i]) return -1;
+    }
+    return 0;
+}
+
+let cliPathToUse = bundledCliPath;
+if (globalCliPath && globalVersion && bundledVersion) {
+    if (compareVersions(globalVersion, bundledVersion) >= 0) {
+        cliPathToUse = globalCliPath;
+        console.error(`[LAUNCHER] Using global claude (${globalVersion}): ${globalCliPath}`);
+    } else {
+        console.error(`[LAUNCHER] Using bundled claude (${bundledVersion}): ${bundledCliPath}`);
+    }
+} else if (globalCliPath && globalVersion) {
+    cliPathToUse = globalCliPath;
+    console.error(`[LAUNCHER] Using global claude (${globalVersion}): ${globalCliPath}`);
+} else {
+    console.error(`[LAUNCHER] Using bundled claude: ${bundledCliPath}`);
+}
+
+// Import the chosen cli.js (keeps interceptors working)
+// On Windows, convert path to file:// URL for ESM import
+const { pathToFileURL } = require('url');
+const importUrl = pathToFileURL(cliPathToUse).href;
+import(importUrl);
