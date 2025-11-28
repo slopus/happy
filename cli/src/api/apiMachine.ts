@@ -92,7 +92,7 @@ export class ApiMachineClient {
             logger: (msg, data) => logger.debug(msg, data)
         });
 
-        registerCommonHandlers(this.rpcHandlerManager);
+        registerCommonHandlers(this.rpcHandlerManager, process.cwd());
     }
 
     setRPCHandlers({

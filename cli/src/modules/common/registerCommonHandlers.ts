@@ -7,6 +7,7 @@ import { join } from 'path';
 import { run as runRipgrep } from '@/modules/ripgrep/index';
 import { run as runDifftastic } from '@/modules/difftastic/index';
 import { RpcHandlerManager } from '../../api/rpc/RpcHandlerManager';
+import { validatePath } from './pathSecurity';
 
 const execAsync = promisify(exec);
 
@@ -131,11 +132,19 @@ export type SpawnSessionResult =
 /**
  * Register all RPC handlers with the session
  */
-export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager) {
+export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager, workingDirectory: string) {
 
     // Shell command handler - executes commands in the default shell
     rpcHandlerManager.registerHandler<BashRequest, BashResponse>('bash', async (data) => {
         logger.debug('Shell command request:', data.command);
+
+        // Validate cwd if provided
+        if (data.cwd) {
+            const validation = validatePath(data.cwd, workingDirectory);
+            if (!validation.valid) {
+                return { success: false, error: validation.error };
+            }
+        }
 
         try {
             // Build options with shell enabled by default
@@ -187,6 +196,12 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager) {
     rpcHandlerManager.registerHandler<ReadFileRequest, ReadFileResponse>('readFile', async (data) => {
         logger.debug('Read file request:', data.path);
 
+        // Validate path is within working directory
+        const validation = validatePath(data.path, workingDirectory);
+        if (!validation.valid) {
+            return { success: false, error: validation.error };
+        }
+
         try {
             const buffer = await readFile(data.path);
             const content = buffer.toString('base64');
@@ -200,6 +215,12 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager) {
     // Write file handler - with hash verification
     rpcHandlerManager.registerHandler<WriteFileRequest, WriteFileResponse>('writeFile', async (data) => {
         logger.debug('Write file request:', data.path);
+
+        // Validate path is within working directory
+        const validation = validatePath(data.path, workingDirectory);
+        if (!validation.valid) {
+            return { success: false, error: validation.error };
+        }
 
         try {
             // If expectedHash is provided (not null), verify existing file
@@ -261,6 +282,12 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager) {
     rpcHandlerManager.registerHandler<ListDirectoryRequest, ListDirectoryResponse>('listDirectory', async (data) => {
         logger.debug('List directory request:', data.path);
 
+        // Validate path is within working directory
+        const validation = validatePath(data.path, workingDirectory);
+        if (!validation.valid) {
+            return { success: false, error: validation.error };
+        }
+
         try {
             const entries = await readdir(data.path, { withFileTypes: true });
 
@@ -312,6 +339,12 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager) {
     // Get directory tree handler - recursive with depth control
     rpcHandlerManager.registerHandler<GetDirectoryTreeRequest, GetDirectoryTreeResponse>('getDirectoryTree', async (data) => {
         logger.debug('Get directory tree request:', data.path, 'maxDepth:', data.maxDepth);
+
+        // Validate path is within working directory
+        const validation = validatePath(data.path, workingDirectory);
+        if (!validation.valid) {
+            return { success: false, error: validation.error };
+        }
 
         // Helper function to build tree recursively
         async function buildTree(path: string, name: string, currentDepth: number): Promise<TreeNode | null> {
@@ -394,6 +427,14 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager) {
     rpcHandlerManager.registerHandler<RipgrepRequest, RipgrepResponse>('ripgrep', async (data) => {
         logger.debug('Ripgrep request with args:', data.args, 'cwd:', data.cwd);
 
+        // Validate cwd if provided
+        if (data.cwd) {
+            const validation = validatePath(data.cwd, workingDirectory);
+            if (!validation.valid) {
+                return { success: false, error: validation.error };
+            }
+        }
+
         try {
             const result = await runRipgrep(data.args, { cwd: data.cwd });
             return {
@@ -414,6 +455,14 @@ export function registerCommonHandlers(rpcHandlerManager: RpcHandlerManager) {
     // Difftastic handler - raw interface to difftastic
     rpcHandlerManager.registerHandler<DifftasticRequest, DifftasticResponse>('difftastic', async (data) => {
         logger.debug('Difftastic request with args:', data.args, 'cwd:', data.cwd);
+
+        // Validate cwd if provided
+        if (data.cwd) {
+            const validation = validatePath(data.cwd, workingDirectory);
+            if (!validation.valid) {
+                return { success: false, error: validation.error };
+            }
+        }
 
         try {
             const result = await runDifftastic(data.args, { cwd: data.cwd });
