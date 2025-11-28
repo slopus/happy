@@ -155,12 +155,12 @@ export function accountRoutes(app: Fastify) {
                 version: expectedVersion + 1
             };
 
-            // Send account update to all user connections
+            // Send account update to user-scoped connections only
             const updatePayload = buildUpdateAccountUpdate(userId, { settings: settingsUpdate }, updSeq, randomKeyNaked(12));
             eventRouter.emitUpdate({
                 userId,
                 payload: updatePayload,
-                recipientFilter: { type: 'all-user-authenticated-connections' }
+                recipientFilter: { type: 'user-scoped-only' }
             });
 
             return reply.send({

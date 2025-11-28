@@ -175,7 +175,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             eventRouter.emitEphemeral({
                 userId,
                 payload: sessionActivity,
-                recipientFilter: { type: 'all-user-authenticated-connections' }
+                recipientFilter: { type: 'user-scoped-only' }
             });
         } catch (error) {
             log({ module: 'websocket', level: 'error' }, `Error in session-alive: ${error}`);
@@ -280,7 +280,7 @@ export function sessionUpdateHandler(userId: string, socket: Socket, connection:
             eventRouter.emitEphemeral({
                 userId,
                 payload: sessionActivity,
-                recipientFilter: { type: 'all-user-authenticated-connections' }
+                recipientFilter: { type: 'user-scoped-only' }
             });
         } catch (error) {
             log({ module: 'websocket', level: 'error' }, `Error in session-end: ${error}`);

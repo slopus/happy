@@ -33,6 +33,7 @@ export type ClientConnection = SessionScopedConnection | UserScopedConnection | 
 export type RecipientFilter =
     | { type: 'all-interested-in-session'; sessionId: string }
     | { type: 'user-scoped-only' }
+    | { type: 'machine-scoped-only'; machineId: string }  // For update-machine: sends to user-scoped + only the specific machine
     | { type: 'all-user-authenticated-connections' };
 
 // === UPDATE EVENT TYPES (Persistent) ===
@@ -278,6 +279,16 @@ class EventRouter {
 
             case 'user-scoped-only':
                 return connection.connectionType === 'user-scoped';
+
+            case 'machine-scoped-only':
+                // Send to user-scoped (mobile/web needs all machine updates) + only the specific machine
+                if (connection.connectionType === 'user-scoped') {
+                    return true;
+                }
+                if (connection.connectionType === 'machine-scoped') {
+                    return connection.machineId === filter.machineId;
+                }
+                return false;  // session-scoped doesn't need machine updates
 
             case 'all-user-authenticated-connections':
                 // Send to all connection types (default behavior)

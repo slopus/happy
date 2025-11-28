@@ -94,12 +94,12 @@ export async function sessionDelete(ctx: Context, sessionId: string): Promise<bo
                 sessionId,
                 updateType: 'delete-session',
                 updatePayload: JSON.stringify(updatePayload)
-            }, `Emitting delete-session update to all user connections`);
+            }, `Emitting delete-session update to user-scoped connections`);
 
             eventRouter.emitUpdate({
                 userId: ctx.uid,
                 payload: updatePayload,
-                recipientFilter: { type: 'all-user-authenticated-connections' }
+                recipientFilter: { type: 'user-scoped-only' }
             });
         });
 

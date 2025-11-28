@@ -279,11 +279,11 @@ export function sessionRoutes(app: Fastify) {
                 sessionId: session.id,
                 updateType: 'new-session',
                 updatePayload: JSON.stringify(updatePayload)
-            }, `Emitting new-session update to all user connections`);
+            }, `Emitting new-session update to user-scoped connections`);
             eventRouter.emitUpdate({
                 userId,
                 payload: updatePayload,
-                recipientFilter: { type: 'all-user-authenticated-connections' }
+                recipientFilter: { type: 'user-scoped-only' }
             });
 
             return reply.send({

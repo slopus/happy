@@ -27,7 +27,7 @@ export function startTimeout() {
                 eventRouter.emitEphemeral({
                     userId: session.accountId,
                     payload: buildSessionActivityEphemeral(session.id, false, updated[0].lastActiveAt.getTime(), false),
-                    recipientFilter: { type: 'all-user-authenticated-connections' }
+                    recipientFilter: { type: 'user-scoped-only' }
                 });
             }
 
@@ -51,7 +51,7 @@ export function startTimeout() {
                 eventRouter.emitEphemeral({
                     userId: machine.accountId,
                     payload: buildMachineActivityEphemeral(machine.id, false, updated[0].lastActiveAt.getTime()),
-                    recipientFilter: { type: 'all-user-authenticated-connections' }
+                    recipientFilter: { type: 'user-scoped-only' }
                 });
             }
 

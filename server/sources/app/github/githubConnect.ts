@@ -103,6 +103,6 @@ export async function githubConnect(
     eventRouter.emitUpdate({
         userId,
         payload: updatePayload,
-        recipientFilter: { type: 'all-user-authenticated-connections' }
+        recipientFilter: { type: 'user-scoped-only' }
     });
 }

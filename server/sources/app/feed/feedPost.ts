@@ -59,7 +59,7 @@ export async function feedPost(
         eventRouter.emitUpdate({
             userId: ctx.uid,
             payload: updatePayload,
-            recipientFilter: { type: 'all-user-authenticated-connections' }
+            recipientFilter: { type: 'user-scoped-only' }
         });
     });
 

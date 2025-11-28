@@ -127,7 +127,7 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
             eventRouter.emitUpdate({
                 userId,
                 payload: updatePayload,
-                recipientFilter: { type: 'all-user-authenticated-connections' }
+                recipientFilter: { type: 'machine-scoped-only', machineId }
             });
 
             // Send success response with new version
@@ -222,7 +222,7 @@ export function machineUpdateHandler(userId: string, socket: Socket) {
             eventRouter.emitUpdate({
                 userId,
                 payload: updatePayload,
-                recipientFilter: { type: 'all-user-authenticated-connections' }
+                recipientFilter: { type: 'machine-scoped-only', machineId }
             });
 
             // Send success response with new version

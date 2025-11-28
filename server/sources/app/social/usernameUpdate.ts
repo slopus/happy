@@ -29,6 +29,6 @@ export async function usernameUpdate(ctx: Context, username: string): Promise<vo
     const updatePayload = buildUpdateAccountUpdate(userId, { username: username }, updSeq, randomKeyNaked(12));
     eventRouter.emitUpdate({
         userId, payload: updatePayload,
-        recipientFilter: { type: 'all-user-authenticated-connections' }
+        recipientFilter: { type: 'user-scoped-only' }
     });
 }

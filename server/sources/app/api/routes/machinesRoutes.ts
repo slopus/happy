@@ -74,9 +74,10 @@ export function machinesRoutes(app: Fastify) {
             const newMachinePayload = buildNewMachineUpdate(newMachine, updSeq1, randomKeyNaked(12));
             eventRouter.emitUpdate({
                 userId,
-                payload: newMachinePayload
+                payload: newMachinePayload,
+                recipientFilter: { type: 'user-scoped-only' }
             });
-            
+
             // Emit update-machine event for backward compatibility (without dataEncryptionKey)
             const machineMetadata = {
                 version: 1,
@@ -85,7 +86,8 @@ export function machinesRoutes(app: Fastify) {
             const updatePayload = buildUpdateMachineUpdate(newMachine.id, updSeq2, randomKeyNaked(12), machineMetadata);
             eventRouter.emitUpdate({
                 userId,
-                payload: updatePayload
+                payload: updatePayload,
+                recipientFilter: { type: 'machine-scoped-only', machineId: newMachine.id }
             });
 
             return reply.send({

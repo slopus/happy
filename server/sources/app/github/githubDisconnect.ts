@@ -60,7 +60,7 @@ export async function githubDisconnect(ctx: Context): Promise<void> {
     eventRouter.emitUpdate({
         userId,
         payload: updatePayload,
-        recipientFilter: { type: 'all-user-authenticated-connections' }
+        recipientFilter: { type: 'user-scoped-only' }
     });
 
     log({ module: 'github-disconnect' }, `GitHub account ${githubUserId} disconnected successfully from user ${userId}`);
