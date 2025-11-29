@@ -125,6 +125,7 @@ describe('settings', () => {
                 viewInline: true
             };
             expect(applySettings(currentSettings, delta)).toEqual({
+                schemaVersion: 1, // Preserved from currentSettings
                 viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -148,6 +149,9 @@ describe('settings', () => {
                 lastUsedModelMode: null,
                 profiles: [],
                 lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });
 
@@ -334,6 +338,7 @@ describe('settings', () => {
     describe('settingsDefaults', () => {
         it('should have correct default values', () => {
             expect(settingsDefaults).toEqual({
+                schemaVersion: 2,
                 viewInline: false,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -357,6 +362,9 @@ describe('settings', () => {
                 lastUsedModelMode: null,
                 profiles: [],
                 lastUsedProfile: null,
+                favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });
 
