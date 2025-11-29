@@ -1,4 +1,4 @@
-.PHONY: help setup rebase-upstream status feature-start feature-end build build-cli build-server install server stop logs cli e2e-test browser-inspect setup-credentials validate validate-quick
+.PHONY: help setup rebase-upstream status feature-start feature-end build build-cli build-server install server stop logs cli e2e-test browser-inspect setup-credentials validate validate-quick push
 
 # Base development branch for submodules (combines all features we want to merge)
 BASE_SUBMODULE_BRANCH := rrnewton
@@ -30,6 +30,7 @@ help:
 	@echo "  make setup           - Configure submodule remotes and branches"
 	@echo "  make rebase-upstream - Fetch and rebase on upstream/main"
 	@echo "  make status          - Show submodule branch status"
+	@echo "  make push            - Push all repos (submodules + parent) to origin"
 	@echo "  make feature-start   - Start a new feature branch (use FEATURE=name)"
 	@echo "  make feature-end     - End feature branch and return to base development"
 	@echo ""
@@ -238,3 +239,41 @@ validate:
 # Run quick validation (builds only, skip browser tests)
 validate-quick:
 	@./scripts/validate.sh --quick
+
+# ============================================================================
+# Git Push Target
+# ============================================================================
+
+# Push all repos (submodules + parent) at their current branches
+push:
+	@echo ""
+	@echo "=== Pushing All Repositories ==="
+	@echo ""
+	@FAILED=""; \
+	for submod in happy happy-cli happy-server; do \
+		BRANCH=$$(cd $$submod && git rev-parse --abbrev-ref HEAD); \
+		echo "Pushing $$submod ($$BRANCH)..."; \
+		if cd $$submod && git push origin $$BRANCH 2>&1; then \
+			echo "  ✓ $$submod pushed successfully"; \
+		else \
+			echo "  ✗ $$submod push failed"; \
+			FAILED="$$FAILED $$submod"; \
+		fi; \
+		cd ..; \
+	done; \
+	PARENT_BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
+	echo "Pushing parent repo ($$PARENT_BRANCH)..."; \
+	if git push origin $$PARENT_BRANCH 2>&1; then \
+		echo "  ✓ parent pushed successfully"; \
+	else \
+		echo "  ✗ parent push failed"; \
+		FAILED="$$FAILED parent"; \
+	fi; \
+	echo ""; \
+	if [ -z "$$FAILED" ]; then \
+		echo "=== All repositories pushed successfully ==="; \
+	else \
+		echo "=== Push completed with failures:$$FAILED ==="; \
+		exit 1; \
+	fi; \
+	echo ""

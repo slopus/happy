@@ -375,13 +375,16 @@ show_status() {
         error "happy-server: Stopped"
     fi
 
-    # Webapp
-    if is_running "expo start"; then
+    # Webapp (can be expo start in dev mode, or serve dist for static builds)
+    if is_running "expo start" || is_running "serve.*dist.*$HAPPY_WEBAPP_PORT"; then
         if port_listening "$HAPPY_WEBAPP_PORT"; then
             success "Webapp: Running (port $HAPPY_WEBAPP_PORT)"
         else
             warning "Webapp: Process running but not responding"
         fi
+    elif port_listening "$HAPPY_WEBAPP_PORT"; then
+        # Fallback: just check if port is listening (might be started differently)
+        success "Webapp: Running (port $HAPPY_WEBAPP_PORT)"
     else
         error "Webapp: Stopped"
     fi
