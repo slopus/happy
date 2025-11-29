@@ -1,15 +1,31 @@
 #!/bin/bash
 
-# Happy Self-Hosted Demo Control Script
-# This script manages the self-hosted happy-server and happy-cli demo environment
+# Happy Self-Hosted Service Launcher
+# This script manages the self-hosted happy-server and happy-cli environment
 #
-# Port Configuration (can be overridden via environment variables):
-#   HAPPY_SERVER_PORT   - Server port (default: 3005)
-#   HAPPY_WEBAPP_PORT   - Webapp port (default: 8081)
-#   MINIO_PORT          - MinIO API port (default: 9000)
-#   MINIO_CONSOLE_PORT  - MinIO console port (default: 9001)
-#   POSTGRES_PORT       - PostgreSQL port (default: 5432)
-#   REDIS_PORT          - Redis port (default: 6379)
+# SLOT CONCEPT:
+#   --slot 0 (or no --slot): Primary/production instance with default ports
+#     - Server: 3005, Webapp: 8081, MinIO: 9000/9001
+#   --slot 1, 2, 3...: Test/dev instances with deterministic ports
+#     - Base ports: 10001, 10002, 10003, 10004
+#     - Slot N adds: 10 * (N-1) to each port
+#     - Slot 1: Server=10001, Webapp=10002, MinIO=10003/10004
+#     - Slot 2: Server=10011, Webapp=10012, MinIO=10013/10014
+#
+# ENVIRONMENT VARIABLES:
+#   The script expects HAPPY_* variables to NOT be set. If they are set,
+#   it will print a warning (or error if --slot is used).
+#
+# USAGE:
+#   ./happy-launcher.sh [--slot N] <command>
+#
+# COMMANDS:
+#   start       Start backend services (PostgreSQL, Redis, MinIO, happy-server)
+#   start-all   Start all services including webapp
+#   stop        Stop all services
+#   status      Show status of services
+#   env         Print environment variables for this slot
+#   ... (run with 'help' for full list)
 
 set -e
 
@@ -19,19 +35,116 @@ CLI_DIR="$SCRIPT_DIR/happy-cli"
 WEBAPP_DIR="$SCRIPT_DIR/happy"
 
 # =============================================================================
-# Port Configuration
+# Slot Argument Parsing
 # =============================================================================
 
-HAPPY_SERVER_PORT="${HAPPY_SERVER_PORT:-3005}"
-HAPPY_WEBAPP_PORT="${HAPPY_WEBAPP_PORT:-8081}"
-MINIO_PORT="${MINIO_PORT:-9000}"
-MINIO_CONSOLE_PORT="${MINIO_CONSOLE_PORT:-9001}"
+SLOT=""
+ARGS=()
+
+# Parse --slot argument before other processing
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --slot)
+            SLOT="$2"
+            shift 2
+            ;;
+        *)
+            ARGS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Restore remaining arguments
+set -- "${ARGS[@]}"
+
+# Validate slot
+if [[ -n "$SLOT" && ! "$SLOT" =~ ^[0-9]+$ ]]; then
+    echo "Error: --slot must be a non-negative integer" >&2
+    exit 1
+fi
+
+# =============================================================================
+# Environment Variable Check
+# =============================================================================
+
+check_env_vars() {
+    local has_vars=false
+    local vars=""
+
+    for var in HAPPY_SERVER_URL HAPPY_SERVER_PORT HAPPY_WEBAPP_PORT HAPPY_WEBAPP_URL HAPPY_HOME_DIR; do
+        if [[ -n "${!var}" ]]; then
+            has_vars=true
+            vars="$vars $var=${!var}"
+        fi
+    done
+
+    if $has_vars; then
+        if [[ -n "$SLOT" ]]; then
+            echo "Error: HAPPY_* environment variables are set, but --slot was specified." >&2
+            echo "When using --slot, environment variables should not be pre-set." >&2
+            echo "Found:$vars" >&2
+            exit 1
+        else
+            echo "Warning: Using HAPPY_* environment variables from environment:$vars" >&2
+        fi
+    fi
+}
+
+# Run the check
+check_env_vars
+
+# =============================================================================
+# Port Configuration with Slot Support
+# =============================================================================
+
+# Default ports for slot 0 (or when no slot specified)
+DEFAULT_SERVER_PORT=3005
+DEFAULT_WEBAPP_PORT=8081
+DEFAULT_MINIO_PORT=9000
+DEFAULT_MINIO_CONSOLE_PORT=9001
+
+# Base ports for slot 1+
+BASE_SERVER_PORT=10001
+BASE_WEBAPP_PORT=10002
+BASE_MINIO_PORT=10003
+BASE_MINIO_CONSOLE_PORT=10004
+SLOT_OFFSET=10
+
+# Calculate ports based on slot
+calculate_ports() {
+    local slot="${1:-0}"
+
+    if [[ "$slot" -eq 0 ]]; then
+        HAPPY_SERVER_PORT="${HAPPY_SERVER_PORT:-$DEFAULT_SERVER_PORT}"
+        HAPPY_WEBAPP_PORT="${HAPPY_WEBAPP_PORT:-$DEFAULT_WEBAPP_PORT}"
+        MINIO_PORT="${MINIO_PORT:-$DEFAULT_MINIO_PORT}"
+        MINIO_CONSOLE_PORT="${MINIO_CONSOLE_PORT:-$DEFAULT_MINIO_CONSOLE_PORT}"
+    else
+        local offset=$(( (slot - 1) * SLOT_OFFSET ))
+        HAPPY_SERVER_PORT=$(( BASE_SERVER_PORT + offset ))
+        HAPPY_WEBAPP_PORT=$(( BASE_WEBAPP_PORT + offset ))
+        MINIO_PORT=$(( BASE_MINIO_PORT + offset ))
+        MINIO_CONSOLE_PORT=$(( BASE_MINIO_CONSOLE_PORT + offset ))
+    fi
+}
+
+# Apply slot configuration
+calculate_ports "${SLOT:-0}"
+
+# These ports are shared (system services) - not affected by slots
 POSTGRES_PORT="${POSTGRES_PORT:-5432}"
 REDIS_PORT="${REDIS_PORT:-6379}"
 
 # Derived URLs
 HAPPY_SERVER_URL="http://localhost:${HAPPY_SERVER_PORT}"
 HAPPY_WEBAPP_URL="http://localhost:${HAPPY_WEBAPP_PORT}"
+
+# Slot-specific directories for isolation
+SLOT_SUFFIX="${SLOT:-0}"
+MINIO_DATA_DIR="$SERVER_DIR/.minio-slot-${SLOT_SUFFIX}"
+LOG_DIR="/tmp/happy-slot-${SLOT_SUFFIX}"
+mkdir -p "$LOG_DIR"
 
 # =============================================================================
 # Colors and helpers
@@ -140,34 +253,32 @@ start_redis() {
 }
 
 start_minio() {
-    if is_running "minio server"; then
-        info "MinIO is already running"
+    if port_listening "$MINIO_PORT"; then
+        info "MinIO is already running on port $MINIO_PORT"
     else
-        info "Starting MinIO..."
-        cd "$SERVER_DIR"
-        mkdir -p .minio/data
+        info "Starting MinIO (slot ${SLOT:-0})..."
+        mkdir -p "$MINIO_DATA_DIR/data"
         MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin \
-            minio server .minio/data --address ":${MINIO_PORT}" --console-address ":${MINIO_CONSOLE_PORT}" \
-            > /tmp/minio.log 2>&1 &
-        cd "$SCRIPT_DIR"
+            minio server "$MINIO_DATA_DIR/data" --address ":${MINIO_PORT}" --console-address ":${MINIO_CONSOLE_PORT}" \
+            > "$LOG_DIR/minio.log" 2>&1 &
         wait_for_port "$MINIO_PORT" "MinIO" 15 || {
             error "MinIO failed to start"
             return 1
         }
         # Create bucket if mc is available
         if command -v mc >/dev/null 2>&1; then
-            mc alias set local "http://localhost:${MINIO_PORT}" minioadmin minioadmin 2>/dev/null || true
-            mc mb local/happy 2>/dev/null || true
+            mc alias set "local-slot-${SLOT_SUFFIX}" "http://localhost:${MINIO_PORT}" minioadmin minioadmin 2>/dev/null || true
+            mc mb "local-slot-${SLOT_SUFFIX}/happy" 2>/dev/null || true
         fi
         success "MinIO started on port $MINIO_PORT (Console: $MINIO_CONSOLE_PORT)"
     fi
 }
 
 start_server() {
-    if is_running "tsx.*sources/main.ts"; then
-        info "happy-server is already running"
+    if port_listening "$HAPPY_SERVER_PORT"; then
+        info "happy-server is already running on port $HAPPY_SERVER_PORT"
     else
-        info "Starting happy-server..."
+        info "Starting happy-server (slot ${SLOT:-0})..."
         cd "$SERVER_DIR"
 
         # Ensure .env exists
@@ -188,11 +299,11 @@ start_server() {
         S3_SECRET_KEY="minioadmin" \
         S3_BUCKET="happy" \
         S3_PUBLIC_URL="http://localhost:${MINIO_PORT}/happy" \
-            yarn start > /tmp/happy-server.log 2>&1 &
+            yarn start > "$LOG_DIR/server.log" 2>&1 &
         cd "$SCRIPT_DIR"
 
         wait_for_port "$HAPPY_SERVER_PORT" "happy-server" 30 || {
-            error "happy-server failed to start. Check logs: tail /tmp/happy-server.log"
+            error "happy-server failed to start. Check logs: tail $LOG_DIR/server.log"
             return 1
         }
         success "happy-server started on port $HAPPY_SERVER_PORT"
@@ -200,19 +311,19 @@ start_server() {
 }
 
 start_webapp() {
-    if is_running "expo start"; then
-        info "Webapp is already running"
+    if port_listening "$HAPPY_WEBAPP_PORT"; then
+        info "Webapp is already running on port $HAPPY_WEBAPP_PORT"
     else
-        info "Starting webapp..."
+        info "Starting webapp (slot ${SLOT:-0})..."
         cd "$WEBAPP_DIR"
         BROWSER=none \
             EXPO_PUBLIC_HAPPY_SERVER_URL="$HAPPY_SERVER_URL" \
-            yarn web --port "$HAPPY_WEBAPP_PORT" > /tmp/webapp.log 2>&1 &
+            yarn web --port "$HAPPY_WEBAPP_PORT" > "$LOG_DIR/webapp.log" 2>&1 &
         cd "$SCRIPT_DIR"
 
         # Webapp takes longer to start (Metro bundler)
         wait_for_port "$HAPPY_WEBAPP_PORT" "webapp" 60 || {
-            error "Webapp failed to start. Check logs: tail /tmp/webapp.log"
+            error "Webapp failed to start. Check logs: tail $LOG_DIR/webapp.log"
             return 1
         }
         success "Webapp started on port $HAPPY_WEBAPP_PORT"
@@ -333,14 +444,18 @@ cleanup_all() {
 
 show_status() {
     echo ""
-    echo "=== Happy Self-Hosted Demo Status ==="
+    echo "=== Happy Self-Hosted Status (Slot ${SLOT:-0}) ==="
     echo ""
     echo "Port configuration:"
     echo "  Server:  $HAPPY_SERVER_PORT"
     echo "  Webapp:  $HAPPY_WEBAPP_PORT"
-    echo "  MinIO:   $MINIO_PORT"
+    echo "  MinIO:   $MINIO_PORT (Console: $MINIO_CONSOLE_PORT)"
     echo "  Postgres: $POSTGRES_PORT"
     echo "  Redis:   $REDIS_PORT"
+    echo ""
+    echo "Directories:"
+    echo "  MinIO data: $MINIO_DATA_DIR"
+    echo "  Logs:       $LOG_DIR"
     echo ""
 
     # PostgreSQL
@@ -396,16 +511,16 @@ show_logs() {
     local service=$1
     case $service in
         server)
-            info "Showing happy-server logs (tail -f /tmp/happy-server.log)..."
-            tail -f /tmp/happy-server.log
+            info "Showing happy-server logs (slot ${SLOT:-0})..."
+            tail -f "$LOG_DIR/server.log"
             ;;
         webapp)
-            info "Showing webapp logs (tail -f /tmp/webapp.log)..."
-            tail -f /tmp/webapp.log
+            info "Showing webapp logs (slot ${SLOT:-0})..."
+            tail -f "$LOG_DIR/webapp.log"
             ;;
         minio)
-            info "Showing MinIO logs (tail -f /tmp/minio.log)..."
-            tail -f /tmp/minio.log
+            info "Showing MinIO logs (slot ${SLOT:-0})..."
+            tail -f "$LOG_DIR/minio.log"
             ;;
         postgres)
             info "Showing PostgreSQL logs..."
@@ -418,6 +533,19 @@ show_logs() {
             exit 1
             ;;
     esac
+}
+
+# Print environment variables for this slot (can be sourced)
+print_env() {
+    cat << EOF
+export HAPPY_SERVER_PORT=$HAPPY_SERVER_PORT
+export HAPPY_WEBAPP_PORT=$HAPPY_WEBAPP_PORT
+export HAPPY_SERVER_URL=$HAPPY_SERVER_URL
+export HAPPY_WEBAPP_URL=$HAPPY_WEBAPP_URL
+export HAPPY_HOME_DIR=~/.happy-slot-${SLOT_SUFFIX}
+export HAPPY_MINIO_PORT=$MINIO_PORT
+export HAPPY_MINIO_CONSOLE_PORT=$MINIO_CONSOLE_PORT
+EOF
 }
 
 show_urls() {
@@ -565,11 +693,21 @@ case "${1:-}" in
         show_urls
         ;;
 
+    env)
+        print_env
+        ;;
+
     help|--help|-h|"")
         echo ""
-        echo "Happy Self-Hosted Demo Control Script"
+        echo "Happy Self-Hosted Service Launcher"
         echo ""
-        echo "Usage: $0 <command> [options]"
+        echo "Usage: $0 [--slot N] <command> [options]"
+        echo ""
+        echo "Slot Concept:"
+        echo "  --slot 0 (default)  Primary instance: Server=3005, Webapp=8081, MinIO=9000/9001"
+        echo "  --slot 1            Test slot 1: Server=10001, Webapp=10002, MinIO=10003/10004"
+        echo "  --slot 2            Test slot 2: Server=10011, Webapp=10012, MinIO=10013/10014"
+        echo "  --slot N            Ports = base + 10*(N-1) for each service"
         echo ""
         echo "Commands:"
         echo "  start              Start backend services (PostgreSQL, Redis, MinIO, happy-server)"
@@ -582,25 +720,22 @@ case "${1:-}" in
         echo "  restart-all        Full cleanup and restart all services"
         echo "  status             Show status of all services"
         echo "  logs <service>     Tail logs for a service (server, webapp, minio, postgres)"
+        echo "  env                Print environment variables for this slot (can be sourced)"
         echo "  cli [args]         Run happy CLI with local server configuration"
         echo "  test               Test server and CLI connectivity"
         echo "  urls               Show all service URLs and connection strings"
         echo "  help               Show this help message"
         echo ""
-        echo "Environment Variables:"
-        echo "  HAPPY_SERVER_PORT   Server port (default: 3005)"
-        echo "  HAPPY_WEBAPP_PORT   Webapp port (default: 8081)"
-        echo "  MINIO_PORT          MinIO API port (default: 9000)"
-        echo "  MINIO_CONSOLE_PORT  MinIO console port (default: 9001)"
+        echo "Shared Services (not slot-specific):"
         echo "  POSTGRES_PORT       PostgreSQL port (default: 5432)"
         echo "  REDIS_PORT          Redis port (default: 6379)"
         echo ""
         echo "Examples:"
-        echo "  $0 start                    # Start backend services"
-        echo "  $0 start-all                # Start everything including webapp"
-        echo "  $0 status                   # Check what's running"
-        echo "  $0 cleanup --clean-logs     # Stop everything and delete logs"
-        echo "  HAPPY_SERVER_PORT=4000 $0 start  # Use custom port"
+        echo "  $0 start                    # Start slot 0 (default ports)"
+        echo "  $0 --slot 1 start           # Start slot 1 (test ports)"
+        echo "  $0 --slot 1 status          # Check slot 1 status"
+        echo "  $0 --slot 1 env             # Print env vars for slot 1"
+        echo "  eval \$($0 --slot 1 env)     # Set env vars in current shell"
         echo ""
         ;;
 
