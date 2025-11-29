@@ -1,12 +1,17 @@
 /**
  * E2E Test: Local→Remote Message Handover (Manual Setup)
  *
- * This test runs against existing infrastructure:
- * - Server: http://localhost:3005
- * - Webapp: http://localhost:8081
- * - Credentials: ~/.happy-dev-test/access.key
+ * This test runs against existing infrastructure. Configure via environment:
+ * - HAPPY_SERVER_PORT: Server port (default: 3005)
+ * - HAPPY_WEBAPP_PORT: Webapp port (default: 8081)
+ * - HAPPY_SERVER_URL: Full server URL (overrides port)
+ * - HAPPY_WEBAPP_URL: Full webapp URL (overrides port)
+ * - HAPPY_HOME_DIR: CLI home directory (default: ~/.happy-dev-test)
  *
  * Run with: HAPPY_HOME_DIR=/root/.happy-dev-test yarn test tests/message-handover-manual.spec.ts
+ *
+ * For slot-based testing with happy-launcher.sh:
+ *   HAPPY_SERVER_PORT=10001 HAPPY_WEBAPP_PORT=10002 yarn test
  *
  * This test demonstrates the bug where messages don't appear in the webapp
  * after switching from Local to Remote mode.
@@ -20,9 +25,12 @@ import { homedir } from 'os';
 import tweetnacl from 'tweetnacl';
 import { createHmac } from 'crypto';
 
-// Configuration for existing infrastructure - ALWAYS use localhost
-const SERVER_URL = 'http://localhost:3005';
-const WEBAPP_URL = 'http://localhost:8081';
+// Configuration for existing infrastructure
+// These can be overridden via environment variables for slot-based testing
+const SERVER_PORT = process.env.HAPPY_SERVER_PORT || '3005';
+const WEBAPP_PORT = process.env.HAPPY_WEBAPP_PORT || '8081';
+const SERVER_URL = process.env.HAPPY_SERVER_URL || `http://localhost:${SERVER_PORT}`;
+const WEBAPP_URL = process.env.HAPPY_WEBAPP_URL || `http://localhost:${WEBAPP_PORT}`;
 const HOME_DIR = process.env.HAPPY_HOME_DIR || join(homedir(), '.happy-dev-test');
 
 interface Credentials {
@@ -217,7 +225,7 @@ test.describe('Message Handover: Local → Remote (Against Existing Infra)', () 
         }
     });
 
-    test('verify server is running on localhost:3005', async () => {
+    test('verify server is running', async () => {
         const response = await axios.get(`${SERVER_URL}/health`);
         expect(response.status).toBe(200);
         console.log('Server health check passed:', response.data);
@@ -259,7 +267,7 @@ test.describe('Message Handover: Local → Remote (Against Existing Infra)', () 
         console.log('Session verified in list');
     });
 
-    test('webapp uses localhost:3005 after clearing storage', async ({ page }) => {
+    test('webapp uses configured server after clearing storage', async ({ page }) => {
         // Navigate to webapp
         await page.goto(WEBAPP_URL);
         await page.waitForLoadState('networkidle');
@@ -273,12 +281,13 @@ test.describe('Message Handover: Local → Remote (Against Existing Infra)', () 
         // Take screenshot
         await page.screenshot({ path: 'test-results/webapp-clean-state.png', fullPage: true });
 
-        // Log page content - should show localhost:3005, not ffh.duckdns.org
+        // Log page content - should not show production server
         const bodyText = await page.locator('body').innerText().catch(() => 'Failed to get body text');
         console.log('Page content after clear:', bodyText.slice(0, 500));
 
-        // Verify localhost is being used (should NOT see ffh.duckdns.org)
+        // Verify production server is NOT being used
         expect(bodyText).not.toContain('ffh.duckdns.org');
+        expect(bodyText).not.toContain('cluster-fluster.com');
     });
 });
 
@@ -349,14 +358,15 @@ test.describe('Debug: Webapp State Analysis', () => {
         page.on('request', (request) => {
             const url = request.url();
             // Only log requests to our local server
-            if (url.includes('localhost:3005') || url.includes('/v1/')) {
+            // Only log requests to the configured server or API endpoints
+            if (url.includes(SERVER_URL.replace('http://', '')) || url.includes('/v1/')) {
                 requests.push(`${request.method()} ${url}`);
             }
         });
 
         page.on('response', (response) => {
             const url = response.url();
-            if (url.includes('localhost:3005') || url.includes('/v1/')) {
+            if (url.includes(SERVER_URL.replace('http://', '')) || url.includes('/v1/')) {
                 console.log(`Response: ${response.status()} ${url}`);
             }
         });
@@ -365,7 +375,7 @@ test.describe('Debug: Webapp State Analysis', () => {
         await page.waitForLoadState('networkidle');
         await page.waitForTimeout(5000);
 
-        console.log('=== API Requests Made to localhost:3005 ===');
+        console.log(`=== API Requests Made to ${SERVER_URL} ===`);
         requests.forEach(r => console.log(r));
 
         // Check if messages endpoint was called
