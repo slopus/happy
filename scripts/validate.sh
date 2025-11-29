@@ -29,11 +29,17 @@ SLOT=1
 # Unset any existing HAPPY_* env vars to avoid conflicts with launcher
 unset HAPPY_SERVER_URL HAPPY_SERVER_PORT HAPPY_WEBAPP_PORT HAPPY_WEBAPP_URL HAPPY_HOME_DIR HAPPY_MINIO_PORT HAPPY_MINIO_CONSOLE_PORT HAPPY_METRICS_PORT
 
-# Get environment from launcher for this slot
-eval "$("$ROOT_DIR/happy-launcher.sh" --slot $SLOT env)"
+# Get port configuration from launcher (but don't export yet - launcher checks for these)
+SLOT_ENV=$("$ROOT_DIR/happy-launcher.sh" --slot $SLOT env)
+
+# Extract values for display and later use
+HAPPY_SERVER_PORT=$(echo "$SLOT_ENV" | grep HAPPY_SERVER_PORT | cut -d= -f2)
+HAPPY_WEBAPP_PORT=$(echo "$SLOT_ENV" | grep HAPPY_WEBAPP_PORT | cut -d= -f2)
+HAPPY_SERVER_URL="http://localhost:${HAPPY_SERVER_PORT}"
+HAPPY_WEBAPP_URL="http://localhost:${HAPPY_WEBAPP_PORT}"
 
 # Override HAPPY_HOME_DIR for validation test isolation
-export HAPPY_HOME_DIR=/tmp/.happy-validate-slot-${SLOT}
+HAPPY_HOME_DIR=/tmp/.happy-validate-slot-${SLOT}
 
 # Log directory for this slot
 LOG_DIR="/tmp/happy-slot-${SLOT}"
@@ -171,6 +177,7 @@ else
     echo ""
 
     # Start all services using happy-launcher.sh with slot 1
+    # Note: HAPPY_* vars must NOT be exported when calling launcher with --slot
     echo -e "${BLUE}Starting services on slot $SLOT for E2E tests...${NC}"
     if "$ROOT_DIR/happy-launcher.sh" --slot $SLOT start-all; then
         SERVICES_STARTED=true
@@ -178,9 +185,13 @@ else
         echo "  Services running: server on :${HAPPY_SERVER_PORT}, webapp on :${HAPPY_WEBAPP_PORT}"
         echo ""
 
-        # Run browser tests with environment variables for ports
+        # NOW export environment variables for the browser tests
+        export HAPPY_SERVER_URL
+        export HAPPY_SERVER_PORT
+        export HAPPY_WEBAPP_URL
+        export HAPPY_WEBAPP_PORT
+        export HAPPY_HOME_DIR
         export WEBAPP_URL="$HAPPY_WEBAPP_URL"
-        export HAPPY_SERVER_URL="$HAPPY_SERVER_URL"
 
         run_test "webapp create account" "cd '$ROOT_DIR/scripts/browser' && node test-create-account.mjs" || true
 
