@@ -449,8 +449,14 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                 handleSuggestionSelect(indexToSelect);
                 return true;
             } else if (event.key === 'Escape') {
-                // Close suggestions
-                // TODO: Clear suggestions
+                // Clear suggestions by collapsing selection (triggers activeWord to clear)
+                if (inputRef.current) {
+                    const cursorPos = inputState.selection.start;
+                    inputRef.current.setTextAndSelection(inputState.text, {
+                        start: cursorPos,
+                        end: cursorPos
+                    });
+                }
                 return true;
             }
         }

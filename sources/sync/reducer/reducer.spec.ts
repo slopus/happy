@@ -1636,7 +1636,7 @@ describe('reducer', () => {
                 ];
                 
                 const userResult = reducer(state, userMsg);
-                expect(userResult).toHaveLength(1);
+                expect(userResult.messages).toHaveLength(1);
                 totalMessages++;
                 
                 // Add permission
@@ -1651,7 +1651,7 @@ describe('reducer', () => {
                 };
                 
                 const permResult = reducer(state, [], agentState);
-                expect(permResult).toHaveLength(1);
+                expect(permResult.messages).toHaveLength(1);
                 totalMessages++;
                 
                 // Approve permission
@@ -1688,7 +1688,7 @@ describe('reducer', () => {
             ];
             
             const dupResult = reducer(state, duplicateUser);
-            expect(dupResult).toHaveLength(0);
+            expect(dupResult.messages).toHaveLength(0);
             expect(state.messages.size).toBe(totalMessages); // No increase
         });
 
