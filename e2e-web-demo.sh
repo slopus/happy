@@ -3,13 +3,37 @@
 # E2E Test Script for Self-Hosted Happy
 # This script runs a full end-to-end test with ISOLATED test credentials
 # For normal development, use 'make server' instead
+# Uses --slot 1 to isolate from production (slot 0)
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# Use isolated test directory to avoid polluting real ~/.happy credentials
-export HAPPY_HOME_DIR=/root/.happy-e2e-test
-export HAPPY_SERVER_URL=http://localhost:3005
+
+# Use slot 1 for e2e tests (isolates from production on slot 0)
+SLOT=1
+
+# Unset any existing HAPPY_* env vars to avoid conflicts with launcher
+unset HAPPY_SERVER_URL HAPPY_SERVER_PORT HAPPY_WEBAPP_PORT HAPPY_WEBAPP_URL HAPPY_HOME_DIR HAPPY_MINIO_PORT HAPPY_MINIO_CONSOLE_PORT HAPPY_METRICS_PORT
+
+# Get environment from launcher for this slot
+eval "$("$SCRIPT_DIR/happy-launcher.sh" --slot $SLOT env)"
+
+# Override HAPPY_HOME_DIR for e2e test isolation
+export HAPPY_HOME_DIR=/root/.happy-e2e-slot-${SLOT}
+
+# Log directory for this slot
+LOG_DIR="/tmp/happy-slot-${SLOT}"
+mkdir -p "$LOG_DIR"
+
+# Cleanup function to stop services on exit
+cleanup() {
+    echo ""
+    echo "=== Cleaning up e2e test services (slot $SLOT) ==="
+    # Kill web process if it exists
+    [ -n "$WEB_PID" ] && kill $WEB_PID 2>/dev/null || true
+    "$SCRIPT_DIR/happy-launcher.sh" --slot $SLOT stop || true
+}
+trap cleanup EXIT
 
 # Colors for output
 RED='\033[0;31m'
@@ -38,15 +62,15 @@ echo "  6. Create a CLI session"
 echo "  7. Show you how to connect from the browser"
 echo ""
 
-# Step 1: Start services
-step "Step 1: Starting all services..."
-./happy-demo.sh start
-success "All services started"
+# Step 1: Start services on slot 1
+step "Step 1: Starting all services on slot $SLOT..."
+"$SCRIPT_DIR/happy-launcher.sh" --slot $SLOT start
+success "All services started on slot $SLOT"
 echo ""
 
 # Step 2: Stop daemon if running (so we can create fresh credentials)
 step "Step 2: Stopping daemon if running..."
-HAPPY_HOME_DIR=/root/.happy-e2e-test HAPPY_SERVER_URL=http://localhost:3005 ./happy-cli/bin/happy.mjs daemon stop 2>/dev/null || true
+./happy-cli/bin/happy.mjs daemon stop 2>/dev/null || true
 success "Daemon stopped (if it was running)"
 echo ""
 
@@ -68,7 +92,7 @@ cd happy
 # Clear cache to ensure latest code with debug logging is used
 info "Clearing cache to load latest code..."
 rm -rf .expo/web node_modules/.cache 2>/dev/null || true
-yarn start:local-server > /tmp/happy-web.log 2>&1 &
+EXPO_PUBLIC_HAPPY_SERVER_URL="$HAPPY_SERVER_URL" yarn web --port "$HAPPY_WEBAPP_PORT" > "$LOG_DIR/webapp.log" 2>&1 &
 WEB_PID=$!
 cd ..
 echo "Web client PID: $WEB_PID"
@@ -78,7 +102,7 @@ echo ""
 info "Waiting for web server to start (this may take 30-60 seconds)..."
 sleep 10
 for i in {1..12}; do
-    if curl -s http://localhost:8081 > /dev/null 2>&1; then
+    if curl -s "$HAPPY_WEBAPP_URL" > /dev/null 2>&1; then
         success "Web client is ready!"
         break
     fi
@@ -87,11 +111,11 @@ for i in {1..12}; do
 done
 echo ""
 
-if ! curl -s http://localhost:8081 > /dev/null 2>&1; then
-    warning "Web client is still starting. Check logs with: tail -f /tmp/happy-web.log"
-    warning "It should be ready soon at http://localhost:8081"
+if ! curl -s "$HAPPY_WEBAPP_URL" > /dev/null 2>&1; then
+    warning "Web client is still starting. Check logs with: tail -f $LOG_DIR/webapp.log"
+    warning "It should be ready soon at $HAPPY_WEBAPP_URL"
 else
-    success "Web client started at http://localhost:8081"
+    success "Web client started at $HAPPY_WEBAPP_URL"
 fi
 echo ""
 
@@ -126,27 +150,27 @@ echo ""
 
 # Step 9: Instructions for using web UI
 echo ""
-echo "=== E2E Web Demo Complete ==="
+echo "=== E2E Web Demo Complete (Slot $SLOT) ==="
 echo ""
-success "✓ Server running at http://localhost:3005"
-success "✓ Web client running at http://localhost:8081"
+success "✓ Server running at $HAPPY_SERVER_URL"
+success "✓ Web client running at $HAPPY_WEBAPP_URL"
 success "✓ Authentication working (no user interaction needed)"
 success "✓ CLI daemon running"
 success "✓ CLI session created and tracked"
 echo ""
 echo -e "${CYAN}╔═══════════════════════════════════════════════════════════╗${NC}"
-echo -e "${CYAN}║         🌐 USING THE WEB CLIENT                          ║${NC}"
+echo -e "${CYAN}║         USING THE WEB CLIENT                             ║${NC}"
 echo -e "${CYAN}╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
 echo -e "${GREEN}Step 1: Open your browser with DevTools${NC}"
-echo "   → http://localhost:8081"
-echo "   → Press F12 to open DevTools Console (to see debug logs)"
+echo "   -> $HAPPY_WEBAPP_URL"
+echo "   -> Press F12 to open DevTools Console (to see debug logs)"
 echo ""
 echo -e "${GREEN}Step 2: Click \"Enter your secret key to restore access\"${NC}"
 echo ""
-echo -e "${CYAN}ℹ️  NOTE: Web client auto-detects localhost and uses http://localhost:3005${NC}"
+echo -e "${CYAN}NOTE: Web client connects to $HAPPY_SERVER_URL${NC}"
 echo "   If you previously used it, clear browser storage to remove cached settings"
-echo "   (F12 → Application → Storage → Clear site data)"
+echo "   (F12 -> Application -> Storage -> Clear site data)"
 echo ""
 echo -e "${GREEN}Step 3: Copy and paste this secret key:${NC}"
 echo ""
@@ -162,11 +186,11 @@ echo ""
 echo -e "${CYAN}═══════════════════════════════════════════════════════════${NC}"
 echo ""
 echo "Useful commands:"
-echo "  ./happy-demo.sh status                    # Check service status"
-echo "  ./happy-demo.sh cli daemon list           # List sessions"
-echo "  tail -f /tmp/happy-web.log                # View web client logs"
-echo "  ./happy-demo.sh logs server               # View server logs"
-echo "  pkill -f 'expo start' && ./happy-demo.sh stop  # Stop everything"
+echo "  ./happy-launcher.sh --slot $SLOT status   # Check service status"
+echo "  ./happy-launcher.sh --slot $SLOT logs server  # View server logs"
+echo "  tail -f $LOG_DIR/webapp.log               # View web client logs"
+echo ""
+echo "Note: Services will be stopped automatically when this script exits (cleanup trap)"
 echo ""
 echo "Documentation:"
 echo "  WEB_CLIENT_GUIDE.md                       # Complete web client guide"

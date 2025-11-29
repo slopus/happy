@@ -1,2 +1,12 @@
 *~
 dump.rdb
+
+# Node
+node_modules/
+package-lock.json
+
+# Slot PID tracking directories
+.pids-slot-*/
+
+# Symlinks created for backwards compatibility
+happy-demo.sh

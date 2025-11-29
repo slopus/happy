@@ -2,12 +2,31 @@
 
 # E2E Demo Script for Self-Hosted Happy
 # This script demonstrates the complete e2e flow without requiring manual authentication
+# Uses --slot 1 to isolate from production (slot 0)
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-export HAPPY_HOME_DIR=/root/.happy-e2e-test
-export HAPPY_SERVER_URL=http://localhost:3005
+
+# Use slot 1 for e2e tests (isolates from production on slot 0)
+SLOT=1
+
+# Unset any existing HAPPY_* env vars to avoid conflicts with launcher
+unset HAPPY_SERVER_URL HAPPY_SERVER_PORT HAPPY_WEBAPP_PORT HAPPY_WEBAPP_URL HAPPY_HOME_DIR HAPPY_MINIO_PORT HAPPY_MINIO_CONSOLE_PORT HAPPY_METRICS_PORT
+
+# Get environment from launcher for this slot
+eval "$("$SCRIPT_DIR/happy-launcher.sh" --slot $SLOT env)"
+
+# Override HAPPY_HOME_DIR for e2e test isolation
+export HAPPY_HOME_DIR=/root/.happy-e2e-slot-${SLOT}
+
+# Cleanup function to stop services on exit
+cleanup() {
+    echo ""
+    echo "=== Cleaning up e2e test services (slot $SLOT) ==="
+    "$SCRIPT_DIR/happy-launcher.sh" --slot $SLOT stop || true
+}
+trap cleanup EXIT
 
 # Colors for output
 RED='\033[0;31m'
@@ -39,10 +58,10 @@ info "Step 1: Verifying PostgreSQL setup..."
 success "PostgreSQL setup verified"
 echo ""
 
-# Step 2: Start services
-info "Step 2: Starting all services..."
-./happy-demo.sh start
-success "All services started"
+# Step 2: Start services on slot 1
+info "Step 2: Starting all services on slot $SLOT..."
+"$SCRIPT_DIR/happy-launcher.sh" --slot $SLOT start
+success "All services started on slot $SLOT"
 echo ""
 
 # Step 3: Create test credentials
@@ -87,19 +106,19 @@ echo ""
 
 # Summary
 echo ""
-echo "=== E2E Demo Complete ==="
+echo "=== E2E Demo Complete (Slot $SLOT) ==="
 echo ""
-success "✓ Server running at http://localhost:3005"
+success "✓ Server running at $HAPPY_SERVER_URL"
 success "✓ Authentication working (no user interaction needed)"
 success "✓ Daemon running"
 success "✓ Session created and tracked"
 echo ""
 echo "Try these commands:"
-echo "  ./happy-demo.sh status          # Check service status"
-echo "  ./happy-demo.sh cli daemon list # List sessions"
-echo "  ./happy-demo.sh logs server     # View server logs"
-echo "  ./happy-demo.sh stop            # Stop services"
+echo "  ./happy-launcher.sh --slot $SLOT status   # Check service status"
+echo "  ./happy-launcher.sh --slot $SLOT logs server  # View server logs"
 echo ""
 echo "To use the CLI with test credentials:"
 echo "  HAPPY_HOME_DIR=$HAPPY_HOME_DIR HAPPY_SERVER_URL=$HAPPY_SERVER_URL ./happy-cli/bin/happy.mjs"
+echo ""
+echo "Note: Services will be stopped automatically when this script exits (cleanup trap)"
 echo ""

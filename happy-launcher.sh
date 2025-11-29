@@ -103,12 +103,14 @@ DEFAULT_SERVER_PORT=3005
 DEFAULT_WEBAPP_PORT=8081
 DEFAULT_MINIO_PORT=9000
 DEFAULT_MINIO_CONSOLE_PORT=9001
+DEFAULT_METRICS_PORT=9090
 
 # Base ports for slot 1+
 BASE_SERVER_PORT=10001
 BASE_WEBAPP_PORT=10002
 BASE_MINIO_PORT=10003
 BASE_MINIO_CONSOLE_PORT=10004
+BASE_METRICS_PORT=10005
 SLOT_OFFSET=10
 
 # Calculate ports based on slot
@@ -120,12 +122,14 @@ calculate_ports() {
         HAPPY_WEBAPP_PORT="${HAPPY_WEBAPP_PORT:-$DEFAULT_WEBAPP_PORT}"
         MINIO_PORT="${MINIO_PORT:-$DEFAULT_MINIO_PORT}"
         MINIO_CONSOLE_PORT="${MINIO_CONSOLE_PORT:-$DEFAULT_MINIO_CONSOLE_PORT}"
+        METRICS_PORT="${METRICS_PORT:-$DEFAULT_METRICS_PORT}"
     else
         local offset=$(( (slot - 1) * SLOT_OFFSET ))
         HAPPY_SERVER_PORT=$(( BASE_SERVER_PORT + offset ))
         HAPPY_WEBAPP_PORT=$(( BASE_WEBAPP_PORT + offset ))
         MINIO_PORT=$(( BASE_MINIO_PORT + offset ))
         MINIO_CONSOLE_PORT=$(( BASE_MINIO_CONSOLE_PORT + offset ))
+        METRICS_PORT=$(( BASE_METRICS_PORT + offset ))
     fi
 }
 
@@ -144,7 +148,8 @@ HAPPY_WEBAPP_URL="http://localhost:${HAPPY_WEBAPP_PORT}"
 SLOT_SUFFIX="${SLOT:-0}"
 MINIO_DATA_DIR="$SERVER_DIR/.minio-slot-${SLOT_SUFFIX}"
 LOG_DIR="/tmp/happy-slot-${SLOT_SUFFIX}"
-mkdir -p "$LOG_DIR"
+PIDS_DIR="$SCRIPT_DIR/.pids-slot-${SLOT_SUFFIX}"
+mkdir -p "$LOG_DIR" "$PIDS_DIR"
 
 # =============================================================================
 # Colors and helpers
@@ -261,6 +266,7 @@ start_minio() {
         MINIO_ROOT_USER=minioadmin MINIO_ROOT_PASSWORD=minioadmin \
             minio server "$MINIO_DATA_DIR/data" --address ":${MINIO_PORT}" --console-address ":${MINIO_CONSOLE_PORT}" \
             > "$LOG_DIR/minio.log" 2>&1 &
+        echo $! > "$PIDS_DIR/minio.pid"
         wait_for_port "$MINIO_PORT" "MinIO" 15 || {
             error "MinIO failed to start"
             return 1
@@ -289,6 +295,7 @@ start_server() {
 
         # Start server with environment variables for ports
         PORT="$HAPPY_SERVER_PORT" \
+        METRICS_PORT="$METRICS_PORT" \
         DATABASE_URL="postgresql://postgres:postgres@localhost:${POSTGRES_PORT}/handy" \
         REDIS_URL="redis://localhost:${REDIS_PORT}" \
         HANDY_MASTER_SECRET="test-secret-for-local-development" \
@@ -300,6 +307,7 @@ start_server() {
         S3_BUCKET="happy" \
         S3_PUBLIC_URL="http://localhost:${MINIO_PORT}/happy" \
             yarn start > "$LOG_DIR/server.log" 2>&1 &
+        echo $! > "$PIDS_DIR/server.pid"
         cd "$SCRIPT_DIR"
 
         wait_for_port "$HAPPY_SERVER_PORT" "happy-server" 30 || {
@@ -319,6 +327,7 @@ start_webapp() {
         BROWSER=none \
             EXPO_PUBLIC_HAPPY_SERVER_URL="$HAPPY_SERVER_URL" \
             yarn web --port "$HAPPY_WEBAPP_PORT" > "$LOG_DIR/webapp.log" 2>&1 &
+        echo $! > "$PIDS_DIR/webapp.pid"
         cd "$SCRIPT_DIR"
 
         # Webapp takes longer to start (Metro bundler)
@@ -335,29 +344,25 @@ start_webapp() {
 # =============================================================================
 
 stop_all() {
-    info "Stopping all services..."
+    info "Stopping services for slot ${SLOT_SUFFIX}..."
 
-    # Stop webapp
-    if is_running "expo start"; then
-        info "Stopping webapp..."
-        pkill -f "expo start" || true
-        pkill -f "metro" || true
-        success "Webapp stopped"
-    fi
-
-    # Stop happy-server
-    if is_running "tsx.*sources/main.ts"; then
-        info "Stopping happy-server..."
-        pkill -f "tsx.*sources/main.ts" || true
-        success "happy-server stopped"
-    fi
-
-    # Stop MinIO
-    if is_running "minio server"; then
-        info "Stopping MinIO..."
-        pkill -f "minio server" || true
-        success "MinIO stopped"
-    fi
+    # Stop processes using PID files (slot-specific)
+    for service in webapp server minio; do
+        local pid_file="$PIDS_DIR/${service}.pid"
+        if [ -f "$pid_file" ]; then
+            local pid=$(cat "$pid_file")
+            if kill -0 "$pid" 2>/dev/null; then
+                info "Stopping $service (PID $pid)..."
+                kill "$pid" 2>/dev/null || true
+                # Wait briefly for graceful shutdown
+                sleep 1
+                # Force kill if still running
+                kill -9 "$pid" 2>/dev/null || true
+                success "$service stopped"
+            fi
+            rm -f "$pid_file"
+        fi
+    done
 
     # Note: Not stopping PostgreSQL and Redis as they're system services
     warning "PostgreSQL and Redis are system services and were not stopped"
@@ -447,15 +452,17 @@ show_status() {
     echo "=== Happy Self-Hosted Status (Slot ${SLOT:-0}) ==="
     echo ""
     echo "Port configuration:"
-    echo "  Server:  $HAPPY_SERVER_PORT"
-    echo "  Webapp:  $HAPPY_WEBAPP_PORT"
-    echo "  MinIO:   $MINIO_PORT (Console: $MINIO_CONSOLE_PORT)"
+    echo "  Server:   $HAPPY_SERVER_PORT"
+    echo "  Metrics:  $METRICS_PORT"
+    echo "  Webapp:   $HAPPY_WEBAPP_PORT"
+    echo "  MinIO:    $MINIO_PORT (Console: $MINIO_CONSOLE_PORT)"
     echo "  Postgres: $POSTGRES_PORT"
-    echo "  Redis:   $REDIS_PORT"
+    echo "  Redis:    $REDIS_PORT"
     echo ""
     echo "Directories:"
     echo "  MinIO data: $MINIO_DATA_DIR"
     echo "  Logs:       $LOG_DIR"
+    echo "  PIDs:       $PIDS_DIR"
     echo ""
 
     # PostgreSQL
@@ -545,6 +552,7 @@ export HAPPY_WEBAPP_URL=$HAPPY_WEBAPP_URL
 export HAPPY_HOME_DIR=~/.happy-slot-${SLOT_SUFFIX}
 export HAPPY_MINIO_PORT=$MINIO_PORT
 export HAPPY_MINIO_CONSOLE_PORT=$MINIO_CONSOLE_PORT
+export HAPPY_METRICS_PORT=$METRICS_PORT
 EOF
 }
 
