@@ -92,12 +92,13 @@ jobs:
         working-directory: scripts/browser
         run: npm install
 
-      - name: Run validation (quick mode - builds and unit tests only)
-        run: ./scripts/validate.sh --quick
-
-      - name: Run full validation with E2E tests
+      # Run the validation script
+      # Uses slot 1 for E2E tests to isolate from any other processes
+      # Automatically cleans up all processes on exit
+      - name: Run validation (full - builds, unit tests, and E2E)
         run: ./scripts/validate.sh
         env:
           CI: true
+          # These are used by happy-launcher.sh to detect existing services
           POSTGRES_PORT: 5432
           REDIS_PORT: 6379

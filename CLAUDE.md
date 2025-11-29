@@ -1,6 +1,6 @@
 
 You are attempting to get the combination of happy-server and
-happy-cli working together in a self-hosted way (plus the web client 
+happy-cli working together in a self-hosted way (plus the web client
 and MAYBE the mobile client).
 
 This will require figuring out how to build the respective components,
@@ -9,6 +9,26 @@ rather than connecting to the happy.engineering server
 
 Install whatever dependencies you want with `apt-get install`, `npm`,
 etc, but document what you install in DEPENDENCIES.md.
+
+Pre-Commit Validation (IMPORTANT!)
+================================================================================
+
+**ALWAYS run `./scripts/validate.sh` before pushing changes!**
+
+This is our primary validation script that:
+- Runs all build checks (happy-cli, happy-server, happy webapp)
+- Runs all unit tests
+- Runs E2E tests with browser automation
+- Uses slot 1 for test isolation (won't interfere with production on slot 0)
+- Automatically cleans up all processes on exit
+
+Usage:
+```bash
+./scripts/validate.sh           # Full validation (builds + unit + E2E)
+./scripts/validate.sh --quick   # Quick mode (builds + unit tests only)
+```
+
+This script is also run by GitHub Actions CI on every push and pull request.
 
 Repository and Branch Management
 ================================================================================

@@ -1,19 +1,42 @@
 #!/bin/bash
 #
 # Validation script - runs all tests for the Happy project
+# THIS IS THE PRE-COMMIT CHECK - run before pushing changes!
 #
 # Usage:
 #   ./scripts/validate.sh           # Run all tests
-#   ./scripts/validate.sh --quick   # Skip browser tests (faster)
+#   ./scripts/validate.sh --quick   # Skip E2E tests (builds and unit tests only)
 #
-# Port configuration is inherited from happy-demo.sh via environment variables:
-#   HAPPY_SERVER_PORT, HAPPY_WEBAPP_PORT, MINIO_PORT, etc.
+# This script:
+#   - Does not assume any running services before starting
+#   - Uses slot 1 for E2E tests to isolate from any production instance (slot 0)
+#   - Cleans up all processes it starts on exit (via trap)
+#   - Is run by CI on GitHub Actions
 #
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+# Use slot 1 for validation tests (isolates from production on slot 0)
+SLOT=1
+
+# Unset any existing HAPPY_* env vars to avoid conflicts with launcher
+unset HAPPY_SERVER_URL HAPPY_SERVER_PORT HAPPY_WEBAPP_PORT HAPPY_WEBAPP_URL HAPPY_HOME_DIR HAPPY_MINIO_PORT HAPPY_MINIO_CONSOLE_PORT HAPPY_METRICS_PORT
+
+# Get environment from launcher for this slot
+eval "$("$ROOT_DIR/happy-launcher.sh" --slot $SLOT env)"
+
+# Override HAPPY_HOME_DIR for validation test isolation
+export HAPPY_HOME_DIR=/tmp/.happy-validate-slot-${SLOT}
+
+# Log directory for this slot
+LOG_DIR="/tmp/happy-slot-${SLOT}"
 
 # =============================================================================
 # Colors and helpers
@@ -29,12 +52,6 @@ QUICK_MODE=false
 FAILED_TESTS=()
 PASSED_TESTS=()
 SERVICES_STARTED=false
-
-# Port configuration (same defaults as happy-demo.sh)
-HAPPY_SERVER_PORT="${HAPPY_SERVER_PORT:-3005}"
-HAPPY_WEBAPP_PORT="${HAPPY_WEBAPP_PORT:-8081}"
-HAPPY_SERVER_URL="http://localhost:${HAPPY_SERVER_PORT}"
-HAPPY_WEBAPP_URL="http://localhost:${HAPPY_WEBAPP_PORT}"
 
 # Parse arguments
 for arg in "$@"; do
@@ -68,13 +85,22 @@ run_test() {
     fi
 }
 
-# Cleanup on exit
+# Cleanup on exit - ALWAYS runs, even on failure
 cleanup_on_exit() {
+    local exit_code=$?
+    echo ""
+    echo -e "${BLUE}=== Cleanup ===${NC}"
+
     if [ "$SERVICES_STARTED" = true ]; then
-        echo ""
-        echo -e "${BLUE}Stopping services...${NC}"
-        "$ROOT_DIR/happy-demo.sh" stop 2>/dev/null || true
+        echo -e "${BLUE}Stopping services for slot $SLOT...${NC}"
+        "$ROOT_DIR/happy-launcher.sh" --slot $SLOT stop 2>/dev/null || true
     fi
+
+    # Clean up test home directory
+    rm -rf "$HAPPY_HOME_DIR" 2>/dev/null || true
+
+    echo -e "${BLUE}Cleanup complete${NC}"
+    exit $exit_code
 }
 
 trap cleanup_on_exit EXIT
@@ -86,12 +112,17 @@ trap cleanup_on_exit EXIT
 echo ""
 echo "=============================================="
 echo "  Happy Validation Suite"
+echo "  Slot: $SLOT (isolated from production)"
 echo "=============================================="
 echo ""
+echo "Port configuration:"
+echo "  Server:  $HAPPY_SERVER_PORT"
+echo "  Webapp:  $HAPPY_WEBAPP_PORT"
+echo ""
 
-# Clean up any existing services first
-echo -e "${BLUE}Cleaning up any existing services...${NC}"
-"$ROOT_DIR/happy-demo.sh" cleanup --clean-logs 2>/dev/null || true
+# Clean up any leftover processes from previous runs on this slot
+echo -e "${BLUE}Cleaning up any existing slot $SLOT services...${NC}"
+"$ROOT_DIR/happy-launcher.sh" --slot $SLOT stop 2>/dev/null || true
 echo ""
 
 # =============================================================================
@@ -129,19 +160,19 @@ fi
 echo ""
 
 # =============================================================================
-# Browser/E2E Tests
+# E2E/Browser Tests
 # =============================================================================
 
 if [ "$QUICK_MODE" = true ]; then
-    echo "=== Browser Tests (SKIPPED - quick mode) ==="
+    echo "=== E2E Tests (SKIPPED - quick mode) ==="
     echo ""
 else
-    echo "=== Browser Tests ==="
+    echo "=== E2E Tests ==="
     echo ""
 
-    # Start all services using happy-demo.sh
-    echo -e "${BLUE}Starting services for E2E tests...${NC}"
-    if "$ROOT_DIR/happy-demo.sh" start-all; then
+    # Start all services using happy-launcher.sh with slot 1
+    echo -e "${BLUE}Starting services on slot $SLOT for E2E tests...${NC}"
+    if "$ROOT_DIR/happy-launcher.sh" --slot $SLOT start-all; then
         SERVICES_STARTED=true
         echo ""
         echo "  Services running: server on :${HAPPY_SERVER_PORT}, webapp on :${HAPPY_WEBAPP_PORT}"
@@ -159,7 +190,7 @@ else
     else
         echo -e "${RED}  Failed to start services - skipping browser tests${NC}"
         echo -e "${YELLOW}  Server log (last 50 lines):${NC}"
-        tail -50 /tmp/happy-server.log 2>/dev/null || echo "  (no log file found)"
+        tail -50 "$LOG_DIR/server.log" 2>/dev/null || echo "  (no log file found)"
         FAILED_TESTS+=("service startup")
     fi
 fi
