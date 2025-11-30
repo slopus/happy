@@ -205,6 +205,39 @@ port_listening() {
     return 1
 }
 
+# Get all active slots (slots with PID directories or log directories)
+# Outputs slot numbers, one per line, sorted numerically
+get_active_slots() {
+    local slots=()
+
+    # Find slots with PID directories
+    for pids_dir in "$SCRIPT_DIR"/.pids-slot-*; do
+        [ -d "$pids_dir" ] || continue
+        local slot=$(echo "$pids_dir" | sed 's/.*\.pids-slot-//')
+        slots+=("$slot")
+    done
+
+    # Find slots with log directories (may exist without PID dirs)
+    for log_dir in /tmp/happy-slot-*; do
+        [ -d "$log_dir" ] || continue
+        local slot=$(echo "$log_dir" | sed 's/.*happy-slot-//')
+        # Add only if not already in list
+        local found=false
+        for existing in "${slots[@]}"; do
+            if [ "$existing" = "$slot" ]; then
+                found=true
+                break
+            fi
+        done
+        if [ "$found" = "false" ]; then
+            slots+=("$slot")
+        fi
+    done
+
+    # Output sorted unique slots
+    printf '%s\n' "${slots[@]}" | sort -n | uniq
+}
+
 # Wait for a port to become available
 wait_for_port() {
     local port=$1
@@ -487,23 +520,18 @@ cleanup_all() {
     echo ""
 
     if [ "$all_slots" = "true" ]; then
-        # Find all slot directories and clean them
+        # Find all slot directories and clean them using shared function
         info "Cleaning ALL slots..."
-        for pids_dir in "$SCRIPT_DIR"/.pids-slot-*; do
-            [ -d "$pids_dir" ] || continue
-            local slot=$(echo "$pids_dir" | sed 's/.*\.pids-slot-//')
-            info "Cleaning slot $slot..."
-            cleanup_slot "$slot" "$clean_logs" "$nuke_happy_dir"
-        done
-        # Also check for log directories without pid directories
-        for log_dir in /tmp/happy-slot-*; do
-            [ -d "$log_dir" ] || continue
-            local slot=$(echo "$log_dir" | sed 's/.*happy-slot-//')
-            if [ "$clean_logs" = "true" ]; then
-                rm -rf "$log_dir"
-                info "Cleaned log directory: $log_dir"
-            fi
-        done
+        local active_slots
+        active_slots=$(get_active_slots)
+        if [ -n "$active_slots" ]; then
+            while IFS= read -r slot; do
+                info "Cleaning slot $slot..."
+                cleanup_slot "$slot" "$clean_logs" "$nuke_happy_dir"
+            done <<< "$active_slots"
+        else
+            info "No active slots found"
+        fi
         # Clean happy home directories if nuking
         if [ "$nuke_happy_dir" = "true" ]; then
             for happy_dir in "$HOME"/.happy-slot-*; do
@@ -584,6 +612,90 @@ cleanup_all() {
 # Status and Info Functions
 # =============================================================================
 
+# Show status for a specific slot (uses local variables, doesn't affect global state)
+show_slot_services_status() {
+    local slot="$1"
+
+    # Calculate ports for this slot
+    local server_port webapp_port minio_port minio_console_port metrics_port
+    local db_name pids_dir log_dir minio_data
+
+    if [[ "$slot" -eq 0 ]]; then
+        server_port="${DEFAULT_SERVER_PORT}"
+        webapp_port="${DEFAULT_WEBAPP_PORT}"
+        minio_port="${DEFAULT_MINIO_PORT}"
+        minio_console_port="${DEFAULT_MINIO_CONSOLE_PORT}"
+        metrics_port="${DEFAULT_METRICS_PORT}"
+        db_name="handy"
+    else
+        local offset=$(( (slot - 1) * SLOT_OFFSET ))
+        server_port=$(( BASE_SERVER_PORT + offset ))
+        webapp_port=$(( BASE_WEBAPP_PORT + offset ))
+        minio_port=$(( BASE_MINIO_PORT + offset ))
+        minio_console_port=$(( BASE_MINIO_CONSOLE_PORT + offset ))
+        metrics_port=$(( BASE_METRICS_PORT + offset ))
+        db_name="handy_test_${slot}"
+    fi
+
+    pids_dir="$SCRIPT_DIR/.pids-slot-${slot}"
+    log_dir="/tmp/happy-slot-${slot}"
+    minio_data="$SERVER_DIR/.minio-slot-${slot}"
+
+    echo "--- Slot $slot (DB: $db_name, Server: $server_port, Webapp: $webapp_port) ---"
+
+    # Helper to check slot-specific service by PID file
+    local_is_slot_service_running() {
+        local service="$1"
+        local pid_file="$pids_dir/${service}.pid"
+        if [ -f "$pid_file" ]; then
+            local pid=$(cat "$pid_file")
+            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                return 0
+            fi
+        fi
+        return 1
+    }
+
+    # MinIO (slot-specific)
+    if local_is_slot_service_running "minio"; then
+        if port_listening "$minio_port"; then
+            success "  MinIO: Running (API: $minio_port, Console: $minio_console_port)"
+        else
+            warning "  MinIO: Process exists but port not responding"
+        fi
+    elif port_listening "$minio_port"; then
+        success "  MinIO: Running (API: $minio_port, Console: $minio_console_port)"
+    else
+        error "  MinIO: Stopped"
+    fi
+
+    # happy-server (slot-specific)
+    if local_is_slot_service_running "server"; then
+        if port_listening "$server_port"; then
+            success "  happy-server: Running (port $server_port)"
+        else
+            warning "  happy-server: Process exists but port not responding"
+        fi
+    elif port_listening "$server_port"; then
+        success "  happy-server: Running (port $server_port)"
+    else
+        error "  happy-server: Stopped"
+    fi
+
+    # Webapp (slot-specific)
+    if local_is_slot_service_running "webapp"; then
+        if port_listening "$webapp_port"; then
+            success "  Webapp: Running (port $webapp_port)"
+        else
+            warning "  Webapp: Process exists but port not responding"
+        fi
+    elif port_listening "$webapp_port"; then
+        success "  Webapp: Running (port $webapp_port)"
+    else
+        error "  Webapp: Stopped"
+    fi
+}
+
 show_status() {
     echo ""
     echo "=== Happy Self-Hosted Status (Slot ${SLOT:-0}) ==="
@@ -624,51 +736,43 @@ show_status() {
 
     # Slot-specific services
     echo ""
-    echo "--- Slot ${SLOT:-0} Services ---"
-
-    # MinIO (slot-specific)
-    if is_slot_service_running "minio"; then
-        if port_listening "$MINIO_PORT"; then
-            success "MinIO: Running (API: $MINIO_PORT, Console: $MINIO_CONSOLE_PORT)"
-        else
-            warning "MinIO: Process exists but port not responding"
-        fi
-    elif port_listening "$MINIO_PORT"; then
-        # Port is listening but no PID file - maybe started externally
-        success "MinIO: Running (API: $MINIO_PORT, Console: $MINIO_CONSOLE_PORT)"
-    else
-        error "MinIO: Stopped"
-    fi
-
-    # happy-server (slot-specific)
-    if is_slot_service_running "server"; then
-        if port_listening "$HAPPY_SERVER_PORT"; then
-            success "happy-server: Running (port $HAPPY_SERVER_PORT)"
-        else
-            warning "happy-server: Process exists but port not responding"
-        fi
-    elif port_listening "$HAPPY_SERVER_PORT"; then
-        # Port is listening but no PID file - maybe started externally
-        success "happy-server: Running (port $HAPPY_SERVER_PORT)"
-    else
-        error "happy-server: Stopped"
-    fi
-
-    # Webapp (slot-specific)
-    if is_slot_service_running "webapp"; then
-        if port_listening "$HAPPY_WEBAPP_PORT"; then
-            success "Webapp: Running (port $HAPPY_WEBAPP_PORT)"
-        else
-            warning "Webapp: Process exists but port not responding"
-        fi
-    elif port_listening "$HAPPY_WEBAPP_PORT"; then
-        # Port is listening but no PID file - maybe started externally
-        success "Webapp: Running (port $HAPPY_WEBAPP_PORT)"
-    else
-        error "Webapp: Stopped"
-    fi
+    show_slot_services_status "${SLOT:-0}"
 
     echo ""
+}
+
+show_all_slots_status() {
+    echo ""
+    echo "=== Happy Self-Hosted Status (All Slots) ==="
+    echo ""
+
+    # Shared services (PostgreSQL and Redis)
+    echo "--- Shared Services ---"
+    if port_listening "$POSTGRES_PORT"; then
+        success "PostgreSQL: Running (port $POSTGRES_PORT)"
+    else
+        error "PostgreSQL: Stopped"
+    fi
+
+    if port_listening "$REDIS_PORT"; then
+        success "Redis: Running (port $REDIS_PORT)"
+    else
+        error "Redis: Stopped"
+    fi
+    echo ""
+
+    # Get all active slots
+    local active_slots
+    active_slots=$(get_active_slots)
+
+    if [ -z "$active_slots" ]; then
+        info "No active slots found"
+    else
+        while IFS= read -r slot; do
+            show_slot_services_status "$slot"
+            echo ""
+        done <<< "$active_slots"
+    fi
 }
 
 show_logs() {
@@ -837,7 +941,12 @@ case "${1:-}" in
         ;;
 
     status)
-        show_status
+        shift
+        if [ "${1:-}" = "--all-slots" ]; then
+            show_all_slots_status
+        else
+            show_status
+        fi
         ;;
 
     logs)
@@ -892,6 +1001,7 @@ case "${1:-}" in
         echo "  cleanup --nuke-happy-dir   Also delete HAPPY_HOME_DIR (~/.happy-slot-*)"
         echo "  restart            Full cleanup and restart all services"
         echo "  status             Show status of all services"
+        echo "  status --all-slots Show status for all active slots"
         echo "  logs <service>     Tail logs for a service (server, webapp, minio, postgres)"
         echo "  env                Print environment variables for this slot (can be sourced)"
         echo "  cli [args]         Run happy CLI with local server configuration"
@@ -907,6 +1017,7 @@ case "${1:-}" in
         echo "  $0 start                    # Start slot 0 (default ports)"
         echo "  $0 --slot 1 start           # Start slot 1 (test ports)"
         echo "  $0 --slot 1 status          # Check slot 1 status"
+        echo "  $0 status --all-slots       # Check status of all active slots"
         echo "  $0 --slot 1 env             # Print env vars for slot 1"
         echo "  eval \$($0 --slot 1 env)     # Set env vars in current shell"
         echo ""
