@@ -158,7 +158,7 @@ describe('Webapp Create Account', () => {
 
         // Log known issues for visibility
         const knownIssues = logs.networkFailures.filter(
-            f => f.url && f.url.includes(':3005')
+            f => f.includes(':3005')
         );
         if (knownIssues.length > 0) {
             console.log(
