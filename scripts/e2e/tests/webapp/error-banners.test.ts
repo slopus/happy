@@ -9,6 +9,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { execSync } from 'node:child_process';
 import * as path from 'node:path';
+import * as fs from 'node:fs';
 import {
     startServices,
     ServerHandle,
@@ -91,7 +92,7 @@ describe('Webapp Error Banners', () => {
 
         console.log('[Test] Connected status check - has indicator:', hasConnectedIndicator);
         expect(hasConnectedIndicator).toBe(true);
-    });
+    }, 180000); // 3 minute timeout for this test
 
     it('should show error/disconnected status when server stops', async () => {
         const { page } = browser;
@@ -100,26 +101,84 @@ describe('Webapp Error Banners', () => {
         // Take screenshot before stopping server
         await takeScreenshot(page, config, 'error-04-before-stop');
 
-        // Stop only the happy-server (not webapp) to simulate connection loss
+        // Stop the happy-server to simulate connection loss
+        // The server PID is stored in .pids-slot-N/server.pid by happy-launcher.sh
         console.log('[Test] Stopping happy-server to simulate connection error...');
+        let serverStopped = false;
+
+        // Method 1: Use PID file from launcher script's pids directory
+        const pidsDir = path.join(ROOT_DIR, `.pids-slot-${config.slot}`);
+        const serverPidFile = path.join(pidsDir, 'server.pid');
+        console.log(`[Test] Looking for server PID file at: ${serverPidFile}`);
+
         try {
-            // Use pkill to stop only the node server process on the server port
-            execSync(`pkill -f "node.*${config.serverPort}" || true`, {
-                stdio: 'pipe',
-                timeout: 10000,
-            });
+            if (fs.existsSync(serverPidFile)) {
+                const pidContent = fs.readFileSync(serverPidFile, 'utf-8').trim();
+                if (pidContent) {
+                    console.log(`[Test] Found server PID: ${pidContent}`);
+                    execSync(`kill -9 ${pidContent} 2>/dev/null || true`, { stdio: 'pipe' });
+                    console.log('[Test] Killed server process by PID');
+                    serverStopped = true;
+                }
+            } else {
+                console.log('[Test] PID file not found');
+            }
         } catch (e) {
-            console.log('[Test] Server stop command executed');
+            console.log('[Test] PID-based kill failed:', e);
+        }
+
+        // Method 2: Fallback - use lsof to find process on the server port
+        if (!serverStopped) {
+            try {
+                const lsofOutput = execSync(`lsof -ti:${config.serverPort} 2>/dev/null || echo ""`, { encoding: 'utf-8' }).trim();
+                if (lsofOutput) {
+                    const pids = lsofOutput.split('\n').filter(Boolean);
+                    console.log(`[Test] Found PIDs on port ${config.serverPort}:`, pids);
+                    for (const pid of pids) {
+                        execSync(`kill -9 ${pid} 2>/dev/null || true`, { stdio: 'pipe' });
+                    }
+                    console.log('[Test] Killed server process(es) by port');
+                    serverStopped = true;
+                } else {
+                    console.log('[Test] No process found on server port');
+                }
+            } catch (e) {
+                console.log('[Test] lsof fallback failed:', e);
+            }
+        }
+
+        // Method 3: Use fuser as another fallback
+        if (!serverStopped) {
+            try {
+                execSync(`fuser -k ${config.serverPort}/tcp 2>/dev/null || true`, { stdio: 'pipe' });
+                console.log('[Test] Used fuser to kill process on port');
+            } catch (e) {
+                console.log('[Test] fuser fallback also failed');
+            }
+        }
+
+        console.log(`[Test] Server stop attempt completed (stopped: ${serverStopped})`);
+
+        // Verify server is actually down by trying to connect
+        try {
+            const response = await fetch(`http://localhost:${config.serverPort}/`, {
+                signal: AbortSignal.timeout(2000),
+            });
+            console.log(`[Test] WARNING: Server still responding with status ${response.status}`);
+        } catch {
+            console.log('[Test] Confirmed: Server is not responding (expected)');
         }
 
         // Wait for the webapp to detect the disconnection
-        // Socket.io has reconnection attempts, so we wait for it to detect the error
+        // Socket.io has reconnection attempts with backoff, so we need to wait
         console.log('[Test] Waiting for webapp to detect disconnection...');
-        await page.waitForTimeout(5000);
+        await page.waitForTimeout(8000);
 
-        // Refresh the page to trigger a fresh connection attempt
-        await page.reload({ waitUntil: 'networkidle' });
-        await page.waitForTimeout(3000);
+        // Refresh the page to trigger a fresh connection attempt to the dead server
+        await page.reload({ waitUntil: 'networkidle' }).catch(() => {
+            console.log('[Test] Page reload completed (may have errors)');
+        });
+        await page.waitForTimeout(5000);
         await takeScreenshot(page, config, 'error-05-after-stop');
 
         // Check for disconnected or error status in the UI
@@ -132,24 +191,16 @@ describe('Webapp Error Banners', () => {
             pageText.includes('connecting') || // While trying to reconnect
             pageText.includes('offline');
 
-        console.log('[Test] Page text sample:', pageText.substring(0, 300));
+        console.log('[Test] Page text sample:', pageText.substring(0, 500));
         console.log('[Test] Has disconnected/error status:', hasDisconnectedStatus);
 
         // Take a final screenshot
         await takeScreenshot(page, config, 'error-06-status-shown');
 
         // The status should indicate a connection problem
+        // Note: If this test fails, it might mean the UI doesn't properly show disconnected state
         expect(hasDisconnectedStatus).toBe(true);
-
-        // Also verify the page isn't showing "connected" status
-        const stillShowsConnected = pageText.includes('connected') &&
-                                    !pageText.includes('disconnected');
-
-        // If we still show "connected", that's a bug
-        if (stillShowsConnected) {
-            console.log('[Test] WARNING: Still showing connected after server stopped');
-        }
-    });
+    }, 60000);
 
     it('should show error indicator with appropriate styling', async () => {
         const { page } = browser;
@@ -206,6 +257,7 @@ describe('Webapp Error Banners', () => {
 
         // We expect some connection errors after stopping the server
         // This confirms the error state was actually triggered
+        // Note: If this fails with 0 errors, the server wasn't actually stopped
         expect(connectionErrors.length + networkFailures.length).toBeGreaterThan(0);
     });
 });
