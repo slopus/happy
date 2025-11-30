@@ -23,6 +23,10 @@ PREFEER STRONG TYPES. Always use type code if it is an option, and use specific
 types and type wrappers rather than generic types like "String". You could use
 Branded Types in TypeScript to achieve the "newtype pattern".
 
+AVOID SILENT FAILURES. When anything goes wrong it is better to error with a
+clear message than keep going in a broken state. Include health checks and
+invariant checks and make a nice prominent error message when they are violated.
+
 Pre-Commit Validation (IMPORTANT!)
 ================================================================================
 
