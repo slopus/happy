@@ -58,8 +58,8 @@ describe('Webapp Create Account', () => {
         const { page } = browser;
         const { config } = server.slot;
 
-        // Navigate to webapp
-        await navigateToWebapp(page);
+        // Navigate to webapp with server port in URL
+        await navigateToWebapp(page, config);
         await takeScreenshot(page, config, '01-welcome-page');
 
         // Verify we're on the welcome page

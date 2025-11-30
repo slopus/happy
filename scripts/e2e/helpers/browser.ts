@@ -129,9 +129,17 @@ export async function takeScreenshot(
 
 /**
  * Navigate to the webapp and wait for it to load
+ * Appends #server=PORT to enable runtime server port configuration
  */
-export async function navigateToWebapp(page: Page, path: string = '/'): Promise<void> {
-    await page.goto(path, { waitUntil: 'networkidle' });
+export async function navigateToWebapp(
+    page: Page,
+    config: SlotConfig,
+    path: string = '/'
+): Promise<void> {
+    // Append server port as hash parameter for runtime configuration
+    // The webapp's serverConfig.ts reads this to override the default port
+    const urlWithServer = `${path}#server=${config.serverPort}`;
+    await page.goto(urlWithServer, { waitUntil: 'networkidle' });
     // Give React time to hydrate
     await page.waitForTimeout(1000);
 }

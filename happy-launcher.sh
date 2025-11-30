@@ -214,6 +214,11 @@ ensure_postgres_ready() {
     if ! PGPASSWORD=postgres psql -U postgres -h localhost -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw handy; then
         sudo -u postgres psql -c "CREATE DATABASE handy;" > /dev/null 2>&1 || true
     fi
+    # Ensure database schema exists (run migrations if needed)
+    if ! PGPASSWORD=postgres psql -U postgres -h localhost -d handy -c "\dt" 2>/dev/null | grep -q "Session"; then
+        info "Running database migrations..."
+        (cd "$SERVER_DIR" && yarn migrate > /dev/null 2>&1) || true
+    fi
 }
 
 start_postgres() {
