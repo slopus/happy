@@ -20,11 +20,12 @@
 #   ./happy-launcher.sh [--slot N] <command>
 #
 # COMMANDS:
-#   start       Start backend services (PostgreSQL, Redis, MinIO, happy-server)
-#   start-all   Start all services including webapp
-#   stop        Stop all services
-#   status      Show status of services
-#   env         Print environment variables for this slot
+#   start         Start all services (PostgreSQL, Redis, MinIO, happy-server, webapp)
+#   start-backend Start only backend services (PostgreSQL, Redis, MinIO, happy-server)
+#   start-webapp  Start only the webapp
+#   stop          Stop all services
+#   status        Show status of services
+#   env           Print environment variables for this slot
 #   ... (run with 'help' for full list)
 
 set -e
@@ -884,21 +885,7 @@ test_connection() {
 
 case "${1:-}" in
     start)
-        info "Starting backend services..."
-        start_postgres
-        start_redis
-        start_minio
-        start_server
-        echo ""
-        success "Backend services started!"
-        echo ""
-        info "Run '$0 status' to check service status"
-        info "Run '$0 start-all' to also start the webapp"
-        echo ""
-        ;;
-
-    start-all)
-        info "Starting all services (including webapp)..."
+        info "Starting all services..."
         start_postgres
         start_redis
         start_minio
@@ -909,6 +896,20 @@ case "${1:-}" in
         echo ""
         info "Server: $HAPPY_SERVER_URL"
         info "Webapp: $HAPPY_WEBAPP_URL"
+        echo ""
+        ;;
+
+    start-backend)
+        info "Starting backend services..."
+        start_postgres
+        start_redis
+        start_minio
+        start_server
+        echo ""
+        success "Backend services started!"
+        echo ""
+        info "Run '$0 status' to check service status"
+        info "Run '$0 start-webapp' to also start the webapp"
         echo ""
         ;;
 
@@ -937,7 +938,7 @@ case "${1:-}" in
     restart-all)
         $0 cleanup --clean-logs
         sleep 2
-        $0 start-all
+        $0 start
         ;;
 
     status)

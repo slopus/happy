@@ -132,7 +132,7 @@ export async function startServices(): Promise<ServerHandle> {
         }
 
         // Start all services using happy-launcher.sh
-        execSync(`${LAUNCHER_PATH} --slot ${config.slot} start-all`, {
+        execSync(`${LAUNCHER_PATH} --slot ${config.slot} start`, {
             stdio: 'inherit',
             timeout: 120000, // 2 minutes for all services to start
             env: {
