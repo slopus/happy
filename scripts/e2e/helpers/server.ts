@@ -43,6 +43,51 @@ async function waitForPort(port: number, timeoutMs: number = 30000): Promise<boo
 }
 
 /**
+ * Wait for webapp to be fully ready (bundle compiled, not just port open)
+ * Metro bundler can respond quickly but the bundle takes time to compile
+ */
+async function waitForWebappReady(port: number, timeoutMs: number = 120000): Promise<boolean> {
+    const start = Date.now();
+    const checkInterval = 2000;
+
+    console.log(`[E2E] Waiting for webapp bundle to compile (this may take a minute)...`);
+
+    while (Date.now() - start < timeoutMs) {
+        try {
+            const response = await fetch(`http://localhost:${port}/`, {
+                method: 'GET',
+                signal: AbortSignal.timeout(5000),
+            });
+
+            // Check if response is HTML (webapp ready) or JSON (Metro still building)
+            const contentType = response.headers.get('content-type') || '';
+            const text = await response.text();
+
+            if (contentType.includes('text/html') && text.includes('<!DOCTYPE')) {
+                // Got HTML - webapp is ready
+                return true;
+            }
+
+            // If we got JSON, the bundler is probably still building
+            if (contentType.includes('application/json')) {
+                try {
+                    const json = JSON.parse(text);
+                    if (json.errors || json.message) {
+                        console.log(`[E2E] Metro bundler status: ${json.message || 'building...'}`);
+                    }
+                } catch {
+                    // Ignore JSON parse errors
+                }
+            }
+        } catch (err) {
+            // Connection error or timeout - still waiting
+        }
+        await new Promise(resolve => setTimeout(resolve, checkInterval));
+    }
+    return false;
+}
+
+/**
  * Start all services on an available slot
  * Returns the slot configuration and a function to stop services
  */
@@ -96,7 +141,7 @@ export async function startServices(): Promise<ServerHandle> {
         }
 
         console.log(`[E2E] Waiting for webapp on port ${config.webappPort}...`);
-        const webappReady = await waitForPort(config.webappPort, 60000);
+        const webappReady = await waitForWebappReady(config.webappPort, 120000);
         if (!webappReady) {
             throw new Error(`Webapp failed to start on port ${config.webappPort}`);
         }
