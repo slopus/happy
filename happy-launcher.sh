@@ -207,10 +207,20 @@ wait_for_port() {
 # Service Start Functions
 # =============================================================================
 
+ensure_postgres_ready() {
+    # Ensure postgres user has expected password
+    sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';" > /dev/null 2>&1 || true
+    # Ensure handy database exists
+    if ! PGPASSWORD=postgres psql -U postgres -h localhost -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw handy; then
+        sudo -u postgres psql -c "CREATE DATABASE handy;" > /dev/null 2>&1 || true
+    fi
+}
+
 start_postgres() {
     # Check if port is already listening (e.g., via Docker/CI service)
     if port_listening "$POSTGRES_PORT"; then
         info "PostgreSQL is already running on port $POSTGRES_PORT"
+        ensure_postgres_ready
         return 0
     fi
     if is_running "postgres.*17/main"; then
@@ -229,6 +239,7 @@ start_postgres() {
             error "PostgreSQL failed to start"
             return 1
         }
+        ensure_postgres_ready
         success "PostgreSQL started on port $POSTGRES_PORT"
     fi
 }
