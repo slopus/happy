@@ -144,12 +144,22 @@ REDIS_PORT="${REDIS_PORT:-6379}"
 HAPPY_SERVER_URL="http://localhost:${HAPPY_SERVER_PORT}"
 HAPPY_WEBAPP_URL="http://localhost:${HAPPY_WEBAPP_PORT}"
 
-# Slot-specific directories for isolation
+# Slot-specific directories and database for isolation
 SLOT_SUFFIX="${SLOT:-0}"
 MINIO_DATA_DIR="$SERVER_DIR/.minio-slot-${SLOT_SUFFIX}"
 LOG_DIR="/tmp/happy-slot-${SLOT_SUFFIX}"
 PIDS_DIR="$SCRIPT_DIR/.pids-slot-${SLOT_SUFFIX}"
 mkdir -p "$LOG_DIR" "$PIDS_DIR"
+
+# Slot-specific database name (critical for test isolation!)
+# - Slot 0 (production): uses 'handy' database
+# - Slot 1+: uses 'handy_test_N' databases
+if [[ "${SLOT:-0}" -eq 0 ]]; then
+    DATABASE_NAME="handy"
+else
+    DATABASE_NAME="handy_test_${SLOT}"
+fi
+DATABASE_URL="postgresql://postgres:postgres@localhost:${POSTGRES_PORT}/${DATABASE_NAME}"
 
 # =============================================================================
 # Colors and helpers
@@ -223,14 +233,19 @@ wait_for_port() {
 ensure_postgres_ready() {
     # Ensure postgres user has expected password
     sudo -u postgres psql -c "ALTER USER postgres WITH PASSWORD 'postgres';" > /dev/null 2>&1 || true
-    # Ensure handy database exists
-    if ! PGPASSWORD=postgres psql -U postgres -h localhost -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw handy; then
-        sudo -u postgres psql -c "CREATE DATABASE handy;" > /dev/null 2>&1 || true
+
+    # Ensure slot-specific database exists
+    # - Slot 0: 'handy' (production)
+    # - Slot N: 'handy_test_N' (isolated test databases)
+    if ! PGPASSWORD=postgres psql -U postgres -h localhost -lqt 2>/dev/null | cut -d \| -f 1 | grep -qw "$DATABASE_NAME"; then
+        info "Creating database '$DATABASE_NAME' for slot ${SLOT:-0}..."
+        sudo -u postgres psql -c "CREATE DATABASE $DATABASE_NAME;" > /dev/null 2>&1 || true
     fi
+
     # Ensure database schema exists (run migrations if needed)
-    if ! PGPASSWORD=postgres psql -U postgres -h localhost -d handy -c "\dt" 2>/dev/null | grep -q "Session"; then
-        info "Running database migrations..."
-        (cd "$SERVER_DIR" && yarn migrate > /dev/null 2>&1) || true
+    if ! PGPASSWORD=postgres psql -U postgres -h localhost -d "$DATABASE_NAME" -c "\dt" 2>/dev/null | grep -q "Session"; then
+        info "Running database migrations for '$DATABASE_NAME'..."
+        (cd "$SERVER_DIR" && DATABASE_URL="$DATABASE_URL" yarn migrate > /dev/null 2>&1) || true
     fi
 }
 
@@ -323,9 +338,10 @@ start_server() {
         fi
 
         # Start server with environment variables for ports
+        # DATABASE_URL uses slot-specific database for test isolation
         PORT="$HAPPY_SERVER_PORT" \
         METRICS_PORT="$METRICS_PORT" \
-        DATABASE_URL="postgresql://postgres:postgres@localhost:${POSTGRES_PORT}/handy" \
+        DATABASE_URL="$DATABASE_URL" \
         REDIS_URL="redis://localhost:${REDIS_PORT}" \
         HANDY_MASTER_SECRET="test-secret-for-local-development" \
         S3_HOST="localhost" \
@@ -578,7 +594,11 @@ show_status() {
     echo "  Webapp:   $HAPPY_WEBAPP_PORT"
     echo "  MinIO:    $MINIO_PORT (Console: $MINIO_CONSOLE_PORT)"
     echo ""
-    echo "Shared services (all slots):"
+    echo "Database:"
+    echo "  Name:     $DATABASE_NAME"
+    echo "  URL:      $DATABASE_URL"
+    echo ""
+    echo "Shared services (all slots use same Postgres/Redis process):"
     echo "  Postgres: $POSTGRES_PORT"
     echo "  Redis:    $REDIS_PORT"
     echo ""
@@ -591,7 +611,7 @@ show_status() {
     # Shared services (PostgreSQL and Redis)
     echo "--- Shared Services ---"
     if port_listening "$POSTGRES_PORT"; then
-        success "PostgreSQL: Running (port $POSTGRES_PORT, shared)"
+        success "PostgreSQL: Running (port $POSTGRES_PORT, database: $DATABASE_NAME)"
     else
         error "PostgreSQL: Stopped"
     fi
@@ -690,6 +710,8 @@ export HAPPY_HOME_DIR=~/.happy-slot-${SLOT_SUFFIX}
 export HAPPY_MINIO_PORT=$MINIO_PORT
 export HAPPY_MINIO_CONSOLE_PORT=$MINIO_CONSOLE_PORT
 export HAPPY_METRICS_PORT=$METRICS_PORT
+export DATABASE_URL=$DATABASE_URL
+export DATABASE_NAME=$DATABASE_NAME
 EOF
 }
 
@@ -703,7 +725,8 @@ show_urls() {
     echo ""
     echo "=== Database Connections ==="
     echo ""
-    echo "  PostgreSQL:      postgresql://postgres:postgres@localhost:${POSTGRES_PORT}/handy"
+    echo "  PostgreSQL:      $DATABASE_URL"
+    echo "  Database:        $DATABASE_NAME"
     echo "  Redis:           redis://localhost:${REDIS_PORT}"
     echo ""
 }
@@ -849,10 +872,14 @@ case "${1:-}" in
         echo "Usage: $0 [--slot N] <command> [options]"
         echo ""
         echo "Slot Concept:"
-        echo "  --slot 0 (default)  Primary instance: Server=3005, Webapp=8081, MinIO=9000/9001"
-        echo "  --slot 1            Test slot 1: Server=10001, Webapp=10002, MinIO=10003/10004"
-        echo "  --slot 2            Test slot 2: Server=10011, Webapp=10012, MinIO=10013/10014"
-        echo "  --slot N            Ports = base + 10*(N-1) for each service"
+        echo "  --slot 0 (default)  Primary instance: Server=3005, Webapp=8081, DB=handy"
+        echo "  --slot 1            Test slot 1: Server=10001, Webapp=10002, DB=handy_test_1"
+        echo "  --slot 2            Test slot 2: Server=10011, Webapp=10012, DB=handy_test_2"
+        echo "  --slot N            Ports = base + 10*(N-1), separate database per slot"
+        echo ""
+        echo "Database Isolation:"
+        echo "  Each slot uses its own database (handy_test_N) to prevent test/prod conflicts."
+        echo "  PostgreSQL and Redis processes are shared, but data is isolated by database."
         echo ""
         echo "Commands:"
         echo "  start              Start all services (backend + webapp)"

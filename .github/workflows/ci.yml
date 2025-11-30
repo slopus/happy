@@ -78,6 +78,10 @@ jobs:
         working-directory: happy-server
         run: yarn install --frozen-lockfile
 
+      # Note: Slot-specific databases (handy_test_N) are created automatically
+      # by happy-launcher.sh when starting services for that slot.
+      # We pre-run migrations here to ensure the schema is ready and to catch
+      # any migration errors early in the CI pipeline.
       - name: Setup happy-server database (Prisma migrations)
         working-directory: happy-server
         run: yarn migrate
