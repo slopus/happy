@@ -75,3 +75,12 @@ Issue Tracking
 
 We are using "beads" ("mb" minibeads implementation) for issue tracking. Run `bd
 quickstart` to learn more.
+
+Version Bumps
+================================================================================
+
+All version bumps should be made in **separate, revertable commits**. This makes
+it easy to revert version changes independently of feature changes.
+
+For example, changing happy-cli from 0.11.2 to 0.12.0 should be its own commit,
+not bundled with feature work.
