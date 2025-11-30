@@ -88,8 +88,8 @@ jobs:
         working-directory: happy
         run: yarn install --frozen-lockfile
 
-      - name: Install browser test dependencies
-        working-directory: scripts/browser
+      - name: Install E2E test dependencies
+        working-directory: scripts/e2e
         run: npm install
 
       # Run the validation script

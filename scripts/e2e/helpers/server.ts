@@ -143,6 +143,12 @@ export async function startServices(): Promise<ServerHandle> {
                 HAPPY_WEBAPP_PORT: undefined,
                 HAPPY_WEBAPP_URL: undefined,
                 HAPPY_HOME_DIR: undefined,
+                // CRITICAL: Override NODE_ENV to 'development' for the webapp
+                // Vitest sets NODE_ENV=test, which causes expo-router's babel plugin
+                // to skip the EXPO_ROUTER_APP_ROOT transformation (it's designed to
+                // be handled by testing-library in test mode). We need development
+                // mode for the webapp to build correctly.
+                NODE_ENV: 'development',
             },
         });
 

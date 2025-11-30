@@ -340,9 +340,11 @@ start_webapp() {
     else
         info "Starting webapp (slot ${SLOT:-0})..."
         cd "$WEBAPP_DIR"
+        # Clear Metro cache to ensure fresh bundle transformation
+        # The --clear flag is essential for CI environments where the cache may be stale
         BROWSER=none \
             EXPO_PUBLIC_HAPPY_SERVER_URL="$HAPPY_SERVER_URL" \
-            yarn web --port "$HAPPY_WEBAPP_PORT" > "$LOG_DIR/webapp.log" 2>&1 &
+            yarn web --port "$HAPPY_WEBAPP_PORT" --clear > "$LOG_DIR/webapp.log" 2>&1 &
         echo $! > "$PIDS_DIR/webapp.pid"
         cd "$SCRIPT_DIR"
 
