@@ -48,28 +48,69 @@ setup:
 rebase-upstream: setup
 	@./scripts/rebase-upstream.sh
 
-# Show current status of all submodules
+# Show current status of all repos (parent + submodules)
 status:
 	@echo ""
+	@echo "==============================================================================="
 	@echo "=== Repository Status ==="
+	@echo "==============================================================================="
 	@echo ""
-	@echo "Parent branch: $$(git rev-parse --abbrev-ref HEAD)"
 	@if [ -f feature_name.txt ]; then \
 		echo "Feature mode: $$(cat feature_name.txt)"; \
 	else \
 		echo "Mode: Base development"; \
 	fi
 	@echo ""
-	@echo "Submodule status:"
+	@# Parent repo
+	@echo "-------------------------------------------------------------------------------"
+	@echo "[PARENT] $$(git rev-parse --abbrev-ref HEAD)"
+	@echo "-------------------------------------------------------------------------------"
+	@TRACKING=$$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "none"); \
+	AHEAD=$$(git rev-list --count @{u}..HEAD 2>/dev/null || echo "0"); \
+	BEHIND=$$(git rev-list --count HEAD..@{u} 2>/dev/null || echo "0"); \
+	echo "Tracking: $$TRACKING (+$$AHEAD/-$$BEHIND)"
+	@echo ""
+	@git status --short || true
+	@echo ""
+	@DIFF=$$(git diff --stat 2>/dev/null); \
+	if [ -n "$$DIFF" ]; then \
+		echo "Unstaged changes:"; \
+		echo "$$DIFF"; \
+		echo ""; \
+	fi
+	@STAGED=$$(git diff --cached --stat 2>/dev/null); \
+	if [ -n "$$STAGED" ]; then \
+		echo "Staged changes:"; \
+		echo "$$STAGED"; \
+		echo ""; \
+	fi
+	@# Submodules
 	@for submod in happy happy-cli happy-server; do \
-		cd $$submod && \
-		BRANCH=$$(git rev-parse --abbrev-ref HEAD) && \
-		TRACKING=$$(git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "none") && \
-		AHEAD=$$(git rev-list --count @{u}..HEAD 2>/dev/null || echo "0") && \
-		BEHIND=$$(git rev-list --count HEAD..@{u} 2>/dev/null || echo "0") && \
-		echo "  $$submod: $$BRANCH (tracking $$TRACKING, +$$AHEAD -$$BEHIND)" && \
-		cd ..; \
+		echo "-------------------------------------------------------------------------------"; \
+		BRANCH=$$(cd $$submod && git rev-parse --abbrev-ref HEAD); \
+		echo "[$$submod] $$BRANCH"; \
+		echo "-------------------------------------------------------------------------------"; \
+		TRACKING=$$(cd $$submod && git rev-parse --abbrev-ref --symbolic-full-name @{u} 2>/dev/null || echo "none"); \
+		AHEAD=$$(cd $$submod && git rev-list --count @{u}..HEAD 2>/dev/null || echo "0"); \
+		BEHIND=$$(cd $$submod && git rev-list --count HEAD..@{u} 2>/dev/null || echo "0"); \
+		echo "Tracking: $$TRACKING (+$$AHEAD/-$$BEHIND)"; \
+		echo ""; \
+		(cd $$submod && git status --short) || true; \
+		echo ""; \
+		DIFF=$$(cd $$submod && git diff --stat 2>/dev/null); \
+		if [ -n "$$DIFF" ]; then \
+			echo "Unstaged changes:"; \
+			echo "$$DIFF"; \
+			echo ""; \
+		fi; \
+		STAGED=$$(cd $$submod && git diff --cached --stat 2>/dev/null); \
+		if [ -n "$$STAGED" ]; then \
+			echo "Staged changes:"; \
+			echo "$$STAGED"; \
+			echo ""; \
+		fi; \
 	done
+	@echo "==============================================================================="
 	@echo ""
 
 # Start a new feature branch
