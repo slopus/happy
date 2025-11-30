@@ -166,9 +166,22 @@ success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
-# Check if a service is running
+# Check if a service is running (system-wide, slot-unaware)
 is_running() {
     pgrep -f "$1" > /dev/null 2>&1
+}
+
+# Check if a slot-specific service is running by checking its PID file
+is_slot_service_running() {
+    local service="$1"
+    local pid_file="$PIDS_DIR/${service}.pid"
+    if [ -f "$pid_file" ]; then
+        local pid=$(cat "$pid_file")
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    return 1
 }
 
 # Check if a port is listening
@@ -564,6 +577,8 @@ show_status() {
     echo "  Metrics:  $METRICS_PORT"
     echo "  Webapp:   $HAPPY_WEBAPP_PORT"
     echo "  MinIO:    $MINIO_PORT (Console: $MINIO_CONSOLE_PORT)"
+    echo ""
+    echo "Shared services (all slots):"
     echo "  Postgres: $POSTGRES_PORT"
     echo "  Redis:    $REDIS_PORT"
     echo ""
@@ -573,47 +588,61 @@ show_status() {
     echo "  PIDs:       $PIDS_DIR"
     echo ""
 
-    # PostgreSQL
-    if is_running "postgres.*17/main"; then
-        success "PostgreSQL: Running (port $POSTGRES_PORT)"
+    # Shared services (PostgreSQL and Redis)
+    echo "--- Shared Services ---"
+    if port_listening "$POSTGRES_PORT"; then
+        success "PostgreSQL: Running (port $POSTGRES_PORT, shared)"
     else
         error "PostgreSQL: Stopped"
     fi
 
-    # Redis
-    if is_running "redis-server"; then
-        success "Redis: Running (port $REDIS_PORT)"
+    if port_listening "$REDIS_PORT"; then
+        success "Redis: Running (port $REDIS_PORT, shared)"
     else
         error "Redis: Stopped"
     fi
 
-    # MinIO
-    if is_running "minio server"; then
+    # Slot-specific services
+    echo ""
+    echo "--- Slot ${SLOT:-0} Services ---"
+
+    # MinIO (slot-specific)
+    if is_slot_service_running "minio"; then
+        if port_listening "$MINIO_PORT"; then
+            success "MinIO: Running (API: $MINIO_PORT, Console: $MINIO_CONSOLE_PORT)"
+        else
+            warning "MinIO: Process exists but port not responding"
+        fi
+    elif port_listening "$MINIO_PORT"; then
+        # Port is listening but no PID file - maybe started externally
         success "MinIO: Running (API: $MINIO_PORT, Console: $MINIO_CONSOLE_PORT)"
     else
         error "MinIO: Stopped"
     fi
 
-    # happy-server
-    if is_running "tsx.*sources/main.ts"; then
+    # happy-server (slot-specific)
+    if is_slot_service_running "server"; then
         if port_listening "$HAPPY_SERVER_PORT"; then
             success "happy-server: Running (port $HAPPY_SERVER_PORT)"
         else
-            warning "happy-server: Process running but not responding"
+            warning "happy-server: Process exists but port not responding"
         fi
+    elif port_listening "$HAPPY_SERVER_PORT"; then
+        # Port is listening but no PID file - maybe started externally
+        success "happy-server: Running (port $HAPPY_SERVER_PORT)"
     else
         error "happy-server: Stopped"
     fi
 
-    # Webapp (can be expo start in dev mode, or serve dist for static builds)
-    if is_running "expo start" || is_running "serve.*dist.*$HAPPY_WEBAPP_PORT"; then
+    # Webapp (slot-specific)
+    if is_slot_service_running "webapp"; then
         if port_listening "$HAPPY_WEBAPP_PORT"; then
             success "Webapp: Running (port $HAPPY_WEBAPP_PORT)"
         else
-            warning "Webapp: Process running but not responding"
+            warning "Webapp: Process exists but port not responding"
         fi
     elif port_listening "$HAPPY_WEBAPP_PORT"; then
-        # Fallback: just check if port is listening (might be started differently)
+        # Port is listening but no PID file - maybe started externally
         success "Webapp: Running (port $HAPPY_WEBAPP_PORT)"
     else
         error "Webapp: Stopped"
