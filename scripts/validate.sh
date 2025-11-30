@@ -4,9 +4,8 @@
 # THIS IS THE PRE-COMMIT CHECK - run before pushing changes!
 #
 # Usage:
-#   ./scripts/validate.sh              # Run all tests (legacy browser tests)
+#   ./scripts/validate.sh              # Run all tests (builds + unit + E2E)
 #   ./scripts/validate.sh --quick      # Skip E2E tests (builds and unit tests only)
-#   ./scripts/validate.sh --vitest     # Use new vitest-based E2E tests
 #   ./scripts/validate.sh --e2e-only   # Skip builds/unit tests, only run E2E
 #
 # This script:
@@ -34,17 +33,9 @@ unset HAPPY_SERVER_URL HAPPY_SERVER_PORT HAPPY_WEBAPP_PORT HAPPY_WEBAPP_URL HAPP
 # Get port configuration from launcher (but don't export yet - launcher checks for these)
 SLOT_ENV=$("$ROOT_DIR/happy-launcher.sh" --slot $SLOT env)
 
-# Extract values for display and later use
+# Extract values for display
 HAPPY_SERVER_PORT=$(echo "$SLOT_ENV" | grep HAPPY_SERVER_PORT | cut -d= -f2)
 HAPPY_WEBAPP_PORT=$(echo "$SLOT_ENV" | grep HAPPY_WEBAPP_PORT | cut -d= -f2)
-HAPPY_SERVER_URL="http://localhost:${HAPPY_SERVER_PORT}"
-HAPPY_WEBAPP_URL="http://localhost:${HAPPY_WEBAPP_PORT}"
-
-# Override HAPPY_HOME_DIR for validation test isolation
-HAPPY_HOME_DIR=/tmp/.happy-validate-slot-${SLOT}
-
-# Log directory for this slot
-LOG_DIR="/tmp/happy-slot-${SLOT}"
 
 # =============================================================================
 # Colors and helpers
@@ -57,21 +48,15 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 QUICK_MODE=false
-USE_VITEST=false
 E2E_ONLY=false
 FAILED_TESTS=()
 PASSED_TESTS=()
-SERVICES_STARTED=false
 
 # Parse arguments
 for arg in "$@"; do
     case $arg in
         --quick)
             QUICK_MODE=true
-            shift
-            ;;
-        --vitest)
-            USE_VITEST=true
             shift
             ;;
         --e2e-only)
@@ -108,17 +93,8 @@ cleanup_on_exit() {
     local exit_code=$?
     echo ""
     echo -e "${BLUE}=== Cleanup ===${NC}"
-
-    if [ "$SERVICES_STARTED" = true ]; then
-        echo -e "${BLUE}Stopping services for slot $SLOT...${NC}"
-        "$ROOT_DIR/happy-launcher.sh" --slot $SLOT stop 2>/dev/null || true
-    fi
-
-    # Clean up test home directory (only for legacy mode)
-    if [ "$USE_VITEST" = false ]; then
-        rm -rf "$HAPPY_HOME_DIR" 2>/dev/null || true
-    fi
-
+    echo -e "${BLUE}Stopping services for slot $SLOT...${NC}"
+    "$ROOT_DIR/happy-launcher.sh" --slot $SLOT stop 2>/dev/null || true
     echo -e "${BLUE}Cleanup complete${NC}"
     exit $exit_code
 }
@@ -185,17 +161,14 @@ else
 fi
 
 # =============================================================================
-# E2E/Browser Tests
+# E2E Tests (vitest-based)
 # =============================================================================
 
 if [ "$QUICK_MODE" = true ]; then
     echo "=== E2E Tests (SKIPPED - quick mode) ==="
     echo ""
-elif [ "$USE_VITEST" = true ]; then
-    # ==========================================================================
-    # NEW: Vitest-based E2E tests with automatic slot allocation
-    # ==========================================================================
-    echo "=== E2E Tests (vitest mode) ==="
+else
+    echo "=== E2E Tests ==="
     echo ""
 
     # Install e2e dependencies if needed
@@ -205,50 +178,15 @@ elif [ "$USE_VITEST" = true ]; then
     fi
 
     # Run vitest - it handles slot allocation internally
-    echo -e "${BLUE}Running vitest E2E tests...${NC}"
+    echo -e "${BLUE}Running E2E tests (vitest)...${NC}"
     echo "  Tests will automatically claim slots for parallel execution"
     echo ""
 
-    if run_test "e2e tests (vitest)" "cd '$SCRIPT_DIR/e2e' && npm test"; then
+    if run_test "e2e tests" "cd '$SCRIPT_DIR/e2e' && npm test"; then
         echo ""
     else
         echo ""
         echo -e "${YELLOW}  Check logs in /tmp/happy-slot-* for details${NC}"
-    fi
-else
-    # ==========================================================================
-    # LEGACY: Manual service startup with slot 1
-    # ==========================================================================
-    echo "=== E2E Tests (legacy mode) ==="
-    echo ""
-
-    # Start all services using happy-launcher.sh with slot 1
-    # Note: HAPPY_* vars must NOT be exported when calling launcher with --slot
-    echo -e "${BLUE}Starting services on slot $SLOT for E2E tests...${NC}"
-    if "$ROOT_DIR/happy-launcher.sh" --slot $SLOT start-all; then
-        SERVICES_STARTED=true
-        echo ""
-        echo "  Services running: server on :${HAPPY_SERVER_PORT}, webapp on :${HAPPY_WEBAPP_PORT}"
-        echo ""
-
-        # NOW export environment variables for the browser tests
-        export HAPPY_SERVER_URL
-        export HAPPY_SERVER_PORT
-        export HAPPY_WEBAPP_URL
-        export HAPPY_WEBAPP_PORT
-        export HAPPY_HOME_DIR
-        export WEBAPP_URL="$HAPPY_WEBAPP_URL"
-
-        run_test "webapp create account" "cd '$ROOT_DIR/scripts/browser' && node test-create-account.mjs" || true
-
-        # Add more browser tests here as they are created
-        # run_test "webapp e2e" "cd '$ROOT_DIR/scripts/browser' && node test-webapp-e2e.mjs" || true
-        # run_test "webapp restore login" "cd '$ROOT_DIR/scripts/browser' && node test-restore-login.mjs" || true
-    else
-        echo -e "${RED}  Failed to start services - skipping browser tests${NC}"
-        echo -e "${YELLOW}  Server log (last 50 lines):${NC}"
-        tail -50 "$LOG_DIR/server.log" 2>/dev/null || echo "  (no log file found)"
-        FAILED_TESTS+=("service startup")
     fi
 fi
 
