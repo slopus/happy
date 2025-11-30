@@ -45,42 +45,55 @@ async function waitForPort(port: number, timeoutMs: number = 30000): Promise<boo
 /**
  * Wait for webapp to be fully ready (bundle compiled, not just port open)
  * Metro bundler can respond quickly but the bundle takes time to compile
+ *
+ * We check the actual JavaScript bundle endpoint, not just the HTML shell,
+ * because the HTML returns immediately but the JS bundle takes time to compile.
  */
-async function waitForWebappReady(port: number, timeoutMs: number = 120000): Promise<boolean> {
+async function waitForWebappReady(port: number, timeoutMs: number = 180000): Promise<boolean> {
     const start = Date.now();
-    const checkInterval = 2000;
+    const checkInterval = 3000;
 
-    console.log(`[E2E] Waiting for webapp bundle to compile (this may take a minute)...`);
+    // The bundle URL that Metro serves - this is what takes time to compile
+    const bundleUrl = `http://localhost:${port}/index.ts.bundle?platform=web&dev=true&hot=false&lazy=true`;
+
+    console.log(`[E2E] Waiting for webapp bundle to compile (this may take 1-2 minutes)...`);
 
     while (Date.now() - start < timeoutMs) {
         try {
-            const response = await fetch(`http://localhost:${port}/`, {
+            const response = await fetch(bundleUrl, {
                 method: 'GET',
-                signal: AbortSignal.timeout(5000),
+                signal: AbortSignal.timeout(30000), // Bundle can take a while
             });
 
-            // Check if response is HTML (webapp ready) or JSON (Metro still building)
             const contentType = response.headers.get('content-type') || '';
-            const text = await response.text();
 
-            if (contentType.includes('text/html') && text.includes('<!DOCTYPE')) {
-                // Got HTML - webapp is ready
+            // If we get JavaScript content type, the bundle is ready
+            if (
+                contentType.includes('application/javascript') ||
+                contentType.includes('text/javascript')
+            ) {
+                console.log(`[E2E] Bundle compiled successfully`);
                 return true;
             }
 
-            // If we got JSON, the bundler is probably still building
+            // If we get JSON, Metro is returning an error or status
             if (contentType.includes('application/json')) {
+                const text = await response.text();
                 try {
                     const json = JSON.parse(text);
-                    if (json.errors || json.message) {
-                        console.log(`[E2E] Metro bundler status: ${json.message || 'building...'}`);
+                    if (json.errors) {
+                        console.log(`[E2E] Metro bundler errors:`, json.errors);
+                    } else if (json.message) {
+                        console.log(`[E2E] Metro bundler status: ${json.message}`);
                     }
                 } catch {
                     // Ignore JSON parse errors
                 }
             }
         } catch (err) {
-            // Connection error or timeout - still waiting
+            // Connection error or timeout - bundler still working
+            const elapsed = Math.round((Date.now() - start) / 1000);
+            console.log(`[E2E] Waiting for bundle... (${elapsed}s elapsed)`);
         }
         await new Promise(resolve => setTimeout(resolve, checkInterval));
     }
