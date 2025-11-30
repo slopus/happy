@@ -380,37 +380,135 @@ stop_all() {
     warning "To stop them manually: service postgresql stop && service redis-server stop"
 }
 
+cleanup_slot() {
+    local slot="$1"
+    local clean_logs="${2:-false}"
+    local nuke_happy_dir="${3:-false}"
+
+    local slot_suffix="$slot"
+    local pids_dir="$SCRIPT_DIR/.pids-slot-${slot_suffix}"
+    local log_dir="/tmp/happy-slot-${slot_suffix}"
+    local happy_home_dir="$HOME/.happy-slot-${slot_suffix}"
+
+    # Stop processes using PID files
+    if [ -d "$pids_dir" ]; then
+        for pid_file in "$pids_dir"/*.pid; do
+            [ -f "$pid_file" ] || continue
+            local service=$(basename "$pid_file" .pid)
+            local pid=$(cat "$pid_file" 2>/dev/null)
+            if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+                info "Stopping $service (slot $slot, PID $pid)..."
+                kill "$pid" 2>/dev/null || true
+                sleep 1
+                kill -9 "$pid" 2>/dev/null || true
+                success "$service stopped"
+            fi
+        done
+        # Remove the entire pids directory
+        rm -rf "$pids_dir"
+    fi
+
+    # Clean up log directory
+    if [ "$clean_logs" = "true" ] && [ -d "$log_dir" ]; then
+        rm -rf "$log_dir"
+        info "Cleaned log directory: $log_dir"
+    fi
+
+    # Nuke happy home directory
+    if [ "$nuke_happy_dir" = "true" ] && [ -d "$happy_home_dir" ]; then
+        rm -rf "$happy_home_dir"
+        warning "Deleted happy home directory: $happy_home_dir"
+    fi
+}
+
 cleanup_all() {
-    info "Running complete cleanup (stopping ALL services)..."
+    local clean_logs=false
+    local nuke_happy_dir=false
+    local all_slots=false
+
+    # Parse arguments
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --clean-logs)
+                clean_logs=true
+                shift
+                ;;
+            --nuke-happy-dir)
+                nuke_happy_dir=true
+                shift
+                ;;
+            --all-slots)
+                all_slots=true
+                shift
+                ;;
+            *)
+                shift
+                ;;
+        esac
+    done
+
+    info "Running complete cleanup..."
     echo ""
 
-    # Stop webapp
+    if [ "$all_slots" = "true" ]; then
+        # Find all slot directories and clean them
+        info "Cleaning ALL slots..."
+        for pids_dir in "$SCRIPT_DIR"/.pids-slot-*; do
+            [ -d "$pids_dir" ] || continue
+            local slot=$(echo "$pids_dir" | sed 's/.*\.pids-slot-//')
+            info "Cleaning slot $slot..."
+            cleanup_slot "$slot" "$clean_logs" "$nuke_happy_dir"
+        done
+        # Also check for log directories without pid directories
+        for log_dir in /tmp/happy-slot-*; do
+            [ -d "$log_dir" ] || continue
+            local slot=$(echo "$log_dir" | sed 's/.*happy-slot-//')
+            if [ "$clean_logs" = "true" ]; then
+                rm -rf "$log_dir"
+                info "Cleaned log directory: $log_dir"
+            fi
+        done
+        # Clean happy home directories if nuking
+        if [ "$nuke_happy_dir" = "true" ]; then
+            for happy_dir in "$HOME"/.happy-slot-*; do
+                [ -d "$happy_dir" ] || continue
+                rm -rf "$happy_dir"
+                warning "Deleted: $happy_dir"
+            done
+            # Also delete the default .happy directory
+            if [ -d "$HOME/.happy" ]; then
+                rm -rf "$HOME/.happy"
+                warning "Deleted: $HOME/.happy"
+            fi
+        fi
+    else
+        # Just clean the current slot
+        cleanup_slot "$SLOT_SUFFIX" "$clean_logs" "$nuke_happy_dir"
+    fi
+
+    # Stop system-wide processes (not slot-specific)
+
+    # Stop any remaining webapp processes
     if is_running "expo start"; then
         info "Stopping webapp..."
         pkill -f "expo start" || true
         pkill -f "metro" || true
         success "Webapp stopped"
-    else
-        info "Webapp not running"
     fi
 
-    # Stop happy-server
+    # Stop any remaining happy-server processes
     if is_running "tsx.*sources/main.ts"; then
         info "Stopping happy-server..."
         pkill -f "tsx.*sources/main.ts" || true
         pkill -f "yarn tsx.*sources/main.ts" || true
         success "happy-server stopped"
-    else
-        info "happy-server not running"
     fi
 
-    # Stop MinIO
+    # Stop any remaining MinIO processes
     if is_running "minio server"; then
         info "Stopping MinIO..."
         pkill -f "minio server" || true
         success "MinIO stopped"
-    else
-        info "MinIO not running"
     fi
 
     # Stop PostgreSQL
@@ -418,8 +516,6 @@ cleanup_all() {
         info "Stopping PostgreSQL..."
         service postgresql stop || true
         success "PostgreSQL stopped"
-    else
-        info "PostgreSQL not running"
     fi
 
     # Stop Redis
@@ -428,8 +524,6 @@ cleanup_all() {
         service redis-server stop || true
         pkill -f "redis-server" 2>/dev/null || true
         success "Redis stopped"
-    else
-        info "Redis not running"
     fi
 
     # Kill any orphaned processes
@@ -437,19 +531,15 @@ cleanup_all() {
     pkill -f "node.*happy-server" 2>/dev/null || true
     pkill -f "node.*happy-cli" 2>/dev/null || true
 
-    # Clean up log files (optional)
-    if [ "${1:-}" = "--clean-logs" ]; then
-        info "Cleaning up log files..."
-        rm -f /tmp/happy-server.log /tmp/minio.log /tmp/webapp.log
-        success "Log files cleaned"
-    fi
-
     echo ""
     success "Complete cleanup finished!"
     echo ""
     info "All services have been stopped"
-    if [ "${1:-}" != "--clean-logs" ]; then
+    if [ "$clean_logs" != "true" ]; then
         info "Logs preserved. Use '$0 cleanup --clean-logs' to remove them"
+    fi
+    if [ "$nuke_happy_dir" = "true" ]; then
+        warning "Happy home directories have been deleted"
     fi
     echo ""
 }
@@ -729,14 +819,15 @@ case "${1:-}" in
         echo "  --slot N            Ports = base + 10*(N-1) for each service"
         echo ""
         echo "Commands:"
-        echo "  start              Start backend services (PostgreSQL, Redis, MinIO, happy-server)"
-        echo "  start-all          Start all services including webapp"
+        echo "  start              Start all services (backend + webapp)"
+        echo "  start-backend      Start only backend (PostgreSQL, Redis, MinIO, happy-server)"
         echo "  start-webapp       Start only the webapp"
         echo "  stop               Stop happy-server, webapp, and MinIO (leaves databases running)"
         echo "  cleanup            Stop ALL services including PostgreSQL and Redis"
-        echo "  cleanup --clean-logs   Stop all services and delete log files"
-        echo "  restart            Restart backend services"
-        echo "  restart-all        Full cleanup and restart all services"
+        echo "  cleanup --clean-logs       Also delete log files"
+        echo "  cleanup --all-slots        Clean all slots (not just current)"
+        echo "  cleanup --nuke-happy-dir   Also delete HAPPY_HOME_DIR (~/.happy-slot-*)"
+        echo "  restart            Full cleanup and restart all services"
         echo "  status             Show status of all services"
         echo "  logs <service>     Tail logs for a service (server, webapp, minio, postgres)"
         echo "  env                Print environment variables for this slot (can be sourced)"
