@@ -4,12 +4,14 @@
 # THIS IS THE PRE-COMMIT CHECK - run before pushing changes!
 #
 # Usage:
-#   ./scripts/validate.sh           # Run all tests
-#   ./scripts/validate.sh --quick   # Skip E2E tests (builds and unit tests only)
+#   ./scripts/validate.sh              # Run all tests (legacy browser tests)
+#   ./scripts/validate.sh --quick      # Skip E2E tests (builds and unit tests only)
+#   ./scripts/validate.sh --vitest     # Use new vitest-based E2E tests
+#   ./scripts/validate.sh --e2e-only   # Skip builds/unit tests, only run E2E
 #
 # This script:
 #   - Does not assume any running services before starting
-#   - Uses slot 1 for E2E tests to isolate from any production instance (slot 0)
+#   - Uses slot-based isolation for E2E tests (slot 1+ for tests, slot 0 for production)
 #   - Cleans up all processes it starts on exit (via trap)
 #   - Is run by CI on GitHub Actions
 #
@@ -55,6 +57,8 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 QUICK_MODE=false
+USE_VITEST=false
+E2E_ONLY=false
 FAILED_TESTS=()
 PASSED_TESTS=()
 SERVICES_STARTED=false
@@ -64,6 +68,14 @@ for arg in "$@"; do
     case $arg in
         --quick)
             QUICK_MODE=true
+            shift
+            ;;
+        --vitest)
+            USE_VITEST=true
+            shift
+            ;;
+        --e2e-only)
+            E2E_ONLY=true
             shift
             ;;
     esac
@@ -102,8 +114,10 @@ cleanup_on_exit() {
         "$ROOT_DIR/happy-launcher.sh" --slot $SLOT stop 2>/dev/null || true
     fi
 
-    # Clean up test home directory
-    rm -rf "$HAPPY_HOME_DIR" 2>/dev/null || true
+    # Clean up test home directory (only for legacy mode)
+    if [ "$USE_VITEST" = false ]; then
+        rm -rf "$HAPPY_HOME_DIR" 2>/dev/null || true
+    fi
 
     echo -e "${BLUE}Cleanup complete${NC}"
     exit $exit_code
@@ -135,35 +149,40 @@ echo ""
 # Build Tests
 # =============================================================================
 
-echo "=== Build Validation ==="
-echo ""
+if [ "$E2E_ONLY" = false ]; then
+    echo "=== Build Validation ==="
+    echo ""
 
-run_test "happy-cli build" "cd '$ROOT_DIR/happy-cli' && yarn build" || true
-run_test "happy-server typecheck" "cd '$ROOT_DIR/happy-server' && yarn build" || true
-run_test "happy webapp typecheck" "cd '$ROOT_DIR/happy' && yarn typecheck" || true
+    run_test "happy-cli build" "cd '$ROOT_DIR/happy-cli' && yarn build" || true
+    run_test "happy-server typecheck" "cd '$ROOT_DIR/happy-server' && yarn build" || true
+    run_test "happy webapp typecheck" "cd '$ROOT_DIR/happy' && yarn typecheck" || true
 
-# =============================================================================
-# Unit Tests
-# =============================================================================
+    # =============================================================================
+    # Unit Tests
+    # =============================================================================
 
-echo "=== Unit Tests ==="
-echo ""
+    echo "=== Unit Tests ==="
+    echo ""
 
-# happy-server unit tests (if they exist)
-if [ -f "$ROOT_DIR/happy-server/package.json" ] && grep -q '"test"' "$ROOT_DIR/happy-server/package.json"; then
-    run_test "happy-server unit tests" "cd '$ROOT_DIR/happy-server' && yarn test --run 2>/dev/null || true" || true
+    # happy-server unit tests (if they exist)
+    if [ -f "$ROOT_DIR/happy-server/package.json" ] && grep -q '"test"' "$ROOT_DIR/happy-server/package.json"; then
+        run_test "happy-server unit tests" "cd '$ROOT_DIR/happy-server' && yarn test --run 2>/dev/null || true" || true
+    else
+        echo "  Skipping happy-server unit tests (no test script found)"
+    fi
+
+    # happy-cli unit tests (if they exist)
+    if [ -f "$ROOT_DIR/happy-cli/package.json" ] && grep -q '"test"' "$ROOT_DIR/happy-cli/package.json"; then
+        run_test "happy-cli unit tests" "cd '$ROOT_DIR/happy-cli' && yarn test --run 2>/dev/null || true" || true
+    else
+        echo "  Skipping happy-cli unit tests (no test script found)"
+    fi
+
+    echo ""
 else
-    echo "  Skipping happy-server unit tests (no test script found)"
+    echo "=== Skipping builds and unit tests (--e2e-only mode) ==="
+    echo ""
 fi
-
-# happy-cli unit tests (if they exist)
-if [ -f "$ROOT_DIR/happy-cli/package.json" ] && grep -q '"test"' "$ROOT_DIR/happy-cli/package.json"; then
-    run_test "happy-cli unit tests" "cd '$ROOT_DIR/happy-cli' && yarn test --run 2>/dev/null || true" || true
-else
-    echo "  Skipping happy-cli unit tests (no test script found)"
-fi
-
-echo ""
 
 # =============================================================================
 # E2E/Browser Tests
@@ -172,8 +191,35 @@ echo ""
 if [ "$QUICK_MODE" = true ]; then
     echo "=== E2E Tests (SKIPPED - quick mode) ==="
     echo ""
+elif [ "$USE_VITEST" = true ]; then
+    # ==========================================================================
+    # NEW: Vitest-based E2E tests with automatic slot allocation
+    # ==========================================================================
+    echo "=== E2E Tests (vitest mode) ==="
+    echo ""
+
+    # Install e2e dependencies if needed
+    if [ ! -d "$SCRIPT_DIR/e2e/node_modules" ]; then
+        echo -e "${BLUE}Installing e2e test dependencies...${NC}"
+        (cd "$SCRIPT_DIR/e2e" && npm install)
+    fi
+
+    # Run vitest - it handles slot allocation internally
+    echo -e "${BLUE}Running vitest E2E tests...${NC}"
+    echo "  Tests will automatically claim slots for parallel execution"
+    echo ""
+
+    if run_test "e2e tests (vitest)" "cd '$SCRIPT_DIR/e2e' && npm test"; then
+        echo ""
+    else
+        echo ""
+        echo -e "${YELLOW}  Check logs in /tmp/happy-slot-* for details${NC}"
+    fi
 else
-    echo "=== E2E Tests ==="
+    # ==========================================================================
+    # LEGACY: Manual service startup with slot 1
+    # ==========================================================================
+    echo "=== E2E Tests (legacy mode) ==="
     echo ""
 
     # Start all services using happy-launcher.sh with slot 1
