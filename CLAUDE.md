@@ -10,6 +10,19 @@ rather than connecting to the happy.engineering server
 Install whatever dependencies you want with `apt-get install`, `npm`,
 etc, but document what you install in DEPENDENCIES.md.
 
+CODING STYLE
+================================================================================
+
+Go to great lengths to NOT DUPLICATE CODE. Even if it is more work, and more
+complexity to factor out reusable pieces (i.e. which may require complicated
+call-backs for the "holes" that are factored out). There should be as close
+to one source-of-truth as possible for each decision, design point, constant
+definition, etc.
+
+PREFEER STRONG TYPES. Always use type code if it is an option, and use specific 
+types and type wrappers rather than generic types like "String". You could use
+Branded Types in TypeScript to achieve the "newtype pattern".
+
 Pre-Commit Validation (IMPORTANT!)
 ================================================================================
 
