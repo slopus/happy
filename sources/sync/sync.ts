@@ -39,6 +39,7 @@ import { fetchFeed } from './apiFeed';
 import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
+import { notificationManager } from './notificationManager';
 
 class Sync {
 
@@ -195,6 +196,9 @@ class Sync {
 
         // Also invalidate git status sync for this session
         gitStatusSync.getSync(sessionId).invalidate();
+
+        // Dismiss any notifications for this session
+        notificationManager.dismissNotificationsForSession(sessionId);
 
         // Notify voice assistant about session visibility
         const session = storage.getState().sessions[sessionId];
