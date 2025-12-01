@@ -57,7 +57,7 @@
   "scripts": {
     "why do we need to build before running tests / dev?": "We need the binary to be built so we run daemon commands which directly run the binary - we don't want them to go out of sync or have custom spawn logic depending how we started happy",
     "typecheck": "tsc --noEmit",
-    "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll && node scripts/fix-imports.cjs",
+    "build": "shx rm -rf dist && npx tsc --noEmit && pkgroll",
     "test": "yarn build && tsx --env-file .env.integration-test node_modules/.bin/vitest run",
     "test:win": "yarn build && npx vitest run",
     "start": "yarn build && ./bin/happy.mjs",
@@ -72,7 +72,7 @@
   "dependencies": {
     "@anthropic-ai/claude-code": "2.0.53",
     "@anthropic-ai/sdk": "0.71.0",
-    "@modelcontextprotocol/sdk": "^1.22.0",
+    "@modelcontextprotocol/sdk": "1.22.0",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
     "@types/cross-spawn": "^6.0.6",
@@ -107,7 +107,7 @@
     "dotenv": "^16.6.1",
     "eslint": "^9",
     "eslint-config-prettier": "^10",
-    "pkgroll": "^2.21.3",
+    "pkgroll": "^2.14.2",
     "release-it": "^19.0.6",
     "shx": "^0.3.3",
     "ts-node": "^10",
