@@ -82,13 +82,40 @@ run:
 		$(FULLTAG) bash
 
 
-# Expose the web server and the happy-server:
-PORTS= -p 8081:8081 -p 3005:3005
+# Port definitions for different modes
+PORTS_ALL= -p 8081:8081 -p 3005:3005
+PORTS_WEB= -p 8081:8081
+PORTS_SERVER= -p 3005:3005
+
+# No ports forwarded by default (use root-all-ports, web, or server for specific needs)
 root:
 	$(CONTAINER) run -it --rm -u root --hostname $(CONTAINER_HOSTNAME) \
 		-v `pwd`/home:/root \
 		-v `pwd`/..:$(WORKDIR) \
-		$(PORTS) $(FULLTAG) bash
+		$(FULLTAG) bash
+
+# All ports forwarded (legacy behavior)
+root-all-ports:
+	$(CONTAINER) run -it --rm -u root --hostname $(CONTAINER_HOSTNAME) \
+		-v `pwd`/home:/root \
+		-v `pwd`/..:$(WORKDIR) \
+		$(PORTS_ALL) $(FULLTAG) bash
+
+# Web client only (port 8081) - starts the webapp directly
+web:
+	$(CONTAINER) run -it --rm -u root --hostname $(CONTAINER_HOSTNAME) \
+		-v `pwd`/home:/root \
+		-v `pwd`/..:$(WORKDIR) \
+		$(PORTS_WEB) $(FULLTAG) \
+		bash -c "cd $(WORKDIR)/happy && yarn web"
+
+# Happy server only (port 3005) - starts the server directly
+server:
+	$(CONTAINER) run -it --rm -u root --hostname $(CONTAINER_HOSTNAME) \
+		-v `pwd`/home:/root \
+		-v `pwd`/..:$(WORKDIR) \
+		$(PORTS_SERVER) $(FULLTAG) \
+		bash -c "cd $(WORKDIR) && ./happy-demo.sh start && tail -f /dev/null"
 
 AGENT_LAYERS = Dockerfile.claude Dockerfile.copilot
 # Dockerfile.gemini
@@ -215,5 +242,5 @@ info:
 	@echo   CONTAINER_HOSTNAME=$(CONTAINER_HOSTNAME)
 
 
-.PHONY: claude-beads claude-github setup-claude happy run build root pull-main \
-   inside-setup outside-setup install-pat install-ssh-deploy-key gh-auth
+.PHONY: claude-beads claude-github setup-claude happy run build root root-all-ports \
+   web server pull-main inside-setup outside-setup install-pat install-ssh-deploy-key gh-auth

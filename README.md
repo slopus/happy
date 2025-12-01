@@ -2,6 +2,27 @@
 
 This repository contains a working self-hosted setup of Happy (server + CLI) with automated e2e testing.
 
+## QUICKSTART: Self Hosting
+
+Run your own Happy instance with two containers - one for the webapp and one for the server:
+
+```bash
+cd .devcontainer
+make build                # Build the container image (first time only)
+
+# In terminal 1 - start the server (port 3005):
+make server
+
+# In terminal 2 - start the webapp (port 8081):
+make web
+```
+
+Then open http://localhost:8081 in your browser.
+
+**Other container options:**
+- `make root` - Interactive shell with no ports forwarded
+- `make root-all-ports` - Interactive shell with both ports (8081 + 3005) forwarded
+
 ## Getting Started
 
 ### Build and Run Container
