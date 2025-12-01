@@ -1,5 +1,5 @@
 import React, { useState, useCallback, memo } from 'react';
-import { View, TextInput } from 'react-native';
+import { View, TextInput, ActivityIndicator, Pressable } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Item } from '@/components/Item';
@@ -15,18 +15,26 @@ import { findLanguageByCode, getLanguageDisplayName, LANGUAGES } from '@/constan
 import { t } from '@/text';
 import { Typography } from '@/constants/Typography';
 import { layout } from '@/components/layout';
+import { findHappyAgent, createOrUpdateHappyAgent } from '@/sync/apiVoice';
 
 function VoiceSettingsScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
     const [voiceAssistantLanguage] = useSettingMutable('voiceAssistantLanguage');
     const [useCustomAgent, setUseCustomAgent] = useSettingMutable('elevenLabsUseCustomAgent');
-    const [savedAgentId] = useSettingMutable('elevenLabsAgentId');
-    const [savedApiKey] = useSettingMutable('elevenLabsApiKey');
+    const [savedAgentId, setSavedAgentId] = useSettingMutable('elevenLabsAgentId');
+    const [savedApiKey, setSavedApiKey] = useSettingMutable('elevenLabsApiKey');
 
     // Local state for input fields
     const [agentIdInput, setAgentIdInput] = useState(savedAgentId || '');
     const [apiKeyInput, setApiKeyInput] = useState(savedApiKey || '');
+
+    // Loading states for buttons
+    const [findingAgent, setFindingAgent] = useState(false);
+    const [creatingAgent, setCreatingAgent] = useState(false);
+
+    // Show/hide API key
+    const [showApiKey, setShowApiKey] = useState(false);
 
     // Find current language or default to first option
     const currentLanguage = findLanguageByCode(voiceAssistantLanguage) || LANGUAGES[0];
@@ -35,20 +43,96 @@ function VoiceSettingsScreen() {
         setUseCustomAgent(value);
     }, [setUseCustomAgent]);
 
-    const handleSaveCredentials = useCallback(async () => {
-        if (!agentIdInput.trim() || !apiKeyInput.trim()) {
-            Modal.alert(t('common.error'), t('settingsVoice.credentialsRequired'));
+    // Save API key when user leaves the field
+    const handleApiKeyBlur = useCallback(() => {
+        if (apiKeyInput.trim() && apiKeyInput.trim() !== savedApiKey) {
+            setSavedApiKey(apiKeyInput.trim());
+        }
+    }, [apiKeyInput, savedApiKey, setSavedApiKey]);
+
+    // Save Agent ID when user leaves the field
+    const handleAgentIdBlur = useCallback(() => {
+        if (agentIdInput.trim() && agentIdInput.trim() !== savedAgentId) {
+            setSavedAgentId(agentIdInput.trim());
+        }
+    }, [agentIdInput, savedAgentId, setSavedAgentId]);
+
+    // Save credentials manually
+    const handleSaveCredentials = useCallback(() => {
+        if (!apiKeyInput.trim()) {
+            Modal.alert(t('common.error'), t('settingsVoice.apiKeyRequired'));
+            return;
+        }
+        if (!agentIdInput.trim()) {
+            Modal.alert(t('common.error'), t('settingsVoice.agentIdRequired'));
             return;
         }
 
-        // Save to settings (synced across devices)
         storage.getState().applySettingsLocal({
-            elevenLabsAgentId: agentIdInput.trim(),
             elevenLabsApiKey: apiKeyInput.trim(),
+            elevenLabsAgentId: agentIdInput.trim(),
         });
 
         Modal.alert(t('common.success'), t('settingsVoice.credentialsSaved'));
-    }, [agentIdInput, apiKeyInput]);
+    }, [apiKeyInput, agentIdInput]);
+
+    // Find existing agent by name
+    const handleFindAgent = useCallback(async () => {
+        if (!apiKeyInput.trim()) {
+            Modal.alert(t('common.error'), t('settingsVoice.apiKeyRequired'));
+            return;
+        }
+
+        setFindingAgent(true);
+        try {
+            const result = await findHappyAgent(apiKeyInput.trim());
+
+            if (result.success && result.agentId) {
+                setAgentIdInput(result.agentId);
+                // Save both API key and agent ID
+                storage.getState().applySettingsLocal({
+                    elevenLabsApiKey: apiKeyInput.trim(),
+                    elevenLabsAgentId: result.agentId,
+                });
+                Modal.alert(t('common.success'), t('settingsVoice.agentFound'));
+            } else {
+                Modal.alert(t('common.error'), result.error || t('settingsVoice.agentNotFound'));
+            }
+        } finally {
+            setFindingAgent(false);
+        }
+    }, [apiKeyInput]);
+
+    // Create or update agent with default configuration
+    const handleCreateOrUpdateAgent = useCallback(async () => {
+        if (!apiKeyInput.trim()) {
+            Modal.alert(t('common.error'), t('settingsVoice.apiKeyRequired'));
+            return;
+        }
+
+        setCreatingAgent(true);
+        try {
+            const result = await createOrUpdateHappyAgent(apiKeyInput.trim());
+
+            if (result.success && result.agentId) {
+                setAgentIdInput(result.agentId);
+                // Save both API key and agent ID
+                storage.getState().applySettingsLocal({
+                    elevenLabsApiKey: apiKeyInput.trim(),
+                    elevenLabsAgentId: result.agentId,
+                });
+
+                const message = result.created
+                    ? t('settingsVoice.agentCreated')
+                    : t('settingsVoice.agentUpdated');
+                Modal.alert(t('common.success'), message);
+            } else {
+                Modal.alert(t('common.error'), result.error || t('settingsVoice.agentCreateFailed'));
+            }
+        } finally {
+            setCreatingAgent(false);
+        }
+    }, [apiKeyInput]);
 
     const getAgentStatusText = () => {
         if (!useCustomAgent) {
@@ -59,6 +143,8 @@ function VoiceSettingsScreen() {
         }
         return t('settingsVoice.credentialsRequired');
     };
+
+    const isLoading = findingAgent || creatingAgent;
 
     return (
         <ItemList style={{ paddingTop: 0 }}>
@@ -104,36 +190,90 @@ function VoiceSettingsScreen() {
 
             {/* Custom Agent Credentials - only show when custom agent is enabled */}
             {useCustomAgent && (
-                <ItemGroup title={t('settingsVoice.agentId')}>
+                <ItemGroup
+                    title={t('settingsVoice.customAgentCredentials')}
+                    footer={t('settingsVoice.customAgentCredentialsDescription')}
+                >
                     <View style={styles.contentContainer}>
+                        {/* API Key first */}
+                        <Text style={styles.labelText}>{t('settingsVoice.apiKey').toUpperCase()}</Text>
+                        <View style={styles.inputWithButton}>
+                            <TextInput
+                                style={[styles.textInputFlex, { color: theme.colors.input.text, backgroundColor: theme.colors.input.background }]}
+                                value={apiKeyInput}
+                                onChangeText={setApiKeyInput}
+                                onBlur={handleApiKeyBlur}
+                                placeholder={t('settingsVoice.apiKeyPlaceholder')}
+                                placeholderTextColor={theme.colors.input.placeholder}
+                                autoCapitalize="none"
+                                autoCorrect={false}
+                                secureTextEntry={!showApiKey}
+                            />
+                            <Pressable
+                                style={[styles.showHideButton, { backgroundColor: theme.colors.input.background }]}
+                                onPress={() => setShowApiKey(!showApiKey)}
+                            >
+                                <Ionicons
+                                    name={showApiKey ? 'eye-off-outline' : 'eye-outline'}
+                                    size={20}
+                                    color={theme.colors.textSecondary}
+                                />
+                            </Pressable>
+                        </View>
+
+                        {/* Agent ID second, with buttons */}
                         <Text style={styles.labelText}>{t('settingsVoice.agentId').toUpperCase()}</Text>
                         <TextInput
                             style={[styles.textInput, { color: theme.colors.input.text, backgroundColor: theme.colors.input.background }]}
                             value={agentIdInput}
                             onChangeText={setAgentIdInput}
+                            onBlur={handleAgentIdBlur}
                             placeholder={t('settingsVoice.agentIdPlaceholder')}
                             placeholderTextColor={theme.colors.input.placeholder}
                             autoCapitalize="none"
                             autoCorrect={false}
                         />
 
-                        <Text style={styles.labelText}>{t('settingsVoice.apiKey').toUpperCase()}</Text>
-                        <TextInput
-                            style={[styles.textInput, { color: theme.colors.input.text, backgroundColor: theme.colors.input.background }]}
-                            value={apiKeyInput}
-                            onChangeText={setApiKeyInput}
-                            placeholder={t('settingsVoice.apiKeyPlaceholder')}
-                            placeholderTextColor={theme.colors.input.placeholder}
-                            autoCapitalize="none"
-                            autoCorrect={false}
-                            secureTextEntry={true}
-                        />
+                        {/* Buttons for Find Agent and Create/Update Agent */}
+                        <View style={styles.buttonRow}>
+                            <View style={styles.buttonWrapper}>
+                                <RoundButton
+                                    title={findingAgent ? '' : t('settingsVoice.findAgent')}
+                                    size="normal"
+                                    display="inverted"
+                                    action={handleFindAgent}
+                                    disabled={isLoading}
+                                />
+                                {findingAgent && (
+                                    <View style={styles.loadingOverlay}>
+                                        <ActivityIndicator size="small" color={theme.colors.text} />
+                                    </View>
+                                )}
+                            </View>
+                            <View style={styles.buttonWrapper}>
+                                <RoundButton
+                                    title={creatingAgent ? '' : t('settingsVoice.createOrUpdateAgent')}
+                                    size="normal"
+                                    action={handleCreateOrUpdateAgent}
+                                    disabled={isLoading}
+                                />
+                                {creatingAgent && (
+                                    <View style={styles.loadingOverlay}>
+                                        <ActivityIndicator size="small" color={theme.colors.surface} />
+                                    </View>
+                                )}
+                            </View>
+                        </View>
 
-                        <View style={styles.buttonContainer}>
+                        <Text style={styles.hintText}>{t('settingsVoice.agentButtonsHint')}</Text>
+
+                        {/* Save Credentials Button */}
+                        <View style={styles.saveButtonContainer}>
                             <RoundButton
                                 title={t('settingsVoice.saveCredentials')}
                                 size="normal"
-                                action={handleSaveCredentials}
+                                onPress={handleSaveCredentials}
+                                disabled={isLoading}
                             />
                         </View>
                     </View>
@@ -171,7 +311,50 @@ const styles = StyleSheet.create((theme) => ({
         ...Typography.mono(),
         fontSize: 14,
     },
-    buttonContainer: {
+    inputWithButton: {
+        flexDirection: 'row',
+        marginBottom: 8,
+        gap: 8,
+    },
+    textInputFlex: {
+        flex: 1,
+        padding: 12,
+        borderRadius: 8,
+        ...Typography.mono(),
+        fontSize: 14,
+    },
+    showHideButton: {
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingHorizontal: 12,
+        borderRadius: 8,
+    },
+    buttonRow: {
+        flexDirection: 'row',
+        gap: 12,
         marginTop: 12,
+    },
+    buttonWrapper: {
+        flex: 1,
+        position: 'relative',
+    },
+    loadingOverlay: {
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        justifyContent: 'center',
+        alignItems: 'center',
+    },
+    hintText: {
+        ...Typography.default(),
+        fontSize: 12,
+        color: theme.colors.textSecondary,
+        marginTop: 12,
+        lineHeight: 16,
+    },
+    saveButtonContainer: {
+        marginTop: 16,
     },
 }));

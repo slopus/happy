@@ -564,6 +564,19 @@ export const ru: TranslationStructure = {
         currentAgentId: 'Текущий Agent ID',
         usingDefaultAgent: 'Используется стандартный рабочий агент',
         usingCustomAgent: 'Используется пользовательский агент',
+        // Custom agent credentials section
+        customAgentCredentials: 'Учётные Данные Пользовательского Агента',
+        customAgentCredentialsDescription: 'Сначала введите свой API key ElevenLabs, затем найдите или создайте своего агента.',
+        apiKeyRequired: 'Пожалуйста, сначала введите свой API key',
+        agentIdRequired: 'Пожалуйста, введите Agent ID',
+        findAgent: 'Найти Агента',
+        createOrUpdateAgent: 'Создать/Обновить',
+        agentFound: 'Найден агент "Happy Coding Assistant" и заполнен ID',
+        agentNotFound: 'Агент "Happy Coding Assistant" не найден',
+        agentCreated: 'Создан новый агент "Happy Coding Assistant"',
+        agentUpdated: 'Существующий агент "Happy Coding Assistant" обновлён последней конфигурацией',
+        agentCreateFailed: 'Не удалось создать агента',
+        agentButtonsHint: '"Найти Агента" ищет существующего агента "Happy Coding Assistant". "Создать/Обновить" создаёт нового агента или обновляет существующего стандартной конфигурацией.',
     },
 
     settingsAccount: {

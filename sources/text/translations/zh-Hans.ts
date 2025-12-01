@@ -556,6 +556,19 @@ export const zhHans: TranslationStructure = {
         currentAgentId: '当前 Agent ID',
         usingDefaultAgent: '使用默认生产代理',
         usingCustomAgent: '使用自定义代理',
+        // Custom agent credentials section
+        customAgentCredentials: '自定义代理凭据',
+        customAgentCredentialsDescription: '首先输入您的 ElevenLabs API key，然后查找或创建您的代理。',
+        apiKeyRequired: '请先输入您的 API key',
+        agentIdRequired: '请输入 Agent ID',
+        findAgent: '查找代理',
+        createOrUpdateAgent: '创建/更新',
+        agentFound: '找到 "Happy Coding Assistant" 代理并填入 ID',
+        agentNotFound: '未找到 "Happy Coding Assistant" 代理',
+        agentCreated: '已创建新的 "Happy Coding Assistant" 代理',
+        agentUpdated: '现有 "Happy Coding Assistant" 代理已使用最新配置更新',
+        agentCreateFailed: '创建代理失败',
+        agentButtonsHint: '"查找代理" 搜索现有的 "Happy Coding Assistant" 代理。"创建/更新" 创建新代理或使用默认配置更新现有代理。',
     },
 
     settingsAccount: {

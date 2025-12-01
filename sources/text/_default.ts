@@ -554,6 +554,19 @@ export const en = {
         currentAgentId: 'Current Agent ID',
         usingDefaultAgent: 'Using default production agent',
         usingCustomAgent: 'Using custom agent',
+        // Custom agent credentials section
+        customAgentCredentials: 'Custom Agent Credentials',
+        customAgentCredentialsDescription: 'Enter your ElevenLabs API key first, then find or create your agent.',
+        apiKeyRequired: 'Please enter your API key first',
+        agentIdRequired: 'Please enter the Agent ID',
+        findAgent: 'Find Agent',
+        createOrUpdateAgent: 'Create/Update',
+        agentFound: 'Found "Happy Coding Assistant" agent and filled in the ID',
+        agentNotFound: 'No "Happy Coding Assistant" agent found',
+        agentCreated: 'New "Happy Coding Assistant" agent created',
+        agentUpdated: 'Existing "Happy Coding Assistant" agent updated with latest configuration',
+        agentCreateFailed: 'Failed to create agent',
+        agentButtonsHint: '"Find Agent" searches for an existing "Happy Coding Assistant" agent. "Create/Update" creates a new agent or updates the existing one with default configuration.',
     },
 
     settingsAccount: {

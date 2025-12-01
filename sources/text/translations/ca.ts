@@ -554,6 +554,19 @@ export const ca: TranslationStructure = {
         currentAgentId: 'Agent ID Actual',
         usingDefaultAgent: 'Utilitzant l\'agent de producció per defecte',
         usingCustomAgent: 'Utilitzant agent personalitzat',
+        // Custom agent credentials section
+        customAgentCredentials: 'Credencials d\'Agent Personalitzat',
+        customAgentCredentialsDescription: 'Introdueix la teva API key d\'ElevenLabs primer, després troba o crea el teu agent.',
+        apiKeyRequired: 'Si us plau, introdueix la teva API key primer',
+        agentIdRequired: 'Si us plau, introdueix l\'Agent ID',
+        findAgent: 'Troba Agent',
+        createOrUpdateAgent: 'Crea/Actualitza',
+        agentFound: 'S\'ha trobat l\'agent "Happy Coding Assistant" i s\'ha omplert l\'ID',
+        agentNotFound: 'No s\'ha trobat cap agent "Happy Coding Assistant"',
+        agentCreated: 'S\'ha creat un nou agent "Happy Coding Assistant"',
+        agentUpdated: 'L\'agent "Happy Coding Assistant" existent s\'ha actualitzat amb l\'última configuració',
+        agentCreateFailed: 'No s\'ha pogut crear l\'agent',
+        agentButtonsHint: '"Troba Agent" cerca un agent "Happy Coding Assistant" existent. "Crea/Actualitza" crea un agent nou o actualitza l\'existent amb la configuració per defecte.',
     },
 
     settingsAccount: {

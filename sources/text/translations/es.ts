@@ -554,6 +554,19 @@ export const es: TranslationStructure = {
         currentAgentId: 'Agent ID Actual',
         usingDefaultAgent: 'Usando el agente de producción predeterminado',
         usingCustomAgent: 'Usando agente personalizado',
+        // Custom agent credentials section
+        customAgentCredentials: 'Credenciales de Agente Personalizado',
+        customAgentCredentialsDescription: 'Ingresa tu API key de ElevenLabs primero, luego encuentra o crea tu agente.',
+        apiKeyRequired: 'Por favor, ingresa tu API key primero',
+        agentIdRequired: 'Por favor, ingresa el Agent ID',
+        findAgent: 'Encontrar Agente',
+        createOrUpdateAgent: 'Crear/Actualizar',
+        agentFound: 'Se encontró el agente "Happy Coding Assistant" y se rellenó el ID',
+        agentNotFound: 'No se encontró ningún agente "Happy Coding Assistant"',
+        agentCreated: 'Se creó un nuevo agente "Happy Coding Assistant"',
+        agentUpdated: 'El agente "Happy Coding Assistant" existente se actualizó con la última configuración',
+        agentCreateFailed: 'No se pudo crear el agente',
+        agentButtonsHint: '"Encontrar Agente" busca un agente "Happy Coding Assistant" existente. "Crear/Actualizar" crea un nuevo agente o actualiza el existente con la configuración predeterminada.',
     },
 
     settingsAccount: {
