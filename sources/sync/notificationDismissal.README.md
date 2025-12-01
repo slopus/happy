@@ -1,26 +1,23 @@
-# Notification Dismissal Tests
+# Permission Notification Dismissal
 
 ## Problem Statement
 
-**Bug**: Notifications remain in the system tray even when the user manually opens the app and views the session that triggered the notification.
+**Bug**: Permission notifications remain in the system tray even when the user manually opens the app and grants the permission.
 
 **Current Behavior**:
-1. User receives a push notification about a session event
+1. User receives a push notification about a permission request
 2. User manually opens the Happy app (not by tapping the notification)
-3. User navigates to the session and scrolls past the event
+3. User grants the requested permission
 4. **BUG**: Notification remains in the system tray
 
 **Expected Behavior**:
-The notification should be automatically dismissed when:
-- The session becomes visible (`sync.onSessionVisible()` is called)
-- The app becomes active and the user is already viewing the relevant session
-- The user scrolls past/views the message that triggered the notification
+The permission notification should be automatically dismissed when the user grants that specific permission.
 
 ## Test File
 
 **Location**: `sources/sync/notificationDismissal.spec.ts`
 
-This test suite contains failing tests that describe the expected notification dismissal behavior. These tests are written to drive the implementation of the notification dismissal feature.
+This test suite contains tests that describe the expected permission notification dismissal behavior.
 
 ## Running the Tests
 
@@ -53,59 +50,33 @@ npx vitest run sources/sync/notificationDismissal.spec.ts
 
 ### Expected Test Results
 
-**All 13 tests are PASSING** ✓
+**All 4 tests are PASSING** ✓
 
-The notification dismissal feature has been implemented with a specific, targeted approach for maximum precision.
+The permission notification dismissal feature has been implemented with a specific, targeted approach.
 
 ## Test Coverage
 
 The test suite covers:
 
-### 1. Session Visibility Triggers Dismissal
-- ✓ Dismisses all notifications for a session when it becomes visible
-- ✓ Only dismisses notifications for the specific session, not others
-
-### 2. Message Visibility Triggers Dismissal
-- ✓ Dismisses notification when user scrolls past the message that triggered it
-- ✓ Handles notifications without messageId gracefully
-
-### 3. Permission-Specific Dismissal
+### Permission-Specific Dismissal
 - ✓ Dismisses specific permission notification when that permission is granted
 - ✓ Only dismisses matching permission notification when multiple exist
 - ✓ Handles case when permission notification was already dismissed
 - ✓ Handles permission notifications across different sessions
 
-### 4. Notification Tracking
-- ✓ Tracks notification IDs mapped to sessions
-- ✓ Removes tracking when notification is dismissed
-
-### 5. Edge Cases
-- ✓ Handles case when no notifications are present
-- ✓ Handles notification platform errors gracefully
-- ✓ Handles malformed notification data
-
 ## Implementation Summary
 
-The notification dismissal feature has been implemented with three key methods:
+The notification dismissal feature provides one method:
 
-1. **`dismissNotificationsForSession(sessionId)`** ✓
-   - Dismisses all notifications for a specific session
-   - Called automatically when session becomes visible via `sync.onSessionVisible()`
-   - Integrated in `sources/sync/sync.ts:201`
-
-2. **`dismissNotificationsForMessage(sessionId, messageId)`** ✓
-   - Dismisses notifications for a specific message within a session
-   - Provides granular control for message-level dismissal
-   - Ready for integration with ChatList if needed
-
-3. **`dismissNotificationForPermission(sessionId, permissionId)`** ✓ **NEW**
-   - Dismisses ONLY the specific permission notification that was granted
-   - Handles permission notifications precisely without affecting others
-   - Ready to integrate when permissions are granted
+**`dismissNotificationForPermission(sessionId, permissionId)`**
+- Dismisses ONLY the specific permission notification that was granted
+- Matches notifications by BOTH `sessionId` AND `permissionId`
+- Handles multiple permission notifications correctly
+- Ready to integrate when permissions are granted
 
 ## Permission Notification Approach
 
-**Key Improvement**: Uses specific permission IDs instead of broad dismissal.
+**Key Design**: Uses specific permission IDs for precise dismissal.
 
 ### Required Server Changes
 
@@ -129,54 +100,53 @@ await sessionAllow(sessionId, permissionId);
 await notificationManager.dismissNotificationForPermission(sessionId, permissionId);
 ```
 
-### Why This Approach Is Better
+### Why This Approach
 
-| Broad Approach | Specific Approach (Implemented) |
+| Feature | Benefit |
 |---|---|
-| Dismisses ALL system notifications | Dismisses ONLY the granted permission |
-| No context awareness | Knows exactly what was granted |
-| Can't handle multiple permissions | Handles multiple permissions correctly |
-| All-or-nothing | Granular control |
+| Permission-specific matching | Dismisses ONLY the granted permission |
+| Requires both sessionId and permissionId | Prevents accidental dismissal |
+| Context-aware | Knows exactly what was granted |
+| Multi-permission support | Handles multiple permissions correctly |
+| Granular control | Precise notification management |
 
 ## Architecture Notes
 
 ### expo-notifications API
 
-The tests mock `expo-notifications` which provides:
+The implementation uses `expo-notifications` which provides:
 - `getPresentedNotificationsAsync()` - Get currently displayed notifications
 - `dismissNotificationAsync(identifier)` - Dismiss a specific notification
-- `dismissAllNotificationsAsync()` - Dismiss all notifications
 
 ### Data Flow
 
 ```
-Push Notification Received
+Permission Notification Received (with permissionId in data)
   ↓
-NotificationManager.trackNotification(sessionId, notificationId)
+User Opens App
   ↓
-User Opens App & Views Session
+User Grants Permission
   ↓
-sync.onSessionVisible(sessionId)
+sessionAllow(sessionId, permissionId)
   ↓
-NotificationManager.dismissNotificationsForSession(sessionId)
+notificationManager.dismissNotificationForPermission(sessionId, permissionId)
   ↓
 expo-notifications.dismissNotificationAsync(notificationId)
 ```
 
 ### Storage Considerations
 
-The NotificationManager will need to:
-- Keep an in-memory map of `sessionId → [notificationIds]`
-- Optionally persist to AsyncStorage for app restarts
-- Clean up old mappings when notifications are dismissed
+The NotificationManager:
+- Does NOT maintain in-memory state
+- Queries the system directly via `getPresentedNotificationsAsync()`
+- No persistence needed - relies on notification payload data
+- No cleanup required - notifications are managed by the OS
 
 ## Next Steps
 
-1. Review and understand the failing tests
-2. Implement `NotificationManager` class
-3. Integrate with existing sync flow
-4. Run tests to verify implementation
-5. Test manually on a physical device (notifications don't work in simulators)
+1. Integrate `dismissNotificationForPermission()` in permission grant flow
+2. Ensure server includes `permissionId` in permission notification payloads
+3. Test manually on a physical device (notifications don't work in simulators)
 
 ## Questions?
 
