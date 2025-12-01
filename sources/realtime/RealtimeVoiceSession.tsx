@@ -4,6 +4,7 @@ import { registerVoiceSession } from './RealtimeSession';
 import { storage } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
+import { fetchVoiceToken } from '@/sync/apiVoice';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 
 // Static reference to the conversation hook instance
@@ -20,14 +21,22 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 
         try {
             storage.getState().setRealtimeStatus('connecting');
-            
+
+            // Fetch conversation token from server (private agent flow)
+            const tokenResponse = await fetchVoiceToken();
+            if (!tokenResponse.allowed || !tokenResponse.token) {
+                console.error('Voice not allowed or no token:', tokenResponse.error);
+                storage.getState().setRealtimeStatus('error');
+                return;
+            }
+
             // Get user's preferred language for voice assistant
             const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
             const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
-            
-            // Use hardcoded agent ID for Eleven Labs
+
+            // Use conversation token from server (private agent flow)
             await conversationInstance.startSession({
-                agentId: __DEV__ ? 'agent_7801k2c0r5hjfraa1kdbytpvs6yt' : 'agent_6701k211syvvegba4kt7m68nxjmw',
+                conversationToken: tokenResponse.token,
                 // Pass session ID and initial context as dynamic variables
                 dynamicVariables: {
                     sessionId: config.sessionId,
