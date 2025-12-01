@@ -536,7 +536,24 @@ export const en = {
             title: 'Languages',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'language', plural: 'languages' })} available`,
             autoDetect: 'Auto-detect',
-        }
+        },
+        // ElevenLabs configuration
+        elevenLabsTitle: 'ElevenLabs Configuration',
+        elevenLabsDescription: 'Configure your ElevenLabs voice agent. Use the default production agent or connect your own.',
+        useCustomAgent: 'Use Custom Agent',
+        useCustomAgentSubtitle: 'Connect your own ElevenLabs agent instead of the default',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: 'agent_xxxxx',
+        agentIdSubtitle: 'Your ElevenLabs agent ID',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'sk_xxxxx',
+        apiKeySubtitle: 'Your ElevenLabs API key',
+        saveCredentials: 'Save Credentials',
+        credentialsSaved: 'ElevenLabs credentials saved',
+        credentialsRequired: 'Both Agent ID and API Key are required',
+        currentAgentId: 'Current Agent ID',
+        usingDefaultAgent: 'Using default production agent',
+        usingCustomAgent: 'Using custom agent',
     },
 
     settingsAccount: {

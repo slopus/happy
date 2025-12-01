@@ -546,7 +546,24 @@ export const ru: TranslationStructure = {
             title: 'Языки',
             footer: ({ count }: { count: number }) => `Доступно ${count} ${plural({ count, one: 'язык', few: 'языка', many: 'языков' })}`,
             autoDetect: 'Автоопределение',
-        }
+        },
+        // ElevenLabs configuration
+        elevenLabsTitle: 'Настройка ElevenLabs',
+        elevenLabsDescription: 'Настройте своего голосового агента ElevenLabs. Используйте стандартный рабочий агент или подключите свой собственный.',
+        useCustomAgent: 'Использовать Пользовательский Агент',
+        useCustomAgentSubtitle: 'Подключите своего собственного агента ElevenLabs вместо стандартного',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: 'agent_xxxxx',
+        agentIdSubtitle: 'Ваш ID агента ElevenLabs',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'sk_xxxxx',
+        apiKeySubtitle: 'Ваш ключ API ElevenLabs',
+        saveCredentials: 'Сохранить Учётные Данные',
+        credentialsSaved: 'Учётные данные ElevenLabs сохранены',
+        credentialsRequired: 'Требуется указать и Agent ID, и API Key',
+        currentAgentId: 'Текущий Agent ID',
+        usingDefaultAgent: 'Используется стандартный рабочий агент',
+        usingCustomAgent: 'Используется пользовательский агент',
     },
 
     settingsAccount: {

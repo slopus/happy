@@ -536,7 +536,24 @@ export const ca: TranslationStructure = {
             title: 'Idiomes',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomes' })} disponibles`,
             autoDetect: 'Detecta automàticament',
-        }
+        },
+        // ElevenLabs configuration
+        elevenLabsTitle: 'Configuració d\'ElevenLabs',
+        elevenLabsDescription: 'Configura el teu agent de veu d\'ElevenLabs. Utilitza l\'agent de producció per defecte o connecta el teu propi.',
+        useCustomAgent: 'Utilitza Agent Personalitzat',
+        useCustomAgentSubtitle: 'Connecta el teu propi agent d\'ElevenLabs en lloc del predeterminat',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: 'agent_xxxxx',
+        agentIdSubtitle: 'El teu ID d\'agent d\'ElevenLabs',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'sk_xxxxx',
+        apiKeySubtitle: 'La teva clau API d\'ElevenLabs',
+        saveCredentials: 'Desa les Credencials',
+        credentialsSaved: 'Credencials d\'ElevenLabs desades',
+        credentialsRequired: 'Tant l\'Agent ID com l\'API Key són obligatoris',
+        currentAgentId: 'Agent ID Actual',
+        usingDefaultAgent: 'Utilitzant l\'agent de producció per defecte',
+        usingCustomAgent: 'Utilitzant agent personalitzat',
     },
 
     settingsAccount: {

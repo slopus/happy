@@ -538,7 +538,24 @@ export const zhHans: TranslationStructure = {
             title: '语言',
             footer: ({ count }: { count: number }) => `${count} 种可用语言`,
             autoDetect: '自动检测',
-        }
+        },
+        // ElevenLabs configuration
+        elevenLabsTitle: 'ElevenLabs 配置',
+        elevenLabsDescription: '配置您的 ElevenLabs 语音代理。使用默认生产代理或连接您自己的代理。',
+        useCustomAgent: '使用自定义代理',
+        useCustomAgentSubtitle: '连接您自己的 ElevenLabs 代理而不是默认代理',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: 'agent_xxxxx',
+        agentIdSubtitle: '您的 ElevenLabs 代理 ID',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'sk_xxxxx',
+        apiKeySubtitle: '您的 ElevenLabs API 密钥',
+        saveCredentials: '保存凭据',
+        credentialsSaved: 'ElevenLabs 凭据已保存',
+        credentialsRequired: 'Agent ID 和 API Key 都是必需的',
+        currentAgentId: '当前 Agent ID',
+        usingDefaultAgent: '使用默认生产代理',
+        usingCustomAgent: '使用自定义代理',
     },
 
     settingsAccount: {

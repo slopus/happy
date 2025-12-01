@@ -536,7 +536,24 @@ export const pt: TranslationStructure = {
             title: 'Idiomas',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomas' })} disponíveis`,
             autoDetect: 'Detectar automaticamente',
-        }
+        },
+        // ElevenLabs configuration
+        elevenLabsTitle: 'Configuração do ElevenLabs',
+        elevenLabsDescription: 'Configure seu agente de voz do ElevenLabs. Use o agente de produção padrão ou conecte o seu próprio.',
+        useCustomAgent: 'Usar Agente Personalizado',
+        useCustomAgentSubtitle: 'Conecte seu próprio agente do ElevenLabs em vez do padrão',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: 'agent_xxxxx',
+        agentIdSubtitle: 'Seu ID de agente do ElevenLabs',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'sk_xxxxx',
+        apiKeySubtitle: 'Sua chave API do ElevenLabs',
+        saveCredentials: 'Salvar Credenciais',
+        credentialsSaved: 'Credenciais do ElevenLabs salvas',
+        credentialsRequired: 'Tanto o Agent ID quanto o API Key são obrigatórios',
+        currentAgentId: 'Agent ID Atual',
+        usingDefaultAgent: 'Usando o agente de produção padrão',
+        usingCustomAgent: 'Usando agente personalizado',
     },
 
     settingsAccount: {
