@@ -1,23 +1,23 @@
-# Permission Notification Dismissal
+# Notification Dismissal
 
 ## Problem Statement
 
-**Bug**: Permission notifications remain in the system tray even when the user manually opens the app and grants the permission.
+**Bug**: Notifications remain in the system tray even when the user manually opens the app and handles the event that triggered them.
 
 **Current Behavior**:
-1. User receives a push notification about a permission request
+1. User receives a push notification (permission request, friend request, etc.)
 2. User manually opens the Happy app (not by tapping the notification)
-3. User grants the requested permission
+3. User handles the event (grants permission, accepts friend request, etc.)
 4. **BUG**: Notification remains in the system tray
 
 **Expected Behavior**:
-The permission notification should be automatically dismissed when the user grants that specific permission.
+Notifications should be automatically dismissed when the user handles the specific event that triggered them.
 
 ## Test File
 
 **Location**: `sources/sync/notificationDismissal.spec.ts`
 
-This test suite contains tests that describe the expected permission notification dismissal behavior.
+This test suite contains tests that describe the expected notification dismissal behavior.
 
 ## Running the Tests
 
@@ -50,64 +50,90 @@ npx vitest run sources/sync/notificationDismissal.spec.ts
 
 ### Expected Test Results
 
-**All 4 tests are PASSING** ✓
+**All 10 tests are PASSING** ✓
 
-The permission notification dismissal feature has been implemented with a specific, targeted approach.
+The notification dismissal feature has been implemented with specific, targeted approaches for each notification type.
 
 ## Test Coverage
 
 The test suite covers:
 
-### Permission-Specific Dismissal
+### Permission-Specific Dismissal (4 tests)
 - ✓ Dismisses specific permission notification when that permission is granted
 - ✓ Only dismisses matching permission notification when multiple exist
 - ✓ Handles case when permission notification was already dismissed
 - ✓ Handles permission notifications across different sessions
 
+### Friend Request Dismissal (6 tests)
+- ✓ Dismisses incoming friend request notification when accepted
+- ✓ Dismisses outgoing friend request notification when other user responds
+- ✓ Only dismisses matching friend request when multiple exist
+- ✓ Distinguishes between incoming and outgoing friend request notifications
+- ✓ Handles case when friend request notification was already dismissed
+- ✓ Does not dismiss other notification types when dismissing friend requests
+
 ## Implementation Summary
 
-The notification dismissal feature provides one method:
+The notification dismissal feature provides two methods:
+
+### 1. Permission Notifications
 
 **`dismissNotificationForPermission(sessionId, permissionId)`**
-- Dismisses ONLY the specific permission notification that was granted
+- Dismisses ONLY the specific permission notification
 - Matches notifications by BOTH `sessionId` AND `permissionId`
-- Handles multiple permission notifications correctly
-- Ready to integrate when permissions are granted
+- Called when user grants or denies a permission
 
-## Permission Notification Approach
-
-**Key Design**: Uses specific permission IDs for precise dismissal.
-
-### Required Server Changes
-
-Permission notifications must include `permissionId` in their payload:
-
+**Required notification payload:**
 ```json
 {
   "sessionId": "session-abc",
-  "permissionId": "perm-123-terminal",  // ← Required for specific dismissal
+  "permissionId": "perm-123-terminal",
   "type": "permission"
 }
 ```
 
-### Integration Point
-
-Call `dismissNotificationForPermission()` after permission is granted:
-
+**Integration point:**
 ```typescript
 // In sessionAllow() or PermissionFooter after granting permission
 await sessionAllow(sessionId, permissionId);
 await notificationManager.dismissNotificationForPermission(sessionId, permissionId);
 ```
 
-### Why This Approach
+### 2. Friend Request Notifications
+
+**`dismissNotificationForFriendRequest(userId, requestType)`**
+- Dismisses ONLY the specific friend request notification
+- Matches by `userId`, `type='friend_request'`, and `requestType`
+- `requestType`: `'incoming'` for received requests, `'outgoing'` for sent requests
+- Called when user accepts/rejects a friend request or when the other user responds
+
+**Required notification payload:**
+```json
+{
+  "userId": "user-123",
+  "type": "friend_request",
+  "requestType": "incoming"  // or "outgoing"
+}
+```
+
+**Integration points:**
+```typescript
+// When accepting/rejecting incoming friend request
+await acceptFriendRequest(userId);
+await notificationManager.dismissNotificationForFriendRequest(userId, 'incoming');
+
+// When other user responds to your outgoing request
+await notificationManager.dismissNotificationForFriendRequest(userId, 'outgoing');
+```
+
+## Design Principles
 
 | Feature | Benefit |
 |---|---|
-| Permission-specific matching | Dismisses ONLY the granted permission |
-| Requires both sessionId and permissionId | Prevents accidental dismissal |
-| Context-aware | Knows exactly what was granted |
-| Multi-permission support | Handles multiple permissions correctly |
+| Event-specific matching | Dismisses ONLY the handled event |
+| Multiple identifiers | Prevents accidental dismissal |
+| Context-aware | Knows exactly what was handled |
+| Multi-event support | Handles multiple notifications correctly |
 | Granular control | Precise notification management |
 
 ## Architecture Notes
@@ -121,15 +147,13 @@ The implementation uses `expo-notifications` which provides:
 ### Data Flow
 
 ```
-Permission Notification Received (with permissionId in data)
+Notification Received (with specific IDs in data)
   ↓
 User Opens App
   ↓
-User Grants Permission
+User Handles Event (grant permission, accept friend, etc.)
   ↓
-sessionAllow(sessionId, permissionId)
-  ↓
-notificationManager.dismissNotificationForPermission(sessionId, permissionId)
+notificationManager.dismissNotificationFor...(...)
   ↓
 expo-notifications.dismissNotificationAsync(notificationId)
 ```
@@ -144,8 +168,8 @@ The NotificationManager:
 
 ## Next Steps
 
-1. Integrate `dismissNotificationForPermission()` in permission grant flow
-2. Ensure server includes `permissionId` in permission notification payloads
+1. Integrate dismissal calls in appropriate event handlers
+2. Ensure server includes required IDs in notification payloads
 3. Test manually on a physical device (notifications don't work in simulators)
 
 ## Questions?
