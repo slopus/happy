@@ -1,5 +1,5 @@
 import React, { useState, useCallback, memo } from 'react';
-import { View, TextInput, ActivityIndicator, Pressable } from 'react-native';
+import { View, TextInput, ActivityIndicator, Pressable, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import { Item } from '@/components/Item';
@@ -196,7 +196,16 @@ function VoiceSettingsScreen() {
                 >
                     <View style={styles.contentContainer}>
                         {/* API Key first */}
-                        <Text style={styles.labelText}>{t('settingsVoice.apiKey').toUpperCase()}</Text>
+                        <View style={styles.labelRow}>
+                            <Text style={styles.labelText}>{t('settingsVoice.apiKey').toUpperCase()}</Text>
+                            <Pressable
+                                onPress={() => Linking.openURL('https://elevenlabs.io/app/settings/api-keys')}
+                                style={styles.helpButton}
+                            >
+                                <Ionicons name="help-circle-outline" size={18} color={theme.colors.textLink} />
+                                <Text style={[styles.helpText, { color: theme.colors.textLink }]}>{t('settingsVoice.getApiKey')}</Text>
+                            </Pressable>
+                        </View>
                         <View style={styles.inputWithButton}>
                             <TextInput
                                 style={[styles.textInputFlex, { color: theme.colors.input.text, backgroundColor: theme.colors.input.background }]}
@@ -295,14 +304,28 @@ const styles = StyleSheet.create((theme) => ({
         maxWidth: layout.maxWidth,
         alignSelf: 'center',
     },
+    labelRow: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: 8,
+        marginBottom: 8,
+    },
     labelText: {
         ...Typography.default('semiBold'),
         fontSize: 12,
         color: theme.colors.textSecondary,
         textTransform: 'uppercase',
         letterSpacing: 0.5,
-        marginBottom: 8,
-        marginTop: 8,
+    },
+    helpButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    helpText: {
+        ...Typography.default(),
+        fontSize: 12,
     },
     textInput: {
         padding: 12,

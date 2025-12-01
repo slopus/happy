@@ -556,7 +556,8 @@ export const ca: TranslationStructure = {
         usingCustomAgent: 'Utilitzant agent personalitzat',
         // Custom agent credentials section
         customAgentCredentials: 'Credencials d\'Agent Personalitzat',
-        customAgentCredentialsDescription: 'Introdueix la teva API key d\'ElevenLabs primer, després troba o crea el teu agent.',
+        customAgentCredentialsDescription: 'Introdueix la teva API key d\'ElevenLabs primer, després troba o crea el teu agent. Permisos requerits: "ElevenLabs Agents" (Write) i "Text to Speech" (Access).',
+        getApiKey: 'Obtenir API Key',
         apiKeyRequired: 'Si us plau, introdueix la teva API key primer',
         agentIdRequired: 'Si us plau, introdueix l\'Agent ID',
         findAgent: 'Troba Agent',

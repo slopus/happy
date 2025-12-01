@@ -558,7 +558,8 @@ export const zhHans: TranslationStructure = {
         usingCustomAgent: '使用自定义代理',
         // Custom agent credentials section
         customAgentCredentials: '自定义代理凭据',
-        customAgentCredentialsDescription: '首先输入您的 ElevenLabs API key，然后查找或创建您的代理。',
+        customAgentCredentialsDescription: '首先输入您的 ElevenLabs API key，然后查找或创建您的代理。所需权限："ElevenLabs Agents"（Write）和 "Text to Speech"（Access）。',
+        getApiKey: '获取 API Key',
         apiKeyRequired: '请先输入您的 API key',
         agentIdRequired: '请输入 Agent ID',
         findAgent: '查找代理',

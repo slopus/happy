@@ -556,7 +556,8 @@ export const en = {
         usingCustomAgent: 'Using custom agent',
         // Custom agent credentials section
         customAgentCredentials: 'Custom Agent Credentials',
-        customAgentCredentialsDescription: 'Enter your ElevenLabs API key first, then find or create your agent.',
+        customAgentCredentialsDescription: 'Enter your ElevenLabs API key first, then find or create your agent. Required permissions: "ElevenLabs Agents" (Write) and "Text to Speech" (Access).',
+        getApiKey: 'Get API Key',
         apiKeyRequired: 'Please enter your API key first',
         agentIdRequired: 'Please enter the Agent ID',
         findAgent: 'Find Agent',

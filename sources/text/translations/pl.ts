@@ -566,7 +566,8 @@ export const pl: TranslationStructure = {
         usingCustomAgent: 'Używanie niestandardowego agenta',
         // Custom agent credentials section
         customAgentCredentials: 'Dane Uwierzytelniające Niestandardowego Agenta',
-        customAgentCredentialsDescription: 'Wprowadź najpierw swój API key ElevenLabs, a następnie znajdź lub utwórz swojego agenta.',
+        customAgentCredentialsDescription: 'Wprowadź najpierw swój API key ElevenLabs, a następnie znajdź lub utwórz swojego agenta. Wymagane uprawnienia: "ElevenLabs Agents" (Write) i "Text to Speech" (Access).',
+        getApiKey: 'Pobierz API Key',
         apiKeyRequired: 'Proszę najpierw wprowadzić swój API key',
         agentIdRequired: 'Proszę wprowadzić Agent ID',
         findAgent: 'Znajdź Agenta',

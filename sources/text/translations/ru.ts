@@ -566,7 +566,8 @@ export const ru: TranslationStructure = {
         usingCustomAgent: 'Используется пользовательский агент',
         // Custom agent credentials section
         customAgentCredentials: 'Учётные Данные Пользовательского Агента',
-        customAgentCredentialsDescription: 'Сначала введите свой API key ElevenLabs, затем найдите или создайте своего агента.',
+        customAgentCredentialsDescription: 'Сначала введите свой API key ElevenLabs, затем найдите или создайте своего агента. Необходимые разрешения: "ElevenLabs Agents" (Write) и "Text to Speech" (Access).',
+        getApiKey: 'Получить API Key',
         apiKeyRequired: 'Пожалуйста, сначала введите свой API key',
         agentIdRequired: 'Пожалуйста, введите Agent ID',
         findAgent: 'Найти Агента',
