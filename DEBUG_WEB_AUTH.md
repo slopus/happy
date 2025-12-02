@@ -69,7 +69,7 @@ Then when you submit the secret key:
 **Solutions:**
 1. The secret key might be from a different account
 2. Run `node scripts/setup-test-credentials.mjs` to generate a fresh account
-3. Check server logs: `./happy-demo.sh logs server`
+3. Check server logs: `./happy-launcher.sh logs server`
 
 ### If you see network error or CORS error
 
@@ -77,7 +77,7 @@ Then when you submit the secret key:
 
 **Solutions:**
 1. Check server is running: `curl http://localhost:3005`
-2. Restart server: `./happy-demo.sh restart`
+2. Restart server: `./happy-launcher.sh restart`
 
 ### If logs show different bytes length (not 32)
 

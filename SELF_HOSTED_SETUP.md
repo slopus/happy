@@ -124,7 +124,7 @@ set -e
 echo "=== Happy Real Authentication Demo ==="
 
 # Step 1: Start services
-./happy-demo.sh start
+./happy-launcher.sh start
 
 # Step 2: Start web client
 echo "Starting web client..."
@@ -228,7 +228,7 @@ happy auth
 
 1. **Start services**:
    ```bash
-   ./happy-demo.sh start
+   ./happy-launcher.sh start
    ```
 
 2. **Start web client** (in separate terminal):

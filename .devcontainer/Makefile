@@ -115,7 +115,7 @@ server:
 		-v `pwd`/home:/root \
 		-v `pwd`/..:$(WORKDIR) \
 		$(PORTS_SERVER) $(FULLTAG) \
-		bash -c "cd $(WORKDIR) && ./happy-demo.sh start && tail -f /dev/null"
+		bash -c "cd $(WORKDIR) && ./happy-launcher.sh start-backend && tail -f /dev/null"
 
 AGENT_LAYERS = Dockerfile.claude Dockerfile.copilot
 # Dockerfile.gemini

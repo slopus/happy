@@ -14,7 +14,7 @@ For headless e2e testing, we've created a script that automates the entire authe
 
 ```bash
 # 1. Start all services
-./happy-demo.sh start
+./happy-launcher.sh start
 
 # 2. Setup test credentials (automated, no interaction needed)
 node scripts/setup-test-credentials.mjs
@@ -54,7 +54,7 @@ The `happy` directory contains an Expo React Native app that supports web deploy
 ### 1. Start the Services
 
 ```bash
-./happy-demo.sh start
+./happy-launcher.sh start
 ```
 
 This starts:
@@ -106,7 +106,7 @@ Open `http://localhost:8081` in a text-based web browser (or any browser):
 In another terminal:
 
 ```bash
-./happy-demo.sh cli
+./happy-launcher.sh cli
 ```
 
 Or directly:
@@ -159,14 +159,14 @@ Key endpoints used in tests:
 
 ### Server not responding
 ```bash
-./happy-demo.sh status    # Check all services
-./happy-demo.sh logs server  # View server logs
+./happy-launcher.sh status    # Check all services
+./happy-launcher.sh logs server  # View server logs
 ```
 
 ### Authentication timeout
 - Verify server URL in web client matches CLI config
 - Check that both are using `http://localhost:3005`
-- Ensure `.env` file exists in happy-server (run `./happy-demo.sh start` to create it)
+- Ensure `.env` file exists in happy-server (run `./happy-launcher.sh start` to create it)
 
 ### Database connection errors
 ```bash
@@ -178,8 +178,8 @@ cd happy-server && yarn migrate
 
 ### Clean slate
 ```bash
-./happy-demo.sh cleanup --clean-logs  # Stop everything and clean logs
-./happy-demo.sh start                 # Fresh start
+./happy-launcher.sh cleanup --clean-logs  # Stop everything and clean logs
+./happy-launcher.sh start                 # Fresh start
 ```
 
 ## Architecture

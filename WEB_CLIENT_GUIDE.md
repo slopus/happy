@@ -15,7 +15,7 @@ The Happy web client provides a browser-based interface to:
 ### 1. Start All Services
 
 ```bash
-./happy-demo.sh start
+./happy-launcher.sh start
 ```
 
 This starts:
@@ -177,7 +177,7 @@ export HAPPY_SERVER_URL=http://localhost:3005
 ### Web client can't connect to server
 
 Check that:
-1. happy-server is running: `./happy-demo.sh status`
+1. happy-server is running: `./happy-launcher.sh status`
 2. Server URL is correct in web client environment variables
 3. No firewall is blocking port 3005
 
@@ -226,8 +226,8 @@ Priority order for server URL:
 ### Authentication fails in web browser
 
 Check:
-1. Server logs: `./happy-demo.sh logs server`
-2. Database is running: `./happy-demo.sh status`
+1. Server logs: `./happy-launcher.sh logs server`
+2. Database is running: `./happy-launcher.sh status`
 3. Try creating fresh test credentials: `node scripts/setup-test-credentials.mjs`
 4. See "Invalid secret key" troubleshooting section above
 

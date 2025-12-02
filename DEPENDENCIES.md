@@ -94,7 +94,7 @@ This document tracks all dependencies installed during the self-hosted setup pro
 ### e2e-demo.sh
 - **Location**: `/e2e-demo.sh`
 - **Purpose**: Complete e2e demo script that shows the full self-hosted flow
-- **Dependencies**: setup-postgres.sh, happy-demo.sh, setup-test-credentials.mjs
+- **Dependencies**: setup-postgres.sh, happy-launcher.sh, setup-test-credentials.mjs
 - **Usage**: `./e2e-demo.sh`
 
 ## Environment Variables

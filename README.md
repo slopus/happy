@@ -4,6 +4,8 @@ This repository contains a working self-hosted setup of Happy (server + CLI) wit
 
 ## QUICKSTART: Self Hosting
 
+### Step 0: Build and Launch Services
+
 Run your own Happy instance with two containers - one for the webapp and one for the server:
 
 ```bash
@@ -17,11 +19,57 @@ make server
 make web
 ```
 
-Then open http://localhost:8081 in your browser.
-
 **Other container options:**
 - `make root` - Interactive shell with no ports forwarded
 - `make root-all-ports` - Interactive shell with both ports (8081 + 3005) forwarded
+
+### Step 1: Create an Account
+
+1. Open http://localhost:8081 in your browser
+2. Click "Create Account"
+3. Optionally add a recognizable username in Account settings
+
+### Step 2: View Your Secret Key
+
+1. Go to Account settings in the webapp
+2. Find and copy your secret backup key (format: `XXXXX-XXXXX-...`)
+
+### Step 3: Install the CLI on Development Machines
+
+On each machine where you want to run Claude with Happy:
+
+```bash
+# Clone and install the fork
+git clone --depth=1 https://github.com/rrnewton/happy-cli.git /usr/local/happy
+cd /usr/local/happy
+npm install
+npm run build
+npm install -g .
+```
+
+### Step 4: Authenticate the CLI
+
+Use the secret key from Step 2 to authenticate:
+
+```bash
+happy auth login --backup-key <YOUR-SECRET-KEY>
+```
+
+### Step 5: Start the Daemon
+
+```bash
+happy daemon start
+```
+
+The daemon connects your machine to the Happy server, allowing remote control from the webapp.
+
+### Step 6: (Optional) Voice Assistant Setup
+
+For ElevenLabs voice assistant integration:
+1. Go to Account > Voice Assistant in the webapp
+2. Click "Get API Key" to create an ElevenLabs API key with required permissions
+3. Enter your API key and save credentials
+4. Use "Find Agent" or "Create/Update Agent" to set up the voice agent
 
 ## Getting Started
 
@@ -117,10 +165,10 @@ See [WEB_CLIENT_GUIDE.md](WEB_CLIENT_GUIDE.md) for detailed instructions.
 ### Start Services
 
 ```bash
-./happy-demo.sh start    # Start all services
-./happy-demo.sh status   # Check what's running
-./happy-demo.sh stop     # Stop services
-./happy-demo.sh cleanup  # Stop everything including databases
+./happy-launcher.sh start    # Start all services
+./happy-launcher.sh status   # Check what's running
+./happy-launcher.sh stop     # Stop services
+./happy-launcher.sh cleanup  # Stop everything including databases
 ```
 
 ### Setup Test Credentials
@@ -176,10 +224,12 @@ export HAPPY_SERVER_URL=http://localhost:3005
 
 ## Key Scripts
 
-### happy-demo.sh
+### happy-launcher.sh
 Main control script for managing services:
-- `start` - Start all services
-- `stop` - Stop happy-server and MinIO
+- `start` - Start all services (backend + webapp)
+- `start-backend` - Start only backend services
+- `start-webapp` - Start only the webapp
+- `stop` - Stop happy-server, webapp, and MinIO
 - `cleanup` - Stop everything including databases
 - `status` - Show service status
 - `logs <service>` - View logs
@@ -213,14 +263,14 @@ All ports are automatically forwarded when using the devcontainer.
 
 ### Server not responding
 ```bash
-./happy-demo.sh status          # Check all services
-./happy-demo.sh logs server     # View server logs
+./happy-launcher.sh status          # Check all services
+./happy-launcher.sh logs server     # View server logs
 ```
 
 ### Clean slate
 ```bash
-./happy-demo.sh cleanup --clean-logs   # Stop everything and clean logs
-./happy-demo.sh start                  # Fresh start
+./happy-launcher.sh cleanup --clean-logs   # Stop everything and clean logs
+./happy-launcher.sh start                  # Fresh start
 ```
 
 ### Database issues

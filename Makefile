@@ -233,16 +233,16 @@ server: build
 	@echo ""
 	@./start-server.sh
 
-# Stop all services
+# Stop all services (all slots)
 stop:
 	@echo "=== Stopping all services ==="
-	@./happy-demo.sh cleanup
-	@pkill -f 'expo start' 2>/dev/null || true
+	@./happy-cli/bin/happy.mjs daemon stop 2>/dev/null || true
+	@./happy-launcher.sh cleanup --all-slots
 	@echo "All services stopped"
 
 # View server logs
 logs:
-	@./happy-demo.sh logs server
+	@./happy-launcher.sh logs server
 
 # Run CLI with local server (uses default ~/.happy credentials)
 cli:
@@ -265,7 +265,7 @@ e2e-test: build
 	@echo ""
 	@echo "=== Running E2E Test (isolated credentials) ==="
 	@echo ""
-	@./happy-demo.sh cleanup --clean-logs
+	@./happy-launcher.sh cleanup --clean-logs
 	@./e2e-web-demo.sh
 
 # Inspect webapp with headless browser (requires webapp to be running)

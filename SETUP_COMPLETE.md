@@ -125,14 +125,14 @@ All dependencies have been added to `.devcontainer/Dockerfile.project`. When you
 
 1. Install PostgreSQL, Redis, lsof, and wget
 2. Download and install MinIO server and client
-3. Copy the `happy-demo.sh` control script to `/workspace/`
+3. Copy the `happy-launcher.sh` control script to `/workspace/`
 
 After rebuilding, you'll still need to:
-1. Run `happy-demo.sh start` to start all services
+1. Run `happy-launcher.sh start` to start all services
 2. Set up the database: Create the `handy` database and run migrations
 3. Configure MinIO: Create the `happy` bucket
 
 Or simply use the quick start:
 ```bash
-./happy-demo.sh start
+./happy-launcher.sh start
 ```
