@@ -7,6 +7,9 @@ import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
 import { fetchVoiceToken } from '@/sync/apiVoice';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 
+// Debug logging gated by environment variable
+const DEBUG = !!process.env.PUBLIC_EXPO_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING;
+
 // Static reference to the conversation hook instance
 let conversationInstance: ReturnType<typeof useConversation> | null = null;
 
@@ -103,28 +106,28 @@ export const RealtimeVoiceSession: React.FC = () => {
     const conversation = useConversation({
         clientTools: realtimeClientTools,
         onConnect: () => {
-            // console.log('Realtime session connected');
+            if (DEBUG) console.log('[Voice] Realtime session connected');
             storage.getState().setRealtimeStatus('connected');
         },
         onDisconnect: () => {
-            // console.log('Realtime session disconnected');
+            if (DEBUG) console.log('[Voice] Realtime session disconnected');
             storage.getState().setRealtimeStatus('disconnected');
         },
         onMessage: (data) => {
-            // console.log('Realtime message:', data);
+            if (DEBUG) console.log('[Voice] Realtime message:', data);
         },
         onError: (error) => {
-            // console.error('Realtime error:', error);
+            if (DEBUG) console.error('[Voice] Realtime error:', error);
             storage.getState().setRealtimeStatus('error');
         },
         onStatusChange: (data) => {
-            // console.log('Realtime status change:', data);
+            if (DEBUG) console.log('[Voice] Realtime status change:', data);
         },
         onModeChange: (data) => {
-            // console.log('Realtime mode change:', data);
+            if (DEBUG) console.log('[Voice] Realtime mode change:', data);
         },
         onDebug: (message) => {
-            // console.debug('Realtime debug:', message);
+            if (DEBUG) console.debug('[Voice] Realtime debug:', message);
         }
     });
 
