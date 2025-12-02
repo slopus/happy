@@ -55,6 +55,15 @@ FULLTAG := $(TAG)-$(SLOT)
 # Compute dynamic workspace directory name
 WORKDIR := /$(REPONAME)-$(REALHOSTNAME)
 
+ifeq ($(SUPERREPO),1)
+    # Temporary hack to mount the larger workspace:
+    MOUNTDIR := `pwd`/../..
+    REPOROOT := $(MOUNTDIR)/happy-fork
+else
+    MOUNTDIR := `pwd`/..
+    REPOROOT := $(MOUNTDIR)
+endif
+
 OS := $(shell uname)
 
 ifeq ($(OS),Darwin)
@@ -78,7 +87,7 @@ build: Dockerfile
 run:
 	$(CONTAINER) run -it --rm -u $(USER) --hostname $(CONTAINER_HOSTNAME) \
 		-v `pwd`/home:/home/$(USER) \
-		-v `pwd`/..:$(WORKDIR) \
+		-v $(MOUNTDIR):$(WORKDIR) \
 		$(FULLTAG) bash
 
 
@@ -91,31 +100,31 @@ PORTS_SERVER= -p 3005:3005
 root:
 	$(CONTAINER) run -it --rm -u root --hostname $(CONTAINER_HOSTNAME) \
 		-v `pwd`/home:/root \
-		-v `pwd`/..:$(WORKDIR) \
+		-v $(MOUNTDIR):$(WORKDIR) \
 		$(FULLTAG) bash
 
 # All ports forwarded (legacy behavior)
 root-all-ports:
 	$(CONTAINER) run -it --rm -u root --hostname $(CONTAINER_HOSTNAME) \
 		-v `pwd`/home:/root \
-		-v `pwd`/..:$(WORKDIR) \
+		-v $(MOUNTDIR):$(WORKDIR) \
 		$(PORTS_ALL) $(FULLTAG) bash
 
 # Web client only (port 8081) - starts the webapp directly
 web:
 	$(CONTAINER) run -it --rm -u root --hostname $(CONTAINER_HOSTNAME) \
 		-v `pwd`/home:/root \
-		-v `pwd`/..:$(WORKDIR) \
+		-v $(MOUNTDIR):$(WORKDIR) \
 		$(PORTS_WEB) $(FULLTAG) \
-		bash -c "cd $(WORKDIR) && ./happy-launcher.sh start-webapp"
+		bash -c "cd $(REPOROOT) && ./happy-launcher.sh start-webapp"
 
 # Happy server only (port 3005) - starts the server directly
 server:
 	$(CONTAINER) run -it --rm -u root --hostname $(CONTAINER_HOSTNAME) \
 		-v `pwd`/home:/root \
-		-v `pwd`/..:$(WORKDIR) \
+		-v $(MOUNTDIR):$(WORKDIR) \
 		$(PORTS_SERVER) $(FULLTAG) \
-		bash -c "cd $(WORKDIR) && ./happy-launcher.sh start-backend && tail -f /dev/null"
+		bash -c "cd $(REPOROOT) && ./happy-launcher.sh start-backend && tail -f /dev/null"
 
 AGENT_LAYERS = Dockerfile.claude Dockerfile.copilot
 # Dockerfile.gemini
@@ -237,7 +246,7 @@ side-step:
 
 info:
 	@echo Reponame discovered as $(REPONAME)
-	@echo Workdir should be $(WORKDIR)
+	@echo Workdir should be $(WORKDIR), repo root $(REPOROOT)
 	@echo   REALHOSTNAME=$(REALHOSTNAME)
 	@echo   CONTAINER_HOSTNAME=$(CONTAINER_HOSTNAME)
 
