@@ -107,7 +107,7 @@ web:
 		-v `pwd`/home:/root \
 		-v `pwd`/..:$(WORKDIR) \
 		$(PORTS_WEB) $(FULLTAG) \
-		bash -c "cd $(WORKDIR)/happy && yarn web"
+		bash -c "cd $(WORKDIR) && ./happy-launcher.sh start-webapp"
 
 # Happy server only (port 3005) - starts the server directly
 server:
