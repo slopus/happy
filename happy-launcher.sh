@@ -36,18 +36,23 @@ CLI_DIR="$SCRIPT_DIR/happy-cli"
 WEBAPP_DIR="$SCRIPT_DIR/happy"
 
 # =============================================================================
-# Slot Argument Parsing
+# Argument Parsing
 # =============================================================================
 
 SLOT=""
+DEBUG_MODE=""
 ARGS=()
 
-# Parse --slot argument before other processing
+# Parse --slot and --debug arguments before other processing
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --slot)
             SLOT="$2"
             shift 2
+            ;;
+        --debug)
+            DEBUG_MODE="true"
+            shift
             ;;
         *)
             ARGS+=("$1")
@@ -371,8 +376,16 @@ start_server() {
             cp .env.dev .env
         fi
 
+        # Build environment variables for server
+        local debug_env=""
+        if [[ -n "$DEBUG_MODE" ]]; then
+            debug_env="DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=true"
+            info "Debug mode enabled for server"
+        fi
+
         # Start server with environment variables for ports
         # DATABASE_URL uses slot-specific database for test isolation
+        env $debug_env \
         PORT="$HAPPY_SERVER_PORT" \
         METRICS_PORT="$METRICS_PORT" \
         DATABASE_URL="$DATABASE_URL" \
@@ -403,9 +416,18 @@ start_webapp() {
     else
         info "Starting webapp (slot ${SLOT:-0})..."
         cd "$WEBAPP_DIR"
+
+        # Build debug environment variables
+        local debug_env=""
+        if [[ -n "$DEBUG_MODE" ]]; then
+            debug_env="PUBLIC_EXPO_DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING=1 EXPO_PUBLIC_DEBUG=1"
+            info "Debug mode enabled for webapp"
+        fi
+
         # Clear Metro cache to ensure fresh bundle transformation
         # The --clear flag is essential for CI environments where the cache may be stale
-        BROWSER=none \
+        env $debug_env \
+            BROWSER=none \
             EXPO_PUBLIC_HAPPY_SERVER_URL="$HAPPY_SERVER_URL" \
             yarn web --port "$HAPPY_WEBAPP_PORT" --clear > "$LOG_DIR/webapp.log" 2>&1 &
         echo $! > "$PIDS_DIR/webapp.pid"
@@ -979,7 +1001,11 @@ case "${1:-}" in
         echo ""
         echo "Happy Self-Hosted Service Launcher"
         echo ""
-        echo "Usage: $0 [--slot N] <command> [options]"
+        echo "Usage: $0 [--slot N] [--debug] <command> [options]"
+        echo ""
+        echo "Options:"
+        echo "  --slot N    Use slot N for port/database isolation (default: 0)"
+        echo "  --debug     Enable debug logging (DANGEROUSLY_LOG_TO_SERVER_FOR_AI_AUTO_DEBUGGING)"
         echo ""
         echo "Slot Concept:"
         echo "  --slot 0 (default)  Primary instance: Server=3005, Webapp=8081, DB=handy"
