@@ -32,12 +32,10 @@ export async function createSessionScanner(opts: {
     let currentSessionId: string | null = null;
     let watchers = new Map<string, (() => void)>();
     let processedMessageKeys = new Set<string>();
-    // Track skipped message IDs to avoid log spam
-    let skippedMessageIds = new Set<string>();
 
     // Mark existing messages as processed and start watching the initial session
     if (opts.sessionId) {
-        let messages = await readSessionLog(projectDir, opts.sessionId, skippedMessageIds);
+        let messages = await readSessionLog(projectDir, opts.sessionId);
         logger.debug(`[SESSION_SCANNER] Marking ${messages.length} existing messages as processed from session ${opts.sessionId}`);
         for (let m of messages) {
             processedMessageKeys.add(messageKey(m));
@@ -70,7 +68,7 @@ export async function createSessionScanner(opts: {
 
         // Process sessions
         for (let session of sessions) {
-            const sessionMessages = await readSessionLog(projectDir, session, skippedMessageIds);
+            const sessionMessages = await readSessionLog(projectDir, session);
             let skipped = 0;
             let sent = 0;
             for (let file of sessionMessages) {
@@ -165,7 +163,11 @@ function messageKey(message: RawJSONLines): string {
     }
 }
 
-async function readSessionLog(projectDir: string, sessionId: string, skippedMessageIds: Set<string>): Promise<RawJSONLines[]> {
+/**
+ * Read and parse session log file
+ * Returns only valid conversation messages, silently skipping internal events
+ */
+async function readSessionLog(projectDir: string, sessionId: string): Promise<RawJSONLines[]> {
     const expectedSessionFile = join(projectDir, `${sessionId}.jsonl`);
     logger.debug(`[SESSION_SCANNER] Reading session file: ${expectedSessionFile}`);
     let file: string;
@@ -192,13 +194,8 @@ async function readSessionLog(projectDir: string, sessionId: string, skippedMess
             
             let parsed = RawJSONLinesSchema.safeParse(message);
             if (!parsed.success) {
-                // Log unknown message types only once to avoid spam
-                // Use messageId/uuid or a truncated hash as the unique identifier
-                const skipKey = message?.messageId || message?.uuid || JSON.stringify(message).slice(0, 100);
-                if (!skippedMessageIds.has(skipKey)) {
-                    skippedMessageIds.add(skipKey);
-                    logger.debugLargeJson(`[SESSION_SCANNER] Skipping unknown message type: ${message?.type}`, message);
-                }
+                // Unknown message types are silently skipped
+                // They will be tracked by processedMessageKeys to avoid reprocessing
                 continue;
             }
             messages.push(parsed.data);
