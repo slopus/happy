@@ -101,6 +101,41 @@ check_env_vars() {
 check_env_vars
 
 # =============================================================================
+# Dependency Check
+# =============================================================================
+
+check_dependencies() {
+    local missing_deps=false
+
+    # Check if node_modules exist in each submodule
+    if [ ! -d "$CLI_DIR/node_modules" ]; then
+        error "Dependencies not installed in happy-cli"
+        missing_deps=true
+    fi
+
+    if [ ! -d "$SERVER_DIR/node_modules" ]; then
+        error "Dependencies not installed in happy-server"
+        missing_deps=true
+    fi
+
+    if [ ! -d "$WEBAPP_DIR/node_modules" ]; then
+        error "Dependencies not installed in happy webapp"
+        missing_deps=true
+    fi
+
+    if $missing_deps; then
+        echo ""
+        error "Dependencies are not installed. Please run:"
+        echo ""
+        echo "    make install"
+        echo ""
+        echo "This will install all required dependencies for happy-cli, happy-server, and happy webapp."
+        echo ""
+        exit 1
+    fi
+}
+
+# =============================================================================
 # Port Configuration with Slot Support
 # =============================================================================
 
@@ -907,6 +942,7 @@ test_connection() {
 
 case "${1:-}" in
     start)
+        check_dependencies
         info "Starting all services..."
         start_postgres
         start_redis
@@ -922,6 +958,7 @@ case "${1:-}" in
         ;;
 
     start-backend)
+        check_dependencies
         info "Starting backend services..."
         start_postgres
         start_redis
@@ -936,6 +973,7 @@ case "${1:-}" in
         ;;
 
     start-webapp)
+        check_dependencies
         start_webapp
         ;;
 

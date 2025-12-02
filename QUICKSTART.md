@@ -21,31 +21,50 @@ This guide walks you through running your own Happy instance.
                               └─────────┘
 ```
 
-## Step 1: Build and Launch Services
+## Step 1: Install Dependencies
+
+On a fresh checkout, you first need to install all dependencies:
 
 ```bash
-cd .devcontainer
-make build                # Build the container image (first time only)
-
-# In terminal 1 - start the server (port 3005):
-make server
-
-# In terminal 2 - start the webapp (port 8081):
-make web
+make install              # Install dependencies for all components
 ```
 
-## Step 2: Create an Account
+This installs dependencies for:
+- `happy-cli` - CLI tool and daemon
+- `happy-server` - Backend server
+- `happy` (webapp) - Web interface
+
+## Step 2: Build and Launch Services
+
+```bash
+make build                # Build TypeScript code (happy-cli and happy-server)
+
+# Start all services (server + webapp):
+./happy-launcher.sh start
+
+# OR start just the backend (if you only need the server):
+./happy-launcher.sh start-backend
+```
+
+The launcher automatically starts:
+- PostgreSQL (port 5432)
+- Redis (port 6379)
+- MinIO (ports 9000/9001)
+- happy-server (port 3005)
+- Webapp (port 8081, if using `start`)
+
+## Step 3: Create an Account
 
 1. Open http://localhost:8081 in your browser
 2. Click "Create Account"
 3. Optionally add a recognizable username in Account settings
 
-## Step 3: Get Your Secret Key
+## Step 4: Get Your Secret Key
 
 1. Go to Account settings in the webapp
 2. Find and copy your secret backup key (format: `XXXXX-XXXXX-...`)
 
-## Step 4: Install the CLI
+## Step 5: Install the CLI
 
 On each machine where you want to run Claude with Happy:
 
@@ -55,13 +74,13 @@ cd /usr/local/happy
 npm install && npm run build && npm install -g .
 ```
 
-## Step 5: Authenticate the CLI
+## Step 6: Authenticate the CLI
 
 ```bash
 happy auth login --backup-key <YOUR-SECRET-KEY>
 ```
 
-## Step 6: Start the Daemon
+## Step 7: Start the Daemon
 
 ```bash
 happy daemon start
@@ -69,7 +88,7 @@ happy daemon start
 
 The daemon connects your machine to the Happy server, allowing remote control from the webapp.
 
-## Step 7: (Optional) Voice Assistant
+## Step 8: (Optional) Voice Assistant
 
 For ElevenLabs voice assistant integration:
 
