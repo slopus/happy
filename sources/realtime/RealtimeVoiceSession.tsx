@@ -7,6 +7,9 @@ import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
 import { fetchVoiceToken } from '@/sync/apiVoice';
 import type { VoiceSession, VoiceSessionConfig } from './types';
 
+// Note: The native ElevenLabs SDK (@elevenlabs/react-native) does not support
+// micMuted controlled state. Mute functionality is only available on web.
+
 // Static reference to the conversation hook instance
 let conversationInstance: ReturnType<typeof useConversation> | null = null;
 

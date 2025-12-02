@@ -878,6 +878,20 @@ export const es: TranslationStructure = {
         friendRequestGeneric: 'Nueva solicitud de amistad',
         friendAccepted: ({ name }: { name: string }) => `Ahora eres amigo de ${name}`,
         friendAcceptedGeneric: 'Solicitud de amistad aceptada',
+    },
+
+    voiceAssistant: {
+        // Voice assistant status bar
+        status: {
+            connecting: 'Conectando...',
+            muted: 'Silenciado',
+            active: 'Activo',
+            error: 'Error',
+            default: 'Voz',
+        },
+        mute: 'Silenciar',
+        unmute: 'Activar',
+        end: 'Finalizar',
     }
 } as const;
 

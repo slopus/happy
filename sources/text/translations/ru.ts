@@ -900,6 +900,20 @@ export const ru: TranslationStructure = {
         friendRequestGeneric: 'Новый запрос в друзья',
         friendAccepted: ({ name }: { name: string }) => `Вы теперь друзья с ${name}`,
         friendAcceptedGeneric: 'Запрос в друзья принят',
+    },
+
+    voiceAssistant: {
+        // Voice assistant status bar
+        status: {
+            connecting: 'Подключение...',
+            muted: 'Без звука',
+            active: 'Активен',
+            error: 'Ошибка',
+            default: 'Голос',
+        },
+        mute: 'Выкл. звук',
+        unmute: 'Вкл. звук',
+        end: 'Завершить',
     }
 } as const;
 

@@ -879,5 +879,19 @@ export const zhHans: TranslationStructure = {
         friendRequestGeneric: '新的好友请求',
         friendAccepted: ({ name }: { name: string }) => `您现在与 ${name} 成为了好友`,
         friendAcceptedGeneric: '好友请求已接受',
+    },
+
+    voiceAssistant: {
+        // Voice assistant status bar
+        status: {
+            connecting: '连接中...',
+            muted: '已静音',
+            active: '活跃',
+            error: '错误',
+            default: '语音',
+        },
+        mute: '静音',
+        unmute: '取消静音',
+        end: '结束',
     }
 } as const;

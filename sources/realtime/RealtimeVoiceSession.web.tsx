@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useConversation } from '@elevenlabs/react';
 import { registerVoiceSession } from './RealtimeSession';
-import { storage } from '@/sync/storage';
+import { storage, useRealtimeMicMuted } from '@/sync/storage';
 import { realtimeClientTools } from './realtimeClientTools';
 import { getElevenLabsCodeFromPreference } from '@/constants/Languages';
 import { fetchVoiceToken } from '@/sync/apiVoice';
@@ -103,8 +103,13 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
 }
 
 export const RealtimeVoiceSession: React.FC = () => {
+    // Get mic muted state from storage
+    const micMuted = useRealtimeMicMuted();
+
     const conversation = useConversation({
         clientTools: realtimeClientTools,
+        // Pass micMuted as controlled state - when true, no audio is sent to the LLM
+        micMuted,
         onConnect: () => {
             if (DEBUG) console.log('[Voice] Realtime session connected');
             storage.getState().setRealtimeStatus('connected');

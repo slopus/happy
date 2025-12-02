@@ -901,6 +901,20 @@ export const pl: TranslationStructure = {
         friendRequestGeneric: 'Nowe zaproszenie do znajomych',
         friendAccepted: ({ name }: { name: string }) => `Jesteś teraz znajomym z ${name}`,
         friendAcceptedGeneric: 'Zaproszenie do znajomych zaakceptowane',
+    },
+
+    voiceAssistant: {
+        // Voice assistant status bar
+        status: {
+            connecting: 'Łączenie...',
+            muted: 'Wyciszony',
+            active: 'Aktywny',
+            error: 'Błąd',
+            default: 'Głos',
+        },
+        mute: 'Wycisz',
+        unmute: 'Włącz dźwięk',
+        end: 'Zakończ',
     }
 } as const;
 

@@ -878,6 +878,20 @@ export const en = {
         friendRequestGeneric: 'New friend request',
         friendAccepted: ({ name }: { name: string }) => `You are now friends with ${name}`,
         friendAcceptedGeneric: 'Friend request accepted',
+    },
+
+    voiceAssistant: {
+        // Voice assistant status bar
+        status: {
+            connecting: 'Connecting...',
+            muted: 'Muted',
+            active: 'Active',
+            error: 'Error',
+            default: 'Voice',
+        },
+        mute: 'Mute',
+        unmute: 'Unmute',
+        end: 'End',
     }
 } as const;
 

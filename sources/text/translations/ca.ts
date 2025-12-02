@@ -877,6 +877,20 @@ export const ca: TranslationStructure = {
         friendRequestGeneric: 'Nova sol·licitud d\'amistat',
         friendAccepted: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
         friendAcceptedGeneric: 'Sol·licitud d\'amistat acceptada',
+    },
+
+    voiceAssistant: {
+        // Voice assistant status bar
+        status: {
+            connecting: 'Connectant...',
+            muted: 'Silenciat',
+            active: 'Actiu',
+            error: 'Error',
+            default: 'Veu',
+        },
+        mute: 'Silenciar',
+        unmute: 'Activar so',
+        end: 'Acabar',
     }
 } as const;
 
