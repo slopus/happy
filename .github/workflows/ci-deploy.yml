@@ -1,0 +1,91 @@
+# CI/CD for happy-cli - Test and Deploy to nelnet
+name: CI and Deploy
+
+on:
+  push:
+    branches: [main, master, fix/pass-tests]
+  pull_request:
+    branches: [main, master, fix/pass-tests]
+
+jobs:
+  # Run tests on GitHub-hosted runners
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Typecheck
+        run: yarn typecheck
+
+      - name: Build
+        run: yarn build
+
+      - name: Run tests
+        run: yarn test
+
+  # Deploy to nelnet production server
+  deploy:
+    needs: [test]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' || github.ref == 'refs/heads/fix/pass-tests'
+    runs-on: self-hosted
+    steps:
+      - name: Pull latest code
+        run: |
+          cd /home/ben/src/happy/happy-cli
+          git config --global --add safe.directory /home/ben/src/happy/happy-cli
+          # Use HTTPS for fetch (runner may lack SSH keys), then restore SSH remote
+          git remote set-url origin https://github.com/nelsonblaha/happy.git || true
+          git fetch origin
+          # Deploy from the branch that triggered this workflow
+          BRANCH_NAME=$(echo "${{ github.ref }}" | sed 's|refs/heads/||')
+          git reset --hard origin/$BRANCH_NAME
+          git remote set-url origin git@github.com:nelsonblaha/happy.git || true
+
+      - name: Install dependencies
+        run: |
+          cd /home/ben/src/happy/happy-cli
+          yarn install --frozen-lockfile
+
+      - name: Build
+        run: |
+          cd /home/ben/src/happy/happy-cli
+          yarn build
+
+      - name: Restart happy daemon
+        run: |
+          # Stop existing daemon
+          pkill -f "happy.*daemon" || true
+
+          # Wait for clean shutdown
+          sleep 2
+
+          # Start new daemon
+          cd /home/ben/src/happy/happy-cli
+          nohup ./bin/happy.mjs daemon > /var/log/happy-daemon.log 2>&1 &
+
+          # Verify it started
+          sleep 2
+          pgrep -f "happy.*daemon" || echo "Warning: daemon may not have started"
+
+      - name: Health check
+        run: |
+          # Wait for daemon to be ready
+          for i in {1..10}; do
+            if curl -f http://localhost:3005/health 2>/dev/null; then
+              echo "Daemon is healthy"
+              exit 0
+            fi
+            echo "Waiting for daemon... ($i/10)"
+            sleep 2
+          done
+          echo "Warning: Daemon health check failed"
+          exit 1
