@@ -216,6 +216,7 @@ info() { echo -e "${BLUE}[INFO]${NC} $1"; }
 success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 warning() { echo -e "${YELLOW}[WARNING]${NC} $1"; }
 error() { echo -e "${RED}[ERROR]${NC} $1"; }
+notfound() { echo -e "${YELLOW}[NOTFOUND]${NC} $1"; }
 
 # Check if a service is running (system-wide, slot-unaware)
 is_running() {
@@ -724,7 +725,7 @@ show_slot_services_status() {
     elif port_listening "$minio_port"; then
         success "  MinIO: Running (API: $minio_port, Console: $minio_console_port)"
     else
-        error "  MinIO: Stopped"
+        notfound "  MinIO: Stopped"
     fi
 
     # happy-server (slot-specific)
@@ -737,7 +738,7 @@ show_slot_services_status() {
     elif port_listening "$server_port"; then
         success "  happy-server: Running (port $server_port)"
     else
-        error "  happy-server: Stopped"
+        notfound "  happy-server: Stopped"
     fi
 
     # Webapp (slot-specific)
@@ -750,7 +751,7 @@ show_slot_services_status() {
     elif port_listening "$webapp_port"; then
         success "  Webapp: Running (port $webapp_port)"
     else
-        error "  Webapp: Stopped"
+        notfound "  Webapp: Stopped"
     fi
 }
 
@@ -783,13 +784,13 @@ show_status() {
     if port_listening "$POSTGRES_PORT"; then
         success "PostgreSQL: Running (port $POSTGRES_PORT, database: $DATABASE_NAME)"
     else
-        error "PostgreSQL: Stopped"
+        notfound "PostgreSQL: Stopped"
     fi
 
     if port_listening "$REDIS_PORT"; then
         success "Redis: Running (port $REDIS_PORT, shared)"
     else
-        error "Redis: Stopped"
+        notfound "Redis: Stopped"
     fi
 
     # Slot-specific services
@@ -809,13 +810,13 @@ show_all_slots_status() {
     if port_listening "$POSTGRES_PORT"; then
         success "PostgreSQL: Running (port $POSTGRES_PORT)"
     else
-        error "PostgreSQL: Stopped"
+        notfound "PostgreSQL: Stopped"
     fi
 
     if port_listening "$REDIS_PORT"; then
         success "Redis: Running (port $REDIS_PORT)"
     else
-        error "Redis: Stopped"
+        notfound "Redis: Stopped"
     fi
     echo ""
 
@@ -1031,6 +1032,24 @@ case "${1:-}" in
         show_urls
         ;;
 
+    monitor)
+        # Monitor mode: show status periodically, handle signals gracefully
+        info "Monitoring services (Ctrl-C to stop)..."
+        echo ""
+
+        # Trap signals for graceful exit
+        trap 'echo ""; info "Monitor stopped"; exit 0' SIGINT SIGTERM
+
+        while true; do
+            echo ""
+            echo "=== Happy Monitor ($(date '+%H:%M:%S')) - Ctrl-C to stop ==="
+            echo ""
+            show_status
+            sleep 60 &
+            wait $!  # Wait on sleep so signals can interrupt it
+        done
+        ;;
+
     env)
         print_env
         ;;
@@ -1068,6 +1087,7 @@ case "${1:-}" in
         echo "  status             Show status of all services"
         echo "  status --all-slots Show status for all active slots"
         echo "  logs <service>     Tail logs for a service (server, webapp, minio, postgres)"
+        echo "  monitor            Show status every 60 seconds (handles Ctrl-C gracefully)"
         echo "  env                Print environment variables for this slot (can be sourced)"
         echo "  cli [args]         Run happy CLI with local server configuration"
         echo "  test               Test server and CLI connectivity"

@@ -1,4 +1,4 @@
-.PHONY: help setup rebase-upstream status feature-start feature-end build build-cli build-server install server stop logs cli e2e-test browser-inspect setup-credentials validate validate-quick push
+.PHONY: help setup rebase-upstream status feature-start feature-end build build-cli build-server install install-server install-cli install-webapp server stop logs cli e2e-test browser-inspect setup-credentials validate validate-quick push
 
 # Base development branch for submodules (combines all features we want to merge)
 BASE_SUBMODULE_BRANCH := rrnewton
@@ -19,6 +19,9 @@ help:
 	@echo "  make build-cli       - Build happy-cli only"
 	@echo "  make build-server    - Typecheck happy-server only"
 	@echo "  make install         - Install dependencies for all repos"
+	@echo "  make install-server  - Install happy-server dependencies only"
+	@echo "  make install-cli     - Install happy-cli dependencies only"
+	@echo "  make install-webapp  - Install happy webapp dependencies only"
 	@echo ""
 	@echo "=== Testing ==="
 	@echo "  make validate        - Run all validation tests (builds + unit + browser)"
@@ -183,18 +186,23 @@ feature-end:
 # Build Targets
 # ============================================================================
 
-# Install dependencies for all repositories
-install:
-	@echo "=== Installing dependencies for all repositories ==="
-	@echo ""
+# Install dependencies for happy-server
+install-server:
 	@echo "Installing happy-server dependencies..."
 	@cd happy-server && yarn install
-	@echo ""
+
+# Install dependencies for happy-cli
+install-cli:
 	@echo "Installing happy-cli dependencies..."
 	@cd happy-cli && yarn install
-	@echo ""
+
+# Install dependencies for happy webapp
+install-webapp:
 	@echo "Installing happy webapp dependencies..."
 	@cd happy && yarn install
+
+# Install dependencies for all repositories
+install: install-server install-cli install-webapp
 	@echo ""
 	@echo "=== All dependencies installed ==="
 

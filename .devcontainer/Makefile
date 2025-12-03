@@ -57,10 +57,10 @@ WORKDIR := /$(REPONAME)-$(REALHOSTNAME)
 
 ifeq ($(SUPERREPO),1)
     # Temporary hack to mount the larger workspace:
-    MOUNTDIR := `pwd`/../..
+    MOUNTDIR := $(shell pwd)/../..
     REPOROOT := $(MOUNTDIR)/happy-fork
 else
-    MOUNTDIR := `pwd`/..
+    MOUNTDIR := $(shell pwd)/..
     REPOROOT := $(MOUNTDIR)
 endif
 
@@ -116,7 +116,7 @@ web:
 		-v `pwd`/home:/root \
 		-v $(MOUNTDIR):$(WORKDIR) \
 		$(PORTS_WEB) $(FULLTAG) \
-		bash -c "cd $(REPOROOT) && ./happy-launcher.sh start-webapp"
+		bash -c "cd $(WORKDIR) && make install-webapp && ./happy-launcher.sh start-webapp && ./happy-launcher.sh monitor"
 
 # Happy server only (port 3005) - starts the server directly
 server:
@@ -124,7 +124,7 @@ server:
 		-v `pwd`/home:/root \
 		-v $(MOUNTDIR):$(WORKDIR) \
 		$(PORTS_SERVER) $(FULLTAG) \
-		bash -c "cd $(REPOROOT) && ./happy-launcher.sh start-backend && tail -f /dev/null"
+		bash -c "cd $(WORKDIR) && make install-server && ./happy-launcher.sh start-backend && ./happy-launcher.sh monitor"
 
 AGENT_LAYERS = Dockerfile.claude Dockerfile.copilot
 # Dockerfile.gemini
