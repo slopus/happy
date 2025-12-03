@@ -98,6 +98,8 @@ export async function claudeLocal(opts: {
             }
 
             // Prepare environment variables
+            // Note: Local mode uses global Claude installation with --session-id flag
+            // Launcher only intercepts fetch for thinking state tracking
             const env = {
                 ...process.env,
                 ...opts.claudeEnvVars

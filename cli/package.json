@@ -70,9 +70,7 @@
     "postinstall": "node scripts/unpack-tools.cjs"
   },
   "dependencies": {
-    "@anthropic-ai/claude-code": "2.0.53",
-    "@anthropic-ai/sdk": "0.71.0",
-    "@modelcontextprotocol/sdk": "1.22.0",
+    "@modelcontextprotocol/sdk": "^1.22.0",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
     "@types/cross-spawn": "^6.0.6",

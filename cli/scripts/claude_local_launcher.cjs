@@ -12,7 +12,7 @@ function writeMessage(message) {
     }
 }
 
-// Intercept fetch to track activity (for thinking state)
+// Intercept fetch to track thinking state
 const originalFetch = global.fetch;
 let fetchCounter = 0;
 
@@ -67,6 +67,11 @@ global.fetch = function(...args) {
 Object.defineProperty(global.fetch, 'name', { value: 'fetch' });
 Object.defineProperty(global.fetch, 'length', { value: originalFetch.length });
 
-// Always use bundled claude-code to ensure version consistency
-// across local and remote modes within the same session
-import('@anthropic-ai/claude-code/cli.js');
+// Import global Claude Code CLI
+// We need to import (not spawn) to keep interceptors working
+const { getClaudeCliPath } = require('./claude_version_utils.cjs');
+const { pathToFileURL } = require('url');
+
+const globalCliPath = getClaudeCliPath();
+const importUrl = pathToFileURL(globalCliPath).href;
+import(importUrl);
