@@ -168,7 +168,7 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
     return (<>
         {props.spans.map((span, index) => {
             if (span.url) {
-                return <Link key={index} href={span.url as any} target="_blank" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
+                return <Link key={index} href={span.url as any} target="_blank" rel="noopener noreferrer" style={[style.link, span.styles.map(s => style[s])]}>{span.text}</Link>
             } else {
                 return <Text key={index} selectable style={[props.baseStyle, span.styles.map(s => style[s])]}>{span.text}</Text>
             }
