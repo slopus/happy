@@ -65,7 +65,16 @@ function compareVersions(a, b) {
 function getClaudeCliPath() {
     const globalCliPath = findGlobalClaudeCliPath();
     if (!globalCliPath) {
-        throw new Error('Global Claude Code installation not found. Please install with: npm install -g @anthropic-ai/claude-code');
+        console.error('\n\x1b[31m╔════════════════════════════════════════════════════════════╗\x1b[0m');
+        console.error('\x1b[31m║\x1b[0m  \x1b[1m\x1b[33mClaude Code is not installed globally\x1b[0m                      \x1b[31m║\x1b[0m');
+        console.error('\x1b[31m╠════════════════════════════════════════════════════════════╣\x1b[0m');
+        console.error('\x1b[31m║\x1b[0m                                                            \x1b[31m║\x1b[0m');
+        console.error('\x1b[31m║\x1b[0m  Please install Claude Code:                               \x1b[31m║\x1b[0m');
+        console.error('\x1b[31m║\x1b[0m                                                            \x1b[31m║\x1b[0m');
+        console.error('\x1b[31m║\x1b[0m  \x1b[36mnpm install -g @anthropic-ai/claude-code\x1b[0m                 \x1b[31m║\x1b[0m');
+        console.error('\x1b[31m║\x1b[0m                                                            \x1b[31m║\x1b[0m');
+        console.error('\x1b[31m╚════════════════════════════════════════════════════════════╝\x1b[0m\n');
+        process.exit(1);
     }
     return globalCliPath;
 }
