@@ -1,17 +1,26 @@
 /**
  * Shared utilities for finding and resolving Claude Code CLI path
  * Used by both local and remote launchers
+ *
+ * Supports multiple installation methods:
+ * 1. npm global: npm install -g @anthropic-ai/claude-code
+ * 2. Homebrew: brew install claude-code
+ * 3. Native installer:
+ *    - macOS/Linux: curl -fsSL https://claude.ai/install.sh | bash
+ *    - PowerShell:  irm https://claude.ai/install.ps1 | iex
+ *    - Windows CMD: curl -fsSL https://claude.ai/install.cmd | cmd
  */
 
 const { execSync } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 /**
- * Find path to globally installed Claude Code CLI
+ * Find path to npm globally installed Claude Code CLI
  * @returns {string|null} Path to cli.js or null if not found
  */
-function findGlobalClaudeCliPath() {
+function findNpmGlobalCliPath() {
     try {
         const globalRoot = execSync('npm root -g', { encoding: 'utf8' }).trim();
         const globalCliPath = path.join(globalRoot, '@anthropic-ai', 'claude-code', 'cli.js');
@@ -21,6 +30,261 @@ function findGlobalClaudeCliPath() {
     } catch (e) {
         // npm root -g failed
     }
+    return null;
+}
+
+/**
+ * Find path to Homebrew installed Claude Code CLI
+ * @returns {string|null} Path to cli.js or binary, or null if not found
+ */
+function findHomebrewCliPath() {
+    if (process.platform !== 'darwin' && process.platform !== 'linux') {
+        return null;
+    }
+    
+    // Try to get Homebrew prefix via command first
+    let brewPrefix = null;
+    try {
+        brewPrefix = execSync('brew --prefix 2>/dev/null', { encoding: 'utf8' }).trim();
+    } catch (e) {
+        // brew command not in PATH, try standard locations
+    }
+    
+    // Standard Homebrew locations to check
+    const possiblePrefixes = [];
+    if (brewPrefix) {
+        possiblePrefixes.push(brewPrefix);
+    }
+    
+    // Add standard locations based on platform
+    if (process.platform === 'darwin') {
+        // macOS: Intel (/usr/local) or Apple Silicon (/opt/homebrew)
+        possiblePrefixes.push('/opt/homebrew', '/usr/local');
+    } else if (process.platform === 'linux') {
+        // Linux: system-wide or user installation
+        const homeDir = os.homedir();
+        possiblePrefixes.push('/home/linuxbrew/.linuxbrew', path.join(homeDir, '.linuxbrew'));
+    }
+    
+    // Check each possible prefix
+    for (const prefix of possiblePrefixes) {
+        if (!fs.existsSync(prefix)) {
+            continue;
+        }
+        
+        // Homebrew installs claude-code as a Cask (binary) in Caskroom
+        const caskroomPath = path.join(prefix, 'Caskroom', 'claude-code');
+        if (fs.existsSync(caskroomPath)) {
+            const versions = fs.readdirSync(caskroomPath).filter(v => {
+                const versionPath = path.join(caskroomPath, v);
+                return fs.statSync(versionPath).isDirectory();
+            });
+            if (versions.length > 0) {
+                // Get the latest version
+                const latestVersion = versions.sort().reverse()[0];
+                const binaryPath = path.join(caskroomPath, latestVersion, 'claude');
+                if (fs.existsSync(binaryPath)) {
+                    return binaryPath;
+                }
+            }
+        }
+        
+        // Also check Cellar (for formula installations, though claude-code is usually a Cask)
+        const cellarPath = path.join(prefix, 'Cellar', 'claude-code');
+        if (fs.existsSync(cellarPath)) {
+            const versions = fs.readdirSync(cellarPath).filter(v => {
+                const versionPath = path.join(cellarPath, v);
+                return fs.statSync(versionPath).isDirectory();
+            });
+            if (versions.length > 0) {
+                const latestVersion = versions.sort().reverse()[0];
+                // Check for cli.js in libexec (npm package structure)
+                const cliPath = path.join(cellarPath, latestVersion, 'libexec', 'lib', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+                if (fs.existsSync(cliPath)) {
+                    return cliPath;
+                }
+            }
+        }
+        
+        // Check bin directory for symlink (most reliable)
+        const binPath = path.join(prefix, 'bin', 'claude');
+        if (fs.existsSync(binPath)) {
+            // Resolve symlink to actual file
+            try {
+                const resolvedPath = fs.realpathSync(binPath);
+                if (fs.existsSync(resolvedPath)) {
+                    return resolvedPath;
+                }
+            } catch (e) {
+                // Symlink resolution failed, try direct path
+                if (fs.existsSync(binPath)) {
+                    return binPath;
+                }
+            }
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Find path to native installer Claude Code CLI
+ * 
+ * Installation locations:
+ * - macOS/Linux: ~/.local/bin/claude (symlink) -> ~/.local/share/claude/versions/<version>
+ * - Windows: %LOCALAPPDATA%\Claude\ or %USERPROFILE%\.claude\
+ * - Legacy: ~/.claude/local/
+ * 
+ * @returns {string|null} Path to cli.js or binary, or null if not found
+ */
+function findNativeInstallerCliPath() {
+    const homeDir = os.homedir();
+    
+    // Windows-specific locations
+    if (process.platform === 'win32') {
+        const localAppData = process.env.LOCALAPPDATA || path.join(homeDir, 'AppData', 'Local');
+        
+        // Check %LOCALAPPDATA%\Claude\
+        const windowsClaudePath = path.join(localAppData, 'Claude');
+        if (fs.existsSync(windowsClaudePath)) {
+            // Check for versions directory
+            const versionsDir = path.join(windowsClaudePath, 'versions');
+            if (fs.existsSync(versionsDir)) {
+                const found = findLatestVersionBinary(versionsDir);
+                if (found) return found;
+            }
+            
+            // Check for claude.exe directly
+            const exePath = path.join(windowsClaudePath, 'claude.exe');
+            if (fs.existsSync(exePath)) {
+                return exePath;
+            }
+            
+            // Check for cli.js
+            const cliPath = path.join(windowsClaudePath, 'cli.js');
+            if (fs.existsSync(cliPath)) {
+                return cliPath;
+            }
+        }
+        
+        // Check %USERPROFILE%\.claude\ (alternative Windows location)
+        const dotClaudePath = path.join(homeDir, '.claude');
+        if (fs.existsSync(dotClaudePath)) {
+            const versionsDir = path.join(dotClaudePath, 'versions');
+            if (fs.existsSync(versionsDir)) {
+                const found = findLatestVersionBinary(versionsDir);
+                if (found) return found;
+            }
+            
+            const exePath = path.join(dotClaudePath, 'claude.exe');
+            if (fs.existsSync(exePath)) {
+                return exePath;
+            }
+        }
+    }
+    
+    // Check ~/.local/bin/claude symlink (most common location on macOS/Linux)
+    const localBinPath = path.join(homeDir, '.local', 'bin', 'claude');
+    if (fs.existsSync(localBinPath)) {
+        try {
+            // Resolve symlink to actual file
+            const resolvedPath = fs.realpathSync(localBinPath);
+            if (fs.existsSync(resolvedPath)) {
+                return resolvedPath;
+            }
+        } catch (e) {
+            // Symlink resolution failed, try direct path
+            if (fs.existsSync(localBinPath)) {
+                return localBinPath;
+            }
+        }
+    }
+    
+    // Check ~/.local/share/claude/versions/ (native installer location)
+    const versionsDir = path.join(homeDir, '.local', 'share', 'claude', 'versions');
+    if (fs.existsSync(versionsDir)) {
+        const found = findLatestVersionBinary(versionsDir);
+        if (found) return found;
+    }
+    
+    // Check ~/.claude/local/ (older installation method)
+    const nativeBasePath = path.join(homeDir, '.claude', 'local');
+    if (fs.existsSync(nativeBasePath)) {
+        // Look for the cli.js in the node_modules structure
+        const cliPath = path.join(nativeBasePath, 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
+        if (fs.existsSync(cliPath)) {
+            return cliPath;
+        }
+        
+        // Alternative: direct cli.js in the installation
+        const directCliPath = path.join(nativeBasePath, 'cli.js');
+        if (fs.existsSync(directCliPath)) {
+            return directCliPath;
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Helper to find the latest version binary in a versions directory
+ * @param {string} versionsDir - Path to versions directory
+ * @returns {string|null} Path to binary or null
+ */
+function findLatestVersionBinary(versionsDir) {
+    try {
+        const versions = fs.readdirSync(versionsDir).filter(v => {
+            const versionPath = path.join(versionsDir, v);
+            return fs.statSync(versionPath).isFile() || fs.statSync(versionPath).isDirectory();
+        });
+        if (versions.length > 0) {
+            // Get the latest version (sort by version number)
+            const latestVersion = versions.sort().reverse()[0];
+            const versionPath = path.join(versionsDir, latestVersion);
+            
+            // Check if it's a file (binary) or directory
+            const stat = fs.statSync(versionPath);
+            if (stat.isFile()) {
+                return versionPath;
+            } else if (stat.isDirectory()) {
+                // Check for executable or cli.js inside directory
+                const exePath = path.join(versionPath, process.platform === 'win32' ? 'claude.exe' : 'claude');
+                if (fs.existsSync(exePath)) {
+                    return exePath;
+                }
+                const cliPath = path.join(versionPath, 'cli.js');
+                if (fs.existsSync(cliPath)) {
+                    return cliPath;
+                }
+            }
+        }
+    } catch (e) {
+        // Directory read failed
+    }
+    return null;
+}
+
+/**
+ * Find path to globally installed Claude Code CLI
+ * Checks multiple installation methods in order of preference:
+ * 1. npm global (highest priority)
+ * 2. Homebrew
+ * 3. Native installer
+ * @returns {{path: string, source: string}|null} Path and source, or null if not found
+ */
+function findGlobalClaudeCliPath() {
+    // Check npm global first (highest priority)
+    const npmPath = findNpmGlobalCliPath();
+    if (npmPath) return { path: npmPath, source: 'npm' };
+
+    // Check Homebrew installation
+    const homebrewPath = findHomebrewCliPath();
+    if (homebrewPath) return { path: homebrewPath, source: 'Homebrew' };
+
+    // Check native installer
+    const nativePath = findNativeInstallerCliPath();
+    if (nativePath) return { path: nativePath, source: 'native installer' };
+
     return null;
 }
 
@@ -63,24 +327,34 @@ function compareVersions(a, b) {
  * @throws {Error} If no global installation found
  */
 function getClaudeCliPath() {
-    const globalCliPath = findGlobalClaudeCliPath();
-    if (!globalCliPath) {
-        console.error('\n\x1b[31m╔════════════════════════════════════════════════════════════╗\x1b[0m');
-        console.error('\x1b[31m║\x1b[0m  \x1b[1m\x1b[33mClaude Code is not installed globally\x1b[0m                      \x1b[31m║\x1b[0m');
-        console.error('\x1b[31m╠════════════════════════════════════════════════════════════╣\x1b[0m');
-        console.error('\x1b[31m║\x1b[0m                                                            \x1b[31m║\x1b[0m');
-        console.error('\x1b[31m║\x1b[0m  Please install Claude Code:                               \x1b[31m║\x1b[0m');
-        console.error('\x1b[31m║\x1b[0m                                                            \x1b[31m║\x1b[0m');
-        console.error('\x1b[31m║\x1b[0m  \x1b[36mnpm install -g @anthropic-ai/claude-code\x1b[0m                 \x1b[31m║\x1b[0m');
-        console.error('\x1b[31m║\x1b[0m                                                            \x1b[31m║\x1b[0m');
-        console.error('\x1b[31m╚════════════════════════════════════════════════════════════╝\x1b[0m\n');
+    const result = findGlobalClaudeCliPath();
+    if (!result) {
+        console.error('\n\x1b[1m\x1b[33mClaude Code is not installed\x1b[0m\n');
+        console.error('Please install Claude Code using one of these methods:\n');
+        console.error('\x1b[1mOption 1 - npm (recommended, highest priority):\x1b[0m');
+        console.error('  \x1b[36mnpm install -g @anthropic-ai/claude-code\x1b[0m\n');
+        console.error('\x1b[1mOption 2 - Homebrew (macOS/Linux):\x1b[0m');
+        console.error('  \x1b[36mbrew install claude-code\x1b[0m\n');
+        console.error('\x1b[1mOption 3 - Native installer:\x1b[0m');
+        console.error('  \x1b[90mmacOS/Linux:\x1b[0m  \x1b[36mcurl -fsSL https://claude.ai/install.sh | bash\x1b[0m');
+        console.error('  \x1b[90mPowerShell:\x1b[0m   \x1b[36mirm https://claude.ai/install.ps1 | iex\x1b[0m');
+        console.error('  \x1b[90mWindows CMD:\x1b[0m  \x1b[36mcurl -fsSL https://claude.ai/install.cmd -o install.cmd && install.cmd && del install.cmd\x1b[0m\n');
+        console.error('\x1b[90mNote: If multiple installations exist, npm takes priority.\x1b[0m\n');
         process.exit(1);
     }
-    return globalCliPath;
+
+    const version = getVersion(result.path);
+    const versionStr = version ? ` v${version}` : '';
+    console.error(`\x1b[90mUsing Claude Code${versionStr} from ${result.source}\x1b[0m`);
+
+    return result.path;
 }
 
 module.exports = {
     findGlobalClaudeCliPath,
+    findNpmGlobalCliPath,
+    findHomebrewCliPath,
+    findNativeInstallerCliPath,
     getVersion,
     compareVersions,
     getClaudeCliPath
