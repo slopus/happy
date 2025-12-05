@@ -17,6 +17,21 @@ const fs = require('fs');
 const os = require('os');
 
 /**
+ * Safely resolve symlink or return path if it exists
+ * @param {string} filePath - Path to resolve
+ * @returns {string|null} Resolved path or null if not found
+ */
+function resolvePathSafe(filePath) {
+    if (!fs.existsSync(filePath)) return null;
+    try {
+        return fs.realpathSync(filePath);
+    } catch (e) {
+        // Symlink resolution failed, return original path
+        return filePath;
+    }
+}
+
+/**
  * Find path to npm globally installed Claude Code CLI
  * @returns {string|null} Path to cli.js or null if not found
  */
@@ -75,30 +90,18 @@ function findHomebrewCliPath() {
         // Homebrew installs claude-code as a Cask (binary) in Caskroom
         const caskroomPath = path.join(prefix, 'Caskroom', 'claude-code');
         if (fs.existsSync(caskroomPath)) {
-            const versions = fs.readdirSync(caskroomPath).filter(v => {
-                const versionPath = path.join(caskroomPath, v);
-                return fs.statSync(versionPath).isDirectory();
-            });
-            if (versions.length > 0) {
-                // Get the latest version
-                const latestVersion = versions.sort().reverse()[0];
-                const binaryPath = path.join(caskroomPath, latestVersion, 'claude');
-                if (fs.existsSync(binaryPath)) {
-                    return binaryPath;
-                }
-            }
+            const found = findLatestVersionBinary(caskroomPath, 'claude');
+            if (found) return found;
         }
         
         // Also check Cellar (for formula installations, though claude-code is usually a Cask)
         const cellarPath = path.join(prefix, 'Cellar', 'claude-code');
         if (fs.existsSync(cellarPath)) {
-            const versions = fs.readdirSync(cellarPath).filter(v => {
-                const versionPath = path.join(cellarPath, v);
-                return fs.statSync(versionPath).isDirectory();
-            });
-            if (versions.length > 0) {
-                const latestVersion = versions.sort().reverse()[0];
-                // Check for cli.js in libexec (npm package structure)
+            // Cellar has different structure - check for cli.js in libexec
+            const entries = fs.readdirSync(cellarPath);
+            if (entries.length > 0) {
+                const sorted = entries.sort((a, b) => compareVersions(b, a));
+                const latestVersion = sorted[0];
                 const cliPath = path.join(cellarPath, latestVersion, 'libexec', 'lib', 'node_modules', '@anthropic-ai', 'claude-code', 'cli.js');
                 if (fs.existsSync(cliPath)) {
                     return cliPath;
@@ -108,20 +111,8 @@ function findHomebrewCliPath() {
         
         // Check bin directory for symlink (most reliable)
         const binPath = path.join(prefix, 'bin', 'claude');
-        if (fs.existsSync(binPath)) {
-            // Resolve symlink to actual file
-            try {
-                const resolvedPath = fs.realpathSync(binPath);
-                if (fs.existsSync(resolvedPath)) {
-                    return resolvedPath;
-                }
-            } catch (e) {
-                // Symlink resolution failed, try direct path
-                if (fs.existsSync(binPath)) {
-                    return binPath;
-                }
-            }
-        }
+        const resolvedBinPath = resolvePathSafe(binPath);
+        if (resolvedBinPath) return resolvedBinPath;
     }
     
     return null;
@@ -185,20 +176,8 @@ function findNativeInstallerCliPath() {
     
     // Check ~/.local/bin/claude symlink (most common location on macOS/Linux)
     const localBinPath = path.join(homeDir, '.local', 'bin', 'claude');
-    if (fs.existsSync(localBinPath)) {
-        try {
-            // Resolve symlink to actual file
-            const resolvedPath = fs.realpathSync(localBinPath);
-            if (fs.existsSync(resolvedPath)) {
-                return resolvedPath;
-            }
-        } catch (e) {
-            // Symlink resolution failed, try direct path
-            if (fs.existsSync(localBinPath)) {
-                return localBinPath;
-            }
-        }
-    }
+    const resolvedLocalBinPath = resolvePathSafe(localBinPath);
+    if (resolvedLocalBinPath) return resolvedLocalBinPath;
     
     // Check ~/.local/share/claude/versions/ (native installer location)
     const versionsDir = path.join(homeDir, '.local', 'share', 'claude', 'versions');
@@ -229,33 +208,39 @@ function findNativeInstallerCliPath() {
 /**
  * Helper to find the latest version binary in a versions directory
  * @param {string} versionsDir - Path to versions directory
+ * @param {string} [binaryName] - Optional binary name to look for inside version directory
  * @returns {string|null} Path to binary or null
  */
-function findLatestVersionBinary(versionsDir) {
+function findLatestVersionBinary(versionsDir, binaryName = null) {
     try {
-        const versions = fs.readdirSync(versionsDir).filter(v => {
-            const versionPath = path.join(versionsDir, v);
-            return fs.statSync(versionPath).isFile() || fs.statSync(versionPath).isDirectory();
-        });
-        if (versions.length > 0) {
-            // Get the latest version (sort by version number)
-            const latestVersion = versions.sort().reverse()[0];
-            const versionPath = path.join(versionsDir, latestVersion);
-            
-            // Check if it's a file (binary) or directory
-            const stat = fs.statSync(versionPath);
-            if (stat.isFile()) {
-                return versionPath;
-            } else if (stat.isDirectory()) {
-                // Check for executable or cli.js inside directory
-                const exePath = path.join(versionPath, process.platform === 'win32' ? 'claude.exe' : 'claude');
-                if (fs.existsSync(exePath)) {
-                    return exePath;
+        const entries = fs.readdirSync(versionsDir);
+        if (entries.length === 0) return null;
+        
+        // Sort using semver comparison (descending)
+        const sorted = entries.sort((a, b) => compareVersions(b, a));
+        const latestVersion = sorted[0];
+        const versionPath = path.join(versionsDir, latestVersion);
+        
+        // Check if it's a file (binary) or directory
+        const stat = fs.statSync(versionPath);
+        if (stat.isFile()) {
+            return versionPath;
+        } else if (stat.isDirectory()) {
+            // If specific binary name provided, check for it
+            if (binaryName) {
+                const binaryPath = path.join(versionPath, binaryName);
+                if (fs.existsSync(binaryPath)) {
+                    return binaryPath;
                 }
-                const cliPath = path.join(versionPath, 'cli.js');
-                if (fs.existsSync(cliPath)) {
-                    return cliPath;
-                }
+            }
+            // Check for executable or cli.js inside directory
+            const exePath = path.join(versionPath, process.platform === 'win32' ? 'claude.exe' : 'claude');
+            if (fs.existsSync(exePath)) {
+                return exePath;
+            }
+            const cliPath = path.join(versionPath, 'cli.js');
+            if (fs.existsSync(cliPath)) {
+                return cliPath;
             }
         }
     } catch (e) {
@@ -350,6 +335,36 @@ function getClaudeCliPath() {
     return result.path;
 }
 
+/**
+ * Run Claude CLI, handling both JavaScript and binary files
+ * @param {string} cliPath - Path to CLI (from getClaudeCliPath)
+ */
+function runClaudeCli(cliPath) {
+    const { pathToFileURL } = require('url');
+    const { spawn } = require('child_process');
+    
+    // Check if it's a JavaScript file (.js or .cjs) or a binary file
+    const isJsFile = cliPath.endsWith('.js') || cliPath.endsWith('.cjs');
+
+    if (isJsFile) {
+        // JavaScript file - use import to keep interceptors working
+        const importUrl = pathToFileURL(cliPath).href;
+        import(importUrl);
+    } else {
+        // Binary file (e.g., Homebrew installation) - spawn directly
+        // Note: Interceptors won't work with binary files, but that's acceptable
+        // as binary files are self-contained and don't need interception
+        const args = process.argv.slice(2);
+        const child = spawn(cliPath, args, {
+            stdio: 'inherit',
+            env: process.env
+        });
+        child.on('exit', (code) => {
+            process.exit(code || 0);
+        });
+    }
+}
+
 module.exports = {
     findGlobalClaudeCliPath,
     findNpmGlobalCliPath,
@@ -357,6 +372,7 @@ module.exports = {
     findNativeInstallerCliPath,
     getVersion,
     compareVersions,
-    getClaudeCliPath
+    getClaudeCliPath,
+    runClaudeCli
 };
 
