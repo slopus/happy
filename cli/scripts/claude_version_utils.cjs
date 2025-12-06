@@ -9,6 +9,7 @@
  *    - macOS/Linux: curl -fsSL https://claude.ai/install.sh | bash
  *    - PowerShell:  irm https://claude.ai/install.ps1 | iex
  *    - Windows CMD: curl -fsSL https://claude.ai/install.cmd | cmd
+ * 4. PATH fallback: bun, pnpm, or any other package manager
  */
 
 const { execSync } = require('child_process');
@@ -250,6 +251,26 @@ function findLatestVersionBinary(versionsDir, binaryName = null) {
 }
 
 /**
+ * Find path to Claude Code CLI using system PATH lookup (which/where)
+ * This serves as a fallback for non-standard installations (e.g., bun, pnpm)
+ * @returns {string|null} Path to claude binary, or null if not found
+ */
+function findWhichCliPath() {
+    try {
+        const cmd = process.platform === 'win32' ? 'where claude' : 'which claude';
+        const result = execSync(cmd, { encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
+        // which/where may return multiple lines, take the first
+        const firstPath = result.split('\n')[0].trim();
+        if (firstPath && fs.existsSync(firstPath)) {
+            return resolvePathSafe(firstPath) || firstPath;
+        }
+    } catch (e) {
+        // which/where command failed (claude not in PATH)
+    }
+    return null;
+}
+
+/**
  * Find path to globally installed Claude Code CLI
  * Checks multiple installation methods in order of preference:
  * 1. npm global (highest priority)
@@ -269,6 +290,10 @@ function findGlobalClaudeCliPath() {
     // Check native installer
     const nativePath = findNativeInstallerCliPath();
     if (nativePath) return { path: nativePath, source: 'native installer' };
+
+    // Fallback: use which/where to find claude in PATH
+    const whichPath = findWhichCliPath();
+    if (whichPath) return { path: whichPath, source: 'PATH' };
 
     return null;
 }
