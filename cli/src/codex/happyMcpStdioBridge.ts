@@ -48,7 +48,7 @@ async function main() {
     if (httpClient) return httpClient;
     const client = new Client(
       { name: 'happy-stdio-bridge', version: '1.0.0' },
-      { capabilities: { tools: {} } }
+      { capabilities: {} }
     );
 
     const transport = new StreamableHTTPClientTransport(new URL(baseUrl));
@@ -61,7 +61,6 @@ async function main() {
   const server = new McpServer({
     name: 'Happy MCP Bridge',
     version: '1.0.0',
-    description: 'STDIO bridge forwarding to Happy HTTP MCP',
   });
 
   // Register the single tool and forward to HTTP MCP

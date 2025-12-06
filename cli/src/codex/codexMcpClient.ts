@@ -55,7 +55,7 @@ export class CodexMcpClient {
     constructor() {
         this.client = new Client(
             { name: 'happy-codex-client', version: '1.0.0' },
-            { capabilities: { tools: {}, elicitation: {} } }
+            { capabilities: { elicitation: {} } }
         );
 
         this.client.setNotificationHandler(z.object({
