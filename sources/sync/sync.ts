@@ -1398,11 +1398,12 @@ class Sync {
     private fetchMessages = async (sessionId: string) => {
         log.log(`💬 fetchMessages starting for session ${sessionId} - acquiring lock`);
 
-        // Get encryption
+        // Get encryption - may not be ready yet if session was just created
+        // Throwing an error triggers backoff retry in InvalidateSync
         const encryption = this.encryption.getSessionEncryption(sessionId);
-        if (!encryption) { // Should never happen
-            console.error(`Session ${sessionId} not found`);
-            return;
+        if (!encryption) {
+            log.log(`💬 fetchMessages: Session encryption not ready for ${sessionId}, will retry`);
+            throw new Error(`Session encryption not ready for ${sessionId}`);
         }
 
         // Request
