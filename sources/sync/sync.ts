@@ -1639,6 +1639,15 @@ class Sync {
                         const toolName = firstRequest?.tool;
                         voiceHooks.onPermissionRequested(updateData.body.id, requestIds[0], toolName, firstRequest?.arguments);
                     }
+
+                    // Re-fetch messages when control returns to mobile (local -> remote mode switch)
+                    // This catches up on any messages that were exchanged while desktop had control
+                    const wasControlledByUser = session.agentState?.controlledByUser;
+                    const isNowControlledByUser = agentState?.controlledByUser;
+                    if (!wasControlledByUser && isNowControlledByUser) {
+                        log.log(`🔄 Control returned to mobile for session ${updateData.body.id}, re-fetching messages`);
+                        this.onSessionVisible(updateData.body.id);
+                    }
                 }
             }
         } else if (updateData.body.t === 'update-account') {
