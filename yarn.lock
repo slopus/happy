@@ -7601,10 +7601,10 @@ react-native-localize@^3.5.1:
   resolved "https://registry.yarnpkg.com/react-native-localize/-/react-native-localize-3.5.1.tgz#d74dba8d3e7763031a731b2c96cc225c9ea81ff2"
   integrity sha512-AX2soRR1/BCK2GvzjIpH+0EQaR2acfojFtjAstnYBFPR7ThIQx5Xb+OlqpzYxcYTPDxIcU5i4/yMa23Agy7p8g==
 
-react-native-mmkv@^3.3.0:
-  version "3.3.0"
-  resolved "https://registry.yarnpkg.com/react-native-mmkv/-/react-native-mmkv-3.3.0.tgz#a0816babdf68afd2bfd881a48e28c8815795286b"
-  integrity sha512-2iPjIJ+IAODXN35wm53EN6nv+hR/0NXLLiLWOdPA/0gXDB2dYVrr6MqvoiFpxhLhdj0B8fkf5ARNVavJaSvuuQ==
+react-native-mmkv@^3.3.3:
+  version "3.3.3"
+  resolved "https://registry.yarnpkg.com/react-native-mmkv/-/react-native-mmkv-3.3.3.tgz#1f0326f6314e23725af8145964343224d074e6cd"
+  integrity sha512-GMsfOmNzx0p5+CtrCFRVtpOOMYNJXuksBVARSQrCFaZwjUyHJdQzcN900GGaFFNTxw2fs8s5Xje//RDKj9+PZA==
 
 react-native-nitro-modules@0.28.0:
   version "0.28.0"
@@ -7700,10 +7700,10 @@ react-native-view-shot@4.0.3:
   dependencies:
     html2canvas "^1.4.1"
 
-react-native-vision-camera@^4.7.1:
-  version "4.7.1"
-  resolved "https://registry.yarnpkg.com/react-native-vision-camera/-/react-native-vision-camera-4.7.1.tgz#4a373e8d2ebad4d652eb0de1a50e620940a074dd"
-  integrity sha512-N6qqjhUSC9XRUQzqx+647+sPsrf9FcEYGjRhif1WNy2z8AwPMOSLINIcmMM6C4drxH2CdiaULGAWHpx/cnsBpw==
+react-native-vision-camera@^4.7.3:
+  version "4.7.3"
+  resolved "https://registry.yarnpkg.com/react-native-vision-camera/-/react-native-vision-camera-4.7.3.tgz#ed03cedabcaec54774f5aa40e69afa30069924d4"
+  integrity sha512-g1/neOyjSqn1kaAa2FxI/qp5KzNvPcF0bnQw6NntfbxH6tm0+8WFZszlgb5OV+iYlB6lFUztCbDtyz5IpL47OA==
 
 react-native-web@^0.21.0:
   version "0.21.1"
