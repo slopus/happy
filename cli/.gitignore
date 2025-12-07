@@ -28,3 +28,6 @@ pnpm-lock.yaml
 
 **/*.log
 .release-notes-temp.md
+
+# Git worktrees for isolated branch work
+.worktrees/
