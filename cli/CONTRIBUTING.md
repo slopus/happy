@@ -1,8 +1,53 @@
 # Contributing to Happy CLI
 
-## Development Setup: Stable & Dev Versions
+## Prerequisites
 
-## Quick Start
+- Node.js >= 20.0.0
+- Yarn (`npm install -g yarn`)
+- Git
+- Claude CLI installed and logged in (`claude` command available in PATH)
+
+## Getting Started
+
+```bash
+git clone https://github.com/slopus/happy-cli.git
+cd happy-cli
+yarn install
+yarn build
+```
+
+## Development Commands
+
+### Global `happy-dev` Command
+
+Create a global `happy-dev` command that runs your local development build:
+
+```bash
+yarn link:dev      # Create happy-dev symlink
+yarn unlink:dev    # Remove happy-dev symlink
+```
+
+This creates a `happy-dev` command in your PATH pointing to your local build, while leaving any npm-installed `happy` command untouched.
+
+| Command | Runs |
+|---------|------|
+| `happy` | Stable npm version (from `npm install -g happy-coder`) |
+| `happy-dev` | Local development version (from this repo) |
+
+**Note:** Run `yarn build` before `yarn link:dev` to ensure the binary exists.
+
+### Build Commands
+
+```bash
+yarn build         # Build the project
+yarn typecheck     # TypeScript type checking
+yarn test          # Run tests
+yarn dev           # Run without building (uses tsx)
+```
+
+## Stable vs Dev Data Isolation
+
+The CLI supports running stable and development versions side-by-side with completely isolated data.
 
 ### Initial Setup (Once)
 
@@ -148,6 +193,16 @@ npm run stable:daemon:status   # Shows ~/.happy/ data location
 npm run dev:daemon:status       # Shows ~/.happy-dev/ data location
 ```
 
+### `yarn link:dev` fails with permission denied?
+```bash
+sudo yarn link:dev
+```
+
+### `happy-dev` command not found after linking?
+- Ensure your global npm bin is in PATH: `npm bin -g`
+- Try opening a new terminal window
+- Check the symlink was created: `ls -la $(npm bin -g)/happy-dev`
+
 ## Tips
 
 1. **Use stable for production work** - Your tested, reliable version
@@ -160,6 +215,9 @@ npm run dev:daemon:status       # Shows ~/.happy-dev/ data location
 
 ```bash
 # Initial setup (once)
+yarn install
+yarn build
+yarn link:dev
 npm run setup:dev
 
 # Authenticate both
@@ -259,3 +317,17 @@ When modifying profile schemas:
 - Reference variable must be set in daemon's process.env
 - Check daemon logs for expansion warnings
 - Verify no typos in ${VAR} references
+
+## Publishing to npm
+
+Maintainers can publish new versions:
+
+```bash
+yarn release       # Interactive version bump, changelog, publish
+```
+
+This runs tests, builds, and publishes to npm. The published package includes:
+- `happy` - Main CLI command
+- `happy-mcp` - MCP bridge command
+
+**Note:** `happy-dev` is intentionally excluded from the npm package - it's for local development only.
