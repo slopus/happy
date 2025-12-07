@@ -41,6 +41,8 @@ import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
 
 class Sync {
+    // Spawned agents (especially in spawn mode) can take noticeable time to connect.
+    private static readonly SESSION_READY_TIMEOUT_MS = 10000;
 
     encryption!: Encryption;
     serverID!: string;
@@ -50,6 +52,13 @@ class Sync {
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
+    private sessionReady = new Set<string>();
+    private sessionReadyPromises = new Map<string, {
+        promise: Promise<boolean>;
+        resolve: (ready: boolean) => void;
+        timeoutId: ReturnType<typeof setTimeout>;
+        startedAt: number;
+    }>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
@@ -143,6 +152,13 @@ class Sync {
     }
 
     async #init() {
+
+        // Reset readiness tracking on init
+        this.sessionReady.clear();
+        for (const [, waiter] of this.sessionReadyPromises) {
+            clearTimeout(waiter.timeoutId);
+        }
+        this.sessionReadyPromises.clear();
 
         // Subscribe to updates
         this.subscribeToUpdates();
@@ -295,6 +311,11 @@ class Sync {
         const normalizedMessage = normalizeRawMessage(localId, localId, createdAt, content);
         if (normalizedMessage) {
             this.applyMessages(sessionId, [normalizedMessage]);
+        }
+
+        const ready = await this.waitForSessionReady(sessionId);
+        if (!ready) {
+            log.log(`Session ${sessionId} not ready after timeout, sending anyway`);
         }
 
         // Send message with optional permission mode and source identifier
@@ -1591,6 +1612,16 @@ class Sync {
             // Remove encryption keys from memory
             this.encryption.removeSessionEncryption(sessionId);
             
+            // Clear readiness tracking for the session
+            this.sessionReady.delete(sessionId);
+            const waiter = this.sessionReadyPromises.get(sessionId);
+            if (waiter) {
+                clearTimeout(waiter.timeoutId);
+                log.log(`⚠️ Resolving pending readiness wait as false due to session deletion: ${sessionId}`);
+                waiter.resolve(false);
+                this.sessionReadyPromises.delete(sessionId);
+            }
+            
             // Remove from project manager
             projectManager.removeSession(sessionId);
             
@@ -1650,6 +1681,10 @@ class Sync {
                         this.onSessionVisible(updateData.body.id);
                     }
                 }
+
+                // Receiving an update-session means the agent/server is communicating; treat as ready
+                log.log(`update-session received for ${updateData.body.id}, marking ready`);
+                this.markSessionReady(updateData.body.id);
             }
         } else if (updateData.body.t === 'update-account') {
             const accountUpdate = updateData.body;
@@ -1978,6 +2013,10 @@ class Sync {
                 m.push(message);
             }
         }
+        if (result.hasReadyEvent) {
+            log.log(`Ready event detected for ${sessionId}, marking ready`);
+            this.markSessionReady(sessionId);
+        }
         if (m.length > 0) {
             voiceHooks.onMessages(sessionId, m);
         }
@@ -2008,6 +2047,70 @@ class Sync {
                 voiceHooks.onSessionOnline(s.id, s.metadata ?? undefined);
             }
         }
+    }
+
+    private markSessionReady = (sessionId: string) => {
+        if (this.sessionReady.has(sessionId)) {
+            return;
+        }
+        this.sessionReady.add(sessionId);
+        const waiter = this.sessionReadyPromises.get(sessionId);
+        log.log(`Session ready: ${sessionId}`);
+        if (waiter) {
+            clearTimeout(waiter.timeoutId);
+            this.sessionReadyPromises.delete(sessionId);
+            waiter.resolve(true);
+        }
+    }
+
+    private async waitForSessionReady(sessionId: string, timeoutMs: number = Sync.SESSION_READY_TIMEOUT_MS): Promise<boolean> {
+        if (this.sessionReady.has(sessionId)) {
+            log.log(`Session ${sessionId} already marked ready`);
+            return true;
+        }
+
+        const existing = this.sessionReadyPromises.get(sessionId);
+        if (existing) {
+            log.log(`Reusing pending wait for session ${sessionId} (started ${Date.now() - existing.startedAt}ms ago)`);
+            return existing.promise;
+        }
+
+        const startedAt = Date.now();
+        log.log(`Waiting for session ready: ${sessionId}, timeout ${timeoutMs}ms`);
+
+        let resolveFn: ((ready: boolean) => void) | null = null;
+
+        const promise = new Promise<boolean>((resolve) => {
+            resolveFn = (ready) => {
+                const duration = Date.now() - startedAt;
+                log.log(`waitForSessionReady resolved for ${sessionId} (duration=${duration}ms)`);
+                resolve(ready);
+            };
+        });
+
+        const timeoutId = setTimeout(() => {
+            this.sessionReadyPromises.delete(sessionId);
+            resolveFn?.(false);
+        }, timeoutMs);
+
+        this.sessionReadyPromises.set(sessionId, {
+            promise,
+            resolve: (ready) => {
+                clearTimeout(timeoutId);
+                this.sessionReadyPromises.delete(sessionId);
+                resolveFn?.(ready);
+            },
+            timeoutId,
+            startedAt
+        });
+
+        // If ready was set between checks, resolve immediately
+        if (this.sessionReady.has(sessionId)) {
+            const waiter = this.sessionReadyPromises.get(sessionId);
+            waiter?.resolve(true);
+        }
+
+        return promise;
     }
 }
 
