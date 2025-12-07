@@ -83,6 +83,7 @@ interface StorageState {
     feedLoaded: boolean;  // True after initial feed fetch
     friendsLoaded: boolean;  // True after initial friends fetch
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+    realtimeMicMuted: boolean;
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
@@ -106,6 +107,8 @@ interface StorageState {
     applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
+    setRealtimeMicMuted: (muted: boolean) => void;
+    toggleRealtimeMicMuted: () => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
@@ -267,6 +270,7 @@ export const storage = create<StorageState>()((set, get) => {
         sessionMessages: {},
         sessionGitStatus: {},
         realtimeStatus: 'disconnected',
+        realtimeMicMuted: false,
         socketStatus: 'disconnected',
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
@@ -684,7 +688,17 @@ export const storage = create<StorageState>()((set, get) => {
         })),
         setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => ({
             ...state,
-            realtimeStatus: status
+            realtimeStatus: status,
+            // Reset mic muted state when disconnecting
+            realtimeMicMuted: status === 'disconnected' ? false : state.realtimeMicMuted
+        })),
+        setRealtimeMicMuted: (muted: boolean) => set((state) => ({
+            ...state,
+            realtimeMicMuted: muted
+        })),
+        toggleRealtimeMicMuted: () => set((state) => ({
+            ...state,
+            realtimeMicMuted: !state.realtimeMicMuted
         })),
         setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => {
             const now = Date.now();
@@ -1195,6 +1209,10 @@ export function useEntitlement(id: KnownEntitlements): boolean {
 
 export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected' | 'error' {
     return storage(useShallow((state) => state.realtimeStatus));
+}
+
+export function useRealtimeMicMuted(): boolean {
+    return storage(useShallow((state) => state.realtimeMicMuted));
 }
 
 export function useSocketStatus() {

@@ -29,6 +29,10 @@ export const SettingsSchema = z.object({
     lastUsedAgent: z.string().nullable().describe('Last selected agent type for new sessions'),
     lastUsedPermissionMode: z.string().nullable().describe('Last selected permission mode for new sessions'),
     lastUsedModelMode: z.string().nullable().describe('Last selected model mode for new sessions'),
+    // ElevenLabs voice assistant configuration
+    elevenLabsUseCustomAgent: z.boolean().describe('Whether to use custom ElevenLabs agent instead of production default'),
+    elevenLabsAgentId: z.string().nullable().describe('Custom ElevenLabs agent ID (when useCustomAgent is true)'),
+    elevenLabsApiKey: z.string().nullable().describe('Custom ElevenLabs API key (when useCustomAgent is true)'),
 });
 
 //
@@ -72,6 +76,9 @@ export const settingsDefaults: Settings = {
     lastUsedAgent: null,
     lastUsedPermissionMode: null,
     lastUsedModelMode: null,
+    elevenLabsUseCustomAgent: false,
+    elevenLabsAgentId: null,
+    elevenLabsApiKey: null,
 };
 Object.freeze(settingsDefaults);
 

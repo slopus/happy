@@ -547,7 +547,38 @@ export const ru: TranslationStructure = {
             title: 'Языки',
             footer: ({ count }: { count: number }) => `Доступно ${count} ${plural({ count, one: 'язык', few: 'языка', many: 'языков' })}`,
             autoDetect: 'Автоопределение',
-        }
+        },
+        // ElevenLabs configuration
+        elevenLabsTitle: 'Настройка ElevenLabs',
+        elevenLabsDescription: 'Настройте своего голосового агента ElevenLabs. Используйте стандартный рабочий агент или подключите свой собственный.',
+        useCustomAgent: 'Использовать Пользовательский Агент',
+        useCustomAgentSubtitle: 'Подключите своего собственного агента ElevenLabs вместо стандартного',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: 'agent_xxxxx',
+        agentIdSubtitle: 'Ваш ID агента ElevenLabs',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'sk_xxxxx',
+        apiKeySubtitle: 'Ваш ключ API ElevenLabs',
+        saveCredentials: 'Сохранить Учётные Данные',
+        credentialsSaved: 'Учётные данные ElevenLabs сохранены',
+        credentialsRequired: 'Требуется указать и Agent ID, и API Key',
+        currentAgentId: 'Текущий Agent ID',
+        usingDefaultAgent: 'Используется стандартный рабочий агент',
+        usingCustomAgent: 'Используется пользовательский агент',
+        // Custom agent credentials section
+        customAgentCredentials: 'Учётные Данные Пользовательского Агента',
+        customAgentCredentialsDescription: 'Сначала введите свой API key ElevenLabs, затем найдите или создайте своего агента. Необходимые разрешения: "ElevenLabs Agents" (Write) и "Text to Speech" (Access).',
+        getApiKey: 'Получить API Key',
+        apiKeyRequired: 'Пожалуйста, сначала введите свой API key',
+        agentIdRequired: 'Пожалуйста, введите Agent ID',
+        findAgent: 'Найти Агента',
+        createOrUpdateAgent: 'Создать/Обновить',
+        agentFound: 'Найден агент "Happy Coding Assistant" и заполнен ID',
+        agentNotFound: 'Агент "Happy Coding Assistant" не найден',
+        agentCreated: 'Создан новый агент "Happy Coding Assistant"',
+        agentUpdated: 'Существующий агент "Happy Coding Assistant" обновлён последней конфигурацией',
+        agentCreateFailed: 'Не удалось создать агента',
+        agentButtonsHint: '"Найти Агента" ищет существующего агента "Happy Coding Assistant". "Создать/Обновить" создаёт нового агента или обновляет существующего стандартной конфигурацией.',
     },
 
     settingsAccount: {
@@ -877,6 +908,20 @@ export const ru: TranslationStructure = {
         friendRequestGeneric: 'Новый запрос в друзья',
         friendAccepted: ({ name }: { name: string }) => `Вы теперь друзья с ${name}`,
         friendAcceptedGeneric: 'Запрос в друзья принят',
+    },
+
+    voiceAssistant: {
+        // Voice assistant status bar
+        status: {
+            connecting: 'Подключение...',
+            muted: 'Без звука',
+            active: 'Активен',
+            error: 'Ошибка',
+            default: 'Голос',
+        },
+        mute: 'Выкл. звук',
+        unmute: 'Вкл. звук',
+        end: 'Завершить',
     }
 } as const;
 

@@ -537,7 +537,38 @@ export const es: TranslationStructure = {
             title: 'Idiomas',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomas' })} disponibles`,
             autoDetect: 'Detectar automáticamente',
-        }
+        },
+        // ElevenLabs configuration
+        elevenLabsTitle: 'Configuración de ElevenLabs',
+        elevenLabsDescription: 'Configura tu agente de voz de ElevenLabs. Usa el agente de producción predeterminado o conecta el tuyo propio.',
+        useCustomAgent: 'Usar Agente Personalizado',
+        useCustomAgentSubtitle: 'Conecta tu propio agente de ElevenLabs en lugar del predeterminado',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: 'agent_xxxxx',
+        agentIdSubtitle: 'Tu ID de agente de ElevenLabs',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'sk_xxxxx',
+        apiKeySubtitle: 'Tu clave API de ElevenLabs',
+        saveCredentials: 'Guardar Credenciales',
+        credentialsSaved: 'Credenciales de ElevenLabs guardadas',
+        credentialsRequired: 'Tanto el Agent ID como el API Key son obligatorios',
+        currentAgentId: 'Agent ID Actual',
+        usingDefaultAgent: 'Usando el agente de producción predeterminado',
+        usingCustomAgent: 'Usando agente personalizado',
+        // Custom agent credentials section
+        customAgentCredentials: 'Credenciales de Agente Personalizado',
+        customAgentCredentialsDescription: 'Ingresa tu API key de ElevenLabs primero, luego encuentra o crea tu agente. Permisos requeridos: "ElevenLabs Agents" (Write) y "Text to Speech" (Access).',
+        getApiKey: 'Obtener API Key',
+        apiKeyRequired: 'Por favor, ingresa tu API key primero',
+        agentIdRequired: 'Por favor, ingresa el Agent ID',
+        findAgent: 'Encontrar Agente',
+        createOrUpdateAgent: 'Crear/Actualizar',
+        agentFound: 'Se encontró el agente "Happy Coding Assistant" y se rellenó el ID',
+        agentNotFound: 'No se encontró ningún agente "Happy Coding Assistant"',
+        agentCreated: 'Se creó un nuevo agente "Happy Coding Assistant"',
+        agentUpdated: 'El agente "Happy Coding Assistant" existente se actualizó con la última configuración',
+        agentCreateFailed: 'No se pudo crear el agente',
+        agentButtonsHint: '"Encontrar Agente" busca un agente "Happy Coding Assistant" existente. "Crear/Actualizar" crea un nuevo agente o actualiza el existente con la configuración predeterminada.',
     },
 
     settingsAccount: {
@@ -855,6 +886,20 @@ export const es: TranslationStructure = {
         friendRequestGeneric: 'Nueva solicitud de amistad',
         friendAccepted: ({ name }: { name: string }) => `Ahora eres amigo de ${name}`,
         friendAcceptedGeneric: 'Solicitud de amistad aceptada',
+    },
+
+    voiceAssistant: {
+        // Voice assistant status bar
+        status: {
+            connecting: 'Conectando...',
+            muted: 'Silenciado',
+            active: 'Activo',
+            error: 'Error',
+            default: 'Voz',
+        },
+        mute: 'Silenciar',
+        unmute: 'Activar',
+        end: 'Finalizar',
     }
 } as const;
 

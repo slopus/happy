@@ -539,7 +539,38 @@ export const zhHans: TranslationStructure = {
             title: '语言',
             footer: ({ count }: { count: number }) => `${count} 种可用语言`,
             autoDetect: '自动检测',
-        }
+        },
+        // ElevenLabs configuration
+        elevenLabsTitle: 'ElevenLabs 配置',
+        elevenLabsDescription: '配置您的 ElevenLabs 语音代理。使用默认生产代理或连接您自己的代理。',
+        useCustomAgent: '使用自定义代理',
+        useCustomAgentSubtitle: '连接您自己的 ElevenLabs 代理而不是默认代理',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: 'agent_xxxxx',
+        agentIdSubtitle: '您的 ElevenLabs 代理 ID',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'sk_xxxxx',
+        apiKeySubtitle: '您的 ElevenLabs API 密钥',
+        saveCredentials: '保存凭据',
+        credentialsSaved: 'ElevenLabs 凭据已保存',
+        credentialsRequired: 'Agent ID 和 API Key 都是必需的',
+        currentAgentId: '当前 Agent ID',
+        usingDefaultAgent: '使用默认生产代理',
+        usingCustomAgent: '使用自定义代理',
+        // Custom agent credentials section
+        customAgentCredentials: '自定义代理凭据',
+        customAgentCredentialsDescription: '首先输入您的 ElevenLabs API key，然后查找或创建您的代理。所需权限："ElevenLabs Agents"（Write）和 "Text to Speech"（Access）。',
+        getApiKey: '获取 API Key',
+        apiKeyRequired: '请先输入您的 API key',
+        agentIdRequired: '请输入 Agent ID',
+        findAgent: '查找代理',
+        createOrUpdateAgent: '创建/更新',
+        agentFound: '找到 "Happy Coding Assistant" 代理并填入 ID',
+        agentNotFound: '未找到 "Happy Coding Assistant" 代理',
+        agentCreated: '已创建新的 "Happy Coding Assistant" 代理',
+        agentUpdated: '现有 "Happy Coding Assistant" 代理已使用最新配置更新',
+        agentCreateFailed: '创建代理失败',
+        agentButtonsHint: '"查找代理" 搜索现有的 "Happy Coding Assistant" 代理。"创建/更新" 创建新代理或使用默认配置更新现有代理。',
     },
 
     settingsAccount: {
@@ -856,5 +887,19 @@ export const zhHans: TranslationStructure = {
         friendRequestGeneric: '新的好友请求',
         friendAccepted: ({ name }: { name: string }) => `您现在与 ${name} 成为了好友`,
         friendAcceptedGeneric: '好友请求已接受',
+    },
+
+    voiceAssistant: {
+        // Voice assistant status bar
+        status: {
+            connecting: '连接中...',
+            muted: '已静音',
+            active: '活跃',
+            error: '错误',
+            default: '语音',
+        },
+        mute: '静音',
+        unmute: '取消静音',
+        end: '结束',
     }
 } as const;

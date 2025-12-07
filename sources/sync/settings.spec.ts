@@ -102,7 +102,7 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'gradient',
+                avatarStyle: 'brutalist',
                 showFlavorIcons: false,
                 compactSessionView: false,
                 hideInactiveSessions: false,
@@ -114,11 +114,21 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                elevenLabsUseCustomAgent: false,
+                elevenLabsAgentId: null,
+                elevenLabsApiKey: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: true
             };
             expect(applySettings(currentSettings, delta)).toEqual({
+                ...settingsDefaults,
+                viewInline: true,
+            });
+        });
+
+        it('should merge with defaults', () => {
+            const currentSettings: Settings = {
                 viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -136,32 +146,13 @@ describe('settings', () => {
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
                 preferredLanguage: null,
-            });
-        });
-
-        it('should merge with defaults', () => {
-            const currentSettings: Settings = {
-                viewInline: true,
-                expandTodos: true,
-                showLineNumbers: true,
-                showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
-                analyticsOptOut: false,
-                inferenceOpenAIKey: null,
-                experiments: false,
-                alwaysShowContextSize: false,
-                avatarStyle: 'gradient',
-                showFlavorIcons: false,
-                compactSessionView: false,
-                hideInactiveSessions: false,
-                reviewPromptAnswered: false,
-                reviewPromptLikedApp: null,
-                voiceAssistantLanguage: null,
-                preferredLanguage: null,
                 recentMachinePaths: [],
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                elevenLabsUseCustomAgent: false,
+                elevenLabsAgentId: null,
+                elevenLabsApiKey: null,
             };
             const delta: Partial<Settings> = {};
             expect(applySettings(currentSettings, delta)).toEqual({
@@ -181,7 +172,7 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'gradient',
+                avatarStyle: 'brutalist',
                 showFlavorIcons: false,
                 compactSessionView: false,
                 hideInactiveSessions: false,
@@ -193,12 +184,22 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                elevenLabsUseCustomAgent: false,
+                elevenLabsAgentId: null,
+                elevenLabsApiKey: null,
             };
             const delta: Partial<Settings> = {
                 viewInline: false
             };
             expect(applySettings(currentSettings, delta)).toEqual({
+                ...settingsDefaults,
                 viewInline: false,
+            });
+        });
+
+        it('should handle empty delta', () => {
+            const currentSettings: Settings = {
+                viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
@@ -215,32 +216,13 @@ describe('settings', () => {
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
                 preferredLanguage: null,
-            });
-        });
-
-        it('should handle empty delta', () => {
-            const currentSettings: Settings = {
-                viewInline: true,
-                expandTodos: true,
-                showLineNumbers: true,
-                showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
-                analyticsOptOut: false,
-                inferenceOpenAIKey: null,
-                experiments: false,
-                alwaysShowContextSize: false,
-                avatarStyle: 'gradient',
-                showFlavorIcons: false,
-                compactSessionView: false,
-                hideInactiveSessions: false,
-                reviewPromptAnswered: false,
-                reviewPromptLikedApp: null,
-                voiceAssistantLanguage: null,
-                preferredLanguage: null,
                 recentMachinePaths: [],
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                elevenLabsUseCustomAgent: false,
+                elevenLabsAgentId: null,
+                elevenLabsApiKey: null,
             };
             expect(applySettings(currentSettings, {})).toEqual({
                 ...settingsDefaults,
@@ -274,7 +256,7 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'gradient',
+                avatarStyle: 'brutalist',
                 showFlavorIcons: false,
                 compactSessionView: false,
                 hideInactiveSessions: false,
@@ -286,6 +268,9 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                elevenLabsUseCustomAgent: false,
+                elevenLabsAgentId: null,
+                elevenLabsApiKey: null,
             };
             const delta: any = {
                 viewInline: false,
@@ -320,15 +305,29 @@ describe('settings', () => {
         it('should have correct default values', () => {
             expect(settingsDefaults).toEqual({
                 viewInline: false,
+                inferenceOpenAIKey: null,
                 expandTodos: true,
                 showLineNumbers: true,
                 showLineNumbersInToolViews: false,
                 wrapLinesInDiffs: false,
                 analyticsOptOut: false,
-                inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
+                avatarStyle: 'brutalist',
+                showFlavorIcons: false,
+                compactSessionView: false,
                 hideInactiveSessions: false,
+                reviewPromptAnswered: false,
+                reviewPromptLikedApp: null,
+                voiceAssistantLanguage: null,
+                preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
+                lastUsedPermissionMode: null,
+                lastUsedModelMode: null,
+                elevenLabsUseCustomAgent: false,
+                elevenLabsAgentId: null,
+                elevenLabsApiKey: null,
             });
         });
 

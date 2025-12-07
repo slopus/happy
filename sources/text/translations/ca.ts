@@ -537,7 +537,38 @@ export const ca: TranslationStructure = {
             title: 'Idiomes',
             footer: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'idioma', plural: 'idiomes' })} disponibles`,
             autoDetect: 'Detecta automàticament',
-        }
+        },
+        // ElevenLabs configuration
+        elevenLabsTitle: 'Configuració d\'ElevenLabs',
+        elevenLabsDescription: 'Configura el teu agent de veu d\'ElevenLabs. Utilitza l\'agent de producció per defecte o connecta el teu propi.',
+        useCustomAgent: 'Utilitza Agent Personalitzat',
+        useCustomAgentSubtitle: 'Connecta el teu propi agent d\'ElevenLabs en lloc del predeterminat',
+        agentId: 'Agent ID',
+        agentIdPlaceholder: 'agent_xxxxx',
+        agentIdSubtitle: 'El teu ID d\'agent d\'ElevenLabs',
+        apiKey: 'API Key',
+        apiKeyPlaceholder: 'sk_xxxxx',
+        apiKeySubtitle: 'La teva clau API d\'ElevenLabs',
+        saveCredentials: 'Desa les Credencials',
+        credentialsSaved: 'Credencials d\'ElevenLabs desades',
+        credentialsRequired: 'Tant l\'Agent ID com l\'API Key són obligatoris',
+        currentAgentId: 'Agent ID Actual',
+        usingDefaultAgent: 'Utilitzant l\'agent de producció per defecte',
+        usingCustomAgent: 'Utilitzant agent personalitzat',
+        // Custom agent credentials section
+        customAgentCredentials: 'Credencials d\'Agent Personalitzat',
+        customAgentCredentialsDescription: 'Introdueix la teva API key d\'ElevenLabs primer, després troba o crea el teu agent. Permisos requerits: "ElevenLabs Agents" (Write) i "Text to Speech" (Access).',
+        getApiKey: 'Obtenir API Key',
+        apiKeyRequired: 'Si us plau, introdueix la teva API key primer',
+        agentIdRequired: 'Si us plau, introdueix l\'Agent ID',
+        findAgent: 'Troba Agent',
+        createOrUpdateAgent: 'Crea/Actualitza',
+        agentFound: 'S\'ha trobat l\'agent "Happy Coding Assistant" i s\'ha omplert l\'ID',
+        agentNotFound: 'No s\'ha trobat cap agent "Happy Coding Assistant"',
+        agentCreated: 'S\'ha creat un nou agent "Happy Coding Assistant"',
+        agentUpdated: 'L\'agent "Happy Coding Assistant" existent s\'ha actualitzat amb l\'última configuració',
+        agentCreateFailed: 'No s\'ha pogut crear l\'agent',
+        agentButtonsHint: '"Troba Agent" cerca un agent "Happy Coding Assistant" existent. "Crea/Actualitza" crea un agent nou o actualitza l\'existent amb la configuració per defecte.',
     },
 
     settingsAccount: {
@@ -854,6 +885,20 @@ export const ca: TranslationStructure = {
         friendRequestGeneric: 'Nova sol·licitud d\'amistat',
         friendAccepted: ({ name }: { name: string }) => `Ara ets amic de ${name}`,
         friendAcceptedGeneric: 'Sol·licitud d\'amistat acceptada',
+    },
+
+    voiceAssistant: {
+        // Voice assistant status bar
+        status: {
+            connecting: 'Connectant...',
+            muted: 'Silenciat',
+            active: 'Actiu',
+            error: 'Error',
+            default: 'Veu',
+        },
+        mute: 'Silenciar',
+        unmute: 'Activar so',
+        end: 'Acabar',
     }
 } as const;
 
