@@ -10,7 +10,6 @@
   "repository": "slopus/happy-cli",
   "bin": {
     "happy": "./bin/happy.mjs",
-    "happy-dev": "./bin/happy-dev.mjs",
     "happy-mcp": "./bin/happy-mcp.mjs"
   },
   "main": "./dist/index.cjs",
@@ -82,7 +81,10 @@
     "dev:auth": "node scripts/env-wrapper.cjs dev auth",
     "// ==== Setup ====": "",
     "setup:dev": "node scripts/setup-dev.cjs",
-    "doctor": "node scripts/env-wrapper.cjs stable doctor"
+    "doctor": "node scripts/env-wrapper.cjs stable doctor",
+    "// ==== Development Linking ====": "",
+    "link:dev": "node scripts/link-dev.cjs",
+    "unlink:dev": "node scripts/link-dev.cjs unlink"
   },
   "dependencies": {
     "@anthropic-ai/claude-code": "2.0.53",
