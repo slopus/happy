@@ -1,7 +1,7 @@
 import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import { Link } from 'expo-router';
 import * as React from 'react';
-import { ScrollView, View, Platform, Pressable } from 'react-native';
+import { Pressable, ScrollView, View, Platform } from 'react-native';
 import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
@@ -10,6 +10,9 @@ import { Modal } from '@/modal';
 import { useLocalSetting } from '@/sync/storage';
 import { storeTempText } from '@/sync/persistence';
 import { useRouter } from 'expo-router';
+import * as Clipboard from 'expo-clipboard';
+import { MermaidRenderer } from './MermaidRenderer';
+import { t } from '@/text';
 
 // Option type for callback
 export type Option = {
@@ -42,7 +45,7 @@ export const MarkdownView = React.memo((props: {
     }, [props.markdown, router]);
     const renderContent = () => {
         return (
-            <View>
+            <View style={{ width: '100%' }}>
                 {blocks.map((block, index) => {
                     if (block.type === 'text') {
                         return <RenderTextBlock spans={block.content} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
@@ -56,8 +59,12 @@ export const MarkdownView = React.memo((props: {
                         return <RenderNumberedListBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
                     } else if (block.type === 'code-block') {
                         return <RenderCodeBlock content={block.content} language={block.language} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} />;
+                    } else if (block.type === 'mermaid') {
+                        return <MermaidRenderer content={block.content} key={index} />;
                     } else if (block.type === 'options') {
                         return <RenderOptionsBlock items={block.items} key={index} first={index === 0} last={index === blocks.length - 1} selectable={selectable} onOptionPress={props.onOptionPress} />;
+                    } else if (block.type === 'table') {
+                        return <RenderTableBlock headers={block.headers} rows={block.rows} key={index} first={index === 0} last={index === blocks.length - 1} />;
                     } else {
                         return null;
                     }
@@ -74,7 +81,7 @@ export const MarkdownView = React.memo((props: {
         return renderContent();
     }
     
-    return <Pressable onLongPress={handleLongPress} delayLongPress={500}>{renderContent()}</Pressable>;
+    return <Pressable style={{ width: '100%' }} onLongPress={handleLongPress} delayLongPress={500}>{renderContent()}</Pressable>;
 });
 
 function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
@@ -110,8 +117,26 @@ function RenderNumberedListBlock(props: { items: { number: number, spans: Markdo
 }
 
 function RenderCodeBlock(props: { content: string, language: string | null, first: boolean, last: boolean, selectable: boolean }) {
+    const [isHovered, setIsHovered] = React.useState(false);
+
+    const copyCode = React.useCallback(async () => {
+        try {
+            await Clipboard.setStringAsync(props.content);
+            Modal.alert(t('common.success'), t('markdown.codeCopied'), [{ text: t('common.ok'), style: 'cancel' }]);
+        } catch (error) {
+            console.error('Failed to copy code:', error);
+            Modal.alert(t('common.error'), t('markdown.copyFailed'), [{ text: t('common.ok'), style: 'cancel' }]);
+        }
+    }, [props.content]);
+
     return (
-        <View style={[style.codeBlock, props.first && style.first, props.last && style.last]}>
+        <View
+            style={[style.codeBlock, props.first && style.first, props.last && style.last]}
+            // @ts-ignore - Web only events
+            onMouseEnter={() => setIsHovered(true)}
+            // @ts-ignore - Web only events
+            onMouseLeave={() => setIsHovered(false)}
+        >
             {props.language && <Text selectable={props.selectable} style={style.codeLanguage}>{props.language}</Text>}
             <ScrollView
                 style={{ flexGrow: 0, flexShrink: 0 }}
@@ -119,12 +144,20 @@ function RenderCodeBlock(props: { content: string, language: string | null, firs
                 contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 16 }}
                 showsHorizontalScrollIndicator={false}
             >
-                <SimpleSyntaxHighlighter 
-                    code={props.content} 
-                    language={props.language} 
+                <SimpleSyntaxHighlighter
+                    code={props.content}
+                    language={props.language}
                     selectable={props.selectable}
                 />
             </ScrollView>
+            <View style={[style.copyButtonWrapper, isHovered && style.copyButtonWrapperVisible]} className='copy-button-wrapper'>
+                <Pressable
+                    style={style.copyButton}
+                    onPress={copyCode}
+                >
+                    <Text style={style.copyButtonText}>{t('common.copy')}</Text>
+                </Pressable>
+            </View>
         </View>
     );
 }
@@ -174,6 +207,43 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
             }
         })}
     </>)
+}
+
+function RenderTableBlock(props: {
+    headers: string[],
+    rows: string[][],
+    first: boolean,
+    last: boolean
+}) {
+    return (
+        <View style={[style.tableContainer, props.first && style.first, props.last && style.last]}>
+            <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={true}
+                style={{ flex: 1 }}
+                contentContainerStyle={{ minWidth: '100%' }}
+            >
+                <View style={{ flexDirection: 'column', minWidth: '100%' }}>
+                    <View style={style.tableRow}>
+                        {props.headers.map((header, index) => (
+                            <View key={`header-${index}`} style={[style.tableCell, style.tableHeaderCell]}>
+                                <Text style={style.tableHeaderText}>{header}</Text>
+                            </View>
+                        ))}
+                    </View>
+                    {props.rows.map((row, rowIndex) => (
+                        <View key={`row-${rowIndex}`} style={style.tableRow}>
+                            {row.map((cell, cellIndex) => (
+                                <View key={`cell-${rowIndex}-${cellIndex}`} style={style.tableCell}>
+                                    <Text style={style.tableCellText}>{cell}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    ))}
+                </View>
+            </ScrollView>
+        </View>
+    );
 }
 
 
@@ -288,6 +358,21 @@ const style = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.surfaceHighest,
         borderRadius: 8,
         marginVertical: 8,
+        position: 'relative',
+        zIndex: 1,
+    },
+    copyButtonWrapper: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        opacity: 0,
+        zIndex: 10,
+        elevation: 10,
+        pointerEvents: 'none',
+    },
+    copyButtonWrapperVisible: {
+        opacity: 1,
+        pointerEvents: 'auto',
     },
     codeLanguage: {
         ...Typography.mono(),
@@ -308,6 +393,40 @@ const style = StyleSheet.create((theme) => ({
         backgroundColor: theme.colors.divider,
         marginTop: 8,
         marginBottom: 8,
+    },
+    copyButtonContainer: {
+        position: 'absolute',
+        top: 8,
+        right: 8,
+        zIndex: 10,
+        elevation: 10,
+        opacity: 1,
+    },
+    copyButtonContainerHidden: {
+        opacity: 0,
+    },
+    copyButton: {
+        backgroundColor: theme.colors.surfaceHighest,
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        cursor: 'pointer',
+    },
+    copyButtonHidden: {
+        display: 'none',
+    },
+    copyButtonCopied: {
+        backgroundColor: theme.colors.success,
+        borderColor: theme.colors.success,
+        opacity: 1,
+    },
+    copyButtonText: {
+        ...Typography.default(),
+        color: theme.colors.text,
+        fontSize: 12,
+        lineHeight: 16,
     },
 
     //
@@ -337,4 +456,49 @@ const style = StyleSheet.create((theme) => ({
         lineHeight: 24,
         color: theme.colors.text,
     },
+
+    //
+    // Table
+    //
+
+    tableContainer: {
+        marginVertical: 8,
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
+        borderRadius: 8,
+        width: '100%',
+        alignSelf: 'stretch',
+    },
+    tableRow: {
+        flexDirection: 'row',
+        borderBottomWidth: 1,
+        borderBottomColor: theme.colors.divider,
+    },
+    tableCell: {
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        flex: 1,
+        flexBasis: 0,
+    },
+    tableHeaderCell: {
+        backgroundColor: theme.colors.surfaceHigh,
+    },
+    tableHeaderText: {
+        ...Typography.default('semiBold'),
+        color: theme.colors.text,
+        fontSize: 16,
+        lineHeight: 24,
+    },
+    tableCellText: {
+        ...Typography.default(),
+        color: theme.colors.text,
+        fontSize: 16,
+        lineHeight: 24,
+    },
+
+    // Add global style for Web platform (Unistyles supports this via compiler plugin)
+    ...(Platform.OS === 'web' ? {
+        // Web-only CSS styles
+        _____web_global_styles: {}
+    } : {}),
 }));

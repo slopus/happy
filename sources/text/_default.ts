@@ -48,6 +48,7 @@ export const en = {
         discard: 'Discard',
         version: 'Version',
         copied: 'Copied',
+        copy: 'Copy',
         scanning: 'Scanning...',
         urlPlaceholder: 'https://example.com',
         home: 'Home',
@@ -746,6 +747,13 @@ export const en = {
         textCopied: 'Text copied to clipboard',
         failedToCopy: 'Failed to copy text to clipboard',
         noTextToCopy: 'No text available to copy',
+    },
+
+    markdown: {
+        // Markdown copy functionality
+        codeCopied: 'Code copied',
+        copyFailed: 'Copy failed',
+        mermaidRenderFailed: 'Failed to render mermaid diagram',
     },
 
     artifacts: {

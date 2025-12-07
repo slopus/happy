@@ -59,6 +59,7 @@ export const pl: TranslationStructure = {
         discard: 'Odrzuć',
         version: 'Wersja',
         copied: 'Skopiowano',
+        copy: 'Kopiuj',
         scanning: 'Skanowanie...',
         urlPlaceholder: 'https://example.com',
         home: 'Główna',
@@ -756,6 +757,13 @@ export const pl: TranslationStructure = {
         textCopied: 'Tekst skopiowany do schowka',
         failedToCopy: 'Nie udało się skopiować tekstu do schowka',
         noTextToCopy: 'Brak tekstu do skopiowania',
+    },
+
+    markdown: {
+        // Markdown copy functionality
+        codeCopied: 'Kod skopiowany',
+        copyFailed: 'Błąd kopiowania',
+        mermaidRenderFailed: 'Nie udało się wyświetlić diagramu mermaid',
     },
 
     artifacts: {
