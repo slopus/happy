@@ -18,10 +18,17 @@ export type MarkdownBlock = {
     language: string | null,
     content: string
 } | {
+    type: 'mermaid',
+    content: string
+} | {
     type: 'horizontal-rule'
 } | {
     type: 'options',
     items: string[]
+} | {
+    type: 'table',
+    headers: string[],
+    rows: string[][]
 }
 
 export type MarkdownSpan = {

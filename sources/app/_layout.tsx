@@ -3,6 +3,7 @@ import '../theme.css';
 import * as React from 'react';
 import * as SplashScreen from 'expo-splash-screen';
 import * as Fonts from 'expo-font';
+import * as Notifications from 'expo-notifications';
 import { FontAwesome } from '@expo/vector-icons';
 import { AuthCredentials, TokenStorage } from '@/auth/tokenStorage';
 import { AuthProvider } from '@/auth/AuthContext';
@@ -26,6 +27,27 @@ import { StatusBarProvider } from '@/components/StatusBarProvider';
 import { monkeyPatchConsoleForRemoteLoggingForFasterAiAutoDebuggingOnlyInLocalBuilds } from '@/utils/remoteLogger';
 import { useUnistyles } from 'react-native-unistyles';
 import { AsyncLock } from '@/utils/lock';
+
+// Configure notification handler for foreground notifications
+Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+        shouldShowAlert: true,
+        shouldPlaySound: true,
+        shouldSetBadge: true,
+        shouldShowBanner: true,
+        shouldShowList: true,
+    }),
+});
+
+// Setup Android notification channel (required for Android 8.0+)
+if (Platform.OS === 'android') {
+    Notifications.setNotificationChannelAsync('default', {
+        name: 'Default',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FF231F7C',
+    });
+}
 
 export {
     // Catch any errors thrown by the Layout component.

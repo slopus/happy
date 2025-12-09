@@ -50,6 +50,7 @@ export const zhHans: TranslationStructure = {
         discard: '放弃',
         version: '版本',
         copied: '已复制',
+        copy: '复制',
         scanning: '扫描中...',
         urlPlaceholder: 'https://example.com',
         home: '主页',
@@ -748,6 +749,13 @@ export const zhHans: TranslationStructure = {
         textCopied: '文本已复制到剪贴板',
         failedToCopy: '复制文本到剪贴板失败',
         noTextToCopy: '没有可复制的文本',
+    },
+
+    markdown: {
+        // Markdown copy functionality
+        codeCopied: '代码已复制',
+        copyFailed: '复制失败',
+        mermaidRenderFailed: '渲染 mermaid 图表失败',
     },
 
     artifacts: {

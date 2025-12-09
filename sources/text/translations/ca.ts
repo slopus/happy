@@ -48,6 +48,7 @@ export const ca: TranslationStructure = {
         discard: 'Descarta',
         version: 'Versió',
         copied: 'Copiat',
+        copy: 'Copiar',
         scanning: 'Escanejant...',
         urlPlaceholder: 'https://exemple.com',
         home: 'Inici',
@@ -746,6 +747,13 @@ export const ca: TranslationStructure = {
         textCopied: 'Text copiat al porta-retalls',
         failedToCopy: 'No s\'ha pogut copiar el text al porta-retalls',
         noTextToCopy: 'No hi ha text disponible per copiar',
+    },
+
+    markdown: {
+        // Markdown copy functionality
+        codeCopied: 'Codi copiat',
+        copyFailed: 'Error al copiar',
+        mermaidRenderFailed: 'Error al renderitzar el diagrama mermaid',
     },
 
     artifacts: {
