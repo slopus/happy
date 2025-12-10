@@ -343,7 +343,16 @@ export async function startDaemon(): Promise<void> {
         });
 
         if (unexpandedAuthVars.length > 0) {
-          const errorMessage = `Authentication may fail - variables contain unexpanded references: ${unexpandedAuthVars.map(v => `${v}="${extraEnv[v]}"`).join(', ')}. Set the referenced variables in the daemon's environment before starting sessions.`;
+          // Extract the specific missing variable names from unexpanded references
+          const missingVarDetails = unexpandedAuthVars.map(authVar => {
+            const value = extraEnv[authVar];
+            const unresolvedMatch = value?.match(/\$\{([A-Z_][A-Z0-9_]*)(:-[^}]*)?\}/);
+            const missingVar = unresolvedMatch ? unresolvedMatch[1] : 'unknown';
+            return `${authVar} references \${${missingVar}} which is not defined`;
+          });
+
+          const errorMessage = `Authentication will fail - environment variables not found in daemon: ${missingVarDetails.join('; ')}. ` +
+            `Ensure these variables are set in the daemon's environment (not just your shell) before starting sessions.`;
           logger.warn(`[DAEMON RUN] ${errorMessage}`);
           return {
             type: 'error',

@@ -6,7 +6,10 @@ import { claudeLocalLauncher } from "./claudeLocalLauncher"
 import { claudeRemoteLauncher } from "./claudeRemoteLauncher"
 import { ApiClient } from "@/lib"
 
-export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+// Re-export permission mode type from api/types
+// Single unified type with 7 modes - Codex modes mapped at SDK boundary
+export type { PermissionMode } from "@/api/types"
+import type { PermissionMode } from "@/api/types"
 
 export interface EnhancedMode {
     permissionMode: PermissionMode;

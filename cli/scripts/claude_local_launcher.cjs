@@ -1,4 +1,3 @@
-const crypto = require('crypto');
 const fs = require('fs');
 
 // Disable autoupdater (never works really)
@@ -13,34 +12,7 @@ function writeMessage(message) {
     }
 }
 
-// Intercept crypto.randomUUID
-const originalRandomUUID = crypto.randomUUID;
-Object.defineProperty(global, 'crypto', {
-    configurable: true,
-    enumerable: true,
-    get() {
-        return {
-            randomUUID: () => {
-                const uuid = originalRandomUUID();
-                writeMessage({ type: 'uuid', value: uuid });
-                return uuid;
-            }
-        };
-    }
-});
-Object.defineProperty(crypto, 'randomUUID', {
-    configurable: true,
-    enumerable: true,
-    get() {
-        return () => {
-            const uuid = originalRandomUUID();
-            writeMessage({ type: 'uuid', value: uuid });
-            return uuid;
-        }
-    }
-});
-
-// Intercept fetch to track activity
+// Intercept fetch to track thinking state
 const originalFetch = global.fetch;
 let fetchCounter = 0;
 
@@ -95,4 +67,7 @@ global.fetch = function(...args) {
 Object.defineProperty(global.fetch, 'name', { value: 'fetch' });
 Object.defineProperty(global.fetch, 'length', { value: originalFetch.length });
 
-import('@anthropic-ai/claude-code/cli.js')
+// Import global Claude Code CLI
+const { getClaudeCliPath, runClaudeCli } = require('./claude_version_utils.cjs');
+
+runClaudeCli(getClaudeCliPath());

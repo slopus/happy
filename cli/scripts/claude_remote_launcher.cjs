@@ -10,4 +10,7 @@ global.setTimeout = function(callback, delay, ...args) {
 Object.defineProperty(global.setTimeout, 'name', { value: 'setTimeout' });
 Object.defineProperty(global.setTimeout, 'length', { value: originalSetTimeout.length });
 
-import('@anthropic-ai/claude-code/cli.js')
+// Import global Claude Code CLI
+const { getClaudeCliPath, runClaudeCli } = require('./claude_version_utils.cjs');
+
+runClaudeCli(getClaudeCliPath());

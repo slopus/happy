@@ -4,6 +4,14 @@ import { UsageSchema } from '@/claude/types'
 /**
  * Permission mode type - includes both Claude and Codex modes
  * Must match MessageMetaSchema.permissionMode enum values
+ *
+ * Claude modes: default, acceptEdits, bypassPermissions, plan
+ * Codex modes: read-only, safe-yolo, yolo
+ *
+ * When calling Claude SDK, Codex modes are mapped at the SDK boundary:
+ * - yolo → bypassPermissions
+ * - safe-yolo → default
+ * - read-only → default
  */
 export type PermissionMode = 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo'
 

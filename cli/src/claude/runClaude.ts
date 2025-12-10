@@ -5,7 +5,6 @@ import { ApiClient } from '@/api/api';
 import { logger } from '@/ui/logger';
 import { loop } from '@/claude/loop';
 import { AgentState, Metadata } from '@/api/types';
-// @ts-ignore
 import packageJson from '../../package.json';
 import { Credentials, readSettings } from '@/persistence';
 import { EnhancedMode, PermissionMode } from './loop';
@@ -25,7 +24,7 @@ import { resolve } from 'node:path';
 
 export interface StartOptions {
     model?: string
-    permissionMode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan'
+    permissionMode?: PermissionMode
     startingMode?: 'local' | 'remote'
     shouldStartDaemon?: boolean
     claudeEnvVars?: Record<string, string>
@@ -56,7 +55,7 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const settings = await readSettings();
     let machineId = settings?.machineId
     if (!machineId) {
-        console.error(`[START] No machine ID found in settings, which is unexepcted since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
+        console.error(`[START] No machine ID found in settings, which is unexpected since authAndSetupMachineIfNeeded should have created it. Please report this issue on https://github.com/slopus/happy-cli/issues`);
         process.exit(1);
     }
     logger.debug(`Using machineId: ${machineId}`);
@@ -153,7 +152,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     }));
 
     // Forward messages to the queue
-    let currentPermissionMode = options.permissionMode;
+    // Permission modes: Use the unified 7-mode type, mapping happens at SDK boundary in claudeRemote.ts
+    let currentPermissionMode: PermissionMode | undefined = options.permissionMode;
     let currentModel = options.model; // Track current model state
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
@@ -162,36 +162,12 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     let currentDisallowedTools: string[] | undefined = undefined; // Track current disallowed tools
     session.onUserMessage((message) => {
 
-        // Resolve permission mode from meta
-        let messagePermissionMode = currentPermissionMode;
+        // Resolve permission mode from meta - pass through as-is, mapping happens at SDK boundary
+        let messagePermissionMode: PermissionMode | undefined = currentPermissionMode;
         if (message.meta?.permissionMode) {
-            const validModes: PermissionMode[] = ['default', 'acceptEdits', 'bypassPermissions', 'plan'];
-            let mappedMode = message.meta.permissionMode as PermissionMode;
-
-            // Defensive fallback: map Codex-specific modes to Claude equivalents
-            if (!validModes.includes(mappedMode)) {
-                const codexToClaudeMap: Record<string, PermissionMode> = {
-                    'yolo': 'bypassPermissions',        // Full access: both skip all permissions
-                    'safe-yolo': 'default',             // Conservative: ask for permissions (closest safe equivalent)
-                    'read-only': 'default',             // Conservative: Claude doesn't support read-only, ask for permissions
-                };
-                if (mappedMode in codexToClaudeMap) {
-                    const originalMode = mappedMode;
-                    mappedMode = codexToClaudeMap[mappedMode];
-                    logger.debug(`[loop] Mapped Codex permission mode '${originalMode}' to Claude equivalent '${mappedMode}'`);
-                } else {
-                    logger.warn(`[loop] Unknown permission mode '${mappedMode}', using 'default'`);
-                    mappedMode = 'default';
-                }
-            }
-
-            if (validModes.includes(mappedMode)) {
-                messagePermissionMode = mappedMode;
-                currentPermissionMode = messagePermissionMode;
-                logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
-            } else {
-                logger.debug(`[loop] Invalid permission mode received: ${message.meta.permissionMode}`);
-            }
+            messagePermissionMode = message.meta.permissionMode;
+            currentPermissionMode = messagePermissionMode;
+            logger.debug(`[loop] Permission mode updated from user message to: ${currentPermissionMode}`);
         } else {
             logger.debug(`[loop] User message received with no permission mode override, using current: ${currentPermissionMode}`);
         }

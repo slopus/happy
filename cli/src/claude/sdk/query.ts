@@ -22,7 +22,7 @@ import {
     type PermissionResult,
     AbortError
 } from './types'
-import { getDefaultClaudeCodePath, logDebug, streamToStdin } from './utils'
+import { getDefaultClaudeCodePath, getCleanEnv, logDebug, streamToStdin } from './utils'
 import type { Writable } from 'node:stream'
 import { logger } from '@/ui/logger'
 
@@ -319,21 +319,35 @@ export function query(config: {
         args.push('--input-format', 'stream-json')
     }
 
-    // Validate executable path
-    if (!existsSync(pathToClaudeCodeExecutable)) {
+    // Determine how to spawn Claude Code
+    // - If it's a .js/.cjs file → spawn('node', [path, ...args])
+    // - If it's just 'claude' command → spawn('claude', args) with shell on Windows
+    // - If it's a full path to binary → spawn(path, args)
+    const isJsFile = pathToClaudeCodeExecutable.endsWith('.js') || pathToClaudeCodeExecutable.endsWith('.cjs')
+    const isCommandOnly = pathToClaudeCodeExecutable === 'claude'
+    
+    // Validate executable path (skip for command-only mode)
+    if (!isCommandOnly && !existsSync(pathToClaudeCodeExecutable)) {
         throw new ReferenceError(`Claude Code executable not found at ${pathToClaudeCodeExecutable}. Is options.pathToClaudeCodeExecutable set?`)
     }
 
-    // Spawn Claude Code process
-    logDebug(`Spawning Claude Code process: ${executable} ${[...executableArgs, pathToClaudeCodeExecutable, ...args].join(' ')}`)
+    const spawnCommand = isJsFile ? executable : pathToClaudeCodeExecutable
+    const spawnArgs = isJsFile 
+        ? [...executableArgs, pathToClaudeCodeExecutable, ...args]
+        : args
 
-    const child = spawn(executable, [...executableArgs, pathToClaudeCodeExecutable, ...args], {
+    // Spawn Claude Code process
+    // Use clean env for global claude to avoid local node_modules/.bin taking precedence
+    const spawnEnv = isCommandOnly ? getCleanEnv() : process.env
+    logDebug(`Spawning Claude Code process: ${spawnCommand} ${spawnArgs.join(' ')} (using ${isCommandOnly ? 'clean' : 'normal'} env)`)
+
+    const child = spawn(spawnCommand, spawnArgs, {
         cwd,
         stdio: ['pipe', 'pipe', 'pipe'],
         signal: config.options?.abort,
-        env: {
-            ...process.env
-        }
+        env: spawnEnv,
+        // Use shell on Windows for global binaries and command-only mode
+        shell: !isJsFile && process.platform === 'win32'
     }) as ChildProcessWithoutNullStreams
 
     // Handle stdin

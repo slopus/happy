@@ -36,8 +36,6 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
                     role: 'user',
                     content: message,
                 },
-                parent_tool_use_id: undefined,
-                session_id: '',
             });
         } else {
             logger.debug(`[MessageQueue] No waiter found. Adding to queue: "${message}"`);
@@ -47,8 +45,6 @@ export class MessageQueue implements AsyncIterable<SDKUserMessage> {
                     role: 'user',
                     content: message,
                 },
-                parent_tool_use_id: undefined,
-                session_id: '',
             });
         }
         

@@ -80,7 +80,7 @@ describe('sessionScanner', () => {
     
     expect(collectedMessages).toHaveLength(2)
     expect(collectedMessages[1].type).toBe('assistant')
-    if (collectedMessages[1].type === 'assistant') {
+    if (collectedMessages[1].type === 'assistant' && collectedMessages[1].message) {
       expect((collectedMessages[1].message.content as any)[0].text).toBe('lol')
     }
     
@@ -138,7 +138,7 @@ describe('sessionScanner', () => {
     // Verify last message is assistant with the file listing
     const lastAssistantMsg = collectedMessages[collectedMessages.length - 1]
     expect(lastAssistantMsg.type).toBe('assistant')
-    if (lastAssistantMsg.type === 'assistant' && lastAssistantMsg.message.content) {
+    if (lastAssistantMsg.type === 'assistant' && lastAssistantMsg.message?.content) {
       const content = (lastAssistantMsg.message.content as any)[0].text
       expect(content).toContain('0-say-lol-session.jsonl')
       expect(content).toContain('readme.md')
