@@ -63,6 +63,7 @@ export const en: TranslationStructure = {
         no: 'No',
         discard: 'Discard',
         version: 'Version',
+        copy: 'Copy',
         copied: 'Copied',
         scanning: 'Scanning...',
         urlPlaceholder: 'https://example.com',
@@ -767,6 +768,13 @@ export const en: TranslationStructure = {
         textCopied: 'Text copied to clipboard',
         failedToCopy: 'Failed to copy text to clipboard',
         noTextToCopy: 'No text available to copy',
+    },
+
+    markdown: {
+        // Markdown copy functionality
+        codeCopied: 'Code copied',
+        copyFailed: 'Failed to copy',
+        mermaidRenderFailed: 'Failed to render mermaid diagram',
     },
 
     artifacts: {

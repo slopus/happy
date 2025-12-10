@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { settingsParse, applySettings, settingsDefaults, type Settings } from './settings';
+import { settingsParse, applySettings, settingsDefaults, type Settings, AIBackendProfileSchema } from './settings';
+import { getBuiltInProfile } from './profileUtils';
 
 describe('settings', () => {
     describe('settingsParse', () => {
@@ -416,7 +417,7 @@ describe('settings', () => {
         it('should handle circular references gracefully', () => {
             const circular: any = { viewInline: true };
             circular.self = circular;
-            
+
             // Should not throw and should return defaults due to parse error
             expect(() => settingsParse(circular)).not.toThrow();
         });
@@ -446,6 +447,86 @@ describe('settings', () => {
             expect((parsed as any).constructor).toEqual({ prototype: { evil: true } });
             // Verify no prototype pollution occurred
             expect(({} as any).evil).toBeUndefined();
+        });
+    });
+
+    describe('AIBackendProfile validation', () => {
+        it('validates built-in Anthropic profile', () => {
+            const profile = getBuiltInProfile('anthropic');
+            expect(profile).not.toBeNull();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+        });
+
+        it('validates built-in DeepSeek profile', () => {
+            const profile = getBuiltInProfile('deepseek');
+            expect(profile).not.toBeNull();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+        });
+
+        it('validates built-in Z.AI profile', () => {
+            const profile = getBuiltInProfile('zai');
+            expect(profile).not.toBeNull();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+        });
+
+        it('validates built-in OpenAI profile', () => {
+            const profile = getBuiltInProfile('openai');
+            expect(profile).not.toBeNull();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+        });
+
+        it('validates built-in Azure OpenAI profile', () => {
+            const profile = getBuiltInProfile('azure-openai');
+            expect(profile).not.toBeNull();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+        });
+
+        it('accepts all 7 permission modes', () => {
+            const modes = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo'];
+            modes.forEach(mode => {
+                const profile = {
+                    id: crypto.randomUUID(),
+                    name: 'Test Profile',
+                    defaultPermissionMode: mode,
+                    compatibility: { claude: true, codex: true },
+                };
+                expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+            });
+        });
+
+        it('rejects invalid permission mode', () => {
+            const profile = {
+                id: crypto.randomUUID(),
+                name: 'Test Profile',
+                defaultPermissionMode: 'invalid-mode',
+                compatibility: { claude: true, codex: true },
+            };
+            expect(() => AIBackendProfileSchema.parse(profile)).toThrow();
+        });
+
+        it('validates environment variable names', () => {
+            const validProfile = {
+                id: crypto.randomUUID(),
+                name: 'Test Profile',
+                environmentVariables: [
+                    { name: 'VALID_VAR_123', value: 'test' },
+                    { name: 'API_KEY', value: '${SECRET}' },
+                ],
+                compatibility: { claude: true, codex: true },
+            };
+            expect(() => AIBackendProfileSchema.parse(validProfile)).not.toThrow();
+        });
+
+        it('rejects invalid environment variable names', () => {
+            const invalidProfile = {
+                id: crypto.randomUUID(),
+                name: 'Test Profile',
+                environmentVariables: [
+                    { name: 'invalid-name', value: 'test' },
+                ],
+                compatibility: { claude: true, codex: true },
+            };
+            expect(() => AIBackendProfileSchema.parse(invalidProfile)).toThrow();
         });
     });
 });

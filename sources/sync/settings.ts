@@ -90,7 +90,9 @@ const ProfileCompatibilitySchema = z.object({
 });
 
 export const AIBackendProfileSchema = z.object({
-    id: z.string().uuid(),
+    // Accept both UUIDs (user profiles) and simple strings (built-in profiles like 'anthropic')
+    // The isBuiltIn field distinguishes profile types
+    id: z.string().min(1),
     name: z.string().min(1).max(100),
     description: z.string().max(500).optional(),
 
