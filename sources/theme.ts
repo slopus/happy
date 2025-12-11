@@ -1,5 +1,35 @@
 import { Platform } from 'react-native';
 
+// Shared spacing, sizing constants (DRY - used by both themes)
+const sharedSpacing = {
+    // Spacing scale (based on actual usage patterns in codebase)
+    margins: {
+        xs: 4,   // Tight spacing, status indicators
+        sm: 8,   // Small gaps, most common gap value
+        md: 12,  // Button gaps, card margins
+        lg: 16,  // Most common padding value
+        xl: 20,  // Large padding
+        xxl: 24, // Section spacing
+    },
+
+    // Border radii (based on actual usage patterns in codebase)
+    borderRadius: {
+        sm: 4,   // Checkboxes (20x20 boxes use 4px corners)
+        md: 8,   // Buttons, items (most common - 31 uses)
+        lg: 10,  // Input fields (matches "new session panel input fields")
+        xl: 12,  // Cards, containers (20 uses)
+        xxl: 16, // Main containers
+    },
+
+    // Icon sizes (based on actual usage patterns)
+    iconSize: {
+        small: 12,  // Inline icons (checkmark, lock, status indicators)
+        medium: 16, // Section headers, add buttons
+        large: 20,  // Action buttons (delete, duplicate, edit) - most common
+        xlarge: 24, // Main section icons (desktop, folder)
+    },
+} as const;
+
 export const lightTheme = {
     dark: false,
     colors: {
@@ -12,6 +42,7 @@ export const lightTheme = {
         textDestructive: Platform.select({ ios: '#FF3B30', default: '#F44336' }),
         textSecondary: Platform.select({ ios: '#8E8E93', default: '#49454F' }),
         textLink: '#2BACCC',
+        deleteAction: '#FF6B6B', // Delete/remove button color
         warningCritical: '#FF3B30',
         warning: '#8E8E93',
         success: '#34C759',
@@ -204,6 +235,8 @@ export const lightTheme = {
         },
 
     },
+
+    ...sharedSpacing,
 };
 
 export const darkTheme = {
@@ -218,6 +251,7 @@ export const darkTheme = {
         textDestructive: Platform.select({ ios: '#FF453A', default: '#F48FB1' }),
         textSecondary: Platform.select({ ios: '#8E8E93', default: '#CAC4D0' }),
         textLink: '#2BACCC',
+        deleteAction: '#FF6B6B', // Delete/remove button color (same in both themes)
         warningCritical: '#FF453A',
         warning: '#8E8E93',
         success: '#32D74B',
@@ -411,6 +445,8 @@ export const darkTheme = {
         },
 
     },
+
+    ...sharedSpacing,
 } satisfies typeof lightTheme;
 
 export type Theme = typeof lightTheme;

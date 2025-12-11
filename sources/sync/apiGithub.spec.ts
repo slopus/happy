@@ -45,8 +45,7 @@ describe('apiGithub', () => {
                 {
                     method: 'DELETE',
                     headers: {
-                        'Authorization': 'Bearer test-token',
-                        'Content-Type': 'application/json'
+                        'Authorization': 'Bearer test-token'
                     }
                 }
             );

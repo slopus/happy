@@ -1,12 +1,32 @@
 {
-  "extends": "expo/tsconfig.base",
+  "extends": "expo/tsconfig.base.json",
   "compilerOptions": {
     "strict": true,
+    "baseUrl": ".",
     "paths": {
       "@/*": [
         "./sources/*"
       ]
-    }
+    },
+    "jsx": "react-jsx",
+    "esModuleInterop": true,
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "incremental": true,
+    "plugins": [
+      {
+        "name": "expo-router/typescript-plugin"
+      }
+    ]
   },
   "include": [
     "**/*.ts",
@@ -16,6 +36,7 @@
     "nativewind-env.d.ts"
   ],
   "exclude": [
-    "sources/trash/**/*"
+    "sources/trash/**/*",
+    "node_modules"
   ]
 }

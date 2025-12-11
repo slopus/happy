@@ -58,3 +58,22 @@ export interface ModalContextValue {
     hideModal: (id: string) => void;
     hideAllModals: () => void;
 }
+
+export interface IModal {
+    alert(title: string, message?: string, buttons?: AlertButton[]): void;
+    confirm(title: string, message?: string, options?: {
+        cancelText?: string;
+        confirmText?: string;
+        destructive?: boolean;
+    }): Promise<boolean>;
+    prompt(title: string, message?: string, options?: {
+        placeholder?: string;
+        defaultValue?: string;
+        cancelText?: string;
+        confirmText?: string;
+        inputType?: 'default' | 'secure-text' | 'email-address' | 'numeric';
+    }): Promise<string | null>;
+    show(config: Omit<CustomModalConfig, 'id' | 'type'>): string;
+    hide(id: string): void;
+    hideAll(): void;
+}

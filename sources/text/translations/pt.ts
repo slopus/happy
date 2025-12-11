@@ -34,6 +34,7 @@ export const pt: TranslationStructure = {
         cancel: 'Cancelar',
         authenticate: 'Autenticar',
         save: 'Salvar',
+        saveAs: 'Salvar como',
         error: 'Erro',
         success: 'Sucesso',
         ok: 'OK',
@@ -57,6 +58,8 @@ export const pt: TranslationStructure = {
         fileViewer: 'Visualizador de arquivos',
         loading: 'Carregando...',
         retry: 'Tentar novamente',
+        delete: 'Excluir',
+        optional: 'Opcional',
     },
 
     profile: {
@@ -67,6 +70,7 @@ export const pt: TranslationStructure = {
         username: 'Nome de usuário',
         status: 'Status',
     },
+
 
     status: {
         connected: 'conectado',
@@ -130,6 +134,8 @@ export const pt: TranslationStructure = {
         exchangingTokens: 'Trocando tokens...',
         usage: 'Uso',
         usageSubtitle: 'Visualizar uso da API e custos',
+        profiles: 'Perfis',
+        profilesSubtitle: 'Gerenciar perfis de ambiente e variáveis',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Conta ${service} conectada`,
@@ -846,6 +852,36 @@ export const pt: TranslationStructure = {
         usageOverTime: 'Uso ao longo do tempo',
         byModel: 'Por modelo',
         noData: 'Nenhum dado de uso disponível',
+    },
+
+    profiles: {
+        title: 'Perfis',
+        subtitle: 'Gerencie seus perfis de configuração',
+        noProfile: 'Nenhum perfil',
+        noProfileDescription: 'Crie um perfil para gerenciar sua configuração de ambiente',
+        addProfile: 'Adicionar perfil',
+        addProfileTitle: 'Título do perfil de adição',
+        editProfile: 'Editar perfil',
+        profileName: 'Nome do perfil',
+        enterName: 'Digite o nome do perfil',
+        baseURL: 'URL base',
+        authToken: 'Token de autenticação',
+        enterToken: 'Digite o token de autenticação',
+        model: 'Modelo',
+        defaultModel: 'Modelo padrão',
+        tmuxSession: 'Sessão tmux',
+        enterTmuxSession: 'Digite o nome da sessão tmux',
+        tmuxTempDir: 'Diretório temporário tmux',
+        enterTmuxTempDir: 'Digite o diretório temporário tmux',
+        tmuxUpdateEnvironment: 'Atualizar ambiente tmux',
+        deleteConfirm: 'Tem certeza de que deseja excluir este perfil?',
+        nameRequired: 'O nome do perfil é obrigatório',
+        delete: {
+            title: 'Excluir Perfil',
+            message: ({ name }: { name: string }) => `Tem certeza de que deseja excluir "${name}"? Esta ação não pode ser desfeita.`,
+            confirm: 'Excluir',
+            cancel: 'Cancelar',
+        },
     },
 
     feed: {

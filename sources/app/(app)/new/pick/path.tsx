@@ -122,8 +122,8 @@ export default function PathPickerScreen() {
 
     const handleSelectPath = React.useCallback(() => {
         const pathToUse = customPath.trim() || machine?.metadata?.homeDir || '/home';
-        // Set the selection and go back
-        callbacks.onPathSelected(pathToUse);
+        // Path picker is no longer used by wizard, but keep for potential other uses
+        // Just navigate back with path in URL params
         router.back();
     }, [customPath, router, machine]);
 

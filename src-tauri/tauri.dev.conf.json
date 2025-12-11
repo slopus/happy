@@ -1,0 +1,12 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Happy (dev)",
+  "identifier": "com.slopus.happy.dev",
+  "app": {
+    "windows": [
+      {
+        "title": "Happy (dev)"
+      }
+    ]
+  }
+}

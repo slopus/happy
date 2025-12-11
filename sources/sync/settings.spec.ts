@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { settingsParse, applySettings, settingsDefaults, type Settings } from './settings';
+import { settingsParse, applySettings, settingsDefaults, type Settings, AIBackendProfileSchema } from './settings';
+import { getBuiltInProfile } from './profileUtils';
 
 describe('settings', () => {
     describe('settingsParse', () => {
@@ -93,6 +94,7 @@ describe('settings', () => {
     describe('applySettings', () => {
         it('should apply delta to existing settings', () => {
             const currentSettings: Settings = {
+                schemaVersion: 1,
                 viewInline: false,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -114,11 +116,17 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {
                 viewInline: true
             };
             expect(applySettings(currentSettings, delta)).toEqual({
+                schemaVersion: 1, // Preserved from currentSettings
                 viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -128,7 +136,7 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
-                avatarStyle: 'brutalist',
+                avatarStyle: 'gradient', // This should be preserved from currentSettings
                 showFlavorIcons: false,
                 compactSessionView: false,
                 hideInactiveSessions: false,
@@ -136,11 +144,21 @@ describe('settings', () => {
                 reviewPromptLikedApp: null,
                 voiceAssistantLanguage: null,
                 preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
+                lastUsedPermissionMode: null,
+                lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });
 
         it('should merge with defaults', () => {
             const currentSettings: Settings = {
+                schemaVersion: 1,
                 viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -162,16 +180,19 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {};
-            expect(applySettings(currentSettings, delta)).toEqual({
-                ...settingsDefaults,
-                viewInline: true
-            });
+            expect(applySettings(currentSettings, delta)).toEqual(currentSettings);
         });
 
         it('should override existing values with delta', () => {
             const currentSettings: Settings = {
+                schemaVersion: 1,
                 viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -193,33 +214,24 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: Partial<Settings> = {
                 viewInline: false
             };
             expect(applySettings(currentSettings, delta)).toEqual({
-                viewInline: false,
-                expandTodos: true,
-                showLineNumbers: true,
-                showLineNumbersInToolViews: false,
-                wrapLinesInDiffs: false,
-                analyticsOptOut: false,
-                inferenceOpenAIKey: null,
-                experiments: false,
-                alwaysShowContextSize: false,
-                avatarStyle: 'brutalist',
-                showFlavorIcons: false,
-                compactSessionView: false,
-                hideInactiveSessions: false,
-                reviewPromptAnswered: false,
-                reviewPromptLikedApp: null,
-                voiceAssistantLanguage: null,
-                preferredLanguage: null,
+                ...currentSettings,
+                viewInline: false
             });
         });
 
         it('should handle empty delta', () => {
             const currentSettings: Settings = {
+                schemaVersion: 1,
                 viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -241,11 +253,13 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
-            expect(applySettings(currentSettings, {})).toEqual({
-                ...settingsDefaults,
-                viewInline: true
-            });
+            expect(applySettings(currentSettings, {})).toEqual(currentSettings);
         });
 
         it('should handle extra fields in current settings', () => {
@@ -265,6 +279,7 @@ describe('settings', () => {
 
         it('should handle extra fields in delta', () => {
             const currentSettings: Settings = {
+                schemaVersion: 1,
                 viewInline: true,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -286,13 +301,18 @@ describe('settings', () => {
                 lastUsedAgent: null,
                 lastUsedPermissionMode: null,
                 lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
+                favoriteDirectories: [],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             };
             const delta: any = {
                 viewInline: false,
                 newField: 'new value'
             };
             expect(applySettings(currentSettings, delta)).toEqual({
-                ...settingsDefaults,
+                ...currentSettings,
                 viewInline: false,
                 newField: 'new value'
             });
@@ -319,6 +339,7 @@ describe('settings', () => {
     describe('settingsDefaults', () => {
         it('should have correct default values', () => {
             expect(settingsDefaults).toEqual({
+                schemaVersion: 2,
                 viewInline: false,
                 expandTodos: true,
                 showLineNumbers: true,
@@ -328,7 +349,23 @@ describe('settings', () => {
                 inferenceOpenAIKey: null,
                 experiments: false,
                 alwaysShowContextSize: false,
+                avatarStyle: 'brutalist',
+                showFlavorIcons: false,
+                compactSessionView: false,
                 hideInactiveSessions: false,
+                reviewPromptAnswered: false,
+                reviewPromptLikedApp: null,
+                voiceAssistantLanguage: null,
+                preferredLanguage: null,
+                recentMachinePaths: [],
+                lastUsedAgent: null,
+                lastUsedPermissionMode: null,
+                lastUsedModelMode: null,
+                profiles: [],
+                lastUsedProfile: null,
+                favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],
+                favoriteMachines: [],
+                dismissedCLIWarnings: { perMachine: {}, global: {} },
             });
         });
 
@@ -380,7 +417,7 @@ describe('settings', () => {
         it('should handle circular references gracefully', () => {
             const circular: any = { viewInline: true };
             circular.self = circular;
-            
+
             // Should not throw and should return defaults due to parse error
             expect(() => settingsParse(circular)).not.toThrow();
         });
@@ -410,6 +447,86 @@ describe('settings', () => {
             expect((parsed as any).constructor).toEqual({ prototype: { evil: true } });
             // Verify no prototype pollution occurred
             expect(({} as any).evil).toBeUndefined();
+        });
+    });
+
+    describe('AIBackendProfile validation', () => {
+        it('validates built-in Anthropic profile', () => {
+            const profile = getBuiltInProfile('anthropic');
+            expect(profile).not.toBeNull();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+        });
+
+        it('validates built-in DeepSeek profile', () => {
+            const profile = getBuiltInProfile('deepseek');
+            expect(profile).not.toBeNull();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+        });
+
+        it('validates built-in Z.AI profile', () => {
+            const profile = getBuiltInProfile('zai');
+            expect(profile).not.toBeNull();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+        });
+
+        it('validates built-in OpenAI profile', () => {
+            const profile = getBuiltInProfile('openai');
+            expect(profile).not.toBeNull();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+        });
+
+        it('validates built-in Azure OpenAI profile', () => {
+            const profile = getBuiltInProfile('azure-openai');
+            expect(profile).not.toBeNull();
+            expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+        });
+
+        it('accepts all 7 permission modes', () => {
+            const modes = ['default', 'acceptEdits', 'bypassPermissions', 'plan', 'read-only', 'safe-yolo', 'yolo'];
+            modes.forEach(mode => {
+                const profile = {
+                    id: crypto.randomUUID(),
+                    name: 'Test Profile',
+                    defaultPermissionMode: mode,
+                    compatibility: { claude: true, codex: true },
+                };
+                expect(() => AIBackendProfileSchema.parse(profile)).not.toThrow();
+            });
+        });
+
+        it('rejects invalid permission mode', () => {
+            const profile = {
+                id: crypto.randomUUID(),
+                name: 'Test Profile',
+                defaultPermissionMode: 'invalid-mode',
+                compatibility: { claude: true, codex: true },
+            };
+            expect(() => AIBackendProfileSchema.parse(profile)).toThrow();
+        });
+
+        it('validates environment variable names', () => {
+            const validProfile = {
+                id: crypto.randomUUID(),
+                name: 'Test Profile',
+                environmentVariables: [
+                    { name: 'VALID_VAR_123', value: 'test' },
+                    { name: 'API_KEY', value: '${SECRET}' },
+                ],
+                compatibility: { claude: true, codex: true },
+            };
+            expect(() => AIBackendProfileSchema.parse(validProfile)).not.toThrow();
+        });
+
+        it('rejects invalid environment variable names', () => {
+            const invalidProfile = {
+                id: crypto.randomUUID(),
+                name: 'Test Profile',
+                environmentVariables: [
+                    { name: 'invalid-name', value: 'test' },
+                ],
+                compatibility: { claude: true, codex: true },
+            };
+            expect(() => AIBackendProfileSchema.parse(invalidProfile)).toThrow();
         });
     });
 });

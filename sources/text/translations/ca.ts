@@ -34,6 +34,7 @@ export const ca: TranslationStructure = {
         cancel: 'Cancel·la',
         authenticate: 'Autentica',
         save: 'Desa',
+        saveAs: 'Desa com a',
         error: 'Error',
         success: 'Èxit',
         ok: 'D\'acord',
@@ -57,6 +58,8 @@ export const ca: TranslationStructure = {
         fileViewer: 'Visualitzador de fitxers',
         loading: 'Carregant...',
         retry: 'Torna-ho a provar',
+        delete: 'Elimina',
+        optional: 'Opcional',
     },
 
     profile: {
@@ -67,6 +70,7 @@ export const ca: TranslationStructure = {
         username: 'Nom d\'usuari',
         status: 'Estat',
     },
+
 
     status: {
         connected: 'connectat',
@@ -130,6 +134,8 @@ export const ca: TranslationStructure = {
         exchangingTokens: 'Intercanviant tokens...',
         usage: 'Ús',
         usageSubtitle: "Veure l'ús de l'API i costos",
+        profiles: 'Perfils',
+        profilesSubtitle: 'Gestiona els perfils d\'entorn i variables',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Compte de ${service} connectat`,
@@ -846,6 +852,36 @@ export const ca: TranslationStructure = {
         usageOverTime: 'Ús al llarg del temps',
         byModel: 'Per model',
         noData: "No hi ha dades d'ús disponibles",
+    },
+
+    profiles: {
+        title: 'Perfils',
+        subtitle: 'Gestiona els teus perfils de configuració',
+        noProfile: 'Cap perfil',
+        noProfileDescription: 'Crea un perfil per gestionar la teva configuració d\'entorn',
+        addProfile: 'Afegeix un perfil',
+        addProfileTitle: 'Títol del perfil d\'addició',
+        editProfile: 'Edita el perfil',
+        profileName: 'Nom del perfil',
+        enterName: 'Introdueix el nom del perfil',
+        baseURL: 'URL base',
+        authToken: 'Token d\'autenticació',
+        enterToken: 'Introdueix el token d\'autenticació',
+        model: 'Model',
+        defaultModel: 'Model per defecte',
+        tmuxSession: 'Sessió tmux',
+        enterTmuxSession: 'Introdueix el nom de la sessió tmux',
+        tmuxTempDir: 'Directori temporal tmux',
+        enterTmuxTempDir: 'Introdueix el directori temporal tmux',
+        tmuxUpdateEnvironment: 'Actualitza l\'entorn tmux',
+        deleteConfirm: 'Segur que vols eliminar aquest perfil?',
+        nameRequired: 'El nom del perfil és obligatori',
+        delete: {
+            title: 'Eliminar Perfil',
+            message: ({ name }: { name: string }) => `Estàs segur que vols eliminar "${name}"? Aquesta acció no es pot desfer.`,
+            confirm: 'Eliminar',
+            cancel: 'Cancel·lar',
+        },
     },
 
     feed: {

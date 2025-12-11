@@ -15,7 +15,7 @@ import { registerPushToken } from './apiPush';
 import { Platform, AppState } from 'react-native';
 import { isRunningOnMac } from '@/utils/platform';
 import { NormalizedMessage, normalizeRawMessage, RawRecord } from './typesRaw';
-import { applySettings, Settings, settingsDefaults, settingsParse } from './settings';
+import { applySettings, Settings, settingsDefaults, settingsParse, SUPPORTED_SCHEMA_VERSION } from './settings';
 import { Profile, profileParse } from './profile';
 import { loadPendingSettings, savePendingSettings } from './persistence';
 import { initializeTracking, tracking } from '@/track';
@@ -1674,6 +1674,29 @@ class Sync {
 
             // Apply the updated profile to storage
             storage.getState().applyProfile(updatedProfile);
+
+            // Handle settings updates (new for profile sync)
+            if (accountUpdate.settings?.value) {
+                try {
+                    const decryptedSettings = await this.encryption.decryptRaw(accountUpdate.settings.value);
+                    const parsedSettings = settingsParse(decryptedSettings);
+
+                    // Version compatibility check
+                    const settingsSchemaVersion = parsedSettings.schemaVersion ?? 1;
+                    if (settingsSchemaVersion > SUPPORTED_SCHEMA_VERSION) {
+                        console.warn(
+                            `⚠️ Received settings schema v${settingsSchemaVersion}, ` +
+                            `we support v${SUPPORTED_SCHEMA_VERSION}. Update app for full functionality.`
+                        );
+                    }
+
+                    storage.getState().applySettings(parsedSettings, accountUpdate.settings.version);
+                    log.log(`📋 Settings synced from server (schema v${settingsSchemaVersion}, version ${accountUpdate.settings.version})`);
+                } catch (error) {
+                    console.error('❌ Failed to process settings update:', error);
+                    // Don't crash on settings sync errors, just log
+                }
+            }
         } else if (updateData.body.t === 'update-machine') {
             const machineUpdate = updateData.body;
             const machineId = machineUpdate.machineId;  // Changed from .id to .machineId
