@@ -1457,6 +1457,7 @@ class Sync {
 
         // Apply to storage
         this.applyMessages(sessionId, normalizedMessages);
+        storage.getState().applyMessagesLoaded(sessionId);
         log.log(`💬 fetchMessages completed for session ${sessionId} - processed ${normalizedMessages.length} messages`);
     }
 
