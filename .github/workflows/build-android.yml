@@ -49,6 +49,26 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Free disk space
+        run: |
+          echo "=== Disk space before cleanup ==="
+          df -h /
+
+          # Remove Docker data
+          sudo docker system prune -af --volumes || true
+
+          # Remove pre-installed software we don't need
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android/sdk/ndk
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/.ghcup
+
+          echo "=== Disk space after cleanup ==="
+          df -h /
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -107,6 +127,26 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          echo "=== Disk space before cleanup ==="
+          df -h /
+
+          # Remove Docker data
+          sudo docker system prune -af --volumes || true
+
+          # Remove pre-installed software we don't need
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /usr/local/lib/android/sdk/ndk
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /opt/hostedtoolcache/CodeQL
+          sudo rm -rf /usr/local/share/powershell
+          sudo rm -rf /usr/share/swift
+          sudo rm -rf /usr/local/.ghcup
+
+          echo "=== Disk space after cleanup ==="
+          df -h /
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
