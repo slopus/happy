@@ -119,13 +119,18 @@ jobs:
         env:
           APP_ENV: ${{ steps.env.outputs.APP_ENV }}
 
+      - name: Configure Gradle JVM memory
+        run: |
+          mkdir -p ~/.gradle
+          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError" >> ~/.gradle/gradle.properties
+          echo "org.gradle.workers.max=2" >> ~/.gradle/gradle.properties
+          echo "kotlin.daemon.jvmargs=-Xmx2g" >> ~/.gradle/gradle.properties
+
       - name: Build Debug APK
         working-directory: android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --parallel --build-cache
-        env:
-          GRADLE_OPTS: -Xmx4g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError
+          ./gradlew assembleDebug --no-daemon --build-cache
 
       - name: Upload Debug APK
         uses: actions/upload-artifact@v4
@@ -206,6 +211,13 @@ jobs:
         env:
           APP_ENV: ${{ github.event.inputs.app_env }}
 
+      - name: Configure Gradle JVM memory
+        run: |
+          mkdir -p ~/.gradle
+          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError" >> ~/.gradle/gradle.properties
+          echo "org.gradle.workers.max=2" >> ~/.gradle/gradle.properties
+          echo "kotlin.daemon.jvmargs=-Xmx2g" >> ~/.gradle/gradle.properties
+
       - name: Decode keystore
         if: env.ANDROID_KEYSTORE_BASE64 != ''
         run: |
@@ -217,9 +229,8 @@ jobs:
         working-directory: android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleRelease --no-daemon --parallel --build-cache
+          ./gradlew assembleRelease --no-daemon --build-cache
         env:
-          GRADLE_OPTS: -Xmx4g -XX:MaxMetaspaceSize=1g -XX:+HeapDumpOnOutOfMemoryError
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
