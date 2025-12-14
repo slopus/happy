@@ -36,7 +36,7 @@ This will:
 - `-v, --version` - Show version
 - `-m, --model <model>` - Claude model to use (default: sonnet)
 - `-p, --permission-mode <mode>` - Permission mode: auto, default, or plan
-- `--claude-env KEY=VALUE` - Set environment variable for Claude Code
+- `--claude-env KEY=VALUE` - Set environment variable for Claude Code (e.g., for [claude-code-router](https://github.com/musistudio/claude-code-router))
 - `--claude-arg ARG` - Pass additional argument to Claude CLI
 
 ## Environment Variables
