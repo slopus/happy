@@ -100,8 +100,8 @@ jobs:
           path: android
           retention-days: 1
 
-  # Parallel debug builds - one per ABI
-  build-debug:
+  # Parallel release builds - one per ABI (standalone APKs with bundled JS)
+  build:
     runs-on: ubuntu-latest
     needs: prebuild
     strategy:
@@ -166,17 +166,17 @@ jobs:
           kotlin.incremental=true
           EOF
 
-      - name: Build Debug APK for ${{ matrix.abi }}
+      - name: Build Release APK for ${{ matrix.abi }}
         working-directory: android
         run: |
           chmod +x ./gradlew
-          ./gradlew assembleDebug --no-daemon --build-cache -PreactNativeArchitectures=${{ matrix.abi }}
+          ./gradlew assembleRelease --no-daemon --build-cache -PreactNativeArchitectures=${{ matrix.abi }}
 
-      - name: Upload Debug APK
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug-${{ matrix.abi }}
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: app-release-${{ matrix.abi }}
+          path: android/app/build/outputs/apk/release/app-release.apk
           retention-days: 14
 
   # Release build - runs on workflow_dispatch only
