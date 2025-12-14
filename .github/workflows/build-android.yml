@@ -37,8 +37,28 @@ env:
   JAVA_VERSION: '17'
 
 jobs:
+  # Fast typecheck job - runs in parallel with setup, fails fast on type errors
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run typecheck
+        run: yarn typecheck
+
   build-debug:
     runs-on: ubuntu-latest
+    needs: typecheck
     # Run on push/PR events, or workflow_dispatch with debug or both selected
     if: |
       github.event_name != 'workflow_dispatch' ||
@@ -51,23 +71,15 @@ jobs:
 
       - name: Free disk space
         run: |
-          echo "=== Disk space before cleanup ==="
-          df -h /
-
-          # Remove Docker data
-          sudo docker system prune -af --volumes || true
-
-          # Remove pre-installed software we don't need
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android/sdk/ndk
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo rm -rf /usr/local/share/powershell
-          sudo rm -rf /usr/share/swift
-          sudo rm -rf /usr/local/.ghcup
-
-          echo "=== Disk space after cleanup ==="
-          df -h /
+          # Remove pre-installed software we don't need (runs in background)
+          sudo rm -rf /usr/share/dotnet &
+          sudo rm -rf /opt/ghc &
+          sudo rm -rf /opt/hostedtoolcache/CodeQL &
+          sudo rm -rf /usr/local/share/powershell &
+          sudo rm -rf /usr/share/swift &
+          sudo rm -rf /usr/local/.ghcup &
+          sudo docker system prune -af --volumes &
+          wait
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -95,9 +107,6 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --frozen-lockfile
-
-      - name: Run typecheck
-        run: yarn typecheck
 
       - name: Determine APP_ENV
         id: env
@@ -122,9 +131,14 @@ jobs:
       - name: Configure Gradle JVM memory
         run: |
           mkdir -p ~/.gradle
-          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError" >> ~/.gradle/gradle.properties
-          echo "org.gradle.workers.max=2" >> ~/.gradle/gradle.properties
-          echo "kotlin.daemon.jvmargs=-Xmx2g" >> ~/.gradle/gradle.properties
+          cat >> ~/.gradle/gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError
+          org.gradle.parallel=true
+          org.gradle.workers.max=4
+          org.gradle.caching=true
+          kotlin.daemon.jvmargs=-Xmx2g
+          kotlin.incremental=true
+          EOF
 
       - name: Build Debug APK
         working-directory: android
@@ -141,6 +155,7 @@ jobs:
 
   build-release:
     runs-on: ubuntu-latest
+    needs: typecheck
     # Run on workflow_dispatch with release or both selected
     if: |
       github.event_name == 'workflow_dispatch' &&
@@ -152,23 +167,15 @@ jobs:
 
       - name: Free disk space
         run: |
-          echo "=== Disk space before cleanup ==="
-          df -h /
-
-          # Remove Docker data
-          sudo docker system prune -af --volumes || true
-
-          # Remove pre-installed software we don't need
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /usr/local/lib/android/sdk/ndk
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          sudo rm -rf /usr/local/share/powershell
-          sudo rm -rf /usr/share/swift
-          sudo rm -rf /usr/local/.ghcup
-
-          echo "=== Disk space after cleanup ==="
-          df -h /
+          # Remove pre-installed software we don't need (runs in background)
+          sudo rm -rf /usr/share/dotnet &
+          sudo rm -rf /opt/ghc &
+          sudo rm -rf /opt/hostedtoolcache/CodeQL &
+          sudo rm -rf /usr/local/share/powershell &
+          sudo rm -rf /usr/share/swift &
+          sudo rm -rf /usr/local/.ghcup &
+          sudo docker system prune -af --volumes &
+          wait
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -197,9 +204,6 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Run typecheck
-        run: yarn typecheck
-
       - name: Cache Expo prebuild
         uses: actions/cache@v4
         with:
@@ -214,9 +218,14 @@ jobs:
       - name: Configure Gradle JVM memory
         run: |
           mkdir -p ~/.gradle
-          echo "org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError" >> ~/.gradle/gradle.properties
-          echo "org.gradle.workers.max=2" >> ~/.gradle/gradle.properties
-          echo "kotlin.daemon.jvmargs=-Xmx2g" >> ~/.gradle/gradle.properties
+          cat >> ~/.gradle/gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError
+          org.gradle.parallel=true
+          org.gradle.workers.max=4
+          org.gradle.caching=true
+          kotlin.daemon.jvmargs=-Xmx2g
+          kotlin.incremental=true
+          EOF
 
       - name: Decode keystore
         if: env.ANDROID_KEYSTORE_BASE64 != ''
