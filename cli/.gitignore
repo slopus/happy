@@ -31,3 +31,8 @@ pnpm-lock.yaml
 
 # Git worktrees for isolated branch work
 .worktrees/
+bun.lock
+claude-docs/
+note/
+happy-coder-*.tgz
+
