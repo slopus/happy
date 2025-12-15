@@ -54,6 +54,7 @@ import { join } from 'node:path';
 import { projectPath } from '@/projectPath';
 import { logger } from '@/ui/logger';
 import { existsSync } from 'node:fs';
+import { isBun } from './runtime';
 
 /**
  * Spawn the Happy CLI with the given arguments in a cross-platform way.
@@ -99,5 +100,6 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
     throw new Error(errorMessage);
   }
   
-  return spawn('node', nodeArgs, options);
+  const runtime = isBun() ? 'bun' : 'node';
+  return spawn(runtime, nodeArgs, options);
 }
