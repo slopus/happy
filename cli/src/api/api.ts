@@ -30,7 +30,7 @@ export class ApiClient {
     tag: string,
     metadata: Metadata,
     state: AgentState | null
-  }): Promise<Session> {
+  }): Promise<Session | null> {
 
     // Resolve encryption key
     let dataEncryptionKey: Uint8Array | null = null;
@@ -88,6 +88,16 @@ export class ApiClient {
       return session;
     } catch (error) {
       logger.debug('[API] [ERROR] Failed to get or create session:', error);
+
+      // Check if it's a connection error
+      if (error && typeof error === 'object' && 'code' in error) {
+        const errorCode = (error as any).code;
+        if (errorCode === 'ECONNREFUSED' || errorCode === 'ENOTFOUND' || errorCode === 'ETIMEDOUT') {
+          console.log('⚠️  Happy server unreachable - working in offline mode');
+          return null; // Let caller handle fallback
+        }
+      }
+
       throw new Error(`Failed to get or create session: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -160,6 +170,25 @@ export class ApiClient {
       };
       return machine;
     } catch (error) {
+      // Check if it's a connection error
+      if (error && typeof error === 'object' && 'code' in error) {
+        const errorCode = (error as any).code;
+        if (errorCode === 'ECONNREFUSED' || errorCode === 'ENOTFOUND' || errorCode === 'ETIMEDOUT') {
+          console.log('⚠️  Happy server unreachable - working in offline mode');
+          // Return a minimal machine object when server is unreachable
+          const machine: Machine = {
+            id: opts.machineId,
+            encryptionKey: encryptionKey,
+            encryptionVariant: encryptionVariant,
+            metadata: opts.metadata,
+            metadataVersion: 0,
+            daemonState: opts.daemonState || null,
+            daemonStateVersion: 0,
+          };
+          return machine;
+        }
+      }
+
       // Handle 404 gracefully - server endpoint may not be available yet
       if (axios.isAxiosError(error) && error.response?.status === 404) {
         console.warn(chalk.yellow(`[API] Warning: Machine registration endpoint not available (404)`));
@@ -178,9 +207,7 @@ export class ApiClient {
         };
         return machine;
       }
-
-      // For other errors, rethrow
-      throw error;
+      throw error; // Re-throw other errors
     }
   }
 
