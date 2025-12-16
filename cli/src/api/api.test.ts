@@ -1,10 +1,17 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiClient } from './api';
 import axios from 'axios';
 
 // Mock axios
-vi.mock('axios');
-const mockAxios = vi.mocked(axios);
+const mockPost = vi.fn();
+const mockIsAxiosError = vi.fn(() => true);
+vi.mock('axios', () => ({
+    default: {
+        post: mockPost,
+        isAxiosError: mockIsAxiosError
+    },
+    isAxiosError: mockIsAxiosError
+}));
 
 vi.mock('@/ui/logger', () => ({
     logger: {
@@ -20,10 +27,41 @@ vi.mock('./encryption', () => ({
     encrypt: vi.fn((data: any) => data)
 }));
 
+// Mock configuration
+vi.mock('./configuration', () => ({
+    configuration: {
+        serverUrl: 'https://api.example.com'
+    }
+}));
+
+// Mock libsodium encryption
+vi.mock('./libsodiumEncryption', () => ({
+    libsodiumEncryptForPublicKey: vi.fn((data: any) => new Uint8Array(32))
+}));
+
+// Global test metadata
+const testMetadata = {
+    path: '/tmp',
+    host: 'localhost',
+    homeDir: '/home/user',
+    happyHomeDir: '/home/user/.happy',
+    happyLibDir: '/home/user/.happy/lib',
+    happyToolsDir: '/home/user/.happy/tools'
+};
+
+const testMachineMetadata = {
+    host: 'localhost',
+    platform: 'darwin',
+    happyCliVersion: '1.0.0',
+    homeDir: '/home/user',
+    happyHomeDir: '/home/user/.happy',
+    happyLibDir: '/home/user/.happy/lib'
+};
+
 describe('Api server error handling', () => {
     let api: ApiClient;
 
-    beforeEach(() => {
+    beforeEach(async () => {
         vi.clearAllMocks();
 
         // Create a mock credential
@@ -35,7 +73,7 @@ describe('Api server error handling', () => {
             }
         };
 
-        api = new ApiClient(mockCredential);
+        api = await ApiClient.create(mockCredential);
     });
 
     describe('getOrCreateSession', () => {
@@ -43,11 +81,11 @@ describe('Api server error handling', () => {
             const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
             // Mock axios to throw connection refused error
-            mockAxios.post.mockRejectedValue({ code: 'ECONNREFUSED' });
+            mockPost.mockRejectedValue({ code: 'ECONNREFUSED' });
 
             const result = await api.getOrCreateSession({
                 tag: 'test-tag',
-                metadata: {},
+                metadata: testMetadata,
                 state: null
             });
 
@@ -63,11 +101,11 @@ describe('Api server error handling', () => {
             const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
             // Mock axios to throw DNS resolution error
-            mockAxios.post.mockRejectedValue({ code: 'ENOTFOUND' });
+            mockPost.mockRejectedValue({ code: 'ENOTFOUND' });
 
             const result = await api.getOrCreateSession({
                 tag: 'test-tag',
-                metadata: {},
+                metadata: testMetadata,
                 state: null
             });
 
@@ -83,11 +121,11 @@ describe('Api server error handling', () => {
             const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
             // Mock axios to throw timeout error
-            mockAxios.post.mockRejectedValue({ code: 'ETIMEDOUT' });
+            mockPost.mockRejectedValue({ code: 'ETIMEDOUT' });
 
             const result = await api.getOrCreateSession({
                 tag: 'test-tag',
-                metadata: {},
+                metadata: testMetadata,
                 state: null
             });
 
@@ -99,19 +137,38 @@ describe('Api server error handling', () => {
             consoleSpy.mockRestore();
         });
 
-        it('should re-throw non-connection errors', async () => {
-            // Mock axios to throw a different type of error (e.g., authentication error)
-            mockAxios.post.mockRejectedValue({
-                code: 'UNAUTHORIZED',
-                message: 'Invalid API key'
+        it('should return null when session endpoint returns 404', async () => {
+            const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+            // Mock axios to return 404
+            mockPost.mockRejectedValue({
+                response: { status: 404 },
+                isAxiosError: true
             });
 
-            await expect(
-                api.getOrCreateSession({ tag: 'test-tag', metadata: {}, state: null })
-            ).rejects.toEqual({
-                code: 'UNAUTHORIZED',
-                message: 'Invalid API key'
+            const result = await api.getOrCreateSession({
+                tag: 'test-tag',
+                metadata: testMetadata,
+                state: null
             });
+
+            expect(result).toBeNull();
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Warning: Session endpoint not available (404)')
+            );
+
+            consoleSpy.mockRestore();
+        });
+
+        it('should re-throw non-connection errors', async () => {
+            // Mock axios to throw a different type of error (e.g., authentication error)
+            const authError = new Error('Invalid API key');
+            (authError as any).code = 'UNAUTHORIZED';
+            mockPost.mockRejectedValue(authError);
+
+            await expect(
+                api.getOrCreateSession({ tag: 'test-tag', metadata: testMetadata, state: null })
+            ).rejects.toThrow('Failed to get or create session: Invalid API key');
 
             // Should not show the offline mode message
             const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
@@ -127,21 +184,27 @@ describe('Api server error handling', () => {
             const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
             // Mock axios to throw connection refused error
-            mockAxios.post.mockRejectedValue({ code: 'ECONNREFUSED' });
+            mockPost.mockRejectedValue({ code: 'ECONNREFUSED' });
 
             const result = await api.getOrCreateMachine({
                 machineId: 'test-machine',
-                metadata: { test: 'data' },
-                daemonState: { state: 'test' }
+                metadata: testMachineMetadata,
+                daemonState: {
+                    status: 'running',
+                    pid: 1234
+                }
             });
 
             expect(result).toEqual({
                 id: 'test-machine',
                 encryptionKey: expect.any(Uint8Array),
                 encryptionVariant: 'legacy',
-                metadata: { test: 'data' },
+                metadata: testMachineMetadata,
                 metadataVersion: 0,
-                daemonState: { state: 'test' },
+                daemonState: {
+                    status: 'running',
+                    pid: 1234
+                },
                 daemonStateVersion: 0,
             });
 
@@ -156,21 +219,21 @@ describe('Api server error handling', () => {
             const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
             // Mock axios to return 404
-            mockAxios.post.mockRejectedValue({
+            mockPost.mockRejectedValue({
                 response: { status: 404 },
                 isAxiosError: true
             });
 
             const result = await api.getOrCreateMachine({
                 machineId: 'test-machine',
-                metadata: { test: 'data' }
+                metadata: testMachineMetadata
             });
 
             expect(result).toEqual({
                 id: 'test-machine',
                 encryptionKey: expect.any(Uint8Array),
                 encryptionVariant: 'legacy',
-                metadata: { test: 'data' },
+                metadata: testMachineMetadata,
                 metadataVersion: 0,
                 daemonState: null,
                 daemonStateVersion: 0,

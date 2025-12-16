@@ -27,6 +27,8 @@ import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
+import { startOfflineReconnection, printOfflineWarning } from '@/utils/offlineReconnection';
+import type { ApiSessionClient } from '@/api/apiSession';
 
 type ReadyEventOptions = {
     pending: unknown;
@@ -122,27 +124,68 @@ export async function runCodex(opts: {
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 
-    // Handle server unreachable case - continue in local mode
+    // Handle server unreachable case - create offline stub with hot reconnection
+    let session: ApiSessionClient;
+    let reconnectionHandle: ReturnType<typeof startOfflineReconnection<ApiSessionClient>> | null = null;
+
     if (!response) {
-        logger.debug('Server unreachable, running in offline mode');
-        console.log('⚠️  Happy server unreachable - continuing in local mode');
-        // Exit gracefully - user can run happy in local mode without server
-        process.exit(0);
+        printOfflineWarning('Codex');
+
+        // Create a no-op session stub for offline mode
+        // All session methods become no-ops until reconnection succeeds
+        const offlineSessionStub = {
+            sessionId: `offline-${sessionTag}`,
+            sendCodexMessage: () => {},
+            sendClaudeSessionMessage: () => {},
+            keepAlive: () => {},
+            sendSessionEvent: () => {},
+            sendSessionDeath: () => {},
+            flush: async () => {},
+            close: async () => {},
+            updateMetadata: () => {},
+            updateAgentState: () => {},
+            onUserMessage: () => {},
+            rpcHandlerManager: {
+                registerHandler: () => {}
+            }
+        } as unknown as ApiSessionClient;
+
+        session = offlineSessionStub;
+
+        // Start background reconnection
+        reconnectionHandle = startOfflineReconnection<ApiSessionClient>({
+            serverUrl: configuration.serverUrl,
+            onReconnected: async () => {
+                const resp = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+                if (!resp) throw new Error('Server unavailable');
+                const realSession = api.sessionSyncClient(resp);
+                // Swap the session reference so future calls use the real session
+                session = realSession;
+                return realSession;
+            },
+            onNotify: (msg) => {
+                // We can't use messageBuffer here since it's defined later
+                // Just log to console - this matches Claude's behavior
+                console.log(msg);
+            }
+        });
+    } else {
+        session = api.sessionSyncClient(response);
     }
 
-    const session = api.sessionSyncClient(response);
-
-    // Always report to daemon if it exists
-    try {
-        logger.debug(`[START] Reporting session ${response.id} to daemon`);
-        const result = await notifyDaemonSessionStarted(response.id, metadata);
-        if (result.error) {
-            logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
-        } else {
-            logger.debug(`[START] Reported session ${response.id} to daemon`);
+    // Always report to daemon if it exists (skip if offline)
+    if (response) {
+        try {
+            logger.debug(`[START] Reporting session ${response.id} to daemon`);
+            const result = await notifyDaemonSessionStarted(response.id, metadata);
+            if (result.error) {
+                logger.debug(`[START] Failed to report to daemon (may not be running):`, result.error);
+            } else {
+                logger.debug(`[START] Reported session ${response.id} to daemon`);
+            }
+        } catch (error) {
+            logger.debug('[START] Failed to report to daemon (may not be running):', error);
         }
-    } catch (error) {
-        logger.debug('[START] Failed to report to daemon (may not be running):', error);
     }
 
     const messageQueue = new MessageQueue2<EnhancedMode>((mode) => hashObject({
@@ -734,6 +777,13 @@ export async function runCodex(opts: {
         // Clean up resources when main loop exits
         logger.debug('[codex]: Final cleanup start');
         logActiveHandles('cleanup-start');
+
+        // Cancel offline reconnection if still running
+        if (reconnectionHandle) {
+            logger.debug('[codex]: Cancelling offline reconnection');
+            reconnectionHandle.cancel();
+        }
+
         try {
             logger.debug('[codex]: sendSessionDeath');
             session.sendSessionDeath();
