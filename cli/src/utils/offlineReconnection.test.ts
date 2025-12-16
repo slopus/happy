@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { startOfflineReconnection, printOfflineWarning } from './offlineReconnection';
+import { startOfflineReconnection, printOfflineWarning, connectionState } from './offlineReconnection';
 
 // Mock axios - only isAxiosError needed for error type detection
 vi.mock('axios', () => ({
@@ -511,19 +511,22 @@ describe('startOfflineReconnection', () => {
 // ============================================================================
 
 describe('printOfflineWarning', () => {
+    beforeEach(() => {
+        connectionState.reset(); // Reset singleton state between tests
+    });
+
     it('should print Claude warning by default', () => {
         const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
         printOfflineWarning();
 
-        expect(consoleSpy).toHaveBeenCalledWith('');
+        // New format includes detailed output with failure context
         expect(consoleSpy).toHaveBeenCalledWith(
-            '⚠️  Happy server unreachable - running Claude locally'
+            expect.stringContaining('⚠️  Happy server unreachable - running Claude locally')
         );
         expect(consoleSpy).toHaveBeenCalledWith(
-            '   Remote features disabled. Will reconnect automatically when available.'
+            expect.stringContaining('Will reconnect automatically when server available')
         );
-        expect(consoleSpy).toHaveBeenCalledWith('');
 
         consoleSpy.mockRestore();
     });
@@ -534,20 +537,23 @@ describe('printOfflineWarning', () => {
         printOfflineWarning('Codex');
 
         expect(consoleSpy).toHaveBeenCalledWith(
-            '⚠️  Happy server unreachable - running Codex locally'
+            expect.stringContaining('⚠️  Happy server unreachable - running Codex locally')
         );
 
         consoleSpy.mockRestore();
     });
 
-    it('should handle empty backend name', () => {
+    it('should deduplicate repeated calls', () => {
         const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
-        printOfflineWarning('');
+        printOfflineWarning('Claude');
+        const callCountAfterFirst = consoleSpy.mock.calls.length;
 
-        expect(consoleSpy).toHaveBeenCalledWith(
-            '⚠️  Happy server unreachable - running  locally'
-        );
+        printOfflineWarning('Claude'); // Second call should be deduplicated
+        const callCountAfterSecond = consoleSpy.mock.calls.length;
+
+        // Should not print again (same call count)
+        expect(callCountAfterSecond).toBe(callCountAfterFirst);
 
         consoleSpy.mockRestore();
     });
