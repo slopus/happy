@@ -228,15 +228,99 @@ export function startOfflineReconnection<TSession>(
     };
 }
 
+// ============================================================================
+// Connection State - Simple state machine for offline status with deduplication
+// ============================================================================
+
+/** Maps error codes to human-readable descriptions for display */
+const ERROR_DESCRIPTIONS: Record<string, string> = {
+    ECONNREFUSED: 'server not accepting connections',
+    ENOTFOUND: 'server hostname not found',
+    ETIMEDOUT: 'connection timed out',
+    ECONNRESET: 'connection reset by server',
+    EHOSTUNREACH: 'server host unreachable',
+    ENETUNREACH: 'network unreachable',
+    '401': 'authentication failed - run `happy auth`',
+    '403': 'access forbidden',
+    '404': 'endpoint not found',
+    '500': 'server internal error',
+    '502': 'bad gateway',
+    '503': 'service unavailable',
+};
+
+/** Failure context for accumulating multiple failures into one warning */
+export type OfflineFailure = {
+    operation: string;
+    caller?: string;
+    errorCode?: string;
+    url?: string;
+};
+
 /**
- * Standard offline mode warning message - DRY across all backends.
- * Prints a user-friendly message explaining the situation and next steps.
+ * Coordinates offline warnings across multiple API callers.
  *
- * @param backendName - Name of the backend (default: 'Claude')
+ * When server goes down, session + machine API calls both fail. This class
+ * consolidates those into one clear message with all failure details, then
+ * suppresses duplicates until recovery. Call recover() when back online to
+ * re-enable warnings for future disconnections.
+ */
+class OfflineState {
+    private state: 'online' | 'offline' = 'online';
+    private failures = new Map<string, OfflineFailure>(); // Dedupe by operation
+    private backend = 'Claude';
+
+    /** Report failure - accumulates context, prints once on first offline transition */
+    fail(failure: OfflineFailure): void {
+        this.failures.set(failure.operation, failure);
+        if (this.state === 'online') {
+            this.state = 'offline';
+            this.print();
+        }
+    }
+
+    /** Reset on reconnection */
+    recover(): void {
+        this.state = 'online';
+        this.failures.clear();
+    }
+
+    /** Set backend name before API calls */
+    setBackend(name: string): void { this.backend = name; }
+
+    /** Check current state */
+    isOffline(): boolean { return this.state === 'offline'; }
+
+    /** Reset for testing - clears all state */
+    reset(): void {
+        this.state = 'online';
+        this.failures.clear();
+        this.backend = 'Claude';
+    }
+
+    private print(): void {
+        const details = [...this.failures.values()]
+            .map(f => {
+                const desc = f.errorCode
+                    ? `${f.errorCode} - ${ERROR_DESCRIPTIONS[f.errorCode] || 'unknown error'}`
+                    : 'unknown error';
+                const url = f.url ? ` at ${f.url}` : '';
+                return `${f.operation} failed: ${desc}${url}`;
+            })
+            .join('; ');
+        console.log(`⚠️  Happy server unreachable, offline mode with auto-reconnect enabled - error details: ${details}`);
+    }
+}
+
+/**
+ * Shared singleton - call setBackend() before API calls, fail() on errors,
+ * recover() on successful reconnection.
+ */
+export const connectionState = new OfflineState();
+
+/**
+ * @deprecated Use connectionState.fail() for deduplication and context tracking
  */
 export function printOfflineWarning(backendName: string = 'Claude'): void {
-    console.log('');
-    console.log(`⚠️  Happy server unreachable - running ${backendName} locally`);
-    console.log('   Remote features disabled. Will reconnect automatically when available.');
-    console.log('');
+    connectionState.setBackend(backendName);
+    connectionState.fail({ operation: 'Server connection' });
 }

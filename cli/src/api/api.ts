@@ -8,6 +8,7 @@ import { PushNotificationClient } from './pushNotifications';
 import { configuration } from '@/configuration';
 import chalk from 'chalk';
 import { Credentials } from '@/persistence';
+import { connectionState } from '@/utils/offlineReconnection';
 
 export class ApiClient {
 
@@ -93,7 +94,12 @@ export class ApiClient {
       if (error && typeof error === 'object' && 'code' in error) {
         const errorCode = (error as any).code;
         if (errorCode === 'ECONNREFUSED' || errorCode === 'ENOTFOUND' || errorCode === 'ETIMEDOUT') {
-          console.log('⚠️  Happy server unreachable - working in offline mode');
+          connectionState.fail({
+            operation: 'Session creation',
+            caller: 'api.getOrCreateSession',
+            errorCode,
+            url: `${configuration.serverUrl}/v1/sessions`
+          });
           return null; // Let caller handle fallback
         }
       }
@@ -187,7 +193,12 @@ export class ApiClient {
       if (axios.isAxiosError(error) && error.code) {
         const errorCode = error.code;
         if (errorCode === 'ECONNREFUSED' || errorCode === 'ENOTFOUND' || errorCode === 'ETIMEDOUT') {
-          console.log('⚠️  Happy server unreachable - working in offline mode');
+          connectionState.fail({
+            operation: 'Machine registration',
+            caller: 'api.getOrCreateMachine',
+            errorCode,
+            url: `${configuration.serverUrl}/v1/machines`
+          });
           // Return a minimal machine object without server registration
           const machine: Machine = {
             id: opts.machineId,

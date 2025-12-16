@@ -21,7 +21,7 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
-import { startOfflineReconnection, printOfflineWarning } from '@/utils/offlineReconnection';
+import { startOfflineReconnection, connectionState } from '@/utils/offlineReconnection';
 import { claudeLocal } from '@/claude/claudeLocal';
 import { createSessionScanner } from '@/claude/utils/sessionScanner';
 
@@ -50,6 +50,9 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
         // TODO: Eventually we should error here instead of silently switching
         // throw new Error('Daemon-spawned sessions cannot use local/interactive mode');
     }
+
+    // Set backend for offline warnings (before any API calls)
+    connectionState.setBackend('Claude');
 
     // Create session service
     const api = await ApiClient.create(credentials);
@@ -93,8 +96,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 
     // Handle server unreachable case - run Claude locally with hot reconnection
+    // Note: connectionState.notifyOffline() was already called by api.ts with error details
     if (!response) {
-        printOfflineWarning('Claude');
         let offlineSessionId: string | null = null;
 
         const reconnection = startOfflineReconnection({
