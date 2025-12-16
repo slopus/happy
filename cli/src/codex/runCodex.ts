@@ -121,6 +121,15 @@ export async function runCodex(opts: {
         flavor: 'codex'
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
+
+    // Handle server unreachable case - continue in local mode
+    if (!response) {
+        logger.debug('Server unreachable, running in offline mode');
+        console.log('⚠️  Happy server unreachable - continuing in local mode');
+        // Exit gracefully - user can run happy in local mode without server
+        process.exit(0);
+    }
+
     const session = api.sessionSyncClient(response);
 
     // Always report to daemon if it exists
