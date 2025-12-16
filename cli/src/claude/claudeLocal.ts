@@ -5,6 +5,7 @@ import { mkdirSync, existsSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { logger } from "@/ui/logger";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
+import { claudeFindLastSession } from "./utils/claudeFindLastSession";
 import { getProjectPath } from "./utils/path";
 import { projectPath } from "@/projectPath";
 import { systemPrompt } from "./utils/systemPrompt";
@@ -33,21 +34,100 @@ export async function claudeLocal(opts: {
     // - If resuming an existing session: use --resume (Claude keeps the same session ID)
     // - If starting fresh: generate UUID and pass via --session-id
     let startFrom = opts.sessionId;
-    if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
-        startFrom = null;
+
+    // Handle session-related flags from claudeArgs to ensure transparent behavior
+    // We intercept these flags to use happy-cli's session storage rather than Claude's default
+    //
+    // Supported patterns:
+    // --continue / -c           : Resume last session in current directory
+    // --resume / -r             : Resume last session (picker in Claude, but we handle)
+    // --resume <id> / -r <id>   : Resume specific session by ID
+    // --session-id <uuid>       : Use specific UUID for new session
+
+    // Helper to find and extract flag with optional value
+    const extractFlag = (flags: string[], withValue: boolean = false): { found: boolean; value?: string } => {
+        if (!opts.claudeArgs) return { found: false };
+
+        for (const flag of flags) {
+            const index = opts.claudeArgs.indexOf(flag);
+            if (index !== -1) {
+                if (withValue && index + 1 < opts.claudeArgs.length) {
+                    const nextArg = opts.claudeArgs[index + 1];
+                    // Check if next arg looks like a value (doesn't start with -)
+                    if (!nextArg.startsWith('-')) {
+                        const value = nextArg;
+                        // Remove both flag and value
+                        opts.claudeArgs = opts.claudeArgs.filter((_, i) => i !== index && i !== index + 1);
+                        return { found: true, value };
+                    }
+                }
+                // Remove just the flag
+                opts.claudeArgs = opts.claudeArgs.filter((_, i) => i !== index);
+                return { found: true };
+            }
+        }
+        return { found: false };
+    };
+
+    // 1. Check for --session-id <uuid> (explicit new session with specific ID)
+    const sessionIdFlag = extractFlag(['--session-id'], true);
+    if (sessionIdFlag.found && sessionIdFlag.value) {
+        startFrom = null; // Force new session mode, will use this ID below
+        logger.debug(`[ClaudeLocal] Using explicit --session-id: ${sessionIdFlag.value}`);
+    }
+
+    // 2. Check for --resume <id> / -r <id> (resume specific session)
+    if (!startFrom && !sessionIdFlag.value) {
+        const resumeFlag = extractFlag(['--resume', '-r'], true);
+        if (resumeFlag.found) {
+            if (resumeFlag.value) {
+                startFrom = resumeFlag.value;
+                logger.debug(`[ClaudeLocal] Using provided session ID from --resume: ${startFrom}`);
+            } else {
+                // --resume without value: find last session
+                const lastSession = claudeFindLastSession(opts.path);
+                if (lastSession) {
+                    startFrom = lastSession;
+                    logger.debug(`[ClaudeLocal] --resume: Found last session: ${lastSession}`);
+                }
+            }
+        }
+    }
+
+    // 3. Check for --continue / -c (resume last session)
+    if (!startFrom && !sessionIdFlag.value) {
+        const continueFlag = extractFlag(['--continue', '-c'], false);
+        if (continueFlag.found) {
+            const lastSession = claudeFindLastSession(opts.path);
+            if (lastSession) {
+                startFrom = lastSession;
+                logger.debug(`[ClaudeLocal] --continue: Found last session: ${lastSession}`);
+            }
+        }
     }
 
     // Generate new session ID if not resuming
-    const newSessionId = startFrom ? null : randomUUID();
+    // Priority: 1. startFrom (resuming), 2. explicit --session-id, 3. generate new UUID
+    //
+    // Race condition safety:
+    // - New sessions: randomUUID() guarantees uniqueness even if multiple sessions start simultaneously
+    // - --continue/--resume: If multiple sessions resume the same last session, that's expected
+    //   behavior (Claude Code handles concurrent access to session files)
+    // - --continue when no session: Falls through to randomUUID(), so each gets a unique ID
+    const explicitSessionId = sessionIdFlag.value || null;
+    const newSessionId = startFrom ? null : (explicitSessionId || randomUUID());
     const effectiveSessionId = startFrom || newSessionId!;
-    
+
     // Notify about session ID immediately (we know it upfront now!)
-    if (newSessionId) {
-        logger.debug(`[ClaudeLocal] Generated new session ID: ${newSessionId}`);
-        opts.onSessionFound(newSessionId);
-    } else {
+    if (startFrom) {
         logger.debug(`[ClaudeLocal] Resuming session: ${startFrom}`);
-        opts.onSessionFound(startFrom!);
+        opts.onSessionFound(startFrom);
+    } else if (explicitSessionId) {
+        logger.debug(`[ClaudeLocal] Using explicit session ID: ${explicitSessionId}`);
+        opts.onSessionFound(explicitSessionId);
+    } else {
+        logger.debug(`[ClaudeLocal] Generated new session ID: ${newSessionId}`);
+        opts.onSessionFound(newSessionId!);
     }
 
     // Thinking state
