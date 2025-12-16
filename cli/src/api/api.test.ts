@@ -137,6 +137,29 @@ describe('Api server error handling', () => {
             consoleSpy.mockRestore();
         });
 
+        it('should return null when session endpoint returns 404', async () => {
+            const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+            // Mock axios to return 404
+            mockPost.mockRejectedValue({
+                response: { status: 404 },
+                isAxiosError: true
+            });
+
+            const result = await api.getOrCreateSession({
+                tag: 'test-tag',
+                metadata: testMetadata,
+                state: null
+            });
+
+            expect(result).toBeNull();
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Warning: Session endpoint not available (404)')
+            );
+
+            consoleSpy.mockRestore();
+        });
+
         it('should re-throw non-connection errors', async () => {
             // Mock axios to throw a different type of error (e.g., authentication error)
             const authError = new Error('Invalid API key');

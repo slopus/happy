@@ -98,6 +98,19 @@ export class ApiClient {
         }
       }
 
+      // Handle 404 gracefully - server endpoint may not be available yet
+      // Check both axios error format and plain error format with response
+      const is404Error = (
+        (axios.isAxiosError(error) && error.response?.status === 404) ||
+        (error && typeof error === 'object' && 'response' in error && (error as any).response?.status === 404)
+      );
+      if (is404Error) {
+        console.warn(chalk.yellow(`[API] Warning: Session endpoint not available (404)`));
+        console.warn(chalk.yellow(`[API] Continuing without server registration. This is normal in development mode.`));
+        logger.debug(`[API] Server: ${configuration.serverUrl}/v1/sessions returned 404`);
+        return null; // Let caller handle fallback
+      }
+
       throw new Error(`Failed to get or create session: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }

@@ -21,6 +21,9 @@ import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
+import { startOfflineReconnection, printOfflineWarning } from '@/utils/offlineReconnection';
+import { claudeLocal } from '@/claude/claudeLocal';
+import { createSessionScanner } from '@/claude/utils/sessionScanner';
 
 export interface StartOptions {
     model?: string
@@ -86,11 +89,47 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     };
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 
-    // Handle server unreachable case - continue in local mode
+    // Handle server unreachable case - run Claude locally with hot reconnection
     if (!response) {
-        logger.debug('Server unreachable, running in offline mode');
-        console.log('⚠️  Happy server unreachable - continuing in local mode');
-        // Exit gracefully - user can run happy in local mode without server
+        printOfflineWarning('Claude');
+        let offlineSessionId: string | null = null;
+
+        const reconnection = startOfflineReconnection({
+            serverUrl: configuration.serverUrl,
+            onReconnected: async () => {
+                const resp = await api.getOrCreateSession({ tag: randomUUID(), metadata, state });
+                if (!resp) throw new Error('Server unavailable');
+                const session = api.sessionSyncClient(resp);
+                const scanner = await createSessionScanner({
+                    sessionId: null,
+                    workingDirectory,
+                    onMessage: (msg) => session.sendClaudeSessionMessage(msg)
+                });
+                if (offlineSessionId) scanner.onNewSession(offlineSessionId);
+                return { session, scanner };
+            },
+            onNotify: console.log,
+            onCleanup: () => {
+                // Scanner cleanup handled automatically when process exits
+            }
+        });
+
+        try {
+            await claudeLocal({
+                path: workingDirectory,
+                sessionId: null,
+                onSessionFound: (id) => { offlineSessionId = id; },
+                onThinkingChange: () => {},
+                abort: new AbortController().signal,
+                claudeEnvVars: options.claudeEnvVars,
+                claudeArgs: options.claudeArgs,
+                mcpServers: {},
+                allowedTools: []
+            });
+        } finally {
+            reconnection.cancel();
+            stopCaffeinate();
+        }
         process.exit(0);
     }
 
