@@ -27,7 +27,7 @@ import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
-import { startOfflineReconnection, printOfflineWarning } from '@/utils/offlineReconnection';
+import { startOfflineReconnection, connectionState } from '@/utils/offlineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 
 type ReadyEventOptions = {
@@ -77,6 +77,10 @@ export async function runCodex(opts: {
     //
 
     const sessionTag = randomUUID();
+
+    // Set backend for offline warnings (before any API calls)
+    connectionState.setBackend('Codex');
+
     const api = await ApiClient.create(opts.credentials);
 
     // Log startup options
@@ -129,9 +133,8 @@ export async function runCodex(opts: {
     let session: ApiSessionClient;
     let reconnectionHandle: ReturnType<typeof startOfflineReconnection<ApiSessionClient>> | null = null;
 
+    // Note: connectionState.notifyOffline() was already called by api.ts with error details
     if (!response) {
-        printOfflineWarning('Codex');
-
         // Create a no-op session stub for offline mode
         // All session methods become no-ops until reconnection succeeds
         const offlineSessionStub = {

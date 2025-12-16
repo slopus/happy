@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiClient } from './api';
 import axios from 'axios';
+import { connectionState } from '@/utils/offlineReconnection';
 
 // Mock axios
 const mockPost = vi.fn();
@@ -63,6 +64,7 @@ describe('Api server error handling', () => {
 
     beforeEach(async () => {
         vi.clearAllMocks();
+        connectionState.reset(); // Reset offline state between tests
 
         // Create a mock credential
         const mockCredential = {
@@ -91,13 +93,14 @@ describe('Api server error handling', () => {
 
             expect(result).toBeNull();
             expect(consoleSpy).toHaveBeenCalledWith(
-                '⚠️  Happy server unreachable - working in offline mode'
+                expect.stringContaining('⚠️  Happy server unreachable')
             );
 
             consoleSpy.mockRestore();
         });
 
         it('should return null when Happy server cannot be found (ENOTFOUND)', async () => {
+            connectionState.reset();
             const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
             // Mock axios to throw DNS resolution error
@@ -111,13 +114,14 @@ describe('Api server error handling', () => {
 
             expect(result).toBeNull();
             expect(consoleSpy).toHaveBeenCalledWith(
-                '⚠️  Happy server unreachable - working in offline mode'
+                expect.stringContaining('⚠️  Happy server unreachable')
             );
 
             consoleSpy.mockRestore();
         });
 
         it('should return null when Happy server times out (ETIMEDOUT)', async () => {
+            connectionState.reset();
             const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
             // Mock axios to throw timeout error
@@ -131,7 +135,7 @@ describe('Api server error handling', () => {
 
             expect(result).toBeNull();
             expect(consoleSpy).toHaveBeenCalledWith(
-                '⚠️  Happy server unreachable - working in offline mode'
+                expect.stringContaining('⚠️  Happy server unreachable')
             );
 
             consoleSpy.mockRestore();
@@ -173,7 +177,7 @@ describe('Api server error handling', () => {
             // Should not show the offline mode message
             const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
             expect(consoleSpy).not.toHaveBeenCalledWith(
-                '⚠️  Happy server unreachable - working in offline mode'
+                expect.stringContaining('⚠️  Happy server unreachable')
             );
             consoleSpy.mockRestore();
         });
@@ -181,6 +185,7 @@ describe('Api server error handling', () => {
 
     describe('getOrCreateMachine', () => {
         it('should return minimal machine object when server is unreachable (ECONNREFUSED)', async () => {
+            connectionState.reset();
             const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
             // Mock axios to throw connection refused error
@@ -209,7 +214,7 @@ describe('Api server error handling', () => {
             });
 
             expect(consoleSpy).toHaveBeenCalledWith(
-                '⚠️  Happy server unreachable - working in offline mode'
+                expect.stringContaining('⚠️  Happy server unreachable')
             );
 
             consoleSpy.mockRestore();
