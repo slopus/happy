@@ -380,15 +380,22 @@ function findLatestVersionBinary(versionsDir, binaryName = null) {
 
 /**
  * Find path to globally installed Claude Code CLI
- * Priority: PATH (user preference) > npm > Bun > Homebrew > Native
+ * Priority: HAPPY_CLAUDE_PATH env var > PATH > npm > Bun > Homebrew > Native
  * @returns {{path: string, source: string}|null} Path and source, or null if not found
  */
 function findGlobalClaudeCliPath() {
-    // 1. Check PATH first (respects user's choice)
+    // 1. Environment variable (explicit override)
+    const envPath = process.env.HAPPY_CLAUDE_PATH;
+    if (envPath && fs.existsSync(envPath)) {
+        const resolved = resolvePathSafe(envPath) || envPath;
+        return { path: resolved, source: 'HAPPY_CLAUDE_PATH' };
+    }
+
+    // 2. Check PATH (respects user's shell config)
     const pathResult = findClaudeInPath();
     if (pathResult) return pathResult;
 
-    // 2. Fall back to package manager detection
+    // 3. Fall back to package manager detection
     const npmPath = findNpmGlobalCliPath();
     if (npmPath) return { path: npmPath, source: 'npm' };
 
