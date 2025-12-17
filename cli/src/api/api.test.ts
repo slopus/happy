@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiClient } from './api';
 import axios from 'axios';
-import { connectionState } from '@/utils/offlineReconnection';
+import { connectionState } from '@/utils/serverConnectionErrors';
 
 // Mock axios
 const mockPost = vi.fn();
@@ -142,7 +142,8 @@ describe('Api server error handling', () => {
         });
 
         it('should return null when session endpoint returns 404', async () => {
-            const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            connectionState.reset();
+            const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
             // Mock axios to return 404
             mockPost.mockRejectedValue({
@@ -157,8 +158,12 @@ describe('Api server error handling', () => {
             });
 
             expect(result).toBeNull();
+            // New unified format via connectionState.fail()
             expect(consoleSpy).toHaveBeenCalledWith(
-                expect.stringContaining('Warning: Session endpoint not available (404)')
+                expect.stringContaining('⚠️  Happy server unreachable')
+            );
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Session creation failed: 404')
             );
 
             consoleSpy.mockRestore();
@@ -221,7 +226,8 @@ describe('Api server error handling', () => {
         });
 
         it('should return minimal machine object when server endpoint returns 404', async () => {
-            const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            connectionState.reset();
+            const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
             // Mock axios to return 404
             mockPost.mockRejectedValue({
@@ -244,8 +250,12 @@ describe('Api server error handling', () => {
                 daemonStateVersion: 0,
             });
 
+            // New unified format via connectionState.fail()
             expect(consoleSpy).toHaveBeenCalledWith(
-                expect.stringContaining('Warning: Machine registration endpoint not available (404)')
+                expect.stringContaining('⚠️  Happy server unreachable')
+            );
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('Machine registration failed: 404')
             );
 
             consoleSpy.mockRestore();

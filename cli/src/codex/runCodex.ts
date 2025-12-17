@@ -27,7 +27,7 @@ import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
-import { startOfflineReconnection, connectionState } from '@/utils/offlineReconnection';
+import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
 import type { ApiSessionClient } from '@/api/apiSession';
 
 type ReadyEventOptions = {
