@@ -3,9 +3,11 @@ import { ApiClient } from './api';
 import axios from 'axios';
 import { connectionState } from '@/utils/serverConnectionErrors';
 
-// Mock axios
-const mockPost = vi.fn();
-const mockIsAxiosError = vi.fn(() => true);
+// Mock axios - use vi.hoisted to ensure mocks are available at hoist time
+const { mockPost, mockIsAxiosError } = vi.hoisted(() => ({
+    mockPost: vi.fn(),
+    mockIsAxiosError: vi.fn(() => true)
+}));
 vi.mock('axios', () => ({
     default: {
         post: mockPost,
