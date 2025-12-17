@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { getRuntime, isNode, isBun, isDeno } from '../runtime';
 
 describe('Runtime Detection', () => {
     beforeEach(() => {
@@ -8,7 +9,6 @@ describe('Runtime Detection', () => {
     it('detects Node.js runtime correctly', () => {
         // Test actual runtime detection
         if (process.versions.node && !process.versions.bun && !process.versions.deno) {
-            const { getRuntime, isNode, isBun, isDeno } = require('../runtime.js');
             expect(getRuntime()).toBe('node');
             expect(isNode()).toBe(true);
             expect(isBun()).toBe(false);
@@ -18,7 +18,6 @@ describe('Runtime Detection', () => {
 
     it('detects Bun runtime correctly', () => {
         if (process.versions.bun) {
-            const { getRuntime, isNode, isBun, isDeno } = require('../runtime.js');
             expect(getRuntime()).toBe('bun');
             expect(isNode()).toBe(false);
             expect(isBun()).toBe(true);
@@ -28,7 +27,6 @@ describe('Runtime Detection', () => {
 
     it('detects Deno runtime correctly', () => {
         if (process.versions.deno) {
-            const { getRuntime, isNode, isBun, isDeno } = require('../runtime.js');
             expect(getRuntime()).toBe('deno');
             expect(isNode()).toBe(false);
             expect(isBun()).toBe(false);
@@ -37,13 +35,11 @@ describe('Runtime Detection', () => {
     });
 
     it('returns valid runtime type', () => {
-        const { getRuntime } = require('../runtime.js');
         const runtime = getRuntime();
         expect(['node', 'bun', 'deno', 'unknown']).toContain(runtime);
     });
 
     it('provides consistent predicate functions', () => {
-        const { getRuntime, isNode, isBun, isDeno } = require('../runtime.js');
         const runtime = getRuntime();
 
         // Only one should be true
@@ -57,8 +53,6 @@ describe('Runtime Detection', () => {
     });
 
     it('handles edge cases gracefully', () => {
-        const { getRuntime } = require('../runtime.js');
-
         // Should not throw
         expect(() => getRuntime()).not.toThrow();
 
