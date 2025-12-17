@@ -45,10 +45,11 @@
  * - onReconnected throws: Treated as connection error, retry with backoff
  * - Multiple success attempts: `reconnected` flag prevents duplicates
  *
- * @module offlineReconnection
+ * @module serverConnectionErrors
  */
 
 import axios from 'axios';
+import chalk from 'chalk';
 import { exponentialBackoffDelay } from '@/utils/time';
 import { logger } from '@/ui/logger';
 
@@ -232,17 +233,30 @@ export function startOfflineReconnection<TSession>(
 // Connection State - Simple state machine for offline status with deduplication
 // ============================================================================
 
-/** Maps error codes to human-readable descriptions for display */
-const ERROR_DESCRIPTIONS: Record<string, string> = {
+/** All network error codes that trigger offline mode */
+export const NETWORK_ERROR_CODES = [
+    'ECONNREFUSED', 'ENOTFOUND', 'ETIMEDOUT',
+    'ECONNRESET', 'EHOSTUNREACH', 'ENETUNREACH'
+] as const;
+
+/** Check if error code indicates server unreachable */
+export function isNetworkError(code: string | undefined): boolean {
+    return code !== undefined && (NETWORK_ERROR_CODES as readonly string[]).includes(code);
+}
+
+/** Maps error codes to human-readable descriptions - exported for discoverability */
+export const ERROR_DESCRIPTIONS: Record<string, string> = {
+    // Network errors (Node.js)
     ECONNREFUSED: 'server not accepting connections',
     ENOTFOUND: 'server hostname not found',
     ETIMEDOUT: 'connection timed out',
     ECONNRESET: 'connection reset by server',
     EHOSTUNREACH: 'server host unreachable',
     ENETUNREACH: 'network unreachable',
+    // HTTP errors
     '401': 'authentication failed - run `happy auth`',
     '403': 'access forbidden',
-    '404': 'endpoint not found',
+    '404': 'endpoint not found, check server deployment',
     '500': 'server internal error',
     '502': 'bad gateway',
     '503': 'service unavailable',
@@ -254,6 +268,7 @@ export type OfflineFailure = {
     caller?: string;
     errorCode?: string;
     url?: string;
+    details?: string[];  // Additional context lines, each printed on new line with arrow
 };
 
 /**
@@ -298,21 +313,21 @@ class OfflineState {
     }
 
     private print(): void {
-        console.log(`\n⚠️  Happy server unreachable - running ${this.backend} locally\n`);
+        const summary = [...this.failures.values()]
+            .map(f => {
+                const desc = f.errorCode
+                    ? `${f.errorCode} - ${ERROR_DESCRIPTIONS[f.errorCode] || 'unknown error'}`
+                    : 'unknown error';
+                const url = f.url ? ` at ${f.url}` : '';
+                return `${f.operation} failed: ${desc}${url}`;
+            })
+            .join('; ');
+        console.log(`⚠️  Happy server unreachable, offline mode with auto-reconnect enabled - error details: ${summary}`);
 
-        if (this.failures.size > 0) {
-            console.log('   Failed:');
-            for (const f of this.failures.values()) {
-                const desc = f.errorCode ? ERROR_DESCRIPTIONS[f.errorCode] : null;
-                const code = f.errorCode ? ` (${f.errorCode})` : '';
-                const where = f.caller ? ` [${f.caller}]` : '';
-                console.log(`   • ${f.operation}${desc ? ': ' + desc : ''}${code}${where}`);
-            }
-            console.log('');
-        }
-
-        console.log('   → Local work continues normally');
-        console.log('   → Will reconnect automatically when server available\n');
+        // Print detail lines if present - consistent 3-space indent with arrow
+        const allDetails = [...this.failures.values()]
+            .flatMap(f => f.details || []);
+        allDetails.forEach(line => console.log(chalk.yellow(`   → ${line}`)));
     }
 }
 

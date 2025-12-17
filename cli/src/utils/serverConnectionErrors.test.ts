@@ -1,5 +1,5 @@
 /**
- * Unit tests for offlineReconnection utility.
+ * Unit tests for serverConnectionErrors utility.
  *
  * ## Test Coverage Strategy
  * These tests exercise the real code paths with minimal mocking:
@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { startOfflineReconnection, printOfflineWarning, connectionState } from './offlineReconnection';
+import { startOfflineReconnection, printOfflineWarning, connectionState, isNetworkError, NETWORK_ERROR_CODES } from './serverConnectionErrors';
 
 // Mock axios - only isAxiosError needed for error type detection
 vi.mock('axios', () => ({
@@ -515,29 +515,17 @@ describe('printOfflineWarning', () => {
         connectionState.reset(); // Reset singleton state between tests
     });
 
-    it('should print Claude warning by default', () => {
+    it('should print offline warning with unified format', () => {
         const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
 
         printOfflineWarning();
 
-        // New format includes detailed output with failure context
+        // New unified format via connectionState.fail()
         expect(consoleSpy).toHaveBeenCalledWith(
-            expect.stringContaining('⚠️  Happy server unreachable - running Claude locally')
+            expect.stringContaining('⚠️  Happy server unreachable, offline mode with auto-reconnect enabled')
         );
         expect(consoleSpy).toHaveBeenCalledWith(
-            expect.stringContaining('Will reconnect automatically when server available')
-        );
-
-        consoleSpy.mockRestore();
-    });
-
-    it('should print custom backend name', () => {
-        const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
-
-        printOfflineWarning('Codex');
-
-        expect(consoleSpy).toHaveBeenCalledWith(
-            expect.stringContaining('⚠️  Happy server unreachable - running Codex locally')
+            expect.stringContaining('Server connection failed')
         );
 
         consoleSpy.mockRestore();
@@ -556,5 +544,46 @@ describe('printOfflineWarning', () => {
         expect(callCountAfterSecond).toBe(callCountAfterFirst);
 
         consoleSpy.mockRestore();
+    });
+});
+
+// ============================================================================
+// isNetworkError Tests
+// ============================================================================
+
+describe('isNetworkError', () => {
+    it('should return true for all NETWORK_ERROR_CODES', () => {
+        // All codes in NETWORK_ERROR_CODES should return true
+        expect(isNetworkError('ECONNREFUSED')).toBe(true);
+        expect(isNetworkError('ENOTFOUND')).toBe(true);
+        expect(isNetworkError('ETIMEDOUT')).toBe(true);
+        expect(isNetworkError('ECONNRESET')).toBe(true);
+        expect(isNetworkError('EHOSTUNREACH')).toBe(true);
+        expect(isNetworkError('ENETUNREACH')).toBe(true);
+    });
+
+    it('should return false for non-network error codes', () => {
+        expect(isNetworkError('UNAUTHORIZED')).toBe(false);
+        expect(isNetworkError('EACCES')).toBe(false);
+        expect(isNetworkError('ENOENT')).toBe(false);
+        expect(isNetworkError('UNKNOWN')).toBe(false);
+    });
+
+    it('should return false for undefined', () => {
+        expect(isNetworkError(undefined)).toBe(false);
+    });
+
+    it('should return false for empty string', () => {
+        expect(isNetworkError('')).toBe(false);
+    });
+
+    it('should have exactly 6 network error codes', () => {
+        expect(NETWORK_ERROR_CODES).toHaveLength(6);
+        expect(NETWORK_ERROR_CODES).toContain('ECONNREFUSED');
+        expect(NETWORK_ERROR_CODES).toContain('ENOTFOUND');
+        expect(NETWORK_ERROR_CODES).toContain('ETIMEDOUT');
+        expect(NETWORK_ERROR_CODES).toContain('ECONNRESET');
+        expect(NETWORK_ERROR_CODES).toContain('EHOSTUNREACH');
+        expect(NETWORK_ERROR_CODES).toContain('ENETUNREACH');
     });
 });

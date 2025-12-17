@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { claudeLocal } from './claudeLocal';
 
-// Mock dependencies
-const mockSpawn = vi.fn();
-const mockClaudeFindLastSession = vi.fn();
+// Mock dependencies - use vi.hoisted to ensure mocks are available at hoist time
+const { mockSpawn, mockClaudeFindLastSession } = vi.hoisted(() => ({
+    mockSpawn: vi.fn(),
+    mockClaudeFindLastSession: vi.fn()
+}));
 
 vi.mock('node:child_process', () => ({
     spawn: mockSpawn
