@@ -271,6 +271,19 @@ ${chalk.bold('To clean up runaway processes:')} Use ${chalk.cyan('happy doctor c
         unknownArgs.push('--dangerously-skip-permissions')
       } else if (arg === '--started-by') {
         options.startedBy = args[++i] as 'daemon' | 'terminal'
+      } else if (arg === '--claude-env') {
+        // Parse KEY=VALUE environment variable to pass to Claude
+        const envArg = args[++i]
+        if (envArg && envArg.includes('=')) {
+          const eqIndex = envArg.indexOf('=')
+          const key = envArg.substring(0, eqIndex)
+          const value = envArg.substring(eqIndex + 1)
+          options.claudeEnvVars = options.claudeEnvVars || {}
+          options.claudeEnvVars[key] = value
+        } else {
+          console.error(chalk.red(`Invalid --claude-env format: ${envArg}. Expected KEY=VALUE`))
+          process.exit(1)
+        }
       } else {
         // Pass unknown arguments through to claude
         unknownArgs.push(arg)
@@ -303,8 +316,10 @@ ${chalk.bold('Usage:')}
 
 ${chalk.bold('Examples:')}
   happy                    Start session
-  happy --yolo             Start with bypassing permissions 
+  happy --yolo             Start with bypassing permissions
                             happy sugar for --dangerously-skip-permissions
+  happy --claude-env ANTHROPIC_BASE_URL=http://127.0.0.1:3456
+                           Use a custom API endpoint (e.g., claude-code-router)
   happy auth login --force Authenticate
   happy doctor             Run diagnostics
 
