@@ -9,6 +9,7 @@
  *    - macOS/Linux: curl -fsSL https://claude.ai/install.sh | bash
  *    - PowerShell:  irm https://claude.ai/install.ps1 | iex
  *    - Windows CMD: curl -fsSL https://claude.ai/install.cmd | cmd
+ * 4. PATH fallback: bun, pnpm, or any other package manager
  */
 
 const { execSync } = require('child_process');
@@ -57,13 +58,22 @@ function findClaudeInPath() {
     try {
         // Cross-platform: 'where' on Windows, 'which' on Unix
         const command = process.platform === 'win32' ? 'where claude' : 'which claude';
-        const claudePath = execSync(command, { encoding: 'utf8' })
-            .trim()
-            .split('\n')[0]; // Take first match
+        // stdio suppression for cleaner execution (from tiann/PR#83)
+        const result = execSync(command, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+        }).trim();
 
-        const resolvedPath = resolvePathSafe(claudePath);
+        const claudePath = result.split('\n')[0].trim(); // Take first match
+        if (!claudePath) return null;
 
-        if (resolvedPath && fs.existsSync(resolvedPath)) {
+        // Check existence BEFORE resolving (from tiann/PR#83)
+        if (!fs.existsSync(claudePath)) return null;
+
+        // Resolve with fallback to original path (from tiann/PR#83)
+        const resolvedPath = resolvePathSafe(claudePath) || claudePath;
+
+        if (resolvedPath) {
             // Detect source from BOTH original PATH entry and resolved path
             // Original path tells us HOW user accessed it (context)
             // Resolved path tells us WHERE it actually lives (content)
@@ -370,15 +380,22 @@ function findLatestVersionBinary(versionsDir, binaryName = null) {
 
 /**
  * Find path to globally installed Claude Code CLI
- * Priority: PATH (user preference) > npm > Bun > Homebrew > Native
+ * Priority: HAPPY_CLAUDE_PATH env var > PATH > npm > Bun > Homebrew > Native
  * @returns {{path: string, source: string}|null} Path and source, or null if not found
  */
 function findGlobalClaudeCliPath() {
-    // 1. Check PATH first (respects user's choice)
+    // 1. Environment variable (explicit override)
+    const envPath = process.env.HAPPY_CLAUDE_PATH;
+    if (envPath && fs.existsSync(envPath)) {
+        const resolved = resolvePathSafe(envPath) || envPath;
+        return { path: resolved, source: 'HAPPY_CLAUDE_PATH' };
+    }
+
+    // 2. Check PATH (respects user's shell config)
     const pathResult = findClaudeInPath();
     if (pathResult) return pathResult;
 
-    // 2. Fall back to package manager detection
+    // 3. Fall back to package manager detection
     const npmPath = findNpmGlobalCliPath();
     if (npmPath) return { path: npmPath, source: 'npm' };
 

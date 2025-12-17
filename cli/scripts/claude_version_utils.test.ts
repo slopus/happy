@@ -1,4 +1,5 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import * as fs from 'node:fs';
 import {
   findGlobalClaudeCliPath,
   findClaudeInPath,
@@ -334,5 +335,38 @@ describe('Claude Version Utils - Cross-Platform Detection', () => {
         expect(result).toBe(expected);
       });
     });
+  });
+});
+
+describe('HAPPY_CLAUDE_PATH env var', () => {
+  const testClaudePath = '/tmp/test-claude-path';
+
+  beforeEach(() => {
+    // Create mock executable
+    fs.writeFileSync(testClaudePath, '#!/bin/bash\necho "mock"');
+    fs.chmodSync(testClaudePath, 0o755);
+  });
+
+  afterEach(() => {
+    if (fs.existsSync(testClaudePath)) fs.unlinkSync(testClaudePath);
+    delete process.env.HAPPY_CLAUDE_PATH;
+  });
+
+  it('should use HAPPY_CLAUDE_PATH when set', () => {
+    process.env.HAPPY_CLAUDE_PATH = testClaudePath;
+    const result = findGlobalClaudeCliPath();
+    expect(result?.source).toBe('HAPPY_CLAUDE_PATH');
+    expect(result?.path).toBe(testClaudePath);
+  });
+
+  it('should fall back to auto-discovery when env var not set', () => {
+    const result = findGlobalClaudeCliPath();
+    expect(result?.source).not.toBe('HAPPY_CLAUDE_PATH');
+  });
+
+  it('should ignore env var if path does not exist', () => {
+    process.env.HAPPY_CLAUDE_PATH = '/nonexistent/path/claude';
+    const result = findGlobalClaudeCliPath();
+    expect(result?.source).not.toBe('HAPPY_CLAUDE_PATH');
   });
 });

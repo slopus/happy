@@ -169,8 +169,9 @@ describe('claudeLocal --continue handling', () => {
             claudeArgs
         });
 
-        // claudeArgs should be modified to remove --continue
-        expect(claudeArgs).not.toContain('--continue');
-        expect(claudeArgs).toContain('--other-flag');
+        // Verify spawn was called without --continue (it gets converted to --resume)
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+        expect(spawnArgs).not.toContain('--continue');
+        expect(spawnArgs).toContain('--other-flag');
     });
 });
