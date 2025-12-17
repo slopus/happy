@@ -9,6 +9,7 @@
  *    - macOS/Linux: curl -fsSL https://claude.ai/install.sh | bash
  *    - PowerShell:  irm https://claude.ai/install.ps1 | iex
  *    - Windows CMD: curl -fsSL https://claude.ai/install.cmd | cmd
+ * 4. PATH fallback: bun, pnpm, or any other package manager
  */
 
 const { execSync } = require('child_process');
@@ -57,13 +58,22 @@ function findClaudeInPath() {
     try {
         // Cross-platform: 'where' on Windows, 'which' on Unix
         const command = process.platform === 'win32' ? 'where claude' : 'which claude';
-        const claudePath = execSync(command, { encoding: 'utf8' })
-            .trim()
-            .split('\n')[0]; // Take first match
+        // stdio suppression for cleaner execution (from tiann/PR#83)
+        const result = execSync(command, {
+            encoding: 'utf8',
+            stdio: ['pipe', 'pipe', 'pipe']
+        }).trim();
 
-        const resolvedPath = resolvePathSafe(claudePath);
+        const claudePath = result.split('\n')[0].trim(); // Take first match
+        if (!claudePath) return null;
 
-        if (resolvedPath && fs.existsSync(resolvedPath)) {
+        // Check existence BEFORE resolving (from tiann/PR#83)
+        if (!fs.existsSync(claudePath)) return null;
+
+        // Resolve with fallback to original path (from tiann/PR#83)
+        const resolvedPath = resolvePathSafe(claudePath) || claudePath;
+
+        if (resolvedPath) {
             // Detect source from BOTH original PATH entry and resolved path
             // Original path tells us HOW user accessed it (context)
             // Resolved path tells us WHERE it actually lives (content)
