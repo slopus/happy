@@ -70,6 +70,7 @@
     "postinstall": "node scripts/unpack-tools.cjs"
   },
   "dependencies": {
+    "@agentclientprotocol/sdk": "^0.8.0",
     "@modelcontextprotocol/sdk": "^1.22.0",
     "@stablelib/base64": "^2.0.1",
     "@stablelib/hex": "^2.0.1",
@@ -79,6 +80,7 @@
     "@types/qrcode-terminal": "^0.12.2",
     "@types/react": "^19.2.7",
     "@types/tmp": "^0.2.6",
+    "ai": "^5.0.107",
     "axios": "^1.13.2",
     "chalk": "^5.6.2",
     "cross-spawn": "^7.0.6",
