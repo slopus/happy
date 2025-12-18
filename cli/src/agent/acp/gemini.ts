@@ -31,6 +31,9 @@ export interface GeminiBackendOptions extends AgentFactoryOptions {
   /** API key for Gemini (defaults to GEMINI_API_KEY or GOOGLE_API_KEY env var) */
   apiKey?: string;
   
+  /** OAuth token from Happy cloud (via 'happy connect gemini') - highest priority */
+  cloudToken?: string;
+  
   /** Model to use. If undefined, will use local config, env var, or default.
    *  If explicitly set to null, will use default (skip local config).
    *  (defaults to GEMINI_MODEL env var or 'gemini-2.5-pro') */
@@ -55,24 +58,23 @@ export interface GeminiBackendOptions extends AgentFactoryOptions {
 
 export function createGeminiBackend(options: GeminiBackendOptions): AgentBackend {
 
-  // Resolve API key from multiple sources:
-  // 1. Explicit apiKey option
-  // 2. System environment variables
-  // 3. Local Gemini CLI config files (like Codex/Claude)
-  let apiKey = options.apiKey 
-    || process.env[GEMINI_API_KEY_ENV] 
-    || process.env[GOOGLE_API_KEY_ENV];
-
+  // Resolve API key from multiple sources (in priority order):
+  // 1. Happy cloud OAuth token (via 'happy connect gemini') - highest priority
+  // 2. Local Gemini CLI config files (~/.gemini/)
+  // 3. GEMINI_API_KEY environment variable
+  // 4. GOOGLE_API_KEY environment variable - lowest priority
+  
   // Try reading from local Gemini CLI config (token and model)
   const localConfig = readGeminiLocalConfig();
   
-  // Use token from config if not provided
-  if (!apiKey && localConfig.token) {
-    apiKey = localConfig.token;
-  }
+  let apiKey = options.cloudToken       // 1. Happy cloud token (passed from runGemini)
+    || localConfig.token                // 2. Local config (~/.gemini/)
+    || process.env[GEMINI_API_KEY_ENV]  // 3. GEMINI_API_KEY env var
+    || process.env[GOOGLE_API_KEY_ENV]  // 4. GOOGLE_API_KEY env var
+    || options.apiKey;                  // 5. Explicit apiKey option (fallback)
 
   if (!apiKey) {
-    logger.warn(`[Gemini] No API key found. Set ${GEMINI_API_KEY_ENV} or ${GOOGLE_API_KEY_ENV} environment variable, or authenticate via 'gemini auth' (like Codex/Claude).`);
+    logger.warn(`[Gemini] No API key found. Run 'happy connect gemini' to authenticate via Google OAuth, or set ${GEMINI_API_KEY_ENV} environment variable.`);
   }
 
   // Command to run gemini

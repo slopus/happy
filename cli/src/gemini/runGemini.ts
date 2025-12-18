@@ -82,6 +82,20 @@ export async function runGemini(opts: {
   });
 
   //
+  // Fetch Gemini cloud token (from 'happy connect gemini')
+  //
+  let cloudToken: string | undefined = undefined;
+  try {
+    const vendorToken = await api.getVendorToken('gemini');
+    if (vendorToken?.oauth?.access_token) {
+      cloudToken = vendorToken.oauth.access_token;
+      logger.debug('[Gemini] Using OAuth token from Happy cloud');
+    }
+  } catch (error) {
+    logger.debug('[Gemini] Failed to fetch cloud token:', error);
+  }
+
+  //
   // Create session
   //
 
@@ -859,6 +873,7 @@ export async function runGemini(opts: {
           cwd: process.cwd(),
           mcpServers,
           permissionHandler,
+          cloudToken,
           // Pass model from message - if undefined, will use local config/env/default
           // If explicitly null, will skip local config and use env/default
           model: modelToUse,
@@ -906,6 +921,7 @@ export async function runGemini(opts: {
               cwd: process.cwd(),
               mcpServers,
               permissionHandler,
+              cloudToken,
               // Pass model from message - if undefined, will use local config/env/default
               // If explicitly null, will skip local config and use env/default
               model: modelToUse,
