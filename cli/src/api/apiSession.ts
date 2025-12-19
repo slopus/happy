@@ -233,6 +233,41 @@ export class ApiSessionClient extends EventEmitter {
             }
         };
         const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
+        
+        // Check if socket is connected before sending
+        if (!this.socket.connected) {
+            logger.debug('[API] Socket not connected, cannot send message. Message will be lost:', { type: body.type });
+            // TODO: Consider implementing message queue or HTTP fallback for reliability
+        }
+        
+        this.socket.emit('message', {
+            sid: this.sessionId,
+            message: encrypted
+        });
+    }
+
+    /**
+     * Send a generic agent message to the session.
+     * Works for any agent type (Gemini, Codex, Claude, etc.)
+     * 
+     * @param agentType - The type of agent sending the message (e.g., 'gemini', 'codex', 'claude')
+     * @param body - The message payload
+     */
+    sendAgentMessage(agentType: 'gemini' | 'codex' | 'claude' | 'opencode', body: any) {
+        let content = {
+            role: 'agent',
+            content: {
+                type: agentType,
+                data: body
+            },
+            meta: {
+                sentFrom: 'cli'
+            }
+        };
+        
+        logger.debug(`[SOCKET] Sending ${agentType} message:`, { type: body.type, hasMessage: !!body.message });
+        
+        const encrypted = encodeBase64(encrypt(this.encryptionKey, this.encryptionVariant, content));
         this.socket.emit('message', {
             sid: this.sessionId,
             message: encrypted

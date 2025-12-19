@@ -1,0 +1,138 @@
+/**
+ * Gemini ACP Backend - Gemini CLI agent via ACP
+ * 
+ * This module provides a factory function for creating a Gemini backend
+ * that communicates using the Agent Client Protocol (ACP).
+ * 
+ * Gemini CLI is a reference ACP implementation from Google that supports
+ * the --experimental-acp flag for ACP mode.
+ */
+
+import { AcpSdkBackend, type AcpSdkBackendOptions, type AcpPermissionHandler } from './AcpSdkBackend';
+import type { AgentBackend, McpServerConfig } from '../AgentBackend';
+import { agentRegistry, type AgentFactoryOptions } from '../AgentRegistry';
+import { logger } from '@/ui/logger';
+import { 
+  GEMINI_API_KEY_ENV, 
+  GOOGLE_API_KEY_ENV, 
+  GEMINI_MODEL_ENV, 
+  DEFAULT_GEMINI_MODEL 
+} from '@/gemini/constants';
+import { 
+  readGeminiLocalConfig, 
+  determineGeminiModel,
+  getGeminiModelSource
+} from '@/gemini/utils/config';
+
+/**
+ * Options for creating a Gemini ACP backend
+ */
+export interface GeminiBackendOptions extends AgentFactoryOptions {
+  /** API key for Gemini (defaults to GEMINI_API_KEY or GOOGLE_API_KEY env var) */
+  apiKey?: string;
+  
+  /** OAuth token from Happy cloud (via 'happy connect gemini') - highest priority */
+  cloudToken?: string;
+  
+  /** Model to use. If undefined, will use local config, env var, or default.
+   *  If explicitly set to null, will use default (skip local config).
+   *  (defaults to GEMINI_MODEL env var or 'gemini-2.5-pro') */
+  model?: string | null;
+  
+  /** MCP servers to make available to the agent */
+  mcpServers?: Record<string, McpServerConfig>;
+  
+  /** Optional permission handler for tool approval */
+  permissionHandler?: AcpPermissionHandler;
+}
+
+/**
+ * Create a Gemini backend using ACP (official SDK).
+ * 
+ * The Gemini CLI must be installed and available in PATH.
+ * Uses the --experimental-acp flag to enable ACP mode.
+ * 
+ * @param options - Configuration options
+ * @returns AgentBackend instance for Gemini
+ */
+
+export function createGeminiBackend(options: GeminiBackendOptions): AgentBackend {
+
+  // Resolve API key from multiple sources (in priority order):
+  // 1. Happy cloud OAuth token (via 'happy connect gemini') - highest priority
+  // 2. Local Gemini CLI config files (~/.gemini/)
+  // 3. GEMINI_API_KEY environment variable
+  // 4. GOOGLE_API_KEY environment variable - lowest priority
+  
+  // Try reading from local Gemini CLI config (token and model)
+  const localConfig = readGeminiLocalConfig();
+  
+  let apiKey = options.cloudToken       // 1. Happy cloud token (passed from runGemini)
+    || localConfig.token                // 2. Local config (~/.gemini/)
+    || process.env[GEMINI_API_KEY_ENV]  // 3. GEMINI_API_KEY env var
+    || process.env[GOOGLE_API_KEY_ENV]  // 4. GOOGLE_API_KEY env var
+    || options.apiKey;                  // 5. Explicit apiKey option (fallback)
+
+  if (!apiKey) {
+    logger.warn(`[Gemini] No API key found. Run 'happy connect gemini' to authenticate via Google OAuth, or set ${GEMINI_API_KEY_ENV} environment variable.`);
+  }
+
+  // Command to run gemini
+  const geminiCommand = 'gemini';
+  
+  // Get model from options, local config, system environment, or use default
+  // Priority: options.model (if provided) > local config > env var > default
+  // If options.model is undefined, check local config, then env, then use default
+  // If options.model is explicitly null, skip local config and use env/default
+  const model = determineGeminiModel(options.model, localConfig);
+
+  // Build args - use only --experimental-acp flag
+  // Model is passed via GEMINI_MODEL env var (gemini CLI reads it automatically)
+  // We don't use --model flag to avoid potential stdout conflicts with ACP protocol
+  const geminiArgs = ['--experimental-acp'];
+
+  const backendOptions: AcpSdkBackendOptions = {
+    agentName: 'gemini',
+    cwd: options.cwd,
+    command: geminiCommand,
+    args: geminiArgs,
+    env: {
+      ...options.env,
+      ...(apiKey ? { [GEMINI_API_KEY_ENV]: apiKey, [GOOGLE_API_KEY_ENV]: apiKey } : {}),
+      // Pass model via env var - gemini CLI reads GEMINI_MODEL automatically
+      [GEMINI_MODEL_ENV]: model,
+      // Suppress debug output from gemini CLI to avoid stdout pollution
+      NODE_ENV: 'production',
+      DEBUG: '',
+    },
+    mcpServers: options.mcpServers,
+    permissionHandler: options.permissionHandler,
+  };
+
+  // Determine model source for logging
+  const modelSource = getGeminiModelSource(options.model, localConfig);
+  
+  logger.debug('[Gemini] Creating ACP SDK backend with options:', {
+    cwd: backendOptions.cwd,
+    command: backendOptions.command,
+    args: backendOptions.args,
+    hasApiKey: !!apiKey,
+    model: model,
+    modelSource: modelSource,
+    mcpServerCount: options.mcpServers ? Object.keys(options.mcpServers).length : 0,
+  });
+
+  return new AcpSdkBackend(backendOptions);
+}
+
+/**
+ * Register Gemini backend with the global agent registry.
+ * 
+ * This function should be called during application initialization
+ * to make the Gemini agent available for use.
+ */
+export function registerGeminiAgent(): void {
+  agentRegistry.register('gemini', (opts) => createGeminiBackend(opts));
+  logger.debug('[Gemini] Registered with agent registry');
+}
+
