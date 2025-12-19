@@ -118,6 +118,20 @@ export class ApiClient {
         return null;
       }
 
+      // Handle 5xx server errors - use offline mode with auto-reconnect
+      if (axios.isAxiosError(error) && error.response?.status) {
+        const status = error.response.status;
+        if (status >= 500) {
+          connectionState.fail({
+            operation: 'Session creation',
+            errorCode: String(status),
+            url: `${configuration.serverUrl}/v1/sessions`,
+            details: ['Server encountered an error, will retry automatically']
+          });
+          return null;
+        }
+      }
+
       throw new Error(`Failed to get or create session: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -253,7 +267,9 @@ export class ApiClient {
           return createMinimalMachine();
         }
       }
-      throw error; // Re-throw other errors
+
+      // For other errors, rethrow
+      throw error;
     }
   }
 
