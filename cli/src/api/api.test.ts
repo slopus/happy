@@ -171,6 +171,52 @@ describe('Api server error handling', () => {
             consoleSpy.mockRestore();
         });
 
+        it('should return null when server returns 500 Internal Server Error', async () => {
+            connectionState.reset();
+            const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+            // Mock axios to return 500 error
+            mockPost.mockRejectedValue({
+                response: { status: 500 },
+                isAxiosError: true
+            });
+
+            const result = await api.getOrCreateSession({
+                tag: 'test-tag',
+                metadata: testMetadata,
+                state: null
+            });
+
+            expect(result).toBeNull();
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('⚠️  Happy server unreachable')
+            );
+            consoleSpy.mockRestore();
+        });
+
+        it('should return null when server returns 503 Service Unavailable', async () => {
+            connectionState.reset();
+            const consoleSpy = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+            // Mock axios to return 503 error
+            mockPost.mockRejectedValue({
+                response: { status: 503 },
+                isAxiosError: true
+            });
+
+            const result = await api.getOrCreateSession({
+                tag: 'test-tag',
+                metadata: testMetadata,
+                state: null
+            });
+
+            expect(result).toBeNull();
+            expect(consoleSpy).toHaveBeenCalledWith(
+                expect.stringContaining('⚠️  Happy server unreachable')
+            );
+            consoleSpy.mockRestore();
+        });
+
         it('should re-throw non-connection errors', async () => {
             // Mock axios to throw a different type of error (e.g., authentication error)
             const authError = new Error('Invalid API key');
