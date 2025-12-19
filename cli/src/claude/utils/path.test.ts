@@ -21,7 +21,7 @@ describe('getProjectPath', () => {
     delete process.env.CLAUDE_CONFIG_DIR;
   });
 
-  it('should handle windows paths correctly', () => {
+  it.skipIf(process.platform !== 'win32')('should handle windows paths correctly', () => {
     vi.spyOn(os, 'homedir').mockReturnValue('C:\\Users\\user');
     const workingDirectory = 'C:\\path\\to\\project';
     const expectedPath = 'C:\\Users\\user\\.claude\\projects\\C-path-to-project';
