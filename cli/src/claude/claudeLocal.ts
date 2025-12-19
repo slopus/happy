@@ -61,9 +61,12 @@ export async function claudeLocal(opts: {
                         return { found: true, value };
                     }
                 }
-                // Remove just the flag
-                opts.claudeArgs = opts.claudeArgs.filter((_, i) => i !== index);
-                return { found: true };
+                // Don't extract if value was required but not found
+                if (!withValue) {
+                    opts.claudeArgs = opts.claudeArgs.filter((_, i) => i !== index);
+                    return { found: true };
+                }
+                return { found: false };
             }
         }
         return { found: false };
@@ -149,15 +152,17 @@ export async function claudeLocal(opts: {
         process.stdin.pause();
         await new Promise<void>((r, reject) => {
             const args: string[] = []
-            
+
+            const hasResumeFlag = opts.claudeArgs?.includes('--resume') || opts.claudeArgs?.includes('-r');
             if (startFrom) {
                 // Resume existing session (Claude preserves the session ID)
                 args.push('--resume', startFrom)
-            } else {
+            } else if (!hasResumeFlag) {
                 // New session with our generated UUID
                 args.push('--session-id', newSessionId!)
             }
-            
+            // If hasResumeFlag && !startFrom: --resume is in claudeArgs, let Claude handle it
+
             args.push('--append-system-prompt', systemPrompt);
 
             if (opts.mcpServers && Object.keys(opts.mcpServers).length > 0) {

@@ -174,4 +174,59 @@ describe('claudeLocal --continue handling', () => {
         expect(spawnArgs).not.toContain('--continue');
         expect(spawnArgs).toContain('--other-flag');
     });
+
+    it('should pass --resume to Claude when no session ID provided', async () => {
+        const claudeArgs = ['--resume'];
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs
+        });
+
+        // --resume should still be in spawn args (NOT extracted)
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+        expect(spawnArgs).toContain('--resume');
+        // Should NOT have auto-found session ID
+        expect(spawnArgs).not.toContain('--session-id');
+    });
+
+    it('should extract and use --resume <id> when session ID is provided', async () => {
+        mockClaudeFindLastSession.mockReturnValue(null);
+        const claudeArgs = ['--resume', 'abc-123-def'];
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs
+        });
+
+        // Should use provided ID in spawn args
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+        expect(spawnArgs).toContain('--resume');
+        expect(spawnArgs).toContain('abc-123-def');
+        // Should NOT add --session-id (resume takes precedence)
+        expect(spawnArgs).not.toContain('--session-id');
+        // Should notify about the session being resumed
+        expect(onSessionFound).toHaveBeenCalledWith('abc-123-def');
+    });
+
+    it('should handle -r short flag same as --resume', async () => {
+        const claudeArgs = ['-r'];
+
+        await claudeLocal({
+            abort: new AbortController().signal,
+            sessionId: null,
+            path: '/tmp',
+            onSessionFound,
+            claudeArgs
+        });
+
+        const spawnArgs = mockSpawn.mock.calls[0][1];
+        expect(spawnArgs).toContain('-r');
+    });
 });
