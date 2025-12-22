@@ -55,7 +55,7 @@ interface AgentInputProps {
     };
     alwaysShowContextSize?: boolean;
     onFileViewerPress?: () => void;
-    agentType?: 'claude' | 'codex';
+    agentType?: 'claude' | 'codex' | 'gemini';
     onAgentClick?: () => void;
     machineName?: string | null;
     onMachineClick?: () => void;
@@ -290,8 +290,9 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     const hasText = props.value.trim().length > 0;
     
-    // Check if this is a Codex session
+    // Check if this is a Codex or Gemini session
     const isCodex = props.metadata?.flavor === 'codex';
+    const isGemini = props.metadata?.flavor === 'gemini';
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
@@ -380,13 +381,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         // Don't close the settings overlay - let users see the change and potentially switch again
     }, [props.onPermissionModeChange]);
 
-    // Handle model selection
-    const handleModelSelect = React.useCallback((mode: ModelMode) => {
-        hapticsLight();
-        props.onModelModeChange?.(mode);
-        // Don't close the settings overlay - let users see the change and potentially switch again
-    }, [props.onModelModeChange]);
-
     // Handle abort button press
     const handleAbortPress = React.useCallback(async () => {
         if (!props.onAbort) return;
@@ -453,7 +447,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
             if (event.key === 'Tab' && event.shiftKey && props.onPermissionModeChange) {
                 const modeOrder: PermissionMode[] = isCodex
                     ? ['default', 'read-only', 'safe-yolo', 'yolo']
-                    : ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+                    : ['default', 'acceptEdits', 'plan', 'bypassPermissions']; // Claude and Gemini share same modes
                 const currentIndex = modeOrder.indexOf(props.permissionMode || 'default');
                 const nextIndex = (currentIndex + 1) % modeOrder.length;
                 props.onPermissionModeChange(modeOrder[nextIndex]);
@@ -465,29 +459,6 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
         return false; // Key was not handled
     }, [props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, suggestions, selected, handleSuggestionSelect, moveUp, moveDown, props.showAbortButton, props.onAbort, isAborting, handleAbortPress]);
 
-    // Add global keyboard handler for model mode switching on web
-    React.useEffect(() => {
-        if (Platform.OS !== 'web') return;
-
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // Handle Cmd/Ctrl+M for model mode switching
-            if (e.key === 'm' && (e.metaKey || e.ctrlKey) && props.onModelModeChange) {
-                e.preventDefault();
-                const modelOrder: ModelMode[] = isCodex
-                    ? ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'default']
-                    : ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-                const currentIndex = modelOrder.indexOf(props.modelMode || (isCodex ? 'gpt-5-codex-high' : 'default'));
-                const nextIndex = (currentIndex + 1) % modelOrder.length;
-                props.onModelModeChange(modelOrder[nextIndex]);
-                hapticsLight();
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => {
-            window.removeEventListener('keydown', handleKeyDown);
-        };
-    }, [isCodex, props.modelMode, props.onModelModeChange]);
 
 
 
@@ -532,17 +503,22 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                 {/* Permission Mode Section */}
                                 <View style={styles.overlaySection}>
                                     <Text style={styles.overlaySectionTitle}>
-                                        {isCodex ? t('agentInput.codexPermissionMode.title') : t('agentInput.permissionMode.title')}
+                                        {isCodex ? t('agentInput.codexPermissionMode.title') : isGemini ? t('agentInput.geminiPermissionMode.title') : t('agentInput.permissionMode.title')}
                                     </Text>
-                                    {(isCodex 
+                                    {(isCodex
                                         ? (['default', 'read-only', 'safe-yolo', 'yolo'] as const)
-                                        : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const)
+                                        : (['default', 'acceptEdits', 'plan', 'bypassPermissions'] as const) // Claude and Gemini share same modes
                                     ).map((mode) => {
                                         const modeConfig = isCodex ? {
                                             'default': { label: t('agentInput.codexPermissionMode.default') },
                                             'read-only': { label: t('agentInput.codexPermissionMode.readOnly') },
                                             'safe-yolo': { label: t('agentInput.codexPermissionMode.safeYolo') },
                                             'yolo': { label: t('agentInput.codexPermissionMode.yolo') },
+                                        } : isGemini ? {
+                                            default: { label: t('agentInput.geminiPermissionMode.default') },
+                                            acceptEdits: { label: t('agentInput.geminiPermissionMode.acceptEdits') },
+                                            plan: { label: t('agentInput.geminiPermissionMode.plan') },
+                                            bypassPermissions: { label: t('agentInput.geminiPermissionMode.bypassPermissions') },
                                         } : {
                                             default: { label: t('agentInput.permissionMode.default') },
                                             acceptEdits: { label: t('agentInput.permissionMode.acceptEdits') },
@@ -608,77 +584,22 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                     <Text style={{
                                         fontSize: 12,
                                         fontWeight: '600',
-                                        color: '#666',
+                                        color: theme.colors.textSecondary,
                                         paddingHorizontal: 16,
                                         paddingBottom: 4,
                                         ...Typography.default('semiBold')
                                     }}>
-                                        {isCodex ? t('agentInput.codexModel.title') : t('agentInput.model.title')}
+                                        {t('agentInput.model.title')}
                                     </Text>
-                                    {(isCodex 
-                                        ? (['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'default', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'] as const)
-                                        : (['default', 'adaptiveUsage', 'sonnet', 'opus'] as const)
-                                    ).map((model) => {
-                                        const modelConfig = isCodex ? {
-                                            'gpt-5-codex-high': { label: t('agentInput.codexModel.gpt5CodexHigh') },
-                                            'gpt-5-codex-medium': { label: t('agentInput.codexModel.gpt5CodexMedium') },
-                                            'gpt-5-codex-low': { label: t('agentInput.codexModel.gpt5CodexLow') },
-                                            'default': { label: t('agentInput.model.default') },
-                                            'gpt-5-minimal': { label: t('agentInput.codexModel.gpt5Minimal') },
-                                            'gpt-5-low': { label: t('agentInput.codexModel.gpt5Low') },
-                                            'gpt-5-medium': { label: t('agentInput.codexModel.gpt5Medium') },
-                                            'gpt-5-high': { label: t('agentInput.codexModel.gpt5High') },
-                                        } : {
-                                            default: { label: t('agentInput.model.default') },
-                                            adaptiveUsage: { label: t('agentInput.model.adaptiveUsage') },
-                                            sonnet: { label: t('agentInput.model.sonnet') },
-                                            opus: { label: t('agentInput.model.opus') },
-                                        };
-                                        const config = modelConfig[model as keyof typeof modelConfig];
-                                        if (!config) return null;
-                                        const isSelected = props.modelMode === model || (isCodex && model === 'gpt-5-codex-high' && !props.modelMode) || (!isCodex && model === 'default' && !props.modelMode);
-
-                                        return (
-                                            <Pressable
-                                                key={model}
-                                                onPress={() => handleModelSelect(model)}
-                                                style={({ pressed }) => ({
-                                                    flexDirection: 'row',
-                                                    alignItems: 'center',
-                                                    paddingHorizontal: 16,
-                                                    paddingVertical: 8,
-                                                    backgroundColor: pressed ? theme.colors.surfacePressed : 'transparent'
-                                                })}
-                                            >
-                                                <View style={{
-                                                    width: 16,
-                                                    height: 16,
-                                                    borderRadius: 8,
-                                                    borderWidth: 2,
-                                                    borderColor: isSelected ? theme.colors.radio.active : theme.colors.radio.inactive,
-                                                    alignItems: 'center',
-                                                    justifyContent: 'center',
-                                                    marginRight: 12
-                                                }}>
-                                                    {isSelected && (
-                                                        <View style={{
-                                                            width: 6,
-                                                            height: 6,
-                                                            borderRadius: 3,
-                                                            backgroundColor: theme.colors.radio.dot
-                                                        }} />
-                                                    )}
-                                                </View>
-                                                <Text style={{
-                                                    fontSize: 14,
-                                                    color: isSelected ? theme.colors.radio.active : theme.colors.text,
-                                                    ...Typography.default()
-                                                }}>
-                                                    {config.label}
-                                                </Text>
-                                            </Pressable>
-                                        );
-                                    })}
+                                    <Text style={{
+                                        fontSize: 13,
+                                        color: theme.colors.textSecondary,
+                                        paddingHorizontal: 16,
+                                        paddingVertical: 8,
+                                        ...Typography.default()
+                                    }}>
+                                        {t('agentInput.model.configureInCli')}
+                                    </Text>
                                 </View>
                             </FloatingOverlay>
                         </View>
@@ -746,6 +667,11 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                             props.permissionMode === 'read-only' ? t('agentInput.codexPermissionMode.badgeReadOnly') :
                                                 props.permissionMode === 'safe-yolo' ? t('agentInput.codexPermissionMode.badgeSafeYolo') :
                                                     props.permissionMode === 'yolo' ? t('agentInput.codexPermissionMode.badgeYolo') : ''
+                                    ) : isGemini ? (
+                                        props.permissionMode === 'default' ? t('agentInput.geminiPermissionMode.default') :
+                                            props.permissionMode === 'acceptEdits' ? t('agentInput.geminiPermissionMode.badgeAcceptAllEdits') :
+                                                props.permissionMode === 'bypassPermissions' ? t('agentInput.geminiPermissionMode.badgeBypassAllPermissions') :
+                                                    props.permissionMode === 'plan' ? t('agentInput.geminiPermissionMode.badgePlanMode') : ''
                                     ) : (
                                         props.permissionMode === 'default' ? t('agentInput.permissionMode.default') :
                                             props.permissionMode === 'acceptEdits' ? t('agentInput.permissionMode.badgeAcceptAllEdits') :
@@ -833,7 +759,7 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
                                         fontWeight: '600',
                                         ...Typography.default('semiBold'),
                                     }}>
-                                        {props.agentType === 'claude' ? t('agentInput.agent.claude') : t('agentInput.agent.codex')}
+                                        {props.agentType === 'claude' ? t('agentInput.agent.claude') : props.agentType === 'codex' ? t('agentInput.agent.codex') : t('agentInput.agent.gemini')}
                                     </Text>
                                 </Pressable>
                             )}
