@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Alert } from 'react-native';
+import { ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -22,35 +22,27 @@ export default function DevScreen() {
     const anonymousId = sync.encryption!.anonID;
     const { theme } = useUnistyles();
 
-    const handleEditServerUrl = () => {
+    const handleEditServerUrl = async () => {
         const currentUrl = getServerUrl();
 
-        Alert.prompt(
+        const newUrl = await Modal.prompt(
             'Edit API Endpoint',
             'Enter the server URL:',
-            [
-                {
-                    text: 'Cancel',
-                    style: 'cancel'
-                },
-                {
-                    text: 'Save',
-                    onPress: (newUrl?: string) => {
-                        if (newUrl && newUrl !== currentUrl) {
-                            const validation = validateServerUrl(newUrl);
-                            if (validation.valid) {
-                                setServerUrl(newUrl);
-                                Modal.alert('Success', 'Server URL updated. Please restart the app for changes to take effect.');
-                            } else {
-                                Modal.alert('Invalid URL', validation.error || 'Please enter a valid URL');
-                            }
-                        }
-                    }
-                }
-            ],
-            'plain-text',
-            currentUrl
+            {
+                defaultValue: currentUrl,
+                confirmText: 'Save'
+            }
         );
+
+        if (newUrl && newUrl !== currentUrl) {
+            const validation = validateServerUrl(newUrl);
+            if (validation.valid) {
+                setServerUrl(newUrl);
+                Modal.alert('Success', 'Server URL updated. Please restart the app for changes to take effect.');
+            } else {
+                Modal.alert('Invalid URL', validation.error || 'Please enter a valid URL');
+            }
+        }
     };
 
     const handleClearCache = async () => {

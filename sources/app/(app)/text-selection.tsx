@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TextInput, Alert, Pressable } from 'react-native';
+import { View, Text, ScrollView, TextInput, Pressable } from 'react-native';
 import { useRouter, useLocalSearchParams, useNavigation } from 'expo-router';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -58,7 +58,7 @@ export default function TextSelectionScreen() {
 
     React.useEffect(() => {
         if (!textId) {
-            Alert.alert(t('common.error'), t('textSelection.noTextProvided'), [
+            Modal.alert(t('common.error'), t('textSelection.noTextProvided'), [
                 { text: t('common.ok'), onPress: () => router.back() }
             ]);
             return;
@@ -68,7 +68,7 @@ export default function TextSelectionScreen() {
         if (content) {
             setFullText(content);
         } else {
-            Alert.alert(t('common.error'), t('textSelection.textNotFound'), [
+            Modal.alert(t('common.error'), t('textSelection.textNotFound'), [
                 { text: t('common.ok'), onPress: () => router.back() }
             ]);
         }
