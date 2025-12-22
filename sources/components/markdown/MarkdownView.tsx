@@ -2,6 +2,7 @@ import { MarkdownSpan, parseMarkdown } from './parseMarkdown';
 import { Link } from 'expo-router';
 import * as React from 'react';
 import { Pressable, ScrollView, View, Platform } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import { StyleSheet } from 'react-native-unistyles';
 import { Text } from '../StyledText';
 import { Typography } from '@/constants/Typography';
@@ -81,7 +82,22 @@ export const MarkdownView = React.memo((props: {
         return renderContent();
     }
     
-    return <Pressable style={{ width: '100%' }} onLongPress={handleLongPress} delayLongPress={500}>{renderContent()}</Pressable>;
+    // Use GestureDetector with LongPress gesture - it doesn't block pan gestures
+    // so horizontal scrolling in code blocks and tables still works
+    const longPressGesture = Gesture.LongPress()
+        .minDuration(500)
+        .onStart(() => {
+            handleLongPress();
+        })
+        .runOnJS(true);
+
+    return (
+        <GestureDetector gesture={longPressGesture}>
+            <View style={{ width: '100%' }}>
+                {renderContent()}
+            </View>
+        </GestureDetector>
+    );
 });
 
 function RenderTextBlock(props: { spans: MarkdownSpan[], first: boolean, last: boolean, selectable: boolean }) {
@@ -209,33 +225,43 @@ function RenderSpans(props: { spans: MarkdownSpan[], baseStyle?: any }) {
     </>)
 }
 
+// TODO: Table rendering has layout issues on mobile - cells don't resize together when content varies.
+// See https://github.com/slopus/happy/issues/294 for details and potential fixes.
+// To repro: Navigate to dev/messages-demo and observe tables with long cell content.
 function RenderTableBlock(props: {
     headers: string[],
     rows: string[][],
     first: boolean,
     last: boolean
 }) {
+    const columnCount = props.headers.length;
+    // Calculate cell width: minimum 100px per cell, but expand to fill if fewer columns
+    const cellMinWidth = Math.max(100, Math.floor(300 / columnCount));
+    const isLastRow = (rowIndex: number) => rowIndex === props.rows.length - 1;
+
     return (
         <View style={[style.tableContainer, props.first && style.first, props.last && style.last]}>
             <ScrollView
                 horizontal
-                showsHorizontalScrollIndicator={true}
-                style={{ flex: 1 }}
-                contentContainerStyle={{ minWidth: '100%' }}
+                showsHorizontalScrollIndicator={Platform.OS !== 'web'}
+                nestedScrollEnabled={true}
+                style={style.tableScrollView}
             >
-                <View style={{ flexDirection: 'column', minWidth: '100%' }}>
+                <View style={style.tableContent}>
+                    {/* Header row */}
                     <View style={style.tableRow}>
                         {props.headers.map((header, index) => (
-                            <View key={`header-${index}`} style={[style.tableCell, style.tableHeaderCell]}>
+                            <View key={`header-${index}`} style={[style.tableCell, style.tableHeaderCell, { minWidth: cellMinWidth }]}>
                                 <Text style={style.tableHeaderText}>{header}</Text>
                             </View>
                         ))}
                     </View>
+                    {/* Data rows */}
                     {props.rows.map((row, rowIndex) => (
-                        <View key={`row-${rowIndex}`} style={style.tableRow}>
-                            {row.map((cell, cellIndex) => (
-                                <View key={`cell-${rowIndex}-${cellIndex}`} style={style.tableCell}>
-                                    <Text style={style.tableCellText}>{cell}</Text>
+                        <View key={`row-${rowIndex}`} style={[style.tableRow, isLastRow(rowIndex) && style.tableRowLast]}>
+                            {props.headers.map((_, cellIndex) => (
+                                <View key={`cell-${rowIndex}-${cellIndex}`} style={[style.tableCell, { minWidth: cellMinWidth }]}>
+                                    <Text style={style.tableCellText}>{row[cellIndex] ?? ''}</Text>
                                 </View>
                             ))}
                         </View>
@@ -466,19 +492,26 @@ const style = StyleSheet.create((theme) => ({
         borderWidth: 1,
         borderColor: theme.colors.divider,
         borderRadius: 8,
-        width: '100%',
-        alignSelf: 'stretch',
+        overflow: 'hidden',
+        alignSelf: 'flex-start',
+    },
+    tableScrollView: {
+        flexGrow: 0,
+    },
+    tableContent: {
+        flexDirection: 'column',
     },
     tableRow: {
         flexDirection: 'row',
         borderBottomWidth: 1,
         borderBottomColor: theme.colors.divider,
     },
+    tableRowLast: {
+        borderBottomWidth: 0,
+    },
     tableCell: {
         paddingHorizontal: 12,
         paddingVertical: 8,
-        flex: 1,
-        flexBasis: 0,
     },
     tableHeaderCell: {
         backgroundColor: theme.colors.surfaceHigh,
