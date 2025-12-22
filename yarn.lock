@@ -897,24 +897,32 @@
   dependencies:
     "@types/hammerjs" "^2.0.36"
 
-"@elevenlabs/client@0.5.0":
-  version "0.5.0"
-  resolved "https://registry.yarnpkg.com/@elevenlabs/client/-/client-0.5.0.tgz#dbd6ffb26f2f02ae674e38a5478611adf6fe4117"
-  integrity sha512-w2DdDYU4rW5jMbnw/WfYLk66m+Wx1CYkhYJu8mKJsnmRuncR/2p4YQQ5TEovNz8ngzFopWofqXNximRxoOfLtA==
+"@elevenlabs/client@0.12.2":
+  version "0.12.2"
+  resolved "https://registry.yarnpkg.com/@elevenlabs/client/-/client-0.12.2.tgz#0a19057eb71c378cd115b2d3e8f292c5636c84a2"
+  integrity sha512-QWllhDndFfKmftlktNoa35+AF3gOCbSHowYhR42ZHb5u32lFbMPbh2BALCrpFa3edqCHSXtzG6zzLSAGjkhvHQ==
   dependencies:
+    "@elevenlabs/types" "0.4.0"
     livekit-client "^2.11.4"
 
-"@elevenlabs/react-native@^0.2.1":
-  version "0.2.1"
-  resolved "https://registry.yarnpkg.com/@elevenlabs/react-native/-/react-native-0.2.1.tgz#574e5f318154a6b6976d83e681e5e44eb2022fec"
-  integrity sha512-oWv/78Nf+HkxA/CL1yPspN5qGgtjuLVCzP2SjrLniGsyjL3jSjkvLuARTw8moqYJluZ4Umh6vx9T6lLc7OfYUg==
-
-"@elevenlabs/react@^0.5.0":
-  version "0.5.0"
-  resolved "https://registry.yarnpkg.com/@elevenlabs/react/-/react-0.5.0.tgz#ed12c3b8b02cc4eef43fe251cf929d1f81eb3cc0"
-  integrity sha512-Lf0oixxSydr6o13QUUyB9mI8zP3dxsI3RNlIYLCmBtPMc96nhwQeMo0gdSWcBJS98nwEp+7EYSZIIgE6drKJoQ==
+"@elevenlabs/react-native@^0.5.7":
+  version "0.5.7"
+  resolved "https://registry.yarnpkg.com/@elevenlabs/react-native/-/react-native-0.5.7.tgz#ff700d4dc2b5008b19fa9e0327d386c6333a1497"
+  integrity sha512-cjyPDqmPwHF4wqo1oHenXAlubGLW81+ZtnunoL28XGiMDGSmIg3BBQ5QL6VmwE1BrD+AI52/WeLCSW6HjkHeog==
   dependencies:
-    "@elevenlabs/client" "0.5.0"
+    "@elevenlabs/types" "0.4.0"
+
+"@elevenlabs/react@^0.12.3":
+  version "0.12.3"
+  resolved "https://registry.yarnpkg.com/@elevenlabs/react/-/react-0.12.3.tgz#131d342f98caffff861badce90ad826e3366a782"
+  integrity sha512-fQJlabwuvQziBCCNcxlXZt5GVxcPHjwb46NtSEbLJY0zaOUtWJynRX4kPfbz7ChqnMe7FAHYnrq2XsaSzpQXLQ==
+  dependencies:
+    "@elevenlabs/client" "0.12.2"
+
+"@elevenlabs/types@0.4.0":
+  version "0.4.0"
+  resolved "https://registry.yarnpkg.com/@elevenlabs/types/-/types-0.4.0.tgz#f5a45ef2b8ed5a304eef9f28ba0da0af8ccdd7c2"
+  integrity sha512-6CQb4r9DjepILhLybDxW0h8rvbsR8jPAp74HvFGYuvYdXcQRTkYTD9BQ4PV6VcuC1iqx0UljzJj8js3ADQ8EXw==
 
 "@esbuild/aix-ppc64@0.25.6":
   version "0.25.6"
