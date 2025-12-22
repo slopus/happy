@@ -52,6 +52,76 @@ export const debugMessages: Message[] = [
         kind: 'agent-text',
         text: 'I\'ll help you debug and improve your application. Let me start by examining the codebase and running various analysis tools.'
     },
+
+    // Agent message with markdown table (simple repro for mobile rendering issue)
+    {
+        id: 'agent-table-demo',
+        localId: null,
+        createdAt: Date.now() - 185000,
+        kind: 'agent-text',
+        text: `Here is a summary of the analysis results:
+
+| File | Errors | Warnings | Status |
+|------|--------|----------|--------|
+| App.tsx | 0 | 2 | ✓ Pass |
+| Button.tsx | 3 | 1 | ✗ Failed validation with multiple type errors |
+| helpers.ts | 1 | 0 | ✗ Fail |
+| VeryLongComponentNameThatMightCauseLayoutIssues.tsx | 0 | 0 | ✓ Pass |
+
+The main issues are in Button.tsx and helpers.ts.`
+    },
+
+    // Simple minimal table repro
+    {
+        id: 'agent-table-minimal',
+        localId: null,
+        createdAt: Date.now() - 184000,
+        kind: 'agent-text',
+        text: `Minimal table test:
+
+| A | B |
+|---|---|
+| 1 | 2 |`
+    },
+
+    // Code snippet demo - test horizontal scrolling
+    {
+        id: 'agent-code-demo',
+        localId: null,
+        createdAt: Date.now() - 183000,
+        kind: 'agent-text',
+        text: `Here's a function that handles the complex data transformation:
+
+\`\`\`typescript
+export async function processUserDataWithValidationAndTransformation(
+    userData: UserData,
+    options: ProcessingOptions = { validate: true, transform: true, normalize: true }
+): Promise<ProcessedUserData> {
+    const { validate, transform, normalize } = options;
+
+    if (validate) {
+        const validationResult = await validateUserData(userData);
+        if (!validationResult.isValid) {
+            throw new ValidationError(validationResult.errors.join(', '));
+        }
+    }
+
+    let processedData = { ...userData };
+
+    if (transform) {
+        processedData = applyTransformations(processedData, TRANSFORMATION_RULES);
+    }
+
+    if (normalize) {
+        processedData = normalizeFieldNames(processedData, FIELD_MAPPING);
+    }
+
+    return processedData as ProcessedUserData;
+}
+\`\`\`
+
+This function handles validation, transformation, and normalization in a single pass.`
+    },
     createSectionTitle('missing-tool-call-title', 'What happens when a tool call Message has zero tools? If the empty tools array would render anything, it would show up between these two messages\nvvvvvvvvvvvvvvvvvvvv'),
     
     // Note: This message type is no longer valid - a tool-call message must have a tool
