@@ -26,3 +26,6 @@ pnpm-lock.yaml
 
 **/*.log
 .release-notes-temp.md
+
+# npm auth token (never commit)
+.npmrc
