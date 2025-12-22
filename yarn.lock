@@ -1938,10 +1938,12 @@
   resolved "https://registry.npmjs.org/@pkgjs/parseargs/-/parseargs-0.11.0.tgz"
   integrity sha512-+1VkjdD0QBLPodGrJUeqarH8VAIvQODIbwh9XpP5Syisf7YoQgsJKPNFoqqLQlu+VQ/tVSshMR6loPMn8U+dPg==
 
-"@posthog/core@1.0.0":
-  version "1.0.0"
-  resolved "https://registry.yarnpkg.com/@posthog/core/-/core-1.0.0.tgz#ee65f82c445317f8a1cc863da9c004507bef64f6"
-  integrity sha512-gquQld+duT9DdzLIFoHZkUMW0DZOTSLCtSjuuC/zKFz65Qecbz9p37DHBJMkw0dCuB8Mgh2GtH8Ag3PznJrP3g==
+"@posthog/core@1.8.1":
+  version "1.8.1"
+  resolved "https://registry.yarnpkg.com/@posthog/core/-/core-1.8.1.tgz#590327b0878f2148d9327a962301b0b54ffea796"
+  integrity sha512-jfzBtQIk9auRi/biO+G/gumK5KxqsD5wOr7XpYMROE/I3pazjP4zIziinp21iQuIQJMXrDvwt9Af3njgOGwtew==
+  dependencies:
+    cross-spawn "^7.0.6"
 
 "@radix-ui/primitive@1.1.3":
   version "1.1.3"
@@ -8149,12 +8151,12 @@ postcss@^8.5.6:
     picocolors "^1.1.1"
     source-map-js "^1.2.1"
 
-posthog-react-native@^4.3.1:
-  version "4.3.1"
-  resolved "https://registry.yarnpkg.com/posthog-react-native/-/posthog-react-native-4.3.1.tgz#445ed2de0d1887a24e6c6251ab7c7f72bb42ea6a"
-  integrity sha512-Xa30hdaO1Cth6GMrWxxAHGQuQS8qwU1iX9dY5yONJNqZ9HZzMejit6SnBKw8kQj6Fsnnci0WmyGXY1e3opLWhQ==
+posthog-react-native@^4.16.2:
+  version "4.16.2"
+  resolved "https://registry.yarnpkg.com/posthog-react-native/-/posthog-react-native-4.16.2.tgz#2855085ef20e0e76b302faf244ae8740549b79ae"
+  integrity sha512-HYBsWUmGg1yJgrmLCqjOcIXnaWe38wEVTVhe+x0hYUZfPZzfDchRtNwvPpMMQNU72Tu3fQz1SQkYiGpbUN+BdA==
   dependencies:
-    "@posthog/core" "1.0.0"
+    "@posthog/core" "1.8.1"
 
 pretty-bytes@^5.6.0:
   version "5.6.0"
