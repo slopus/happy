@@ -13,8 +13,9 @@ let conversationInstance: ReturnType<typeof useConversation> | null = null;
 class RealtimeVoiceSessionImpl implements VoiceSession {
 
     async startSession(config: VoiceSessionConfig): Promise<void> {
+        console.log('[RealtimeVoiceSessionImpl] conversationInstance:', conversationInstance);
         if (!conversationInstance) {
-            console.warn('Realtime voice session not initialized');
+            console.warn('Realtime voice session not initialized - conversationInstance is null');
             return;
         }
 
@@ -30,16 +31,16 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                 return;
             }
 
-
             // Get user's preferred language for voice assistant
             const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
             const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
             
-            // Use hardcoded agent ID for Eleven Labs
-            const conversationId = await conversationInstance.startSession({
-                agentId: __DEV__ ? 'agent_7801k2c0r5hjfraa1kdbytpvs6yt' : 'agent_6701k211syvvegba4kt7m68nxjmw',
-                connectionType: 'webrtc', // Use WebRTC for better performance
-                // Pass session ID and initial context as dynamic variables
+            if (!config.token && !config.agentId) {
+                throw new Error('Neither token nor agentId provided');
+            }
+            
+            const sessionConfig: any = {
+                connectionType: 'webrtc',
                 dynamicVariables: {
                     sessionId: config.sessionId,
                     initialConversationContext: config.initialContext || ''
@@ -48,8 +49,11 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                     agent: {
                         language: elevenLabsLanguage
                     }
-                }
-            });
+                },
+                ...(config.token ? { conversationToken: config.token } : { agentId: config.agentId })
+            };
+            
+            const conversationId = await conversationInstance.startSession(sessionConfig);
 
             console.log('Started conversation with ID:', conversationId);
         } catch (error) {
@@ -94,28 +98,39 @@ export const RealtimeVoiceSession: React.FC = () => {
     const conversation = useConversation({
         clientTools: realtimeClientTools,
         onConnect: () => {
-            // console.log('Realtime session connected');
+            console.log('Realtime session connected');
             storage.getState().setRealtimeStatus('connected');
+            storage.getState().setRealtimeMode('idle');
         },
         onDisconnect: () => {
-            // console.log('Realtime session disconnected');
+            console.log('Realtime session disconnected');
             storage.getState().setRealtimeStatus('disconnected');
+            storage.getState().setRealtimeMode('idle', true); // immediate mode change
+            storage.getState().clearRealtimeModeDebounce();
         },
         onMessage: (data) => {
-            // console.log('Realtime message:', data);
+            console.log('Realtime message:', data);
         },
         onError: (error) => {
-            // console.error('Realtime error:', error);
+            console.error('Realtime error:', error);
             storage.getState().setRealtimeStatus('error');
+            storage.getState().setRealtimeMode('idle', true); // immediate mode change
         },
         onStatusChange: (data) => {
-            // console.log('Realtime status change:', data);
+            console.log('Realtime status change:', data);
         },
         onModeChange: (data) => {
-            // console.log('Realtime mode change:', data);
+            console.log('Realtime mode change:', data);
+            
+            // Only animate when speaking
+            const mode = data.mode as string;
+            const isSpeaking = mode === 'speaking';
+            
+            // Use centralized debounce logic from storage
+            storage.getState().setRealtimeMode(isSpeaking ? 'speaking' : 'idle');
         },
         onDebug: (message) => {
-            // console.debug('Realtime debug:', message);
+            console.debug('Realtime debug:', message);
         }
     });
 
@@ -123,13 +138,16 @@ export const RealtimeVoiceSession: React.FC = () => {
 
     useEffect(() => {
         // Store the conversation instance globally
+        console.log('[RealtimeVoiceSession] Setting conversationInstance:', conversation);
         conversationInstance = conversation;
 
         // Register the voice session once
         if (!hasRegistered.current) {
             try {
+                console.log('[RealtimeVoiceSession] Registering voice session');
                 registerVoiceSession(new RealtimeVoiceSessionImpl());
                 hasRegistered.current = true;
+                console.log('[RealtimeVoiceSession] Voice session registered successfully');
             } catch (error) {
                 console.error('Failed to register voice session:', error);
             }
