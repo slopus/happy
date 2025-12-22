@@ -227,5 +227,3 @@ export async function claudeLocal(opts: {
 
     return effectiveSessionId;
 }
-
-export type ClaudeLocalResult = string | null;

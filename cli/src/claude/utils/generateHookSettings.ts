@@ -5,10 +5,11 @@
  * to notify our HTTP server when sessions change (new session, resume, compact, etc.)
  */
 
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { writeFileSync, mkdirSync, unlinkSync, existsSync } from 'node:fs';
 import { configuration } from '@/configuration';
 import { logger } from '@/ui/logger';
+import { projectPath } from '@/projectPath';
 
 /**
  * Generate a temporary settings file with SessionStart hook configuration
@@ -24,9 +25,9 @@ export function generateHookSettingsFile(port: number): string {
     const filename = `session-hook-${process.pid}.json`;
     const filepath = join(hooksDir, filename);
 
-    // Node one-liner that reads stdin and POSTs it to our server
-    // This command is executed by Claude when SessionStart hook fires
-    const hookCommand = `node -e 'const http=require("http");const chunks=[];process.stdin.on("data",c=>chunks.push(c));process.stdin.on("end",()=>{const body=Buffer.concat(chunks);const req=http.request({host:"127.0.0.1",port:${port},method:"POST",path:"/hook/session-start",headers:{"Content-Type":"application/json","Content-Length":body.length}},res=>{res.resume()});req.on("error",()=>{});req.end(body)});process.stdin.resume()'`;
+    // Path to the hook forwarder script
+    const forwarderScript = resolve(projectPath(), 'scripts', 'session_hook_forwarder.cjs');
+    const hookCommand = `node "${forwarderScript}" ${port}`;
 
     const settings = {
         hooks: {

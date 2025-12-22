@@ -23,6 +23,9 @@ export class Session {
     
     /** Callbacks to be notified when session ID is found/changed */
     private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
+    
+    /** Keep alive interval reference for cleanup */
+    private keepAliveInterval: NodeJS.Timeout;
 
     constructor(opts: {
         api: ApiClient,
@@ -54,9 +57,18 @@ export class Session {
 
         // Start keep alive
         this.client.keepAlive(this.thinking, this.mode);
-        setInterval(() => {
+        this.keepAliveInterval = setInterval(() => {
             this.client.keepAlive(this.thinking, this.mode);
         }, 2000);
+    }
+    
+    /**
+     * Cleanup resources (call when session is no longer needed)
+     */
+    cleanup = (): void => {
+        clearInterval(this.keepAliveInterval);
+        this.sessionFoundCallbacks = [];
+        logger.debug('[Session] Cleaned up resources');
     }
 
     onThinkingChange = (thinking: boolean) => {
@@ -113,14 +125,21 @@ export class Session {
 
     /**
      * Consume one-time Claude flags from claudeArgs after Claude spawn
-     * Currently handles: --resume (with or without session ID)
+     * Handles: --resume (with or without session ID), --continue
      */
     consumeOneTimeFlags = (): void => {
         if (!this.claudeArgs) return;
         
         const filteredArgs: string[] = [];
         for (let i = 0; i < this.claudeArgs.length; i++) {
-            if (this.claudeArgs[i] === '--resume') {
+            const arg = this.claudeArgs[i];
+            
+            if (arg === '--continue') {
+                logger.debug('[Session] Consumed --continue flag');
+                continue;
+            }
+            
+            if (arg === '--resume') {
                 // Check if next arg looks like a UUID (contains dashes and alphanumeric)
                 if (i + 1 < this.claudeArgs.length) {
                     const nextArg = this.claudeArgs[i + 1];
@@ -137,9 +156,10 @@ export class Session {
                     // --resume at the end of args
                     logger.debug('[Session] Consumed --resume flag (no session ID)');
                 }
-            } else {
-                filteredArgs.push(this.claudeArgs[i]);
+                continue;
             }
+            
+            filteredArgs.push(arg);
         }
         
         this.claudeArgs = filteredArgs.length > 0 ? filteredArgs : undefined;

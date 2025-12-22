@@ -48,11 +48,21 @@ export async function startHookServer(options: HookServerOptions): Promise<HookS
         const server: Server = createServer(async (req: IncomingMessage, res: ServerResponse) => {
             // Only handle POST to /hook/session-start
             if (req.method === 'POST' && req.url === '/hook/session-start') {
+                // Set timeout to prevent hanging if Claude doesn't close stdin
+                const timeout = setTimeout(() => {
+                    if (!res.headersSent) {
+                        logger.debug('[hookServer] Request timeout');
+                        res.writeHead(408).end('timeout');
+                    }
+                }, 5000);
+
                 try {
                     const chunks: Buffer[] = [];
                     for await (const chunk of req) {
                         chunks.push(chunk as Buffer);
                     }
+                    clearTimeout(timeout);
+                    
                     const body = Buffer.concat(chunks).toString('utf-8');
                     logger.debug('[hookServer] Received session hook:', body);
 
@@ -74,6 +84,7 @@ export async function startHookServer(options: HookServerOptions): Promise<HookS
 
                     res.writeHead(200, { 'Content-Type': 'text/plain' }).end('ok');
                 } catch (error) {
+                    clearTimeout(timeout);
                     logger.debug('[hookServer] Error handling session hook:', error);
                     if (!res.headersSent) {
                         res.writeHead(500).end('error');
