@@ -212,6 +212,7 @@ export const pt: TranslationStructure = {
         contactSupport: 'Entre em contato com o suporte se o problema persistir',
         sessionNotFound: 'Sessão não encontrada',
         voiceSessionFailed: 'Falha ao iniciar sessão de voz',
+        voiceServiceUnavailable: 'Serviço de voz temporariamente indisponível',
         oauthInitializationFailed: 'Falha ao inicializar o fluxo OAuth',
         tokenStorageFailed: 'Falha ao armazenar tokens de autenticação',
         oauthStateMismatch: 'Falha na validação de segurança. Por favor, tente novamente',
@@ -390,13 +391,11 @@ export const pt: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            gemini: 'Gemini',
         },
         model: {
             title: 'MODELO',
-            default: 'Usar configurações do CLI',
-            adaptiveUsage: 'Opus até 50% de uso, depois Sonnet',
-            sonnet: 'Sonnet',
-            opus: 'Opus',
+            configureInCli: 'Configurar modelos nas configurações do CLI',
         },
         codexPermissionMode: {
             title: 'MODO DE PERMISSÃO CODEX',
@@ -408,15 +407,15 @@ export const pt: TranslationStructure = {
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
-        codexModel: {
-            title: 'MODELO CODEX',
-            gpt5CodexLow: 'gpt-5-codex low',
-            gpt5CodexMedium: 'gpt-5-codex medium',
-            gpt5CodexHigh: 'gpt-5-codex high',
-            gpt5Minimal: 'GPT-5 Mínimo',
-            gpt5Low: 'GPT-5 Baixo',
-            gpt5Medium: 'GPT-5 Médio',
-            gpt5High: 'GPT-5 Alto',
+        geminiPermissionMode: {
+            title: 'MODO DE PERMISSÃO',
+            default: 'Padrão',
+            acceptEdits: 'Aceitar edições',
+            plan: 'Modo de planejamento',
+            bypassPermissions: 'Modo Yolo',
+            badgeAcceptAllEdits: 'Aceitar todas as edições',
+            badgeBypassAllPermissions: 'Ignorar todas as permissões',
+            badgePlanMode: 'Modo de planejamento',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% restante`,

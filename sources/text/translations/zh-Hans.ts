@@ -214,6 +214,7 @@ export const zhHans: TranslationStructure = {
         contactSupport: '如果问题持续存在，请联系支持',
         sessionNotFound: '会话未找到',
         voiceSessionFailed: '启动语音会话失败',
+        voiceServiceUnavailable: '语音服务暂时不可用',
         oauthInitializationFailed: '初始化 OAuth 流程失败',
         tokenStorageFailed: '存储认证令牌失败',
         oauthStateMismatch: '安全验证失败。请重试',
@@ -392,13 +393,11 @@ export const zhHans: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            gemini: 'Gemini',
         },
         model: {
             title: '模型',
-            default: '使用 CLI 设置',
-            adaptiveUsage: 'Opus 最多使用 50%，然后是 Sonnet',
-            sonnet: 'Sonnet',
-            opus: 'Opus',
+            configureInCli: '在 CLI 设置中配置模型',
         },
         codexPermissionMode: {
             title: 'CODEX 权限模式',
@@ -410,15 +409,15 @@ export const zhHans: TranslationStructure = {
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
-        codexModel: {
-            title: 'CODEX 模型',
-            gpt5CodexLow: 'gpt-5-codex low',
-            gpt5CodexMedium: 'gpt-5-codex medium',
-            gpt5CodexHigh: 'gpt-5-codex high',
-            gpt5Minimal: 'GPT-5 极简',
-            gpt5Low: 'GPT-5 低',
-            gpt5Medium: 'GPT-5 中',
-            gpt5High: 'GPT-5 高',
+        geminiPermissionMode: {
+            title: '权限模式',
+            default: '默认',
+            acceptEdits: '接受编辑',
+            plan: '计划模式',
+            bypassPermissions: 'Yolo 模式',
+            badgeAcceptAllEdits: '接受所有编辑',
+            badgeBypassAllPermissions: '绕过所有权限',
+            badgePlanMode: '计划模式',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `剩余 ${percent}%`,
