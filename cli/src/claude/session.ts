@@ -14,8 +14,8 @@ export class Session {
     readonly mcpServers: Record<string, any>;
     readonly allowedTools?: string[];
     readonly _onModeChange: (mode: 'local' | 'remote') => void;
-    /** Path to temporary settings file with SessionStart hook */
-    readonly hookSettingsPath?: string;
+    /** Path to temporary settings file with SessionStart hook (required for session tracking) */
+    readonly hookSettingsPath: string;
 
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
@@ -39,8 +39,8 @@ export class Session {
         messageQueue: MessageQueue2<EnhancedMode>,
         onModeChange: (mode: 'local' | 'remote') => void,
         allowedTools?: string[],
-        /** Path to temporary settings file with SessionStart hook */
-        hookSettingsPath?: string,
+        /** Path to temporary settings file with SessionStart hook (required for session tracking) */
+        hookSettingsPath: string,
     }) {
         this.path = opts.path;
         this.api = opts.api;
@@ -82,6 +82,17 @@ export class Session {
         this._onModeChange(mode);
     }
 
+    /**
+     * Called when Claude session ID is discovered or changed.
+     * 
+     * This is triggered by the SessionStart hook when:
+     * - Claude starts a new session (fresh start)
+     * - Claude resumes a session (--continue, --resume flags)
+     * - Claude forks a session (/compact, double-escape fork)
+     * 
+     * Updates internal state, syncs to API metadata, and notifies
+     * all registered callbacks (e.g., SessionScanner) about the change.
+     */
     onSessionFound = (sessionId: string) => {
         this.sessionId = sessionId;
         

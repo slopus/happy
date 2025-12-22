@@ -22,8 +22,8 @@ export async function claudeRemote(opts: {
     allowedTools: string[],
     signal?: AbortSignal,
     canCallTool: (toolName: string, input: unknown, mode: EnhancedMode, options: { signal: AbortSignal }) => Promise<PermissionResult>,
-    /** Path to temporary settings file with SessionStart hook */
-    hookSettingsPath?: string,
+    /** Path to temporary settings file with SessionStart hook (required for session tracking) */
+    hookSettingsPath: string,
 
     // Dynamic parameters
     nextMessage: () => Promise<{ message: string, mode: EnhancedMode } | null>,

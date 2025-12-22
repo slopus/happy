@@ -24,6 +24,7 @@ import { generateHookSettingsFile, cleanupHookSettingsFile } from '@/claude/util
 import { registerKillSessionHandler } from './registerKillSessionHandler';
 import { projectPath } from '../projectPath';
 import { resolve } from 'node:path';
+import { Session } from './session';
 
 export interface StartOptions {
     model?: string
@@ -133,7 +134,8 @@ export async function runClaude(credentials: Credentials, options: StartOptions 
     logger.debug(`[START] Happy MCP server started at ${happyServer.url}`);
 
     // Variable to track current session instance (updated via onSessionReady callback)
-    let currentSession: import('./session').Session | null = null;
+    // Used by hook server to notify Session when Claude changes session ID
+    let currentSession: Session | null = null;
 
     // Start Hook server for receiving Claude session notifications
     const hookServer = await startHookServer({

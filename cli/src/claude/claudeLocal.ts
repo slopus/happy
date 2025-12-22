@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 import { resolve, join } from "node:path";
 import { createInterface } from "node:readline";
 import { mkdirSync, existsSync } from "node:fs";
-import { randomUUID } from "node:crypto";
 import { logger } from "@/ui/logger";
 import { claudeCheckSession } from "./utils/claudeCheckSession";
 import { getProjectPath } from "./utils/path";
@@ -23,8 +22,8 @@ export async function claudeLocal(opts: {
     claudeEnvVars?: Record<string, string>,
     claudeArgs?: string[],
     allowedTools?: string[],
-    /** Path to temporary settings file with SessionStart hook */
-    hookSettingsPath?: string
+    /** Path to temporary settings file with SessionStart hook (required for session tracking) */
+    hookSettingsPath: string
 }) {
 
     // Ensure project directory exists
@@ -36,29 +35,20 @@ export async function claudeLocal(opts: {
     const hasResumeFlag = opts.claudeArgs?.includes('--resume');
     const hasUserSessionControl = hasContinueFlag || hasResumeFlag;
 
-    // Determine session ID strategy:
-    // - If user passed --continue/--resume: let Claude handle session, don't add --session-id
-    // - If resuming an existing session: use --resume (Claude keeps the same session ID)
-    // - If starting fresh: generate UUID and pass via --session-id
+    // Determine if we have an existing session to resume
+    // Session ID will always be provided by hook (SessionStart) when Claude starts
     let startFrom = opts.sessionId;
     if (opts.sessionId && !claudeCheckSession(opts.sessionId, opts.path)) {
         startFrom = null;
     }
-
-    // Generate new session ID only if not using user's --continue/--resume flags
-    const newSessionId = (startFrom || hasUserSessionControl) ? null : randomUUID();
-    const effectiveSessionId = startFrom || newSessionId || null;
     
-    // Notify about session ID immediately (only if we know it upfront)
-    if (newSessionId) {
-        logger.debug(`[ClaudeLocal] Generated new session ID: ${newSessionId}`);
-        opts.onSessionFound(newSessionId);
-    } else if (startFrom) {
-        logger.debug(`[ClaudeLocal] Resuming session: ${startFrom}`);
-        opts.onSessionFound(startFrom);
+    // Log session strategy
+    if (startFrom) {
+        logger.debug(`[ClaudeLocal] Will resume existing session: ${startFrom}`);
     } else if (hasUserSessionControl) {
-        // Session ID will be provided by hook when Claude starts
         logger.debug(`[ClaudeLocal] User passed ${hasContinueFlag ? '--continue' : '--resume'} flag, session ID will be determined by hook`);
+    } else {
+        logger.debug(`[ClaudeLocal] Fresh start, session ID will be provided by hook`);
     }
 
     // Thinking state
@@ -81,15 +71,10 @@ export async function claudeLocal(opts: {
         await new Promise<void>((r, reject) => {
             const args: string[] = []
             
-            // Only add session control args if user didn't pass --continue/--resume
-            if (!hasUserSessionControl) {
-                if (startFrom) {
-                    // Resume existing session (Claude preserves the session ID)
-                    args.push('--resume', startFrom)
-                } else {
-                    // New session with our generated UUID
-                    args.push('--session-id', newSessionId!)
-                }
+            // Only add --resume if we have an existing session and user didn't pass their own flags
+            // For fresh starts, let Claude create its own session ID (reported via hook)
+            if (!hasUserSessionControl && startFrom) {
+                args.push('--resume', startFrom)
             }
             
             args.push('--append-system-prompt', systemPrompt);
@@ -107,11 +92,9 @@ export async function claudeLocal(opts: {
                 args.push(...opts.claudeArgs)
             }
 
-            // Add hook settings for session tracking
-            if (opts.hookSettingsPath) {
-                args.push('--settings', opts.hookSettingsPath);
-                logger.debug(`[ClaudeLocal] Using hook settings: ${opts.hookSettingsPath}`);
-            }
+            // Add hook settings for session tracking (always passed)
+            args.push('--settings', opts.hookSettingsPath);
+            logger.debug(`[ClaudeLocal] Using hook settings: ${opts.hookSettingsPath}`);
 
             if (!claudeCliPath || !existsSync(claudeCliPath)) {
                 throw new Error('Claude local launcher not found. Please ensure HAPPY_PROJECT_ROOT is set correctly for development.');
@@ -225,5 +208,5 @@ export async function claudeLocal(opts: {
         updateThinking(false);
     }
 
-    return effectiveSessionId;
+    return startFrom;
 }

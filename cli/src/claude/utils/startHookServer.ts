@@ -5,6 +5,56 @@
  * (new session, resume, compact, fork, etc.) via the SessionStart hook.
  * 
  * Separate from the MCP server to keep concerns isolated.
+ * 
+ * ## Control Flow
+ * 
+ * ### Startup
+ * ```
+ * runClaude.ts                                  
+ *     │                                         
+ *     ├─► startHookServer() ──► HTTP server on random port (e.g., 52290)
+ *     │                                         
+ *     ├─► generateHookSettingsFile(port) ──► ~/.happy/tmp/hooks/session-hook-<pid>.json
+ *     │   (contains SessionStart hook pointing to our server)
+ *     │                                         
+ *     └─► loop() ──► claudeLocal/claudeRemote
+ *             │
+ *             └─► spawn claude --settings <hook-settings-path>
+ * ```
+ * 
+ * ### Session Notification Flow
+ * ```
+ * Claude CLI (SessionStart event)
+ *     │
+ *     ├─► Reads hooks from --settings file
+ *     │
+ *     └─► Executes hook command (session_hook_forwarder.cjs)
+ *             │
+ *             ├─► Receives session data on stdin
+ *             │
+ *             └─► HTTP POST to http://127.0.0.1:<port>/hook/session-start
+ *                     │
+ *                     └─► startHookServer receives it
+ *                             │
+ *                             └─► onSessionHook(sessionId, data)
+ *                                     │
+ *                                     ├─► Updates Session.sessionId
+ *                                     ├─► Updates API metadata
+ *                                     └─► Notifies SessionScanner
+ * ```
+ * 
+ * ### Triggered By
+ * - `happy` (fresh start) - new session created
+ * - `happy --continue` - continues last session (may fork)
+ * - `happy --resume` - interactive picker, then resume
+ * - `happy --resume <id>` - resume specific session
+ * - `/compact` command - compacts and forks session
+ * - Double-escape fork - user forks conversation in CLI
+ * 
+ * ### Why Not Use File Watching?
+ * File watching has race conditions when multiple Happy processes run.
+ * With hooks, Claude directly tells THIS specific process about its session,
+ * ensuring 1:1 mapping between Happy process and Claude session.
  */
 
 import { createServer, IncomingMessage, ServerResponse, Server } from 'node:http';
