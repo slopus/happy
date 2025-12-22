@@ -12,7 +12,6 @@ import { AgentInput } from '@/components/AgentInput';
 import { MultiTextInputHandle } from '@/components/MultiTextInput';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Constants from 'expo-constants';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
@@ -20,7 +19,7 @@ import { SessionTypeSelector } from '@/components/SessionTypeSelector';
 import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
-import { PermissionMode, ModelMode } from '@/components/PermissionModeSelector';
+import { PermissionMode } from '@/components/PermissionModeSelector';
 
 // Simple temporary state for passing selections back from picker screens
 let onMachineSelected: (machineId: string) => void = () => { };
@@ -115,7 +114,6 @@ function NewSessionScreen() {
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
-    const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
 
     //
@@ -212,13 +210,21 @@ function NewSessionScreen() {
     // Agent selection
     //
 
-    const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
+    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
         // Check if agent type was provided in temp data
         if (tempSessionData?.agentType) {
+            // Only allow gemini if experiments are enabled
+            if (tempSessionData.agentType === 'gemini' && !experimentsEnabled) {
+                return 'claude';
+            }
             return tempSessionData.agentType;
         }
         // Initialize with last used agent if valid, otherwise default to 'claude'
         if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
+            return lastUsedAgent;
+        }
+        // Only allow gemini if experiments are enabled
+        if (lastUsedAgent === 'gemini' && experimentsEnabled) {
             return lastUsedAgent;
         }
         return 'claude';
@@ -226,70 +232,49 @@ function NewSessionScreen() {
 
     const handleAgentClick = React.useCallback(() => {
         setAgentType(prev => {
-            const newAgent = prev === 'claude' ? 'codex' : 'claude';
+            // Cycle: claude -> codex -> gemini (if experiments) -> claude
+            let newAgent: 'claude' | 'codex' | 'gemini';
+            if (prev === 'claude') {
+                newAgent = 'codex';
+            } else if (prev === 'codex') {
+                newAgent = experimentsEnabled ? 'gemini' : 'claude';
+            } else {
+                newAgent = 'claude';
+            }
             // Save the new selection immediately
             sync.applySettings({ lastUsedAgent: newAgent });
             return newAgent;
         });
-    }, []);
+    }, [experimentsEnabled]);
 
     //
-    // Permission and Model Mode selection
+    // Permission Mode selection
     //
 
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
         // Initialize with last used permission mode if valid, otherwise default to 'default'
-        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+        const validClaudeGeminiModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
         const validCodexModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
 
         if (lastUsedPermissionMode) {
             if (agentType === 'codex' && validCodexModes.includes(lastUsedPermissionMode as PermissionMode)) {
                 return lastUsedPermissionMode as PermissionMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
+            } else if ((agentType === 'claude' || agentType === 'gemini') && validClaudeGeminiModes.includes(lastUsedPermissionMode as PermissionMode)) {
                 return lastUsedPermissionMode as PermissionMode;
             }
         }
         return 'default';
     });
 
-    const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
-        // Initialize with last used model mode if valid, otherwise default
-        const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
-        const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'default', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
-
-        if (lastUsedModelMode) {
-            if (agentType === 'codex' && validCodexModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedModelMode as ModelMode)) {
-                return lastUsedModelMode as ModelMode;
-            }
-        }
-        return agentType === 'codex' ? 'gpt-5-codex-high' : 'default';
-    });
-
-    // Reset permission and model modes when agent type changes
+    // Reset permission mode when agent type changes
     React.useEffect(() => {
-        if (agentType === 'codex') {
-            // Switch to codex-compatible modes
-            setPermissionMode('default');
-            setModelMode('gpt-5-codex-high');
-        } else {
-            // Switch to claude-compatible modes
-            setPermissionMode('default');
-            setModelMode('default');
-        }
+        setPermissionMode('default');
     }, [agentType]);
 
     const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
         setPermissionMode(mode);
         // Save the new selection immediately
         sync.applySettings({ lastUsedPermissionMode: mode });
-    }, []);
-
-    const handleModelModeChange = React.useCallback((mode: ModelMode) => {
-        setModelMode(mode);
-        // Save the new selection immediately
-        sync.applySettings({ lastUsedModelMode: mode });
     }, []);
 
     //
@@ -397,9 +382,8 @@ function NewSessionScreen() {
                 // Load sessions
                 await sync.refreshSessions();
 
-                // Set permission and model modes on the session
+                // Set permission mode on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
-                storage.getState().updateSessionModelMode(result.sessionId, modelMode);
 
                 // Send message
                 await sync.sendMessage(result.sessionId, input);
@@ -428,23 +412,23 @@ function NewSessionScreen() {
         } finally {
             setIsSending(false);
         }
-    }, [agentType, selectedMachineId, selectedPath, input, recentMachinePaths, sessionType, experimentsEnabled, permissionMode, modelMode]);
+    }, [agentType, selectedMachineId, selectedPath, input, recentMachinePaths, sessionType, experimentsEnabled, permissionMode]);
 
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-            keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + headerHeight : 0}
+            keyboardVerticalOffset={Platform.OS === 'ios' ? headerHeight + safeArea.bottom + 16 : 0}
             style={{
                 flex: 1,
                 justifyContent: Platform.OS === 'web' ? 'center' : 'flex-end',
                 paddingTop: Platform.OS === 'web' ? 0 : 40,
-                marginBottom: safeArea.bottom,
             }}
         >
             <View style={{
                 width: '100%',
                 alignSelf: 'center',
                 paddingTop: safeArea.top,
+                paddingBottom: safeArea.bottom,
             }}>
                 {/* Session type selector - only show when experiments are enabled */}
                 {experimentsEnabled && (
@@ -476,8 +460,6 @@ function NewSessionScreen() {
                     onMachineClick={handleMachineClick}
                     permissionMode={permissionMode}
                     onPermissionModeChange={handlePermissionModeChange}
-                    modelMode={modelMode}
-                    onModelModeChange={handleModelModeChange}
                     autocompletePrefixes={[]}
                     autocompleteSuggestions={async () => []}
                 />
