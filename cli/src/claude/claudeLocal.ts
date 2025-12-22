@@ -21,15 +21,23 @@ export async function claudeLocal(opts: {
     onSessionFound: (id: string) => void,
     onThinkingChange?: (thinking: boolean) => void,
     claudeEnvVars?: Record<string, string>,
-    claudeArgs?: string[]
-    allowedTools?: string[]
+    claudeArgs?: string[],
+    allowedTools?: string[],
+    /** Path to temporary settings file with SessionStart hook */
+    hookSettingsPath?: string
 }) {
 
     // Ensure project directory exists
     const projectDir = getProjectPath(opts.path);
     mkdirSync(projectDir, { recursive: true });
 
+    // Check if claudeArgs contains --continue or --resume (user passed these flags)
+    const hasContinueFlag = opts.claudeArgs?.includes('--continue');
+    const hasResumeFlag = opts.claudeArgs?.includes('--resume');
+    const hasUserSessionControl = hasContinueFlag || hasResumeFlag;
+
     // Determine session ID strategy:
+    // - If user passed --continue/--resume: let Claude handle session, don't add --session-id
     // - If resuming an existing session: use --resume (Claude keeps the same session ID)
     // - If starting fresh: generate UUID and pass via --session-id
     let startFrom = opts.sessionId;
@@ -37,17 +45,20 @@ export async function claudeLocal(opts: {
         startFrom = null;
     }
 
-    // Generate new session ID if not resuming
-    const newSessionId = startFrom ? null : randomUUID();
-    const effectiveSessionId = startFrom || newSessionId!;
+    // Generate new session ID only if not using user's --continue/--resume flags
+    const newSessionId = (startFrom || hasUserSessionControl) ? null : randomUUID();
+    const effectiveSessionId = startFrom || newSessionId || null;
     
-    // Notify about session ID immediately (we know it upfront now!)
+    // Notify about session ID immediately (only if we know it upfront)
     if (newSessionId) {
         logger.debug(`[ClaudeLocal] Generated new session ID: ${newSessionId}`);
         opts.onSessionFound(newSessionId);
-    } else {
+    } else if (startFrom) {
         logger.debug(`[ClaudeLocal] Resuming session: ${startFrom}`);
-        opts.onSessionFound(startFrom!);
+        opts.onSessionFound(startFrom);
+    } else if (hasUserSessionControl) {
+        // Session ID will be provided by hook when Claude starts
+        logger.debug(`[ClaudeLocal] User passed ${hasContinueFlag ? '--continue' : '--resume'} flag, session ID will be determined by hook`);
     }
 
     // Thinking state
@@ -70,12 +81,15 @@ export async function claudeLocal(opts: {
         await new Promise<void>((r, reject) => {
             const args: string[] = []
             
-            if (startFrom) {
-                // Resume existing session (Claude preserves the session ID)
-                args.push('--resume', startFrom)
-            } else {
-                // New session with our generated UUID
-                args.push('--session-id', newSessionId!)
+            // Only add session control args if user didn't pass --continue/--resume
+            if (!hasUserSessionControl) {
+                if (startFrom) {
+                    // Resume existing session (Claude preserves the session ID)
+                    args.push('--resume', startFrom)
+                } else {
+                    // New session with our generated UUID
+                    args.push('--session-id', newSessionId!)
+                }
             }
             
             args.push('--append-system-prompt', systemPrompt);
@@ -91,6 +105,12 @@ export async function claudeLocal(opts: {
             // Add custom Claude arguments
             if (opts.claudeArgs) {
                 args.push(...opts.claudeArgs)
+            }
+
+            // Add hook settings for session tracking
+            if (opts.hookSettingsPath) {
+                args.push('--settings', opts.hookSettingsPath);
+                logger.debug(`[ClaudeLocal] Using hook settings: ${opts.hookSettingsPath}`);
             }
 
             if (!claudeCliPath || !existsSync(claudeCliPath)) {
@@ -207,3 +227,5 @@ export async function claudeLocal(opts: {
 
     return effectiveSessionId;
 }
+
+export type ClaudeLocalResult = string | null;

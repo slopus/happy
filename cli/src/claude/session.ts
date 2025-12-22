@@ -14,10 +14,15 @@ export class Session {
     readonly mcpServers: Record<string, any>;
     readonly allowedTools?: string[];
     readonly _onModeChange: (mode: 'local' | 'remote') => void;
+    /** Path to temporary settings file with SessionStart hook */
+    readonly hookSettingsPath?: string;
 
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
+    
+    /** Callbacks to be notified when session ID is found/changed */
+    private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
 
     constructor(opts: {
         api: ApiClient,
@@ -31,6 +36,8 @@ export class Session {
         messageQueue: MessageQueue2<EnhancedMode>,
         onModeChange: (mode: 'local' | 'remote') => void,
         allowedTools?: string[],
+        /** Path to temporary settings file with SessionStart hook */
+        hookSettingsPath?: string,
     }) {
         this.path = opts.path;
         this.api = opts.api;
@@ -43,6 +50,7 @@ export class Session {
         this.mcpServers = opts.mcpServers;
         this.allowedTools = opts.allowedTools;
         this._onModeChange = opts.onModeChange;
+        this.hookSettingsPath = opts.hookSettingsPath;
 
         // Start keep alive
         this.client.keepAlive(this.thinking, this.mode);
@@ -71,6 +79,28 @@ export class Session {
             claudeSessionId: sessionId
         }));
         logger.debug(`[Session] Claude Code session ID ${sessionId} added to metadata`);
+        
+        // Notify all registered callbacks
+        for (const callback of this.sessionFoundCallbacks) {
+            callback(sessionId);
+        }
+    }
+    
+    /**
+     * Register a callback to be notified when session ID is found/changed
+     */
+    addSessionFoundCallback = (callback: (sessionId: string) => void): void => {
+        this.sessionFoundCallbacks.push(callback);
+    }
+    
+    /**
+     * Remove a session found callback
+     */
+    removeSessionFoundCallback = (callback: (sessionId: string) => void): void => {
+        const index = this.sessionFoundCallbacks.indexOf(callback);
+        if (index !== -1) {
+            this.sessionFoundCallbacks.splice(index, 1);
+        }
     }
 
     /**
