@@ -5,13 +5,14 @@ import { Header } from './navigation/Header';
 import { SessionsList } from './SessionsList';
 import { EmptyMainScreen } from './EmptyMainScreen';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
-import { useSocketStatus } from '@/sync/storage';
+import { useSocketStatus, useRealtimeStatus } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusDot } from './StatusDot';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
+import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -200,6 +201,7 @@ function HeaderRight() {
 export const SessionsListWrapper = React.memo(() => {
     const { theme } = useUnistyles();
     const sessionListViewData = useVisibleSessionListViewData();
+    const realtimeStatus = useRealtimeStatus();
     const styles = stylesheet;
 
     return (
@@ -212,6 +214,9 @@ export const SessionsListWrapper = React.memo(() => {
                     headerShadowVisible={false}
                     headerTransparent={true}
                 />
+                {realtimeStatus !== 'disconnected' && (
+                    <VoiceAssistantStatusBar variant="full" />
+                )}
             </View>
             
             {sessionListViewData === null ? (

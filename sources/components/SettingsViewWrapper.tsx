@@ -9,8 +9,9 @@ import { useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
-import { useSocketStatus } from '@/sync/storage';
+import { useSocketStatus, useRealtimeStatus } from '@/sync/storage';
 import { StatusDot } from './StatusDot';
+import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -157,6 +158,7 @@ function HeaderRight() {
 export const SettingsViewWrapper = React.memo(() => {
     const { theme } = useUnistyles();
     const styles = stylesheet;
+    const realtimeStatus = useRealtimeStatus();
 
     return (
         <View style={styles.container}>
@@ -168,6 +170,9 @@ export const SettingsViewWrapper = React.memo(() => {
                     headerShadowVisible={false}
                     headerTransparent={true}
                 />
+                {realtimeStatus !== 'disconnected' && (
+                    <VoiceAssistantStatusBar variant="full" />
+                )}
             </View>
             <SettingsView />
         </View>

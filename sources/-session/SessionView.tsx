@@ -1,6 +1,5 @@
 import { AgentContentView } from '@/components/AgentContentView';
 import { AgentInput } from '@/components/AgentInput';
-import { ModelMode } from '@/components/PermissionModeSelector';
 import { getSuggestions } from '@/components/autocomplete/suggestions';
 import { ChatHeaderView } from '@/components/ChatHeaderView';
 import { ChatList } from '@/components/ChatList';
@@ -10,7 +9,7 @@ import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 import { useDraft } from '@/hooks/useDraft';
 import { Modal } from '@/modal';
 import { voiceHooks } from '@/realtime/hooks/voiceHooks';
-import { startRealtimeSession, stopRealtimeSession, updateCurrentSessionId } from '@/realtime/RealtimeSession';
+import { startRealtimeSession, stopRealtimeSession } from '@/realtime/RealtimeSession';
 import { gitStatusSync } from '@/sync/gitStatusSync';
 import { sessionAbort } from '@/sync/ops';
 import { storage, useIsDataReady, useLocalSetting, useRealtimeStatus, useSessionMessages, useSessionUsage, useSetting } from '@/sync/storage';
@@ -41,6 +40,8 @@ export const SessionView = React.memo((props: { id: string }) => {
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
     const headerHeight = useHeaderHeight();
+    const realtimeStatus = useRealtimeStatus();
+    const isTablet = useIsTablet();
 
     // Compute header props based on session state
     const headerProps = useMemo(() => {
@@ -117,11 +118,15 @@ export const SessionView = React.memo((props: { id: string }) => {
                         {...headerProps}
                         onBackPress={() => router.back()}
                     />
+                    {/* Voice status bar below header - not on tablet (shown in sidebar) */}
+                    {!isTablet && realtimeStatus !== 'disconnected' && (
+                        <VoiceAssistantStatusBar variant="full" />
+                    )}
                 </View>
             )}
 
             {/* Content based on state */}
-            <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone') ? safeArea.top + headerHeight : 0 }}>
+            <View style={{ flex: 1, paddingTop: !(isLandscape && deviceType === 'phone') ? safeArea.top + headerHeight + (!isTablet && realtimeStatus !== 'disconnected' ? 48 : 0) : 0 }}>
                 {!isDataReady ? (
                     // Loading state
                     <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
@@ -150,8 +155,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const safeArea = useSafeAreaInsets();
     const isLandscape = useIsLandscape();
     const deviceType = useDeviceType();
-    const isTablet = useIsTablet();
-    const headerHeight = useHeaderHeight();
     const [message, setMessage] = React.useState('');
     const realtimeStatus = useRealtimeStatus();
     const { messages, isLoaded } = useSessionMessages(sessionId);
@@ -165,8 +168,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     const shouldShowCliWarning = isCliOutdated && !isAcknowledged;
     // Get permission mode from session object, default to 'default'
     const permissionMode = session.permissionMode || 'default';
-    // Get model mode from session object, default to 'default'
-    const modelMode = session.modelMode || 'default';
     const sessionStatus = useSessionStatus(session);
     const sessionUsage = useSessionUsage(sessionId);
     const alwaysShowContextSize = useSetting('alwaysShowContextSize');
@@ -190,11 +191,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
     // Function to update permission mode
     const updatePermissionMode = React.useCallback((mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => {
         storage.getState().updateSessionPermissionMode(sessionId, mode);
-    }, [sessionId]);
-
-    // Function to update model mode
-    const updateModelMode = React.useCallback((mode: ModelMode) => {
-        storage.getState().updateSessionModelMode(sessionId, mode);
     }, [sessionId]);
 
     // Memoize header-dependent styles to prevent re-renders
@@ -244,10 +240,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
         // Trigger session sync
         sync.onSessionVisible(sessionId);
 
-        // Update realtime session ID if voice is active to ensure messages go to current session
-        if (realtimeStatus === 'connected') {
-            updateCurrentSessionId(sessionId);
-        }
 
         // Initialize git status sync for this session
         gitStatusSync.getSync(sessionId);
@@ -280,8 +272,6 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
             sessionId={sessionId}
             permissionMode={permissionMode}
             onPermissionModeChange={updatePermissionMode}
-            modelMode={modelMode}
-            onModelModeChange={updateModelMode}
             metadata={session.metadata}
             connectionStatus={{
                 text: sessionStatus.statusText,
@@ -325,26 +315,13 @@ function SessionViewLoaded({ sessionId, session }: { sessionId: string, session:
 
     return (
         <>
-            {/* Voice Assistant Status Bar - positioned as overlay at top */}
-            {!isTablet && !(isLandscape && deviceType === 'phone') && realtimeStatus !== 'disconnected' && (
-                <View style={{
-                    position: 'absolute',
-                    top: 0, // Position at top since header is handled by parent
-                    left: 0,
-                    right: 0,
-                    zIndex: 999 // Below header but above content
-                }}>
-                    <VoiceAssistantStatusBar variant="full" />
-                </View>
-            )}
-
             {/* CLI Version Warning Overlay - Subtle centered pill */}
             {shouldShowCliWarning && !(isLandscape && deviceType === 'phone') && (
                 <Pressable
                     onPress={handleDismissCliWarning}
                     style={{
                         position: 'absolute',
-                        top: safeArea.top + headerHeight + ((!isTablet && realtimeStatus !== 'disconnected') ? 48 : 0) + 8, // Position below header and voice bar if present
+                        top: 8, // Position at top of content area (padding handled by parent)
                         alignSelf: 'center',
                         backgroundColor: '#FFF3CD',
                         borderRadius: 100, // Fully rounded pill
