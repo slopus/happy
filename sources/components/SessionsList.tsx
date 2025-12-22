@@ -268,11 +268,7 @@ export function SessionsList() {
 
     const HeaderComponent = React.useCallback(() => {
         return (
-            <View>
-                {/* <View style={{ marginHorizontal: -4 }}>
-                    <UpdateBanner />
-                </View> */}
-            </View>
+            <UpdateBanner />
         );
     }, []);
 

@@ -1,49 +1,34 @@
-import { useEffect, useState } from 'react';
-import { 
-    getLastViewedVersion, 
-    setLastViewedVersion, 
-    getLatestVersion, 
-    hasUnreadChangelog 
+import { useState, useCallback } from 'react';
+import {
+    getLastViewedVersion,
+    setLastViewedVersion,
+    getLatestVersion
 } from '@/changelog';
 
 export function useChangelog() {
-    const [isInitialized, setIsInitialized] = useState(false);
-    const [hasUnread, setHasUnread] = useState(false);
-    const [latestVersion, setLatestVersionState] = useState(0);
+    // MMKV reads are synchronous - no need for useEffect
+    const latestVersion = getLatestVersion();
 
-    useEffect(() => {
-        const initialize = () => {
-            try {
-                const latest = getLatestVersion();
-                const lastViewed = getLastViewedVersion();
-                
-                // On first install, set the last viewed version to current version
-                // so user doesn't see old changelog entries as unread
-                if (lastViewed === 0 && latest > 0) {
-                    setLastViewedVersion(latest);
-                }
-                
-                setLatestVersionState(latest);
-                setHasUnread(hasUnreadChangelog(latest));
-                setIsInitialized(true);
-            } catch (error) {
-                console.warn('Failed to initialize changelog:', error);
-                setIsInitialized(true);
-            }
-        };
+    const [hasUnread, setHasUnread] = useState(() => {
+        const lastViewed = getLastViewedVersion();
 
-        initialize();
-    }, []);
+        // On first install, mark as read so user doesn't see old entries
+        if (lastViewed === 0 && latestVersion > 0) {
+            setLastViewedVersion(latestVersion);
+            return false;
+        }
 
-    const markAsRead = () => {
+        return latestVersion > lastViewed;
+    });
+
+    const markAsRead = useCallback(() => {
         if (latestVersion > 0) {
             setLastViewedVersion(latestVersion);
             setHasUnread(false);
         }
-    };
+    }, [latestVersion]);
 
     return {
-        isInitialized,
         hasUnread,
         latestVersion,
         markAsRead

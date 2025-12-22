@@ -7,12 +7,12 @@ import { EmptyMainScreen } from './EmptyMainScreen';
 import { useVisibleSessionListViewData } from '@/hooks/useVisibleSessionListViewData';
 import { useSocketStatus, useRealtimeStatus } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { StatusDot } from './StatusDot';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
+import { HeaderLogo } from './HeaderLogo';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -167,20 +167,6 @@ function HeaderTitle() {
     );
 }
 
-function HeaderLeft() {
-    const styles = stylesheet;
-    const { theme } = useUnistyles();
-    return (
-        <View style={styles.logoContainer}>
-            <Image
-                source={require('@/assets/images/logo-black.png')}
-                contentFit="contain"
-                style={[{ width: 24, height: 24 }]}
-                tintColor={theme.colors.header.tint}
-            />
-        </View>
-    );
-}
 
 function HeaderRight() {
     const router = useRouter();
@@ -210,7 +196,7 @@ export const SessionsListWrapper = React.memo(() => {
                 <Header
                     title={<HeaderTitle />}
                     headerRight={() => <HeaderRight />}
-                    headerLeft={() => <HeaderLeft />}
+                    headerLeft={() => <HeaderLogo />}
                     headerShadowVisible={false}
                     headerTransparent={true}
                 />
@@ -218,7 +204,6 @@ export const SessionsListWrapper = React.memo(() => {
                     <VoiceAssistantStatusBar variant="full" />
                 )}
             </View>
-            
             {sessionListViewData === null ? (
                 <View style={styles.loadingContainerWrapper}>
                     <View style={styles.loadingContainer}>

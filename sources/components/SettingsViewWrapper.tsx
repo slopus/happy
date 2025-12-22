@@ -4,7 +4,6 @@ import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { Header } from './navigation/Header';
 import { SettingsView } from './SettingsView';
 import { Ionicons } from '@expo/vector-icons';
-import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
@@ -12,6 +11,7 @@ import { isUsingCustomServer } from '@/sync/serverConfig';
 import { useSocketStatus, useRealtimeStatus } from '@/sync/storage';
 import { StatusDot } from './StatusDot';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
+import { HeaderLogo } from './HeaderLogo';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -118,20 +118,6 @@ function HeaderTitle() {
     );
 }
 
-function HeaderLeft() {
-    const styles = stylesheet;
-    const { theme } = useUnistyles();
-    return (
-        <View style={styles.logoContainer}>
-            <Image
-                source={require('@/assets/images/logo-black.png')}
-                contentFit="contain"
-                style={[{ width: 24, height: 24 }]}
-                tintColor={theme.colors.header.tint}
-            />
-        </View>
-    );
-}
 
 function HeaderRight() {
     const router = useRouter();
@@ -166,7 +152,7 @@ export const SettingsViewWrapper = React.memo(() => {
                 <Header
                     title={<HeaderTitle />}
                     headerRight={() => <HeaderRight />}
-                    headerLeft={() => <HeaderLeft />}
+                    headerLeft={() => <HeaderLogo />}
                     headerShadowVisible={false}
                     headerTransparent={true}
                 />

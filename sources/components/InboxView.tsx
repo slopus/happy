@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Image } from 'expo-image';
 import { FeedItemCard } from './FeedItemCard';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
+import { HeaderLogo } from './HeaderLogo';
 
 const styles = StyleSheet.create((theme) => ({
     container: {
@@ -143,24 +144,6 @@ function HeaderTitle() {
     );
 }
 
-function HeaderLeft() {
-    const { theme } = useUnistyles();
-    return (
-        <View style={{
-            width: 32,
-            height: 32,
-            alignItems: 'center',
-            justifyContent: 'center',
-        }}>
-            <Image
-                source={require('@/assets/images/logo-black.png')}
-                contentFit="contain"
-                style={[{ width: 24, height: 24 }]}
-                tintColor={theme.colors.header.tint}
-            />
-        </View>
-    );
-}
 
 function HeaderRight() {
     const router = useRouter();
@@ -218,7 +201,7 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                     <Header
                         title={isTablet ? <HeaderTitleTablet /> : <HeaderTitle />}
                         headerRight={() => <HeaderRight />}
-                        headerLeft={isTablet ? () => null : () => <HeaderLeft />}
+                        headerLeft={isTablet ? () => null : () => <HeaderLogo />}
                         headerShadowVisible={false}
                         headerTransparent={true}
                     />
@@ -241,7 +224,7 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                     <Header
                         title={isTablet ? <HeaderTitleTablet /> : <HeaderTitle />}
                         headerRight={() => <HeaderRight />}
-                        headerLeft={isTablet ? () => null : () => <HeaderLeft />}
+                        headerLeft={isTablet ? () => null : () => <HeaderLogo />}
                         headerShadowVisible={false}
                         headerTransparent={true}
                     />
@@ -270,7 +253,7 @@ export const InboxView = React.memo(({}: InboxViewProps) => {
                 <Header
                     title={isTablet ? <HeaderTitleTablet /> : <HeaderTitle />}
                     headerRight={() => <HeaderRight />}
-                    headerLeft={isTablet ? () => null : () => <HeaderLeft />}
+                    headerLeft={isTablet ? () => null : () => <HeaderLogo />}
                     headerShadowVisible={false}
                     headerTransparent={true}
                 />
