@@ -14,7 +14,6 @@ import { t } from '@/text';
 import { layout } from '@/components/layout';
 import { useSettingMutable, useProfile } from '@/sync/storage';
 import { sync } from '@/sync/sync';
-import { getServerInfo } from '@/sync/serverConfig';
 import { useUnistyles } from 'react-native-unistyles';
 import { Switch } from '@/components/Switch';
 import { useConnectAccount } from '@/hooks/useConnectAccount';
@@ -37,9 +36,6 @@ export default React.memo(() => {
     // Get the current secret key
     const currentSecret = auth.credentials?.secret || '';
     const formattedSecret = currentSecret ? formatSecretKeyForBackup(currentSecret) : '';
-
-    // Get server info
-    const serverInfo = getServerInfo();
 
     // Profile display values
     const displayName = getDisplayName(profile);
@@ -219,17 +215,6 @@ export default React.memo(() => {
                         </ItemGroup>
                     );
                 })()}
-
-                {/* Server Info */}
-                {serverInfo.isCustom && (
-                    <ItemGroup title={t('settingsAccount.server')}>
-                        <Item
-                            title={t('settingsAccount.server')}
-                            detail={serverInfo.hostname + (serverInfo.port ? `:${serverInfo.port}` : '')}
-                            showChevron={false}
-                        />
-                    </ItemGroup>
-                )}
 
                 {/* Backup Section */}
                 <ItemGroup
