@@ -7,6 +7,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { UserProfile } from '@/sync/friendTypes';
 import { Modal } from '@/modal';
 import { t } from '@/text';
+import { trackFriendsConnect } from '@/track';
 import { ItemList } from '@/components/ItemList';
 import { ItemGroup } from '@/components/ItemGroup';
 import { useSearch } from '@/hooks/useSearch';
@@ -33,8 +34,9 @@ export default function SearchFriendsScreen() {
         setProcessingUserId(user.id);
         try {
             const updatedProfile = await sendFriendRequest(credentials, user.id);
-            
+
             if (updatedProfile) {
+                trackFriendsConnect();
                 console.log(t('friends.requestSent'));
             } else {
                 await Modal.alert(t('friends.bothMustHaveGithub'));
