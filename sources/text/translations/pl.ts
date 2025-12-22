@@ -223,6 +223,7 @@ export const pl: TranslationStructure = {
         contactSupport: 'Skontaktuj się z pomocą techniczną, jeśli problem będzie się powtarzał',
         sessionNotFound: 'Sesja nie została znaleziona',
         voiceSessionFailed: 'Nie udało się uruchomić sesji głosowej',
+        voiceServiceUnavailable: 'Usługa głosowa jest tymczasowo niedostępna',
         oauthInitializationFailed: 'Nie udało się zainicjować przepływu OAuth',
         tokenStorageFailed: 'Nie udało się zapisać tokenów uwierzytelniania',
         oauthStateMismatch: 'Weryfikacja bezpieczeństwa nie powiodła się. Spróbuj ponownie',
@@ -400,13 +401,11 @@ export const pl: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            gemini: 'Gemini',
         },
         model: {
             title: 'MODEL',
-            default: 'Użyj ustawień CLI',
-            adaptiveUsage: 'Opus do 50% użycia, potem Sonnet',
-            sonnet: 'Sonnet',
-            opus: 'Opus',
+            configureInCli: 'Skonfiguruj modele w ustawieniach CLI',
         },
         codexPermissionMode: {
             title: 'TRYB UPRAWNIEŃ CODEX',
@@ -418,15 +417,15 @@ export const pl: TranslationStructure = {
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
-        codexModel: {
-            title: 'MODEL CODEX',
-            gpt5CodexLow: 'gpt-5-codex low',
-            gpt5CodexMedium: 'gpt-5-codex medium',
-            gpt5CodexHigh: 'gpt-5-codex high',
-            gpt5Minimal: 'GPT-5 Minimalny',
-            gpt5Low: 'GPT-5 Niski',
-            gpt5Medium: 'GPT-5 Średni',
-            gpt5High: 'GPT-5 Wysoki',
+        geminiPermissionMode: {
+            title: 'TRYB UPRAWNIEŃ',
+            default: 'Domyślny',
+            acceptEdits: 'Akceptuj edycje',
+            plan: 'Tryb planowania',
+            bypassPermissions: 'Tryb YOLO',
+            badgeAcceptAllEdits: 'Akceptuj wszystkie edycje',
+            badgeBypassAllPermissions: 'Omiń wszystkie uprawnienia',
+            badgePlanMode: 'Tryb planowania',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `Pozostało ${percent}%`,

@@ -195,6 +195,7 @@ export const ru: TranslationStructure = {
         contactSupport: 'Если проблема сохранится, обратитесь в поддержку',
         sessionNotFound: 'Сессия не найдена',
         voiceSessionFailed: 'Не удалось запустить голосовую сессию',
+        voiceServiceUnavailable: 'Голосовой сервис временно недоступен',
         oauthInitializationFailed: 'Не удалось инициализировать процесс OAuth',
         tokenStorageFailed: 'Не удалось сохранить токены аутентификации',
         oauthStateMismatch: 'Ошибка проверки безопасности. Попробуйте снова',
@@ -400,13 +401,11 @@ export const ru: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            gemini: 'Gemini',
         },
         model: {
             title: 'МОДЕЛЬ',
-            default: 'Использовать настройки CLI',
-            adaptiveUsage: 'Opus до 50% использования, затем Sonnet',
-            sonnet: 'Sonnet',
-            opus: 'Opus',
+            configureInCli: 'Настройте модели в настройках CLI',
         },
         codexPermissionMode: {
             title: 'РЕЖИМ РАЗРЕШЕНИЙ CODEX',
@@ -418,15 +417,15 @@ export const ru: TranslationStructure = {
             badgeSafeYolo: 'Safe YOLO',
             badgeYolo: 'YOLO',
         },
-        codexModel: {
-            title: 'МОДЕЛЬ CODEX',
-            gpt5CodexLow: 'gpt-5-codex low',
-            gpt5CodexMedium: 'gpt-5-codex medium',
-            gpt5CodexHigh: 'gpt-5-codex high',
-            gpt5Minimal: 'GPT-5 Минимальная',
-            gpt5Low: 'GPT-5 Низкая',
-            gpt5Medium: 'GPT-5 Средняя',
-            gpt5High: 'GPT-5 Высокая',
+        geminiPermissionMode: {
+            title: 'РЕЖИМ РАЗРЕШЕНИЙ',
+            default: 'По умолчанию',
+            acceptEdits: 'Принимать правки',
+            plan: 'Режим планирования',
+            bypassPermissions: 'YOLO режим',
+            badgeAcceptAllEdits: 'Принимать все правки',
+            badgeBypassAllPermissions: 'Обход всех разрешений',
+            badgePlanMode: 'Режим планирования',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `Осталось ${percent}%`,
