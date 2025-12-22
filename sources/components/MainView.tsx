@@ -20,6 +20,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Typography } from '@/constants/Typography';
 import { t } from '@/text';
 import { isUsingCustomServer } from '@/sync/serverConfig';
+import { trackFriendsSearch } from '@/track';
 
 interface MainViewProps {
     variant: 'phone' | 'sidebar';
@@ -191,7 +192,10 @@ const HeaderRight = React.memo(({ activeTab }: { activeTab: ActiveTabType }) => 
     if (activeTab === 'inbox') {
         return (
             <Pressable
-                onPress={() => router.push('/friends/search')}
+                onPress={() => {
+                    trackFriendsSearch();
+                    router.push('/friends/search');
+                }}
                 hitSlop={15}
                 style={styles.headerButton}
             >

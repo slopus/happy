@@ -14,7 +14,7 @@ import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { useEntitlement, useLocalSettingMutable, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { isUsingCustomServer } from '@/sync/serverConfig';
-import { trackPaywallButtonClicked } from '@/track';
+import { trackPaywallButtonClicked, trackWhatsNewClicked } from '@/track';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
 import { useAllMachines } from '@/sync/storage';
@@ -349,7 +349,10 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.whatsNew')}
                     subtitle={t('settings.whatsNewSubtitle')}
                     icon={<Ionicons name="sparkles-outline" size={29} color="#FF9500" />}
-                    onPress={() => router.push('/changelog')}
+                    onPress={() => {
+                        trackWhatsNewClicked();
+                        router.push('/changelog');
+                    }}
                 />
                 <Item
                     title={t('settings.github')}
