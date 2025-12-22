@@ -14,10 +14,18 @@ export class Session {
     readonly mcpServers: Record<string, any>;
     readonly allowedTools?: string[];
     readonly _onModeChange: (mode: 'local' | 'remote') => void;
+    /** Path to temporary settings file with SessionStart hook (required for session tracking) */
+    readonly hookSettingsPath: string;
 
     sessionId: string | null;
     mode: 'local' | 'remote' = 'local';
     thinking: boolean = false;
+    
+    /** Callbacks to be notified when session ID is found/changed */
+    private sessionFoundCallbacks: ((sessionId: string) => void)[] = [];
+    
+    /** Keep alive interval reference for cleanup */
+    private keepAliveInterval: NodeJS.Timeout;
 
     constructor(opts: {
         api: ApiClient,
@@ -31,6 +39,8 @@ export class Session {
         messageQueue: MessageQueue2<EnhancedMode>,
         onModeChange: (mode: 'local' | 'remote') => void,
         allowedTools?: string[],
+        /** Path to temporary settings file with SessionStart hook (required for session tracking) */
+        hookSettingsPath: string,
     }) {
         this.path = opts.path;
         this.api = opts.api;
@@ -43,12 +53,22 @@ export class Session {
         this.mcpServers = opts.mcpServers;
         this.allowedTools = opts.allowedTools;
         this._onModeChange = opts.onModeChange;
+        this.hookSettingsPath = opts.hookSettingsPath;
 
         // Start keep alive
         this.client.keepAlive(this.thinking, this.mode);
-        setInterval(() => {
+        this.keepAliveInterval = setInterval(() => {
             this.client.keepAlive(this.thinking, this.mode);
         }, 2000);
+    }
+    
+    /**
+     * Cleanup resources (call when session is no longer needed)
+     */
+    cleanup = (): void => {
+        clearInterval(this.keepAliveInterval);
+        this.sessionFoundCallbacks = [];
+        logger.debug('[Session] Cleaned up resources');
     }
 
     onThinkingChange = (thinking: boolean) => {
@@ -62,6 +82,17 @@ export class Session {
         this._onModeChange(mode);
     }
 
+    /**
+     * Called when Claude session ID is discovered or changed.
+     * 
+     * This is triggered by the SessionStart hook when:
+     * - Claude starts a new session (fresh start)
+     * - Claude resumes a session (--continue, --resume flags)
+     * - Claude forks a session (/compact, double-escape fork)
+     * 
+     * Updates internal state, syncs to API metadata, and notifies
+     * all registered callbacks (e.g., SessionScanner) about the change.
+     */
     onSessionFound = (sessionId: string) => {
         this.sessionId = sessionId;
         
@@ -71,6 +102,28 @@ export class Session {
             claudeSessionId: sessionId
         }));
         logger.debug(`[Session] Claude Code session ID ${sessionId} added to metadata`);
+        
+        // Notify all registered callbacks
+        for (const callback of this.sessionFoundCallbacks) {
+            callback(sessionId);
+        }
+    }
+    
+    /**
+     * Register a callback to be notified when session ID is found/changed
+     */
+    addSessionFoundCallback = (callback: (sessionId: string) => void): void => {
+        this.sessionFoundCallbacks.push(callback);
+    }
+    
+    /**
+     * Remove a session found callback
+     */
+    removeSessionFoundCallback = (callback: (sessionId: string) => void): void => {
+        const index = this.sessionFoundCallbacks.indexOf(callback);
+        if (index !== -1) {
+            this.sessionFoundCallbacks.splice(index, 1);
+        }
     }
 
     /**
@@ -83,14 +136,21 @@ export class Session {
 
     /**
      * Consume one-time Claude flags from claudeArgs after Claude spawn
-     * Currently handles: --resume (with or without session ID)
+     * Handles: --resume (with or without session ID), --continue
      */
     consumeOneTimeFlags = (): void => {
         if (!this.claudeArgs) return;
         
         const filteredArgs: string[] = [];
         for (let i = 0; i < this.claudeArgs.length; i++) {
-            if (this.claudeArgs[i] === '--resume') {
+            const arg = this.claudeArgs[i];
+            
+            if (arg === '--continue') {
+                logger.debug('[Session] Consumed --continue flag');
+                continue;
+            }
+            
+            if (arg === '--resume') {
                 // Check if next arg looks like a UUID (contains dashes and alphanumeric)
                 if (i + 1 < this.claudeArgs.length) {
                     const nextArg = this.claudeArgs[i + 1];
@@ -107,9 +167,10 @@ export class Session {
                     // --resume at the end of args
                     logger.debug('[Session] Consumed --resume flag (no session ID)');
                 }
-            } else {
-                filteredArgs.push(this.claudeArgs[i]);
+                continue;
             }
+            
+            filteredArgs.push(arg);
         }
         
         this.claudeArgs = filteredArgs.length > 0 ? filteredArgs : undefined;
