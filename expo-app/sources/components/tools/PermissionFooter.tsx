@@ -13,7 +13,7 @@ interface PermissionFooterProps {
         reason?: string;
         mode?: string;
         allowedTools?: string[];
-        decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+        decision?: 'approved' | 'approved_for_session' | 'approved_execpolicy_amendment' | 'denied' | 'abort';
     };
     sessionId: string;
     toolName: string;
@@ -26,9 +26,19 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     const [loadingButton, setLoadingButton] = useState<'allow' | 'deny' | 'abort' | null>(null);
     const [loadingAllEdits, setLoadingAllEdits] = useState(false);
     const [loadingForSession, setLoadingForSession] = useState(false);
+    const [loadingExecPolicy, setLoadingExecPolicy] = useState(false);
     
     // Check if this is a Codex session - check both metadata.flavor and tool name prefix
     const isCodex = metadata?.flavor === 'codex' || toolName.startsWith('Codex');
+    // Codex always provides proposed_execpolicy_amendment
+    const execPolicyCommand = (() => {
+        const proposedAmendment = toolInput?.proposedExecpolicyAmendment ?? toolInput?.proposed_execpolicy_amendment;
+        if (Array.isArray(proposedAmendment)) {
+            return proposedAmendment.filter((part: unknown): part is string => typeof part === 'string' && part.length > 0);
+        }
+        return [];
+    })();
+    const canApproveExecPolicy = isCodex && execPolicyCommand.length > 0;
 
     const handleApprove = async () => {
         if (permission.status !== 'pending' || loadingButton !== null || loadingAllEdits || loadingForSession) return;
@@ -93,7 +103,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     
     // Codex-specific handlers
     const handleCodexApprove = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingForSession || loadingExecPolicy) return;
         
         setLoadingButton('allow');
         try {
@@ -106,7 +116,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     };
     
     const handleCodexApproveForSession = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingForSession || loadingExecPolicy) return;
         
         setLoadingForSession(true);
         try {
@@ -117,9 +127,29 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
             setLoadingForSession(false);
         }
     };
+
+    const handleCodexApproveExecPolicy = async () => {
+        if (permission.status !== 'pending' || loadingButton !== null || loadingForSession || loadingExecPolicy || !canApproveExecPolicy) return;
+
+        setLoadingExecPolicy(true);
+        try {
+            await sessionAllow(
+                sessionId,
+                permission.id,
+                undefined,
+                undefined,
+                'approved_execpolicy_amendment',
+                { command: execPolicyCommand }
+            );
+        } catch (error) {
+            console.error('Failed to approve with execpolicy amendment:', error);
+        } finally {
+            setLoadingExecPolicy(false);
+        }
+    };
     
     const handleCodexAbort = async () => {
-        if (permission.status !== 'pending' || loadingButton !== null || loadingForSession) return;
+        if (permission.status !== 'pending' || loadingButton !== null || loadingForSession || loadingExecPolicy) return;
         
         setLoadingButton('abort');
         try {
@@ -159,6 +189,7 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
     // Codex-specific status detection with fallback
     const isCodexApproved = isCodex && isApproved && (permission.decision === 'approved' || !permission.decision);
     const isCodexApprovedForSession = isCodex && isApproved && permission.decision === 'approved_for_session';
+    const isCodexApprovedExecPolicy = isCodex && isApproved && permission.decision === 'approved_execpolicy_amendment';
     const isCodexAborted = isCodex && isDenied && permission.decision === 'abort';
 
     const styles = StyleSheet.create({
@@ -268,10 +299,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             styles.button,
                             isPending && styles.buttonAllow,
                             isCodexApproved && styles.buttonSelected,
-                            (isCodexAborted || isCodexApprovedForSession) && styles.buttonInactive
+                            (isCodexAborted || isCodexApprovedForSession || isCodexApprovedExecPolicy) && styles.buttonInactive
                         ]}
                         onPress={handleCodexApprove}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                        disabled={!isPending || loadingButton !== null || loadingForSession || loadingExecPolicy}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingButton === 'allow' && isPending ? (
@@ -291,16 +322,47 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                         )}
                     </TouchableOpacity>
 
+                    {/* Codex: Yes, always allow this command button */}
+                    {canApproveExecPolicy && (
+                        <TouchableOpacity
+                            style={[
+                                styles.button,
+                                isPending && styles.buttonForSession,
+                                isCodexApprovedExecPolicy && styles.buttonSelected,
+                                (isCodexAborted || isCodexApproved || isCodexApprovedForSession) && styles.buttonInactive
+                            ]}
+                            onPress={handleCodexApproveExecPolicy}
+                            disabled={!isPending || loadingButton !== null || loadingForSession || loadingExecPolicy}
+                            activeOpacity={isPending ? 0.7 : 1}
+                        >
+                            {loadingExecPolicy && isPending ? (
+                                <View style={[styles.buttonContent, { width: 40, height: 20, justifyContent: 'center' }]}>
+                                    <ActivityIndicator size={Platform.OS === 'ios' ? "small" : 14 as any} color={styles.loadingIndicatorForSession.color} />
+                                </View>
+                            ) : (
+                                <View style={styles.buttonContent}>
+                                    <Text style={[
+                                        styles.buttonText,
+                                        isPending && styles.buttonTextForSession,
+                                        isCodexApprovedExecPolicy && styles.buttonTextSelected
+                                    ]} numberOfLines={1} ellipsizeMode="tail">
+                                        {t('codex.permissions.yesAlwaysAllowCommand')}
+                                    </Text>
+                                </View>
+                            )}
+                        </TouchableOpacity>
+                    )}
+
                     {/* Codex: Yes, and don't ask for a session button */}
                     <TouchableOpacity
                         style={[
                             styles.button,
                             isPending && styles.buttonForSession,
                             isCodexApprovedForSession && styles.buttonSelected,
-                            (isCodexAborted || isCodexApproved) && styles.buttonInactive
+                            (isCodexAborted || isCodexApproved || isCodexApprovedExecPolicy) && styles.buttonInactive
                         ]}
                         onPress={handleCodexApproveForSession}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                        disabled={!isPending || loadingButton !== null || loadingForSession || loadingExecPolicy}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingForSession && isPending ? (
@@ -326,10 +388,10 @@ export const PermissionFooter: React.FC<PermissionFooterProps> = ({ permission, 
                             styles.button,
                             isPending && styles.buttonDeny,
                             isCodexAborted && styles.buttonSelected,
-                            (isCodexApproved || isCodexApprovedForSession) && styles.buttonInactive
+                            (isCodexApproved || isCodexApprovedForSession || isCodexApprovedExecPolicy) && styles.buttonInactive
                         ]}
                         onPress={handleCodexAbort}
-                        disabled={!isPending || loadingButton !== null || loadingForSession}
+                        disabled={!isPending || loadingButton !== null || loadingForSession || loadingExecPolicy}
                         activeOpacity={isPending ? 0.7 : 1}
                     >
                         {loadingButton === 'abort' && isPending ? (

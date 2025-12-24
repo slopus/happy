@@ -59,7 +59,7 @@ const rawToolResultContentSchema = z.object({
         result: z.enum(['approved', 'denied']),
         mode: z.enum(PERMISSION_MODES).optional(),
         allowedTools: z.array(z.string()).optional(),
-        decision: z.enum(['approved', 'approved_for_session', 'denied', 'abort']).optional(),
+        decision: z.enum(['approved', 'approved_for_session', 'approved_execpolicy_amendment', 'denied', 'abort']).optional(),
     }).optional(),
 }).passthrough();  // ROBUST: Accept unknown fields for future API compatibility
 export type RawToolResultContent = z.infer<typeof rawToolResultContentSchema>;
@@ -371,7 +371,7 @@ type NormalizedAgentContent =
             result: 'approved' | 'denied';
             mode?: string;
             allowedTools?: string[];
-            decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+            decision?: 'approved' | 'approved_for_session' | 'approved_execpolicy_amendment' | 'denied' | 'abort';
         };
     } | {
         type: 'summary',

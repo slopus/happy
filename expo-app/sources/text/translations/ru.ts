@@ -1013,6 +1013,7 @@ export const ru: TranslationStructure = {
     codex: {
         // Codex permission dialog buttons
         permissions: {
+            yesAlwaysAllowCommand: 'Да, разрешить глобально',
             yesForSession: 'Да, и не спрашивать для этой сессии',
             stopAndExplain: 'Остановить и объяснить, что делать',
         }
