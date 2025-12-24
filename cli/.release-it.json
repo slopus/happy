@@ -10,7 +10,7 @@
     "github": {
         "release": true,
         "releaseName": "v${version}",
-        "releaseNotes": "node .release-it.notes.js ${latestTag} ${version}"
+        "releaseNotes": "node .release-it.notes.js ${version}"
     },
     "npm": {
         "publish": true
