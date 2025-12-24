@@ -723,6 +723,7 @@ export const en = {
     codex: {
         // Codex permission dialog buttons
         permissions: {
+            yesAlwaysAllowCommand: 'Yes, always allow globally',
             yesForSession: "Yes, and don't ask for a session",
             stopAndExplain: 'Stop, and explain what to do',
         }

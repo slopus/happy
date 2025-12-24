@@ -16,7 +16,10 @@ interface SessionPermissionRequest {
     reason?: string;
     mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
     allowTools?: string[];
-    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+    decision?: 'approved' | 'approved_for_session' | 'approved_execpolicy_amendment' | 'denied' | 'abort';
+    execPolicyAmendment?: {
+        command: string[];
+    };
 }
 
 // Mode change operation types
@@ -299,8 +302,22 @@ export async function sessionAbort(sessionId: string): Promise<void> {
 /**
  * Allow a permission request
  */
-export async function sessionAllow(sessionId: string, id: string, mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan', allowedTools?: string[], decision?: 'approved' | 'approved_for_session'): Promise<void> {
-    const request: SessionPermissionRequest = { id, approved: true, mode, allowTools: allowedTools, decision };
+export async function sessionAllow(
+    sessionId: string,
+    id: string,
+    mode?: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
+    allowedTools?: string[],
+    decision?: 'approved' | 'approved_for_session' | 'approved_execpolicy_amendment',
+    execPolicyAmendment?: { command: string[] }
+): Promise<void> {
+    const request: SessionPermissionRequest = {
+        id,
+        approved: true,
+        mode,
+        allowTools: allowedTools,
+        decision,
+        execPolicyAmendment
+    };
     await apiSocket.sessionRPC(sessionId, 'permission', request);
 }
 

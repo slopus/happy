@@ -137,7 +137,7 @@ type StoredPermission = {
     reason?: string;
     mode?: string;
     allowedTools?: string[];
-    decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+    decision?: 'approved' | 'approved_for_session' | 'approved_execpolicy_amendment' | 'denied' | 'abort';
 };
 
 export type ReducerState = {
@@ -351,16 +351,20 @@ export function reducer(state: ReducerState, messages: NormalizedMessage[], agen
                 // Check if we already have a message for this permission ID
                 const existingMessageId = state.toolIdToMessageId.get(permId);
                 if (existingMessageId) {
-                    // Update existing tool message with permission info
+                    // Update existing tool message with permission info and latest arguments
                     const message = state.messages.get(existingMessageId);
-                    if (message?.tool && !message.tool.permission) {
+                    if (message?.tool) {
                         if (ENABLE_LOGGING) {
                             console.log(`[REDUCER] Updating existing tool ${permId} with permission`);
                         }
-                        message.tool.permission = {
-                            id: permId,
-                            status: 'pending'
-                        };
+                        // Always update input to get latest arguments (e.g., proposedExecpolicyAmendment)
+                        message.tool.input = request.arguments;
+                        if (!message.tool.permission) {
+                            message.tool.permission = {
+                                id: permId,
+                                status: 'pending'
+                            };
+                        }
                         changed.add(existingMessageId);
                     }
                 } else {

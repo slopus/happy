@@ -725,6 +725,7 @@ export const zhHans: TranslationStructure = {
     codex: {
         // Codex permission dialog buttons
         permissions: {
+            yesAlwaysAllowCommand: '是，全局永久允许',
             yesForSession: '是，并且本次会话不再询问',
             stopAndExplain: '停止，并说明该做什么',
         }
