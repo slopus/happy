@@ -111,7 +111,7 @@ export function spawnHappyCLI(args: string[], options: SpawnOptions = {}): Child
   // details and flags we use to achieve the same result.
   const fullCommand = `happy ${args.join(' ')}`;
   logger.debug(`[SPAWN HAPPY CLI] Spawning: ${fullCommand} in ${directory}`);
-  
+
   const { runtime, argv } = buildHappyCliSubprocessInvocation(args);
   return spawn(runtime, argv, options);
 }

@@ -753,11 +753,12 @@ export async function runCodex(opts: {
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex
     const happyServer = await startHappyServer(session);
-    const bridgeCommand = join(projectPath(), 'bin', 'happy-mcp.mjs');
+    const bridgeScript = join(projectPath(), 'bin', 'happy-mcp.mjs');
+    // Use process.execPath (bun or node) as command to support both runtimes
     const mcpServers = {
         happy: {
-            command: bridgeCommand,
-            args: ['--url', happyServer.url]
+            command: process.execPath,
+            args: [bridgeScript, '--url', happyServer.url]
         }
     } as const;
     let first = true;
