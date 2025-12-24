@@ -719,6 +719,29 @@ export async function runCodex(opts: {
                 diffProcessor.processDiff(msg.unified_diff);
             }
         }
+        // Handle MCP tool calls (e.g., change_title from happy server)
+        if (msg.type === 'mcp_tool_call_begin') {
+            const { call_id, invocation } = msg;
+            // Use mcp__ prefix so frontend recognizes it as MCP tool (minimal display)
+            const toolName = `mcp__${invocation.server}__${invocation.tool}`;
+            session.sendCodexMessage({
+                type: 'tool-call',
+                name: toolName,
+                callId: call_id,
+                input: invocation.arguments || {},
+                id: randomUUID()
+            });
+        }
+        if (msg.type === 'mcp_tool_call_end') {
+            const { call_id, result } = msg;
+            const output = result?.Ok || result?.Err || result;
+            session.sendCodexMessage({
+                type: 'tool-call-result',
+                callId: call_id,
+                output: output,
+                id: randomUUID()
+            });
+        }
     });
 
     // Start Happy MCP server (HTTP) and prepare STDIO bridge config for Codex

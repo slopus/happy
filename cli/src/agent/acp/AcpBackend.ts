@@ -127,7 +127,7 @@ export interface AcpPermissionHandler {
     toolCallId: string,
     toolName: string,
     input: unknown
-  ): Promise<{ decision: 'approved' | 'approved_for_session' | 'denied' | 'abort' }>;
+  ): Promise<{ decision: 'approved' | 'approved_for_session' | 'approved_execpolicy_amendment' | 'denied' | 'abort' }>;
 }
 
 /**
@@ -570,7 +570,10 @@ export class AcpBackend implements AgentBackend {
               // ACP uses optionId from the request options
               let optionId = 'cancel'; // Default to cancel/deny
               
-              if (result.decision === 'approved' || result.decision === 'approved_for_session') {
+              const isApproved = result.decision === 'approved'
+                || result.decision === 'approved_for_session'
+                || result.decision === 'approved_execpolicy_amendment';
+              if (isApproved) {
                 // Find the appropriate optionId from the request options
                 // Look for 'proceed_once' or 'proceed_always' in options
                 const proceedOnceOption = options.find((opt: any) => 
