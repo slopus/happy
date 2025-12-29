@@ -8,7 +8,6 @@ import { DiffProcessor } from './utils/diffProcessor';
 import { randomUUID } from 'node:crypto';
 import { logger } from '@/ui/logger';
 import { Credentials, readSettings } from '@/persistence';
-import { AgentState, Metadata } from '@/api/types';
 import { initialMachineMetadata } from '@/daemon/run';
 import { configuration } from '@/configuration';
 import packageJson from '../../package.json';
@@ -17,6 +16,7 @@ import { MessageQueue2 } from '@/utils/MessageQueue2';
 import { hashObject } from '@/utils/deterministicJson';
 import { projectPath } from '@/projectPath';
 import { resolve, join } from 'node:path';
+import { createSessionMetadata } from '@/utils/createSessionMetadata';
 import fs from 'node:fs';
 import { startHappyServer } from '@/claude/utils/startHappyServer';
 import { MessageBuffer } from "@/ui/ink/messageBuffer";
@@ -28,8 +28,8 @@ import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
-import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
-import { createOfflineSessionStub } from '@/utils/offlineSessionStub';
+import { connectionState } from '@/utils/serverConnectionErrors';
+import { setupOfflineReconnection } from '@/utils/setupOfflineReconnection';
 import type { ApiSessionClient } from '@/api/apiSession';
 
 type ReadyEventOptions = {
@@ -108,58 +108,24 @@ export async function runCodex(opts: {
     // Create session
     //
 
-    let state: AgentState = {
-        controlledByUser: false,
-    }
-    let metadata: Metadata = {
-        path: process.cwd(),
-        host: os.hostname(),
-        version: packageJson.version,
-        os: os.platform(),
-        machineId: machineId,
-        homeDir: os.homedir(),
-        happyHomeDir: configuration.happyHomeDir,
-        happyLibDir: projectPath(),
-        happyToolsDir: resolve(projectPath(), 'tools', 'unpacked'),
-        startedFromDaemon: opts.startedBy === 'daemon',
-        hostPid: process.pid,
-        startedBy: opts.startedBy || 'terminal',
-        // Initialize lifecycle state
-        lifecycleState: 'running',
-        lifecycleStateSince: Date.now(),
-        flavor: 'codex'
-    };
+    const { state, metadata } = createSessionMetadata({
+        flavor: 'codex',
+        machineId,
+        startedBy: opts.startedBy
+    });
     const response = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
 
     // Handle server unreachable case - create offline stub with hot reconnection
     let session: ApiSessionClient;
-    let reconnectionHandle: ReturnType<typeof startOfflineReconnection<ApiSessionClient>> | null = null;
-
-    // Note: connectionState.notifyOffline() was already called by api.ts with error details
-    if (!response) {
-        // Create a no-op session stub for offline mode using shared utility
-        session = createOfflineSessionStub(sessionTag);
-
-        // Start background reconnection
-        reconnectionHandle = startOfflineReconnection<ApiSessionClient>({
-            serverUrl: configuration.serverUrl,
-            onReconnected: async () => {
-                const resp = await api.getOrCreateSession({ tag: sessionTag, metadata, state });
-                if (!resp) throw new Error('Server unavailable');
-                const realSession = api.sessionSyncClient(resp);
-                // Swap the session reference so future calls use the real session
-                session = realSession;
-                return realSession;
-            },
-            onNotify: (msg) => {
-                // We can't use messageBuffer here since it's defined later
-                // Just log to console - this matches Claude's behavior
-                console.log(msg);
-            }
-        });
-    } else {
-        session = api.sessionSyncClient(response);
-    }
+    const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
+        api,
+        sessionTag,
+        metadata,
+        state,
+        response,
+        onSessionSwap: (newSession) => { session = newSession; }
+    });
+    session = initialSession;
 
     // Always report to daemon if it exists (skip if offline)
     if (response) {

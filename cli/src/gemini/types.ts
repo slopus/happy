@@ -1,13 +1,10 @@
 /**
  * Gemini Types
- * 
+ *
  * Centralized type definitions for Gemini integration.
  */
 
-/**
- * Permission mode for tool approval
- */
-export type PermissionMode = 'default' | 'read-only' | 'safe-yolo' | 'yolo';
+import type { PermissionMode } from '@/api/types';
 
 /**
  * Mode configuration for Gemini messages
