@@ -1,0 +1,272 @@
+name: Build Android APK
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      build_type:
+        description: 'Build type to produce'
+        required: true
+        default: 'both'
+        type: choice
+        options:
+          - debug
+          - release
+          - both
+      app_env:
+        description: 'App environment'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - preview
+          - production
+
+env:
+  NODE_VERSION: '20'
+  JAVA_VERSION: '17'
+
+jobs:
+  # Fast typecheck - fails fast on type errors
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run typecheck
+        run: yarn typecheck
+
+  # Prebuild job - generates native Android project, shared by all ABI builds
+  prebuild:
+    runs-on: ubuntu-latest
+    needs: typecheck
+    if: |
+      github.event_name != 'workflow_dispatch' ||
+      github.event.inputs.build_type == 'debug' ||
+      github.event.inputs.build_type == 'both'
+    outputs:
+      app_env: ${{ steps.env.outputs.APP_ENV }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Determine APP_ENV
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "APP_ENV=${{ github.event.inputs.app_env }}" >> $GITHUB_OUTPUT
+          else
+            echo "APP_ENV=development" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --no-install
+        env:
+          APP_ENV: ${{ steps.env.outputs.APP_ENV }}
+
+      - name: Upload prebuild artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-prebuild
+          path: android
+          retention-days: 1
+
+  # Parallel release builds - one per ABI (standalone APKs with bundled JS)
+  build:
+    runs-on: ubuntu-latest
+    needs: prebuild
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a, x86_64]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL &
+          sudo rm -rf /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup &
+          sudo docker system prune -af --volumes &
+          wait
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ matrix.abi }}-
+            gradle-${{ runner.os }}-
+
+      - name: Download prebuild artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-prebuild
+          path: android
+
+      - name: Configure Gradle
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError
+          org.gradle.parallel=true
+          org.gradle.workers.max=4
+          org.gradle.caching=true
+          kotlin.daemon.jvmargs=-Xmx2g
+          kotlin.incremental=true
+          EOF
+
+      - name: Build Release APK for ${{ matrix.abi }}
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon --build-cache -PreactNativeArchitectures=${{ matrix.abi }}
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-${{ matrix.abi }}
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 14
+
+  # Release build - runs on workflow_dispatch only
+  build-release:
+    runs-on: ubuntu-latest
+    needs: typecheck
+    if: |
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.build_type == 'release' || github.event.inputs.build_type == 'both')
+    strategy:
+      fail-fast: false
+      matrix:
+        abi: [arm64-v8a, armeabi-v7a]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL &
+          sudo rm -rf /usr/local/share/powershell /usr/share/swift /usr/local/.ghcup &
+          sudo docker system prune -af --volumes &
+          wait
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ matrix.abi }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-${{ matrix.abi }}-
+            gradle-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate native Android project
+        run: npx expo prebuild --platform android --no-install
+        env:
+          APP_ENV: ${{ github.event.inputs.app_env }}
+
+      - name: Configure Gradle
+        run: |
+          mkdir -p ~/.gradle
+          cat >> ~/.gradle/gradle.properties << 'EOF'
+          org.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=512m -XX:+HeapDumpOnOutOfMemoryError
+          org.gradle.parallel=true
+          org.gradle.workers.max=4
+          org.gradle.caching=true
+          kotlin.daemon.jvmargs=-Xmx2g
+          kotlin.incremental=true
+          EOF
+
+      - name: Decode keystore
+        if: env.ANDROID_KEYSTORE_BASE64 != ''
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > android/app/release.keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      - name: Build Release APK for ${{ matrix.abi }}
+        working-directory: android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease --no-daemon --build-cache -PreactNativeArchitectures=${{ matrix.abi }}
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+
+      - name: Upload Release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-${{ matrix.abi }}
+          path: android/app/build/outputs/apk/release/app-release.apk
+          retention-days: 14

@@ -78,6 +78,7 @@ export default {
         },
         plugins: [
             require("./plugins/withEinkCompatibility.js"),
+            require("./plugins/withNetworkSecurityConfig.js"),
             [
                 "expo-router",
                 {
