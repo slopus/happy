@@ -21,6 +21,8 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         elevation: 5,
         alignItems: 'center',
         justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: theme.colors.divider,
     },
     buttonDefault: {
         backgroundColor: theme.colors.fab.background,
