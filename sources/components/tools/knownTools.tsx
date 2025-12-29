@@ -455,8 +455,8 @@ export const knownTools = {
             }
             if (opts.tool.input?.command && Array.isArray(opts.tool.input.command)) {
                 let cmdArray = opts.tool.input.command;
-                // Remove ["bash", "-lc"] prefix if present
-                if (cmdArray.length >= 3 && cmdArray[0] === 'bash' && cmdArray[1] === '-lc') {
+                // Remove shell wrapper prefix if present (bash/zsh with -lc flag)
+                if (cmdArray.length >= 3 && (cmdArray[0] === 'bash' || cmdArray[0] === '/bin/bash' || cmdArray[0] === 'zsh' || cmdArray[0] === '/bin/zsh') && cmdArray[1] === '-lc') {
                     // The actual command is in the third element
                     return cmdArray[2];
                 }
