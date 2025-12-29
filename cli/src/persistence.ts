@@ -58,6 +58,7 @@ const EnvironmentVariableSchema = z.object({
 const ProfileCompatibilitySchema = z.object({
     claude: z.boolean().default(true),
     codex: z.boolean().default(true),
+    gemini: z.boolean().default(true),
 });
 
 // AIBackendProfile schema - EXACT MATCH with GUI schema
@@ -91,7 +92,7 @@ export const AIBackendProfileSchema = z.object({
     defaultModelMode: z.string().optional(),
 
     // Compatibility metadata
-    compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true }),
+    compatibility: ProfileCompatibilitySchema.default({ claude: true, codex: true, gemini: true }),
 
     // Built-in profile indicator
     isBuiltIn: z.boolean().default(false),
@@ -105,7 +106,7 @@ export const AIBackendProfileSchema = z.object({
 export type AIBackendProfile = z.infer<typeof AIBackendProfileSchema>;
 
 // Helper functions matching the happy app exactly
-export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex'): boolean {
+export function validateProfileForAgent(profile: AIBackendProfile, agent: 'claude' | 'codex' | 'gemini'): boolean {
   return profile.compatibility[agent];
 }
 

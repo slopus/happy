@@ -35,6 +35,8 @@ interface LoopOptions {
     messageQueue: MessageQueue2<EnhancedMode>
     allowedTools?: string[]
     onSessionReady?: (session: Session) => void
+    /** Path to temporary settings file with SessionStart hook (required for session tracking) */
+    hookSettingsPath: string
 }
 
 export async function loop(opts: LoopOptions) {
@@ -52,7 +54,8 @@ export async function loop(opts: LoopOptions) {
         logPath: logPath,
         messageQueue: opts.messageQueue,
         allowedTools: opts.allowedTools,
-        onModeChange: opts.onModeChange
+        onModeChange: opts.onModeChange,
+        hookSettingsPath: opts.hookSettingsPath
     });
 
     // Notify that session is ready

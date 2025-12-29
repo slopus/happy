@@ -17,6 +17,13 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
             }
         }
     });
+    
+    // Register callback to notify scanner when session ID is found via hook
+    // This is important for --continue/--resume where session ID is not known upfront
+    const scannerSessionCallback = (sessionId: string) => {
+        scanner.onNewSession(sessionId);
+    };
+    session.addSessionFoundCallback(scannerSessionCallback);
 
 
     // Handle abort
@@ -101,6 +108,7 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
                     claudeArgs: session.claudeArgs,
                     mcpServers: session.mcpServers,
                     allowedTools: session.allowedTools,
+                    hookSettingsPath: session.hookSettingsPath,
                 });
 
                 // Consume one-time Claude flags after spawn
@@ -132,6 +140,9 @@ export async function claudeLocalLauncher(session: Session): Promise<'switch' | 
         session.client.rpcHandlerManager.registerHandler('abort', async () => { });
         session.client.rpcHandlerManager.registerHandler('switch', async () => { });
         session.queue.setOnMessage(null);
+        
+        // Remove session found callback
+        session.removeSessionFoundCallback(scannerSessionCallback);
 
         // Cleanup
         await scanner.cleanup();

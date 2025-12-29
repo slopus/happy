@@ -36,3 +36,5 @@ claude-docs/
 note/
 happy-coder-*.tgz
 
+# npm auth token (never commit)
+.npmrc

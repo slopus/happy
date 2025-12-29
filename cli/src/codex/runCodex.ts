@@ -23,11 +23,13 @@ import { MessageBuffer } from "@/ui/ink/messageBuffer";
 import { CodexDisplay } from "@/ui/ink/CodexDisplay";
 import { trimIdent } from "@/utils/trimIdent";
 import type { CodexSessionConfig } from './types';
+import { CHANGE_TITLE_INSTRUCTION } from '@/gemini/constants';
 import { notifyDaemonSessionStarted } from "@/daemon/controlClient";
 import { registerKillSessionHandler } from "@/claude/registerKillSessionHandler";
 import { delay } from "@/utils/time";
 import { stopCaffeinate } from "@/utils/caffeinate";
 import { startOfflineReconnection, connectionState } from '@/utils/serverConnectionErrors';
+import { createOfflineSessionStub } from '@/utils/offlineSessionStub';
 import type { ApiSessionClient } from '@/api/apiSession';
 
 type ReadyEventOptions = {
@@ -135,26 +137,8 @@ export async function runCodex(opts: {
 
     // Note: connectionState.notifyOffline() was already called by api.ts with error details
     if (!response) {
-        // Create a no-op session stub for offline mode
-        // All session methods become no-ops until reconnection succeeds
-        const offlineSessionStub = {
-            sessionId: `offline-${sessionTag}`,
-            sendCodexMessage: () => {},
-            sendClaudeSessionMessage: () => {},
-            keepAlive: () => {},
-            sendSessionEvent: () => {},
-            sendSessionDeath: () => {},
-            flush: async () => {},
-            close: async () => {},
-            updateMetadata: () => {},
-            updateAgentState: () => {},
-            onUserMessage: () => {},
-            rpcHandlerManager: {
-                registerHandler: () => {}
-            }
-        } as unknown as ApiSessionClient;
-
-        session = offlineSessionStub;
+        // Create a no-op session stub for offline mode using shared utility
+        session = createOfflineSessionStub(sessionTag);
 
         // Start background reconnection
         reconnectionHandle = startOfflineReconnection<ApiSessionClient>({
@@ -700,7 +684,7 @@ export async function runCodex(opts: {
 
                 if (!wasCreated) {
                     const startConfig: CodexSessionConfig = {
-                        prompt: first ? message.message + '\n\n' + trimIdent(`Based on this message, call functions.happy__change_title to change chat session title that would represent the current task. If chat idea would change dramatically - call this function again to update the title.`) : message.message,
+                        prompt: first ? message.message + '\n\n' + CHANGE_TITLE_INSTRUCTION : message.message,
                         sandbox,
                         'approval-policy': approvalPolicy,
                         config: { mcp_servers: mcpServers }
