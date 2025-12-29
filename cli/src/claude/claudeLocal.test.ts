@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { claudeLocal } from './claudeLocal';
 
-// Mock dependencies - use vi.hoisted to ensure mocks are available at hoist time
+// Use vi.hoisted to ensure mock functions are available when vi.mock factory runs
 const { mockSpawn, mockClaudeFindLastSession } = vi.hoisted(() => ({
     mockSpawn: vi.fn(),
     mockClaudeFindLastSession: vi.fn()

@@ -116,13 +116,22 @@ export async function runGemini(opts: {
 
   // Handle server unreachable case - create offline stub with hot reconnection
   let session: ApiSessionClient;
+  // Permission handler declared here so it can be updated in onSessionSwap callback
+  // (assigned later after Happy server setup)
+  let permissionHandler: GeminiPermissionHandler;
   const { session: initialSession, reconnectionHandle } = setupOfflineReconnection({
     api,
     sessionTag,
     metadata,
     state,
     response,
-    onSessionSwap: (newSession) => { session = newSession; }
+    onSessionSwap: (newSession) => {
+      session = newSession;
+      // Update permission handler with new session to avoid stale reference
+      if (permissionHandler) {
+        permissionHandler.updateSession(newSession);
+      }
+    }
   });
   session = initialSession;
 
@@ -435,8 +444,8 @@ export async function runGemini(opts: {
     }
   };
 
-  // Create permission handler for tool approval
-  const permissionHandler = new GeminiPermissionHandler(session);
+  // Create permission handler for tool approval (variable declared earlier for onSessionSwap)
+  permissionHandler = new GeminiPermissionHandler(session);
   
   // Create reasoning processor for handling thinking/reasoning chunks
   const reasoningProcessor = new GeminiReasoningProcessor((message) => {

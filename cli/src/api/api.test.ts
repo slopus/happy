@@ -3,11 +3,12 @@ import { ApiClient } from './api';
 import axios from 'axios';
 import { connectionState } from '@/utils/serverConnectionErrors';
 
-// Mock axios - use vi.hoisted to ensure mocks are available at hoist time (works with both vitest and bun)
+// Use vi.hoisted to ensure mock functions are available when vi.mock factory runs
 const { mockPost, mockIsAxiosError } = vi.hoisted(() => ({
     mockPost: vi.fn(),
     mockIsAxiosError: vi.fn(() => true)
 }));
+
 vi.mock('axios', () => ({
     default: {
         post: mockPost,

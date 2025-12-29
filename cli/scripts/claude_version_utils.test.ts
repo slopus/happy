@@ -356,7 +356,8 @@ describe('HAPPY_CLAUDE_PATH env var', () => {
     process.env.HAPPY_CLAUDE_PATH = testClaudePath;
     const result = findGlobalClaudeCliPath();
     expect(result?.source).toBe('HAPPY_CLAUDE_PATH');
-    expect(result?.path).toBe(testClaudePath);
+    // Use realpathSync to handle macOS symlink (/tmp -> /private/tmp)
+    expect(fs.realpathSync(result?.path ?? '')).toBe(fs.realpathSync(testClaudePath));
   });
 
   it('should fall back to auto-discovery when env var not set', () => {

@@ -46,6 +46,7 @@ export interface PermissionResult {
 export abstract class BasePermissionHandler {
     protected pendingRequests = new Map<string, PendingRequest>();
     protected session: ApiSessionClient;
+    private isResetting = false;
 
     /**
      * Returns the log prefix for this handler.
@@ -54,6 +55,17 @@ export abstract class BasePermissionHandler {
 
     constructor(session: ApiSessionClient) {
         this.session = session;
+        this.setupRpcHandler();
+    }
+
+    /**
+     * Update the session reference (used after offline reconnection swaps sessions).
+     * This is critical for avoiding stale session references after onSessionSwap.
+     */
+    updateSession(newSession: ApiSessionClient): void {
+        logger.debug(`${this.getLogPrefix()} Session reference updated`);
+        this.session = newSession;
+        // Re-setup RPC handler with new session
         this.setupRpcHandler();
     }
 
@@ -127,36 +139,55 @@ export abstract class BasePermissionHandler {
 
     /**
      * Reset state for new sessions.
+     * This method is idempotent - safe to call multiple times.
      */
     reset(): void {
-        // Reject all pending requests
-        for (const [id, pending] of this.pendingRequests.entries()) {
-            pending.reject(new Error('Session reset'));
+        // Guard against re-entrant/concurrent resets
+        if (this.isResetting) {
+            logger.debug(`${this.getLogPrefix()} Reset already in progress, skipping`);
+            return;
         }
-        this.pendingRequests.clear();
+        this.isResetting = true;
 
-        // Clear requests in agent state
-        this.session.updateAgentState((currentState) => {
-            const pendingRequests = currentState.requests || {};
-            const completedRequests = { ...currentState.completedRequests };
+        try {
+            // Snapshot pending requests to avoid Map mutation during iteration
+            const pendingSnapshot = Array.from(this.pendingRequests.entries());
+            this.pendingRequests.clear(); // Clear immediately to prevent new entries being processed
 
-            // Move all pending to completed as canceled
-            for (const [id, request] of Object.entries(pendingRequests)) {
-                completedRequests[id] = {
-                    ...request,
-                    completedAt: Date.now(),
-                    status: 'canceled',
-                    reason: 'Session reset'
-                };
+            // Reject all pending requests from snapshot
+            for (const [id, pending] of pendingSnapshot) {
+                try {
+                    pending.reject(new Error('Session reset'));
+                } catch (err) {
+                    logger.debug(`${this.getLogPrefix()} Error rejecting pending request ${id}:`, err);
+                }
             }
 
-            return {
-                ...currentState,
-                requests: {},
-                completedRequests
-            };
-        });
+            // Clear requests in agent state
+            this.session.updateAgentState((currentState) => {
+                const pendingRequests = currentState.requests || {};
+                const completedRequests = { ...currentState.completedRequests };
 
-        logger.debug(`${this.getLogPrefix()} Permission handler reset`);
+                // Move all pending to completed as canceled
+                for (const [id, request] of Object.entries(pendingRequests)) {
+                    completedRequests[id] = {
+                        ...request,
+                        completedAt: Date.now(),
+                        status: 'canceled',
+                        reason: 'Session reset'
+                    };
+                }
+
+                return {
+                    ...currentState,
+                    requests: {},
+                    completedRequests
+                };
+            });
+
+            logger.debug(`${this.getLogPrefix()} Permission handler reset`);
+        } finally {
+            this.isResetting = false;
+        }
     }
 }

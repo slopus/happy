@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApiSessionClient } from './apiSession';
 
-// Mock socket.io client - use vi.hoisted to ensure mock is available at hoist time
+// Use vi.hoisted to ensure mock function is available when vi.mock factory runs
 const { mockIo } = vi.hoisted(() => ({
     mockIo: vi.fn()
 }));
