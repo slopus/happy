@@ -61,6 +61,11 @@ export const MultiTextInput = React.forwardRef<MultiTextInputHandle, MultiTextIn
     const handleKeyDown = React.useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
         if (!onKeyPress) return;
 
+        const isComposing = e.nativeEvent.isComposing || e.isComposing || e.keyCode === 229;
+        if (isComposing) {
+            return;
+        }
+
         const key = e.key;
         
         // Map browser key names to our normalized format
