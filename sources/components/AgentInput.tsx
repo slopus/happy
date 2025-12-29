@@ -460,6 +460,21 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
     }, [props.value, props.onSend, props.permissionMode, props.onPermissionModeChange, suggestions, selected, handleSuggestionSelect, moveUp, moveDown, props.showAbortButton, props.onAbort, isAborting, handleAbortPress]);
 
 
+    // Add window focus handler to restore focus to input on web
+    React.useEffect(() => {
+        if (Platform.OS !== 'web') return;
+
+        const handleWindowFocus = () => {
+            // Restore focus to the input when window regains focus
+            inputRef.current?.focus();
+        };
+
+        window.addEventListener('focus', handleWindowFocus);
+        return () => {
+            window.removeEventListener('focus', handleWindowFocus);
+        };
+    }, []);
+
 
 
     return (
