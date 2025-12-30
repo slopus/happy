@@ -290,9 +290,12 @@ export const AgentInput = React.memo(React.forwardRef<MultiTextInputHandle, Agen
 
     const hasText = props.value.trim().length > 0;
     
-    // Check if this is a Codex or Gemini session
-    const isCodex = props.metadata?.flavor === 'codex';
-    const isGemini = props.metadata?.flavor === 'gemini';
+    // Determine agent flavor for UI decisions (permission modes, labels, etc).
+    // In a live session we can use `metadata.flavor`, but in `/new` we don't have session metadata yet,
+    // so we fall back to the explicitly selected `agentType`.
+    const flavor = props.metadata?.flavor ?? props.agentType ?? null;
+    const isCodex = flavor === 'codex';
+    const isGemini = flavor === 'gemini';
 
     // Calculate context warning
     const contextWarning = props.usageData?.contextSize
