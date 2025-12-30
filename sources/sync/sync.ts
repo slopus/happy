@@ -40,6 +40,8 @@ import { FeedItem } from './feedTypes';
 import { UserProfile } from './friendTypes';
 import { initializeTodoSync } from '../-zen/model/ops';
 
+const SESSION_MESSAGES_PAGE_SIZE = 150;
+
 class Sync {
     // Spawned agents (especially in spawn mode) can take noticeable time to connect.
     private static readonly SESSION_READY_TIMEOUT_MS = 10000;
@@ -52,6 +54,9 @@ class Sync {
     private sessionsSync: InvalidateSync;
     private messagesSync = new Map<string, InvalidateSync>();
     private sessionReceivedMessages = new Map<string, Set<string>>();
+    private sessionOldestLoadedSeq = new Map<string, number>();
+    private sessionHasMoreOlderMessages = new Map<string, boolean>();
+    private sessionLoadingOlderMessages = new Set<string>();
     private sessionDataKeys = new Map<string, Uint8Array>(); // Store session data encryption keys internally
     private machineDataKeys = new Map<string, Uint8Array>(); // Store machine data encryption keys internally
     private artifactDataKeys = new Map<string, Uint8Array>(); // Store artifact data encryption keys internally
@@ -209,7 +214,120 @@ class Sync {
     }
 
 
-    async sendMessage(sessionId: string, text: string, displayText?: string) {
+    public async loadOlderMessages(sessionId: string): Promise<{ loaded: number; hasMore: boolean; status: 'loaded' | 'no_more' | 'not_ready' }> {
+        if (this.sessionLoadingOlderMessages.has(sessionId)) {
+            return {
+                loaded: 0,
+                hasMore: this.sessionHasMoreOlderMessages.get(sessionId) ?? true,
+                status: 'loaded'
+            };
+        }
+
+        const beforeSeq = this.sessionOldestLoadedSeq.get(sessionId);
+        const knownHasMore = this.sessionHasMoreOlderMessages.get(sessionId);
+        if (knownHasMore === false) {
+            return {
+                loaded: 0,
+                hasMore: false,
+                status: 'no_more'
+            };
+        }
+
+        // Pagination state is initialized during the initial `/messages` fetch. If we haven't
+        // seen it yet, don't permanently disable pagination on the UI side.
+        if (!beforeSeq) {
+            return {
+                loaded: 0,
+                hasMore: knownHasMore ?? true,
+                status: 'not_ready'
+            };
+        }
+
+        this.sessionLoadingOlderMessages.add(sessionId);
+        try {
+            // Get encryption - may not be ready yet if session was just created
+            const encryption = this.encryption.getSessionEncryption(sessionId);
+            if (!encryption) {
+                throw new Error(`Session encryption not ready for ${sessionId}`);
+            }
+
+            const response = await apiSocket.request(
+                `/v1/sessions/${sessionId}/messages?beforeSeq=${beforeSeq}&limit=${SESSION_MESSAGES_PAGE_SIZE}`
+            );
+            const data = await response.json() as {
+                messages: ApiMessage[];
+                hasMore?: boolean;
+                nextBeforeSeq?: number | null;
+            };
+
+            // Update pagination state
+            const nextBeforeSeq = typeof data.nextBeforeSeq === 'number' ? data.nextBeforeSeq : null;
+            if (nextBeforeSeq !== null) {
+                this.sessionOldestLoadedSeq.set(sessionId, Math.min(beforeSeq, nextBeforeSeq));
+            }
+            this.sessionHasMoreOlderMessages.set(sessionId, data.hasMore ?? false);
+
+            // Collect existing messages
+            let eixstingMessages = this.sessionReceivedMessages.get(sessionId);
+            if (!eixstingMessages) {
+                eixstingMessages = new Set<string>();
+                this.sessionReceivedMessages.set(sessionId, eixstingMessages);
+            }
+
+            // Filter out existing messages and prepare for batch decryption
+            const messagesToDecrypt: ApiMessage[] = [];
+            for (const msg of [...data.messages].reverse()) {
+                if (!eixstingMessages.has(msg.id)) {
+                    messagesToDecrypt.push(msg);
+                }
+            }
+
+            // Batch decrypt all messages at once
+            const decryptedMessages = await encryption.decryptMessages(messagesToDecrypt);
+
+            // Process decrypted messages
+            const normalizedMessages: NormalizedMessage[] = [];
+            for (const decrypted of decryptedMessages) {
+                if (decrypted) {
+                    eixstingMessages.add(decrypted.id);
+
+                    // Normalize the decrypted message
+                    const normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
+                    if (normalized) {
+                        normalizedMessages.push(normalized);
+                    }
+
+                    const prev = this.sessionOldestLoadedSeq.get(sessionId);
+                    if (prev === undefined) {
+                        this.sessionOldestLoadedSeq.set(sessionId, decrypted.seq);
+                    } else {
+                        this.sessionOldestLoadedSeq.set(sessionId, Math.min(prev, decrypted.seq));
+                    }
+                }
+            }
+
+            // Apply to storage
+            this.applyMessages(sessionId, normalizedMessages);
+
+            return {
+                loaded: normalizedMessages.length,
+                hasMore: this.sessionHasMoreOlderMessages.get(sessionId) ?? false,
+                status: (this.sessionHasMoreOlderMessages.get(sessionId) ?? false) ? 'loaded' : 'no_more'
+            };
+        } finally {
+            this.sessionLoadingOlderMessages.delete(sessionId);
+        }
+    }
+
+
+    async sendMessage(
+        sessionId: string,
+        text: string,
+        displayText?: string,
+        options?: {
+            permissionMode?: PermissionMode;
+        }
+    ) {
 
         // Get encryption
         const encryption = this.encryption.getSessionEncryption(sessionId);
@@ -476,7 +594,11 @@ class Sync {
             throw new Error(`Failed to fetch sessions: ${response.status}`);
         }
 
-        const data = await response.json();
+        const data = await response.json() as {
+            messages: ApiMessage[];
+            hasMore?: boolean;
+            nextBeforeSeq?: number | null;
+        };
         const sessions = data.sessions as Array<{
             id: string;
             tag: string;
@@ -1394,8 +1516,31 @@ class Sync {
 
         // Request
         const response = await apiSocket.request(`/v1/sessions/${sessionId}/messages`);
-        const data = await response.json();
+        const data = await response.json() as {
+            messages: ApiMessage[];
+            hasMore?: boolean;
+            nextBeforeSeq?: number | null;
+        };
 
+
+
+        // Initialize pagination state from the server response (if present)
+        if (!this.sessionHasMoreOlderMessages.has(sessionId)) {
+            const hasMore = typeof data.hasMore === 'boolean'
+                ? data.hasMore
+                : (Array.isArray(data.messages) ? data.messages.length >= SESSION_MESSAGES_PAGE_SIZE : false);
+            this.sessionHasMoreOlderMessages.set(sessionId, hasMore);
+        }
+
+        const nextBeforeSeq = typeof data.nextBeforeSeq === 'number' ? data.nextBeforeSeq : null;
+        if (nextBeforeSeq !== null) {
+            const prevOldest = this.sessionOldestLoadedSeq.get(sessionId);
+            this.sessionOldestLoadedSeq.set(sessionId, prevOldest === undefined ? nextBeforeSeq : Math.min(prevOldest, nextBeforeSeq));
+        } else if (Array.isArray(data.messages) && data.messages.length > 0) {
+            const minSeqInPage = Math.min(...data.messages.map((m) => m.seq));
+            const prevOldest = this.sessionOldestLoadedSeq.get(sessionId);
+            this.sessionOldestLoadedSeq.set(sessionId, prevOldest === undefined ? minSeqInPage : Math.min(prevOldest, minSeqInPage));
+        }
         // Collect existing messages
         let eixstingMessages = this.sessionReceivedMessages.get(sessionId);
         if (!eixstingMessages) {
@@ -1427,6 +1572,13 @@ class Sync {
                 let normalized = normalizeRawMessage(decrypted.id, decrypted.localId, decrypted.createdAt, decrypted.content);
                 if (normalized) {
                     normalizedMessages.push(normalized);
+                }
+
+                const prev = this.sessionOldestLoadedSeq.get(sessionId);
+                if (prev === undefined) {
+                    this.sessionOldestLoadedSeq.set(sessionId, decrypted.seq);
+                } else {
+                    this.sessionOldestLoadedSeq.set(sessionId, Math.min(prev, decrypted.seq));
                 }
             }
         }
