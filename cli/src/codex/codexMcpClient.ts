@@ -295,6 +295,21 @@ export class CodexMcpClient {
         return this.sessionId;
     }
 
+    /**
+     * Force close the Codex MCP transport and clear all session identifiers.
+     * Use this for permanent shutdown (e.g. kill/exit). Prefer `disconnect()` for
+     * transient connection resets where you may want to keep the session id.
+     */
+    async forceCloseSession(): Promise<void> {
+        logger.debug('[CodexMCP] Force closing session');
+        try {
+            await this.disconnect();
+        } finally {
+            this.clearSession();
+        }
+        logger.debug('[CodexMCP] Session force-closed');
+    }
+
     async disconnect(): Promise<void> {
         if (!this.connected) return;
 
@@ -327,9 +342,7 @@ export class CodexMcpClient {
 
         this.transport = null;
         this.connected = false;
-        this.sessionId = null;
-        this.conversationId = null;
-
-        logger.debug('[CodexMCP] Disconnected');
+        // Preserve session/conversation identifiers for potential reconnection / recovery flows.
+        logger.debug(`[CodexMCP] Disconnected; session ${this.sessionId ?? 'none'} preserved`);
     }
 }
