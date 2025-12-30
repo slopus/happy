@@ -20,18 +20,7 @@ import { createWorktree } from '@/utils/createWorktree';
 import { getTempData, type NewSessionData } from '@/utils/tempDataStore';
 import { linkTaskToSession } from '@/-zen/model/taskSessionLink';
 import { PermissionMode } from '@/components/PermissionModeSelector';
-
-// Simple temporary state for passing selections back from picker screens
-let onMachineSelected: (machineId: string) => void = () => { };
-let onPathSelected: (path: string) => void = () => { };
-export const callbacks = {
-    onMachineSelected: (machineId: string) => {
-        onMachineSelected(machineId);
-    },
-    onPathSelected: (path: string) => {
-        onPathSelected(path);
-    }
-}
+import { clearNewSessionDraft, loadNewSessionDraft, saveNewSessionDraft } from '@/sync/persistence';
 
 // Helper function to get the most recent path for a machine from settings or sessions
 const getRecentPathForMachine = (machineId: string | null, recentPaths: Array<{ machineId: string; path: string }>): string => {
@@ -87,7 +76,12 @@ const updateRecentMachinePaths = (
 function NewSessionScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
-    const { prompt, dataId } = useLocalSearchParams<{ prompt?: string; dataId?: string }>();
+    const { prompt, dataId, machineId: machineIdParam, path: pathParam } = useLocalSearchParams<{
+        prompt?: string;
+        dataId?: string;
+        machineId?: string;
+        path?: string;
+    }>();
 
     // Try to get data from temporary store first, fallback to direct prompt parameter
     const tempSessionData = React.useMemo(() => {
@@ -97,14 +91,21 @@ function NewSessionScreen() {
         return null;
     }, [dataId]);
 
+    const persistedDraft = React.useRef(loadNewSessionDraft()).current;
+
     const [input, setInput] = React.useState(() => {
         if (tempSessionData?.prompt) {
             return tempSessionData.prompt;
         }
-        return prompt || '';
+        return prompt || persistedDraft?.input || '';
     });
     const [isSending, setIsSending] = React.useState(false);
-    const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
+    const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>(() => {
+        if (tempSessionData?.sessionType) {
+            return tempSessionData.sessionType;
+        }
+        return persistedDraft?.sessionType || 'simple';
+    });
     const ref = React.useRef<MultiTextInputHandle>(null);
     const headerHeight = useHeaderHeight();
     const safeArea = useSafeAreaInsets();
@@ -122,6 +123,10 @@ function NewSessionScreen() {
 
     const machines = useAllMachines();
     const [selectedMachineId, setSelectedMachineId] = React.useState<string | null>(() => {
+        const machineIdFromDraft = tempSessionData?.machineId ?? persistedDraft?.selectedMachineId;
+        if (machineIdFromDraft) {
+            return machineIdFromDraft;
+        }
         if (machines.length > 0) {
             // Check if we have a recently used machine that's currently available
             if (recentMachinePaths.length > 0) {
@@ -161,50 +166,60 @@ function NewSessionScreen() {
                 // Machine is already selected, but check if we need to update path
                 // This handles the case where machines load after initial render
                 const currentMachine = machines.find(m => m.id === selectedMachineId);
-                if (currentMachine) {
-                    // Update path based on recent paths (only if path hasn't been manually changed)
-                    const bestPath = getRecentPathForMachine(selectedMachineId, recentMachinePaths);
-                    setSelectedPath(prevPath => {
-                        // Only update if current path is the default /home/
-                        if (prevPath === '/home/' && bestPath !== '/home/') {
-                            return bestPath;
-                        }
-                        return prevPath;
-                    });
+                if (!currentMachine) {
+                    // Selected machine doesn't exist anymore - fall back safely
+                    const fallbackMachineId = machines[0].id;
+                    setSelectedMachineId(fallbackMachineId);
+                    const bestPath = getRecentPathForMachine(fallbackMachineId, recentMachinePaths);
+                    setSelectedPath(bestPath);
+                    return;
                 }
+
+                // Update path based on recent paths (only if path hasn't been manually changed)
+                const bestPath = getRecentPathForMachine(selectedMachineId, recentMachinePaths);
+                setSelectedPath(prevPath => {
+                    // Only update if current path is the default /home/
+                    if (prevPath === '/home/' && bestPath !== '/home/') {
+                        return bestPath;
+                    }
+                    return prevPath;
+                });
             }
         }
     }, [machines, selectedMachineId, recentMachinePaths]);
 
     React.useEffect(() => {
-        let handler = (machineId: string) => {
-            let machine = storage.getState().machines[machineId];
-            if (machine) {
-                setSelectedMachineId(machineId);
-                // Also update the path when machine changes
-                const bestPath = getRecentPathForMachine(machineId, recentMachinePaths);
-                setSelectedPath(bestPath);
-            }
-        };
-        onMachineSelected = handler;
-        return () => {
-            onMachineSelected = () => { };
-        };
-    }, [recentMachinePaths]);
+        if (typeof machineIdParam !== 'string' || machines.length === 0) {
+            return;
+        }
+        // Only accept machineId if it exists in the current machines list
+        if (!machines.some(m => m.id === machineIdParam)) {
+            return;
+        }
+        if (machineIdParam !== selectedMachineId) {
+            setSelectedMachineId(machineIdParam);
+            const bestPath = getRecentPathForMachine(machineIdParam, recentMachinePaths);
+            setSelectedPath(bestPath);
+        }
+    }, [machineIdParam, machines, recentMachinePaths, selectedMachineId]);
 
     React.useEffect(() => {
-        let handler = (path: string) => {
-            setSelectedPath(path);
-        };
-        onPathSelected = handler;
-        return () => {
-            onPathSelected = () => { };
-        };
-    }, []);
+        if (typeof pathParam !== 'string') {
+            return;
+        }
+        const trimmedPath = pathParam.trim();
+        if (!trimmedPath) {
+            return;
+        }
+        setSelectedPath(trimmedPath);
+    }, [pathParam]);
 
     const handleMachineClick = React.useCallback(() => {
-        router.push('/new/pick/machine');
-    }, []);
+        router.push({
+            pathname: '/new/pick/machine',
+            params: selectedMachineId ? { selectedId: selectedMachineId } : {},
+        });
+    }, [router, selectedMachineId]);
 
     //
     // Agent selection
@@ -218,6 +233,13 @@ function NewSessionScreen() {
                 return 'claude';
             }
             return tempSessionData.agentType;
+        }
+        // Use persisted draft if available
+        if (persistedDraft?.agentType) {
+            if (persistedDraft.agentType === 'gemini' && !experimentsEnabled) {
+                return 'claude';
+            }
+            return persistedDraft.agentType;
         }
         // Initialize with last used agent if valid, otherwise default to 'claude'
         if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
@@ -256,18 +278,24 @@ function NewSessionScreen() {
         const validClaudeGeminiModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
         const validCodexModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
 
-        if (lastUsedPermissionMode) {
-            if (agentType === 'codex' && validCodexModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
-            } else if ((agentType === 'claude' || agentType === 'gemini') && validClaudeGeminiModes.includes(lastUsedPermissionMode as PermissionMode)) {
-                return lastUsedPermissionMode as PermissionMode;
+        const permissionModeFromDraft = persistedDraft?.permissionMode ?? lastUsedPermissionMode;
+        if (permissionModeFromDraft) {
+            if (agentType === 'codex' && validCodexModes.includes(permissionModeFromDraft as PermissionMode)) {
+                return permissionModeFromDraft as PermissionMode;
+            } else if ((agentType === 'claude' || agentType === 'gemini') && validClaudeGeminiModes.includes(permissionModeFromDraft as PermissionMode)) {
+                return permissionModeFromDraft as PermissionMode;
             }
         }
         return 'default';
     });
 
     // Reset permission mode when agent type changes
+    const hasMountedRef = React.useRef(false);
     React.useEffect(() => {
+        if (!hasMountedRef.current) {
+            hasMountedRef.current = true;
+            return;
+        }
         setPermissionMode('default');
     }, [agentType]);
 
@@ -283,13 +311,23 @@ function NewSessionScreen() {
 
     const [selectedPath, setSelectedPath] = React.useState<string>(() => {
         // Initialize with the path from the selected machine (which should be the most recent if available)
+        const pathFromDraft = tempSessionData?.path ?? persistedDraft?.selectedPath;
+        if (pathFromDraft) {
+            return pathFromDraft;
+        }
         return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
     });
     const handlePathClick = React.useCallback(() => {
         if (selectedMachineId) {
-            router.push(`/new/pick/path?machineId=${selectedMachineId}`);
+            router.push({
+                pathname: '/new/pick/path',
+                params: {
+                    machineId: selectedMachineId,
+                    selectedPath,
+                },
+            });
         }
-    }, [selectedMachineId, router]);
+    }, [selectedMachineId, selectedPath, router]);
 
     // Get selected machine name
     const selectedMachine = React.useMemo(() => {
@@ -361,6 +399,7 @@ function NewSessionScreen() {
 
             // Use sessionId to check for success for backwards compatibility
             if ('sessionId' in result && result.sessionId) {
+                clearNewSessionDraft();
                 // Store worktree metadata if applicable
                 if (sessionType === 'worktree') {
                     // The metadata will be stored by the session itself once created
@@ -413,6 +452,30 @@ function NewSessionScreen() {
             setIsSending(false);
         }
     }, [agentType, selectedMachineId, selectedPath, input, recentMachinePaths, sessionType, experimentsEnabled, permissionMode]);
+
+    // Persist the current modal state so it survives remounts and reopen/close
+    const draftSaveTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+    React.useEffect(() => {
+        if (draftSaveTimerRef.current) {
+            clearTimeout(draftSaveTimerRef.current);
+        }
+        draftSaveTimerRef.current = setTimeout(() => {
+            saveNewSessionDraft({
+                input,
+                selectedMachineId,
+                selectedPath,
+                agentType,
+                permissionMode,
+                sessionType,
+                updatedAt: Date.now(),
+            });
+        }, 250);
+        return () => {
+            if (draftSaveTimerRef.current) {
+                clearTimeout(draftSaveTimerRef.current);
+            }
+        };
+    }, [input, selectedMachineId, selectedPath, agentType, permissionMode, sessionType]);
 
     return (
         <KeyboardAvoidingView

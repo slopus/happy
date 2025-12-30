@@ -6,6 +6,20 @@ import { Profile, profileDefaults, profileParse } from './profile';
 import type { PermissionMode } from '@/components/PermissionModeSelector';
 
 const mmkv = new MMKV();
+const NEW_SESSION_DRAFT_KEY = 'new-session-draft-v1';
+
+export type NewSessionAgentType = 'claude' | 'codex' | 'gemini';
+export type NewSessionSessionType = 'simple' | 'worktree';
+
+export interface NewSessionDraft {
+    input: string;
+    selectedMachineId: string | null;
+    selectedPath: string | null;
+    agentType: NewSessionAgentType;
+    permissionMode: PermissionMode;
+    sessionType: NewSessionSessionType;
+    updatedAt: number;
+}
 
 export function loadSettings(): { settings: Settings, version: number | null } {
     const settings = mmkv.getString('settings');
@@ -109,6 +123,52 @@ export function loadSessionDrafts(): Record<string, string> {
 
 export function saveSessionDrafts(drafts: Record<string, string>) {
     mmkv.set('session-drafts', JSON.stringify(drafts));
+}
+
+export function loadNewSessionDraft(): NewSessionDraft | null {
+    const raw = mmkv.getString(NEW_SESSION_DRAFT_KEY);
+    if (!raw) {
+        return null;
+    }
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== 'object') {
+            return null;
+        }
+
+        const input = typeof parsed.input === 'string' ? parsed.input : '';
+        const selectedMachineId = typeof parsed.selectedMachineId === 'string' ? parsed.selectedMachineId : null;
+        const selectedPath = typeof parsed.selectedPath === 'string' ? parsed.selectedPath : null;
+        const agentType: NewSessionAgentType = parsed.agentType === 'codex' || parsed.agentType === 'gemini'
+            ? parsed.agentType
+            : 'claude';
+        const permissionMode: PermissionMode = typeof parsed.permissionMode === 'string'
+            ? (parsed.permissionMode as PermissionMode)
+            : 'default';
+        const sessionType: NewSessionSessionType = parsed.sessionType === 'worktree' ? 'worktree' : 'simple';
+        const updatedAt = typeof parsed.updatedAt === 'number' ? parsed.updatedAt : Date.now();
+
+        return {
+            input,
+            selectedMachineId,
+            selectedPath,
+            agentType,
+            permissionMode,
+            sessionType,
+            updatedAt,
+        };
+    } catch (e) {
+        console.error('Failed to parse new session draft', e);
+        return null;
+    }
+}
+
+export function saveNewSessionDraft(draft: NewSessionDraft) {
+    mmkv.set(NEW_SESSION_DRAFT_KEY, JSON.stringify(draft));
+}
+
+export function clearNewSessionDraft() {
+    mmkv.delete(NEW_SESSION_DRAFT_KEY);
 }
 
 export function loadSessionPermissionModes(): Record<string, PermissionMode> {
