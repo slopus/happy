@@ -302,7 +302,6 @@ export const storage = create<StorageState>()((set, get) => {
         applySessions: (sessions: (Omit<Session, 'presence'> & { presence?: "online" | number })[]) => set((state) => {
             // Load drafts and permission modes if sessions are empty (initial load)
             const savedDrafts = Object.keys(state.sessions).length === 0 ? sessionDrafts : {};
-            const savedPermissionModes = Object.keys(state.sessions).length === 0 ? sessionPermissionModes : {};
 
             // Merge new sessions with existing ones
             const mergedSessions: Record<string, Session> = { ...state.sessions };
@@ -316,12 +315,15 @@ export const storage = create<StorageState>()((set, get) => {
                 const existingDraft = state.sessions[session.id]?.draft;
                 const savedDraft = savedDrafts[session.id];
                 const existingPermissionMode = state.sessions[session.id]?.permissionMode;
-                const savedPermissionMode = savedPermissionModes[session.id];
+                const savedPermissionMode = sessionPermissionModes[session.id];
+                const resolvedPermissionMode = existingPermissionMode && existingPermissionMode !== 'default'
+                    ? existingPermissionMode
+                    : (savedPermissionMode || session.permissionMode || existingPermissionMode || 'default');
                 mergedSessions[session.id] = {
                     ...session,
                     presence,
                     draft: existingDraft || savedDraft || session.draft || null,
-                    permissionMode: existingPermissionMode || savedPermissionMode || session.permissionMode || 'default'
+                    permissionMode: resolvedPermissionMode
                 };
             });
 
@@ -780,6 +782,16 @@ export const storage = create<StorageState>()((set, get) => {
         }),
         updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => set((state) => {
             const session = state.sessions[sessionId];
+            // Persist permission modes even if the session isn't loaded yet.
+            // This is important for newly created sessions where we want the first render
+            // to show the intended permission mode, even if applySessions runs later.
+            if (mode !== 'default') {
+                sessionPermissionModes[sessionId] = mode;
+            } else {
+                delete sessionPermissionModes[sessionId];
+            }
+            saveSessionPermissionModes(sessionPermissionModes);
+
             if (!session) return state;
 
             // Update the session with the new permission mode
@@ -790,17 +802,6 @@ export const storage = create<StorageState>()((set, get) => {
                     permissionMode: mode
                 }
             };
-
-            // Collect all permission modes for persistence
-            const allModes: Record<string, PermissionMode> = {};
-            Object.entries(updatedSessions).forEach(([id, sess]) => {
-                if (sess.permissionMode && sess.permissionMode !== 'default') {
-                    allModes[id] = sess.permissionMode;
-                }
-            });
-
-            // Persist permission modes (only non-default values to save space)
-            saveSessionPermissionModes(allModes);
 
             // No need to rebuild sessionListViewData since permission mode doesn't affect the list display
             return {
@@ -928,9 +929,8 @@ export const storage = create<StorageState>()((set, get) => {
             delete drafts[sessionId];
             saveSessionDrafts(drafts);
             
-            const modes = loadSessionPermissionModes();
-            delete modes[sessionId];
-            saveSessionPermissionModes(modes);
+            delete sessionPermissionModes[sessionId];
+            saveSessionPermissionModes(sessionPermissionModes);
             
             // Rebuild sessionListViewData without the deleted session
             const sessionListViewData = buildSessionListViewData(remainingSessions);
