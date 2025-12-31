@@ -75,7 +75,8 @@ export default function MachinePickerScreen() {
 
     const handleSelectMachine = (machineId: string) => {
         callbacks.onMachineSelected(machineId);
-        router.back();
+        // Navigate back with the selected machine ID as a parameter (for web compatibility)
+        router.navigate({ pathname: '/new', params: { selectedMachineParam: machineId } });
     };
 
     if (machines.length === 0) {
