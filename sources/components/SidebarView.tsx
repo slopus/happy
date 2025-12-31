@@ -10,18 +10,26 @@ import { FABWide } from './FABWide';
 import { VoiceAssistantStatusBar } from './VoiceAssistantStatusBar';
 import { useRealtimeStatus } from '@/sync/storage';
 import { MainView } from './MainView';
+import { CollapsedSidebarView } from './CollapsedSidebarView';
+import { CollapsibleSidebarEdge } from './CollapsibleSidebarEdge';
 import { Image } from 'expo-image';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { t } from '@/text';
 import { useInboxHasContent } from '@/hooks/useInboxHasContent';
+import { useSidebar } from './SidebarContext';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
+    outerContainer: {
+        flex: 1,
+        flexDirection: 'row',
+    },
     container: {
         flex: 1,
         borderStyle: 'solid',
         backgroundColor: theme.colors.groupped.background,
         borderWidth: StyleSheet.hairlineWidth,
         borderColor: theme.colors.divider,
+        borderRightWidth: 0,
     },
     header: {
         flexDirection: 'row',
@@ -132,6 +140,7 @@ export const SidebarView = React.memo(() => {
     const friendRequests = useFriendRequests();
     const inboxHasContent = useInboxHasContent();
     const settings = useSettings();
+    const { isCollapsed } = useSidebar();
 
     // Get connection status styling (matching sessionUtils.ts pattern)
     const getConnectionStatus = () => {
@@ -179,8 +188,21 @@ export const SidebarView = React.memo(() => {
         router.push('/new');
     }, [router]);
 
+    // Render collapsed sidebar view
+    if (isCollapsed) {
+        return (
+            <CollapsedSidebarView
+                onNewSession={handleNewSession}
+                connectionStatus={getConnectionStatus()}
+                friendRequestsCount={friendRequests.length}
+                inboxHasContent={inboxHasContent}
+                showExperiments={settings.experiments}
+            />
+        );
+    }
+
     return (
-        <>
+        <View style={styles.outerContainer}>
             <View style={[styles.container, { paddingTop: safeArea.top }]}>
                 <View style={[styles.header, { height: headerHeight }]}>
                     <View style={styles.logoContainer}>
@@ -262,8 +284,9 @@ export const SidebarView = React.memo(() => {
                     <VoiceAssistantStatusBar variant="sidebar" />
                 )}
                 <MainView variant="sidebar" />
+                <FABWide onPress={handleNewSession} />
             </View>
-            <FABWide onPress={handleNewSession} />
-        </>
+            <CollapsibleSidebarEdge />
+        </View>
     )
 });
