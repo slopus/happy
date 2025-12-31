@@ -481,6 +481,7 @@ export const ca: TranslationStructure = {
             reasoning: 'Raonament',
             applyChanges: 'Actualitza fitxer',
             viewDiff: 'Canvis del fitxer actual',
+            question: 'Pregunta',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -498,6 +499,10 @@ export const ca: TranslationStructure = {
             modifyingFiles: ({ count }: { count: number }) => `Modificant ${count} fitxers`,
             modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} i ${count} més`,
             showingDiff: 'Mostrant canvis',
+        },
+        askUserQuestion: {
+            submit: 'Envia resposta',
+            multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'pregunta', plural: 'preguntes' })}`,
         }
     },
 

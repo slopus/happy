@@ -481,6 +481,7 @@ export const es: TranslationStructure = {
             reasoning: 'Razonamiento',
             applyChanges: 'Actualizar archivo',
             viewDiff: 'Cambios del archivo actual',
+            question: 'Pregunta',
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
@@ -498,6 +499,10 @@ export const es: TranslationStructure = {
             modifyingFiles: ({ count }: { count: number }) => `Modificando ${count} archivos`,
             modifyingMultipleFiles: ({ file, count }: { file: string; count: number }) => `${file} y ${count} más`,
             showingDiff: 'Mostrando cambios',
+        },
+        askUserQuestion: {
+            submit: 'Enviar respuesta',
+            multipleQuestions: ({ count }: { count: number }) => `${count} ${plural({ count, singular: 'pregunta', plural: 'preguntas' })}`,
         }
     },
 
