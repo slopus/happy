@@ -481,6 +481,11 @@ export const en = {
             reasoning: 'Reasoning',
             applyChanges: 'Update file',
             viewDiff: 'Current file changes',
+            question: 'Question',
+        },
+        askUserQuestion: {
+            submit: 'Submit Answer',
+            multipleQuestions: ({ count }: { count: number }) => `${count} questions`,
         },
         desc: {
             terminalCmd: ({ cmd }: { cmd: string }) => `Terminal(cmd: ${cmd})`,
