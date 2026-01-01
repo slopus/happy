@@ -270,6 +270,11 @@ function NewSessionWizard() {
     // Settings and state
     const recentMachinePaths = useSetting('recentMachinePaths');
     const lastUsedAgent = useSetting('lastUsedAgent');
+
+    // A/B Test Flag - determines which wizard UI to show
+    // Control A (false): Simpler AgentInput-driven layout
+    // Variant B (true): Enhanced profile-first wizard with sections
+    const useEnhancedSessionWizard = useSetting('useEnhancedSessionWizard');
     const lastUsedPermissionMode = useSetting('lastUsedPermissionMode');
     const lastUsedModelMode = useSetting('lastUsedModelMode');
     const experimentsEnabled = useSetting('experiments');
@@ -986,6 +991,65 @@ function NewSessionWizard() {
         };
     }, [selectedMachine, selectedMachineId, cliAvailability, theme]);
 
+    // ========================================================================
+    // CONTROL A: Simpler AgentInput-driven layout (flag OFF)
+    // Shows machine/path selection via chips that navigate to picker screens
+    // ========================================================================
+    if (!useEnhancedSessionWizard) {
+        return (
+            <KeyboardAvoidingView
+                behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+                keyboardVerticalOffset={Platform.OS === 'ios' ? Constants.statusBarHeight + useHeaderHeight() : 0}
+                style={styles.container}
+            >
+                <View style={{ flex: 1, justifyContent: 'flex-end' }}>
+                    {/* Session type selector only if experiments enabled */}
+                    {experimentsEnabled && (
+                        <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, marginBottom: 16 }}>
+                            <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                                <SessionTypeSelector
+                                    value={sessionType}
+                                    onChange={setSessionType}
+                                />
+                            </View>
+                        </View>
+                    )}
+
+                    {/* AgentInput with inline chips - sticky at bottom */}
+                    <View style={{ paddingHorizontal: screenWidth > 700 ? 16 : 8, paddingBottom: Math.max(16, safeArea.bottom) }}>
+                        <View style={{ maxWidth: layout.maxWidth, width: '100%', alignSelf: 'center' }}>
+                            <AgentInput
+                                value={sessionPrompt}
+                                onChangeText={setSessionPrompt}
+                                onSend={handleCreateSession}
+                                isSendDisabled={!canCreate}
+                                isSending={isCreating}
+                                placeholder="What would you like to work on?"
+                                autocompletePrefixes={[]}
+                                autocompleteSuggestions={async () => []}
+                                agentType={agentType}
+                                onAgentClick={handleAgentClick}
+                                permissionMode={permissionMode}
+                                onPermissionModeChange={handlePermissionModeChange}
+                                modelMode={modelMode}
+                                onModelModeChange={setModelMode}
+                                connectionStatus={connectionStatus}
+                                machineName={selectedMachine?.metadata?.displayName || selectedMachine?.metadata?.host}
+                                onMachineClick={handleMachineClick}
+                                currentPath={selectedPath}
+                                onPathClick={handleMachineClick}
+                            />
+                        </View>
+                    </View>
+                </View>
+            </KeyboardAvoidingView>
+        );
+    }
+
+    // ========================================================================
+    // VARIANT B: Enhanced profile-first wizard (flag ON)
+    // Full wizard with numbered sections, profile management, CLI detection
+    // ========================================================================
     return (
         <KeyboardAvoidingView
             behavior={Platform.OS === 'ios' ? 'padding' : 'height'}

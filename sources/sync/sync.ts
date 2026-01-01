@@ -137,14 +137,12 @@ class Sync {
 
     async restore(credentials: AuthCredentials, encryption: Encryption) {
         // NOTE: No awaiting anything here, we're restoring from a disk (ie app restarted)
+        // Purchases sync is invalidated in #init() and will complete asynchronously
         this.credentials = credentials;
         this.encryption = encryption;
         this.anonID = encryption.anonID;
         this.serverID = parseToken(credentials.token);
         await this.#init();
-
-        // Await purchases sync so RevenueCat is initialized for paywall
-        await this.purchasesSync.awaitQueue();
     }
 
     async #init() {

@@ -201,6 +201,9 @@ export const en = {
         markdownCopyV2Subtitle: 'Long press opens copy modal',
         hideInactiveSessions: 'Hide inactive sessions',
         hideInactiveSessionsSubtitle: 'Show only active chats in your list',
+        enhancedSessionWizard: 'Enhanced Session Wizard',
+        enhancedSessionWizardEnabled: 'Profile-first session launcher active',
+        enhancedSessionWizardDisabled: 'Using standard session launcher',
     },
 
     errors: {

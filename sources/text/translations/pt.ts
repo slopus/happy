@@ -202,6 +202,9 @@ export const pt: TranslationStructure = {
         markdownCopyV2Subtitle: 'Pressione e segure para abrir modal de cópia',
         hideInactiveSessions: 'Ocultar sessões inativas',
         hideInactiveSessionsSubtitle: 'Mostre apenas os chats ativos na sua lista',
+        enhancedSessionWizard: 'Assistente de sessão aprimorado',
+        enhancedSessionWizardEnabled: 'Lançador de sessão com perfil ativo',
+        enhancedSessionWizardDisabled: 'Usando o lançador de sessão padrão',
     },
 
     errors: {

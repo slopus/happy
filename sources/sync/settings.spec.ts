@@ -103,6 +103,7 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useEnhancedSessionWizard: false,
                 alwaysShowContextSize: false,
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
@@ -135,6 +136,7 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useEnhancedSessionWizard: false,
                 alwaysShowContextSize: false,
                 avatarStyle: 'gradient', // This should be preserved from currentSettings
                 showFlavorIcons: false,
@@ -167,6 +169,7 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useEnhancedSessionWizard: false,
                 alwaysShowContextSize: false,
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
@@ -201,6 +204,7 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useEnhancedSessionWizard: false,
                 alwaysShowContextSize: false,
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
@@ -240,6 +244,7 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useEnhancedSessionWizard: false,
                 alwaysShowContextSize: false,
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
@@ -288,6 +293,7 @@ describe('settings', () => {
                 analyticsOptOut: false,
                 inferenceOpenAIKey: null,
                 experiments: false,
+                useEnhancedSessionWizard: false,
                 alwaysShowContextSize: false,
                 avatarStyle: 'gradient',
                 showFlavorIcons: false,
@@ -366,6 +372,7 @@ describe('settings', () => {
                 favoriteDirectories: ['~/src', '~/Desktop', '~/Documents'],
                 favoriteMachines: [],
                 dismissedCLIWarnings: { perMachine: {}, global: {} },
+                useEnhancedSessionWizard: false,
             });
         });
 
