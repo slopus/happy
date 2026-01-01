@@ -122,10 +122,11 @@ export default function PathPickerScreen() {
 
     const handleSelectPath = React.useCallback(() => {
         const pathToUse = customPath.trim() || machine?.metadata?.homeDir || '/home';
-        // Set the selection and go back
+        // Set the selection via callback (for native) and navigate with params (for web compatibility)
+        // Also pass the machineId to preserve the machine selection
         callbacks.onPathSelected(pathToUse);
-        router.back();
-    }, [customPath, router, machine]);
+        router.navigate({ pathname: '/new', params: { selectedPathParam: pathToUse, selectedMachineParam: params.machineId } });
+    }, [customPath, router, machine, params.machineId]);
 
     if (!machine) {
         return (
