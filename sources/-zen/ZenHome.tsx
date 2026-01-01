@@ -6,15 +6,17 @@ import { ZenHeader } from './components/ZenHeader';
 import { TodoList } from './components/TodoList';
 import { useUnistyles } from 'react-native-unistyles';
 import { router } from 'expo-router';
-import { storage } from '@/sync/storage';
+import { storage, useRealtimeStatus } from '@/sync/storage';
 import { toggleTodo as toggleTodoSync, reorderTodos as reorderTodosSync } from '@/-zen/model/ops';
 import { useAuth } from '@/auth/AuthContext';
 import { useShallow } from 'zustand/react/shallow';
+import { VoiceAssistantStatusBar } from '@/components/VoiceAssistantStatusBar';
 
 export const ZenHome = () => {
     const insets = useSafeAreaInsets();
     const { theme } = useUnistyles();
     const auth = useAuth();
+    const realtimeStatus = useRealtimeStatus();
 
     // Get todos from storage
     const todoState = storage(useShallow(state => state.todoState));
@@ -83,6 +85,9 @@ export const ZenHome = () => {
     return (
         <>
             <ZenHeader />
+            {realtimeStatus !== 'disconnected' && (
+                <VoiceAssistantStatusBar variant="full" />
+            )}
             <ScrollView
                 style={{ flex: 1 }}
                 contentContainerStyle={{ flexGrow: 1 }}

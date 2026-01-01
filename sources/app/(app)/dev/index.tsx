@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { ActivityIndicator, Alert } from 'react-native';
+import { ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Item } from '@/components/Item';
 import { ItemGroup } from '@/components/ItemGroup';
@@ -13,6 +13,7 @@ import { sync } from '@/sync/sync';
 import { getServerUrl, setServerUrl, validateServerUrl } from '@/sync/serverConfig';
 import { Switch } from '@/components/Switch';
 import { useUnistyles } from 'react-native-unistyles';
+import { setLastViewedVersion, getLatestVersion } from '@/changelog';
 
 export default function DevScreen() {
     const router = useRouter();
@@ -22,35 +23,27 @@ export default function DevScreen() {
     const anonymousId = sync.encryption!.anonID;
     const { theme } = useUnistyles();
 
-    const handleEditServerUrl = () => {
+    const handleEditServerUrl = async () => {
         const currentUrl = getServerUrl();
 
-        Alert.prompt(
+        const newUrl = await Modal.prompt(
             'Edit API Endpoint',
             'Enter the server URL:',
-            [
-                {
-                    text: 'Cancel',
-                    style: 'cancel'
-                },
-                {
-                    text: 'Save',
-                    onPress: (newUrl?: string) => {
-                        if (newUrl && newUrl !== currentUrl) {
-                            const validation = validateServerUrl(newUrl);
-                            if (validation.valid) {
-                                setServerUrl(newUrl);
-                                Modal.alert('Success', 'Server URL updated. Please restart the app for changes to take effect.');
-                            } else {
-                                Modal.alert('Invalid URL', validation.error || 'Please enter a valid URL');
-                            }
-                        }
-                    }
-                }
-            ],
-            'plain-text',
-            currentUrl
+            {
+                defaultValue: currentUrl,
+                confirmText: 'Save'
+            }
         );
+
+        if (newUrl && newUrl !== currentUrl) {
+            const validation = validateServerUrl(newUrl);
+            if (validation.valid) {
+                setServerUrl(newUrl);
+                Modal.alert('Success', 'Server URL updated. Please restart the app for changes to take effect.');
+            } else {
+                Modal.alert('Invalid URL', validation.error || 'Please enter a valid URL');
+            }
+        }
     };
 
     const handleClearCache = async () => {
@@ -295,6 +288,18 @@ export default function DevScreen() {
                     subtitle="Remove all cached data"
                     icon={<Ionicons name="trash-outline" size={28} color="#FF9500" />}
                     onPress={handleClearCache}
+                />
+                <Item
+                    title="Reset Changelog"
+                    subtitle="Show 'What's New' banner again"
+                    icon={<Ionicons name="sparkles-outline" size={28} color="#007AFF" />}
+                    onPress={() => {
+                        // Set to latest - 1 so it shows as unread
+                        // (setting to 0 triggers first-install logic that auto-marks as read)
+                        const latest = getLatestVersion();
+                        setLastViewedVersion(Math.max(0, latest - 1));
+                        Modal.alert('Done', 'Changelog reset. Restart app to see the banner.');
+                    }}
                 />
                 <Item
                     title="Reset App State"

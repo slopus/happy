@@ -1,4 +1,12 @@
 import type { VoiceSession } from './types';
+import { fetchVoiceToken } from '@/sync/apiVoice';
+import { storage } from '@/sync/storage';
+import { sync } from '@/sync/sync';
+import { Modal } from '@/modal';
+import { TokenStorage } from '@/auth/tokenStorage';
+import { t } from '@/text';
+import { config } from '@/config';
+import { requestMicrophonePermission, showMicrophonePermissionDeniedAlert } from '@/utils/microphonePermissions';
 
 let voiceSession: VoiceSession | null = null;
 let voiceSessionStarted: boolean = false;
@@ -9,17 +17,80 @@ export async function startRealtimeSession(sessionId: string, initialContext?: s
         console.warn('No voice session registered');
         return;
     }
+
+    // Request microphone permission before starting voice session
+    // Critical for iOS/Android - first session will fail without this
+    const permissionResult = await requestMicrophonePermission();
+    if (!permissionResult.granted) {
+        showMicrophonePermissionDeniedAlert(permissionResult.canAskAgain);
+        return;
+    }
+
+    const experimentsEnabled = storage.getState().settings.experiments;
+    const agentId = __DEV__ ? config.elevenLabsAgentIdDev : config.elevenLabsAgentIdProd;
+    
+    if (!agentId) {
+        console.error('Agent ID not configured');
+        return;
+    }
     
     try {
+        // Simple path: No experiments = no auth needed
+        if (!experimentsEnabled) {
+            currentSessionId = sessionId;
+            voiceSessionStarted = true;
+            await voiceSession.startSession({
+                sessionId,
+                initialContext,
+                agentId  // Use agentId directly, no token
+            });
+            return;
+        }
+        
+        // Experiments enabled = full auth flow
+        const credentials = await TokenStorage.getCredentials();
+        if (!credentials) {
+            Modal.alert(t('common.error'), t('errors.authenticationFailed'));
+            return;
+        }
+        
+        const response = await fetchVoiceToken(credentials, sessionId);
+        console.log('[Voice] fetchVoiceToken response:', response);
+
+        if (!response.allowed) {
+            console.log('[Voice] Not allowed, presenting paywall...');
+            const result = await sync.presentPaywall();
+            console.log('[Voice] Paywall result:', result);
+            if (result.purchased) {
+                await startRealtimeSession(sessionId, initialContext);
+            }
+            return;
+        }
+
         currentSessionId = sessionId;
         voiceSessionStarted = true;
-        await voiceSession.startSession({
-            sessionId,
-            initialContext
-        });
+
+        if (response.token) {
+            // Use token from backend
+            await voiceSession.startSession({
+                sessionId,
+                initialContext,
+                token: response.token,
+                agentId: response.agentId
+            });
+        } else {
+            // No token (e.g. server not deployed yet) - use agentId directly
+            await voiceSession.startSession({
+                sessionId,
+                initialContext,
+                agentId
+            });
+        }
     } catch (error) {
         console.error('Failed to start realtime session:', error);
         currentSessionId = null;
+        voiceSessionStarted = false;
+        Modal.alert(t('common.error'), t('errors.voiceServiceUnavailable'));
     }
 }
 
@@ -54,9 +125,4 @@ export function getVoiceSession(): VoiceSession | null {
 
 export function getCurrentRealtimeSessionId(): string | null {
     return currentSessionId;
-}
-
-export function updateCurrentSessionId(sessionId: string | null) {
-    console.log(`🔄 Realtime session ID updated: ${sessionId}`);
-    currentSessionId = sessionId;
 }

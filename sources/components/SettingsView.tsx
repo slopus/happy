@@ -1,4 +1,4 @@
-import { View, ScrollView, Pressable, Platform, Linking, TextInput, Alert } from 'react-native';
+import { View, ScrollView, Pressable, Platform, Linking } from 'react-native';
 import { Image } from 'expo-image';
 import * as React from 'react';
 import { Text } from '@/components/StyledText';
@@ -14,7 +14,7 @@ import { useConnectTerminal } from '@/hooks/useConnectTerminal';
 import { useEntitlement, useLocalSettingMutable, useSetting } from '@/sync/storage';
 import { sync } from '@/sync/sync';
 import { isUsingCustomServer } from '@/sync/serverConfig';
-import { trackPaywallButtonClicked } from '@/track';
+import { trackPaywallButtonClicked, trackWhatsNewClicked } from '@/track';
 import { Modal } from '@/modal';
 import { useMultiClick } from '@/hooks/useMultiClick';
 import { useAllMachines } from '@/sync/storage';
@@ -28,63 +28,6 @@ import { useProfile } from '@/sync/storage';
 import { getDisplayName, getAvatarUrl, getBio } from '@/sync/profile';
 import { Avatar } from '@/components/Avatar';
 import { t } from '@/text';
-
-// Manual Auth Modal Component for Android
-function ManualAuthModal({ onClose, onSubmit }: { onClose: () => void; onSubmit: (url: string) => void }) {
-    const { theme } = useUnistyles();
-    const [url, setUrl] = React.useState('');
-
-    return (
-        <View style={{ padding: 20, backgroundColor: theme.colors.surface, borderRadius: 12, minWidth: 300 }}>
-            <Text style={{ fontSize: 18, fontWeight: '600', marginBottom: 8 }}>
-                {t('modals.authenticateTerminal')}
-            </Text>
-            <Text style={{ fontSize: 14, color: theme.colors.textSecondary, marginBottom: 16 }}>
-                {t('modals.pasteUrlFromTerminal')}
-            </Text>
-            <TextInput
-                style={{
-                    borderWidth: 1,
-                    borderColor: theme.colors.divider,
-                    borderRadius: 8,
-                    padding: 12,
-                    fontSize: 14,
-                    marginBottom: 20,
-                    color: theme.colors.input.text,
-                    backgroundColor: theme.colors.input.background
-                }}
-                value={url}
-                onChangeText={setUrl}
-                placeholder={'happy://terminal?...'}
-                placeholderTextColor={theme.colors.input.placeholder}
-                autoCapitalize="none"
-                autoCorrect={false}
-                autoFocus
-            />
-            <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
-                <Pressable
-                    onPress={onClose}
-                    style={{ paddingVertical: 8, paddingHorizontal: 16, marginRight: 8 }}
-                >
-                    <Text style={{ color: '#007AFF', fontSize: 16 }}>{t('common.cancel')}</Text>
-                </Pressable>
-                <Pressable
-                    onPress={() => {
-                        if (url.trim()) {
-                            onSubmit(url.trim());
-                            onClose();
-                        }
-                    }}
-                    style={{ paddingVertical: 8, paddingHorizontal: 16 }}
-                >
-                    <Text style={{ color: '#007AFF', fontSize: 16, fontWeight: '600' }}>
-                        {t('common.authenticate')}
-                    </Text>
-                </Pressable>
-            </View>
-        </View>
-    );
-}
 
 export const SettingsView = React.memo(function SettingsView() {
     const { theme } = useUnistyles();
@@ -236,36 +179,17 @@ export const SettingsView = React.memo(function SettingsView() {
                     <Item
                         title={t('connect.enterUrlManually')}
                         icon={<Ionicons name="link-outline" size={29} color="#007AFF" />}
-                        onPress={() => {
-                            if (Platform.OS === 'ios') {
-                                Alert.prompt(
-                                    t('modals.authenticateTerminal'),
-                                    t('modals.pasteUrlFromTerminal'),
-                                    [
-                                        { text: 'Cancel', style: 'cancel' },
-                                        {
-                                            text: 'Authenticate',
-                                            onPress: (url?: string) => {
-                                                if (url?.trim()) {
-                                                    connectWithUrl(url.trim());
-                                                }
-                                            }
-                                        }
-                                    ],
-                                    'plain-text',
-                                    '',
-                                    'happy://terminal?...'
-                                );
-                            } else {
-                                // For Android, show a custom modal
-                                Modal.show({
-                                    component: ManualAuthModal,
-                                    props: {
-                                        onSubmit: (url: string) => {
-                                            connectWithUrl(url);
-                                        }
-                                    }
-                                });
+                        onPress={async () => {
+                            const url = await Modal.prompt(
+                                t('modals.authenticateTerminal'),
+                                t('modals.pasteUrlFromTerminal'),
+                                {
+                                    placeholder: 'happy://terminal?...',
+                                    confirmText: t('common.authenticate')
+                                }
+                            );
+                            if (url?.trim()) {
+                                connectWithUrl(url.trim());
                             }
                         }}
                         showChevron={false}
@@ -431,7 +355,10 @@ export const SettingsView = React.memo(function SettingsView() {
                     title={t('settings.whatsNew')}
                     subtitle={t('settings.whatsNewSubtitle')}
                     icon={<Ionicons name="sparkles-outline" size={29} color="#FF9500" />}
-                    onPress={() => router.push('/changelog')}
+                    onPress={() => {
+                        trackWhatsNewClicked();
+                        router.push('/changelog');
+                    }}
                 />
                 <Item
                     title={t('settings.github')}

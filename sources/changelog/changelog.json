@@ -1,6 +1,18 @@
 {
   "entries": [
     {
+      "version": 5,
+      "date": "2025-12-22",
+      "summary": "This release expands AI agent support and refines the voice experience, while improving markdown rendering for a better chat experience.",
+      "changes": [
+        "Added experimental Gemini agent support - still early and rough around the edges, but functional for those who want to try it",
+        "Voice conversations now require a subscription after 3 free trials - we'll soon allow connecting your own ElevenLabs agent for unlimited usage",
+        "Improved markdown table rendering in chat - no more ASCII pipes `|--|`, actual formatted tables (layout still needs work, but much better!)",
+        "CLI is being actively developed to support more agents: Gemini first, then Codex stability improvements, with OpenCode support to follow"
+      ],
+      "rawMarkdown": "## Version 5 - 2025-12-22\n\n\nThis release expands AI agent support and refines the voice experience, while improving markdown rendering for a better chat experience.\n\n- Added experimental Gemini agent support - still early and rough around the edges, but functional for those who want to try it\n- Voice conversations now require a subscription after 3 free trials - we'll soon allow connecting your own ElevenLabs agent for unlimited usage\n- Improved markdown table rendering in chat - no more ASCII pipes `|--|`, actual formatted tables (layout still needs work, but much better!)\n- CLI is being actively developed to support more agents: Gemini first, then Codex stability improvements, with OpenCode support to follow"
+    },
+    {
       "version": 4,
       "date": "2025-09-12",
       "summary": "This release revolutionizes remote development with Codex integration and Daemon Mode, enabling instant AI assistance from anywhere. Start coding sessions with a single tap while maintaining complete control over your development environment.",
@@ -53,5 +65,5 @@
       "rawMarkdown": "## Version 1 - 2025-05-12\n\n\nWelcome to Happy - your secure, encrypted mobile companion for Claude Code. This inaugural release establishes the foundation for private, powerful AI interactions on the go.\n\n- Implemented end-to-end encrypted session management ensuring complete privacy\n- Integrated intelligent voice assistant with natural conversation capabilities\n- Added experimental file manager with syntax highlighting and tree navigation\n- Built seamless real-time synchronization across all your devices\n- Established native support for iOS, Android, and responsive web interfaces"
     }
   ],
-  "latestVersion": 4
+  "latestVersion": 5
 }

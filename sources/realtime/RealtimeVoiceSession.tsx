@@ -25,10 +25,11 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
             const userLanguagePreference = storage.getState().settings.voiceAssistantLanguage;
             const elevenLabsLanguage = getElevenLabsCodeFromPreference(userLanguagePreference);
             
-            // Use hardcoded agent ID for Eleven Labs
-            await conversationInstance.startSession({
-                agentId: __DEV__ ? 'agent_7801k2c0r5hjfraa1kdbytpvs6yt' : 'agent_6701k211syvvegba4kt7m68nxjmw',
-                // Pass session ID and initial context as dynamic variables
+            if (!config.token && !config.agentId) {
+                throw new Error('Neither token nor agentId provided');
+            }
+            
+            const sessionConfig: any = {
                 dynamicVariables: {
                     sessionId: config.sessionId,
                     initialConversationContext: config.initialContext || ''
@@ -37,8 +38,11 @@ class RealtimeVoiceSessionImpl implements VoiceSession {
                     agent: {
                         language: elevenLabsLanguage
                     }
-                }
-            });
+                },
+                ...(config.token ? { conversationToken: config.token } : { agentId: config.agentId })
+            };
+            
+            await conversationInstance.startSession(sessionConfig);
         } catch (error) {
             console.error('Failed to start realtime session:', error);
             storage.getState().setRealtimeStatus('error');
@@ -89,28 +93,39 @@ export const RealtimeVoiceSession: React.FC = () => {
     const conversation = useConversation({
         clientTools: realtimeClientTools,
         onConnect: (data) => {
-            // console.log('Realtime session connected:', data);
+            console.log('Realtime session connected:', data);
             storage.getState().setRealtimeStatus('connected');
+            storage.getState().setRealtimeMode('idle');
         },
         onDisconnect: () => {
-            // console.log('Realtime session disconnected');
+            console.log('Realtime session disconnected');
             storage.getState().setRealtimeStatus('disconnected');
+            storage.getState().setRealtimeMode('idle', true); // immediate mode change
+            storage.getState().clearRealtimeModeDebounce();
         },
         onMessage: (data) => {
-            // console.log('Realtime message:', data);
+            console.log('Realtime message:', data);
         },
         onError: (error) => {
-            // console.error('Realtime error:', error);
+            console.error('Realtime error:', error);
             storage.getState().setRealtimeStatus('error');
+            storage.getState().setRealtimeMode('idle', true); // immediate mode change
         },
         onStatusChange: (data) => {
-            // console.log('Realtime status change:', data);
+            console.log('Realtime status change:', data);
         },
         onModeChange: (data) => {
-            // console.log('Realtime mode change:', data);
+            console.log('Realtime mode change:', data);
+            
+            // Only animate when speaking
+            const mode = data.mode as string;
+            const isSpeaking = mode === 'speaking';
+            
+            // Use centralized debounce logic from storage
+            storage.getState().setRealtimeMode(isSpeaking ? 'speaking' : 'idle');
         },
         onDebug: (message) => {
-            // console.debug('Realtime debug:', message);
+            console.debug('Realtime debug:', message);
         }
     });
 

@@ -142,6 +142,9 @@ class Sync {
         this.anonID = encryption.anonID;
         this.serverID = parseToken(credentials.token);
         await this.#init();
+
+        // Await purchases sync so RevenueCat is initialized for paywall
+        await this.purchasesSync.awaitQueue();
     }
 
     async #init() {
@@ -246,33 +249,9 @@ class Sync {
             sentFrom = 'web'; // fallback
         }
 
-        // Resolve model settings based on modelMode
-        let model: string | null = null;
-        let fallbackModel: string | null = null;
-
-        switch (modelMode) {
-            case 'default':
-                model = null;
-                fallbackModel = null;
-                break;
-            case 'adaptiveUsage':
-                model = 'claude-opus-4-1-20250805';
-                fallbackModel = 'claude-sonnet-4-5-20250929';
-                break;
-            case 'sonnet':
-                model = 'claude-sonnet-4-5-20250929';
-                fallbackModel = null;
-                break;
-            case 'opus':
-                model = 'claude-opus-4-1-20250805';
-                fallbackModel = null;
-                break;
-            default:
-                // If no modelMode is specified, use default behavior (let server decide)
-                model = null;
-                fallbackModel = null;
-                break;
-        }
+        // Model settings - models are configured in CLI settings
+        const model: string | null = null;
+        const fallbackModel: string | null = null;
 
         // Create user message content with metadata
         const content: RawRecord = {

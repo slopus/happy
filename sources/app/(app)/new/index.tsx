@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Platform, Pressable, useWindowDimensions, ScrollView, TextInput } from 'react-native';
+import Constants from 'expo-constants';
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting, useSettingMutable, useSessions } from '@/sync/storage';
 import { Ionicons, Octicons } from '@expo/vector-icons';
@@ -12,7 +13,6 @@ import { t } from '@/text';
 import { KeyboardAvoidingView } from 'react-native-keyboard-controller';
 import { useHeaderHeight } from '@/utils/responsive';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Constants from 'expo-constants';
 import { machineSpawnNewSession } from '@/sync/ops';
 import { Modal } from '@/modal';
 import { sync } from '@/sync/sync';
@@ -58,7 +58,7 @@ const useProfileMap = (profiles: AIBackendProfile[]) => {
 
 // Environment variable transformation helper
 // Returns ALL profile environment variables - daemon will use them as-is
-const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' = 'claude') => {
+const transformProfileToEnvironmentVars = (profile: AIBackendProfile, agentType: 'claude' | 'codex' | 'gemini' = 'claude') => {
     // getProfileEnvironmentVariables already returns ALL env vars from profile
     // including custom environmentVariables array and provider-specific configs
     return getProfileEnvironmentVariables(profile);
@@ -296,29 +296,64 @@ function NewSessionWizard() {
         }
         return 'anthropic'; // Default to Anthropic
     });
-    const [agentType, setAgentType] = React.useState<'claude' | 'codex'>(() => {
+    const [agentType, setAgentType] = React.useState<'claude' | 'codex' | 'gemini'>(() => {
+        // Check if agent type was provided in temp data
         if (tempSessionData?.agentType) {
+            // Only allow gemini if experiments are enabled
+            if (tempSessionData.agentType === 'gemini' && !experimentsEnabled) {
+                return 'claude';
+            }
             return tempSessionData.agentType;
         }
         if (lastUsedAgent === 'claude' || lastUsedAgent === 'codex') {
             return lastUsedAgent;
         }
+        // Only allow gemini if experiments are enabled
+        if (lastUsedAgent === 'gemini' && experimentsEnabled) {
+            return lastUsedAgent;
+        }
         return 'claude';
     });
+
+    // Agent cycling handler (for cycling through claude -> codex -> gemini)
+    const handleAgentClick = React.useCallback(() => {
+        setAgentType(prev => {
+            // Cycle: claude -> codex -> gemini (if experiments) -> claude
+            let newAgent: 'claude' | 'codex' | 'gemini';
+            if (prev === 'claude') {
+                newAgent = 'codex';
+            } else if (prev === 'codex') {
+                newAgent = experimentsEnabled ? 'gemini' : 'claude';
+            } else {
+                newAgent = 'claude';
+            }
+            // Save the new selection immediately
+            sync.applySettings({ lastUsedAgent: newAgent });
+            return newAgent;
+        });
+    }, [experimentsEnabled]);
+
     const [sessionType, setSessionType] = React.useState<'simple' | 'worktree'>('simple');
     const [permissionMode, setPermissionMode] = React.useState<PermissionMode>(() => {
-        const validClaudeModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
+        // Initialize with last used permission mode if valid, otherwise default to 'default'
+        const validClaudeGeminiModes: PermissionMode[] = ['default', 'acceptEdits', 'plan', 'bypassPermissions'];
         const validCodexModes: PermissionMode[] = ['default', 'read-only', 'safe-yolo', 'yolo'];
 
         if (lastUsedPermissionMode) {
             if (agentType === 'codex' && validCodexModes.includes(lastUsedPermissionMode as PermissionMode)) {
                 return lastUsedPermissionMode as PermissionMode;
-            } else if (agentType === 'claude' && validClaudeModes.includes(lastUsedPermissionMode as PermissionMode)) {
+            } else if ((agentType === 'claude' || agentType === 'gemini') && validClaudeGeminiModes.includes(lastUsedPermissionMode as PermissionMode)) {
                 return lastUsedPermissionMode as PermissionMode;
             }
         }
         return 'default';
     });
+
+    // Reset permission mode when agent type changes
+    React.useEffect(() => {
+        setPermissionMode('default');
+    }, [agentType]);
+
     const [modelMode, setModelMode] = React.useState<ModelMode>(() => {
         const validClaudeModes: ModelMode[] = ['default', 'adaptiveUsage', 'sonnet', 'opus'];
         const validCodexModes: ModelMode[] = ['gpt-5-codex-high', 'gpt-5-codex-medium', 'gpt-5-codex-low', 'default', 'gpt-5-minimal', 'gpt-5-low', 'gpt-5-medium', 'gpt-5-high'];
@@ -347,6 +382,17 @@ function NewSessionWizard() {
         }
         return null;
     });
+
+    const handlePermissionModeChange = React.useCallback((mode: PermissionMode) => {
+        setPermissionMode(mode);
+        // Save the new selection immediately
+        sync.applySettings({ lastUsedPermissionMode: mode });
+    }, []);
+
+    //
+    // Path selection
+    //
+
     const [selectedPath, setSelectedPath] = React.useState<string>(() => {
         return getRecentPathForMachine(selectedMachineId, recentMachinePaths);
     });
@@ -634,7 +680,7 @@ function NewSessionWizard() {
             name: '',
             anthropicConfig: {},
             environmentVariables: [],
-            compatibility: { claude: true, codex: true },
+            compatibility: { claude: true, codex: true, gemini: true },
             isBuiltIn: false,
             createdAt: Date.now(),
             updatedAt: Date.now(),
@@ -887,8 +933,8 @@ function NewSessionWizard() {
             if ('sessionId' in result && result.sessionId) {
                 await sync.refreshSessions();
 
+                // Set permission mode on the session
                 storage.getState().updateSessionPermissionMode(result.sessionId, permissionMode);
-                storage.getState().updateSessionModelMode(result.sessionId, modelMode);
 
                 // Send initial message if provided
                 if (sessionPrompt.trim()) {

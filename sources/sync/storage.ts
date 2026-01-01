@@ -22,6 +22,10 @@ import { projectManager } from "./projectManager";
 import { DecryptedArtifact } from "./artifactTypes";
 import { FeedItem } from "./feedTypes";
 
+// Debounce timer for realtimeMode changes
+let realtimeModeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const REALTIME_MODE_DEBOUNCE_MS = 150;
+
 /**
  * Centralized session online state resolver
  * Returns either "online" (string) or a timestamp (number) for last seen
@@ -83,6 +87,7 @@ interface StorageState {
     feedLoaded: boolean;  // True after initial feed fetch
     friendsLoaded: boolean;  // True after initial friends fetch
     realtimeStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
+    realtimeMode: 'idle' | 'speaking';
     socketStatus: 'disconnected' | 'connecting' | 'connected' | 'error';
     socketLastConnectedAt: number | null;
     socketLastDisconnectedAt: number | null;
@@ -106,11 +111,13 @@ interface StorageState {
     applyNativeUpdateStatus: (status: { available: boolean; updateUrl?: string } | null) => void;
     isMutableToolCall: (sessionId: string, callId: string) => boolean;
     setRealtimeStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
+    setRealtimeMode: (mode: 'idle' | 'speaking', immediate?: boolean) => void;
+    clearRealtimeModeDebounce: () => void;
     setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => void;
     getActiveSessions: () => Session[];
     updateSessionDraft: (sessionId: string, draft: string | null) => void;
     updateSessionPermissionMode: (sessionId: string, mode: 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan' | 'read-only' | 'safe-yolo' | 'yolo') => void;
-    updateSessionModelMode: (sessionId: string, mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus' | 'gpt-5-minimal' | 'gpt-5-low' | 'gpt-5-medium' | 'gpt-5-high' | 'gpt-5-codex-low' | 'gpt-5-codex-medium' | 'gpt-5-codex-high') => void;
+    updateSessionModelMode: (sessionId: string, mode: 'default') => void;
     // Artifact methods
     applyArtifacts: (artifacts: DecryptedArtifact[]) => void;
     addArtifact: (artifact: DecryptedArtifact) => void;
@@ -267,6 +274,7 @@ export const storage = create<StorageState>()((set, get) => {
         sessionMessages: {},
         sessionGitStatus: {},
         realtimeStatus: 'disconnected',
+        realtimeMode: 'idle',
         socketStatus: 'disconnected',
         socketLastConnectedAt: null,
         socketLastDisconnectedAt: null,
@@ -686,6 +694,31 @@ export const storage = create<StorageState>()((set, get) => {
             ...state,
             realtimeStatus: status
         })),
+        setRealtimeMode: (mode: 'idle' | 'speaking', immediate?: boolean) => {
+            if (immediate) {
+                // Clear any pending debounce and set immediately
+                if (realtimeModeDebounceTimer) {
+                    clearTimeout(realtimeModeDebounceTimer);
+                    realtimeModeDebounceTimer = null;
+                }
+                set((state) => ({ ...state, realtimeMode: mode }));
+            } else {
+                // Debounce mode changes to avoid flickering
+                if (realtimeModeDebounceTimer) {
+                    clearTimeout(realtimeModeDebounceTimer);
+                }
+                realtimeModeDebounceTimer = setTimeout(() => {
+                    realtimeModeDebounceTimer = null;
+                    set((state) => ({ ...state, realtimeMode: mode }));
+                }, REALTIME_MODE_DEBOUNCE_MS);
+            }
+        },
+        clearRealtimeModeDebounce: () => {
+            if (realtimeModeDebounceTimer) {
+                clearTimeout(realtimeModeDebounceTimer);
+                realtimeModeDebounceTimer = null;
+            }
+        },
         setSocketStatus: (status: 'disconnected' | 'connecting' | 'connected' | 'error') => set((state) => {
             const now = Date.now();
             const updates: Partial<StorageState> = {
@@ -775,7 +808,7 @@ export const storage = create<StorageState>()((set, get) => {
                 sessions: updatedSessions
             };
         }),
-        updateSessionModelMode: (sessionId: string, mode: 'default' | 'adaptiveUsage' | 'sonnet' | 'opus' | 'gpt-5-minimal' | 'gpt-5-low' | 'gpt-5-medium' | 'gpt-5-high' | 'gpt-5-codex-low' | 'gpt-5-codex-medium' | 'gpt-5-codex-high') => set((state) => {
+        updateSessionModelMode: (sessionId: string, mode: 'default') => set((state) => {
             const session = state.sessions[sessionId];
             if (!session) return state;
 
@@ -1195,6 +1228,10 @@ export function useEntitlement(id: KnownEntitlements): boolean {
 
 export function useRealtimeStatus(): 'disconnected' | 'connecting' | 'connected' | 'error' {
     return storage(useShallow((state) => state.realtimeStatus));
+}
+
+export function useRealtimeMode(): 'idle' | 'speaking' {
+    return storage(useShallow((state) => state.realtimeMode));
 }
 
 export function useSocketStatus() {

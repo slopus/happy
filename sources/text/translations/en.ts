@@ -233,6 +233,7 @@ export const en: TranslationStructure = {
         contactSupport: 'Contact support if the problem persists',
         sessionNotFound: 'Session not found',
         voiceSessionFailed: 'Failed to start voice session',
+        voiceServiceUnavailable: 'Voice service is temporarily unavailable',
         oauthInitializationFailed: 'Failed to initialize OAuth flow',
         tokenStorageFailed: 'Failed to store authentication tokens',
         oauthStateMismatch: 'Security validation failed. Please try again',
@@ -411,13 +412,11 @@ export const en: TranslationStructure = {
         agent: {
             claude: 'Claude',
             codex: 'Codex',
+            gemini: 'Gemini',
         },
         model: {
             title: 'MODEL',
-            default: 'Use CLI settings',
-            adaptiveUsage: 'Opus up to 50% usage, then Sonnet',
-            sonnet: 'Sonnet',
-            opus: 'Opus',
+            configureInCli: 'Configure models in CLI settings',
         },
         codexPermissionMode: {
             title: 'CODEX PERMISSION MODE',
@@ -438,6 +437,16 @@ export const en: TranslationStructure = {
             gpt5Low: 'GPT-5 Low',
             gpt5Medium: 'GPT-5 Medium',
             gpt5High: 'GPT-5 High',
+        },
+        geminiPermissionMode: {
+            title: 'GEMINI PERMISSION MODE',
+            default: 'Default',
+            acceptEdits: 'Accept Edits',
+            plan: 'Plan Mode',
+            bypassPermissions: 'Yolo Mode',
+            badgeAcceptAllEdits: 'Accept All Edits',
+            badgeBypassAllPermissions: 'Bypass All Permissions',
+            badgePlanMode: 'Plan Mode',
         },
         context: {
             remaining: ({ percent }: { percent: number }) => `${percent}% left`,
