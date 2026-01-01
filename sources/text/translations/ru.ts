@@ -113,6 +113,8 @@ export const ru: TranslationStructure = {
         exchangingTokens: 'Обмен токенов...',
         usage: 'Использование',
         usageSubtitle: 'Просмотр использования API и затрат',
+        serverConfiguration: 'Настройка сервера',
+        serverConfigurationSubtitle: 'Изменить настройки подключения к серверу',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Аккаунт ${service} подключен`,

@@ -130,6 +130,8 @@ export const ca: TranslationStructure = {
         exchangingTokens: 'Intercanviant tokens...',
         usage: 'Ús',
         usageSubtitle: "Veure l'ús de l'API i costos",
+        serverConfiguration: 'Configuració del servidor',
+        serverConfigurationSubtitle: 'Canvia la configuració de connexió del servidor',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Compte de ${service} connectat`,

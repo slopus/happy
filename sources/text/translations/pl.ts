@@ -141,6 +141,8 @@ export const pl: TranslationStructure = {
         exchangingTokens: 'Wymiana tokenów...',
         usage: 'Użycie',
         usageSubtitle: 'Zobacz użycie API i koszty',
+        serverConfiguration: 'Konfiguracja serwera',
+        serverConfigurationSubtitle: 'Zmień ustawienia połączenia z serwerem',
 
         // Dynamic settings messages
         accountConnected: ({ service }: { service: string }) => `Konto ${service} połączone`,

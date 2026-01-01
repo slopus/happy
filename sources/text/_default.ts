@@ -104,6 +104,8 @@ export const en = {
         social: 'Social',
         account: 'Account',
         accountSubtitle: 'Manage your account details',
+        serverConfiguration: 'Server Configuration',
+        serverConfigurationSubtitle: 'Change server connection settings',
         appearance: 'Appearance',
         appearanceSubtitle: 'Customize how the app looks',
         voiceAssistant: 'Voice Assistant',
