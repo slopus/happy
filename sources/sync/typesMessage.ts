@@ -16,7 +16,7 @@ export type ToolCall = {
         reason?: string;
         mode?: string;
         allowedTools?: string[];
-        decision?: 'approved' | 'approved_for_session' | 'denied' | 'abort';
+        decision?: 'approved' | 'approved_for_session' | 'approved_execpolicy_amendment' | 'denied' | 'abort';
         date?: number;
     };
 }
