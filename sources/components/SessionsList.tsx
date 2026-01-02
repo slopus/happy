@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Pressable, FlatList } from 'react-native';
+import { View, Pressable, FlatList, Platform } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { usePathname } from 'expo-router';
 import { SessionListViewItem } from '@/sync/storage';
@@ -24,6 +25,10 @@ import { t } from '@/text';
 import { useRouter } from 'expo-router';
 import { Item } from './Item';
 import { ItemGroup } from './ItemGroup';
+import { useHappyAction } from '@/hooks/useHappyAction';
+import { sessionDelete } from '@/sync/ops';
+import { HappyError } from '@/utils/errors';
+import { Modal } from '@/modal';
 
 const stylesheet = StyleSheet.create((theme) => ({
     container: {
@@ -73,8 +78,11 @@ const stylesheet = StyleSheet.create((theme) => ({
         alignItems: 'center',
         paddingHorizontal: 16,
         backgroundColor: theme.colors.surface,
+    },
+    sessionItemContainer: {
         marginHorizontal: 16,
         marginBottom: 1,
+        overflow: 'hidden',
     },
     sessionItemFirst: {
         borderTopLeftRadius: 12,
@@ -83,9 +91,20 @@ const stylesheet = StyleSheet.create((theme) => ({
     sessionItemLast: {
         borderBottomLeftRadius: 12,
         borderBottomRightRadius: 12,
-        marginBottom: 12,
     },
     sessionItemSingle: {
+        borderRadius: 12,
+    },
+    sessionItemContainerFirst: {
+        borderTopLeftRadius: 12,
+        borderTopRightRadius: 12,
+    },
+    sessionItemContainerLast: {
+        borderBottomLeftRadius: 12,
+        borderBottomRightRadius: 12,
+        marginBottom: 12,
+    },
+    sessionItemContainerSingle: {
         borderRadius: 12,
         marginBottom: 12,
     },
@@ -158,6 +177,20 @@ const stylesheet = StyleSheet.create((theme) => ({
         paddingHorizontal: 16,
         paddingBottom: 12,
         backgroundColor: theme.colors.groupped.background,
+    },
+    swipeAction: {
+        width: 112,
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.status.error,
+    },
+    swipeActionText: {
+        marginTop: 4,
+        fontSize: 12,
+        color: '#FFFFFF',
+        textAlign: 'center',
+        ...Typography.default('semiBold'),
     },
 }));
 
@@ -303,12 +336,37 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
     const sessionSubtitle = getSessionSubtitle(session);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
+    const swipeableRef = React.useRef<Swipeable | null>(null);
+    const swipeEnabled = Platform.OS !== 'web';
+
+    const [deletingSession, performDelete] = useHappyAction(async () => {
+        const result = await sessionDelete(session.id);
+        if (!result.success) {
+            throw new HappyError(result.message || t('sessionInfo.failedToDeleteSession'), false);
+        }
+    });
+
+    const handleDelete = React.useCallback(() => {
+        swipeableRef.current?.close();
+        Modal.alert(
+            t('sessionInfo.deleteSession'),
+            t('sessionInfo.deleteSessionWarning'),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: t('sessionInfo.deleteSession'),
+                    style: 'destructive',
+                    onPress: performDelete
+                }
+            ]
+        );
+    }, [performDelete]);
 
     const avatarId = React.useMemo(() => {
         return getSessionAvatarId(session);
     }, [session]);
 
-    return (
+    const itemContent = (
         <Pressable
             style={[
                 styles.sessionItem,
@@ -371,5 +429,45 @@ const SessionItem = React.memo(({ session, selected, isFirst, isLast, isSingle }
             </View>
         </Pressable>
     );
-});
 
+    const containerStyles = [
+        styles.sessionItemContainer,
+        isSingle ? styles.sessionItemContainerSingle :
+            isFirst ? styles.sessionItemContainerFirst :
+                isLast ? styles.sessionItemContainerLast : {}
+    ];
+
+    if (!swipeEnabled) {
+        return (
+            <View style={containerStyles}>
+                {itemContent}
+            </View>
+        );
+    }
+
+    const renderRightActions = () => (
+        <Pressable
+            style={styles.swipeAction}
+            onPress={handleDelete}
+            disabled={deletingSession}
+        >
+            <Ionicons name="trash-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.swipeActionText} numberOfLines={2}>
+                {t('sessionInfo.deleteSession')}
+            </Text>
+        </Pressable>
+    );
+
+    return (
+        <View style={containerStyles}>
+            <Swipeable
+                ref={swipeableRef}
+                renderRightActions={renderRightActions}
+                overshootRight={false}
+                enabled={!deletingSession}
+            >
+                {itemContent}
+            </Swipeable>
+        </View>
+    );
+});
