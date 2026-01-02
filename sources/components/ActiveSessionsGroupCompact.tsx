@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Pressable, Platform, ActivityIndicator } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { Text } from '@/components/StyledText';
 import { router, useRouter } from 'expo-router';
 import { Session, Machine } from '@/sync/storageTypes';
@@ -11,7 +12,7 @@ import { StatusDot } from './StatusDot';
 import { useAllMachines, useSetting } from '@/sync/storage';
 import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { isMachineOnline } from '@/utils/machineUtils';
-import { machineSpawnNewSession } from '@/sync/ops';
+import { machineSpawnNewSession, sessionKill } from '@/sync/ops';
 import { resolveAbsolutePath } from '@/utils/pathUtils';
 import { storage } from '@/sync/storage';
 import { Modal } from '@/modal';
@@ -19,6 +20,8 @@ import { t } from '@/text';
 import { useNavigateToSession } from '@/hooks/useNavigateToSession';
 import { useIsTablet } from '@/utils/responsive';
 import { ProjectGitStatus } from './ProjectGitStatus';
+import { useHappyAction } from '@/hooks/useHappyAction';
+import { HappyError } from '@/utils/errors';
 
 const stylesheet = StyleSheet.create((theme, runtime) => ({
     container: {
@@ -129,6 +132,20 @@ const stylesheet = StyleSheet.create((theme, runtime) => ({
         fontSize: 15,
         color: theme.colors.textSecondary,
         ...Typography.default('regular'),
+    },
+    swipeAction: {
+        width: 112,
+        height: '100%',
+        alignItems: 'center',
+        justifyContent: 'center',
+        backgroundColor: theme.colors.status.error,
+    },
+    swipeActionText: {
+        marginTop: 4,
+        fontSize: 12,
+        color: '#FFFFFF',
+        textAlign: 'center',
+        ...Typography.default('semiBold'),
     },
 }));
 
@@ -279,8 +296,33 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
     const sessionName = getSessionName(session);
     const navigateToSession = useNavigateToSession();
     const isTablet = useIsTablet();
+    const swipeableRef = React.useRef<Swipeable | null>(null);
+    const swipeEnabled = Platform.OS !== 'web';
 
-    return (
+    const [archivingSession, performArchive] = useHappyAction(async () => {
+        const result = await sessionKill(session.id);
+        if (!result.success) {
+            throw new HappyError(result.message || t('sessionInfo.failedToArchiveSession'), false);
+        }
+    });
+
+    const handleArchive = React.useCallback(() => {
+        swipeableRef.current?.close();
+        Modal.alert(
+            t('sessionInfo.archiveSession'),
+            t('sessionInfo.archiveSessionConfirm'),
+            [
+                { text: t('common.cancel'), style: 'cancel' },
+                {
+                    text: t('sessionInfo.archiveSession'),
+                    style: 'destructive',
+                    onPress: performArchive
+                }
+            ]
+        );
+    }, [performArchive]);
+
+    const itemContent = (
         <Pressable
             style={[
                 styles.sessionRow,
@@ -354,5 +396,33 @@ const CompactSessionRow = React.memo(({ session, selected, showBorder }: { sessi
                 </View>
             </View>
         </Pressable>
+    );
+
+    if (!swipeEnabled) {
+        return itemContent;
+    }
+
+    const renderRightActions = () => (
+        <Pressable
+            style={styles.swipeAction}
+            onPress={handleArchive}
+            disabled={archivingSession}
+        >
+            <Ionicons name="archive-outline" size={20} color="#FFFFFF" />
+            <Text style={styles.swipeActionText} numberOfLines={2}>
+                {t('sessionInfo.archiveSession')}
+            </Text>
+        </Pressable>
+    );
+
+    return (
+        <Swipeable
+            ref={swipeableRef}
+            renderRightActions={renderRightActions}
+            overshootRight={false}
+            enabled={!archivingSession}
+        >
+            {itemContent}
+        </Swipeable>
     );
 });
