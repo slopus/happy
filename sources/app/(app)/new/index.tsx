@@ -87,7 +87,11 @@ const updateRecentMachinePaths = (
 function NewSessionScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
-    const { prompt, dataId } = useLocalSearchParams<{ prompt?: string; dataId?: string }>();
+    const { prompt, dataId, selectedMachineId: machineIdFromParams } = useLocalSearchParams<{
+        prompt?: string;
+        dataId?: string;
+        selectedMachineId?: string;
+    }>();
 
     // Try to get data from temporary store first, fallback to direct prompt parameter
     const tempSessionData = React.useMemo(() => {
@@ -176,6 +180,20 @@ function NewSessionScreen() {
         }
     }, [machines, selectedMachineId, recentMachinePaths]);
 
+    // Handle machine selection from route params (when returning from picker)
+    React.useEffect(() => {
+        if (machineIdFromParams) {
+            const machine = storage.getState().machines[machineIdFromParams];
+            if (machine) {
+                setSelectedMachineId(machineIdFromParams);
+                // Also update the path when machine changes
+                const bestPath = getRecentPathForMachine(machineIdFromParams, recentMachinePaths);
+                setSelectedPath(bestPath);
+            }
+        }
+    }, [machineIdFromParams, recentMachinePaths]);
+
+    // Keep the old callback mechanism for backwards compatibility
     React.useEffect(() => {
         let handler = (machineId: string) => {
             let machine = storage.getState().machines[machineId];
