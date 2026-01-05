@@ -74,8 +74,13 @@ export default function MachinePickerScreen() {
     const machines = useAllMachines();
 
     const handleSelectMachine = (machineId: string) => {
+        // Call the callback for backwards compatibility
         callbacks.onMachineSelected(machineId);
-        router.back();
+        // Navigate back with the selected machine ID as a param (fixes web bug)
+        router.push({
+            pathname: '/new',
+            params: { selectedMachineId: machineId }
+        });
     };
 
     if (machines.length === 0) {
