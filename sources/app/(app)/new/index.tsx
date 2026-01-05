@@ -3,7 +3,7 @@ import { View, Text, Platform, Pressable, useWindowDimensions } from 'react-nati
 import { Typography } from '@/constants/Typography';
 import { useAllMachines, storage, useSetting } from '@/sync/storage';
 import { Ionicons } from '@expo/vector-icons';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -87,7 +87,7 @@ const updateRecentMachinePaths = (
 function NewSessionScreen() {
     const { theme } = useUnistyles();
     const router = useRouter();
-    const { prompt, dataId } = useLocalSearchParams<{ prompt?: string; dataId?: string }>();
+    const { prompt, dataId, selectedMachineParam, selectedPathParam } = useLocalSearchParams<{ prompt?: string; dataId?: string; selectedMachineParam?: string; selectedPathParam?: string }>();
 
     // Try to get data from temporary store first, fallback to direct prompt parameter
     const tempSessionData = React.useMemo(() => {
@@ -201,6 +201,28 @@ function NewSessionScreen() {
             onPathSelected = () => { };
         };
     }, []);
+
+    // Handle URL parameters from picker screens (for web compatibility)
+    React.useEffect(() => {
+        if (selectedMachineParam) {
+            const machine = storage.getState().machines[selectedMachineParam];
+            if (machine) {
+                setSelectedMachineId(selectedMachineParam);
+                const bestPath = getRecentPathForMachine(selectedMachineParam, recentMachinePaths);
+                setSelectedPath(bestPath);
+            }
+            // Clear the URL parameter to prevent re-processing
+            router.setParams({ selectedMachineParam: undefined });
+        }
+    }, [selectedMachineParam, recentMachinePaths]);
+
+    React.useEffect(() => {
+        if (selectedPathParam) {
+            setSelectedPath(selectedPathParam);
+            // Clear the URL parameter to prevent re-processing
+            router.setParams({ selectedPathParam: undefined });
+        }
+    }, [selectedPathParam]);
 
     const handleMachineClick = React.useCallback(() => {
         router.push('/new/pick/machine');
