@@ -1,6 +1,9 @@
 import * as React from "react";
-import { View, Text } from "react-native";
-import { StyleSheet } from 'react-native-unistyles';
+import { View, Text, Pressable } from "react-native";
+import { Ionicons } from '@expo/vector-icons';
+import * as Clipboard from 'expo-clipboard';
+import { Modal } from '@/modal';
+import { StyleSheet, useUnistyles } from 'react-native-unistyles';
 import { MarkdownView } from "./markdown/MarkdownView";
 import { t } from '@/text';
 import { Message, UserTextMessage, AgentTextMessage, ToolCallMessage } from "@/sync/typesMessage";
@@ -76,6 +79,9 @@ function UserTextBlock(props: {
     <View style={styles.userMessageContainer}>
       <View style={styles.userMessageBubble}>
         <MarkdownView markdown={props.message.displayText || props.message.text} onOptionPress={handleOptionPress} />
+        <View style={styles.messageActionsRow}>
+          <CopyMessageButton markdown={props.message.displayText || props.message.text} />
+        </View>
         {/* {__DEV__ && (
           <Text style={styles.debugText}>{JSON.stringify(props.message.meta)}</Text>
         )} */}
@@ -95,7 +101,69 @@ function AgentTextBlock(props: {
   return (
     <View style={styles.agentMessageContainer}>
       <MarkdownView markdown={props.message.text} onOptionPress={handleOptionPress} />
+      <View style={styles.messageActionsRow}>
+        <CopyMessageButton markdown={props.message.text} />
+      </View>
     </View>
+  );
+}
+
+function CopyMessageButton(props: { markdown: string }) {
+  const { theme } = useUnistyles();
+  const [copied, setCopied] = React.useState(false);
+  const resetTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const markdown = props.markdown || '';
+  const isCopyable = markdown.trim().length > 0;
+
+  const handlePress = React.useCallback(async () => {
+    if (!isCopyable) return;
+
+    try {
+      await Clipboard.setStringAsync(markdown);
+      setCopied(true);
+
+      if (resetTimer.current) {
+        clearTimeout(resetTimer.current);
+      }
+      resetTimer.current = setTimeout(() => {
+        setCopied(false);
+      }, 1200);
+    } catch (error) {
+      console.error('Failed to copy message:', error);
+      Modal.alert(t('common.error'), t('textSelection.failedToCopy'));
+    }
+  }, [isCopyable, markdown]);
+
+  React.useEffect(() => {
+    return () => {
+      if (resetTimer.current) {
+        clearTimeout(resetTimer.current);
+      }
+    };
+  }, []);
+
+  if (!isCopyable) {
+    return null;
+  }
+
+  return (
+    <Pressable
+      onPress={handlePress}
+      hitSlop={8}
+      accessibilityRole="button"
+      accessibilityLabel={t('common.copy')}
+      style={({ pressed }) => [
+        styles.copyMessageButton,
+        pressed && styles.copyMessageButtonPressed,
+      ]}
+    >
+      <Ionicons
+        name={copied ? "checkmark-outline" : "copy-outline"}
+        size={14}
+        color={copied ? theme.colors.success : theme.colors.textSecondary}
+      />
+    </Pressable>
   );
 }
 
@@ -207,6 +275,20 @@ const styles = StyleSheet.create((theme) => ({
   },
   toolContainer: {
     marginHorizontal: 8,
+  },
+  messageActionsRow: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 6,
+  },
+  copyMessageButton: {
+    padding: 4,
+    borderRadius: 8,
+    opacity: 0.6,
+    cursor: 'pointer',
+  },
+  copyMessageButtonPressed: {
+    opacity: 1,
   },
   debugText: {
     color: theme.colors.agentEventText,
