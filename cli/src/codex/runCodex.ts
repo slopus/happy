@@ -587,6 +587,7 @@ export async function runCodex(opts: {
         await client.connect();
         logger.debug('[codex]: client.connect done');
         let wasCreated = false;
+
         let currentModeHash: string | null = null;
         let pending: { message: string; mode: EnhancedMode; isolate: boolean; hash: string } | null = null;
         // NOTE: We intentionally do not attempt any "experimental resume" mechanism here.
@@ -599,6 +600,9 @@ export async function runCodex(opts: {
             if (!message) {
                 // Capture the current signal to distinguish idle-abort from queue close
                 const waitSignal = abortController.signal;
+                // If there are server-side pending messages, materialize one into the transcript now.
+                // This ensures sessions remain responsive even when the UI defers message creation.
+                await session.popPendingMessage();
                 const batch = await messageQueue.waitForMessagesAndGetAsString(waitSignal);
                 if (!batch) {
                     // If wait was aborted (e.g., remote abort with no active inference), ignore and continue
@@ -738,12 +742,15 @@ export async function runCodex(opts: {
                 diffProcessor.reset();
                 thinking = false;
                 session.keepAlive(thinking, 'remote');
-                emitReadyIfIdle({
-                    pending,
-                    queueSize: () => messageQueue.size(),
-                    shouldExit,
-                    sendReady,
-                });
+                const popped = !shouldExit ? await session.popPendingMessage() : false;
+                if (!popped) {
+                    emitReadyIfIdle({
+                        pending,
+                        queueSize: () => messageQueue.size(),
+                        shouldExit,
+                        sendReady,
+                    });
+                }
                 logActiveHandles('after-turn');
             }
         }

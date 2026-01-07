@@ -466,4 +466,24 @@ export class ApiSessionClient extends EventEmitter {
         logger.debug('[API] socket.close() called');
         this.socket.close();
     }
+
+    /**
+     * Materialize one server-side pending message into the normal session transcript.
+     *
+     * The server will atomically dequeue the oldest pending item, write it as a
+     * normal session message, and broadcast it to all interested clients
+     * (including this session-scoped agent connection).
+     */
+    async popPendingMessage(): Promise<boolean> {
+        if (!this.socket.connected) {
+            return false;
+        }
+        try {
+            const result = await this.socket.emitWithAck('pending-pop', { sid: this.sessionId });
+            return !!result?.ok && !!result?.popped;
+        } catch (error) {
+            logger.debug('[API] pending-pop failed', { error });
+            return false;
+        }
+    }
 }

@@ -926,6 +926,9 @@ export async function runGemini(opts: {
       if (!message) {
         logger.debug('[gemini] Main loop: waiting for messages from queue...');
         const waitSignal = abortController.signal;
+        // If there are server-side pending messages, materialize one into the transcript now.
+        // This keeps the agent responsive even when the UI defers message creation.
+        await session.popPendingMessage();
         const batch = await messageQueue.waitForMessagesAndGetAsString(waitSignal);
         if (!batch) {
           if (waitSignal.aborted && !shouldExit) {
@@ -1242,8 +1245,11 @@ export async function runGemini(opts: {
         thinking = false;
         session.keepAlive(thinking, 'remote');
         
-        // Use same logic as Codex - emit ready if idle (no pending operations, no queue)
-        emitReadyIfIdle();
+        const popped = !shouldExit ? await session.popPendingMessage() : false;
+        if (!popped) {
+          // Use same logic as Codex - emit ready if idle (no pending operations, no queue)
+          emitReadyIfIdle();
+        }
 
         // Message processing complete - safe to apply any pending session swap
         isProcessingMessage = false;

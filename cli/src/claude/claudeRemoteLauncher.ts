@@ -373,6 +373,13 @@ export async function claudeRemoteLauncher(session: Session): Promise<'switch' |
                             return p;
                         }
 
+                        // If the queue is empty, try to materialize one server-side pending item into the transcript.
+                        // This allows the mobile/web UI to enqueue messages without immediately committing them to the
+                        // transcript; the agent will pull them when ready for the next turn.
+                        if (session.queue.size() === 0) {
+                            await session.client.popPendingMessage();
+                        }
+
                         let msg = await session.queue.waitForMessagesAndGetAsString(controller.signal);
 
                         // Check if mode has changed

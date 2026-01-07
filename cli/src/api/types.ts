@@ -152,6 +152,15 @@ export interface ServerToClientEvents {
  */
 export interface ClientToServerEvents {
   message: (data: { sid: string, message: any }) => void
+  'pending-enqueue': (data: { sid: string, message: string, localId?: string | null }, cb: (response: { ok: boolean, id?: string, error?: string }) => void) => void
+  'pending-list': (data: { sid: string, limit?: number }, cb: (response: {
+    ok: boolean,
+    error?: string,
+    messages?: Array<{ id: string, localId: string | null, message: string, createdAt: number, updatedAt: number }>
+  }) => void) => void
+  'pending-update': (data: { sid: string, id: string, message: string }, cb: (response: { ok: boolean, error?: string }) => void) => void
+  'pending-delete': (data: { sid: string, id: string }, cb: (response: { ok: boolean, error?: string }) => void) => void
+  'pending-pop': (data: { sid: string }, cb: (response: { ok: boolean, popped?: boolean, error?: string }) => void) => void
   'session-alive': (data: {
     sid: string;
     time: number;
@@ -368,6 +377,7 @@ export type Metadata = {
   },
   machineId?: string,
   claudeSessionId?: string, // Claude Code session ID
+  codexSessionId?: string, // Codex session/conversation ID (uuid)
   tools?: string[],
   slashCommands?: string[],
   homeDir: string,
