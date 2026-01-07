@@ -366,7 +366,12 @@ export const ca: TranslationStructure = {
         deleteSessionWarning: 'Aquesta acció no es pot desfer. Tots els missatges i dades associats amb aquesta sessió s\'eliminaran permanentment.',
         failedToDeleteSession: 'Error en eliminar la sessió',
         sessionDeleted: 'Sessió eliminada amb èxit',
-        
+        renameSession: 'Canvia el nom de la sessió',
+        renameSessionSubtitle: 'Canvia el nom de visualització d\'aquesta sessió',
+        renameSessionPlaceholder: 'Introduïu el nom de la sessió...',
+        failedToRenameSession: 'Error en canviar el nom de la sessió',
+        sessionRenamed: 'S\'ha canviat el nom de la sessió correctament',
+
     },
 
     components: {

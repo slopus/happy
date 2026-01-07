@@ -508,6 +508,103 @@ export async function sessionDelete(sessionId: string): Promise<{ success: boole
     }
 }
 
+// Session rename types
+interface SessionRenameRequest {
+    title: string;
+}
+
+interface SessionRenameResponse {
+    success: boolean;
+    message?: string;
+}
+
+/**
+ * Rename a session by updating its metadata summary
+ * This updates the session title displayed in the UI
+ */
+export async function sessionRename(sessionId: string, title: string): Promise<SessionRenameResponse> {
+    try {
+        const sessionEncryption = sync.encryption.getSessionEncryption(sessionId);
+        if (!sessionEncryption) {
+            return {
+                success: false,
+                message: 'Session encryption not found'
+            };
+        }
+
+        // Get current session to get current metadata version
+        const session = sync.encryption.getSessionEncryption(sessionId);
+        if (!session) {
+            return {
+                success: false,
+                message: 'Session not found'
+            };
+        }
+
+        // Get the current session from storage
+        const { storage } = await import('./storage');
+        const currentSession = storage.getState().sessions[sessionId];
+        if (!currentSession) {
+            return {
+                success: false,
+                message: 'Session not found in storage'
+            };
+        }
+
+        // Ensure we have valid metadata to update
+        if (!currentSession.metadata) {
+            return {
+                success: false,
+                message: 'Session metadata not available'
+            };
+        }
+
+        // Update metadata with new summary
+        const updatedMetadata = {
+            ...currentSession.metadata,
+            summary: {
+                text: title,
+                updatedAt: Date.now()
+            }
+        };
+
+        // Encrypt the updated metadata
+        const encryptedMetadata = await sessionEncryption.encryptMetadata(updatedMetadata);
+
+        // Send update to server
+        const result = await apiSocket.emitWithAck<{
+            result: 'success' | 'version-mismatch' | 'error';
+            version?: number;
+            metadata?: string;
+            message?: string;
+        }>('update-metadata', {
+            sid: sessionId,
+            expectedVersion: currentSession.metadataVersion,
+            metadata: encryptedMetadata
+        });
+
+        if (result.result === 'success') {
+            return { success: true };
+        } else if (result.result === 'version-mismatch') {
+            // Retry with updated version
+            return {
+                success: false,
+                message: 'Version conflict, please try again'
+            };
+        } else {
+            return {
+                success: false,
+                message: result.message || 'Failed to rename session'
+            };
+        }
+    } catch (error) {
+        return {
+            success: false,
+            message: error instanceof Error ? error.message : 'Unknown error'
+        };
+    }
+}
+
 // Export types for external use
 export type {
     SessionBashRequest,
@@ -519,5 +616,6 @@ export type {
     SessionGetDirectoryTreeResponse,
     TreeNode,
     SessionRipgrepResponse,
-    SessionKillResponse
+    SessionKillResponse,
+    SessionRenameResponse
 };
