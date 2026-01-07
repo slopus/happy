@@ -759,6 +759,11 @@ export const it: TranslationStructure = {
         deleteSessionWarning: 'Questa azione non può essere annullata. Tutti i messaggi e i dati associati a questa sessione verranno eliminati definitivamente.',
         failedToDeleteSession: 'Impossibile eliminare la sessione',
         sessionDeleted: 'Sessione eliminata con successo',
+        renameSession: 'Rinomina sessione',
+        renameSessionSubtitle: 'Cambia il nome visualizzato di questa sessione',
+        renameSessionPlaceholder: 'Inserisci nome sessione...',
+        failedToRenameSession: 'Impossibile rinominare la sessione',
+        sessionRenamed: 'Sessione rinominata con successo',
         
     },
 

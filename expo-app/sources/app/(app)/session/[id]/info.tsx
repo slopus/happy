@@ -11,7 +11,7 @@ import { useSession, useIsDataReady, useSetting } from '@/sync/storage';
 import { getSessionName, useSessionStatus, formatOSPlatform, formatPathRelativeToHome, getSessionAvatarId } from '@/utils/sessionUtils';
 import * as Clipboard from 'expo-clipboard';
 import { Modal } from '@/modal';
-import { sessionArchive, sessionDelete } from '@/sync/ops';
+import { sessionArchive, sessionDelete, sessionRename } from '@/sync/ops';
 import { useUnistyles } from 'react-native-unistyles';
 import { layout } from '@/components/layout';
 import { t } from '@/text';
@@ -71,7 +71,6 @@ function SessionInfoContent({ session }: { session: Session }) {
     const sessionStatus = useSessionStatus(session);
     const useProfiles = useSetting('useProfiles');
     const profiles = useSetting('profiles');
-	    
     // Check if CLI version is outdated
     const isCliOutdated = session.metadata?.version && !isVersionSupported(session.metadata.version, MINIMUM_CLI_VERSION);
 
@@ -177,6 +176,26 @@ function SessionInfoContent({ session }: { session: Session }) {
             ]
         );
     }, [performDelete]);
+
+    const handleRenameSession = useCallback(async () => {
+        const newName = await Modal.prompt(
+            t('sessionInfo.renameSession'),
+            t('sessionInfo.renameSessionSubtitle'),
+            {
+                defaultValue: sessionName,
+                placeholder: t('sessionInfo.renameSessionPlaceholder'),
+                confirmText: t('common.save'),
+                cancelText: t('common.cancel')
+            }
+        );
+
+        if (newName?.trim()) {
+            const result = await sessionRename(session.id, newName.trim());
+            if (!result.success) {
+                Modal.alert(t('common.error'), result.message || t('sessionInfo.failedToRenameSession'));
+            }
+        }
+    }, [sessionName, session.id]);
 
     const formatDate = useCallback((timestamp: number) => {
         return new Date(timestamp).toLocaleString();
@@ -287,6 +306,30 @@ function SessionInfoContent({ session }: { session: Session }) {
 
                 {/* Quick Actions */}
                 <ItemGroup title={t('sessionInfo.quickActions')}>
+                    <Item
+                        title={t('sessionInfo.renameSession')}
+                        subtitle={t('sessionInfo.renameSessionSubtitle')}
+                        icon={<Ionicons name="pencil-outline" size={29} color="#007AFF" />}
+                        onPress={handleRenameSession}
+                    />
+                    {session.metadata?.claudeSessionId && (
+                        <Item
+                            title={t('sessionInfo.copyClaudeResumeCommand')}
+                            subtitle={`happy --resume ${session.metadata.claudeSessionId}`}
+                            icon={<Ionicons name="terminal-outline" size={29} color="#9C27B0" />}
+                            showChevron={false}
+                            onPress={() => handleCopyResumeCommand(`happy --resume ${session.metadata!.claudeSessionId!}`)}
+                        />
+                    )}
+                    {session.metadata?.codexSessionId && (
+                        <Item
+                            title={t('sessionInfo.copyCodexResumeCommand')}
+                            subtitle={`happy codex --resume ${session.metadata.codexSessionId}`}
+                            icon={<Ionicons name="terminal-outline" size={29} color="#007AFF" />}
+                            showChevron={false}
+                            onPress={() => handleCopyResumeCommand(`happy codex --resume ${session.metadata!.codexSessionId!}`)}
+                        />
+                    )}
                     {session.metadata?.machineId && (
                         <Item
                             title={t('sessionInfo.viewMachine')}
